@@ -449,3 +449,20 @@ test-mount-capability:
 
 regen-ansi-logo:
     chafa --format=symbols --view-size=80x50 assets/agent-harbor-logo.png | tee assets/agent-harbor-logo-80.ansi
+
+# macOS FSKit E2E (requires SIP/AMFI disabled)
+verify-macos-fskit-prereqs:
+    bash scripts/verify-macos-fskit-prereqs.sh
+
+e2e-fskit:
+    bash scripts/e2e-fskit.sh
+
+# macOS FSKit provisioning helpers (refer to Research doc)
+install-agentsworkflow-app:
+    bash scripts/install-agentsworkflow-app.sh
+
+systemextensions-devmode-and-status:
+    bash scripts/systemextensions-devmode-and-status.sh
+
+register-fskit-extension:
+    bash scripts/register-fskit-extension.sh

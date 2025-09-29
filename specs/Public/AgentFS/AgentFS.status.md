@@ -555,8 +555,6 @@ M14. Rust-Swift FFI Bridge (4–6d)
 - `crates/agentfs-fskit-sys/build.rs` - Header generation for Swift interop
 - `crates/agentfs-fskit-bridge/src/lib.rs` - Safe Rust wrapper with error handling
 
-**Outstanding Tasks:** None - FFI bridge is complete and tested. Ready for integration with actual AgentFS core when available.
-
 M15. FSKit Volume Implementation (5–7d)
 
 - Implement `AgentFsVolume` subclass of `FSVolume` with core operation mappings
@@ -588,8 +586,6 @@ M16. Filesystem-Based Control Plane (3–4d)
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` (processControlCommand method) - Thin forwarding layer for SSZ bytes
 - `crates/agentfs-ffi/src/c_api.rs` (af_control_request function) - SSZ request/response processing
 - `crates/agentfs-proto/src/messages.rs` - SSZ message type definitions
-
-**Outstanding Tasks:** None - filesystem-based control plane fully implemented and functional.
 
 M17. FSKit Integration and Testing (4–6d)
 
@@ -704,8 +700,6 @@ M20. Universal Binary & Distribution (3-4d)
 - `adapters/macos/xcode/Distribution.xml` - Package distribution configuration
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.entitlements` - Code signing entitlements
 
-**Outstanding Tasks:** None - All components implemented and ready for testing.
-
 **Verification Results:**
 
 - [x] Libraries work on both Intel and Apple Silicon Macs (universal binaries created with lipo)
@@ -728,8 +722,6 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
 - `adapters/macos/xcode/test-stress.sh` - Stress testing and benchmarking script with performance measurements
 - `adapters/macos/xcode/test-device-setup.sh` - Block device creation and cleanup utilities with proper error handling
 
-**Outstanding Tasks:** None - All tasks completed successfully.
-
 **Verification Results:**
 
 - [x] Full mount cycle works: create device → mount → operations → unmount → cleanup
@@ -737,6 +729,106 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
 - [x] Control plane operations (snapshots, branches) functional
 - [x] Performance benchmarks meet baseline requirements
 - [x] Automated test cleanup works reliably
+
+**M21.8. System Extension Approval UX (macOS 15+)** PLANNED (2–3d)
+
+- Goal: Implement an in‑app, user‑friendly approval flow for required system extensions (FSKit file system module; optional Endpoint Security), using OSSystemExtensionManager with deep‑links to System Settings panes.
+
+- Deliverables:
+
+  - App launch flow that submits activation requests via `OSSystemExtensionManager` for the FSKit extension (and ES extension if present).
+  - Delegate implementation handling: `requestNeedsUserApproval`, `didFinishWithResult`, `didFailWithError`, and replacement action.
+  - UI prompt that explains why approval is needed and provides a button to open System Settings to the precise pane using `x-apple.systempreferences:` URLs:
+    - File System Extensions: `com.apple.ExtensionsPreferences?extensionPointIdentifier=com.apple.fskit.fsmodule`
+    - Endpoint Security Extensions: `com.apple.ExtensionsPreferences?extensionPointIdentifier=com.apple.system_extension.endpoint_security.extension-point`
+  - Fallback deep link for macOS < 15 to Privacy & Security (documented or gated).
+  - Utility to check status (via attempting a mount/XPC or by observing delegate completion) and to re‑prompt if approval remains pending.
+  - Just targets to assist local testing: `systemextensions-devmode-and-status`, `install-agentsworkflow-app`, `register-fskit-extension` (already added) referenced from docs. <!-- cspell:ignore systempreferences systemextensions devmode agentsworkflow -->
+
+- Success criteria:
+
+  - On a clean machine with extensions not yet approved, app shows approval prompt, opens System Settings to the correct pane, and after enabling the extension the delegate receives `.completed` (or functionality succeeds) without requiring app restart.
+  - On subsequent launches with extensions already approved, no prompt is shown and activation completes silently.
+  - Fallback path documented for older macOS if needed.
+
+- Acceptance checklist (M21.8)
+
+- [ ] Activation requests submitted at app launch for required extensions
+- [ ] Delegate methods implemented with robust error handling
+- [ ] Approval prompt with deep‑link to the correct Settings pane
+- [ ] Silent success path when already approved; retry path when pending
+- [ ] Docs reference helper Just targets for developer workflows
+
+References: See `specs/Research/AgentFS/Implementing-System-Extension-Approval-Pattern-on-macOS.md` for details on identifiers, delegate patterns, and deep links.
+
+**M22. macOS FSKit E2E Mount and Read/Write (SIP/AMFI disabled)** PLANNED (3–4d)
+<!-- cspell:ignore AMFI csrutil nvram amfi prereqs -->
+
+- Pre‑requisites:
+
+  - The test machine has System Integrity Protection (SIP) and Apple Mobile File Integrity (AMFI) disabled. This is a hard requirement for loading unsigned FSKit extensions in the current developer setup. The E2E suite will detect these pre‑requisites and skip with a clear message if they are not met.
+  - Xcode toolchain and FSKit extension build are functional per M18–M21.
+
+- Deliverables:
+
+  - A Just recipe `verify-macos-fskit-prereqs` that performs best‑effort checks for SIP and AMFI disabled, returning a non‑zero exit code if requirements are not met. Example checks:
+    - `csrutil status` contains "disabled".
+    - `nvram boot-args` contains any of: `amfi_get_out_of_my_way=1`, `amfi_allow_any_signature=1`, or other AMFI‑disabling flags used in local setup.
+  - A Just recipe `e2e-fskit` that:
+    - Depends on `verify-macos-fskit-prereqs`.
+    - Builds the Rust libraries and the FSKit extension (reusing existing Just targets from M18–M21).
+    - Starts the AgentFS FSKit extension/host app in test mode and mounts a test volume at a temporary mountpoint.
+    - Runs a Python script that performs normal POSIX I/O via the standard library (`open`, `write`, `read`, `fsync`) against the mounted volume:
+      - create file, write bytes, read back, compare SHA‑256
+      - create subdirectory, rename file, list directory, verify metadata (size, mtime)
+      - optional: small concurrent writer/reader using `multiprocessing` to validate basic concurrency
+    - Unmounts the volume and ensures clean shutdown.
+  - Python test script(s) under `tests/tools/e2e_macos_fskit/` (no external deps; only standard library).
+  - Test logs written to unique files per run (path printed on failure) following our test log policy.
+
+- Success criteria (E2E tests):
+
+  - End‑to‑end mount → I/O → unmount cycle completes without errors.
+  - File content round‑trip validated via checksum; metadata checks pass.
+  - The test cleanly unmounts and leaves no background processes/mounts.
+  - When SIP/AMFI are not disabled, `verify-macos-fskit-prereqs` fails fast with actionable guidance and the E2E target skips execution.
+
+- Acceptance checklist (M22)
+
+- [ ] `verify-macos-fskit-prereqs` Just recipe implemented (SIP/AMFI checks)
+- [ ] `e2e-fskit` Just recipe mounts, runs Python I/O, unmounts
+- [ ] Python script performs read/write/rename/list and checksum verification
+- [ ] Unique per‑run logs created; on failure, log path/size printed
+- [ ] Clean unmount and process cleanup validated
+
+Notes:
+
+- This milestone explicitly relies on SIP and AMFI being disabled on the test machine. The verification recipe is best‑effort: AMFI flags differ across macOS versions; we will document the exact flags used locally and detect common variants, failing with a clear message if ambiguous. <!-- cspell:ignore prereq -->
+
+**Implementation Details:**
+
+- Added environment verification and E2E harness:
+  - `Justfile` recipes `verify-macos-fskit-prereqs` and `e2e-fskit`.
+  - `scripts/verify-macos-fskit-prereqs.sh` checks SIP (`csrutil status`) and AMFI flags (`nvram boot-args`).
+  - `scripts/e2e-fskit.sh` builds the FSKit appex via `build-agentfs-extension`, then runs a Python I/O script; logs go to `target/tmp/e2e-fskit-logs/run-<timestamp>-<pid>.log`.
+- Python I/O test under `tests/tools/e2e_macos_fskit/e2e_io_test.py` uses standard library only and performs create/write/read/fsync, rename, list, metadata checks, and SHA‑256 validation for a nested file.
+- Mount helpers updated to try `sudo -n` for mount/umount before non‑sudo fallback (`adapters/macos/xcode/test-device-setup.sh`).
+- If mount fails (e.g., extension not yet registered/enabled), the test exits with a skip message so developers can first validate environment using the prereq target.
+
+**Key Source Files:**
+
+- `Justfile` – added `verify-macos-fskit-prereqs`, `e2e-fskit`
+- `scripts/verify-macos-fskit-prereqs.sh` – SIP/AMFI checks
+- `scripts/e2e-fskit.sh` – E2E harness and logging
+- `adapters/macos/xcode/test-device-setup.sh` – mount/umount helpers (sudo fallback)
+- `tests/tools/e2e_macos_fskit/e2e_io_test.py` – Python I/O and checksum test
+
+**Verification Results:**
+
+- [x] Prerequisites detection passes on configured dev machine (SIP disabled, AMFI flags present)
+- [x] FSKit appex builds via `build-agentfs-extension`; harness produces unique logs per run
+- [x] I/O script runs; skips gracefully with clear message if mount fails (extension not active)
+- [ ] Successful mount and full I/O on a machine with the extension registered/enabled
 
 ### Risks & mitigations
 

@@ -151,7 +151,7 @@ mount_agentfs() {
 
   echo -e "${BLUE}Mounting AgentFS on $device_id at $mount_point...${NC}"
 
-  if ! mount -F -t AgentFS "$device_id" "$mount_point" 2>/dev/null; then
+  if ! sudo -n mount -F -t AgentFS "$device_id" "$mount_point" 2>/dev/null && ! mount -F -t AgentFS "$device_id" "$mount_point" 2>/dev/null; then
     echo -e "${YELLOW}Mount failed - this may be expected if FSKit extension is not properly installed${NC}"
     echo -e "${YELLOW}or if running on macOS < 15.4. Check system requirements.${NC}"
     return 1
@@ -172,7 +172,7 @@ unmount_device() {
 
   echo -e "${BLUE}Unmounting $mount_point...${NC}"
 
-  if ! umount "$mount_point"; then
+  if ! sudo -n umount "$mount_point" 2>/dev/null && ! umount "$mount_point"; then
     echo -e "${RED}Failed to unmount $mount_point${NC}" >&2
     return 1
   fi
