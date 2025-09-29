@@ -313,20 +313,23 @@ webui-format:
     cd webui/e2e-tests && npm run format
 
 # Run WebUI E2E tests
-webui-test:
-    cd webui/e2e-tests && npm run test:e2e
+webui-test-unit:
+    cd webui/app && npm run test:run
 
-# Build WebUI SSR server
+webui-test *args:
+    cd webui/e2e-tests && ./start-servers.sh {{args}}
+
+# Run only API contract tests (mock server only)
+webui-test-api: webui-build-mock
+    process-compose up --tui=false --no-server api-tests
+
+# Build WebUI SSR server (SolidStart)
 webui-build-ssr:
-    cd webui/app-ssr-server && npm run build
-
-# Build WebUI client bundle
-webui-build-client:
-    cd webui/app-ssr-server && npm run build:client
+    cd webui/app && npm run build
 
 # Start WebUI with mock server for manual testing (cycles through 5 scenarios)
-webui-manual:
-    ./scripts/webui-manual.sh
+webui-manual-test:
+    ./scripts/webui-manual-test.sh
 
 # Run WebUI E2E tests in headed mode (visible browser)
 webui-test-headed:
@@ -343,6 +346,78 @@ webui-test-ui:
 # Show WebUI test reports
 webui-test-report:
     cd webui/e2e-tests && npm run report
+
+# Show failed WebUI tests from the most recent run
+webui-test-failed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOGS_DIR="webui/e2e-tests/test-results/logs"
+    if [ ! -d "$LOGS_DIR" ]; then
+        echo "❌ No test logs directory found at $LOGS_DIR"
+        exit 1
+    fi
+    # Find the most recent test run directory
+    LATEST_RUN=$(ls -td "$LOGS_DIR"/test-run-* | head -1)
+    if [ -z "$LATEST_RUN" ]; then
+        echo "❌ No test runs found in $LOGS_DIR"
+        exit 1
+    fi
+
+    echo "🔍 Analyzing test results from $(basename "$LATEST_RUN")..."
+    echo "=============================================="
+
+    # Parse failed tests from individual log files
+    FAILED_TESTS=$(grep -l "RESULT: Test failed" "$LATEST_RUN"/*.log | wc -l)
+    TOTAL_TESTS=$(ls "$LATEST_RUN"/*.log | grep -v "failed-tests\|test-summary" | wc -l)
+
+    if [ "$FAILED_TESTS" -gt 0 ]; then
+        echo "❌ $FAILED_TESTS failed tests out of $TOTAL_TESTS total tests"
+        echo ""
+        echo "📋 Failed tests:"
+        echo "---------------"
+
+        # Extract failed test information from log files
+        for log_file in "$LATEST_RUN"/*.log; do
+            if grep -q "RESULT: Test failed" "$log_file"; then
+                TEST_NAME=$(grep "TEST_START:" "$log_file" | sed 's/.*TEST_START: //')
+                TEST_ID=$(grep "TEST_ID:" "$log_file" | sed 's/.*TEST_ID: //')
+                TEST_FILE=$(grep "TEST_FILE:" "$log_file" | sed 's/.*TEST_FILE: //' | sed 's|.*/||')
+                TEST_LINE=$(grep "TEST_LINE:" "$log_file" | sed 's/.*TEST_LINE: //')
+                ERROR_MSG=$(grep "ERROR:" "$log_file" | head -1 | sed 's/.*ERROR: //' | cut -c1-80)
+
+                echo "• $TEST_NAME"
+                echo "  📄 $(basename "$log_file")"
+                echo "  📍 $TEST_FILE:$TEST_LINE"
+                if [ -n "$ERROR_MSG" ]; then
+                    echo "  💥 ${ERROR_MSG:0:80}..."
+                fi
+                echo ""
+            fi
+        done
+
+        echo "💡 Commands to investigate further:"
+        echo "   • View Playwright HTML report: just webui-test-report"
+        echo "   • View detailed JSON: cat $LATEST_RUN/test-summary.json"
+        echo "   • List all log files: ls -la $LATEST_RUN/*.log"
+        echo "   • View specific test log: cat $LATEST_RUN/<filename>.log"
+    else
+        echo "✅ All $TOTAL_TESTS tests passed!"
+    fi
+
+# Create repomix bundle of all WebUI-related files (specs + implementation)
+repomix-webui:
+    mkdir -p repomix
+    mkdir -p /tmp/webui-bundle
+    cp specs/Public/WebUI-PRD.md /tmp/webui-bundle/
+    cp specs/Public/WebUI.status.md /tmp/webui-bundle/
+    cp specs/Public/REST-Service.md /tmp/webui-bundle/
+    cp specs/Public/REST-Service.status.md /tmp/webui-bundle/
+    cp specs/Public/Configuration.md /tmp/webui-bundle/
+    cp specs/Public/Agent-Workflow-GUI.md /tmp/webui-bundle/
+    cp specs/Public/Schemas/session-events.schema.json /tmp/webui-bundle/
+    cp -r webui/* /tmp/webui-bundle/
+    repomix -o repomix/webui.md /tmp/webui-bundle/
+    rm -rf /tmp/webui-bundle
 
 # Install Playwright browsers for E2E tests
 webui-install-browsers:

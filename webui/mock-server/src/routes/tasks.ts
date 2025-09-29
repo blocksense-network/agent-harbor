@@ -1,10 +1,213 @@
 import express from 'express';
 import { scenarioReplayer } from './sessions.js';
+import { logger } from '../index.js';
 
 const router = express.Router();
 
 // Mock session storage (shared with sessions route)
-let mockSessions: any[] = [];
+// Initial mock sessions for testing - exactly 5 sessions as per PRD:
+// - 3 completed sessions
+// - 2 active (running) sessions with continuous SSE event streams
+let mockSessions: any[] = [
+  // Completed Session 1
+  {
+    id: '01HVZ6K9T1N8S6M3V3Q3F0X1',
+    tenantId: 'default',
+    projectId: 'default',
+    status: 'completed',
+    createdAt: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
+    completedAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+    prompt: 'Implement user authentication with email/password',
+    repo: {
+      mode: 'git',
+      url: 'https://github.com/user/my-app',
+      branch: 'main',
+    },
+    runtime: {
+      type: 'devcontainer',
+    },
+    agent: {
+      type: 'claude-code',
+      version: 'latest',
+    },
+    delivery: {
+      mode: 'pr',
+      prUrl: 'https://github.com/user/my-app/pull/123',
+    },
+    labels: {},
+    webhooks: [],
+    links: {
+      self: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X1',
+      events: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X1/events',
+      logs: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X1/logs',
+    },
+  },
+  // Completed Session 2
+  {
+    id: '01HVZ6K9T1N8S6M3V3Q3F0X2',
+    tenantId: 'default',
+    projectId: 'default',
+    status: 'completed',
+    createdAt: new Date(Date.now() - 14400000).toISOString(), // 4 hours ago
+    completedAt: new Date(Date.now() - 10800000).toISOString(), // 3 hours ago
+    prompt: 'Add payment processing with Stripe integration',
+    repo: {
+      mode: 'git',
+      url: 'https://github.com/user/e-commerce',
+      branch: 'develop',
+    },
+    runtime: {
+      type: 'devcontainer',
+    },
+    agent: {
+      type: 'openhands',
+      version: 'latest',
+    },
+    delivery: {
+      mode: 'pr',
+      prUrl: 'https://github.com/user/e-commerce/pull/456',
+    },
+    labels: {},
+    webhooks: [],
+    links: {
+      self: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X2',
+      events: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X2/events',
+      logs: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X2/logs',
+    },
+  },
+  // Completed Session 3
+  {
+    id: '01HVZ6K9T1N8S6M3V3Q3F0X3',
+    tenantId: 'default',
+    projectId: 'default',
+    status: 'completed',
+    createdAt: new Date(Date.now() - 21600000).toISOString(), // 6 hours ago
+    completedAt: new Date(Date.now() - 18000000).toISOString(), // 5 hours ago
+    prompt: 'Fix responsive design issues on mobile devices',
+    repo: {
+      mode: 'git',
+      url: 'https://github.com/user/frontend',
+      branch: 'hotfix/mobile-layout',
+    },
+    runtime: {
+      type: 'local',
+    },
+    agent: {
+      type: 'claude-code',
+      version: 'latest',
+    },
+    delivery: {
+      mode: 'branch',
+    },
+    labels: {},
+    webhooks: [],
+    links: {
+      self: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X3',
+      events: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X3/events',
+      logs: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X3/logs',
+    },
+  },
+  // Active Session 1 (running) - with continuous SSE events
+  {
+    id: '01HVZ6K9T1N8S6M3V3Q3F0X4',
+    tenantId: 'default',
+    projectId: 'default',
+    status: 'running',
+    createdAt: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
+    prompt: 'Refactor database queries for better performance',
+    repo: {
+      mode: 'git',
+      url: 'https://github.com/user/backend-api',
+      branch: 'feature/db-optimization',
+    },
+    runtime: {
+      type: 'devcontainer',
+    },
+    agent: {
+      type: 'openhands',
+      version: 'latest',
+    },
+    delivery: {
+      mode: 'pr',
+    },
+    labels: {},
+    webhooks: [],
+    links: {
+      self: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X4',
+      events: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X4/events',
+      logs: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X4/logs',
+    },
+    // Pre-populate last 3 events for SSR
+    recent_events: [
+      {
+        thought: 'Analyzing query performance in database layer',
+        ts: new Date(Date.now() - 300000).toISOString(),
+      },
+      {
+        tool_name: 'search_codebase',
+        tool_output: 'Found 12 slow queries',
+        tool_status: 'success',
+        ts: new Date(Date.now() - 240000).toISOString(),
+      },
+      {
+        file_path: 'src/db/queries.ts',
+        lines_added: 15,
+        lines_removed: 8,
+        ts: new Date(Date.now() - 180000).toISOString(),
+      },
+    ],
+  },
+  // Active Session 2 (running) - with continuous SSE events
+  {
+    id: '01HVZ6K9T1N8S6M3V3Q3F0X5',
+    tenantId: 'default',
+    projectId: 'default',
+    status: 'running',
+    createdAt: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
+    prompt: 'Write comprehensive E2E tests for the checkout flow',
+    repo: {
+      mode: 'git',
+      url: 'https://github.com/user/e-commerce',
+      branch: 'feature/e2e-tests',
+    },
+    runtime: {
+      type: 'local',
+    },
+    agent: {
+      type: 'claude-code',
+      version: 'latest',
+    },
+    delivery: {
+      mode: 'branch',
+    },
+    labels: {},
+    webhooks: [],
+    links: {
+      self: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X5',
+      events: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X5/events',
+      logs: '/api/v1/sessions/01HVZ6K9T1N8S6M3V3Q3F0X5/logs',
+    },
+    // Pre-populate last 3 events for SSR
+    recent_events: [
+      {
+        tool_name: 'read_file',
+        tool_output: 'File read successfully (342 lines)',
+        tool_status: 'success',
+        ts: new Date(Date.now() - 200000).toISOString(),
+      },
+      {
+        thought: 'Planning test scenarios for checkout flow',
+        ts: new Date(Date.now() - 150000).toISOString(),
+      },
+      {
+        file_path: 'tests/e2e/checkout.spec.ts',
+        lines_added: 45,
+        lines_removed: 0,
+        ts: new Date(Date.now() - 100000).toISOString(),
+      },
+    ],
+  },
+];
 
 // POST /api/v1/tasks - Create Task/Session
 router.post('/', (req, res) => {
@@ -88,7 +291,7 @@ router.post('/', (req, res) => {
       links: session.links,
     });
   } catch (error) {
-    console.error('Error in POST /api/v1/tasks:', error);
+    logger.error('Error in POST /api/v1/tasks:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -87,7 +87,7 @@ cd webui && nix develop
 ```bash
 # From webui/ directory (still in nix develop shell)
 cd webui/mock-server && npm install
-cd ../app-ssr-server && npm install
+cd ../app && npm install
 cd ../e2e-tests && npm install
 ```
 
@@ -125,7 +125,7 @@ For manual server management (for debugging):
 cd ../mock-server && npm run dev
 
 # Terminal 2: Start SSR sidecar
-cd ../app-ssr-server && npm start
+cd ../app && npm start
 
 # Terminal 3: Run all tests
 cd ../e2e-tests && npm test
@@ -180,7 +180,7 @@ These tests are designed to run in CI/CD pipelines with the following workflow:
 
 1. **Nix shell not active**: Ensure you're running `nix develop` from the `linux-sandbox` directory
 2. **Browser dependencies missing**: Playwright should use Nix-provided browsers automatically; verify `PLAYWRIGHT_BROWSERS_PATH` is set
-3. **Servers not starting**: Ensure mock-server and app-ssr-server dependencies are installed
+3. **Servers not starting**: Ensure mock-server and app dependencies are installed
 4. **Port conflicts**: Tests expect mock server on port 3001, SSR on port 3000
 5. **TypeScript compilation errors**: Ensure all projects have been built with `npm run build`
 

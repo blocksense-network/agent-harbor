@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { setInterval, clearInterval } from 'timers';
+import { logger } from '../index.js';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -70,9 +71,9 @@ class ScenarioReplayer {
             const scenario: Scenario = JSON.parse(content);
             const scenarioName = path.basename(file, '.json');
             this.scenarios.set(scenarioName, scenario);
-            console.log(`Loaded scenario: ${scenarioName}`);
+            logger.log(`Loaded scenario: ${scenarioName}`);
           } catch (error) {
-            console.warn(`Failed to load scenario ${file}:`, error);
+            logger.error(`Failed to load scenario ${file}:`, error);
           }
         }
       }
@@ -84,7 +85,7 @@ class ScenarioReplayer {
     if (scenarioNames.length > 0) {
       const randomScenario = scenarioNames[Math.floor(Math.random() * scenarioNames.length)];
       this.sessionScenarios.set(sessionId, randomScenario);
-      console.log(`Assigned scenario '${randomScenario}' to session ${sessionId}`);
+      logger.log(`Assigned scenario '${randomScenario}' to session ${sessionId}`);
       return randomScenario;
     }
     return null;
@@ -93,10 +94,10 @@ class ScenarioReplayer {
   assignSpecificScenario(sessionId: string, scenarioName: string): string | null {
     if (this.scenarios.has(scenarioName)) {
       this.sessionScenarios.set(sessionId, scenarioName);
-      console.log(`Assigned specific scenario '${scenarioName}' to session ${sessionId}`);
+      logger.log(`Assigned specific scenario '${scenarioName}' to session ${sessionId}`);
       return scenarioName;
     }
-    console.log(`Scenario '${scenarioName}' not found, falling back to random assignment`);
+    logger.log(`Scenario '${scenarioName}' not found, falling back to random assignment`);
     return this.assignScenarioToSession(sessionId);
   }
 
@@ -115,12 +116,12 @@ class ScenarioReplayer {
 
     if (this.scenarios.has(scenarioName)) {
       this.sessionScenarios.set(sessionId, scenarioName);
-      console.log(
+      logger.log(
         `Assigned manual scenario '${scenarioName}' to session ${sessionId} (next: ${this.manualScenarios[this.manualScenarioIndex]})`
       );
       return scenarioName;
     }
-    console.log(`Manual scenario '${scenarioName}' not found, falling back to random assignment`);
+    logger.log(`Manual scenario '${scenarioName}' not found, falling back to random assignment`);
     return this.assignScenarioToSession(sessionId);
   }
 
@@ -357,25 +358,95 @@ router.get('/:id/events', (req, res) => {
     return;
   }
 
-  // For real SSE clients, replay scenario events for realistic behavior
-  let eventCount = 0;
-  const maxEvents = 20;
+  // For real SSE clients, stream continuous events for active sessions
+  // For completed sessions, just send initial status and close
+  if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
+    sendEvent('status', {
+      sessionId: session.id,
+      status: session.status,
+      ts: new Date().toISOString(),
+    });
+    res.end();
+    return;
+  }
 
-  // Use faster interval (1 second) for test scenarios to speed up tests
+  // For active sessions, generate continuous event streams
+  let eventCount = 0;
+  const maxEvents = 100; // Extended for longer-running sessions
+
+  // Use faster interval for test scenarios and for last_line events
   const scenario = scenarioReplayer.getScenarioForSession(session.id);
   const isTestScenario = scenario && scenario.description?.includes('test');
-  const intervalMs = isTestScenario ? 1000 : 2000;
+  // Base interval: 2000ms for normal events, but will use 400ms for last_line
+  const baseIntervalMs = isTestScenario ? 1000 : 2000;
 
-  const interval = setInterval(() => {
+  // Generate realistic event types for active sessions
+  const eventTypes = ['thinking', 'tool_execution', 'file_edit', 'status'];
+  const thinkingMessages = [
+    'Analyzing the codebase structure',
+    'Identifying the best approach for this task',
+    'Considering edge cases and error handling',
+    'Planning the implementation strategy',
+    'Reviewing related code sections',
+  ];
+  const toolExecutions = [
+    { 
+      name: 'read_file', 
+      args: { path: 'src/auth.ts' }, 
+      lastLines: ['Opening file...', 'Reading contents...', 'Parsing TypeScript...', 'Analyzing imports...', 'Done'],
+      output: 'File read successfully (142 lines)' 
+    },
+    { 
+      name: 'search_codebase', 
+      args: { query: 'password validation' }, 
+      lastLines: ['Searching files...', 'Scanning src/...', 'Scanning tests/...', 'Found 3 matches in 2 files', 'Analyzing results...'],
+      output: 'Found 3 matches' 
+    },
+    { 
+      name: 'grep', 
+      args: { pattern: 'export.*function' }, 
+      lastLines: ['Scanning repository...', 'Processing src/...', 'Processing lib/...', 'Found 24 exported functions'],
+      output: 'Search complete' 
+    },
+    { 
+      name: 'run_terminal_cmd', 
+      args: { command: 'npm test' }, 
+      lastLines: [
+        'Starting test suite...',
+        '> Running tests with Jest',
+        'PASS  src/auth.test.ts',
+        'PASS  src/utils.test.ts',
+        'PASS  src/db.test.ts',
+        'Running 15 tests...',
+        'Test Suites: 3 passed, 3 total',
+        'Tests:       15 passed, 15 total',
+        'All tests passed'
+      ],
+      output: '15 tests passed' 
+    },
+  ];
+  const fileEdits = [
+    { path: 'src/auth.ts', linesAdded: 5, linesRemoved: 3, preview: '+  validatePassword(password);' },
+    { path: 'src/utils/validation.ts', linesAdded: 12, linesRemoved: 0, preview: '+ export function validatePassword(pwd: string) {' },
+    { path: 'tests/auth.test.ts', linesAdded: 8, linesRemoved: 2, preview: '+  it("validates password strength", () => {' },
+  ];
+  
+  // Track tool execution state for multi-event sequences
+  let currentToolExecution: { tool: any; lastLineIndex: number } | null = null;
+  let timeoutId: NodeJS.Timeout;
+
+  const sendNextEvent = () => {
     if (eventCount >= maxEvents) {
-      clearInterval(interval);
       res.end();
       return;
     }
 
     eventCount++;
 
-    // Try to replay scenario event
+    // Track if we sent a last_line event (for rapid-fire interval)
+    let sentLastLine = false;
+
+    // Try to replay scenario event first
     const scenarioEvent = scenarioReplayer.replayScenario(session.id, eventCount - 1);
 
     if (scenarioEvent) {
@@ -387,19 +458,97 @@ router.get('/:id/events', (req, res) => {
         session.status = scenarioEvent.status;
       }
     } else {
-      // Fallback to generic progress event if no scenario available
-      sendEvent('progress', {
-        sessionId: session.id,
-        progress: Math.min(100, eventCount * 5),
-        stage: 'processing',
-        ts: new Date().toISOString(),
-      });
+      // Generate realistic events for continuous streams
+
+      // If we have a tool execution in progress, continue it
+      if (currentToolExecution) {
+        const { tool, lastLineIndex } = currentToolExecution;
+        
+        if (lastLineIndex < tool.lastLines.length) {
+          // Send next last_line update (IN PLACE update) - RAPID FIRE
+          sendEvent('tool_last_line', {
+            sessionId: session.id,
+            tool_name: tool.name,
+            last_line: tool.lastLines[lastLineIndex],
+            ts: new Date().toISOString(),
+          });
+          currentToolExecution.lastLineIndex++;
+          sentLastLine = true;
+        } else {
+          // Tool execution complete - send completion event
+          sendEvent('tool_complete', {
+            sessionId: session.id,
+            tool_name: tool.name,
+            tool_output: tool.output,
+            tool_status: 'success',
+            ts: new Date().toISOString(),
+          });
+          currentToolExecution = null;
+        }
+      } else {
+        // No tool in progress - start a new event
+        const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+
+        switch (eventType) {
+          case 'thinking':
+            sendEvent('thinking', {
+              sessionId: session.id,
+              thought: thinkingMessages[Math.floor(Math.random() * thinkingMessages.length)],
+              ts: new Date().toISOString(),
+            });
+            break;
+
+          case 'tool_execution':
+            // Start a new tool execution sequence
+            const tool = toolExecutions[Math.floor(Math.random() * toolExecutions.length)];
+            
+            // Send tool start event (tool_name only, no last_line or output)
+            sendEvent('tool_start', {
+              sessionId: session.id,
+              tool_name: tool.name,
+              tool_args: tool.args,
+              ts: new Date().toISOString(),
+            });
+            
+            // Start tracking this tool execution
+            currentToolExecution = { tool, lastLineIndex: 0 };
+            break;
+
+          case 'file_edit':
+            const edit = fileEdits[Math.floor(Math.random() * fileEdits.length)];
+            sendEvent('file_edit', {
+              sessionId: session.id,
+              file_path: edit.path,
+              lines_added: edit.linesAdded,
+              lines_removed: edit.linesRemoved,
+              diff_preview: edit.preview,
+              ts: new Date().toISOString(),
+            });
+            break;
+
+          case 'status':
+            sendEvent('progress', {
+              sessionId: session.id,
+              progress: Math.min(100, eventCount * 2),
+              stage: eventCount < 25 ? 'analyzing' : eventCount < 50 ? 'implementing' : eventCount < 75 ? 'testing' : 'finalizing',
+              ts: new Date().toISOString(),
+            });
+            break;
+        }
+      }
+
+      // Schedule next event - use rapid-fire interval for last_line events
+      const nextInterval = sentLastLine ? 400 : baseIntervalMs;
+      timeoutId = setTimeout(sendNextEvent, nextInterval);
     }
-  }, intervalMs);
+  };
+
+  // Start the event stream
+  timeoutId = setTimeout(sendNextEvent, baseIntervalMs);
 
   // Handle client disconnect
   req.on('close', () => {
-    clearInterval(interval);
+    clearTimeout(timeoutId);
     res.end();
   });
 });

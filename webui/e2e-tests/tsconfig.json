@@ -16,7 +16,8 @@
   },
   "include": [
     "tests/**/*",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "global.d.ts"
   ],
   "exclude": [
     "node_modules"

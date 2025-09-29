@@ -91,5 +91,6 @@ __pycache__/
 tests/tools/mock-agent/recordings/
 
 repomix.md
+repomix/
 reference_projects/
 webui/test-results/.last-run.json

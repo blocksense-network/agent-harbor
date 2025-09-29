@@ -1,27 +1,51 @@
 {
-  "name": "example-with-tailwindcss",
+  "name": "aw-webui-ssr-sidecar",
+  "version": "1.0.0",
+  "description": "SSR sidecar server for Agents-Workflow WebUI providing server-side rendering and REST API proxy",
+  "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "vinxi dev",
     "build": "vinxi build",
+    "build:client": "vinxi build --mode client",
+    "build:server": "vinxi build --mode server",
+    "dev": "vinxi dev",
     "start": "vinxi start",
     "lint": "eslint src --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint src --ext .ts,.tsx,.js,.jsx --fix",
-    "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json,css}",
-    "format:check": "prettier --check src/**/*.{ts,tsx,js,jsx,json,css}",
-    "type-check": "tsc --noEmit"
+    "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json}",
+    "format:check": "prettier --check src/**/*.{ts,tsx,js,jsx,json}",
+    "type-check": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest --coverage"
   },
+  "keywords": [
+    "ssr",
+    "solidjs",
+    "express",
+    "proxy",
+    "agents-workflow"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
+    "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.0",
     "@solidjs/start": "^1.1.0",
     "solid-js": "^1.9.5",
+    "tom-select": "^2.4.3",
     "vinxi": "^0.5.7"
   },
   "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
     "@tailwindcss/vite": "^4.0.7",
-    "tailwindcss": "^4.0.7",
+    "@types/node": "^24.5.2",
+    "cheerio": "^1.1.2",
     "eslint": "^9.15.0",
-    "prettier": "^3.3.3"
+    "jsdom": "^24.1.0",
+    "prettier": "^3.3.3",
+    "tailwindcss": "^4.0.7",
+    "vitest": "^2.0.5"
   },
   "engines": {
     "node": ">=22"

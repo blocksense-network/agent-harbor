@@ -1,19 +1,39 @@
-import { Router } from '@solidjs/router';
-import { FileRoutes } from '@solidjs/start/router';
-import { MainLayout } from './components/layout/MainLayout';
-import { ThreePaneLayout } from './components/layout/ThreePaneLayout';
-import './app.css';
+import { Router } from "@solidjs/router";
+import { FileRoutes } from "@solidjs/start/router";
+import { MetaProvider, Title, Meta } from "@solidjs/meta";
+import { MainLayoutWithFooter } from "./components/layout/MainLayout.js";
+import { SessionProvider } from "./contexts/SessionContext.js";
+import { DraftProvider } from "./contexts/DraftContext.js";
+import { FocusProvider } from "./contexts/FocusContext.js";
+import { ToastProvider } from "./contexts/ToastContext.js";
+import { isServer, getRequestEvent } from "solid-js/web";
+import "./app.css";
 
 export default function App() {
+  let initialUrl = "";
+  if (isServer) {
+    const event = getRequestEvent();
+    if (event) {
+      initialUrl = event.request.url;
+    }
+  }
+
   return (
-    <Router
-      root={() => (
-        <MainLayout>
-          <ThreePaneLayout />
-        </MainLayout>
-      )}
-    >
-      <FileRoutes />
-    </Router>
+    <MetaProvider>
+      <Title>Agent Harbor</Title>
+      <Meta name="description" content="Create and manage AI agent coding sessions" />
+      <Meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <ToastProvider>
+        <SessionProvider>
+          <DraftProvider>
+            <FocusProvider>
+              <Router url={initialUrl} root={(props) => <MainLayoutWithFooter>{props.children}</MainLayoutWithFooter>}>
+                <FileRoutes />
+              </Router>
+            </FocusProvider>
+          </DraftProvider>
+        </SessionProvider>
+      </ToastProvider>
+    </MetaProvider>
   );
 }

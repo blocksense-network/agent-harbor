@@ -15,7 +15,8 @@
 
 ### Architecture Overview
 
-- **API Server (stateless)**: Exposes REST + SSE/WebSocket endpoints to localhost only by default. Optionally persists state in a database.
+- **API Server (stateless)**: Exposes REST + SSE/WebSocket endpoints to localhost only by default. Optionally persists state in a database. Also known as the "access point daemon" (same code path as `aw agent access-point`).
+- **WebUI Integration**: When launched via `aw webui`, the SSR server acts as a proxy for all `/api/v1/*` requests, forwarding them to the access point daemon. This enables the SSR server to implement user access policies and security controls. The daemon runs either as an in-process component (local mode) or as a subprocess/sidecar.
 - **Executors**: One or many worker processes/hosts that provision workspaces and run agents.
 - **Workspace provisioning**: Uses ZFS/Btrfs snapshots when available; falls back to OverlayFS or copy; can orchestrate devcontainers.
 - **Transport**: JSON over HTTPS; events over SSE (preferred) and WebSocket (optional).
@@ -142,9 +143,38 @@ Notes:
 
 Response `200 OK` includes array of sessions and pagination metadata.
 
+**Session Object Structure:**
+
+Each session object includes:
+- `id`, `status`, `prompt`, `repo`, `runtime`, `agent`, `delivery`, `createdAt`, `updatedAt`
+- `recent_events`: Array of the last 3 events for active sessions (for SSR pre-population)
+  - Only included for active sessions (`running`, `queued`, `provisioning`, `paused`)
+  - Empty array `[]` for completed/failed/cancelled sessions
+  - Format matches SSE event structure (see Event Types below)
+
+Example session with recent events:
+```json
+{
+  "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+  "status": "running",
+  "prompt": "Fix authentication bug",
+  "repo": { ... },
+  "runtime": { ... },
+  "agent": { ... },
+  "recent_events": [
+    { "thought": "Analyzing authentication flow", "ts": "2025-09-30T17:10:00Z" },
+    { "tool_name": "read_file", "tool_output": "File read successfully", "tool_status": "success", "ts": "2025-09-30T17:10:05Z" },
+    { "file_path": "src/auth.ts", "lines_added": 5, "lines_removed": 2, "ts": "2025-09-30T17:10:10Z" }
+  ],
+  ...
+}
+```
+
+**Purpose:** The `recent_events` field enables SSR to pre-populate active task cards with the last 3 events, ensuring cards never show "Waiting for agent activity" and maintain fixed height from initial page load.
+
 #### Get Session
 
-- `GET /api/v1/sessions/{id}` → session details including current status and workspace summary.
+- `GET /api/v1/sessions/{id}` → session details including current status, workspace summary, and recent events.
 
 #### Stop / Cancel
 
@@ -234,6 +264,67 @@ Accepted event types (minimum set):
   - Long‑lived executors:
     - Executors register with the Remote Service when `aw serve` starts and send heartbeats including overlay status and addresses (MagicDNS/IP).
     - The `GET /executors` response includes `overlay`: `{ provider, address, magicName, state }` and `controller` hints (typically `server`).
+
+#### Draft Task Management
+
+Drafts allow users to save incomplete task configurations for later completion and persistence across browser sessions.
+
+- `POST /api/v1/drafts` → Create a new draft task
+
+  Request:
+  ```json
+  {
+    "prompt": "Implement user authentication...",
+    "repo": {
+      "mode": "git",
+      "url": "https://github.com/user/repo.git",
+      "branch": "main"
+    },
+    "agent": {
+      "type": "claude-code",
+      "version": "latest"
+    },
+    "runtime": {
+      "type": "devcontainer"
+    },
+    "delivery": {
+      "mode": "pr"
+    }
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "draft-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "createdAt": "2025-01-01T12:00:00Z",
+    "updatedAt": "2025-01-01T12:00:00Z"
+  }
+  ```
+
+- `GET /api/v1/drafts` → List user's draft tasks
+
+  Response `200 OK`:
+  ```json
+  {
+    "items": [
+      {
+        "id": "draft-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+        "prompt": "Implement user authentication...",
+        "repo": { "mode": "git", "url": "...", "branch": "main" },
+        "agent": { "type": "claude-code", "version": "latest" },
+        "runtime": { "type": "devcontainer" },
+        "delivery": { "mode": "pr" },
+        "createdAt": "2025-01-01T12:00:00Z",
+        "updatedAt": "2025-01-01T12:00:00Z"
+      }
+    ]
+  }
+  ```
+
+- `PUT /api/v1/drafts/{id}` → Update a draft task
+
+- `DELETE /api/v1/drafts/{id}` → Delete a draft task
 
 - Optional helper endpoints used by CLI completions and WebUI forms:
   - `GET /api/v1/git/refs?url=<git_url>` → Cached branch/ref suggestions for `--target-branch` UX.

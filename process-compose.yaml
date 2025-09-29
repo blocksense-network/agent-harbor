@@ -1,0 +1,24 @@
+version: "0.5"
+
+processes:
+  mock-server:
+    command: "cd webui/mock-server && npm run dev"
+    readiness_probe:
+      http_get:
+        scheme: http
+        host: localhost
+        port: 3001
+        path: /health
+      initial_delay_seconds: 2
+      period_seconds: 1
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 5
+
+  api-tests:
+    command: "cd webui/e2e-tests && BASE_URL=http://localhost:3001 npx playwright test tests/api-contract.spec.ts --project=api-tests --timeout=10000"
+    depends_on:
+      mock-server:
+        condition: process_healthy
+    availability:
+      exit_on_end: true

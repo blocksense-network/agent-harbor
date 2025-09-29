@@ -1,0 +1,141 @@
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import * as path from "path";
+import * as fs from "fs";
+import { apiProxyMiddleware } from "./middleware/apiProxy.js";
+import { ssrMiddleware } from "./middleware/ssr.tsx";
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || "development";
+
+// Static assets from the built client bundle
+const staticPath = path.resolve("./dist/public");
+console.log(`Serving static assets from: ${staticPath}`);
+console.log(`Static directory exists: ${fs.existsSync(staticPath)}`);
+
+// Static file serving - MUST come before all other middleware
+app.get("/assets/:filename", (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(staticPath, filename);
+
+  if (fs.existsSync(filePath)) {
+    const ext = path.extname(filename).toLowerCase();
+    let contentType = "text/plain";
+    if (ext === ".js") contentType = "application/javascript";
+    else if (ext === ".css") contentType = "text/css";
+    else if (ext === ".png") contentType = "image/png";
+    else if (ext === ".svg") contentType = "image/svg+xml";
+
+    res.setHeader("Content-Type", contentType);
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send("File not found");
+  }
+});
+
+console.log(`Static file serving configured for: ${staticPath}`);
+if (fs.existsSync(staticPath)) {
+  console.log(`Files in static directory:`, fs.readdirSync(staticPath));
+} else {
+  console.log(`Static directory not found: ${staticPath}`);
+}
+
+// Middleware
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-eval'"], // Allow unsafe-eval for Playwright testing
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "ws:", "wss:"],
+      },
+    },
+  }),
+);
+
+app.use(
+  cors({
+    origin:
+      process.env.NODE_ENV === "production"
+        ? process.env.ALLOWED_ORIGINS?.split(",") || false
+        : true,
+    credentials: true,
+  }),
+);
+
+app.use(morgan("combined"));
+
+// API proxy middleware - forwards requests to Rust REST service or mock server
+// Must come before body parser to avoid interfering with POST request bodies
+app.use("/api", apiProxyMiddleware);
+
+app.use(express.json()); // Body parser after API proxy
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    environment: NODE_ENV,
+  });
+});
+
+// Test route for static files
+app.get("/test-static", (req, res) => {
+  const fs = require("fs");
+  const path = require("path");
+  const filePath = path.join(staticPath, "client.js");
+  console.log(
+    `Test static: checking file ${filePath}, exists: ${fs.existsSync(filePath)}`,
+  );
+  if (fs.existsSync(filePath)) {
+    res.setHeader("Content-Type", "application/javascript");
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send("File not found");
+  }
+});
+
+// SSR middleware for all other routes
+app.use((req, res, next) => {
+  console.log(`SSR middleware handling: ${req.path}`);
+  // Skip API routes and static assets
+  if (req.path.startsWith("/api") || req.path.startsWith("/assets")) {
+    console.log(`Skipping ${req.path} for static serving`);
+    return next();
+  }
+  // Handle SSR for all other routes
+  return ssrMiddleware(req, res, next);
+});
+
+// Error handler
+app.use(
+  (
+    err: any,
+    req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    console.error(err.stack);
+    res.status(500).json({
+      type: "https://docs.example.com/errors/internal-server-error",
+      title: "Internal Server Error",
+      status: 500,
+      detail: "An unexpected error occurred",
+    });
+  },
+);
+
+app.listen(PORT, () => {
+  console.log(`SSR Sidecar server running on http://localhost:${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`Environment: ${NODE_ENV}`);
+  if (NODE_ENV === "development") {
+    console.log(`Mock server proxy: http://localhost:${PORT}/api`);
+  }
+});

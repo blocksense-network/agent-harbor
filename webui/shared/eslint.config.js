@@ -26,7 +26,8 @@ export default [
         window: 'readonly',
         localStorage: 'readonly',
         HTMLElement: 'readonly',
-        fetch: 'readonly'
+        fetch: 'readonly',
+        getComputedStyle: 'readonly'
       }
     },
     plugins: {

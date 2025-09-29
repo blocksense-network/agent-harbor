@@ -55,8 +55,7 @@ agents-workflow/
 │        │  └─ build.sh               # Build script for Rust FFI integration
 │        └─ (legacy Swift package artifacts and build scripts)
 ├─ webui/                      # WebUI and related JavaScript/Node.js projects
-│  ├─ app/                     # Main SolidJS WebUI application
-│  ├─ app-ssr-server/          # Node.js SSR sidecar server
+│  ├─ app/                     # Main SolidStart WebUI
 │  ├─ mock-server/             # Mock REST API server for development/testing
 │  ├─ e2e-tests/               # Playwright E2E test suite
 │  └─ shared/                  # Shared utilities and types between WebUI components
@@ -138,8 +137,7 @@ The `apps/macos/AgentsWorkflow/` directory contains the main **AgentsWorkflow.ap
 
 ### WebUI structure
 
-- `webui/app/` — Main SolidJS + Tailwind CSS application with server-side rendering support
-- `webui/app-ssr-server/` — Node.js Express server providing SSR proxy and progressive enhancement for users without JavaScript
+- `webui/app/` — Main SolidJS application with server-side rendering support through SolidStart
 - `webui/mock-server/` — Mock REST API server implementing the full REST-Service.md specification for development and testing
 - `webui/e2e-tests/` — Playwright E2E test suite with pre-scripted scenarios controlling both mock server and UI interactions
 - `webui/shared/` — Shared TypeScript utilities, API client code, and type definitions used across WebUI components

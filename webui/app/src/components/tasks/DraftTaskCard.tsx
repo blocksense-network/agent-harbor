@@ -1,0 +1,370 @@
+import { Component, createSignal, createEffect, onMount, For, Show } from "solid-js";
+import { apiClient, type AgentType, type DraftTask } from "../../lib/api.js";
+import { TomSelectComponent } from "../common/TomSelect.js";
+import { ModelMultiSelect } from "../common/ModelMultiSelect.js";
+import { SaveStatus, type SaveStatus as SaveStatusType } from "../common/SaveStatus.js";
+import { useFocus } from "../../contexts/FocusContext.js";
+
+interface Repository {
+  id: string;
+  name: string;
+  url?: string;
+  branch?: string;
+}
+
+interface ModelOption {
+  type: string;
+  version: string;
+  instances: number;
+}
+
+interface DraftTaskCardProps {
+  draft: DraftTask;
+  isSelected?: boolean; // Keyboard navigation selection
+  onUpdate: (updates: Partial<DraftTask>) => void;
+  onRemove: () => void;
+  onTaskCreated?: (taskId: string) => void;
+}
+
+export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
+  const [isSubmitting, setIsSubmitting] = createSignal(false);
+  const [modelSelections, setModelSelections] = createSignal<Array<{model: string, instances: number}>>([]);
+  const [autoSaveTimeoutId, setAutoSaveTimeoutId] = createSignal<number | null>(null);
+  const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>("saved");
+  let textareaRef: HTMLTextAreaElement | undefined;
+  const { setDraftFocus, isDraftFocused } = useFocus();
+
+  // Convert draft data to local signals for easier handling
+  const [localPrompt, setLocalPrompt] = createSignal(props.draft.prompt || "");
+  const [lastSavedPrompt, setLastSavedPrompt] = createSignal(props.draft.prompt || "");
+
+  // Track save requests to prevent race conditions and text truncation
+  const [currentSaveRequestId, setCurrentSaveRequestId] = createSignal<number | null>(null);
+  const [lastCompletedSaveRequestId, setLastCompletedSaveRequestId] = createSignal<number | null>(null);
+
+  let nextSaveRequestId = 1;
+
+  // Non-reactive auto-save function with request tracking to avoid infinite loops
+  const scheduleAutoSave = () => {
+    const currentPrompt = localPrompt();
+
+    // Don't schedule if no changes to save
+    if (currentPrompt === lastSavedPrompt()) {
+      return;
+    }
+
+    // Mark any existing save request as invalidated by assigning new request ID
+    const requestId = nextSaveRequestId++;
+    setCurrentSaveRequestId(requestId);
+
+    setSaveStatus("unsaved");
+
+    // Clear any existing timeout
+    if (autoSaveTimeoutId() !== null) {
+      clearTimeout(autoSaveTimeoutId());
+    }
+
+    const timeoutId = setTimeout(async () => {
+      // Check if this request is still valid (not invalidated by newer typing)
+      if (currentSaveRequestId() !== requestId) {
+        return; // Silently skip invalidated requests
+      }
+
+      setSaveStatus("saving");
+
+      try {
+        const success = await props.onUpdate({ prompt: currentPrompt });
+
+        // Check again if request is still valid after async operation
+        if (currentSaveRequestId() !== requestId) {
+          return; // Silently ignore invalidated requests
+        }
+
+        // Always update local state optimistically for better UX
+        setLastSavedPrompt(currentPrompt);
+        setLastCompletedSaveRequestId(requestId);
+
+          // Update status to saved only if this is still the current request
+          if (currentSaveRequestId() === requestId) {
+            setSaveStatus("saved");
+          }
+      } catch (error) {
+        // API failed but still update local state optimistically
+        setLastSavedPrompt(currentPrompt);
+        setLastCompletedSaveRequestId(requestId);
+        if (currentSaveRequestId() === requestId) {
+          setSaveStatus("saved"); // Show as saved since local state is updated
+        }
+      }
+
+      setAutoSaveTimeoutId(null); // Clear timeout after save completes
+    }, 500) as unknown as number;
+
+    setAutoSaveTimeoutId(timeoutId);
+  };
+
+  
+  // Auto-focus textarea when card is selected via keyboard navigation
+  createEffect(() => {
+    if (props.isSelected && textareaRef && typeof window !== 'undefined') {
+      // Only focus if the textarea doesn't already have focus to avoid interrupting user typing
+      if (document.activeElement !== textareaRef) {
+        textareaRef.focus();
+        setDraftFocus(props.draft.id);
+      }
+    }
+  });
+  
+  // Handle focus events on textarea
+  const handleTextareaFocus = () => {
+    setDraftFocus(props.draft.id);
+  };
+  
+  const handleTextareaBlur = () => {
+    // Don't clear focus immediately - let keyboard navigation handle it
+    // This prevents clearing focus when clicking within the same card
+  };
+  
+  const prompt = () => localPrompt();
+  const setPrompt = (value: string) => {
+    setLocalPrompt(value);
+  };
+
+  const selectedRepo = () => props.draft.repo ? {
+    id: props.draft.repo.url || "unknown",
+    name: props.draft.repo.url ? props.draft.repo.url.split('/').pop()?.replace('.git', '') || "unknown" : "unknown",
+    url: props.draft.repo.url,
+    branch: props.draft.repo.branch
+  } : null;
+
+  const setSelectedRepo = (repo: Repository | null) => {
+    if (repo) {
+      props.onUpdate({
+        repo: {
+          mode: "git" as const,
+          url: repo.url,
+          branch: repo.branch
+        }
+      });
+    }
+  };
+
+  const selectedBranch = () => props.draft.repo?.branch || "";
+  const setSelectedBranch = (branch: string) => {
+    props.onUpdate({
+      repo: {
+        mode: props.draft.repo?.mode || "git",
+        url: props.draft.repo?.url,
+        branch
+      }
+    });
+  };
+
+  // Mock data - in real app, this would come from API
+  const [repositories] = createSignal<Repository[]>([
+    { id: "1", name: "agents-workflow-webui", url: "https://github.com/example/agents-workflow-webui.git" },
+    { id: "2", name: "agents-workflow-core", url: "https://github.com/example/agents-workflow-core.git" },
+    { id: "3", name: "agents-workflow-cli", url: "https://github.com/example/agents-workflow-cli.git" },
+  ]);
+
+  const [availableModels] = createSignal<string[]>([
+    "Claude 3.5 Sonnet",
+    "Claude 3 Haiku",
+    "GPT-4",
+    "GPT-3.5 Turbo",
+  ]);
+
+  const canSubmit = () => {
+    return prompt().trim() &&
+           selectedRepo() &&
+           selectedBranch() &&
+           (props.draft.agents?.length ?? 0) > 0;
+  };
+
+  const handleRemove = () => {
+    props.onRemove();
+  };
+
+  const handleModelSelectionChange = (selections: Array<{model: string, instances: number}>) => {
+    setModelSelections(selections);
+    // Convert model selections to agent format
+    const agents = selections.map(sel => {
+      const [type, ...versionParts] = sel.model.toLowerCase().split(' ');
+      return {
+        type,
+        version: versionParts.join('-'),
+        instances: sel.instances
+      };
+    });
+    props.onUpdate({ agents });
+  };
+
+  const handleSubmit = async () => {
+    if (!canSubmit() || isSubmitting()) return;
+
+    setIsSubmitting(true);
+    try {
+      // Use the first selected agent for the task creation
+      const primaryAgent = props.draft.agents![0];
+
+      const taskData = {
+        tenantId: undefined,
+        projectId: undefined,
+        prompt: prompt(),
+        repo: {
+          mode: "git" as const,
+          url: selectedRepo()!.url,
+          branch: selectedBranch(),
+        },
+        runtime: {
+          type: "devcontainer" as const, // Default runtime
+        },
+        agent: {
+          type: primaryAgent.type,
+          version: primaryAgent.version,
+        },
+      };
+
+      const response = await apiClient.createTask(taskData);
+      props.onTaskCreated?.(response.id);
+
+      // The draft will be removed by the parent component
+    } catch (error) {
+      console.error("Failed to create task:", error);
+      // TODO: Show error message
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // Enter key launches task (if valid)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (canSubmit()) {
+        e.preventDefault();
+        handleSubmit();
+      }
+    }
+    // Shift+Enter creates new line (default browser behavior, but we track it)
+    // No need to prevent default - let the browser handle it
+  };
+
+  onMount(() => {
+    // Initialize model selections from draft agents if available
+    if (props.draft.agents && props.draft.agents.length > 0) {
+      const initialSelections = props.draft.agents.map((agent: AgentType) => ({
+        model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, ' ')}`,
+        instances: (agent as any).instances || 1
+      }));
+      setModelSelections(initialSelections);
+    }
+  });
+
+  return (
+    <div
+      data-testid="draft-task-card"
+      class="rounded-lg p-4 relative"
+      classList={{
+        "bg-blue-50 border-2 border-blue-500": props.isSelected,
+        "bg-white border border-slate-200": !props.isSelected
+      }}
+    >
+      {/* Close button - upper right corner */}
+      <button
+        onClick={handleRemove}
+        class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+        aria-label="Remove draft"
+        title="Remove draft task"
+      >
+        ✕
+      </button>
+
+      {/* Task description textarea - always visible */}
+      <div class="mb-3 relative">
+        <textarea
+          ref={textareaRef}
+          data-testid="draft-task-textarea"
+          value={prompt()}
+          onInput={(e) => {
+            setLocalPrompt(e.currentTarget.value);
+            scheduleAutoSave();
+          }}
+          onKeyDown={handleKeyDown}
+          onFocus={handleTextareaFocus}
+          onBlur={handleTextareaBlur}
+          placeholder="Describe what you want the agent to do..."
+          class="w-full p-3 pr-20 border border-slate-200 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+          rows="2"
+          aria-label="Task description"
+        />
+
+        {/* Save status indicator - positioned in lower right corner of textarea */}
+        <div class="absolute bottom-2 right-2">
+          <SaveStatus status={saveStatus()} />
+        </div>
+      </div>
+
+      {/* Single row: Compact selectors on left, Go button on right */}
+      <div class="flex items-center gap-3">
+        {/* Left side: balanced selectors with proper widths */}
+        <div class="flex flex-col">
+          <label for="repo-select" class="sr-only">Repository</label>
+          <TomSelectComponent
+            id="repo-select"
+            items={repositories()}
+            selectedItem={selectedRepo()}
+            onSelect={setSelectedRepo}
+            getDisplayText={(repo) => repo.name}
+            getKey={(repo) => repo.id}
+            placeholder="Repository"
+            class="w-48"
+            testId="repo-selector"
+          />
+        </div>
+
+        <div class="flex flex-col">
+          <label for="branch-select" class="sr-only">Branch</label>
+          <TomSelectComponent
+            id="branch-select"
+            items={["main", "develop", "feature/new-ui", "hotfix/bug-fix"]}
+            selectedItem={selectedBranch()}
+            onSelect={setSelectedBranch}
+            getDisplayText={(branch) => branch}
+            getKey={(branch) => branch}
+            placeholder="Branch"
+            class="w-32"
+            testId="branch-selector"
+          />
+        </div>
+
+        <div class="flex flex-col">
+          <label for="model-select" class="sr-only">Models</label>
+          <ModelMultiSelect
+            availableModels={availableModels()}
+            selectedModels={modelSelections()}
+            onSelectionChange={handleModelSelectionChange}
+            placeholder="Models"
+            testId="model-selector"
+            class="flex-1 min-w-48"
+          />
+        </div>
+
+        {/* Right side: Go button */}
+        <div class="flex items-center gap-2">
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit() || isSubmitting()}
+            class="px-5 py-1.5 text-sm rounded-md font-medium transition-colors whitespace-nowrap"
+            classList={{
+              "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer": canSubmit() && !isSubmitting(),
+              "bg-slate-300 text-slate-500 cursor-not-allowed": !canSubmit() || isSubmitting()
+            }}
+            aria-label="Create task"
+          >
+            {isSubmitting() ? "..." : "Go"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
