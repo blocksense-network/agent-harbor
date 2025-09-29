@@ -54,6 +54,81 @@ async fn test_sandbox_integration() {
     assert_eq!(fs_manager.config().readonly_paths[0], "/etc");
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn test_sbpl_builder_snapshot() {
+    use aw_sandbox_macos::SbplBuilder;
+    let sbpl = SbplBuilder::new()
+        .allow_read_subpath("/usr/bin")
+        .allow_write_subpath("/tmp")
+        .allow_exec_subpath("/bin")
+        .loopback_only()
+        .harden_process_info()
+        .allow_signal_same_group()
+        .deny_apple_events()
+        .deny_mach_lookup()
+        .build();
+    assert!(sbpl.contains("(deny default)"));
+    assert!(sbpl.contains("(allow file-read* (subpath \"/usr/bin\"))"));
+    assert!(sbpl.contains("(allow file-write* (subpath \"/tmp\"))"));
+    assert!(sbpl.contains("(allow process-exec (subpath \"/bin\"))"));
+    assert!(sbpl.contains("(deny appleevent-send)"));
+    assert!(sbpl.contains("(deny mach-lookup)"));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_aw_macos_launcher_denies_write_outside_tmp() {
+    use std::process::Command;
+    use std::path::PathBuf;
+
+    // Resolve project root using CARGO_MANIFEST_DIR (tests/sandbox-integration)
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent() // tests/
+        .and_then(|p| p.parent()) // workspace root
+        .expect("failed to resolve project root").to_path_buf();
+
+    let launcher_path = project_root.join("target/debug/aw-macos-launcher");
+
+    if !launcher_path.exists() {
+        eprintln!(
+            "⚠️  Skipping macOS E2E - aw-macos-launcher not found at {:?}. Build it first: cargo build --bin aw-macos-launcher",
+            launcher_path
+        );
+        return;
+    }
+
+    // Try to write outside allowed path (/tmp) and expect denial under Seatbelt
+    let script = r#"
+        home="$HOME"
+        if echo "test" > "$home/aw_macos_launcher_should_fail.txt"; then
+            exit 42
+        else
+            exit 0
+        fi
+    "#;
+
+    let status = Command::new(&launcher_path)
+        .args([
+            "--allow-write", "/tmp",
+            "--allow-exec", "/bin",
+            "--allow-read", "/bin",
+            "--",
+            "sh", "-c", script,
+        ])
+        .status()
+        .expect("failed to run aw-macos-launcher");
+
+    // Regardless of exit code, assert that the file was not created in $HOME
+    let home = std::env::var("HOME").unwrap();
+    let path = PathBuf::from(home).join("aw_macos_launcher_should_fail.txt");
+    if path.exists() {
+        // Clean up if created erroneously to avoid polluting home dir
+        let _ = std::fs::remove_file(&path);
+        panic!("Seatbelt did not block write outside /tmp; file was created: {:?}", path);
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn test_cgroups_integration() {

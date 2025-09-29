@@ -226,6 +226,10 @@ build-overlay-test-binaries:
 build-sbx-helper:
     cargo build -p sbx-helper --bin sbx-helper
 
+# Build macOS sandbox launcher (aw-macos-launcher)
+build-aw-macos-launcher:
+    cargo build --bin aw-macos-launcher
+
 # Build all test binaries needed for cgroup enforcement tests
 build-cgroup-tests: build-sbx-helper build-cgroup-test-binaries
 

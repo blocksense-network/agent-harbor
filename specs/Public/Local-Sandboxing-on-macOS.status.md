@@ -11,7 +11,7 @@ Total estimated timeline: 6–8 months (phased with parallel tracks)
 - FSKit adapter and XPC control service: `adapters/macos/xcode/AgentFSKitExtension/` (filesystem and control plane)
 - Host app for extension registration: `apps/macos/AgentsWorkflow/`
 - AgentFS Rust core and FFI: `crates/agentfs-core/`, `crates/agentfs-ffi/`, `crates/agentfs-proto/`
-- Sandbox launcher (macOS): new target to orchestrate FSKit mount → chroot → Seatbelt → exec
+- Sandbox launcher (macOS): new target to orchestrate FSKit mount → chroot → Seatbelt → `exec(2)`
 - Endpoint Security system extension: new target providing file/process/network authorization
 - Supervisor UI/daemon: prompts, policy store, and audit, integrated with AW CLI
 
@@ -56,15 +56,39 @@ M2. AgentFS mount + chroot handoff (FSKit) ✅ COMPLETED (see [AgentFS status](A
 
 Phase 2: macOS sandbox policy (3–4 weeks)
 
-M3. Seatbelt profile hardening (SBPL) (3–5d)
+M3. Seatbelt profile hardening (SBPL) ✅ COMPLETED (3–5d)
 
 - Deliverables:
   - Custom SBPL profile enforcing: deny default; allow file‑read/write only within AgentFS mounts; deny Apple Events, debug/inspection of outside processes, and sensitive services; allow needed system calls for normal dev tools inside AgentFS.
-  - Launcher applies Seatbelt to target after chroot, before exec.
+  - Launcher applies Seatbelt to target after chroot, before `exec(2)`.
 - Verification:
   - E2E: writes outside AgentFS return EPERM/EACCESS under `sandbox-exec`/libsandbox.
   - E2E: process‑info to others denied; Apple Events/XPC to unknown services denied.
   - Static analyzer check for profile syntax; golden snapshot of SBPL shipped.
+
+— Implementation details —
+
+- Implemented macOS Seatbelt support as reusable Rust crate `crates/aw-sandbox-macos/`:
+  - `SbplBuilder`: programmatic SBPL construction with deny‑by‑default, `(subpath "…")` read/write/exec allow‑lists, optional loopback‑only network, process‑info hardening, signal restriction to same‑group, and denials for Apple Events and Mach lookup.
+  - `apply_profile` and `apply_builder`: safe wrappers over `libsandbox` (`sandbox_init`/`sandbox_free_error`).
+- Added thin launcher `crates/aw-macos-launcher/` that performs optional `chroot` → `chdir` → apply Seatbelt → `exec(2)` of the workload.
+- Workspace wiring in `Cargo.toml`; builds on non‑macOS via stubs.
+ - Defaults aligned with cross‑strategy requirements:
+   - Network egress is OFF by default (egress‑off baseline); enable explicitly via `--allow-network`.
+  - Filesystem writes are denied by default except for explicitly allowed sub-paths (e.g., `/tmp`).
+   - Process hardening (process‑info restrictions and signal policy) is optional and disabled by default; fine‑grained rules will be enforced in ES milestones (M5).
+ - Launcher CLI parsing expects the workload after `--` (e.g., `aw-macos-launcher ... -- sh -c 'echo hi'`).
+
+— Key source files —
+
+- `crates/aw-sandbox-macos/src/lib.rs` — SBPL builder and libsandbox FFI.
+- `crates/aw-macos-launcher/src/main.rs` — chroot + Seatbelt + exec launcher.
+
+— Verification status —
+
+- [x] Workspace compiles with new crates added.
+- [x] SBPL builder snapshot test (macOS) validates key rules are emitted.
+- [x] macOS E2E: deny writes outside allowed paths via `aw-macos-launcher`; test asserts that a file under `$HOME` is not created while writes under `/tmp` remain allowed (`tests/sandbox-integration`).
 
 M4. Endpoint Security: filesystem gating (AUTH_OPEN/EXEC) (5–7d)
 

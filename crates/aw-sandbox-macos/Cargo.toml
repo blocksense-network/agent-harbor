@@ -1,0 +1,19 @@
+[package]
+name = "aw-sandbox-macos"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "macOS Seatbelt (SBPL) builder and libsandbox FFI for Agents Workflow"
+
+[lib]
+name = "aw_sandbox_macos"
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+nix = { workspace = true }

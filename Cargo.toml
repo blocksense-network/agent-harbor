@@ -12,6 +12,7 @@ members = [
   "crates/agentfs-fskit-bridge",
   "crates/aw-sandbox",
   "crates/aw-sandbox-linux",
+  "crates/aw-sandbox-macos",
   "crates/aw-fs-snapshots-daemon",
   # Sandbox crates
   "crates/sandbox-core",
@@ -40,6 +41,7 @@ members = [
   "crates/aw-tui-multiplexer",
   "crates/aw-tui-test",
   "crates/aw-tui",
+  "crates/aw-macos-launcher",
   # CLI
   "crates/aw-cli",
   # Integration tests
