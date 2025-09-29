@@ -428,6 +428,16 @@ launch-agents-workflow-release:
     @echo "🚀 Launching AgentsWorkflow (release build)..."
     open "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app"
 
+# Create a repomix snapshot of all AgentFS-related files (specs and implementation)
+repomix-agentfs:
+    @echo "📦 Creating AgentFS repomix snapshot..."
+    repomix \
+        . \
+        --output repomix/AgentFS.md \
+        --style markdown \
+        --header-text "AgentFS Complete Implementation and Specification" \
+        --include "specs/Public/AgentFS/**,crates/agentfs-*/**,apps/macos/AgentsWorkflow/**,adapters/**,crates/aw-cli/src/agent/fs.rs,crates/aw-cli/src/agent/mod.rs,tests/tools/e2e_macos_fskit/**"
+
 # Run overlay tests with E2E enforcement verification
 test-overlays:
     just build-overlay-tests
