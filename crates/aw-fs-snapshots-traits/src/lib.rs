@@ -83,6 +83,22 @@ pub struct SnapshotRef {
     pub meta: HashMap<String, String>,
 }
 
+/// Generate a unique identifier for resources.
+/// This function provides thread-safe, globally unique identifiers across all snapshot providers.
+pub fn generate_unique_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("aw_{}_{}_{}", std::process::id(), timestamp, counter)
+}
+
 /// Core trait for filesystem snapshot providers.
 pub trait FsSnapshotProvider: Send + Sync {
     /// Return the kind of this provider.

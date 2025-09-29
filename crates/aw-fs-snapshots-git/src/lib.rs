@@ -214,7 +214,10 @@ impl GitProvider {
     /// Generate a unique identifier for resources.
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
         format!("aw_git_{}_{}", std::process::id(), timestamp)
     }
 
@@ -405,7 +408,7 @@ impl FsSnapshotProvider for GitProvider {
             }
             WorkingCopyMode::Worktree => {
                 // Create a git worktree for isolated workspace
-                let session_id = self.generate_unique_id();
+                let session_id = aw_fs_snapshots_traits::generate_unique_id();
                 let branch_name = format!("aw-worktree-{}", session_id);
                 let worktree_path = self.worktree_path(&session_id, "main");
 
@@ -475,7 +478,7 @@ impl FsSnapshotProvider for GitProvider {
                 aw_fs_snapshots_traits::Error::provider("Missing shadow_repo in snapshot metadata")
             })?);
 
-        let session_id = self.generate_unique_id();
+        let session_id = aw_fs_snapshots_traits::generate_unique_id();
         let worktree_path = self.worktree_path(&session_id, "readonly");
 
         let status = Command::new("git")
@@ -520,7 +523,7 @@ impl FsSnapshotProvider for GitProvider {
                         )
                     })?);
 
-                let session_id = self.generate_unique_id();
+                let session_id = aw_fs_snapshots_traits::generate_unique_id();
                 let branch_name = format!("aw-branch-{}", session_id);
                 let worktree_path = self.worktree_path(&session_id, &branch_name);
 
@@ -694,9 +697,8 @@ mod tests {
 
     #[test]
     fn test_generate_unique_id() {
-        let provider = GitProvider::new();
-        let id1 = provider.generate_unique_id();
-        let id2 = provider.generate_unique_id();
+        let id1 = aw_fs_snapshots_traits::generate_unique_id();
+        let id2 = aw_fs_snapshots_traits::generate_unique_id();
 
         // IDs should be different
         assert_ne!(id1, id2);

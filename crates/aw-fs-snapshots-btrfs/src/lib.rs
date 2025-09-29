@@ -103,7 +103,10 @@ impl BtrfsProvider {
     /// Generate a unique identifier for Btrfs resources.
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
         format!("aw_{}_{}", std::process::id(), timestamp)
     }
 }
@@ -170,7 +173,7 @@ impl FsSnapshotProvider for BtrfsProvider {
             }
             WorkingCopyMode::CowOverlay => {
                 // Btrfs CoW overlay mode: create subvolume snapshot
-                let unique_id = self.generate_unique_id();
+                let unique_id = aw_fs_snapshots_traits::generate_unique_id();
                 let snapshot_path = repo.with_file_name(format!("aw_snapshot_{}", unique_id));
 
                 // Create readonly snapshot

@@ -116,7 +116,10 @@ impl ZfsProvider {
     /// Generate a unique identifier for ZFS resources.
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
         format!("aw_{}_{}", std::process::id(), timestamp)
     }
 }
@@ -191,7 +194,7 @@ impl FsSnapshotProvider for ZfsProvider {
 
                 // ZFS CoW overlay mode: create snapshot + clone
                 let dataset = self.get_dataset_for_path(repo)?;
-                let unique_id = self.generate_unique_id();
+                let unique_id = aw_fs_snapshots_traits::generate_unique_id();
                 let snapshot_name = format!("{}@aw_snapshot_{}", dataset, unique_id);
                 let clone_name = format!("{}-aw_clone_{}", dataset, unique_id);
 
@@ -241,7 +244,7 @@ impl FsSnapshotProvider for ZfsProvider {
 
     fn snapshot_now(&self, ws: &PreparedWorkspace, label: Option<&str>) -> Result<SnapshotRef> {
         let dataset = self.get_dataset_for_path(&ws.exec_path)?;
-        let unique_id = self.generate_unique_id();
+        let unique_id = aw_fs_snapshots_traits::generate_unique_id();
         let snapshot_name = format!("{}@aw_session_{}", dataset, unique_id);
 
         // Create snapshot via daemon
@@ -434,9 +437,8 @@ mod tests {
 
     #[test]
     fn test_generate_unique_id() {
-        let provider = ZfsProvider::new();
-        let id1 = provider.generate_unique_id();
-        let id2 = provider.generate_unique_id();
+        let id1 = aw_fs_snapshots_traits::generate_unique_id();
+        let id2 = aw_fs_snapshots_traits::generate_unique_id();
 
         // IDs should be different
         assert_ne!(id1, id2);
