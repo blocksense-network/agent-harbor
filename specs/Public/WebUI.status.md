@@ -47,7 +47,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
 - **SolidJS + Tailwind CSS**: Modern reactive framework with utility-first styling for maintainable, performant UIs
 - **Node.js SSR Sidecar**: Server-side rendering server that proxies requests to the Rust REST API and handles progressive enhancement for users without JavaScript (see [Server-Side-Rendering-with-SolidJS.md](../Research/Server-Side-Rendering-with-SolidJS.md) for implementation guide)
-- **Mock-First Development**: Start with comprehensive mock server implementing REST-Service.md for isolated development
+- **Mock-First Development**: Start with comprehensive mock server implementing [REST-Service.md](REST-Service.md) for isolated development
 - **Playwright Testing**: Fully automated E2E testing through pre-scripted scenarios that control both the mock REST server state and UI interactions, enabling deterministic testing of complete user journeys, accessibility compliance, and performance benchmarks
 - **Progressive Enhancement**: Core functionality works without JavaScript; real-time features enhance the experience
 - **Component Architecture**: Reusable, testable components with clear prop interfaces and TypeScript typing
@@ -63,7 +63,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Deliverables**:
 
   - SolidJS + Vite + TypeScript + Tailwind CSS project scaffolding
-  - Comprehensive mock server implementing REST-Service.md endpoints
+  - Comprehensive mock server implementing [REST-Service.md](REST-Service.md) endpoints
   - Basic project structure with component organization and routing setup
   - Development tooling configuration (ESLint, Prettier, testing framework)
   - CI/CD pipeline setup with automated testing
@@ -83,7 +83,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - **Key Technical Achievement**: Fixed critical middleware ordering issue that was preventing POST API requests from working. The API proxy middleware now runs before the body parser, allowing proper request forwarding to the mock server.
   - Configured shared ESLint and Prettier configurations across all WebUI projects for consistent code quality
   - Added comprehensive CI/CD pipeline with linting, type checking, building, and Playwright testing
-  - Created three-pane layout components (repositories, sessions, task details) following WebUI-PRD.md specifications
+  - Created three-pane layout components (repositories, sessions, task details) following [WebUI-PRD.md](WebUI-PRD.md) specifications
 
 - **Key Source Files**:
 
@@ -104,7 +104,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
 - **Verification Results**:
   - [x] Project builds successfully with `npm run build`
-  - [x] Mock server starts and responds to all REST-Service.md endpoints with proper validation
+  - [x] Mock server starts and responds to all [REST-Service.md](REST-Service.md) endpoints with proper validation
   - [x] Development server runs on localhost with hot reload
   - [x] Playwright tests verify basic component rendering and routing works
   - [x] TypeScript compilation succeeds with strict mode enabled
@@ -239,7 +239,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
 - **Test Coverage** (Comprehensive E2E + API Contract):
 
-  - [x] API contract tests: All CRUD operations match REST-Service.md specs (existing W1-W2 tests)
+  - [x] API contract tests: All CRUD operations match [REST-Service.md](REST-Service.md) specs (existing W1-W2 tests)
   - [x] Form validation tests: Task creation form validation, error display, and submission
   - [x] Repository selection tests: URL validation, branch field validation
   - [x] Session CRUD tests: Create, list, select, and control sessions via UI
@@ -258,7 +258,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] Playwright E2E tests: Session interactions and status display (session-interactions.spec.ts)
   - Manual verification: Agent and runtime dropdowns populated from API
   - Manual verification: Stop/pause/resume actions work with optimistic UI updates
-  - API contract tests verify all CRUD operations match REST-Service.md specs
+  - API contract tests verify all CRUD operations match [REST-Service.md](REST-Service.md) specs
 
 - **Implementation Details**:
 
@@ -566,7 +566,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
 - **Distributed Test Coverage**: Each milestone includes specific tests verifying its deliverables, preventing regressions and ensuring quality incrementally
 - **Playwright E2E Testing**: Primary testing approach with comprehensive coverage of user journeys, accessibility, and cross-browser compatibility
-- **Mock Server Development**: Start with full REST-Service.md mock implementation for isolated feature development
+- **Mock Server Development**: Start with full [REST-Service.md](REST-Service.md) mock implementation for isolated feature development
 - **Component Testing**: Unit tests for reusable components with SolidJS testing library
 - **API Contract Testing**: Verify REST API endpoints match specifications and handle edge cases
 - **Accessibility Testing**: Automated axe-core checks integrated into E2E test suite from W2 onward
@@ -653,4 +653,4 @@ Based on W4 completion, here are the remaining tasks for WebUI development:
 - **Real-time Complexity**: SSE implementation requires careful error handling; mitigated by robust reconnection logic and fallback to polling
 - **Browser Compatibility**: WebUI targets modern browsers only; mitigated by clear browser support matrix and graceful degradation
 - **Performance Targets**: Sub-2s TTI challenging with real-time features; mitigated by code splitting, lazy loading, and performance budgeting
-- **Mock vs Real API**: Initial development with mocks risks integration issues; mitigated by mock server implementing full REST-Service.md spec
+- **Mock vs Real API**: Initial development with mocks risks integration issues; mitigated by mock server implementing full [REST-Service.md](REST-Service.md) spec

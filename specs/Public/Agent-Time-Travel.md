@@ -2,13 +2,13 @@
 
 ### Summary
 
-Agent Time-Travel lets a user review an agent's coding session and jump back to precise moments in time to intervene by inserting a new chat message. Seeking to a timestamp restores the corresponding filesystem state using filesystem snapshots (FsSnapshots). The feature integrates across CLI, TUI, WebUI, and REST, and builds on the snapshot provider model referenced by other docs (see [specs/Public/FS-Snapshots/FS-Snapshots-Overview.md](FS Snapshots/FS-Snapshots-Overview.md)).
+Agent Time-Travel lets a user review an agent's coding session and jump back to precise moments in time to intervene by inserting a new chat message. Seeking to a timestamp restores the corresponding filesystem state using filesystem snapshots (FsSnapshots). The feature integrates across CLI, TUI, WebUI, and REST, and builds on the snapshot provider model referenced by other docs (see [FS-Snapshots-Overview.md](FS%20Snapshots/FS-Snapshots-Overview.md)).
 
 ### Implementation Phasing
 
 The initial implementation will focus on supporting regular FsSnapshot on copy-on-write (CoW) Linux filesystems (such as ZFS and Btrfs), using a session recorder based on Claude Code hooks. An end-to-end prototype will be developed for the entire Agent Time-Travel system, including session recording, timeline navigation, and snapshot/seek/branch operations, to validate the core workflow and user experience. Once this prototype is functional, we will incrementally add support for additional recording and snapshotting mechanisms, including AgentFS (FSKit/WinFsp) on macOS/Windows and Git-based snapshots as a universal fallback.
 
-First targeted agent: Claude Code. We will leverage its hook system (see [specs/Public/3rd-Party-Agents/Claude-Code-Hooks.md](3rd-Party Agents/Claude-Code-Hooks.md) and [specs/Public/3rd-Party-Agents/Claude-Code.md](3rd-Party Agents/Claude-Code.md)) to emit `SessionMoment`s at tool boundaries (e.g., `PostToolUse`) and to capture transcript paths for resume/trim flows.
+First targeted agent: Claude Code. We will leverage its hook system (see [Claude-Code-Hooks.md](3rd-Party%20Agents/Claude-Code-Hooks.md) and [Claude-Code.md](3rd-Party%20Agents/Claude-Code.md)) to emit `SessionMoment`s at tool boundaries (e.g., `PostToolUse`) and to capture transcript paths for resume/trim flows.
 
 Testability strategy from day one:
 
@@ -82,7 +82,7 @@ Testability strategy from day one:
 
 - **Runtime Integration**: The agent execution system executes a hook that creates the snapshot in between chat messages, agent thinking streams and tool executions.
 - **Advanced (future)**: eBPF capture of PTY I/O and/or FS mutations
-- **Multi‑OS Sync Fence**: When multi‑OS testing is enabled, each execution cycle performs `fs_snapshot_and_sync` on the leader (create FsSnapshot, then fence Mutagen sessions to followers) before invoking `aw agent followers run`. See [specs/Public/Multi-OS-Testing.md](Multi-OS Testing.md).
+- **Multi‑OS Sync Fence**: When multi‑OS testing is enabled, each execution cycle performs `fs_snapshot_and_sync` on the leader (create FsSnapshot, then fence Mutagen sessions to followers) before invoking `aw agent followers run`. See [Multi-OS Testing.md](Multi-OS%20Testing.md).
 
 ### Restarting the agent from a SessionMoment
 
@@ -140,7 +140,7 @@ Observability:
 
 Agent catalog requirements:
 
-- Each 3rd‑party agent spec must define: how to launch in resume/checkpoint mode, storage paths and formats for sessions, how to safely trim, and how to inject an initial message on resume. See [specs/Public/3rd-Party-Agents/3rd-Party-Agent-Description-Template.md](3rd-Party Agents/3rd-Party-Agent-Description-Template.md) (sections: Checkpointing, Session continuation, Storage format, Reverse‑engineering policy).
+- Each 3rd‑party agent spec must define: how to launch in resume/checkpoint mode, storage paths and formats for sessions, how to safely trim, and how to inject an initial message on resume. See [3rd-Party-Agent-Description-Template.md](3rd-Party%20Agents/3rd-Party-Agent-Description-Template.md) (sections: Checkpointing, Session continuation, Storage format, Reverse‑engineering policy).
 
 Implementation Plan (high‑level, test‑driven):
 Phase 0 — Test harness foundation (Mock Agent + Mock API Server)

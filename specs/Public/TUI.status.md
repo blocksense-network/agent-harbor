@@ -67,12 +67,12 @@ The TUI implementation provides these core capabilities:
   - ✅ Ratatui + Crossterm project scaffolding with basic event loop
   - ✅ Mock server integration for development and testing
   - ✅ Basic CLI command structure with `--remote-server` flag support
-  - ✅ Project structure following Repository-Layout.md guidelines
+  - ✅ Project structure following [Repository-Layout.md](Repository-Layout.md) guidelines
   - ✅ Development tooling configuration (Cargo, Clippy, testing framework)
 
 - **Test Coverage** (Comprehensive API Contract + Unit):
 
-  - [x] REST client API contract tests against mock server: All endpoints match REST-Service.md specs
+  - [x] REST client API contract tests against mock server: All endpoints match [REST-Service.md](REST-Service.md) specs
   - [x] Authentication handling tests against mock server: API key, JWT, and OIDC flows
   - [x] Error response parsing tests against mock server: Problem+JSON error format handling
   - [x] Pagination handling tests against mock server: page/perPage query params and response metadata
@@ -90,8 +90,8 @@ The TUI implementation provides these core capabilities:
 
 - **Implementation Details**:
 
-  - **Architecture**: Clean separation between API contracts, client, and UI layers following Repository-Layout.md guidelines
-  - **REST API Contracts**: Complete type definitions for all REST-Service.md endpoints with serde serialization and validator-based input validation
+  - **Architecture**: Clean separation between API contracts, client, and UI layers following [Repository-Layout.md](Repository-Layout.md) guidelines
+  - **REST API Contracts**: Complete type definitions for all [REST-Service.md](REST-Service.md) endpoints with serde serialization and validator-based input validation
   - **REST Client**: Full async HTTP client with reqwest, supporting authentication (API key, JWT), error handling, and SSE streaming (placeholder)
   - **TUI Framework**: Ratatui + Crossterm with event-driven architecture, basic dashboard layout, and keyboard navigation
   - **CLI Integration**: `aw tui --remote-server` command with authentication options integrated into existing aw-cli structure
@@ -140,7 +140,7 @@ The TUI implementation provides these core capabilities:
 
   - ✅ Playwright-style terminal automation tests for UI interactions via test scenarios
   - ✅ Manual verification: Layout adapts to terminal width/height changes
-  - ✅ Manual verification: Keyboard shortcuts work as specified in TUI-PRD.md
+  - ✅ Manual verification: Keyboard shortcuts work as specified in [TUI-PRD.md](TUI-PRD.md)
   - ✅ Interactive scenario player for manual testing and debugging
 
 - **Implementation Details**:
@@ -170,7 +170,7 @@ The TUI implementation provides these core capabilities:
 
 - **Deliverables**:
 
-  - ✅ Complete MVVM testing architecture as specified in TUI-Testing-Architecture.md
+  - ✅ Complete MVVM testing architecture as specified in [TUI-Testing-Architecture.md](TUI-Testing-Architecture.md)
   - ✅ Scenario-driven mock REST client with configurable responses
   - ✅ Interactive scenario player (`tui-test play`) with step navigation and state inspection
   - ✅ Automated scenario runner (`tui-test run`) with deterministic execution
@@ -215,7 +215,7 @@ The TUI implementation provides these core capabilities:
   - `crates/aw-tui-test/src/main.rs` - Interactive and automated test runners
   - `crates/aw-tui/src/test_runtime.rs` - Test runtime with full golden file integration
   - `crates/aw-tui/src/golden.rs` - Golden file management with diff support
-  - `specs/Public/TUI-Testing-Architecture.md` - Complete testing framework specification
+  - `[TUI-Testing-Architecture.md](TUI-Testing-Architecture.md)` - Complete testing framework specification
 
 - **Integration Points**:
 
@@ -259,7 +259,7 @@ The TUI implementation provides these core capabilities:
   - `crates/aw-mux/src/lib.rs` - Pure multiplexer implementations
   - `crates/aw-mux/src/tmux.rs` - tmux multiplexer implementation
   - `crates/aw-tui-multiplexer/src/lib.rs` - AW-specific adapter and layouts
-  - `specs/Public/Terminal-Multiplexers/TUI-Multiplexers-Overview.md` - Specification reference
+  - `[TUI-Multiplexers-Overview.md](Terminal-Multiplexers/TUI-Multiplexers-Overview.md)` - Specification reference
 
 - **Integration Points**:
 
@@ -318,7 +318,7 @@ The TUI implementation provides these core capabilities:
 
 - **Verification** (Automated Testing):
 
-  - ✅ **Core tmux operations**: All tmux CLI commands (`new-window`, `split-window`, `select-window`, `select-pane`, `send-keys`, `list-windows`, `list-panes`, `kill-session`) work correctly as specified in tmux.md
+  - ✅ **Core tmux operations**: All tmux CLI commands (`new-window`, `split-window`, `select-window`, `select-pane`, `send-keys`, `list-windows`, `list-panes`, `kill-session`) work correctly as specified in [tmux.md](Terminal-Multiplexers/tmux.md)
   - ✅ **Pane management**: Horizontal/vertical pane splitting creates proper split-pane layouts with correct pane indexing and parent-child relationships
   - ✅ **Command execution**: `run_command()` reliably executes commands in specific panes with proper environment and working directory setup
   - ✅ **Text injection**: `send_text()` reliably injects text input into running processes using tmux `send-keys` with proper escaping
@@ -343,7 +343,7 @@ The TUI implementation provides these core capabilities:
 
   - `crates/aw-mux/src/tmux.rs` - Complete tmux multiplexer implementation
   - `crates/aw-tui-multiplexer/src/lib.rs` - AW-specific layout creation and task management
-  - `specs/Public/Terminal-Multiplexers/tmux.md` - tmux integration specification
+  - `[tmux.md](Terminal-Multiplexers/tmux.md)` - tmux integration specification
 
 - **Integration Points**:
 
@@ -551,7 +551,7 @@ The TUI implementation provides these core capabilities:
 
 - **Verification** (Automated E2E + Performance):
 
-  - Comprehensive test suite covering all TUI-PRD.md workflows
+  - Comprehensive test suite covering all [TUI-PRD.md](TUI-PRD.md) workflows
   - Performance benchmarks for real-time updates and large datasets
 
 **T7. Production Readiness** (1 week, parallel with T6)
@@ -578,7 +578,7 @@ The TUI implementation provides these core capabilities:
 
 - **Distributed Test Coverage**: Each milestone includes specific tests verifying its deliverables, preventing regressions and ensuring quality incrementally
 - **Terminal Automation Testing**: Custom terminal automation framework for E2E TUI testing, similar to Playwright but for terminal UIs
-- **Mock Server Development**: Start with full REST-Service.md mock implementation for isolated TUI development
+- **Mock Server Development**: Start with full [REST-Service.md](REST-Service.md) mock implementation for isolated TUI development
 - **Component Testing**: Unit tests for individual Ratatui widgets and REST client components
 - **API Contract Testing**: Verify REST client behavior matches specifications and handles edge cases
 - **Integration Testing**: End-to-end workflows testing TUI against real REST service

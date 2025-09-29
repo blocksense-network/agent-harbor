@@ -116,7 +116,7 @@ Mapping:
 
 - CLI flags: `--fs-snapshots` and `--working-copy`
 - Env: `AGENTS_WORKFLOW_FS_SNAPSHOTS`, `AGENTS_WORKFLOW_WORKING_COPY`
-- TOML: under `[fs]` in Configuration.md and JSON Schema
+- TOML: under `[fs]` in [Configuration.md](../Configuration.md) and JSON Schema
 
 Rationale: Users may prefer a Git worktree–based flow even when a more efficient CoW setup is available, or enforce `worktree` mounting to avoid per‑process mounts.
 
@@ -170,7 +170,7 @@ This record is created before the agent process starts and updated as snapshots/
 
 ## Git‑Based Snapshots (Summary)
 
-Git provider captures the working state as a commit without mutating the user’s branch, then uses `git worktree` for writable workspaces. Details are in “Git‑based Snapshots.md”. Key properties:
+Git provider captures the working state as a commit without mutating the user’s branch, then uses `git worktree` for writable workspaces. Details are in "[Git-Based-Snapshots.md](Git-Based-Snapshots.md)". Key properties:
 
 - Zero changes to the primary index and branch; uses a separate temporary index (`GIT_INDEX_FILE`) and `git stash create`/`commit‑tree` to capture staged + unstaged changes. Untracked files can be included via an opt‑in mode that enumerates untracked paths into the temporary index.
 - Snapshot refs are stored under `refs/aw/sessions/<session>/snapshots/<n>`; writable branches under `refs/aw/branches/<session>/<name>`.

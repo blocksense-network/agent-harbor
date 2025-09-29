@@ -186,7 +186,7 @@ The following assumptions are normative and apply to all connectivity modes (loc
 
 ### Mutagen Project (session setup)
 
-At session start, the leader creates a Mutagen project file that enumerates all follower endpoints and any required forwardings. The project is started immediately so that SSH‑based syncs/forwards are established early. See specs/Research/Intro-to-Mutagen-Projects.md.
+At session start, the leader creates a Mutagen project file that enumerates all follower endpoints and any required forwardings. The project is started immediately so that SSH‑based syncs/forwards are established early. See [Intro-to-Mutagen-Projects.md](../Research/Intro-to-Mutagen-Projects.md).
 
 - Project contents: one `sync:` entry per follower with `alpha`=leader path and `beta`=`ssh://<user>@<executor>/~/path` (resolved through CONNECT). Optional `forward:` entries for ports.
 - Lifecycle: `mutagen project start` on session creation; `mutagen project flush` is used for sync‑fence; `mutagen project terminate` on session end.
@@ -223,7 +223,7 @@ Policy and security:
 
 #### Persistent SSH connections (multiplexing)
 
-To minimize SSH handshake costs during a session, the leader (or the logical coordinator in hybrid mode) creates persistent SSH masters to all followers at session start, using OpenSSH ControlMaster/ControlPersist. Subsequent execs reuse the connection, dramatically reducing command latency. See specs/Research/HowTo-Persistent-SSH-Connections.md.
+To minimize SSH handshake costs during a session, the leader (or the logical coordinator in hybrid mode) creates persistent SSH masters to all followers at session start, using OpenSSH ControlMaster/ControlPersist. Subsequent execs reuse the connection, dramatically reducing command latency. See [How-to-persistent-SSH-connections.md](../Research/How-to-persistent-SSH-connections.md).
 
 #### Status and Observability
 

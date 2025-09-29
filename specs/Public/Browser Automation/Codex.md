@@ -16,7 +16,7 @@ Automate the Codex WebUI to initiate coding sessions for both local and cloud ag
 6. Launch Playwright with a persistent context in headless mode.
 7. If the expected login is not present, relaunch in visible mode to let the user authenticate, then continue.
 8. Navigate to Codex, select workspace and branch, enter the task description, and press "Code":
-   - Workspace comes from `--codex-workspace` or `config: codex-workspace` (see Configuration.md).
+   - Workspace comes from `--codex-workspace` or `config: codex-workspace` (see [Configuration.md](../Configuration.md)).
    - Branch comes from the `aw task --branch` value.
 9. For cloud agents: integrate with `aw agent record` for session monitoring and `aw agent follow-cloud-task` for real-time progress tracking.
 10. Record success and trigger completion notifications if enabled.

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide provides a comprehensive overview of Ratatui APIs that can be used to implement the Agents Workflow (AW) Terminal User Interface (TUI) as specified in the TUI PRD and CLI.md. Ratatui's modular architecture and rich widget ecosystem make it perfectly suited for building complex terminal dashboards.
+This guide provides a comprehensive overview of Ratatui APIs that can be used to implement the Agents Workflow (AW) Terminal User Interface (TUI) as specified in the TUI PRD and [CLI.md](../Public/CLI.md). Ratatui's modular architecture and rich widget ecosystem make it perfectly suited for building complex terminal dashboards.
 
 ## Core Architecture Mapping
 
@@ -1099,4 +1099,4 @@ impl App {
 - Accessibility: high-contrast theme; keyboard-only operation; predictable focus.
 - Performance: tick/poll loop, avoid unnecessary work, show scrollbars.
 
-This expanded guide now covers event loop patterns, resize handling, scrollbars, filtering, help overlays, async/SSE integration, theming, testing, and performance—answering the practical questions needed to implement the AW TUI per the TUI PRD and CLI.md.
+This expanded guide now covers event loop patterns, resize handling, scrollbars, filtering, help overlays, async/SSE integration, theming, testing, and performance—answering the practical questions needed to implement the AW TUI per the TUI PRD and [CLI.md](../Public/CLI.md).

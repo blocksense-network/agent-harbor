@@ -55,4 +55,4 @@ Applies to commands that need to determine the snapshot provider for a path (e.g
 ### References
 
 - See implementation in `crates/aw-fs-snapshots/` and provider crates (`aw-fs-snapshots-zfs`, `aw-fs-snapshots-btrfs`).
-- See CLI behavior in `aw agent fs status` and `aw agent fs init-session` sections of `CLI.md`.
+- See CLI behavior in `aw agent fs status` and `aw agent fs init-session` sections of [CLI.md](CLI.md).

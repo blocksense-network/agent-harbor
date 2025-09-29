@@ -129,7 +129,7 @@ When a session ends or `cleanup(token)` is invoked:
 - `git.worktreesDir`: path (optional) — base directory for worktrees; default `.git/worktrees-aw/` under repo `.git` directory, falling back to an OS temp directory when `.git` is bare or not writable.
 - `git.shadowRepoDir`: path (optional) — location of the shadow bare repository used for namespaced refs and the per‑session index. By default this is the main repo `.git` directory; when isolation is desired, a separate bare repository may be created under the project’s cache directory (recorded in session metadata).
 
-Keys live under the `[fs]` section; see Configuration.md.
+Keys live under the `[fs]` section; see [Configuration.md](../Configuration.md).
 
 ## Mapping to FsSnapshotProvider Trait
 

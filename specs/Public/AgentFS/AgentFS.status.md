@@ -31,8 +31,8 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 - **Implementation Details**:
 
   - Created Cargo workspace structure with 5 AgentFS crates: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`
-  - Implemented core type definitions from AgentFS-Core.md: `FsConfig`, `FsError`, `CaseSensitivity`, `MemoryPolicy`, `FsLimits`, `CachePolicy`, `Attributes`, `FileTimes`, etc.
-  - Added basic control plane message types in `agentfs-proto` crate based on AgentFS Control Messages.md
+  - Implemented core type definitions from [AgentFS Core.md](AgentFS%20Core.md): `FsConfig`, `FsError`, `CaseSensitivity`, `MemoryPolicy`, `FsLimits`, `CachePolicy`, `Attributes`, `FileTimes`, etc.
+  - Added basic control plane message types in `agentfs-proto` crate based on [AgentFS Control Messages.md](AgentFS%20Control%20Messages.md)
   - Created C ABI surface in `agentfs-ffi` with proper error mappings and function signatures
   - Set up platform-specific host crates with conditional dependencies (FUSE for Linux/macOS, WinFsp for Windows)
   - Added minimal unit tests in `agentfs-core` demonstrating config creation and error handling
@@ -347,7 +347,7 @@ M10. Control plane and CLI integration (4–5d) - IN PROGRESS
 
 **Current Progress:**
 
-- ✅ CLI structure updated to match main CLI.md specification with session-oriented commands
+- ✅ CLI structure updated to match main [CLI.md](../CLI.md) specification with session-oriented commands
 - ✅ Command parsing tests implemented and passing
 - ✅ Schema validation and error mapping implemented in control plane
 - ✅ SSZ union types implemented in agentfs-proto similar to fs-snapshot-daemon (type-safe, compact binary serialization)
@@ -358,7 +358,7 @@ M10. Control plane and CLI integration (4–5d) - IN PROGRESS
 
 Acceptance checklist (M10)
 
-- [x] CLI structure matches main CLI.md specification
+- [x] CLI structure matches main [CLI.md](../CLI.md) specification
 - [x] Command parsing works correctly for all session-oriented commands
 - [x] Schema validation implemented and tested
 - [x] SSZ serialization implemented for all control plane messages
@@ -846,5 +846,5 @@ Notes:
 
 ### References
 
-- See [specs/Public/AgentFS/AgentFS-Core.md](AgentFS%20Core.md), [AgentFS-FUSE-Adapter.md](AgentFS%20FUSE%20Adapter.md), [AgentFS-WinFsp-Adapter.md](AgentFS%20WinFsp%20Adapter.md), [AgentFS-FSKit-Adapter.md](AgentFS%20FsKit%20Adapter.md), and [AgentFS-Control-Messages.md](AgentFS%20Control%20Messages.md).
+- See [AgentFS Core.md](AgentFS%20Core.md), [AgentFS FUSE Adapter.md](AgentFS%20FUSE%20Adapter.md), [AgentFS WinFsp Adapter.md](AgentFS%20WinFsp%20Adapter.md), [AgentFS FsKit Adapter.md](AgentFS%20FsKit%20Adapter.md), and [AgentFS Control Messages.md](AgentFS%20Control%20Messages.md).
 - Reference code in `reference_projects/libfuse`, `reference_projects/winfsp`, and `reference_projects/FSKitSample`.
