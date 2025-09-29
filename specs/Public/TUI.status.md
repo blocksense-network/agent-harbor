@@ -368,34 +368,37 @@ The TUI implementation provides these core capabilities:
   - ✅ AW-specific layout creation with kitty's split model
   - ✅ Task window discovery using title matching with `kitty @ ls`
 
-- **Test Coverage** (20 comprehensive unit tests):
+- **Test Coverage** (20 comprehensive unit tests with state verification):
 
   - ✅ Basic multiplexer creation and configuration
   - ✅ Socket path management and custom socket support (`KITTY_LISTEN_ON` detection)
   - ✅ Remote control availability detection and error handling
   - ✅ Window/pane ID parsing from kitty command output
   - ✅ Kitty command execution and error handling
-  - ✅ Window creation with title, CWD, and focus options
-  - ✅ Pane splitting (horizontal/vertical) with size percentages
-  - ✅ Command execution and text sending to windows
-  - ✅ Window and pane focusing operations
-  - ✅ Window listing and title-based filtering
-  - ✅ Error handling for invalid windows/panes
-  - ✅ Complex multi-window layout creation
-  - ✅ Graceful degradation when remote control unavailable
+  - ✅ Window creation with title, CWD, and focus options + state verification (`kitty @ ls`)
+  - ✅ Pane splitting (horizontal/vertical) with size percentages + window existence verification
+  - ✅ Command execution and text sending to windows + window listing verification
+  - ✅ Window and pane focusing operations + focus state verification (`kitty @ get-focused-window-id`)
+  - ✅ Window listing and title-based filtering + title verification (`kitty @ get-window-title`)
+  - ✅ Error handling for invalid windows/panes + graceful failure testing
+  - ✅ Complex multi-window layout creation + multi-window state verification
+  - ✅ Graceful degradation when remote control unavailable + offline behavior testing
 
-- **Verification** (Automated Unit Tests):
+- **Verification** (Automated Unit Tests with State Inspection):
 
-  - ✅ All kitty remote control operations work as specified in Kitty.md
+  - ✅ All kitty remote control operations work as specified in Kitty.md with state verification
   - ✅ Layout creation matches expected pane arrangements using kitty's split model (panes = windows)
   - ✅ Text sending and command execution are reliable with proper argument formatting
   - ✅ Socket management and cleanup work correctly with environment variable detection (`KITTY_LISTEN_ON`)
   - ✅ Error conditions are handled gracefully with clear error messages
-  - ✅ Multiple windows/panes can be interacted with concurrently
+  - ✅ Multiple windows/panes can be interacted with concurrently with verified state changes
   - ✅ Window ID parsing correctly handles kitty's numeric window identifiers
+  - ✅ Window creation verified with `kitty @ ls` and title checking with `kitty @ get-window-title`
+  - ✅ Focus operations verified with `kitty @ get-focused-window-id` after focus commands
+  - ✅ Pane splitting verified by checking window existence and count after split operations
   - ✅ Graceful fallback when kitty remote control is not available (no panic on connection errors)
-  - ✅ Title-based window filtering works correctly with `kitty @ ls --format` output
-  - ✅ Complex multi-window layouts can be created and managed programmatically
+  - ✅ Title-based window filtering works correctly with `kitty @ ls --format` output parsing
+  - ✅ Complex multi-window layouts can be created and managed programmatically with full state verification
 
 - **Implementation Details**:
 
