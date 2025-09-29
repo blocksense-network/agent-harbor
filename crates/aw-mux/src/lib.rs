@@ -4,6 +4,8 @@
 //! for various terminal multiplexers (tmux, kitty, etc.).
 
 pub mod tmux;
+#[cfg(feature = "kitty")]
+pub mod kitty;
 
 use aw_mux_core::*;
 
@@ -14,6 +16,13 @@ pub fn default_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, MuxEr
     if let Ok(tmux) = tmux::TmuxMultiplexer::new() {
         if tmux.is_available() {
             return Ok(Box::new(tmux));
+        }
+    }
+
+    #[cfg(feature = "kitty")]
+    if let Ok(kitty) = kitty::KittyMultiplexer::new() {
+        if kitty.is_available() {
+            return Ok(Box::new(kitty));
         }
     }
 
@@ -31,6 +40,12 @@ pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sy
                 MuxError::Other(format!("Failed to create tmux multiplexer: {}", e))
             })?;
             Ok(Box::new(tmux))
+        }
+        #[cfg(feature = "kitty")]
+        "kitty" => {
+            let kitty = kitty::KittyMultiplexer::new()
+                .map_err(|e| MuxError::Other(format!("Failed to create kitty multiplexer: {}", e)))?;
+            Ok(Box::new(kitty))
         }
         // Add other multiplexers here
         _ => Err(MuxError::Other(format!(
