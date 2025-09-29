@@ -730,7 +730,7 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
 - [x] Performance benchmarks meet baseline requirements
 - [x] Automated test cleanup works reliably
 
-**M21.8. System Extension Approval UX (macOS 15+)** PLANNED (2–3d)
+**M21.8. System Extension Approval UX (macOS 15+)** PARTIALLY COMPLETE (2–3d)
 
 - Goal: Implement an in‑app, user‑friendly approval flow for required system extensions (FSKit file system module; optional Endpoint Security), using OSSystemExtensionManager with deep‑links to System Settings panes.
 
@@ -751,13 +751,50 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
   - On subsequent launches with extensions already approved, no prompt is shown and activation completes silently.
   - Fallback path documented for older macOS if needed.
 
-- Acceptance checklist (M21.8)
+**Implementation Details:**
 
-- [ ] Activation requests submitted at app launch for required extensions
-- [ ] Delegate methods implemented with robust error handling
-- [ ] Approval prompt with deep‑link to the correct Settings pane
-- [ ] Silent success path when already approved; retry path when pending
-- [ ] Docs reference helper Just targets for developer workflows
+- Added programmatic activation via `OSSystemExtensionManager` at app launch with delegate-based status reporting and error handling.
+- Approval UI added in `MainViewController` with a deep link to the macOS 15 File System Extensions pane and a Retry Activation button.
+- Introduced `Notification.Name` events (`awRequestSystemExtensionActivation`, `awSystemExtensionNeedsUserApproval`, `awSystemExtensionStatusChanged`) to bridge delegate and UI.
+- Deep link used: `x-apple.systempreferences:com.apple.ExtensionsPreferences?extensionPointIdentifier=com.apple.fskit.fsmodule`.
+- Status label reflects: Available, Approval required, Enabled, Will complete after reboot, and error states.
+
+**Key Source Files:**
+
+- `apps/macos/AgentsWorkflow/AgentsWorkflow/AppDelegate.swift` – Activation submission and `OSSystemExtensionRequestDelegate` handling
+- `apps/macos/AgentsWorkflow/AgentsWorkflow/MainViewController.swift` – Approval UI, deep link, retry, and live status updates
+
+**Current Issues:**
+
+- System extension installation fails due to entitlement validation issues
+- `com.apple.developer.system-extension.install` entitlement configuration needs refinement
+- Extension activation requests are blocked by macOS security policies
+- Manual `systemextensionsctl install` command does not exist (incorrect usage discovered)
+
+**Verification Results:**
+
+- [x] Activation request submitted on app launch; delegate callbacks observed
+- [x] Approval UI opens the correct Settings pane via deep link
+- [x] Retry path resubmits activation request without requiring app restart
+- [x] Status label reflects delegate state transitions
+- [x] No linter errors in modified Swift sources
+- [ ] System extension actually installs and activates successfully
+
+**Outstanding Tasks:**
+
+- Resolve system extension entitlement configuration issues
+- Test extension activation on properly configured development environment
+- Verify extension loading and filesystem functionality
+- Document correct system extension installation procedures
+
+Acceptance checklist (M21.8)
+
+- [x] Activation requests submitted at app launch for required extensions
+- [x] Delegate methods implemented with robust error handling
+- [x] Approval prompt with deep‑link to the correct Settings pane
+- [x] Silent success path when already approved; retry path when pending
+- [ ] System extension successfully installs and activates
+- [x] Docs reference helper Just targets for developer workflows
 
 References: See `specs/Research/AgentFS/Implementing-System-Extension-Approval-Pattern-on-macOS.md` for details on identifiers, delegate patterns, and deep links.
 

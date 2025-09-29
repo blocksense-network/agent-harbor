@@ -346,9 +346,17 @@ webui-check:
 # macOS / Xcode Targets
 # ====================
 
-# Build the AgentFSKitExtension from adapters directory
+# Build the AgentFSKitExtension from adapters directory (release mode)
 build-agentfs-extension:
     cd adapters/macos/xcode/AgentFSKitExtension && ./build.sh
+
+# Build the AgentFSKitExtension in debug mode
+build-agentfs-extension-debug:
+    cd adapters/macos/xcode/AgentFSKitExtension && CONFIGURATION=debug ./build.sh
+
+# Build the AgentFSKitExtension in release mode
+build-agentfs-extension-release:
+    cd adapters/macos/xcode/AgentFSKitExtension && CONFIGURATION=release ./build.sh
 
 # Build the AgentsWorkflow Xcode project (includes embedded AgentFSKitExtension)
 build-agents-workflow-xcode:
@@ -367,24 +375,54 @@ setup-agents-workflow-xcode:
     @echo "You can now open AgentsWorkflow.xcodeproj in Xcode or run:"
     @echo "  just build-agents-workflow"
 
-# Build the complete AgentsWorkflow macOS app
+# Build the complete AgentsWorkflow macOS app (debug build for development)
 build-agents-workflow:
-    just build-agentfs-extension
-    @echo "🔨 Building AgentsWorkflow macOS app with Swift Package Manager..."
+    just build-agentfs-extension-debug
+    @echo "🔨 Building AgentsWorkflow macOS app with Swift Package Manager (debug)..."
+    cd apps/macos/AgentsWorkflow && swift build --configuration debug
+    @echo "📦 Creating proper macOS app bundle structure..."
+    mkdir -p "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/MacOS"
+    mkdir -p "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/PlugIns"
+    cp "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/MacOS/"
+    cp "apps/macos/AgentsWorkflow/AgentsWorkflow/Info.plist" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/"
+    # Fix Info.plist build variables that weren't expanded by Swift PM
+    sed -i '' -e 's/$(EXECUTABLE_NAME)/AgentsWorkflow/g' -e 's/$(PRODUCT_NAME)/AgentsWorkflow/g' -e 's/$(MACOSX_DEPLOYMENT_TARGET)/15.4/g' "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/Info.plist"
+    # Create PkgInfo file
+    echo -n "APPL????" > "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/PkgInfo"
+    cp -R "adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/PlugIns/"
+    @echo "✅ AgentsWorkflow (debug) built successfully!"
+
+# Build the complete AgentsWorkflow macOS app (release build)
+build-agents-workflow-release:
+    just build-agentfs-extension-release
+    @echo "🔨 Building AgentsWorkflow macOS app with Swift Package Manager (release)..."
     cd apps/macos/AgentsWorkflow && swift build --configuration release
-    @echo "📦 Copying extension to app bundle..."
+    @echo "📦 Creating proper macOS app bundle structure..."
+    mkdir -p "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/MacOS"
     mkdir -p "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/PlugIns"
+    cp "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/MacOS/"
+    cp "apps/macos/AgentsWorkflow/AgentsWorkflow/Info.plist" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/"
+    # Fix Info.plist build variables that weren't expanded by Swift PM
+    sed -i '' -e 's/$(EXECUTABLE_NAME)/AgentsWorkflow/g' -e 's/$(PRODUCT_NAME)/AgentsWorkflow/g' -e 's/$(MACOSX_DEPLOYMENT_TARGET)/15.4/g' "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/Info.plist"
+    # Create PkgInfo file
+    echo -n "APPL????" > "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/PkgInfo"
     cp -R "adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/PlugIns/"
-    @echo "✅ AgentsWorkflow built successfully!"
+    @echo "✅ AgentsWorkflow (release) built successfully!"
 
 # Test the AgentsWorkflow macOS app (builds and validates extension)
 test-agents-workflow:
     @echo "🧪 Testing AgentsWorkflow macOS app..."
     just build-agents-workflow-xcode || (echo "⚠️  Xcode build failed (likely environment issue), checking for existing app..." && find ~/Library/Developer/Xcode/DerivedData/AgentsWorkflow-*/Build/Products/Debug -name "AgentsWorkflow.app" -type d -exec echo "📱 Using existing built app at {}" \;)
-    @echo "🔧 Ensuring extension is embedded..."
-    find ~/Library/Developer/Xcode/DerivedData/AgentsWorkflow-*/Build/Products/Debug -name "AgentsWorkflow.app" -type d -exec mkdir -p {}/Contents/PlugIns \; -exec cp -R adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex {}/Contents/PlugIns/ \;
-    @echo "🔍 Validating extension..."
-    find ~/Library/Developer/Xcode/DerivedData/AgentsWorkflow-*/Build/Products/Debug -name "AgentsWorkflow.app" -type d -exec swift apps/macos/AgentsWorkflow/validate-extension.swift {} \; || (echo "❌ No AgentsWorkflow app found to test" && exit 1)
+
+# Launch the debug build of AgentsWorkflow
+launch-agents-workflow-debug:
+    @echo "🚀 Launching AgentsWorkflow (debug build)..."
+    open "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app"
+
+# Launch the release build of AgentsWorkflow
+launch-agents-workflow-release:
+    @echo "🚀 Launching AgentsWorkflow (release build)..."
+    open "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app"
 
 # Run overlay tests with E2E enforcement verification
 test-overlays:

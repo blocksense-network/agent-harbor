@@ -42,23 +42,29 @@ echo "Building Swift extension with Swift Package Manager..."
 cd "$SCRIPT_DIR"
 
 # Build with SwiftPM to avoid Xcode linker issues
-swift build --configuration release
+CONFIGURATION=${CONFIGURATION:-release}
+echo "Building in $CONFIGURATION configuration"
+swift build --configuration "$CONFIGURATION"
 
 # Create the .appex bundle structure manually
 echo "Creating extension bundle..."
 mkdir -p "$SCRIPT_DIR/AgentFSKitExtension.appex/Contents/MacOS"
 mkdir -p "$SCRIPT_DIR/AgentFSKitExtension.appex/Contents/Resources"
 
-# Copy the built binary (find the correct path based on architecture)
+# Copy the built binary (find the correct path based on architecture and configuration)
 BINARY_PATH=""
-if [ -f "$SCRIPT_DIR/.build/arm64-apple-macosx/release/AgentFSKitExtension" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/arm64-apple-macosx/release/AgentFSKitExtension"
-elif [ -f "$SCRIPT_DIR/.build/x86_64-apple-macosx/release/AgentFSKitExtension" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/x86_64-apple-macosx/release/AgentFSKitExtension"
-elif [ -f "$SCRIPT_DIR/.build/apple/Products/Release/AgentFSKitExtension" ]; then
+if [ -f "$SCRIPT_DIR/.build/arm64-apple-macosx/$CONFIGURATION/AgentFSKitExtension" ]; then
+  BINARY_PATH="$SCRIPT_DIR/.build/arm64-apple-macosx/$CONFIGURATION/AgentFSKitExtension"
+elif [ -f "$SCRIPT_DIR/.build/x86_64-apple-macosx/$CONFIGURATION/AgentFSKitExtension" ]; then
+  BINARY_PATH="$SCRIPT_DIR/.build/x86_64-apple-macosx/$CONFIGURATION/AgentFSKitExtension"
+elif [ -f "$SCRIPT_DIR/.build/apple/Products/$CONFIGURATION/AgentFSKitExtension" ]; then
+  BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/$CONFIGURATION/AgentFSKitExtension"
+elif [ -f "$SCRIPT_DIR/.build/apple/Products/Release/AgentFSKitExtension" ] && [ "$CONFIGURATION" = "release" ]; then
   BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/Release/AgentFSKitExtension"
+elif [ -f "$SCRIPT_DIR/.build/apple/Products/Debug/AgentFSKitExtension" ] && [ "$CONFIGURATION" = "debug" ]; then
+  BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/Debug/AgentFSKitExtension"
 else
-  echo "Error: Could not find AgentFSKitExtension binary"
+  echo "Error: Could not find AgentFSKitExtension binary in $CONFIGURATION configuration"
   find "$SCRIPT_DIR/.build" -name "AgentFSKitExtension" -type f -executable 2>/dev/null || echo "No executable found"
   exit 1
 fi

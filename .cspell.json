@@ -308,6 +308,7 @@
     "swaymsg",
     "syscall",
     "syscalls",
+    "systemextensionsctl",
     "tagid",
     "tagname",
     "tagxref",

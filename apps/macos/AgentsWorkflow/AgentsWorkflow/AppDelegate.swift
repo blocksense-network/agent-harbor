@@ -13,10 +13,18 @@ import SystemExtensions
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     var window: NSWindow?
+    private let fsKitExtensionIdentifier = "com.agentsworkflow.AgentFSKitExtension"
+
+    #if canImport(SystemExtensions)
+    @available(macOS 10.15, *)
+    private var systemExtensionRequest: OSSystemExtensionRequest?
+    #endif
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         createMainWindow()
         registerExtensions()
+        observeActivationRequests()
+        submitSystemExtensionActivationRequest(reason: "app launch")
         print("AgentsWorkflow application started successfully")
     }
 
@@ -67,4 +75,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         print("Extension registration complete - system will handle approval workflow")
     }
+
+    private func observeActivationRequests() {
+        NotificationCenter.default.addObserver(forName: .awRequestSystemExtensionActivation, object: nil, queue: .main) { [weak self] _ in
+            self?.submitSystemExtensionActivationRequest(reason: "user request")
+        }
+    }
+
+    private func submitSystemExtensionActivationRequest(reason: String) {
+        #if canImport(SystemExtensions)
+        if #available(macOS 10.15, *) {
+            let identifier = fsKitExtensionIdentifier
+            let queue = DispatchQueue.main
+            let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: queue)
+            request.delegate = self
+            self.systemExtensionRequest = request
+            print("Submitting system extension activation request for \(identifier) [reason=\(reason)]")
+            OSSystemExtensionManager.shared.submitRequest(request)
+        } else {
+            print("SystemExtensions not available on this macOS version; cannot submit activation request")
+        }
+        #else
+        print("SystemExtensions framework not available; cannot submit activation request")
+        #endif
+    }
+}
+
+#if canImport(SystemExtensions)
+@available(macOS 10.15, *)
+extension AppDelegate: OSSystemExtensionRequestDelegate {
+    func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
+        print("System extension request needs user approval")
+        NotificationCenter.default.post(name: .awSystemExtensionNeedsUserApproval, object: nil)
+        NotificationCenter.default.post(name: .awSystemExtensionStatusChanged, object: nil, userInfo: ["status": "Approval required in System Settings"])
+    }
+
+    func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
+        switch result {
+        case .completed:
+            print("System extension activation completed successfully")
+            NotificationCenter.default.post(name: .awSystemExtensionStatusChanged, object: nil, userInfo: ["status": "Enabled"])
+        case .willCompleteAfterReboot:
+            print("System extension activation will complete after reboot")
+            NotificationCenter.default.post(name: .awSystemExtensionStatusChanged, object: nil, userInfo: ["status": "Will complete after reboot"])
+        @unknown default:
+            print("System extension activation finished with unknown result: \(result.rawValue)")
+            NotificationCenter.default.post(name: .awSystemExtensionStatusChanged, object: nil, userInfo: ["status": "Unknown result"])
+        }
+    }
+
+    func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
+        print("System extension activation failed: \(error.localizedDescription)")
+        NotificationCenter.default.post(name: .awSystemExtensionStatusChanged, object: nil, userInfo: ["status": "Error: \(error.localizedDescription)"])
+    }
+
+    func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties, withExtension replacement: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
+        print("System extension replacement requested: existing=\(existing.bundleIdentifier), replacement=\(replacement.bundleIdentifier)")
+        return .replace
+    }
+}
+#endif
+
+extension Notification.Name {
+    static let awRequestSystemExtensionActivation = Notification.Name("AWRequestSystemExtensionActivation")
+    static let awSystemExtensionNeedsUserApproval = Notification.Name("AWSystemExtensionNeedsUserApproval")
+    static let awSystemExtensionStatusChanged = Notification.Name("AWSystemExtensionStatusChanged")
 }
