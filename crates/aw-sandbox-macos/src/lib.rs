@@ -199,9 +199,12 @@ mod macos {
         pub fn allow_read_subpath(self, _p: impl Into<String>) -> Self { self }
         pub fn allow_write_subpath(self, _p: impl Into<String>) -> Self { self }
         pub fn allow_exec_subpath(self, _p: impl Into<String>) -> Self { self }
+        pub fn allow_network(self) -> Self { self }
         pub fn loopback_only(self) -> Self { self }
         pub fn harden_process_info(self) -> Self { self }
         pub fn allow_signal_same_group(self) -> Self { self }
+        pub fn deny_apple_events(self) -> Self { self }
+        pub fn deny_mach_lookup(self) -> Self { self }
         pub fn build(self) -> String { String::new() }
     }
     pub fn apply_profile(_: &str) -> Result<()> { Err(Error::Unavailable) }

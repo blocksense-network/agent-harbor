@@ -22,12 +22,15 @@ set shell := ["./scripts/nix-env.sh", "-c"]
 check:
     cargo check --workspace
 
+# Build all test binaries needed for Rust workspace tests
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries
+
 # Run Rust tests
-test-rust:
+test-rust: build-rust-test-binaries
     cargo test --workspace
 
 # Run Rust tests with verbose output
-test-rust-verbose:
+test-rust-verbose: build-rust-test-binaries
     cargo test --workspace --verbose
 
 # Snapshot Testing with Insta
@@ -186,6 +189,13 @@ legacy-stop-aw-fs-snapshots-daemon:
 legacy-check-aw-fs-snapshots-daemon:
     ruby legacy/scripts/check-aw-fs-snapshots-daemon.rb
 
+# Build aw-fs-snapshots-daemon binary
+build-daemon:
+    cargo build --package aw-fs-snapshots-daemon
+
+# Build all binaries needed for daemon integration tests
+build-daemon-tests: build-daemon
+
 # Launch the new Rust AW filesystem snapshots daemon for testing (requires sudo)
 start-aw-fs-snapshots-daemon:
     scripts/start-aw-fs-snapshots-daemon.sh
@@ -199,11 +209,11 @@ check-aw-fs-snapshots-daemon:
     scripts/check-aw-fs-snapshots-daemon.sh
 
 # Run comprehensive daemon integration tests (requires test filesystems)
-test-daemon-integration:
+test-daemon-integration: build-daemon-tests
     cargo test --package aw-fs-snapshots-daemon -- --nocapture integration
 
 # Run filesystem snapshot provider integration tests (requires root for ZFS/Btrfs operations)
-test-fs-snapshots:
+test-fs-snapshots: build-daemon-tests
     cargo test --package aw-fs-snapshots -- --nocapture integration
 
 # Run filesystem snapshot provider unit tests only (no root required)
