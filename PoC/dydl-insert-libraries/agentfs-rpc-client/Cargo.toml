@@ -1,0 +1,14 @@
+[workspace]
+
+[package]
+name = "agentfs-rpc-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["rt", "net", "io-util"] }
+anyhow = "1.0"
+libc = "0.2"
+ethereum_ssz = "0.8"
+agentfs-core = { path = "../../../crates/agentfs-core" }
+agentfs-proto = { path = "../../../crates/agentfs-proto" }
