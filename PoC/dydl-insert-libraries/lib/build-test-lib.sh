@@ -5,9 +5,9 @@ set -e
 echo "Building test-interpose.dylib..."
 
 # Check if clang is available
-if ! command -v clang &> /dev/null; then
-    echo "Error: clang not found. Please install Xcode command line tools."
-    exit 1
+if ! command -v clang &>/dev/null; then
+  echo "Error: clang not found. Please install Xcode command line tools."
+  exit 1
 fi
 
 # Compile the library
