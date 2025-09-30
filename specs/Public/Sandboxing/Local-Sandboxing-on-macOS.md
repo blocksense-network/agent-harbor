@@ -73,6 +73,8 @@
 
 - Default‑deny access to sensitive locations (e.g., `$HOME/.ssh`, `$HOME/.gnupg`, cloud credential dirs, keychains). Access only via explicit approval.
 
+TODO: there was an option value that controls the file system access. What we need to state here is that even when this option is more relaxed (allow reads by default), sensitive directories remain blacklisted by default. Is this stated better in the Linux document? The policy is the same on all systems. We can move this into a normative section in the sandbox strategy document and just reference it with a statement that we must comply here (and do the same for the linux sandbox document). The option name must be clearly specified in the normative section. Look for it in Configuration.md perhaps.
+
 ### 5.3 Dynamic read allow‑list (default mode)
 
 - First access to a non‑allowed path blocks via ES AUTH_OPEN/AUTH_EXEC; supervisor prompts the human to approve/deny.
@@ -80,6 +82,8 @@
 - Approval takes effect without restarting the target process; denial returns `EACCES/EPERM`.
 
 - Approvals can persist at user / project / organization scopes with TTL and deterministic precedence.
+
+TODO: This also looks like part of the shared normative spec.
 
 ### 5.4 Static RO/overlay mode (opt‑in)
 
