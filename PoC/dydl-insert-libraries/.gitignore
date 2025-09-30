@@ -1,0 +1,35 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# macOS dynamic libraries
+*.dylib
+*.a
+
+# Test artifacts
+test-interpose2.c
+
+# Build artifacts
+*.o
+*.dSYM/
+
+# Temporary files
+*.tmp
+*.log
+*~
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

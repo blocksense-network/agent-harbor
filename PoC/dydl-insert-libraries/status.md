@@ -19,7 +19,7 @@ All components target macOS with standard C ABI. Libraries are built as dynamic 
 
 ### Milestones and tasks (with automated success criteria)
 
-**M1. Basic injection harness and library loading** (1–2d)
+**M1. Basic injection harness and library loading** COMPLETED (1–2d)
 
 - **Deliverables:**
 
@@ -29,29 +29,43 @@ All components target macOS with standard C ABI. Libraries are built as dynamic 
 
 - **Verification:**
 
-  - [ ] Injector can launch `sleep 1` with library injection and library logs successful loading
-  - [ ] Library is loaded only in child processes, not in parent injector
-  - [ ] Multiple libraries can be injected simultaneously
-  - [ ] Injection fails gracefully when library doesn't exist
+  - [x] Injector can launch `sleep 1` with library injection and library logs successful loading
+  - [x] Library is loaded only in child processes, not in parent injector
+  - [x] Constructor functions execute and print verification messages with process PIDs
+  - [x] Symbol accessibility verification passes (dlopen/dlsym functionality confirmed)
+  - [x] System-level verification using `vmmap` confirms library in process memory maps
+  - [x] Multiple libraries can be injected simultaneously
+  - [x] Injection fails gracefully when library doesn't exist
 
 **Implementation Details:**
 
-- Built Rust injector using `std::process::Command` with environment variable setting
-- Created minimal C library with constructor function that logs to stderr
-- Added proper macOS dynamic library compilation with `-dynamiclib` flag
-- Implemented process tree tracking to ensure injection only affects child processes
+- Built Rust injector binary using clap for CLI parsing and std::process::Command for launching child processes
+- Implemented colon-separated library path support for multiple simultaneous injections
+- Created enhanced C library with constructor verification using `dlopen(NULL)` and `dlsym()` for symbol accessibility
+- Added exported test function (`dyld_test_verify_loaded`) for internal library verification
+- Integrated system-level verification using macOS `vmmap` tool to confirm library presence in process memory
+- Added comprehensive error handling for missing library files and invalid commands
+- Built automated test harness script with 4-layer verification system
+- Implemented proper stdio inheritance to preserve output from injected processes
 
 **Key Source Files:**
 
-- `injector/src/main.rs` - Main injector binary with DYLD_INSERT_LIBRARIES setup
-- `lib/test-interpose.c` - Minimal test library with logging constructor
-- `harness/basic-injection.sh` - Shell script demonstrating injection workflow
+- `injector/src/main.rs` - Main injector binary with DYLD_INSERT_LIBRARIES setup and multi-library support
+- `injector/Cargo.toml` - Rust dependencies (clap, anyhow) with isolated workspace configuration
+- `lib/test-interpose.c` - Minimal test library with logging constructor and destructor
+- `lib/build-test-lib.sh` - Build script for compiling C library to macOS dylib
+- `harness/basic-injection.sh` - Comprehensive test harness validating all injection scenarios
 
 **Verification Results:**
 
-- [ ] Basic injection test passes - library loads and logs in child processes
-- [ ] Parent process isolation maintained - injector itself not affected
-- [ ] Error handling validated - missing libraries produce clear errors
+- [x] Basic injection test passes - library loads and logs in child processes with unique PIDs
+- [x] Constructor execution verified - `__attribute__((constructor))` functions run on library load
+- [x] Symbol verification passes - `dlopen(NULL)` and `dlsym()` confirm library functionality
+- [x] System-level verification passes - `vmmap` confirms library presence in process memory maps
+- [x] Parent process isolation maintained - injector itself not affected by DYLD injection
+- [x] Multiple library injection works - both libraries load simultaneously in child process
+- [x] Error handling validated - missing libraries produce clear error messages and non-zero exit codes
+- [x] All automated tests pass in test harness script with 4-layer verification
 
 **M2. Network API interception and localhost isolation** (3–4d)
 
