@@ -90,7 +90,10 @@ __pycache__/
 # Mock agent recordings
 tests/tools/mock-agent/recordings/
 
-repomix.md
 repomix/
+
+# Downloaded resources
 reference_projects/
+resources/
+
 webui/test-results/.last-run.json

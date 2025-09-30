@@ -14,6 +14,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.rust-overlay.follows = "rust-overlay";
     };
+    sosumi-docs-downloader = {
+      url = "git+https://github.com/blocksense-network/sosumi-docs-downloader.git";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = "rust-overlay";
+    };
   };
 
   outputs = {
@@ -22,6 +27,7 @@
     rust-overlay,
     git-hooks,
     codex,
+    sosumi-docs-downloader,
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
     forAllSystems = nixpkgs.lib.genAttrs systems;
@@ -181,6 +187,7 @@
       in {
         aw = aw-script;
         agent-utils = agent-utils;
+        sosumi-docs-downloader = sosumi-docs-downloader.packages.${system}.sosumi-docs-downloader;
         default = aw-script;
       }
     );

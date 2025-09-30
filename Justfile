@@ -591,3 +591,7 @@ systemextensions-devmode-and-status:
 
 register-fskit-extension:
     bash scripts/register-fskit-extension.sh
+
+# Download macOS sandbox documentation
+download-mac-sandbox-docs:
+    nix run .#sosumi-docs-downloader -- fskit endpointsecurity -o resources
