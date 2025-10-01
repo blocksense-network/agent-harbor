@@ -324,11 +324,19 @@ impl FsRequest {
     }
 
     pub fn read(handle: u64, offset: u64, len: usize) -> Self {
-        Self::Read(FsReadRequest { handle, offset, len })
+        Self::Read(FsReadRequest {
+            handle,
+            offset,
+            len,
+        })
     }
 
     pub fn write(handle: u64, offset: u64, data: Vec<u8>) -> Self {
-        Self::Write(FsWriteRequest { handle, offset, data })
+        Self::Write(FsWriteRequest {
+            handle,
+            offset,
+            data,
+        })
     }
 
     pub fn getattr(path: String) -> Self {
@@ -370,7 +378,11 @@ impl FsResponse {
     }
 
     pub fn attrs(len: u64, is_dir: bool, is_symlink: bool) -> Self {
-        Self::Attrs(FsAttrsResponse { len, is_dir, is_symlink })
+        Self::Attrs(FsAttrsResponse {
+            len,
+            is_dir,
+            is_symlink,
+        })
     }
 
     pub fn entries(entries: Vec<FsDirEntry>) -> Self {

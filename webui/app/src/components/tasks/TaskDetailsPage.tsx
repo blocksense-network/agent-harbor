@@ -284,21 +284,29 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                           <For each={logs()}>
                             {(log, index) => {
                               const logMessage = log.message || log;
-                              const isError = logMessage.toLowerCase().includes('error') || logMessage.toLowerCase().includes('failed');
-                              const isWarning = logMessage.toLowerCase().includes('warn') || logMessage.toLowerCase().includes('warning');
+                              const isError =
+                                logMessage.toLowerCase().includes("error") ||
+                                logMessage.toLowerCase().includes("failed");
+                              const isWarning =
+                                logMessage.toLowerCase().includes("warn") ||
+                                logMessage.toLowerCase().includes("warning");
 
                               return (
                                 <div class="mb-1">
                                   <span class="text-gray-400">
-                                    [{new Date(task()!.createdAt).toLocaleTimeString()}]
+                                    [
+                                    {new Date(
+                                      task()!.createdAt,
+                                    ).toLocaleTimeString()}
+                                    ]
                                   </span>
                                   <span
                                     class={`ml-2 ${
                                       isError
-                                        ? 'text-red-400'
+                                        ? "text-red-400"
                                         : isWarning
-                                          ? 'text-yellow-400'
-                                          : 'text-green-400'
+                                          ? "text-yellow-400"
+                                          : "text-green-400"
                                     }`}
                                   >
                                     {logMessage}

@@ -1,9 +1,9 @@
 import { Component, createEffect, createSignal } from "solid-js";
 
-export type SaveStatus = "unsaved" | "saving" | "saved" | "error";
+export type SaveStatusType = "unsaved" | "saving" | "saved" | "error";
 
 interface SaveStatusProps {
-  status: SaveStatus;
+  status: SaveStatusType;
   class?: string;
 }
 
@@ -16,35 +16,35 @@ export const SaveStatus: Component<SaveStatusProps> = (props) => {
     setCurrentStatus(props.status);
   });
 
-  const getStatusConfig = (status: SaveStatus) => {
+  const getStatusConfig = (status: SaveStatusType) => {
     switch (status) {
       case "unsaved":
         return {
           text: "Unsaved",
           icon: "○",
           color: "text-gray-500",
-          bgColor: "bg-gray-50"
+          bgColor: "bg-gray-50",
         };
       case "saving":
         return {
           text: "Saving...",
           icon: "⟳",
           color: "text-orange-600",
-          bgColor: "bg-orange-50"
+          bgColor: "bg-orange-50",
         };
       case "saved":
         return {
           text: "Saved",
           icon: "✓",
           color: "text-green-600",
-          bgColor: "bg-green-50"
+          bgColor: "bg-green-50",
         };
       case "error":
         return {
           text: "Save failed",
           icon: "✗",
           color: "text-red-600",
-          bgColor: "bg-red-50"
+          bgColor: "bg-red-50",
         };
     }
   };
@@ -60,7 +60,9 @@ export const SaveStatus: Component<SaveStatusProps> = (props) => {
       aria-live="polite"
       aria-label={`Save status: ${config().text}`}
     >
-      <span class="text-sm" aria-hidden="true">{config().icon}</span>
+      <span class="text-sm" aria-hidden="true">
+        {config().icon}
+      </span>
       <span>{config().text}</span>
     </div>
   );

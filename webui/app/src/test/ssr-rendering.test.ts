@@ -2,16 +2,16 @@ import { describe, it, expect } from "vitest";
 
 /**
  * SSR Rendering Validation
- * 
+ *
  * Per the layered testing strategy in TESTING-APPROACH.md:
  * - Layer 1 (API tests): Validates mock server in isolation
  * - Layer 2 (SSR rendering): Validated via E2E infrastructure
  * - Layer 3 (Browser E2E): Full client-side hydration
- * 
+ *
  * SSR rendering is best tested through the E2E test infrastructure
  * (start-servers.sh) which properly manages server lifecycle with
  * automated timeouts and cleanup.
- * 
+ *
  * This unit test would require complex process management within vitest,
  * which conflicts with the automated testing approach. Instead, SSR
  * rendering is verified by the E2E tests in webui/e2e-tests/.

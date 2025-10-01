@@ -40,11 +40,16 @@
     "@solidjs/testing-library": "^0.8.10",
     "@tailwindcss/vite": "^4.0.7",
     "@types/node": "^24.5.2",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
     "cheerio": "^1.1.2",
     "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
     "jsdom": "^24.1.0",
     "prettier": "^3.3.3",
     "tailwindcss": "^4.0.7",
+    "typescript": "^5.7.2",
     "vitest": "^2.0.5"
   },
   "engines": {

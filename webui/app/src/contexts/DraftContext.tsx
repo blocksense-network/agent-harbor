@@ -1,4 +1,10 @@
-import { createContext, useContext, Component, JSX, createSignal } from "solid-js";
+import {
+  createContext,
+  useContext,
+  Component,
+  JSX,
+  createSignal,
+} from "solid-js";
 import { apiClient, DraftTask } from "../lib/api";
 
 // DraftContext provides CRUD operations for drafts
@@ -26,33 +32,38 @@ interface DraftProviderProps {
 export const DraftProvider: Component<DraftProviderProps> = (props) => {
   const [error, setError] = createSignal<string | null>(null);
 
-  const createDraft = async (draft: Partial<DraftTask>): Promise<DraftTask | null> => {
+  const createDraft = async (
+    draft: Partial<DraftTask>,
+  ): Promise<DraftTask | null> => {
     try {
       setError(null);
-      console.log('[DraftContext] Creating draft...', draft);
+      console.log("[DraftContext] Creating draft...", draft);
       const response = await apiClient.createDraft(draft);
-      console.log('[DraftContext] Draft created (response):', response);
-      
+      console.log("[DraftContext] Draft created (response):", response);
+
       // API returns only { id, createdAt, updatedAt }, construct full draft
       const fullDraft: DraftTask = {
-        ...draft as DraftTask,
+        ...(draft as DraftTask),
         id: response.id,
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
       };
-      console.log('[DraftContext] Full draft:', fullDraft);
-      
+      console.log("[DraftContext] Full draft:", fullDraft);
+
       props.onDraftChanged?.(); // Notify that drafts changed
-      
+
       // Dispatch custom event for components to listen to
-      if (typeof window !== 'undefined') {
-        console.log('[DraftContext] Dispatching draft-created event');
-        window.dispatchEvent(new CustomEvent('draft-created', { detail: fullDraft }));
+      if (typeof window !== "undefined") {
+        console.log("[DraftContext] Dispatching draft-created event");
+        window.dispatchEvent(
+          new CustomEvent("draft-created", { detail: fullDraft }),
+        );
       }
-      
+
       return fullDraft;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to create draft";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to create draft";
       setError(errorMessage);
       console.error("Failed to create draft:", err);
       return null;
@@ -66,14 +77,18 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
       props.onDraftChanged?.(); // Notify that drafts changed
       return true;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to delete draft";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to delete draft";
       setError(errorMessage);
       console.error("Failed to delete draft:", err);
       return false;
     }
   };
 
-  const updateDraft = async (id: string, updates: Partial<DraftTask>): Promise<boolean> => {
+  const updateDraft = async (
+    id: string,
+    updates: Partial<DraftTask>,
+  ): Promise<boolean> => {
     try {
       setError(null);
       // Remove server-managed fields from updates
@@ -82,7 +97,8 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
       props.onDraftChanged?.(); // Notify that drafts changed
       return true;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to update draft";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to update draft";
       setError(errorMessage);
       console.error(`Failed to update draft:`, err);
       return false;

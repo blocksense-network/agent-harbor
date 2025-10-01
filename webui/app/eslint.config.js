@@ -26,7 +26,27 @@ export default [
         window: 'readonly',
         localStorage: 'readonly',
         Event: 'readonly',
-        SubmitEvent: 'readonly'
+        SubmitEvent: 'readonly',
+        fetch: 'readonly',
+        RequestInit: 'readonly',
+        URLSearchParams: 'readonly',
+        EventSource: 'readonly',
+        MessageEvent: 'readonly',
+        CustomEvent: 'readonly',
+        Element: 'readonly',
+        Node: 'readonly',
+        KeyboardEvent: 'readonly',
+        MouseEvent: 'readonly',
+        HTMLSelectElement: 'readonly',
+        HTMLButtonElement: 'readonly',
+        HTMLInputElement: 'readonly',
+        HTMLUListElement: 'readonly',
+        HTMLTextAreaElement: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        navigator: 'readonly'
       }
     },
     plugins: {

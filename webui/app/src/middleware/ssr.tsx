@@ -5,20 +5,22 @@ import * as path from "path";
 // Simple logger that respects quiet mode for testing
 const logger = {
   log: (...args: any[]) => {
-    const isQuietMode = process.env.QUIET_MODE === 'true' || process.env.NODE_ENV === 'test';
+    const isQuietMode =
+      process.env.QUIET_MODE === "true" || process.env.NODE_ENV === "test";
     if (!isQuietMode) {
       console.log(...args);
     }
   },
   warn: (...args: any[]) => {
-    const isQuietMode = process.env.QUIET_MODE === 'true' || process.env.NODE_ENV === 'test';
+    const isQuietMode =
+      process.env.QUIET_MODE === "true" || process.env.NODE_ENV === "test";
     if (!isQuietMode) {
       console.warn(...args);
     }
   },
   error: (...args: any[]) => {
     console.error(...args); // Always log errors
-  }
+  },
 };
 
 // Function to find the correct CSS and JS filenames

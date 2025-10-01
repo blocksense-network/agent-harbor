@@ -1,4 +1,10 @@
-import { Component, createSignal, onMount, onCleanup, createEffect } from "solid-js";
+import {
+  Component,
+  createSignal,
+  onMount,
+  onCleanup,
+  createEffect,
+} from "solid-js";
 import TomSelect from "tom-select";
 
 interface ModelSelection {
@@ -18,13 +24,15 @@ interface ModelMultiSelectProps {
 export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   let selectRef: HTMLSelectElement | undefined;
   let tomSelectInstance: any = null;
-  const [localSelections, setLocalSelections] = createSignal<ModelSelection[]>(props.selectedModels || []);
-  
+  const [localSelections, setLocalSelections] = createSignal<ModelSelection[]>(
+    props.selectedModels || [],
+  );
+
   // Track instance counts for ALL models (selected or not) to preserve dropdown increments
   const instanceCounts = new Map<string, number>();
-  
+
   // Initialize counts from props
-  props.selectedModels?.forEach(s => {
+  props.selectedModels?.forEach((s) => {
     instanceCounts.set(s.model, s.instances);
   });
 
@@ -36,9 +44,9 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     const currentCount = getInstanceCount(model);
     const newCount = Math.max(1, Math.min(10, currentCount + delta));
     instanceCounts.set(model, newCount);
-    
+
     // If the model is already selected, update localSelections
-    const isSelected = localSelections().some(s => s.model === model);
+    const isSelected = localSelections().some((s) => s.model === model);
     if (isSelected) {
       const updated = localSelections().map((s) => {
         if (s.model === model) {
@@ -63,7 +71,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   };
 
   onMount(() => {
-    if (!selectRef || typeof window === 'undefined') return;
+    if (!selectRef || typeof window === "undefined") return;
 
     // Initialize TOM Select with custom templates
     tomSelectInstance = new TomSelect(selectRef, {
@@ -73,8 +81,8 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       searchField: ["text"],
       maxOptions: 100,
       plugins: [],
-      dropdownParent: 'body',
-      
+      dropdownParent: "body",
+
       onChange: (values: string[]) => {
         // Update selections, preserving instance counts from the Map
         const newSelections = values.map((model) => {
@@ -92,9 +100,10 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
         option: (data: any, escape: (str: string) => string) => {
           const model = escape(data.text);
           const count = getInstanceCount(data.text);
-          
-          const div = document.createElement('div');
-          div.className = 'flex items-center justify-between p-2 hover:bg-gray-50';
+
+          const div = document.createElement("div");
+          div.className =
+            "flex items-center justify-between p-2 hover:bg-gray-50";
           div.innerHTML = `
             <span class="flex-1 text-sm">${model}</span>
             <div class="flex items-center gap-1 model-counter" data-model="${model}">
@@ -106,12 +115,12 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
           // Attach event handlers to the buttons
           setTimeout(() => {
-            const decreaseBtn = div.querySelector('.decrease-btn');
-            const increaseBtn = div.querySelector('.increase-btn');
-            const countDisplay = div.querySelector('.count-display');
+            const decreaseBtn = div.querySelector(".decrease-btn");
+            const increaseBtn = div.querySelector(".increase-btn");
+            const countDisplay = div.querySelector(".count-display");
 
             if (decreaseBtn && increaseBtn && countDisplay) {
-              decreaseBtn.addEventListener('click', (e) => {
+              decreaseBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 updateInstanceCount(data.text, -1);
@@ -120,7 +129,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
                 countDisplay.textContent = newCount.toString();
               });
 
-              increaseBtn.addEventListener('click', (e) => {
+              increaseBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 updateInstanceCount(data.text, 1);
@@ -138,10 +147,11 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
         item: (data: any, escape: (str: string) => string) => {
           const model = escape(data.text);
           const count = getInstanceCount(data.text);
-          
-          const div = document.createElement('div');
-          div.className = 'relative inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-sm';
-          div.setAttribute('data-value', data.value);
+
+          const div = document.createElement("div");
+          div.className =
+            "relative inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-sm";
+          div.setAttribute("data-value", data.value);
           div.innerHTML = `
             <span class="model-label">${model}</span>
             <span class="count-badge text-xs font-semibold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">×${count}</span>
@@ -154,13 +164,13 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
           // Attach event handlers
           setTimeout(() => {
-            const decreaseBtn = div.querySelector('.decrease-badge-btn');
-            const increaseBtn = div.querySelector('.increase-badge-btn');
-            const removeBtn = div.querySelector('.remove-badge-btn');
-            const countBadge = div.querySelector('.count-badge');
+            const decreaseBtn = div.querySelector(".decrease-badge-btn");
+            const increaseBtn = div.querySelector(".increase-badge-btn");
+            const removeBtn = div.querySelector(".remove-badge-btn");
+            const countBadge = div.querySelector(".count-badge");
 
             if (decreaseBtn && increaseBtn && removeBtn && countBadge) {
-              decreaseBtn.addEventListener('click', (e) => {
+              decreaseBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const newCount = Math.max(1, count - 1);
@@ -168,7 +178,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
                 countBadge.textContent = `×${newCount}`;
               });
 
-              increaseBtn.addEventListener('click', (e) => {
+              increaseBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const newCount = Math.min(10, count + 1);
@@ -176,7 +186,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
                 countBadge.textContent = `×${newCount}`;
               });
 
-              removeBtn.addEventListener('click', (e) => {
+              removeBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 removeModel(data.text);
@@ -191,16 +201,20 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
     // Apply custom styling to make dropdowns fully opaque and properly positioned
     if (tomSelectInstance.dropdown) {
-      tomSelectInstance.dropdown.style.backgroundColor = '#ffffff';
-      tomSelectInstance.dropdown.style.border = '1px solid #cccccc';
-      tomSelectInstance.dropdown.style.borderRadius = '4px';
-      tomSelectInstance.dropdown.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-      tomSelectInstance.dropdown.style.zIndex = '9999';
+      tomSelectInstance.dropdown.style.backgroundColor = "#ffffff";
+      tomSelectInstance.dropdown.style.border = "1px solid #cccccc";
+      tomSelectInstance.dropdown.style.borderRadius = "4px";
+      tomSelectInstance.dropdown.style.boxShadow =
+        "0 2px 8px rgba(0, 0, 0, 0.1)";
+      tomSelectInstance.dropdown.style.zIndex = "9999";
     }
 
     // Set initial values if provided
     if (props.selectedModels && props.selectedModels.length > 0) {
-      tomSelectInstance.setValue(props.selectedModels.map((s) => s.model), true);
+      tomSelectInstance.setValue(
+        props.selectedModels.map((s) => s.model),
+        true,
+      );
       setLocalSelections(props.selectedModels);
     }
   });
@@ -208,13 +222,13 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   // Re-render items when instance counts change
   createEffect(() => {
     if (!tomSelectInstance) return;
-    
+
     const selections = localSelections();
     // Force TOM Select to re-render items by refreshing
-    selections.forEach(selection => {
+    selections.forEach((selection) => {
       const item = tomSelectInstance.getItem(selection.model);
       if (item) {
-        const countBadge = item.querySelector('.count-badge');
+        const countBadge = item.querySelector(".count-badge");
         if (countBadge) {
           countBadge.textContent = `×${selection.instances}`;
         }
@@ -230,7 +244,10 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   });
 
   return (
-    <div data-testid={props.testId} class={`model-multi-select ${props.class || ''}`}>
+    <div
+      data-testid={props.testId}
+      class={`model-multi-select ${props.class || ""}`}
+    >
       <select
         ref={selectRef}
         class="tom-select-input"

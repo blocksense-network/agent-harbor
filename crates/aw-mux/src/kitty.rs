@@ -85,7 +85,9 @@ impl KittyMultiplexer {
         // kitty @ launch returns just the window ID
         let window_id = output.trim();
         if window_id.is_empty() {
-            return Err(MuxError::CommandFailed("kitty @ launch returned empty window ID".to_string()));
+            return Err(MuxError::CommandFailed(
+                "kitty @ launch returned empty window ID".to_string(),
+            ));
         }
         Ok(window_id.to_string())
     }
@@ -105,7 +107,8 @@ impl KittyMultiplexer {
 
     /// Get the title of a specific window
     pub fn get_window_title(&self, window_id: &str) -> Result<String, MuxError> {
-        let output = self.run_kitty_command(&["get-window-title", "--match", &format!("id:{}", window_id)])?;
+        let output =
+            self.run_kitty_command(&["get-window-title", "--match", &format!("id:{}", window_id)])?;
         Ok(output.trim().to_string())
     }
 
@@ -141,8 +144,8 @@ impl KittyMultiplexer {
 mod tests {
     use super::*;
     use std::path::Path;
-    use std::time::Duration;
     use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn test_kitty_multiplexer_creation() {
@@ -217,13 +220,18 @@ mod tests {
                     assert!(window_id.parse::<u32>().is_ok());
 
                     // Verify the window actually exists in kitty
-                    assert!(kitty.window_exists(&window_id).unwrap_or(false),
-                           "Window {} should exist after creation", window_id);
+                    assert!(
+                        kitty.window_exists(&window_id).unwrap_or(false),
+                        "Window {} should exist after creation",
+                        window_id
+                    );
 
                     // Verify the window has the correct title
                     let title = kitty.get_window_title(&window_id).unwrap_or_default();
-                    assert_eq!(title, "my-test-window-001",
-                              "Window should have the correct title");
+                    assert_eq!(
+                        title, "my-test-window-001",
+                        "Window should have the correct title"
+                    );
                 }
                 Err(MuxError::CommandFailed(_)) => {
                     // Expected when kitty remote control is not available
@@ -252,8 +260,11 @@ mod tests {
 
                     // Verify the window is now focused
                     let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                    assert_eq!(focused_id, window_id,
-                              "Window {} should be focused after creation with focus=true", window_id);
+                    assert_eq!(
+                        focused_id, window_id,
+                        "Window {} should be focused after creation with focus=true",
+                        window_id
+                    );
                 }
                 Err(MuxError::CommandFailed(_)) => {
                     // Expected when kitty remote control is not available
@@ -305,14 +316,20 @@ mod tests {
                             assert_ne!(new_pane_id, window_id);
 
                             // Verify the new window actually exists
-                            assert!(kitty.window_exists(&new_pane_id).unwrap_or(false),
-                                   "New pane window {} should exist after split", new_pane_id);
+                            assert!(
+                                kitty.window_exists(&new_pane_id).unwrap_or(false),
+                                "New pane window {} should exist after split",
+                                new_pane_id
+                            );
 
                             // Verify we now have more windows
                             let final_windows = kitty.list_windows_detailed().unwrap_or_default();
-                            assert!(final_windows.len() >= initial_count + 1,
-                                   "Should have at least {} windows after split, got {}",
-                                   initial_count + 1, final_windows.len());
+                            assert!(
+                                final_windows.len() >= initial_count + 1,
+                                "Should have at least {} windows after split, got {}",
+                                initial_count + 1,
+                                final_windows.len()
+                            );
                         }
                         Err(MuxError::CommandFailed(_)) => {
                             // Expected when remote control fails
@@ -364,14 +381,20 @@ mod tests {
                             assert_ne!(new_pane_id, window_id);
 
                             // Verify the new window actually exists
-                            assert!(kitty.window_exists(&new_pane_id).unwrap_or(false),
-                                   "New pane window {} should exist after vertical split", new_pane_id);
+                            assert!(
+                                kitty.window_exists(&new_pane_id).unwrap_or(false),
+                                "New pane window {} should exist after vertical split",
+                                new_pane_id
+                            );
 
                             // Verify window count increased
                             let final_windows = kitty.list_windows_detailed().unwrap_or_default();
-                            assert!(final_windows.len() >= initial_count + 1,
-                                   "Should have at least {} windows after vertical split, got {}",
-                                   initial_count + 1, final_windows.len());
+                            assert!(
+                                final_windows.len() >= initial_count + 1,
+                                "Should have at least {} windows after vertical split, got {}",
+                                initial_count + 1,
+                                final_windows.len()
+                            );
                         }
                         Err(MuxError::CommandFailed(_)) => {
                             // Expected when remote control fails
@@ -448,7 +471,11 @@ mod tests {
             match window_result {
                 Ok(window_id) => {
                     // Test run_command
-                    let cmd_result = kitty.run_command(&window_id, "echo 'hello world'", &CommandOptions::default());
+                    let cmd_result = kitty.run_command(
+                        &window_id,
+                        "echo 'hello world'",
+                        &CommandOptions::default(),
+                    );
                     match cmd_result {
                         Ok(()) => {
                             // Command executed successfully
@@ -523,8 +550,11 @@ mod tests {
                         Ok(()) => {
                             // Verify window1 is now focused
                             let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                            assert_eq!(focused_id, window1,
-                                      "Window {} should be focused after focus_window call", window1);
+                            assert_eq!(
+                                focused_id, window1,
+                                "Window {} should be focused after focus_window call",
+                                window1
+                            );
                         }
                         Err(MuxError::CommandFailed(_)) => {
                             // Expected when remote control fails
@@ -539,8 +569,11 @@ mod tests {
                         Ok(()) => {
                             // Verify window2 is now focused
                             let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                            assert_eq!(focused_id, window2,
-                                      "Window {} should be focused after focus_window call", window2);
+                            assert_eq!(
+                                focused_id, window2,
+                                "Window {} should be focused after focus_window call",
+                                window2
+                            );
                         }
                         Err(MuxError::CommandFailed(_)) => {
                             // Expected when remote control fails
@@ -554,8 +587,11 @@ mod tests {
                         Ok(()) => {
                             // Verify window1 is focused again
                             let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                            assert_eq!(focused_id, window1,
-                                      "Pane/window {} should be focused after focus_pane call", window1);
+                            assert_eq!(
+                                focused_id, window1,
+                                "Pane/window {} should be focused after focus_pane call",
+                                window1
+                            );
                         }
                         Err(MuxError::CommandFailed(_)) => {
                             // Expected when remote control fails
@@ -666,7 +702,10 @@ mod tests {
             match none_windows_result {
                 Ok(none_windows) => {
                     // Should be empty or not contain our test windows
-                    assert!(none_windows.is_empty() || !none_windows.iter().any(|w| created_windows.contains(w)));
+                    assert!(
+                        none_windows.is_empty()
+                            || !none_windows.iter().any(|w| created_windows.contains(w))
+                    );
                 }
                 Err(MuxError::CommandFailed(_)) => {
                     // Expected when remote control fails
@@ -748,7 +787,10 @@ mod tests {
                 Ok(window_id) => {
                     // Verify main window was created
                     assert!(kitty.window_exists(&window_id).unwrap_or(false));
-                    assert_eq!(kitty.get_window_title(&window_id).unwrap_or_default(), "complex-layout-008");
+                    assert_eq!(
+                        kitty.get_window_title(&window_id).unwrap_or_default(),
+                        "complex-layout-008"
+                    );
 
                     // Create a 3-"pane" layout: editor (left), agent (top-right), logs (bottom-right)
                     // In kitty terms, this means creating separate windows positioned relative to each other
@@ -877,11 +919,16 @@ impl Multiplexer for KittyMultiplexer {
             .stderr(Stdio::null())
             .status()
             .map(|s| s.success())
-            .unwrap_or(false) && self.is_remote_control_available()
+            .unwrap_or(false)
+            && self.is_remote_control_available()
     }
 
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
-        let mut args = vec!["launch".to_string(), "--type".to_string(), "tab".to_string()];
+        let mut args = vec![
+            "launch".to_string(),
+            "--type".to_string(),
+            "tab".to_string(),
+        ];
 
         // Add title if specified
         if let Some(title) = opts.title {
@@ -956,7 +1003,12 @@ impl Multiplexer for KittyMultiplexer {
         self.parse_pane_id_from_output(&output)
     }
 
-    fn run_command(&self, pane: &PaneId, cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        pane: &PaneId,
+        cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         // Send the command followed by Enter
         let match_arg = format!("id:{}", pane);
         let text_arg = format!("{}\n", cmd);

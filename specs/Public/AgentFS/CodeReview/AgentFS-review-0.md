@@ -13,7 +13,7 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
    * Building paths: `constructPath(for:in:)` uses `name.string ?? ""`. Replace with a byte‑safe path join, or (better) operate by ID wherever possible. 
    * `lookupItem`, `renameItem`, `removeItem`, etc., build C strings from `.string`.  
    * Directory enumeration assumes “buffer contains null‑terminated UTF‑8 strings” and creates `FSFileName(string: entryName)`. Either decode with a lossless byte container or expose a byte‑preserving path.  
-   * Symlink target paths rely on `FSFileName.string`. Prefer bytes or explicitly reject non‑UTF‑8 with a clear error if the core mandates UTF‑8. 
+   * Symlink target paths rely on `FSFileName.string`. Prefer bytes or explicitly reject non‑UTF‑8 with a clear error if the core mandates UTF‑8.
      FSKit doc anchor for the byte contract: **FSFileName – “data buffer.”** 
 
 3. **Open/close semantics: implementation is “single‑handle per item,” which breaks multiple concurrent opens.**
@@ -64,7 +64,7 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
 * **Directory enumeration**:
 
   * The parser assumes UTF‑8 names — not guaranteed. Preserve bytes when turning entries into `FSFileName`. 
-  * The directory **verifier** is a simple hash of `(path, entry_count)`. A verifier should change when *contents* change; just hashing count can produce false negatives. Consider a stable generation counter or combining inode numbers + names (or surface the core’s directory change token if available). 
+  * The directory **verifier** is a simple hash of `(path, entry_count)`. A verifier should change when *contents* change; just hashing count can produce false negatives. Consider a stable generation counter or combining inode numbers + names (or surface the core’s directory change token if available).
 
 * **Item reclamation**: Closing a handle on reclaim is fine, but it depends on the single‑handle model (see “Open/close”). Be sure reclamation only affects the correct open instance. 
 
@@ -98,8 +98,8 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
 
 * **Make names byte‑safe end‑to‑end.**
 
-  * Keep using `af_open_by_id`/`af_create_child_by_id` (👍). 
-  * Replace `constructPath(for:in:)` with an ID‑first strategy. If you must build a path, round‑trip bytes safely (no `String` fallback). 
+  * Keep using `af_open_by_id`/`af_create_child_by_id` (👍).
+  * Replace `constructPath(for:in:)` with an ID‑first strategy. If you must build a path, round‑trip bytes safely (no `String` fallback).
   * In `enumerateDirectory`, build `FSFileName` from the raw byte slice (up to NUL), not from a `String`. 
 
 * **Per‑open handles.** Replace `FSItem.userData` with a map `{openKey → (handle, pid)}` and track refcounts. Update `read/write/close` accordingly. 
@@ -125,22 +125,22 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
 
 * **FSUnaryFileSystemOperations**
 
-  * `probeResource` — too permissive, constant container ID. 
-  * `loadResource` — manual `containerStatus`, custom `NSError`. 
-  * `unloadResource` — fine (cleans up core). 
+  * `probeResource` — too permissive, constant container ID.
+  * `loadResource` — manual `containerStatus`, custom `NSError`.
+  * `unloadResource` — fine (cleans up core).
 
 * **FSVolume.PathConfOperations** — Unbounded values don’t match implementation; fix `maximumXattrSize` and, ideally, `maximumNameLength`. 
 
 * **FSVolume.Operations**
 
   * `activate/deactivate/mount/unmount/synchronize` — stubs are OK at this stage. 
-  * `lookupItem` — builds paths from `FSFileName.string`; switch to bytes/ID. 
-  * `createItem` — good: uses byte‑safe `af_create_child_by_id`. 
-  * `removeItem` — path from string; same name‑safety fix needed. 
-  * `renameItem` — ignores `overItem` semantics. 
-  * `enumerateDirectory` — UTF‑8 assumption & weak verifier.  
-  * `readSymbolicLink` — implemented; consider byte‑level target handling. 
-  * `setAttributes` — relies on `getCallingPid()`; fix caller identity. 
+  * `lookupItem` — builds paths from `FSFileName.string`; switch to bytes/ID.
+  * `createItem` — good: uses byte‑safe `af_create_child_by_id`.
+  * `removeItem` — path from string; same name‑safety fix needed.
+  * `renameItem` — ignores `overItem` semantics.
+  * `enumerateDirectory` — UTF‑8 assumption & weak verifier.
+  * `readSymbolicLink` — implemented; consider byte‑level target handling.
+  * `setAttributes` — relies on `getCallingPid()`; fix caller identity.
 
 * **FSVolume.OpenCloseOperations** — single handle per item isn’t FSKit‑correct; implement per‑open tracking and support `.truncate/.create` intents where delivered. 
 

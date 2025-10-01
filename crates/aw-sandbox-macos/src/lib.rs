@@ -1,10 +1,10 @@
 //! macOS Seatbelt (SBPL) profile utilities and libsandbox FFI bindings.
-//! 
+//!
 //! This crate provides:
 //! - A minimal builder for Seatbelt SBPL profiles focusing on default deny and path-based allowances
 //! - Safe wrappers around `sandbox_init` / `sandbox_free_error` (best-effort; API is deprecated but present)
 //! - A helper to apply a sandbox profile to the current process after optional `chroot(2)`
-//! 
+//!
 //! Notes:
 //! - These APIs are only meaningful on macOS; on other platforms they compile to stubs that error.
 //! - `sandbox_init` is deprecated; when possible, prefer using Endpoint Security for dynamic policies.
@@ -61,8 +61,8 @@ mod macos {
         deny_network: bool,
         deny_process_info_global: bool,
         allow_signal_same_group: bool,
-            deny_apple_events: bool,
-            deny_mach_lookup: bool,
+        deny_apple_events: bool,
+        deny_mach_lookup: bool,
     }
 
     impl SbplBuilder {
@@ -187,7 +187,7 @@ mod macos {
 mod macos {
     #[derive(thiserror::Error, Debug)]
     pub enum Error {
-        #[error("macOS-only functionality is unavailable on this platform")] 
+        #[error("macOS-only functionality is unavailable on this platform")]
         Unavailable,
     }
     pub type Result<T> = std::result::Result<T, Error>;
@@ -207,10 +207,12 @@ mod macos {
         pub fn deny_mach_lookup(self) -> Self { self }
         pub fn build(self) -> String { String::new() }
     }
-    pub fn apply_profile(_: &str) -> Result<()> { Err(Error::Unavailable) }
-    pub fn apply_builder(_: SbplBuilder) -> Result<()> { Err(Error::Unavailable) }
+    pub fn apply_profile(_: &str) -> Result<()> {
+        Err(Error::Unavailable)
+    }
+    pub fn apply_builder(_: SbplBuilder) -> Result<()> {
+        Err(Error::Unavailable)
+    }
 }
 
 pub use macos::*;
-
-

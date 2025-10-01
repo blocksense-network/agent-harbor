@@ -1,6 +1,5 @@
 import {
   Component,
-  createSignal,
   createResource,
   Show,
   For,
@@ -30,7 +29,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
   // Mock branch data - in real implementation this would come from API
   const [branches] = createResource(
     () => props.repository,
-    async (repo) => {
+    async (_repo) => {
       // Mock branches for demo - replace with actual API call
       const mockBranches: Branch[] = [
         { name: "main", isDefault: true },

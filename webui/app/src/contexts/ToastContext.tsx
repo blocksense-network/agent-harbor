@@ -1,9 +1,26 @@
-import { createContext, createSignal, useContext, Component, JSX } from "solid-js";
-import { Toast, ToastType, ToastContainer } from "../components/common/Toast.js";
+import {
+  createContext,
+  createSignal,
+  useContext,
+  Component,
+  JSX,
+} from "solid-js";
+import {
+  Toast,
+  ToastType,
+  ToastAction,
+  ToastContainer,
+} from "../components/common/Toast.js";
 
 interface ToastContextValue {
   toasts: () => Toast[];
   addToast: (type: ToastType, message: string, duration?: number) => void;
+  addToastWithActions: (
+    type: ToastType,
+    message: string,
+    actions?: ToastAction[],
+    duration?: number,
+  ) => void;
   removeToast: (id: string) => void;
 }
 
@@ -27,16 +44,28 @@ export const ToastProvider: Component<ToastProviderProps> = (props) => {
   const addToast = (type: ToastType, message: string, duration?: number) => {
     const id = Math.random().toString(36).substr(2, 9);
     const toast: Toast = { id, type, message, duration };
-    setToasts(prev => [...prev, toast]);
+    setToasts((prev) => [...prev, toast]);
+  };
+
+  const addToastWithActions = (
+    type: ToastType,
+    message: string,
+    actions?: ToastAction[],
+    duration?: number,
+  ) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const toast: Toast = { id, type, message, duration, actions };
+    setToasts((prev) => [...prev, toast]);
   };
 
   const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
   const value: ToastContextValue = {
     toasts,
     addToast,
+    addToastWithActions,
     removeToast,
   };
 

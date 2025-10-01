@@ -3,9 +3,9 @@
 //! This crate provides concrete implementations of the Multiplexer trait
 //! for various terminal multiplexers (tmux, kitty, etc.).
 
-pub mod tmux;
 #[cfg(feature = "kitty")]
 pub mod kitty;
+pub mod tmux;
 
 use aw_mux_core::*;
 
@@ -43,8 +43,9 @@ pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sy
         }
         #[cfg(feature = "kitty")]
         "kitty" => {
-            let kitty = kitty::KittyMultiplexer::new()
-                .map_err(|e| MuxError::Other(format!("Failed to create kitty multiplexer: {}", e)))?;
+            let kitty = kitty::KittyMultiplexer::new().map_err(|e| {
+                MuxError::Other(format!("Failed to create kitty multiplexer: {}", e))
+            })?;
             Ok(Box::new(kitty))
         }
         // Add other multiplexers here

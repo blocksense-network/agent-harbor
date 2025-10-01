@@ -1,7 +1,7 @@
 import { Router } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import { MetaProvider, Title, Meta } from "@solidjs/meta";
-import { MainLayoutWithFooter } from "./components/layout/MainLayout.js";
+import { MainLayout } from "./components/layout/MainLayout.js";
 import { SessionProvider } from "./contexts/SessionContext.js";
 import { DraftProvider } from "./contexts/DraftContext.js";
 import { FocusProvider } from "./contexts/FocusContext.js";
@@ -21,13 +21,21 @@ export default function App() {
   return (
     <MetaProvider>
       <Title>Agent Harbor</Title>
-      <Meta name="description" content="Create and manage AI agent coding sessions" />
+      <Meta
+        name="description"
+        content="Create and manage AI agent coding sessions"
+      />
       <Meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <ToastProvider>
         <SessionProvider>
           <DraftProvider>
             <FocusProvider>
-              <Router url={initialUrl} root={(props) => <MainLayoutWithFooter>{props.children}</MainLayoutWithFooter>}>
+              <Router
+                url={initialUrl}
+                root={(props) => (
+                  <MainLayout>{props.children}</MainLayout>
+                )}
+              >
                 <FileRoutes />
               </Router>
             </FocusProvider>

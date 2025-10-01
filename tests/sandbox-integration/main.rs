@@ -79,14 +79,15 @@ fn test_sbpl_builder_snapshot() {
 #[cfg(target_os = "macos")]
 #[test]
 fn test_aw_macos_launcher_denies_write_outside_tmp() {
-    use std::process::Command;
     use std::path::PathBuf;
+    use std::process::Command;
 
     // Resolve project root using CARGO_MANIFEST_DIR (tests/sandbox-integration)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent() // tests/
         .and_then(|p| p.parent()) // workspace root
-        .expect("failed to resolve project root").to_path_buf();
+        .expect("failed to resolve project root")
+        .to_path_buf();
 
     let launcher_path = project_root.join("target/debug/aw-macos-launcher");
 

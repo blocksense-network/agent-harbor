@@ -5,7 +5,9 @@ interface ErrorBoundaryProps {
   fallback?: (error: any, reset: () => void) => JSX.Element;
 }
 
-const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (props) => {
+const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
+  props,
+) => {
   return (
     <div class="min-h-screen flex items-center justify-center bg-gray-50">
       <div class="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
@@ -16,7 +18,8 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (prop
           Something went wrong
         </h1>
         <p class="text-gray-600 mb-6">
-          An unexpected error occurred. Please try refreshing the page or contact support if the problem persists.
+          An unexpected error occurred. Please try refreshing the page or
+          contact support if the problem persists.
         </p>
         <div class="space-y-3">
           <button
@@ -43,14 +46,18 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (prop
             </summary>
             <div class="mt-2 space-y-2">
               <div>
-                <label class="text-xs font-medium text-gray-700">Error Message:</label>
+                <label class="text-xs font-medium text-gray-700">
+                  Error Message:
+                </label>
                 <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-16 select-text cursor-text">
                   {props.error?.message || "Unknown error"}
                 </pre>
               </div>
               {props.error?.stack && (
                 <div>
-                  <label class="text-xs font-medium text-gray-700">Stack Trace:</label>
+                  <label class="text-xs font-medium text-gray-700">
+                    Stack Trace:
+                  </label>
                   <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-32 select-text cursor-text whitespace-pre-wrap">
                     {props.error.stack}
                   </pre>
@@ -58,7 +65,9 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (prop
               )}
               {props.error?.cause && (
                 <div>
-                  <label class="text-xs font-medium text-gray-700">Cause:</label>
+                  <label class="text-xs font-medium text-gray-700">
+                    Cause:
+                  </label>
                   <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-16 select-text cursor-text">
                     {JSON.stringify(props.error.cause, null, 2)}
                   </pre>

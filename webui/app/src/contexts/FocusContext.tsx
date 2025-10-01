@@ -1,7 +1,14 @@
-import { createContext, useContext, Component, JSX, createSignal, createEffect } from "solid-js";
+import {
+  createContext,
+  useContext,
+  Component,
+  JSX,
+  createSignal,
+  createEffect,
+} from "solid-js";
 
 interface FocusState {
-  focusedElement: 'draft-textarea' | 'session-card' | 'none';
+  focusedElement: "draft-textarea" | "session-card" | "none";
   focusedDraftId?: string;
   focusedSessionId?: string;
 }
@@ -19,37 +26,43 @@ const FocusContext = createContext<FocusContextValue>();
 
 export const FocusProvider: Component<{ children: JSX.Element }> = (props) => {
   const [focusState, setFocusState] = createSignal<FocusState>({
-    focusedElement: 'none'
+    focusedElement: "none",
   });
 
   const setDraftFocus = (draftId: string) => {
     setFocusState({
-      focusedElement: 'draft-textarea',
-      focusedDraftId: draftId
+      focusedElement: "draft-textarea",
+      focusedDraftId: draftId,
     });
   };
 
   const setSessionFocus = (sessionId: string) => {
     setFocusState({
-      focusedElement: 'session-card',
-      focusedSessionId: sessionId
+      focusedElement: "session-card",
+      focusedSessionId: sessionId,
     });
   };
 
   const clearFocus = () => {
     setFocusState({
-      focusedElement: 'none'
+      focusedElement: "none",
     });
   };
 
   const isDraftFocused = (draftId: string) => {
     const state = focusState();
-    return state.focusedElement === 'draft-textarea' && state.focusedDraftId === draftId;
+    return (
+      state.focusedElement === "draft-textarea" &&
+      state.focusedDraftId === draftId
+    );
   };
 
   const isSessionFocused = (sessionId: string) => {
     const state = focusState();
-    return state.focusedElement === 'session-card' && state.focusedSessionId === sessionId;
+    return (
+      state.focusedElement === "session-card" &&
+      state.focusedSessionId === sessionId
+    );
   };
 
   const contextValue: FocusContextValue = {
@@ -58,7 +71,7 @@ export const FocusProvider: Component<{ children: JSX.Element }> = (props) => {
     setSessionFocus,
     clearFocus,
     isDraftFocused,
-    isSessionFocused
+    isSessionFocused,
   };
 
   return (

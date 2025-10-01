@@ -7,11 +7,12 @@ import { getSessions, getDrafts } from "../lib/server-data.js";
 // Simple logger that respects quiet mode for testing
 const logger = {
   log: (...args: any[]) => {
-    const isQuietMode = process.env.QUIET_MODE === 'true' || process.env.NODE_ENV === 'test';
+    const isQuietMode =
+      process.env.QUIET_MODE === "true" || process.env.NODE_ENV === "test";
     if (!isQuietMode) {
       console.log(...args);
     }
-  }
+  },
 };
 
 // Cache server functions for SSR and client reuse
@@ -38,15 +39,19 @@ export const route = {
     logger.log("[Route] Preloading data...");
     const [sessions, drafts] = await Promise.all([
       getSessionsData(),
-      getDraftsData()
+      getDraftsData(),
     ]);
-    logger.log(`[Route] Preloaded ${sessions.items.length} sessions, ${drafts.length} drafts`);
+    logger.log(
+      `[Route] Preloaded ${sessions.items.length} sessions, ${drafts.length} drafts`,
+    );
   },
 } satisfies RouteDefinition;
 
 export default function Dashboard() {
   // Use cached data - deferStream: false blocks SSR until data is ready
-  const sessionsData = createAsync(() => getSessionsData(), { deferStream: false });
+  const sessionsData = createAsync(() => getSessionsData(), {
+    deferStream: false,
+  });
   const draftsData = createAsync(() => getDraftsData(), { deferStream: false });
 
   // DraftProvider is now global (in app.tsx)
@@ -54,7 +59,10 @@ export default function Dashboard() {
   return (
     <>
       <Title>Agent Harbor — Dashboard</Title>
-      <Meta name="description" content="Create and manage AI agent coding sessions with real-time monitoring" />
+      <Meta
+        name="description"
+        content="Create and manage AI agent coding sessions with real-time monitoring"
+      />
       <Show when={sessionsData() && draftsData()}>
         <TaskFeed
           initialSessions={sessionsData()!}

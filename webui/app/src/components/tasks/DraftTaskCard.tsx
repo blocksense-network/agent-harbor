@@ -1,8 +1,18 @@
-import { Component, createSignal, createEffect, onMount, For, Show } from "solid-js";
+import {
+  Component,
+  createSignal,
+  createEffect,
+  onMount,
+  For,
+  Show,
+} from "solid-js";
 import { apiClient, type AgentType, type DraftTask } from "../../lib/api.js";
 import { TomSelectComponent } from "../common/TomSelect.js";
 import { ModelMultiSelect } from "../common/ModelMultiSelect.js";
-import { SaveStatus, type SaveStatus as SaveStatusType } from "../common/SaveStatus.js";
+import {
+  SaveStatus,
+  type SaveStatus as SaveStatusType,
+} from "../common/SaveStatus.js";
 import { useFocus } from "../../contexts/FocusContext.js";
 
 interface Repository {
@@ -28,19 +38,25 @@ interface DraftTaskCardProps {
 
 export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   const [isSubmitting, setIsSubmitting] = createSignal(false);
-  const [modelSelections, setModelSelections] = createSignal<Array<{model: string, instances: number}>>([]);
-  const [autoSaveTimeoutId, setAutoSaveTimeoutId] = createSignal<number | null>(null);
+  const [modelSelections, setModelSelections] =
+    createSignal<Array<{ model: string; instances: number }>>([]);
+  const [autoSaveTimeoutId, setAutoSaveTimeoutId] =
+    createSignal<number | null>(null);
   const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>("saved");
   let textareaRef: HTMLTextAreaElement | undefined;
   const { setDraftFocus, isDraftFocused } = useFocus();
 
   // Convert draft data to local signals for easier handling
   const [localPrompt, setLocalPrompt] = createSignal(props.draft.prompt || "");
-  const [lastSavedPrompt, setLastSavedPrompt] = createSignal(props.draft.prompt || "");
+  const [lastSavedPrompt, setLastSavedPrompt] = createSignal(
+    props.draft.prompt || "",
+  );
 
   // Track save requests to prevent race conditions and text truncation
-  const [currentSaveRequestId, setCurrentSaveRequestId] = createSignal<number | null>(null);
-  const [lastCompletedSaveRequestId, setLastCompletedSaveRequestId] = createSignal<number | null>(null);
+  const [currentSaveRequestId, setCurrentSaveRequestId] =
+    createSignal<number | null>(null);
+  const [lastCompletedSaveRequestId, setLastCompletedSaveRequestId] =
+    createSignal<number | null>(null);
 
   let nextSaveRequestId = 1;
 
@@ -84,10 +100,10 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         setLastSavedPrompt(currentPrompt);
         setLastCompletedSaveRequestId(requestId);
 
-          // Update status to saved only if this is still the current request
-          if (currentSaveRequestId() === requestId) {
-            setSaveStatus("saved");
-          }
+        // Update status to saved only if this is still the current request
+        if (currentSaveRequestId() === requestId) {
+          setSaveStatus("saved");
+        }
       } catch (error) {
         // API failed but still update local state optimistically
         setLastSavedPrompt(currentPrompt);
@@ -103,10 +119,9 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     setAutoSaveTimeoutId(timeoutId);
   };
 
-  
   // Auto-focus textarea when card is selected via keyboard navigation
   createEffect(() => {
-    if (props.isSelected && textareaRef && typeof window !== 'undefined') {
+    if (props.isSelected && textareaRef && typeof window !== "undefined") {
       // Only focus if the textarea doesn't already have focus to avoid interrupting user typing
       if (document.activeElement !== textareaRef) {
         textareaRef.focus();
@@ -114,28 +129,34 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       }
     }
   });
-  
+
   // Handle focus events on textarea
   const handleTextareaFocus = () => {
     setDraftFocus(props.draft.id);
   };
-  
+
   const handleTextareaBlur = () => {
     // Don't clear focus immediately - let keyboard navigation handle it
     // This prevents clearing focus when clicking within the same card
   };
-  
+
   const prompt = () => localPrompt();
   const setPrompt = (value: string) => {
     setLocalPrompt(value);
   };
 
-  const selectedRepo = () => props.draft.repo ? {
-    id: props.draft.repo.url || "unknown",
-    name: props.draft.repo.url ? props.draft.repo.url.split('/').pop()?.replace('.git', '') || "unknown" : "unknown",
-    url: props.draft.repo.url,
-    branch: props.draft.repo.branch
-  } : null;
+  const selectedRepo = () =>
+    props.draft.repo
+      ? {
+          id: props.draft.repo.url || "unknown",
+          name: props.draft.repo.url
+            ? props.draft.repo.url.split("/").pop()?.replace(".git", "") ||
+              "unknown"
+            : "unknown",
+          url: props.draft.repo.url,
+          branch: props.draft.repo.branch,
+        }
+      : null;
 
   const setSelectedRepo = (repo: Repository | null) => {
     if (repo) {
@@ -143,8 +164,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         repo: {
           mode: "git" as const,
           url: repo.url,
-          branch: repo.branch
-        }
+          branch: repo.branch,
+        },
       });
     }
   };
@@ -155,16 +176,28 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       repo: {
         mode: props.draft.repo?.mode || "git",
         url: props.draft.repo?.url,
-        branch
-      }
+        branch,
+      },
     });
   };
 
   // Mock data - in real app, this would come from API
   const [repositories] = createSignal<Repository[]>([
-    { id: "1", name: "agents-workflow-webui", url: "https://github.com/example/agents-workflow-webui.git" },
-    { id: "2", name: "agents-workflow-core", url: "https://github.com/example/agents-workflow-core.git" },
-    { id: "3", name: "agents-workflow-cli", url: "https://github.com/example/agents-workflow-cli.git" },
+    {
+      id: "1",
+      name: "agents-workflow-webui",
+      url: "https://github.com/example/agents-workflow-webui.git",
+    },
+    {
+      id: "2",
+      name: "agents-workflow-core",
+      url: "https://github.com/example/agents-workflow-core.git",
+    },
+    {
+      id: "3",
+      name: "agents-workflow-cli",
+      url: "https://github.com/example/agents-workflow-cli.git",
+    },
   ]);
 
   const [availableModels] = createSignal<string[]>([
@@ -175,25 +208,29 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   ]);
 
   const canSubmit = () => {
-    return prompt().trim() &&
-           selectedRepo() &&
-           selectedBranch() &&
-           (props.draft.agents?.length ?? 0) > 0;
+    return (
+      prompt().trim() &&
+      selectedRepo() &&
+      selectedBranch() &&
+      (props.draft.agents?.length ?? 0) > 0
+    );
   };
 
   const handleRemove = () => {
     props.onRemove();
   };
 
-  const handleModelSelectionChange = (selections: Array<{model: string, instances: number}>) => {
+  const handleModelSelectionChange = (
+    selections: Array<{ model: string; instances: number }>,
+  ) => {
     setModelSelections(selections);
     // Convert model selections to agent format
-    const agents = selections.map(sel => {
-      const [type, ...versionParts] = sel.model.toLowerCase().split(' ');
+    const agents = selections.map((sel) => {
+      const [type, ...versionParts] = sel.model.toLowerCase().split(" ");
       return {
         type,
-        version: versionParts.join('-'),
-        instances: sel.instances
+        version: versionParts.join("-"),
+        instances: sel.instances,
       };
     });
     props.onUpdate({ agents });
@@ -239,7 +276,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Enter key launches task (if valid)
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       if (canSubmit()) {
         e.preventDefault();
         handleSubmit();
@@ -253,8 +290,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     // Initialize model selections from draft agents if available
     if (props.draft.agents && props.draft.agents.length > 0) {
       const initialSelections = props.draft.agents.map((agent: AgentType) => ({
-        model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, ' ')}`,
-        instances: (agent as any).instances || 1
+        model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, " ")}`,
+        instances: (agent as any).instances || 1,
       }));
       setModelSelections(initialSelections);
     }
@@ -266,7 +303,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       class="rounded-lg p-4 relative"
       classList={{
         "bg-blue-50 border-2 border-blue-500": props.isSelected,
-        "bg-white border border-slate-200": !props.isSelected
+        "bg-white border border-slate-200": !props.isSelected,
       }}
     >
       {/* Close button - upper right corner */}
@@ -308,7 +345,9 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       <div class="flex items-center gap-3">
         {/* Left side: balanced selectors with proper widths */}
         <div class="flex flex-col">
-          <label for="repo-select" class="sr-only">Repository</label>
+          <label for="repo-select" class="sr-only">
+            Repository
+          </label>
           <TomSelectComponent
             id="repo-select"
             items={repositories()}
@@ -323,7 +362,9 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         </div>
 
         <div class="flex flex-col">
-          <label for="branch-select" class="sr-only">Branch</label>
+          <label for="branch-select" class="sr-only">
+            Branch
+          </label>
           <TomSelectComponent
             id="branch-select"
             items={["main", "develop", "feature/new-ui", "hotfix/bug-fix"]}
@@ -338,7 +379,9 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         </div>
 
         <div class="flex flex-col">
-          <label for="model-select" class="sr-only">Models</label>
+          <label for="model-select" class="sr-only">
+            Models
+          </label>
           <ModelMultiSelect
             availableModels={availableModels()}
             selectedModels={modelSelections()}
@@ -356,8 +399,10 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             disabled={!canSubmit() || isSubmitting()}
             class="px-5 py-1.5 text-sm rounded-md font-medium transition-colors whitespace-nowrap"
             classList={{
-              "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer": canSubmit() && !isSubmitting(),
-              "bg-slate-300 text-slate-500 cursor-not-allowed": !canSubmit() || isSubmitting()
+              "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer":
+                canSubmit() && !isSubmitting(),
+              "bg-slate-300 text-slate-500 cursor-not-allowed":
+                !canSubmit() || isSubmitting(),
             }}
             aria-label="Create task"
           >

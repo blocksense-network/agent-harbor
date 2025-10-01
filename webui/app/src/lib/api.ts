@@ -159,7 +159,13 @@ export interface RepositoriesListResponse {
 }
 
 export interface SessionEvent {
-  type: "status" | "log" | "progress" | "thinking" | "tool_execution" | "file_edit";
+  type:
+    | "status"
+    | "log"
+    | "progress"
+    | "thinking"
+    | "tool_execution"
+    | "file_edit";
   sessionId: string;
   // Status event fields
   status?: string;
@@ -198,9 +204,10 @@ export interface ApiError {
 // API base URL - proxy-based architecture
 // The SSR server proxies all /api/v1/* requests to the access point daemon
 // Client uses relative URLs; SSR uses absolute localhost URLs
-const API_BASE = typeof window !== 'undefined' 
-  ? "/api/v1"  // Browser: use proxy
-  : "http://localhost:3002/api/v1";  // SSR: call SSR server's proxy
+const API_BASE =
+  typeof window !== "undefined"
+    ? "/api/v1" // Browser: use proxy
+    : "http://localhost:3002/api/v1"; // SSR: call SSR server's proxy
 
 class ApiClient {
   private async request<T>(
@@ -306,12 +313,12 @@ class ApiClient {
     };
 
     // Listen for specific event types
-    eventSource.addEventListener('status', handleEvent);
-    eventSource.addEventListener('thinking', handleEvent);
-    eventSource.addEventListener('tool_execution', handleEvent);
-    eventSource.addEventListener('file_edit', handleEvent);
-    eventSource.addEventListener('progress', handleEvent);
-    eventSource.addEventListener('log', handleEvent);
+    eventSource.addEventListener("status", handleEvent);
+    eventSource.addEventListener("thinking", handleEvent);
+    eventSource.addEventListener("tool_execution", handleEvent);
+    eventSource.addEventListener("file_edit", handleEvent);
+    eventSource.addEventListener("progress", handleEvent);
+    eventSource.addEventListener("log", handleEvent);
 
     // Fallback for generic messages
     eventSource.onmessage = handleEvent;
@@ -353,14 +360,19 @@ class ApiClient {
     return this.request("/drafts");
   }
 
-  async createDraft(draft: Partial<Omit<DraftTask, "id" | "createdAt" | "updatedAt">>): Promise<{ id: string; createdAt: string; updatedAt: string }> {
+  async createDraft(
+    draft: Partial<Omit<DraftTask, "id" | "createdAt" | "updatedAt">>,
+  ): Promise<{ id: string; createdAt: string; updatedAt: string }> {
     return this.request("/drafts", {
       method: "POST",
       body: JSON.stringify(draft),
     });
   }
 
-  async updateDraft(id: string, updates: Partial<Omit<DraftTask, "id" | "createdAt" | "updatedAt">>): Promise<DraftTask> {
+  async updateDraft(
+    id: string,
+    updates: Partial<Omit<DraftTask, "id" | "createdAt" | "updatedAt">>,
+  ): Promise<DraftTask> {
     return this.request(`/drafts/${id}`, {
       method: "PUT",
       body: JSON.stringify(updates),

@@ -1,16 +1,12 @@
-import { Component, createSignal, onMount, onCleanup, Show } from "solid-js";
+import { Component, createSignal, onMount, Show } from "solid-js";
 
-export type FooterContext = 
-  | "task-feed" 
-  | "draft-task" 
-  | "modal"
-  | "default";
+export type FooterContext = "task-feed" | "draft-task" | "modal" | "default";
 
 interface KeyboardShortcutsFooterProps {
   onNewTask?: () => void;
   agentCount?: number;
   focusState?: {
-    focusedElement: 'draft-textarea' | 'session-card' | 'none';
+    focusedElement: "draft-textarea" | "session-card" | "none";
     focusedDraftId?: string;
     focusedSessionId?: string;
   };
@@ -21,19 +17,19 @@ export const KeyboardShortcutsFooter: Component<KeyboardShortcutsFooterProps> = 
 
   // Detect platform for keyboard shortcut display
   onMount(() => {
-    if (typeof window !== 'undefined') {
-      setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+    if (typeof window !== "undefined") {
+      setIsMac(navigator.platform.toUpperCase().indexOf("MAC") >= 0);
     }
   });
 
   // Determine context based on focus state
   const getContext = (): FooterContext => {
     if (!props.focusState) return "default";
-    
+
     switch (props.focusState.focusedElement) {
-      case 'draft-textarea':
+      case "draft-textarea":
         return "draft-task";
-      case 'session-card':
+      case "session-card":
         return "task-feed";
       default:
         return "default";
@@ -43,24 +39,25 @@ export const KeyboardShortcutsFooter: Component<KeyboardShortcutsFooterProps> = 
   // Get dynamic shortcut text based on focus state
   const getEnterShortcut = () => {
     const context = getContext();
-    
+
     switch (context) {
-      case "draft-task":
+      case "draft-task": {
         const agentCount = props.agentCount || 0;
         return agentCount > 1 ? "Launch Agents" : "Launch Agent";
+      }
       case "task-feed":
         return "Review Session Details";
       default:
         return "Go";
     }
   };
-  
-  const handleNewTask = () => {
+
+  const _handleNewTask = () => {
     props.onNewTask?.();
   };
 
-  const modKey = () => isMac() ? "Cmd" : "Ctrl";
-  const agentText = () => {
+  const modKey = () => (isMac() ? "Cmd" : "Ctrl");
+  const _agentText = () => {
     const count = props.agentCount || 0;
     return count === 1 ? "Agent" : "Agents";
   };
@@ -86,7 +83,11 @@ export const KeyboardShortcutsFooter: Component<KeyboardShortcutsFooterProps> = 
       </div>
 
       {/* Context-sensitive shortcuts on the right */}
-      <div class="flex items-center gap-2" role="toolbar" aria-label="Keyboard shortcuts">
+      <div
+        class="flex items-center gap-2"
+        role="toolbar"
+        aria-label="Keyboard shortcuts"
+      >
         <Show when={getContext() === "task-feed"}>
           {/* Informational shortcuts (non-clickable but styled like buttons) */}
           <div class="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs text-gray-700 border border-gray-200">

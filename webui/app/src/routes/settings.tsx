@@ -4,7 +4,10 @@ export default function Settings() {
   return (
     <>
       <Title>Agent Harbor — Settings</Title>
-      <Meta name="description" content="Configure Agent Harbor settings including tenant configuration, RBAC, API keys, and IDE integration" />
+      <Meta
+        name="description"
+        content="Configure Agent Harbor settings including tenant configuration, RBAC, API keys, and IDE integration"
+      />
       <div class="flex-1 p-6">
         <div class="max-w-4xl mx-auto">
           <h1 class="text-2xl font-bold text-gray-900 mb-6">Settings</h1>

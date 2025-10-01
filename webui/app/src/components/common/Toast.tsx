@@ -2,11 +2,18 @@ import { Component, createSignal, onMount, onCleanup, For } from "solid-js";
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  variant?: "primary" | "secondary" | "danger";
+}
+
 export interface Toast {
   id: string;
   type: ToastType;
   message: string;
   duration?: number;
+  actions?: ToastAction[];
 }
 
 interface ToastItemProps {
@@ -28,7 +35,8 @@ const ToastItem: Component<ToastItemProps> = (props) => {
   });
 
   const getToastStyles = (type: ToastType) => {
-    const baseStyles = "flex items-center p-4 mb-4 text-sm rounded-lg transition-all duration-300";
+    const baseStyles =
+      "flex items-center p-4 mb-4 text-sm rounded-lg transition-all duration-300";
 
     switch (type) {
       case "success":
@@ -66,18 +74,39 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       aria-live="assertive"
     >
       <div class="flex-shrink-0 mr-3">
-        <span class="text-lg" aria-hidden="true">{getIcon(props.toast.type)}</span>
+        <span class="text-lg" aria-hidden="true">
+          {getIcon(props.toast.type)}
+        </span>
       </div>
-      <div class="flex-1 font-medium">
-        {props.toast.message}
+      <div class="flex-1 font-medium">{props.toast.message}</div>
+      <div class="flex items-center space-x-2 ml-3">
+        <For each={props.toast.actions}>
+          {(action) => (
+            <button
+              onClick={() => {
+                action.onClick();
+                props.onRemove(props.toast.id);
+              }}
+              class={`px-3 py-1 text-sm font-medium rounded transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 ${
+                action.variant === "danger"
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : action.variant === "secondary"
+                    ? "bg-gray-600 text-white hover:bg-gray-700"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+            >
+              {action.label}
+            </button>
+          )}
+        </For>
+        <button
+          onClick={() => props.onRemove(props.toast.id)}
+          class="flex-shrink-0 text-current hover:opacity-75 transition-opacity focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 rounded p-1"
+          aria-label="Dismiss notification"
+        >
+          <span class="text-lg" aria-hidden="true">×</span>
+        </button>
       </div>
-      <button
-        onClick={() => props.onRemove(props.toast.id)}
-        class="ml-3 flex-shrink-0 text-current hover:opacity-75 transition-opacity focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 rounded"
-        aria-label="Dismiss notification"
-      >
-        <span class="text-lg" aria-hidden="true">×</span>
-      </button>
     </div>
   );
 };

@@ -3,11 +3,11 @@ use aw_sandbox_macos::{apply_builder, SbplBuilder};
 use clap::Parser;
 use libc::{chdir, chroot, execv};
 use std::ffi::CString;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "aw-macos-launcher", about = "macOS sandbox launcher")] 
+#[command(name = "aw-macos-launcher", about = "macOS sandbox launcher")]
 struct Args {
     /// Path to use as the new root (already bound to AgentFS mount)
     #[arg(long)]
@@ -50,21 +50,33 @@ fn main() -> Result<()> {
     if let Some(root) = args.root.as_deref() {
         let c = CString::new(root)?;
         let rc = unsafe { chroot(c.as_ptr()) };
-        if rc != 0 { bail!("chroot to {} failed", root); }
+        if rc != 0 {
+            bail!("chroot to {} failed", root);
+        }
     }
     if let Some(wd) = args.workdir.as_deref() {
         let c = CString::new(wd)?;
         let rc = unsafe { chdir(c.as_ptr()) };
-        if rc != 0 { bail!("chdir to {} failed", wd); }
+        if rc != 0 {
+            bail!("chdir to {} failed", wd);
+        }
     }
 
     // Build and apply SBPL
     let mut builder = SbplBuilder::new();
-    for p in &args.allow_read { builder = builder.allow_read_subpath(p.clone()); }
-    for p in &args.allow_write { builder = builder.allow_write_subpath(p.clone()); }
-    for p in &args.allow_exec { builder = builder.allow_exec_subpath(p.clone()); }
-    if args.allow_network { builder = builder.allow_network(); }
-    if args.harden_process { 
+    for p in &args.allow_read {
+        builder = builder.allow_read_subpath(p.clone());
+    }
+    for p in &args.allow_write {
+        builder = builder.allow_write_subpath(p.clone());
+    }
+    for p in &args.allow_exec {
+        builder = builder.allow_exec_subpath(p.clone());
+    }
+    if args.allow_network {
+        builder = builder.allow_network();
+    }
+    if args.harden_process {
         builder = builder.harden_process_info().allow_signal_same_group();
     }
     apply_builder(builder).context("applying seatbelt profile failed")?;
@@ -77,7 +89,8 @@ fn main() -> Result<()> {
     } else {
         resolve_in_path(prog_str)
     };
-    let path = resolved.ok_or_else(|| anyhow::anyhow!(format!("program not found in PATH: {}", prog_str)))?;
+    let path = resolved
+        .ok_or_else(|| anyhow::anyhow!(format!("program not found in PATH: {}", prog_str)))?;
     prog_c = CString::new(path.to_string_lossy().into_owned())?;
 
     let c_args: Vec<CString> = args
@@ -119,5 +132,3 @@ fn is_executable(path: &PathBuf) -> bool {
         false
     }
 }
-
-

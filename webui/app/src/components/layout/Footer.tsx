@@ -5,7 +5,7 @@ export interface FooterProps {
   onNewDraft?: () => void;
   agentCount?: number;
   focusState?: {
-    focusedElement: 'draft-textarea' | 'session-card' | 'none';
+    focusedElement: "draft-textarea" | "session-card" | "none";
     focusedDraftId?: string;
     focusedSessionId?: string;
   };
@@ -13,7 +13,7 @@ export interface FooterProps {
 
 export const Footer: Component<FooterProps> = (props) => {
   return (
-    <KeyboardShortcutsFooter 
+    <KeyboardShortcutsFooter
       onNewTask={props.onNewDraft}
       agentCount={props.agentCount || 0}
       focusState={props.focusState}

@@ -1,4 +1,11 @@
-import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  onMount,
+  onCleanup,
+  For,
+  Show,
+} from "solid-js";
 
 interface PopupSelectorProps<T> {
   items: T[];
@@ -25,8 +32,8 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
     const term = searchTerm().toLowerCase();
     if (!term) return props.items;
 
-    return props.items.filter(item =>
-      props.getDisplayText(item).toLowerCase().includes(term)
+    return props.items.filter((item) =>
+      props.getDisplayText(item).toLowerCase().includes(term),
     );
   };
 
@@ -37,11 +44,13 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex(prev => Math.min(prev + 1, filteredItems().length - 1));
+        setSelectedIndex((prev) =>
+          Math.min(prev + 1, filteredItems().length - 1),
+        );
         break;
       case "ArrowUp":
         e.preventDefault();
-        setSelectedIndex(prev => Math.max(prev - 1, 0));
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
         break;
       case "Enter":
         e.preventDefault();
@@ -79,8 +88,10 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
   // Close popup when clicking outside
   const handleClickOutside = (e: MouseEvent) => {
     if (
-      buttonRef && !buttonRef.contains(e.target as Node) &&
-      listRef && !listRef.contains(e.target as Node)
+      buttonRef &&
+      !buttonRef.contains(e.target as Node) &&
+      listRef &&
+      !listRef.contains(e.target as Node)
     ) {
       setIsOpen(false);
     }
@@ -120,7 +131,9 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
           <span>{props.icon}</span>
         </Show>
         <span>
-          {props.selectedItem ? props.getDisplayText(props.selectedItem) : props.placeholder}
+          {props.selectedItem
+            ? props.getDisplayText(props.selectedItem)
+            : props.placeholder}
         </span>
         <span class="ml-1">▼</span>
       </button>
@@ -140,18 +153,16 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
           </div>
 
           {/* Items list */}
-          <ul
-            ref={listRef}
-            role="listbox"
-            class="max-h-60 overflow-y-auto"
-          >
+          <ul ref={listRef} role="listbox" class="max-h-60 overflow-y-auto">
             <For each={filteredItems()}>
               {(item, index) => (
                 <li
                   role="option"
                   aria-selected={index() === selectedIndex()}
                   class={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
-                    index() === selectedIndex() ? "bg-blue-50 text-blue-700" : ""
+                    index() === selectedIndex()
+                      ? "bg-blue-50 text-blue-700"
+                      : ""
                   }`}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setSelectedIndex(index())}
