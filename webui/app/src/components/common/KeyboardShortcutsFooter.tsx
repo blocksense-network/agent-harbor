@@ -2,7 +2,7 @@ import { Component, createSignal, onMount, Show } from "solid-js";
 
 export type FooterContext = "task-feed" | "draft-task" | "modal" | "default";
 
-interface KeyboardShortcutsFooterProps {
+export interface KeyboardShortcutsFooterProps {
   onNewTask?: () => void;
   agentCount?: number;
   focusState?: {

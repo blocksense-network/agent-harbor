@@ -43,8 +43,12 @@ export const ToastProvider: Component<ToastProviderProps> = (props) => {
 
   const addToast = (type: ToastType, message: string, duration?: number) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const toast: any = { id, type, message };
-    if (duration !== undefined) toast.duration = duration;
+    const toast: Toast = {
+      id,
+      type,
+      message,
+      ...(duration !== undefined && { duration }),
+    };
     setToasts((prev) => [...prev, toast]);
   };
 
@@ -55,9 +59,13 @@ export const ToastProvider: Component<ToastProviderProps> = (props) => {
     duration?: number,
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const toast: any = { id, type, message };
-    if (duration !== undefined) toast.duration = duration;
-    if (actions !== undefined) toast.actions = actions;
+    const toast: Toast = {
+      id,
+      type,
+      message,
+      ...(duration !== undefined && { duration }),
+      ...(actions !== undefined && { actions }),
+    };
     setToasts((prev) => [...prev, toast]);
   };
 

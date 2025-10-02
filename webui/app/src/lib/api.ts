@@ -19,7 +19,7 @@ export interface Runtime {
 export interface Agent {
   type: string;
   version: string;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
 }
 
 export interface Delivery {
@@ -81,7 +81,7 @@ export interface Session {
     logs: string;
   };
   // Last 3 events for SSR pre-population (active sessions only)
-  recent_events?: SessionEvent[];
+  recent_events?: (SessionEvent | Record<string, unknown>)[];
 }
 
 export interface SessionsListResponse {
@@ -125,28 +125,38 @@ export interface RepositoryItem {
   url?: string;
 }
 
-export interface DraftTask {
-  id: string;
+// Server contract for creating drafts
+export interface DraftCreate {
   prompt: string;
-  repo?: {
+  repo: {
     mode: "git" | "upload" | "none";
     url?: string;
     branch?: string;
   };
-  agents?: Array<{
+  agents: Array<{
     type: string;
     version: string;
     instances: number;
   }>;
-  runtime?: {
+  runtime: {
     type: "devcontainer" | "local" | "disabled";
   };
-  delivery?: {
+  delivery: {
     mode: "pr" | "branch" | "patch";
   };
+}
+
+// Full draft task returned by server (includes server-managed fields)
+export interface DraftTask extends DraftCreate {
+  id: string;
   createdAt: string;
   updatedAt: string;
 }
+
+// Updates to draft tasks (excludes server-managed fields)
+export type DraftUpdate = Partial<
+  Omit<DraftTask, "id" | "createdAt" | "updatedAt">
+>;
 
 export interface RepositoriesListResponse {
   items: RepositoryItem[];
@@ -158,37 +168,63 @@ export interface RepositoriesListResponse {
   };
 }
 
-export interface SessionEvent {
-  type:
-    | "status"
-    | "log"
-    | "progress"
-    | "thinking"
-    | "tool_execution"
-    | "file_edit";
+// Discriminated union for session events
+export type SessionEvent =
+  | StatusEvent
+  | LogEvent
+  | ProgressEvent
+  | ThinkingEvent
+  | ToolExecutionEvent
+  | FileEditEvent;
+
+export interface StatusEvent {
+  type: "status";
   sessionId: string;
-  // Status event fields
-  status?: string;
-  // Log event fields
-  level?: string;
-  message?: string;
-  // Progress event fields
-  progress?: number;
-  stage?: string;
-  // Thinking event fields
-  thought?: string;
-  // Tool execution event fields
-  tool_name?: string;
-  tool_args?: Record<string, any>;
+  status: string;
+  ts: string;
+}
+
+export interface LogEvent {
+  type: "log";
+  sessionId: string;
+  level: string;
+  message: string;
+  ts: string;
+}
+
+export interface ProgressEvent {
+  type: "progress";
+  sessionId: string;
+  progress: number;
+  stage: string;
+  ts: string;
+}
+
+export interface ThinkingEvent {
+  type: "thinking";
+  sessionId: string;
+  thought: string;
+  ts: string;
+}
+
+export interface ToolExecutionEvent {
+  type: "tool_execution";
+  sessionId: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
   tool_output?: string;
   tool_status?: string;
   last_line?: string;
-  // File edit event fields
-  file_path?: string;
+  ts: string;
+}
+
+export interface FileEditEvent {
+  type: "file_edit";
+  sessionId: string;
+  file_path: string;
   lines_added?: number;
   lines_removed?: number;
   diff_preview?: string;
-  // Common
   ts: string;
 }
 
@@ -304,9 +340,14 @@ class ApiClient {
     const eventSource = new EventSource(`${API_BASE}/sessions/${id}/events`);
 
     // Handle all event types sent by the server
-    const handleEvent = (event: MessageEvent) => {
+    const handleEvent = (event: MessageEvent<string>) => {
       try {
-        const data = JSON.parse(event.data);
+        const parsedData = JSON.parse(event.data);
+        // Add type field based on SSE event type for discriminated union
+        const data: SessionEvent = {
+          ...parsedData,
+          type: event.type as SessionEvent["type"],
+        };
         onEvent(data);
       } catch (error) {
         console.error("Failed to parse SSE event:", error);
@@ -361,19 +402,14 @@ class ApiClient {
     return this.request("/drafts");
   }
 
-  async createDraft(
-    draft: Partial<Omit<DraftTask, "id" | "createdAt" | "updatedAt">>,
-  ): Promise<{ id: string; createdAt: string; updatedAt: string }> {
+  async createDraft(draft: DraftCreate): Promise<DraftTask> {
     return this.request("/drafts", {
       method: "POST",
       body: JSON.stringify(draft),
     });
   }
 
-  async updateDraft(
-    id: string,
-    updates: Partial<Omit<DraftTask, "id" | "createdAt" | "updatedAt">>,
-  ): Promise<DraftTask> {
+  async updateDraft(id: string, updates: DraftUpdate): Promise<DraftTask> {
     return this.request(`/drafts/${id}`, {
       method: "PUT",
       body: JSON.stringify(updates),

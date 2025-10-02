@@ -6,7 +6,7 @@ import { getSessions, getDrafts } from "../lib/server-data.js";
 
 // Simple logger that respects quiet mode for testing
 const logger = {
-  log: (...args: any[]) => {
+  log: (...args: unknown[]) => {
     const isQuietMode =
       process.env["QUIET_MODE"] === "true" ||
       process.env["NODE_ENV"] === "test";

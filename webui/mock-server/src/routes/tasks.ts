@@ -140,19 +140,23 @@ let mockSessions: any[] = [
     // Pre-populate last 3 events for SSR
     recent_events: [
       {
+        sessionId: '01HVZ6K9T1N8S6M3V3Q3F0X4',
         thought: 'Analyzing query performance in database layer',
         ts: new Date(Date.now() - 300000).toISOString(),
       },
       {
+        sessionId: '01HVZ6K9T1N8S6M3V3Q3F0X4',
         tool_name: 'search_codebase',
         tool_output: 'Found 12 slow queries',
         tool_status: 'success',
         ts: new Date(Date.now() - 240000).toISOString(),
       },
       {
+        sessionId: '01HVZ6K9T1N8S6M3V3Q3F0X4',
         file_path: 'src/db/queries.ts',
         lines_added: 15,
         lines_removed: 8,
+        diff_preview: '+  queryBuilder.where({ status: "active" })',
         ts: new Date(Date.now() - 180000).toISOString(),
       },
     ],
@@ -190,19 +194,23 @@ let mockSessions: any[] = [
     // Pre-populate last 3 events for SSR
     recent_events: [
       {
+        sessionId: '01HVZ6K9T1N8S6M3V3Q3F0X5',
         tool_name: 'read_file',
         tool_output: 'File read successfully (342 lines)',
         tool_status: 'success',
         ts: new Date(Date.now() - 200000).toISOString(),
       },
       {
+        sessionId: '01HVZ6K9T1N8S6M3V3Q3F0X5',
         thought: 'Planning test scenarios for checkout flow',
         ts: new Date(Date.now() - 150000).toISOString(),
       },
       {
+        sessionId: '01HVZ6K9T1N8S6M3V3Q3F0X5',
         file_path: 'tests/e2e/checkout.spec.ts',
         lines_added: 45,
         lines_removed: 0,
+        diff_preview: '+  test("completes checkout with valid payment", async ({ page }) => {',
         ts: new Date(Date.now() - 100000).toISOString(),
       },
     ],

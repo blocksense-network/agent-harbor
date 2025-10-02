@@ -95,7 +95,8 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
   const session = () => props.session;
 
   // Convert recent_events from session to ActivityRow[] format
-  const convertEventToRow = (event: SessionEvent): ActivityRow | null => {
+  const convertEventToRow = (event: any): ActivityRow | null => {
+    // For recent_events that don't have type field, infer from properties
     if (event.thought) {
       return { type: "thinking", text: event.thought };
     } else if (event.file_path) {
@@ -110,7 +111,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         // Tool completed
         return {
           type: "tool",
-          name: event.tool_name!,
+          name: event.tool_name,
           output: event.tool_output,
           status: event.tool_status,
         } as ActivityRow;
@@ -163,13 +164,12 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
       (event: SessionEvent) => {
         console.log(`[SessionCard ${session().id}] SSE event received:`, event);
 
-        // Update status (direct property, not via type field)
-        if (event.status) {
+        // Update status
+        if (event.type === "status") {
           console.log(
             `[SessionCard ${session().id}] Updating status to:`,
             event.status,
           );
-          // Type assertion needed due to SessionEvent having generic string vs Session having specific union
           setSessionStatus(event.status as Session["status"]);
         }
 
@@ -177,7 +177,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         const current = liveActivity();
 
         // Thinking event - adds new row, scrolls up
-        if (event.thought) {
+        if (event.type === "thinking") {
           const newRow: ActivityRow = { type: "thinking", text: event.thought };
           const newRows = [...current.rows, newRow].slice(-3); // Keep last 3
           setLiveActivity({ ...current, rows: newRows });
@@ -187,7 +187,11 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         }
 
         // Tool start - adds new row, scrolls up, tracks tool name
-        else if (event.tool_name && !event.last_line && !event.tool_output) {
+        else if (
+          event.type === "tool_execution" &&
+          !event.tool_output &&
+          !event.last_line
+        ) {
           const newRow: ActivityRow = { type: "tool", name: event.tool_name };
           const newRows = [...current.rows, newRow].slice(-3); // Keep last 3
           setLiveActivity({ rows: newRows, currentTool: event.tool_name });
@@ -197,7 +201,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         }
 
         // Tool last_line - updates current tool row IN PLACE, no scroll
-        else if (event.tool_name && event.last_line) {
+        else if (event.type === "tool_execution" && event.last_line) {
           const newRows = current.rows.map((row) => {
             if (row.type === "tool" && row.name === current.currentTool) {
               return { ...row, lastLine: event.last_line };
@@ -211,7 +215,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         }
 
         // Tool complete - replaces tool row with completion, clears currentTool
-        else if (event.tool_name && event.tool_output) {
+        else if (event.type === "tool_execution" && event.tool_output) {
           const newRows = current.rows.map((row) => {
             if (row.type === "tool" && row.name === current.currentTool) {
               return {
@@ -233,7 +237,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         }
 
         // File edit event - adds new row, scrolls up
-        else if (event.file_path) {
+        else if (event.type === "file_edit") {
           const newRow: ActivityRow = {
             type: "file",
             path: event.file_path,

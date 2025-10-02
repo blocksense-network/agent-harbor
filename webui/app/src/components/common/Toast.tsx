@@ -87,37 +87,28 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       <div class="flex-1 font-medium">{props.toast.message}</div>
       <div class="ml-3 flex items-center space-x-2">
         <For each={props.toast.actions}>
-          {(action) => (
-            <button
-              onClick={() => {
-                action.onClick();
-                props.onRemove(props.toast.id);
-              }}
-              class={`
-                rounded px-3 py-1 text-sm font-medium transition-colors
-                focus-visible:ring-2 focus-visible:ring-blue-500
-                focus-visible:ring-offset-2
-                ${
-                  action.variant === "danger"
-                    ? `
-                      bg-red-600 text-white
-                      hover:bg-red-700
-                    `
-                    : action.variant === "secondary"
-                      ? `
-                        bg-gray-600 text-white
-                        hover:bg-gray-700
-                      `
-                      : `
-                        bg-blue-600 text-white
-                        hover:bg-blue-700
-                      `
-                }
-              `}
-            >
-              {action.label}
-            </button>
-          )}
+          {(action) => {
+            const variant = action.variant ?? "primary";
+            const baseClasses =
+              "rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2";
+            const variantClasses: Record<typeof variant, string> = {
+              danger: "bg-red-600 text-white hover:bg-red-700",
+              secondary: "bg-gray-600 text-white hover:bg-gray-700",
+              primary: "bg-blue-600 text-white hover:bg-blue-700",
+            };
+
+            return (
+              <button
+                onClick={() => {
+                  action.onClick();
+                  props.onRemove(props.toast.id);
+                }}
+                class={`${baseClasses} ${variantClasses[variant]}`}
+              >
+                {action.label}
+              </button>
+            );
+          }}
         </For>
         <button
           onClick={() => props.onRemove(props.toast.id)}

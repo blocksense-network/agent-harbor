@@ -16,6 +16,12 @@ interface Repository {
   lastCommit: string;
 }
 
+// Type for Tom Select option data
+interface RepositoryOptionData {
+  name: string;
+  branch: string;
+}
+
 interface RepositorySelectorProps {
   value?: string;
   onChange: (value: string) => void;
@@ -58,13 +64,13 @@ export const RepositorySelector: Component<RepositorySelectorProps> = (
       maxOptions: 100,
       closeAfterSelect: true,
       render: {
-        option: (data: any, escape: (s: string) => string) => {
+        option: (data: RepositoryOptionData, escape: (s: string) => string) => {
           return `<div class="flex items-center justify-between">
             <span>${escape(data.name)}</span>
             <span class="text-xs text-gray-500 ml-2">${escape(data.branch)}</span>
           </div>`;
         },
-        item: (data: any, escape: (s: string) => string) => {
+        item: (data: RepositoryOptionData, escape: (s: string) => string) => {
           return `<div class="flex items-center justify-between">
             <span>${escape(data.name)}</span>
             <span class="text-xs text-gray-500 ml-2">${escape(data.branch)}</span>
@@ -98,10 +104,10 @@ export const RepositorySelector: Component<RepositorySelectorProps> = (
   return (
     <select
       ref={selectEl}
-      class={`
-        ${props.class}
-        ${props.disabled ? "cursor-not-allowed bg-gray-100" : ""}
-      `}
+      class={props.class}
+      classList={{
+        "cursor-not-allowed bg-gray-100": !!props.disabled,
+      }}
       disabled={props.disabled}
     >
       <Show when={repositories()}>

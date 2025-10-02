@@ -466,7 +466,7 @@ router.get('/:id/events', (req, res) => {
         
         if (lastLineIndex < tool.lastLines.length) {
           // Send next last_line update (IN PLACE update) - RAPID FIRE
-          sendEvent('tool_last_line', {
+          sendEvent('tool_execution', {
             sessionId: session.id,
             tool_name: tool.name,
             last_line: tool.lastLines[lastLineIndex],
@@ -476,7 +476,7 @@ router.get('/:id/events', (req, res) => {
           sentLastLine = true;
         } else {
           // Tool execution complete - send completion event
-          sendEvent('tool_complete', {
+          sendEvent('tool_execution', {
             sessionId: session.id,
             tool_name: tool.name,
             tool_output: tool.output,
@@ -503,7 +503,7 @@ router.get('/:id/events', (req, res) => {
             const tool = toolExecutions[Math.floor(Math.random() * toolExecutions.length)];
             
             // Send tool start event (tool_name only, no last_line or output)
-            sendEvent('tool_start', {
+            sendEvent('tool_execution', {
               sessionId: session.id,
               tool_name: tool.name,
               tool_args: tool.args,

@@ -18,8 +18,10 @@ describe("ErrorBoundary", () => {
       throw new Error("Test error");
     };
 
-    const customFallback = (error: any, _reset: () => void) => (
-      <div>Custom error: {error.message}</div>
+    const customFallback = (error: unknown, _reset: () => void) => (
+      <div>
+        Custom error: {error instanceof Error ? error.message : "Unknown error"}
+      </div>
     );
 
     render(() => (

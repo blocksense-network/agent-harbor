@@ -15,7 +15,7 @@ interface TomSelectProps<T = string> {
 
 export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   let selectRef: HTMLSelectElement | undefined;
-  let tomSelectInstance: any = null;
+  let tomSelectInstance: TomSelect | undefined;
 
   onMount(() => {
     if (!selectRef || typeof window === "undefined") return;
@@ -33,7 +33,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
       },
     });
 
-    // Apply custom styling to make dropdowns fully opaque and properly positioned
+    // Workaround: prevent dropdown translucency overlapping footer in dark mode
     if (tomSelectInstance.dropdown) {
       tomSelectInstance.dropdown.style.backgroundColor = "#ffffff";
       tomSelectInstance.dropdown.style.border = "1px solid #cccccc";
@@ -52,16 +52,16 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   // Update options when items change
   createEffect(() => {
     if (tomSelectInstance && typeof window !== "undefined") {
-      tomSelectInstance.clearOptions();
+      tomSelectInstance!.clearOptions();
 
       props.items.forEach((item) => {
-        tomSelectInstance.addOption({
+        tomSelectInstance!.addOption({
           value: props.getKey(item),
           text: props.getDisplayText(item),
         });
       });
 
-      tomSelectInstance.refreshOptions(false);
+      tomSelectInstance!.refreshOptions(false);
     }
   });
 
@@ -71,17 +71,14 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
       const newValue = props.selectedItem
         ? props.getKey(props.selectedItem)
         : "";
-      if (tomSelectInstance.getValue() !== newValue) {
-        tomSelectInstance.setValue(newValue, true);
+      if (tomSelectInstance!.getValue() !== newValue) {
+        tomSelectInstance!.setValue(newValue, true);
       }
     }
   });
 
   onCleanup(() => {
-    if (tomSelectInstance) {
-      tomSelectInstance.destroy();
-      tomSelectInstance = null;
-    }
+    tomSelectInstance?.destroy();
   });
 
   return (

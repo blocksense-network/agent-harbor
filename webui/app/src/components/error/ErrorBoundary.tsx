@@ -2,20 +2,20 @@ import { Component, ErrorBoundary as SolidErrorBoundary, JSX } from "solid-js";
 
 interface ErrorBoundaryProps {
   children: JSX.Element;
-  fallback?: (error: any, reset: () => void) => JSX.Element;
+  fallback?: (error: unknown, reset: () => void) => JSX.Element;
 }
 
-const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
+const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (
   props,
 ) => {
   return (
     <div class="flex min-h-screen items-center justify-center bg-gray-50">
       <div class="w-full max-w-md rounded-lg bg-white p-6 text-center shadow-lg">
         <div
-          class={`
-            mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full
-            bg-red-100
-          `}
+          class="
+          mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full
+          bg-red-100
+        "
         >
           <span class="text-3xl text-red-600">⚠️</span>
         </div>
@@ -75,10 +75,12 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
                     text-xs select-text
                   `}
                 >
-                  {props.error?.message || "Unknown error"}
+                  {props.error instanceof Error
+                    ? props.error.message
+                    : "Unknown error"}
                 </pre>
               </div>
-              {props.error?.stack && (
+              {props.error instanceof Error && props.error.stack && (
                 <div>
                   <label class="text-xs font-medium text-gray-700">
                     Stack Trace:
@@ -93,21 +95,17 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
                   </pre>
                 </div>
               )}
-              {props.error?.cause && (
+              {props.error instanceof Error &&
+              (props.error as Error & { cause?: unknown }).cause ? (
                 <div>
                   <label class="text-xs font-medium text-gray-700">
                     Cause:
                   </label>
-                  <pre
-                    class={`
-                      max-h-16 cursor-text overflow-auto rounded bg-gray-100 p-2
-                      text-xs select-text
-                    `}
-                  >
-                    {JSON.stringify(props.error.cause, null, 2)}
+                  <pre class="max-h-16 cursor-text overflow-auto rounded bg-gray-100 p-2 text-xs select-text">
+                    {String((props.error as Error & { cause?: unknown }).cause)}
                   </pre>
                 </div>
-              )}
+              ) : null}
             </div>
           </details>
         )}
@@ -117,7 +115,7 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
 };
 
 export const ErrorBoundary: Component<ErrorBoundaryProps> = (props) => {
-  const fallback = (error: any, reset: () => void) => {
+  const fallback = (error: unknown, reset: () => void) => {
     if (props.fallback) {
       return props.fallback(error, reset);
     }

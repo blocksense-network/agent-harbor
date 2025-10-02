@@ -22,6 +22,12 @@ interface Branch {
   isDefault?: boolean;
 }
 
+// Type for Tom Select option data
+interface BranchOptionData {
+  name: string;
+  isDefault?: boolean;
+}
+
 export const BranchSelector: Component<BranchSelectorProps> = (props) => {
   let selectEl!: HTMLSelectElement;
   let ts: TomSelect | undefined;
@@ -55,7 +61,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
       maxOptions: 50,
       closeAfterSelect: true,
       render: {
-        option: (data: any, escape: (s: string) => string) => {
+        option: (data: BranchOptionData, escape: (s: string) => string) => {
           return `
             <div class="flex items-center justify-between">
               <span>${escape(data.name)}</span>
@@ -63,7 +69,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
             </div>
           `;
         },
-        item: (data: any, escape: (s: string) => string) => {
+        item: (data: BranchOptionData, escape: (s: string) => string) => {
           return `
             <div class="flex items-center justify-between">
               <span>${escape(data.name)}</span>
@@ -99,10 +105,10 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
   return (
     <select
       ref={selectEl}
-      class={`
-        ${props.class}
-        ${props.disabled ? "cursor-not-allowed bg-gray-100" : ""}
-      `}
+      class={props.class}
+      classList={{
+        "cursor-not-allowed bg-gray-100": !!props.disabled,
+      }}
       disabled={props.disabled}
     >
       <Show when={branches()}>

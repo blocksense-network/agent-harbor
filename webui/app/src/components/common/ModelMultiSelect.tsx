@@ -22,9 +22,15 @@ interface ModelMultiSelectProps {
   class?: string;
 }
 
+// Type for Tom Select option data
+interface TomSelectOptionData {
+  text: string;
+  value: string;
+}
+
 export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   let selectRef: HTMLSelectElement | undefined;
-  let tomSelectInstance: any = null;
+  let tomSelectInstance: TomSelect | undefined;
   const [localSelections, setLocalSelections] = createSignal<ModelSelection[]>(
     props.selectedModels || [],
   );
@@ -98,7 +104,10 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
       render: {
         // Custom option template (dropdown) - ALWAYS show +/- buttons
-        option: (data: any, escape: (str: string) => string) => {
+        option: (
+          data: TomSelectOptionData,
+          escape: (str: string) => string,
+        ) => {
           const model = escape(data.text);
           const count = getInstanceCount(data.text);
 
@@ -145,7 +154,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
         },
 
         // Custom item template (selected badge) - overlay +/- buttons
-        item: (data: any, escape: (str: string) => string) => {
+        item: (data: TomSelectOptionData, escape: (str: string) => string) => {
           const model = escape(data.text);
           const count = getInstanceCount(data.text);
 
@@ -200,7 +209,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       },
     });
 
-    // Apply custom styling to make dropdowns fully opaque and properly positioned
+    // Workaround: prevent dropdown translucency overlapping footer in dark mode
     if (tomSelectInstance.dropdown) {
       tomSelectInstance.dropdown.style.backgroundColor = "#ffffff";
       tomSelectInstance.dropdown.style.border = "1px solid #cccccc";
@@ -227,7 +236,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     const selections = localSelections();
     // Force TOM Select to re-render items by refreshing
     selections.forEach((selection) => {
-      const item = tomSelectInstance.getItem(selection.model);
+      const item = tomSelectInstance!.getItem(selection.model);
       if (item) {
         const countBadge = item.querySelector(".count-badge");
         if (countBadge) {
@@ -238,10 +247,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   });
 
   onCleanup(() => {
-    if (tomSelectInstance) {
-      tomSelectInstance.destroy();
-      tomSelectInstance = null;
-    }
+    tomSelectInstance?.destroy();
   });
 
   return (

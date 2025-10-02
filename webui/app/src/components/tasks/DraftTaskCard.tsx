@@ -1,5 +1,10 @@
 import { Component, createSignal, createEffect, onMount } from "solid-js";
-import { apiClient, type DraftTask } from "../../lib/api.js";
+import {
+  apiClient,
+  type DraftTask,
+  type DraftUpdate,
+  type CreateTaskRequest,
+} from "../../lib/api.js";
 import { TomSelectComponent } from "../common/TomSelect.js";
 import { ModelMultiSelect } from "../common/ModelMultiSelect.js";
 import { SaveStatus, type SaveStatusType } from "../common/SaveStatus.js";
@@ -25,9 +30,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   const [modelSelections, setModelSelections] = createSignal<
     Array<{ model: string; instances: number }>
   >([]);
-  const [autoSaveTimeoutId, setAutoSaveTimeoutId] = createSignal<number | null>(
-    null,
-  );
+  const [autoSaveTimeoutId, setAutoSaveTimeoutId] =
+    createSignal<ReturnType<typeof setTimeout>>();
   const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>("saved");
   let textareaRef: HTMLTextAreaElement | undefined;
   const { setDraftFocus } = useFocus();
@@ -61,9 +65,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     setSaveStatus("unsaved");
 
     // Clear any existing timeout
-    if (autoSaveTimeoutId() !== null) {
-      clearTimeout(autoSaveTimeoutId()!);
-    }
+    const id = autoSaveTimeoutId();
+    if (id) clearTimeout(id);
 
     const timeoutId = setTimeout(async () => {
       // Check if this request is still valid (not invalidated by newer typing)
@@ -96,16 +99,16 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         }
       }
 
-      setAutoSaveTimeoutId(null); // Clear timeout after save completes
-    }, 500) as unknown as number;
+      setAutoSaveTimeoutId(undefined); // Clear timeout after save completes
+    }, 500);
 
     setAutoSaveTimeoutId(timeoutId);
   };
 
-  // Auto-focus textarea when card is selected via keyboard navigation
+  // Focus management for keyboard navigation
   createEffect(() => {
     if (props.isSelected && textareaRef && typeof window !== "undefined") {
-      // Only focus if the textarea doesn't already have focus to avoid interrupting user typing
+      // Prevent interrupting user typing by checking current focus
       if (document.activeElement !== textareaRef) {
         textareaRef.focus();
         setDraftFocus(props.draft.id);
@@ -113,7 +116,6 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     }
   });
 
-  // Handle focus events on textarea
   const handleTextareaFocus = () => {
     setDraftFocus(props.draft.id);
   };
@@ -144,21 +146,22 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
   const setSelectedRepo = (repo: Repository | null) => {
     if (repo) {
-      const repoUpdate: any = { mode: "git" as const };
-      if (repo.url !== undefined) repoUpdate.url = repo.url;
-      if (repo.branch !== undefined) repoUpdate.branch = repo.branch;
+      const repoUpdate: DraftUpdate["repo"] = {
+        mode: "git" as const,
+        ...(repo.url !== undefined && { url: repo.url }),
+        ...(repo.branch !== undefined && { branch: repo.branch }),
+      };
       props.onUpdate({ repo: repoUpdate });
     }
   };
 
   const selectedBranch = () => props.draft.repo?.branch || "";
   const setSelectedBranch = (branch: string | null) => {
-    const repoUpdate: any = {
+    const repoUpdate: DraftUpdate["repo"] = {
       mode: props.draft.repo?.mode || "git",
       branch: branch || "",
+      ...(props.draft.repo?.url !== undefined && { url: props.draft.repo.url }),
     };
-    if (props.draft.repo?.url !== undefined)
-      repoUpdate.url = props.draft.repo.url;
     props.onUpdate({ repo: repoUpdate });
   };
 
@@ -233,7 +236,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         throw new Error("No repository selected");
       }
 
-      const taskData: any = {
+      const taskData: CreateTaskRequest = {
         prompt: prompt(),
         repo: {
           mode: "git" as const,
@@ -278,7 +281,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     if (props.draft.agents && props.draft.agents.length > 0) {
       const initialSelections = props.draft.agents.map((agent) => ({
         model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, " ")}`,
-        instances: (agent as any).instances || 1,
+        instances: (agent as { instances?: number }).instances || 1,
       }));
       setModelSelections(initialSelections);
     }
@@ -333,7 +336,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
           aria-label="Task description"
         />
 
-        {/* Save status indicator - positioned in lower right corner of textarea */}
+        {/* Save status indicator positioned for optimal visibility */}
         <div class="absolute right-2 bottom-2">
           <SaveStatus status={saveStatus()} />
         </div>

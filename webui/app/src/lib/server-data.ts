@@ -4,10 +4,11 @@
 // This file contains server functions that fetch data from the API server during SSR
 
 import { cache } from "@solidjs/router";
+import { DraftTask } from "./api.js";
 
 // Simple logger that respects quiet mode for testing
 const logger = {
-  log: (...args: any[]) => {
+  log: (...args: unknown[]) => {
     const isQuietMode =
       process.env["QUIET_MODE"] === "true" ||
       process.env["NODE_ENV"] === "test";
@@ -166,7 +167,7 @@ export const getAgents = cache(
 /**
  * Fetch drafts from the API server during SSR
  */
-export const getDrafts = cache(async (): Promise<Array<any>> => {
+export const getDrafts = cache(async (): Promise<DraftTask[]> => {
   "use server";
 
   try {

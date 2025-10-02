@@ -5,6 +5,7 @@ import {
   Component,
   onMount,
   createEffect,
+  JSX,
 } from "solid-js";
 
 type Theme = "light" | "dark";
@@ -25,7 +26,7 @@ export const useTheme = () => {
   return context;
 };
 
-export const ThemeProvider: Component<{ children: any }> = (props) => {
+export const ThemeProvider: Component<{ children: JSX.Element }> = (props) => {
   const [theme, setTheme] = createSignal<Theme>("light");
 
   // Check if we're on the client side

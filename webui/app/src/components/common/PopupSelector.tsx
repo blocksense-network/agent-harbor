@@ -89,11 +89,12 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
 
   // Close popup when clicking outside
   const handleClickOutside = (e: MouseEvent) => {
+    const path = e.composedPath();
     if (
       buttonRef &&
-      !buttonRef.contains(e.target as Node) &&
       listRef &&
-      !listRef.contains(e.target as Node)
+      !path.includes(buttonRef) &&
+      !path.includes(listRef)
     ) {
       setIsOpen(false);
     }
@@ -120,19 +121,11 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
       <button
         ref={buttonRef}
         onClick={handleButtonClick}
-        class={`
-          flex items-center space-x-1 rounded-md border px-3 py-1 text-sm
-          transition-colors
-          ${
-            props.selectedItem
-              ? "border-blue-300 bg-blue-50 text-blue-700"
-              : `
-                border-gray-300 text-gray-700
-                hover:bg-gray-50
-              `
-          }
-          ${props.class || ""}
-        `}
+        class={`flex items-center space-x-1 rounded-md border px-3 py-1 text-sm transition-colors ${props.class || ""}`}
+        classList={{
+          "border-blue-300 bg-blue-50 text-blue-700": !!props.selectedItem,
+          "border-gray-300 text-gray-700 hover:bg-gray-50": !props.selectedItem,
+        }}
         aria-haspopup="listbox"
         aria-expanded={isOpen()}
         aria-label={`Select ${props.placeholder.toLowerCase()}`}
@@ -177,15 +170,10 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
                 <li
                   role="option"
                   aria-selected={index() === selectedIndex()}
-                  class={`
-                    cursor-pointer px-3 py-2 text-sm
-                    hover:bg-gray-100
-                    ${
-                      index() === selectedIndex()
-                        ? "bg-blue-50 text-blue-700"
-                        : ""
-                    }
-                  `}
+                  class="cursor-pointer px-3 py-2 text-sm hover:bg-gray-100"
+                  classList={{
+                    "bg-blue-50 text-blue-700": index() === selectedIndex(),
+                  }}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setSelectedIndex(index())}
                 >

@@ -10,7 +10,7 @@ test.describe('SSE Live Updates Debug', () => {
   test('Debug SSE event flow and UI updates', async ({ page }) => {
     const consoleLogs: string[] = [];
     const consoleErrors: string[] = [];
-    
+
     // Capture all console logs
     page.on('console', msg => {
       const text = msg.text();
@@ -23,12 +23,36 @@ test.describe('SSE Live Updates Debug', () => {
     await page.goto('/');
     await page.waitForLoadState('load');
 
+    // Wait a bit for client-side data loading
+    await page.waitForTimeout(2000);
+
+    // Debug: Check all task cards and their status
+    const allCards = page.locator('[data-testid="task-card"]');
+    let cardCount = await allCards.count();
+    console.log(`Found ${cardCount} total task cards after initial load`);
+
+    // If no cards found, wait a bit more and try again
+    if (cardCount === 0) {
+      console.log('Waiting longer for data to load...');
+      await page.waitForTimeout(3000);
+      cardCount = await allCards.count();
+      console.log(`Found ${cardCount} total task cards after waiting`);
+    }
+
+    for (let i = 0; i < cardCount; i++) {
+      const card = allCards.nth(i);
+      const statusEl = card.locator('[aria-label^="Status:"]');
+      const statusText = await statusEl.getAttribute('aria-label');
+      const cardText = await card.textContent();
+      console.log(`Card ${i}: status="${statusText}", text preview: "${cardText?.substring(0, 100)}..."`);
+    }
+
     // Find active session cards
     const activeCards = page.locator('[data-testid="task-card"]:has([aria-label="Status: running"])');
     const activeCount = await activeCards.count();
-    
+
     console.log(`Found ${activeCount} active session cards`);
-    
+
     if (activeCount > 0) {
       const firstActiveCard = activeCards.first();
       

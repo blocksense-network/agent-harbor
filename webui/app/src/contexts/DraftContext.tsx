@@ -5,15 +5,15 @@ import {
   JSX,
   createSignal,
 } from "solid-js";
-import { apiClient, DraftTask } from "../lib/api";
+import { apiClient, DraftTask, DraftCreate, DraftUpdate } from "../lib/api";
 
 // DraftContext provides CRUD operations for drafts
 // Draft data itself comes from route-level fetching via props (progressive enhancement)
 interface DraftContextValue {
   error: () => string | null;
-  createDraft: (draft: Partial<DraftTask>) => Promise<DraftTask | null>;
+  createDraft: (draft: DraftCreate) => Promise<DraftTask | null>;
   removeDraft: (id: string) => Promise<boolean>;
-  updateDraft: (id: string, updates: Partial<DraftTask>) => Promise<boolean>;
+  updateDraft: (id: string, updates: Partial<DraftUpdate>) => Promise<boolean>;
   onDraftChanged?: () => void; // Callback for components to refetch after changes
 }
 
@@ -32,23 +32,12 @@ interface DraftProviderProps {
 export const DraftProvider: Component<DraftProviderProps> = (props) => {
   const [error, setError] = createSignal<string | null>(null);
 
-  const createDraft = async (
-    draft: Partial<DraftTask>,
-  ): Promise<DraftTask | null> => {
+  const createDraft = async (draft: DraftCreate): Promise<DraftTask | null> => {
     try {
       setError(null);
       console.log("[DraftContext] Creating draft...", draft);
-      const response = await apiClient.createDraft(draft);
-      console.log("[DraftContext] Draft created (response):", response);
-
-      // API returns only { id, createdAt, updatedAt }, construct full draft
-      const fullDraft: DraftTask = {
-        ...(draft as DraftTask),
-        id: response.id,
-        createdAt: response.createdAt,
-        updatedAt: response.updatedAt,
-      };
-      console.log("[DraftContext] Full draft:", fullDraft);
+      const fullDraft = await apiClient.createDraft(draft);
+      console.log("[DraftContext] Draft created:", fullDraft);
 
       props.onDraftChanged?.(); // Notify that drafts changed
 
@@ -87,13 +76,11 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
 
   const updateDraft = async (
     id: string,
-    updates: Partial<DraftTask>,
+    updates: Partial<DraftUpdate>,
   ): Promise<boolean> => {
     try {
       setError(null);
-      // Remove server-managed fields from updates
-      const { id, ...updateData } = updates as any;
-      await apiClient.updateDraft(id, updateData);
+      await apiClient.updateDraft(id, updates);
       props.onDraftChanged?.(); // Notify that drafts changed
       return true;
     } catch (err) {
@@ -105,15 +92,13 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
     }
   };
 
-  const value: any = {
+  const value: DraftContextValue = {
     error,
     createDraft,
     removeDraft,
     updateDraft,
+    ...(props.onDraftChanged && { onDraftChanged: props.onDraftChanged }),
   };
-  if (props.onDraftChanged) {
-    value.onDraftChanged = props.onDraftChanged;
-  }
 
   return (
     <DraftContext.Provider value={value}>

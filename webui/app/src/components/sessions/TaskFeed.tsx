@@ -7,7 +7,7 @@ import {
   onMount,
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { apiClient, type Session } from "../../lib/api.js";
+import { apiClient, type Session, type DraftTask } from "../../lib/api.js";
 import { type SessionsResponse } from "../../lib/server-data.js";
 import { SessionCard } from "./SessionCard.js";
 import { DraftTaskCard } from "../tasks/DraftTaskCard.js";
@@ -17,11 +17,11 @@ import { useFocus } from "../../contexts/FocusContext.js";
 import { useToast } from "../../contexts/ToastContext.js";
 
 interface TaskFeedProps {
-  draftTasks?: any[]; // Will be defined later
+  draftTasks?: DraftTask[]; // Will be defined later
   onDraftTaskCreated?: (taskId: string) => void;
   onDraftTaskRemoved?: (draftId: string) => void;
   initialSessions?: SessionsResponse;
-  initialDrafts?: any[]; // Drafts fetched during SSR
+  initialDrafts?: DraftTask[]; // Drafts fetched during SSR
 }
 
 export const TaskFeed: Component<TaskFeedProps> = (props) => {
@@ -37,7 +37,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   // Progressive enhancement: Drafts rendered from props during SSR
   // Context provides CRUD operations, not the list itself
   // PRD REQUIREMENT: "An empty task card is always visible" - ensure at least one draft
-  const [clientDrafts, setClientDrafts] = createSignal(
+  const [clientDrafts, setClientDrafts] = createSignal<DraftTask[]>(
     props.initialDrafts || [],
   );
   const [draftsRefreshTrigger, setDraftsRefreshTrigger] = createSignal(0);
@@ -67,7 +67,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   });
 
   // Ensure there's always at least one draft (PRD requirement)
-  const drafts = () => {
+  const drafts = (): DraftTask[] => {
     const draftsList = clientDrafts();
     if (draftsList.length === 0) {
       // Return a default empty draft if none exist
@@ -115,7 +115,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     if (typeof window === "undefined") return; // SSR guard
 
     try {
-      const params: any = { perPage: 50 };
+      const params = { perPage: 50 };
       const data = await apiClient.listSessions(params);
       setClientSessions(data);
     } catch (error) {
@@ -308,7 +308,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     if (currentIndex < draftsList.length) {
       // Draft card
       const draft = draftsList[currentIndex];
-      return `draft-task-${draft.id}`;
+      return draft ? `draft-task-${draft.id}` : undefined;
     } else {
       // Session card
       const sessions = sessionsData()?.items || [];
@@ -353,9 +353,25 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                           if (success) {
                             // Update local draft list optimistically
                             setClientDrafts((prev) =>
-                              prev.map((d) =>
-                                d.id === draft.id ? { ...d, ...updates } : d,
-                              ),
+                              prev
+                                .map((d) =>
+                                  d.id === draft.id
+                                    ? ({
+                                        ...d,
+                                        ...updates,
+                                        repo: updates.repo
+                                          ? {
+                                              ...d.repo,
+                                              ...updates.repo,
+                                              mode: (updates.repo.mode ||
+                                                d.repo
+                                                  .mode) as DraftTask["repo"]["mode"],
+                                            }
+                                          : d.repo,
+                                      } as DraftTask)
+                                    : d,
+                                )
+                                .map((d) => d as DraftTask),
                             );
                           }
                         }}

@@ -1,5 +1,8 @@
 import { Component } from "solid-js";
-import { KeyboardShortcutsFooter } from "../common/KeyboardShortcutsFooter.js";
+import {
+  KeyboardShortcutsFooter,
+  KeyboardShortcutsFooterProps,
+} from "../common/KeyboardShortcutsFooter.js";
 
 export interface FooterProps {
   onNewDraft?: () => void;
@@ -12,11 +15,11 @@ export interface FooterProps {
 }
 
 export const Footer: Component<FooterProps> = (props) => {
-  const keyboardProps: any = {};
-  if (props.onNewDraft) keyboardProps.onNewTask = props.onNewDraft;
-  if (props.agentCount !== undefined)
-    keyboardProps.agentCount = props.agentCount;
-  if (props.focusState) keyboardProps.focusState = props.focusState;
+  const keyboardProps: KeyboardShortcutsFooterProps = {
+    ...(props.onNewDraft && { onNewTask: props.onNewDraft }),
+    ...(props.agentCount !== undefined && { agentCount: props.agentCount }),
+    ...(props.focusState && { focusState: props.focusState }),
+  };
 
   return <KeyboardShortcutsFooter {...keyboardProps} />;
 };

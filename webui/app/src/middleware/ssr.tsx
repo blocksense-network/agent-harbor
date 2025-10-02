@@ -2,9 +2,17 @@
 import * as fs from "fs";
 import * as path from "path";
 
+// Minimal Express response interface for our middleware needs
+interface ExpressResponse {
+  status(code: number): {
+    json: (data: unknown) => void;
+    set: (header: string, value: string) => { send: (html: string) => void };
+  };
+}
+
 // Simple logger that respects quiet mode for testing
 const logger = {
-  log: (...args: any[]) => {
+  log: (...args: unknown[]) => {
     const isQuietMode =
       process.env["QUIET_MODE"] === "true" ||
       process.env["NODE_ENV"] === "test";
@@ -12,7 +20,7 @@ const logger = {
       console.log(...args);
     }
   },
-  warn: (...args: any[]) => {
+  warn: (...args: unknown[]) => {
     const isQuietMode =
       process.env["QUIET_MODE"] === "true" ||
       process.env["NODE_ENV"] === "test";
@@ -20,7 +28,7 @@ const logger = {
       console.warn(...args);
     }
   },
-  error: (...args: any[]) => {
+  error: (...args: unknown[]) => {
     console.error(...args); // Always log errors
   },
 };
@@ -51,34 +59,42 @@ const getAssetFilenames = (): { css: string; js: string } => {
   }
 };
 
-export const ssrMiddleware = async (req: any, res: any, next: any) => {
-  logger.log("SSR middleware called for:", req.url);
+export const ssrMiddleware = async (
+  req: unknown,
+  res: unknown,
+  next: unknown,
+) => {
+  const request = req as { url: string };
+  const response = res as ExpressResponse;
+  const nextFn = next as (error?: unknown) => void;
+
+  logger.log("SSR middleware called for:", request.url);
   try {
     // Skip SSR for API routes and static assets
-    if (req.url.startsWith("/api") || req.url.includes(".")) {
-      logger.log("Skipping SSR for:", req.url);
-      return next();
+    if (request.url.startsWith("/api") || request.url.includes(".")) {
+      logger.log("Skipping SSR for:", request.url);
+      return nextFn();
     }
 
     // Only serve HTML for known application routes, otherwise let Express handle 404
     const knownRoutes = ["/"];
     const isKnownRoute = knownRoutes.some((route) => {
-      if (route === "/") return req.url === "/";
+      if (route === "/") return request.url === "/";
       return false;
     });
 
     if (!isKnownRoute) {
       // For API requests, return JSON error; for others, let Express handle
-      if (req.url?.startsWith("/api")) {
-        res.status(404).json({
+      if (request.url?.startsWith("/api")) {
+        response.status(404).json({
           type: "https://docs.example.com/errors/not-found",
           title: "Not Found",
           status: 404,
-          detail: `The requested resource '${req.url}' was not found`,
+          detail: `The requested resource '${request.url}' was not found`,
         });
         return;
       }
-      return next(); // Let Express handle non-API 404s
+      return nextFn(); // Let Express handle non-API 404s
     }
 
     // Find the correct asset filenames
@@ -143,9 +159,9 @@ export const ssrMiddleware = async (req: any, res: any, next: any) => {
 </body>
 </html>`;
 
-    res.status(200).set("Content-Type", "text/html").send(html);
+    response.status(200).set("Content-Type", "text/html").send(html);
   } catch (error) {
     logger.error("SSR Error:", error);
-    next(error);
+    nextFn(error);
   }
 };
