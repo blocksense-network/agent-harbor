@@ -54,10 +54,12 @@ Examples:
 
 - `ui`: string — default UI to launch with bare `aw` (values: `"tui"` | `"webui"`).
 - `browser-automation`: `boolean` — enable/disable site automation.
-- browser-profile: string — preferred agent browser profile name.
-- chatgpt-username: string — optional default ChatGPT username used for profile discovery.
-- codex-workspace: string — default Codex workspace to select before pressing "Code".
-- remote-server: string — either a known server `name` (from `[[server]]`) or a raw URL. If set, AW uses REST; otherwise it uses local SQLite state.
+- `browser-profile`: string — preferred agent browser profile name.
+- `chatgpt-username`: string — optional default ChatGPT username used for profile discovery.
+- `codex-workspace`: string — default Codex workspace to select before pressing "Code".
+- `remote-server`: string — either a known server `name` (from `[[server]]`) or a raw URL. If set, AW uses REST; otherwise it uses local SQLite state.
+- `tui-font-style`: string — TUI symbol style (values: `"nerdfont"` | `"unicode"` | `"ascii"`). Auto-detected based on terminal capabilities.
+- `tui-font`: string — TUI font name for advanced terminal font customization.
 
 ### Behavior
 

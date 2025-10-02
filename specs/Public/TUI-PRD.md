@@ -4,6 +4,8 @@
 
 The TUI provides a terminal-first dashboard for launching and monitoring agent tasks, integrated with terminal multiplexers (tmux, zellij, screen). It auto-attaches to the active multiplexer session and assumes all active tasks are already visible as multiplexer windows.
 
+The TUI is built with **Ratatui**, a Rust library for building terminal user interfaces. See specs/Research/TUI for helpful information for developing with Ratatui.
+
 Backends:
 
 - REST: Connect to a remote REST service and mirror the WebUI experience for task creation, with windows created locally (or remotely via SSH) for launched tasks.
@@ -15,104 +17,237 @@ Backends:
 - The TUI dashboard (`aw tui dashboard`) is the main interface for task management and runs inside a multiplexer window.
 - Launching a new task from the dashboard creates a new multiplexer window with split panes:
   - Right pane = agent activity and logs, left pane = terminal or configured editor in the workspace.
-  - Devcontainer runs: panes are inside the container context.
+  - Devcontainer and remote-server runs: panes are inside the container/remote context.
 - The multiplexer provides the windowing environment; the TUI dashboard coordinates task creation and monitoring across windows.
 
 ### Simplified Task-Centric Layout
 
-The main TUI interface focuses on recent tasks and quick creation:
+The dashboard screen has the following elements:
 
-- **Header**: Compact 3-line header with "Agent Harbor" title (left-aligned with Charm-style powerline design).
-- **Previous Tasks**: List of completed, active, merged, and draft tasks displayed as bordered cards (4 lines each) above the new task area.
-- **New Task Entry**: Dedicated card at bottom with expandable text area and button-based selectors.
+- **Header**: Agent Harbor branding
+  - Displays image logo when terminal supports modern image protocols (e.g., Kitty, iTerm2)
+  - Falls back to ASCII art logo for terminals without image support
 
-#### Task States
+- **Tasks**: Chronological list of recent tasks (completed/merged, active, draft) displayed as bordered cards, with draft tasks always visible at the top, sorted newest first.
+  - Uses 1 character of padding between screen edges and cards for clean visual spacing.
 
-Tasks display in five different states:
+- **Footer**: Displays context-specific keyboard shortcuts.
 
-- **Merged**: 1-line bordered card showing task title, merge status, and timestamp with visual separator.
-- **Completed**: 4-line bordered card showing task title, completion status, result details, and timestamp.
-- **Active**: 4-line bordered card showing task title, current action, progress details, and live status.
-- **Draft**: 4-line bordered card showing task title, description preview, draft status, and timestamp.
-- **New Task**: Interactive card at bottom with expandable text area and repository/branch/model button selectors.
+#### Task States and Card Layouts
 
-#### Previous Task Cards
+Tasks display in four different states with optimized heights and consistent layout principles:
 
-Each previous task displays as a bordered card with Charm-inspired styling:
+- **Fixed height for completed/active cards**: Completed and active cards maintain constant height regardless of content to prevent UI jumping
+- **Variable height for draft cards**: Draft cards expand/contract with the text area for better editing experience
+- **Compact layout**: All metadata (repo, branch, agent, timestamp) fits on single lines
+- **Status indicators**: Color-coded icons with symbols controlled by `tui-font-style` config
+- **Visual separators** between cards
+- **Keyboard navigation**: Arrow keys (↑↓) navigate between ALL cards (draft tasks first, then sessions newest first) with visual selection state. The index of the selected element wraps around the list edges.
 
-- Rounded borders with proper padding
-- 4-line height maximizing information density
-- Status-appropriate icons and color coding
-- Visual separators between cards
-- Themed colors following Catppuccin Mocha palette
+##### Completed/Merged Cards (2 lines)
+```
+✓ Task title • Delivery indicators
+Repository • Branch • Agent • Timestamp
+```
 
-#### New Task Card Details
+**Delivery indicators** show delivery method outcome with ANSI color coding:
+- **Unicode symbols** (default, `tui-font-style = "unicode"`):
+  - Branch exists: `⎇` (branch glyph) in **cyan**
+  - PR exists: `⇄` (two-way arrows) in **yellow**
+  - PR merged: `✓` (checkmark) in **green**
+- **Nerd Font symbols** (`tui-font-style = "nerdfont"`):
+  - Branch exists: `` (Powerline branch glyph) in **cyan**
+  - PR exists: `` (nf-oct-git-pull-request) in **yellow**
+  - PR merged: `` (nf-oct-git-merge) in **green**
+- **ASCII fallback** (`tui-font-style = "ascii"`):
+  - Branch exists: `br` in **cyan**
+  - PR exists: `pr` in **yellow**
+  - PR merged: `ok` in **green**
 
-The new task card looks like a auto-expandable text area.
+**Example output with ANSI color coding:**
+```
+\033[36m⎇\033[0m feature/payments
+\033[33m⇄\033[0m PR #128 — "Add retry logic"
+\033[32m✓\033[0m PR #128 merged to main
+```
 
-At the bottom of the text area, there is a single line with buttons, which can be navigated to by pressing TAB or by clicking them with the mouse. When a button is activated/clicked, it display a modal dialog that looks like Telescope in vim - a fuzzy text entry, followed by matches that can be selected with the keyboard. The label of the button always matches the currently selected item.
+##### Active Cards (5 lines)
+```
+● Task title • Action buttons
+Repository • Branch • Agent • Timestamp
+[Activity Row 1 - fixed height]
+[Activity Row 2 - fixed height]
+[Activity Row 3 - fixed height]
+```
 
-The following buttons are present:
+##### Draft Cards (Variable height)
 
-- **Repository Selector**: Telescope-like dialog selector to choose which repository to work in
-- **Branch Selector**: Telescope-like dialog to select the branch to work on
-- **Model Multi-Selector**: Telescope-like multi-select interface for choosing AI models with instance counts
-  - Left/Right arrows or +/- keys to increase/decrease instance count for selected model
-  - Multiple models can be selected with different instance counts
-- **Go Button**: Button with "⏎ Go" label to launch the task with selected configuration when activated/clicked.
+Variable height cards with text area and controls (keyboard navigable, Enter to submit):
 
-#### Footer (Lazygit-style)
+- Shows placeholder text when empty: "Describe what you want the agent to do..."
+- Always-visible text area for task description with expandable height
+- Single line of compact controls below the text area:
+  - Left side: Repository Selector, Branch Selector, Model Selector (horizontally laid out)
+  - Right side: "⏎ Go" button (right-aligned)
+- Telescope-style modals: When buttons are activated (Tab/Enter), display fuzzy search dialogs
+  - Repository Selector: Fuzzy search through available repositories
+  - Branch Selector: Fuzzy search through repository branches
+  - Model Multi-Selector: Multi-select interface with instance counts and +/- controls
+- TAB navigation between controls
+- Multiple draft tasks supported - users can create several draft tasks in progress
+- Auto-save drafts to local storage and restore across sessions (debounced, 500ms delay)
+- Default values from last used selections
+- **Auto-completion support** with popup menu:
+  - `@filename` - Auto-completes file names within the repository
+  - `/workflow` - Auto-completes available workflow commands from `.agents/workflows/`
+  - **Popup menu navigation**: Tab or arrow keys to navigate suggestions, Enter to select
+  - **Quick selection**: Right arrow key selects the currently active suggestion
+  - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area
+- Context-sensitive keyboard shortcuts:
+  - While focus is inside a draft text area, footer shows: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
+  - "Agent(s)" is plural if multiple agents are selected
+  - Enter key launches the task (calls Go button action)
+  - Shift+Enter creates a new line in the text area
 
-- **Single-line footer** without borders (like Lazygit) showing context-sensitive shortcuts
-- **Dashboard mode**: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
-- **Modal active**: "↑↓ Navigate • Enter Select • Esc Back • Ctrl+C Abort"
-- **Task creation**: "Tab Cycle Buttons • Enter Activate Button • Esc Back • Ctrl+C x2 Quit"
+##### Activity Display for Active Tasks
+
+Active task cards show live streaming of agent activity with exactly 3 fixed-height rows displaying the most recent events:
+
+**Activity Row Requirements:**
+- Fixed height rows: Each of the 3 rows has fixed height (prevents UI "dancing")
+- Scrolling effect: New events cause rows to scroll upward (newest at bottom)
+- Always 3 rows visible: Shows the 3 most recent activity items at all times
+- Never empty: Always displays events, never shows "waiting" state
+
+**Event Types and Display Rules:**
+
+1. **Thinking Event** (`thought` property):
+   - Format: `"Thoughts: {thought text}"`
+   - Behavior: Scrolls existing rows up, appears as new bottom row
+   - Single line display
+
+2. **Tool Use Start** (`tool_name` property):
+   - Format: `"Tool usage: {tool_name}"`
+   - Behavior: Scrolls existing rows up, appears as new bottom row
+
+3. **Tool Last Line** (`tool_name` + `last_line` properties):
+   - Format: `"  {last_line}"` (indented, showing command output)
+   - **Special behavior**: Updates the existing tool row IN PLACE without scrolling
+   - Does NOT create a new row - modifies the current tool execution row
+
+4. **Tool Complete** (`tool_name` + `tool_output` + `tool_status` properties):
+   - Format: `"Tool usage: {tool_name}: {tool_output}"` (single line with status indicator)
+   - Behavior: Sent immediately after last_line event
+   - The last_line row is removed and replaced by this completion row
+
+5. **File Edit Event** (`file_path` property):
+   - Format: `"File edits: {file_path} (+{lines_added} -{lines_removed})"`
+   - Behavior: Scrolls existing rows up, appears as new bottom row
+
+**Visual Behavior Example:**
+```
+Initial state (empty):
+  [Waiting for agent activity...]
+
+After "thought" event:
+  Thoughts: Analyzing codebase structure
+
+After "tool_name" event (scrolls up):
+  Thoughts: Analyzing codebase structure
+  Tool usage: search_codebase
+
+After "last_line" event (updates in place - NO scroll):
+  Thoughts: Analyzing codebase structure
+  Tool usage: search_codebase
+    Found 42 matches in 12 files
+
+After "tool_output" event (replaces last_line row):
+  Thoughts: Analyzing codebase structure
+  Tool usage: search_codebase: Found 3 matches
+
+After new "thought" event (scrolls up, oldest row disappears):
+  Tool usage: search_codebase: Found 3 matches
+  Thoughts: Now examining the authentication flow
+```
+
+**Implementation Requirements:**
+- Maximum 3 rows displayed at all times
+- Fixed row height (no dynamic height based on content)
+- Smooth scroll-up animation when new events arrive (except last_line)
+- Text truncation with ellipsis if content exceeds row width
+- Visual distinction between different event types (icons, indentation)
+
+**Symbol selection logic:**
+- Auto-detect terminal capabilities (check `$TERM_PROGRAM`, test glyph width)
+- Default to Unicode symbols, fall back to ASCII if Unicode support is limited
+- Users can override with `tui-font-style` config option
+- Always pair symbols with descriptive text for accessibility and grep-ability
+
+#### Footer Shortcuts (Lazygit-style)
+
+Single-line footer without borders showing context-sensitive shortcuts that change dynamically based on application state:
+
+- **Task feed focused**: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
+- **Draft card selected**: "↑↓ Navigate • Enter Edit Draft • Ctrl+C x2 Quit"
+- **Draft textarea focused**: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
+- **Active task focused**: "↑↓ Navigate • Enter Show Task Progress • Ctrl+C x2 Quit"
+- **Completed/merged task focused**: "↑↓ Navigate • Enter Show Task Details • Ctrl+C x2 Quit"
+- **Modal active**: "↑↓ Navigate • Enter Select • Esc Back"
+
+**Shortcut behavior notes:**
+- "Agent(s)" adjusts to singular/plural based on number of selected agents
+- Enter key launches the task when in draft textarea (calls Go button action)
+- Shift+Enter creates a new line in the text area when focused
 
 ### Task Management
 
-- Task list shows recent tasks ordered by recency (older near the top, newest near the bottom).
-- Each task displays with appropriate visual indicators for its state.
-- Active tasks show live streaming of agent activity.
-  This uses exactly 3 lines, showing the 2 or 3 most recent actions of the agent.
-  When the action is a though, it takes a single line - a description of the thought.
-  When the action is a file edit, it takes a single line - the name of the edited file (plus a number of added and deleted lines, similar to git git)
-  When the action is tool use, it takes two lines - the name of the launched tool and the currently last line in the output of the tool. When the tool completes, it is collapsed to a single line which is just the name of the tool use with a visual indicator for success/failure of the command (e.g. `make test` failed with a non-zero exit).
-- Draft tasks are saved locally and can be resumed later.
-- New task input supports multiline editing with Shift+Enter for line breaks.
-- The default values for project/branch/agent are the last ones being used.
+- Task list shows draft tasks at the top, then recent completed/merged and active tasks ordered by recency (newest first)
+- Each task displays with appropriate visual indicators for its state
+- Draft tasks are saved locally and can be resumed later
+- New task input supports multiline editing with Shift+Enter for line breaks
+- Default values for repository/branch/agent are the last ones used
 
 ### Commands and Hotkeys
 
 #### Global Navigation
-
-- **↑↓**: Navigate between sections (previous tasks and new task entry)
+- **↑↓**: Navigate between ALL cards (draft tasks first, then sessions newest first)
 - **Ctrl+C** (twice): Quit the TUI
 
-#### Task Creation Interface
+#### Task Selection and Navigation
+- **↑↓**: Navigate between cards with visual selection state
+- **Enter**:
+  - When on draft card: Focus the textarea for editing
+  - When on session card: Navigate to task details page
 
-- **Tab/Shift+Tab**: Cycle between buttons (Description, Repository, Branch, Models, Go)
-- **Enter**: Activate focused button or select item in modal
-- **Esc**: Close modal or go back; Go back to text area when the buttons are selected.
-- **Type directly**: Enter text in description area when focused
+#### Draft Task Editing
+- **Tab/Shift+Tab**: Cycle between buttons (Repository, Branch, Models, Go) when not in textarea
+- **Enter**: Activate focused button or select item in modal (when in textarea: launch task)
+- **Esc**: Close modal or go back to navigation mode
+- **Shift+Enter**: Create new line in textarea (when focused)
+- **Any key**: Type in description area when focused
+- **Backspace**: Delete characters
+- **Auto-complete menu**: When certain characters like / or @ are entered in the text area, show auto-completion menu with dynamically populated choices (@ for citing files, / for selecting workflows, etc)
 
 #### Modal Navigation (Telescope-style)
-
 - **↑↓**: Navigate through options in fuzzy search
 - **Enter**: Select current item
 - **Esc**: Close modal
 - **Left/Right** or **+/-**: Adjust model instance counts in model selection
 
-#### Text Input
+### Real-Time Behavior
 
-- **Any key**: Type in description area when focused
-- **Backspace**: Delete characters
-- **Enter**: Activate buttons (not for newlines in description)
-- **Auto-complete menu**: When certain characters like / or @ are entered in the text area, the UI shows auto-completion menu with dynamically populated choices (@ is used for citing files, / is used to select workflows, etc).
+#### Live Event Streaming
+
+- Active task cards continuously update with agent activity events
+- Events sent and processed one at a time for smooth UI updates
+- Reconnect logic with exponential backoff for network interruptions
+- Buffer events during connection blips to prevent data loss
 
 ### Error Handling and Status
 
 - Inline validation messages under selectors (e.g., branch not found, agent unsupported).
-- Status bar shows backend (`local`/`rest`), selected multiplexer, and last operation result.
+- Status bar shows backend (`local`/`<remote-server-hostname>`), and last operation result.
+- **Non-intrusive error notifications**: Temporary status messages for failed operations that don't interrupt workflow
 
 ### Remote Sessions
 
