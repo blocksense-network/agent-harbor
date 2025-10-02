@@ -26,7 +26,7 @@ Validates build tooling, compilation, and configuration:
 
 ### 2. API Contract Tests (`api-contract.spec.ts`)
 
-Validates mock server implements REST-Service.md spec correctly:
+Validates mock server implements [REST-Service/API.md](REST-Service/API.md) spec correctly:
 
 - ✅ GET /api/v1/sessions returns 5 sessions (3 completed, 2 active)
 - ✅ GET /api/v1/sessions/:id returns correct session data
@@ -392,5 +392,5 @@ All tests must pass before any milestone is considered complete:
 
 - [WebUI-PRD.md](WebUI-PRD.md) - Product requirements
 - [WebUI.status.md](WebUI.status.md) - Implementation status
-- [REST-Service.md](REST-Service.md) - API specification
+- [REST-Service/API.md](REST-Service/API.md) - API specification
 - [TOM Select Documentation](https://tom-select.js.org/) - Widget library

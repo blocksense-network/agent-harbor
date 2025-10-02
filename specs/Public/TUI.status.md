@@ -90,7 +90,7 @@ The TUI implementation provides these core capabilities:
 
 - **Test Coverage** (Comprehensive API Contract + Unit):
 
-  - [x] REST client API contract tests against mock server: All endpoints match [REST-Service.md](REST-Service.md) specs
+  - [x] REST client API contract tests against mock server: All endpoints match [REST-Service/](REST-Service/) specs
   - [x] Authentication handling tests against mock server: API key, JWT, and OIDC flows
   - [x] Error response parsing tests against mock server: Problem+JSON error format handling
   - [x] Pagination handling tests against mock server: page/perPage query params and response metadata
@@ -109,7 +109,7 @@ The TUI implementation provides these core capabilities:
 - **Implementation Details**:
 
   - **Architecture**: Clean separation between API contracts, client, and UI layers following [Repository-Layout.md](Repository-Layout.md) guidelines
-  - **REST API Contracts**: Complete type definitions for all [REST-Service.md](REST-Service.md) endpoints with serde serialization and validator-based input validation
+  - **REST API Contracts**: Complete type definitions for all [REST-Service/](REST-Service/) endpoints with serde serialization and validator-based input validation
   - **REST Client**: Full async HTTP client with reqwest, supporting authentication (API key, JWT), error handling, and SSE streaming (placeholder)
   - **TUI Framework**: Ratatui + Crossterm with event-driven architecture, basic dashboard layout, and keyboard navigation
   - **CLI Integration**: `aw tui --remote-server` command with authentication options integrated into existing aw-cli structure
@@ -447,11 +447,11 @@ The TUI implementation provides these core capabilities:
 
 - **Deliverables**:
 
-  - Complete implementation of [REST-Service.md](REST-Service.md) specification
+  - Complete implementation of [REST-Service/](REST-Service/) specification
   - REST API server with all endpoints: task creation, session management, logs, events
   - SSE/WebSocket streaming for real-time session updates
   - Authentication and authorization (API keys, JWT, RBAC)
-  - Database integration for session state persistence
+  - Database integration for session state persistence. Please note that the SQLx dependencies suggested in the ([REST Service Tech Stack](REST-Service/Tech-Stack.md)) should actually be integrated in the aw-local-db crate.
   - Executor registration and heartbeat management
   - Workspace provisioning and snapshot management integration
 
@@ -467,7 +467,7 @@ The TUI implementation provides these core capabilities:
 
 - **Verification**:
 
-  - All REST endpoints match [REST-Service.md](REST-Service.md) specification
+  - All REST endpoints match [REST-Service/](REST-Service/) specification
   - API contract tests pass against mock server (100% endpoint coverage)
   - SSE streaming works reliably under various network conditions
   - Authentication flows work correctly (API key, JWT, OIDC)
@@ -844,7 +844,7 @@ The TUI implementation provides these core capabilities:
 
 - **Distributed Test Coverage**: Each milestone includes specific tests verifying its deliverables, preventing regressions and ensuring quality incrementally
 - **Terminal Automation Testing**: Custom terminal automation framework for E2E TUI testing, similar to Playwright but for terminal UIs
-- **Mock Server Development**: Start with full [REST-Service.md](REST-Service.md) mock implementation for isolated TUI development
+- **Mock Server Development**: Start with full [REST-Service/](REST-Service/) mock implementation for isolated TUI development
 - **Component Testing**: Unit tests for individual Ratatui widgets and REST client components
 - **API Contract Testing**: Verify REST client behavior matches specifications and handles edge cases
 - **Integration Testing**: End-to-end workflows testing TUI against real REST service

@@ -84,12 +84,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Dual-Server Architecture**: SSR server serves HTML/CSS/JS on dedicated port, API server serves REST endpoints on separate port. Client connects directly to API server for data operations.
 - **Server-Side Data Fetching**: REST API calls made during SSR to populate initial page content, ensuring full functionality even without JavaScript
 - **SolidStart Application Architecture**: Single-page application built with SolidStart's built-in SSR capabilities and client-side hydration (no API proxy middleware needed)
-- **Mock-First Development**: Comprehensive mock server ([Mock Server README](../webui/mock-server/README.md)) implementing REST-Service.md for isolated development and testing
+- **Mock-First Development**: Comprehensive mock server ([Mock Server README](../webui/mock-server/README.md)) implementing [REST-Service/API.md](REST-Service/API.md) for isolated development and testing
 - **Vitest Testing**: Unit and integration testing with jsdom environment for DOM testing, cheerio for HTML parsing, and server process spawning for full-stack validation
 - **SSR Test Verification**: Automated server-side rendering tests start actual dev server processes, make HTTP requests, and validate HTML content/structure without browser execution
 - **Playwright E2E Testing**: Fully automated end-to-end testing through pre-scripted scenarios that control both the mock REST server state and UI interactions
 - **Progressive Enhancement**: Core functionality works without JavaScript; real-time features enhance the experience through client-side hydration
-- **Component Architecture**: Reusable, testable components with clear prop interfaces, TypeScript typing, and SSR compatibility comprehensive testing)
+- **Component Architecture**: Reusable, testable components with clear prop interfaces, TypeScript typing, and SSR compatibility
 - **Real-time UX**: SSE-driven updates with optimistic UI patterns for pause/stop/resume actions
 - **Security-First**: Input validation, XSS prevention, and secure API communication patterns
 
@@ -102,7 +102,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Deliverables**:
 
   - SolidJS + SolidStart + TypeScript + Tailwind CSS project scaffolding
-  - Comprehensive mock server implementing [REST-Service.md](REST-Service.md) endpoints comprehensive testing)
+  - Comprehensive mock server implementing [REST-Service/API.md](REST-Service/API.md) endpoints
   - Basic project structure with component organization and routing setup
   - Development tooling configuration (ESLint, Prettier, testing framework)
   - CI/CD pipeline setup with automated testing
@@ -143,7 +143,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
 - **Verification Results**:
   - [x] Project builds successfully with `npm run build`
-  - [x] Mock server starts and responds to all [REST-Service.md](REST-Service.md) endpoints with proper validation
+  - [x] Mock server starts and responds to all [REST-Service/API.md](REST-Service/API.md) endpoints with proper validation
   - [x] Development server runs on localhost with hot reload
   - [x] Playwright tests verify basic component rendering and routing works
   - [x] TypeScript compilation succeeds with strict mode enabled
@@ -230,7 +230,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
 - **Test Coverage** (Comprehensive E2E + API Contract):
 
-  - [x] API contract tests: All CRUD operations match [REST-Service.md](REST-Service.md) specs (existing W1-W2 tests)
+  - [x] API contract tests: All CRUD operations match [REST-Service/API.md](REST-Service/API.md) specs (existing W1-W2 tests)
   - [x] Form validation tests: Task creation form validation, error display, and submission
   - [x] Repository selection tests: URL validation, branch field validation
   - [x] Session CRUD tests: Create, list, select, and control sessions via UI
@@ -249,7 +249,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] Playwright E2E tests: Session interactions and status display (session-interactions.spec.ts)
   - Manual verification: Agent and runtime dropdowns populated from API
   - Manual verification: Stop/pause/resume actions work with optimistic UI updates
-  - API contract tests verify all CRUD operations match [REST-Service.md](REST-Service.md) specs
+  - API contract tests verify all CRUD operations match [REST-Service/API.md](REST-Service/API.md) specs
 
 - **Implementation Details**:
 
@@ -562,7 +562,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Distributed Test Coverage**: Each milestone includes specific tests verifying its deliverables, preventing regressions and ensuring quality incrementally
 - **Vitest Testing**: Unit and integration testing with jsdom environment, cheerio HTML parsing, and server process spawning for full-stack SSR validation without browser execution
 - **Playwright E2E Testing**: Primary testing approach with comprehensive coverage of user journeys, accessibility, and cross-browser compatibility
-- **Mock Server Development**: Start with full [REST-Service.md](REST-Service.md) mock implementation for isolated feature development
+- **Mock Server Development**: Start with full [REST-Service/API.md](REST-Service/API.md) mock implementation for isolated feature development
 - **Component Testing**: Unit tests for reusable components with SolidJS testing library
 - **API Contract Testing**: Verify REST API endpoints match specifications and handle edge cases
 - **Accessibility Testing**: Automated axe-core checks integrated into E2E test suite from W2 onward
@@ -724,4 +724,4 @@ Based on the major design redesign, the current state requires significant work 
 - **Real-time Complexity**: SSE implementation requires careful error handling; mitigated by robust reconnection logic and fallback to polling
 - **Browser Compatibility**: WebUI targets modern browsers only; mitigated by clear browser support matrix and graceful degradation
 - **Performance Targets**: Sub-2s TTI challenging with real-time features; mitigated by code splitting, lazy loading, and performance budgeting
-- **Mock vs Real API**: Initial development with mocks risks integration issues; mitigated by mock server implementing full [REST-Service.md](REST-Service.md) spec
+- **Mock vs Real API**: Initial development with mocks risks integration issues; mitigated by mock server implementing full [REST-Service/API.md](REST-Service/API.md) spec

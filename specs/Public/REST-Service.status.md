@@ -1,6 +1,6 @@
 # Agents‑Workflow REST Service — Status and Plan
 
-Spec: See [REST-Service.md](REST-Service.md) for the API behavior. This file tracks the implementation plan, success criteria, and an automated test strategy per specs/AGENTS.md.
+Spec: See [REST-Service/API.md](REST-Service/API.md) for the API behavior. This file tracks the implementation plan, success criteria, and an automated test strategy per specs/AGENTS.md.
 
 ## Goal
 

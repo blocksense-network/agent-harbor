@@ -47,7 +47,7 @@ Shell completions are provided via the `aw shell-completion` command group. They
 - One tool for both the TUI dashboard and automation-ready commands
 - First-class support for:
   - Local state mode (SQLite only)
-  - Remote REST service mode (on-prem/private cloud), aligned with [REST-Service.md](REST-Service.md)
+  - Remote REST service mode (on-prem/private cloud), aligned with [REST-Service/API.md](REST-Service/API.md)
   - Terminal multiplexers: tmux, zellij, screen
   - Devcontainers and local runtimes (including nosandbox, policy-gated)
   - IDE integrations (VS Code, Cursor, Windsurf) and terminal-based agents
@@ -1036,7 +1036,7 @@ BEHAVIOR:
 - `--ssh` defaults to `enabled`; when `disabled`, CONNECT/OpenTcp to this executor is refused.
 - `--ssh-dst` specifies the exact destination enforced by the agent for `OpenTcp` (default `127.0.0.1:22`).
 
-When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the REST API documented in [REST-Service.md](REST-Service.md). This is the same code path used by `aw agent access-point`, so enabling it effectively turns the enrolling executor into a valid `remote-server` for `aw task` clients.
+When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the REST API documented in [REST-Service/API.md](REST-Service/API.md). This is the same code path used by `aw agent access-point`, so enabling it effectively turns the enrolling executor into a valid `remote-server` for `aw task` clients.
 ```
 
 ```

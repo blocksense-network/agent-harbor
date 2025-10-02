@@ -138,7 +138,7 @@ The `apps/macos/AgentsWorkflow/` directory contains the main **AgentsWorkflow.ap
 ### WebUI structure
 
 - `webui/app/` — Main SolidJS application with server-side rendering support through SolidStart
-- `webui/mock-server/` — Mock REST API server implementing the full REST-Service.md specification for development and testing
+- `webui/mock-server/` — Mock REST API server implementing the full [REST-Service/API.md](REST-Service/API.md) specification for development and testing
 - `webui/e2e-tests/` — Playwright E2E test suite with pre-scripted scenarios controlling both mock server and UI interactions
 - `webui/shared/` — Shared TypeScript utilities, API client code, and type definitions used across WebUI components
 

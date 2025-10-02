@@ -120,7 +120,7 @@ Milestone TA‑3 — Remote Mode Surface with Mock API
   - Minimal mock server scenarios for authentication and task creation
   - CLI contract assertions for non‑interactive behavior and SSE wiring points (no live SSE needed yet)
 - Verification:
-  - [x] Requests/flags conform to [REST-Service.md](REST-Service.md) surfaces used by CLI
+  - [x] Requests/flags conform to [REST-Service/API.md](REST-Service/API.md) surfaces used by CLI
 
 ### Execution and CI
 
@@ -134,6 +134,6 @@ Milestone TA‑3 — Remote Mode Surface with Mock API
 - TUI testing foundations and status: [TUI.status.md](TUI.status.md)
 - Mock agent test guide: [AGENTS.md](../../tests/tools/mock-agent/AGENTS.md)
 - Snapshot providers overview: [FS-Snapshots-Overview](FS%20Snapshots/FS-Snapshots-Overview.md)
-- REST service contract (for TA‑3 scope): [REST-Service.md](REST-Service.md)
+- REST service contract (for TA‑3 scope): [REST-Service/API.md](REST-Service/API.md)
 
 

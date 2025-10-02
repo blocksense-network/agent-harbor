@@ -42,7 +42,7 @@ Out of scope here: observability/metrics. (We’ll add later.)
   - Hosts an internal **SSH server** (system `sshd`) and executes tasks.
 
 - **aw CLI (client)**
-  - For tasks: calls `aw agent access-point`’s [REST-Service](REST-Service.md) to submit work.
+  - For tasks: calls `aw agent access-point`'s [REST-Service/API.md](REST-Service/API.md) to submit work.
   - For SSH: either uses **HTTP CONNECT** via standard `ssh` `ProxyCommand`, or uses the **web UI** with a terminal emulator.
 
 ### 2.2 Transports at a glance
