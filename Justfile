@@ -417,20 +417,27 @@ webui-test-failed:
         echo "✅ All $TOTAL_TESTS tests passed!"
     fi
 
+# WebUI include patterns as a multiline string
+REPOMIX_WEBUI_PATTERNS := replace("""
+specs/Public/WebUI-PRD.md
+specs/Public/WebUI.status.md
+specs/Public/REST-Service.md
+specs/Public/REST-Service.status.md
+specs/Public/Configuration.md
+specs/Public/Agent-Workflow-GUI.md
+specs/Public/Schemas/session-events.schema.json
+webui/**
+""", "\n", ",")
+
 # Create repomix bundle of all WebUI-related files (specs + implementation)
 repomix-webui:
     mkdir -p {{REPOMIX_OUT_DIR}}
-    mkdir -p /tmp/webui-bundle
-    cp specs/Public/WebUI-PRD.md /tmp/webui-bundle/
-    cp specs/Public/WebUI.status.md /tmp/webui-bundle/
-    cp specs/Public/REST-Service.md /tmp/webui-bundle/
-    cp specs/Public/REST-Service.status.md /tmp/webui-bundle/
-    cp specs/Public/Configuration.md /tmp/webui-bundle/
-    cp specs/Public/Agent-Workflow-GUI.md /tmp/webui-bundle/
-    cp specs/Public/Schemas/session-events.schema.json /tmp/webui-bundle/
-    cp -r webui/* /tmp/webui-bundle/
-    repomix -o {{REPOMIX_OUT_DIR}}/webui.md /tmp/webui-bundle/
-    rm -rf /tmp/webui-bundle
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-WebUI.md \
+        --style markdown \
+        --header-text "WebUI Complete Implementation and Specification" \
+        --include "{{REPOMIX_WEBUI_PATTERNS}}"
 
 # Create repomix bundle of all specs files
 repomix-specs:
@@ -521,16 +528,64 @@ launch-agents-workflow-release:
     @echo "🚀 Launching AgentsWorkflow (release build)..."
     open "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app"
 
+# TUI include patterns as a multiline string
+REPOMIX_TUI_PATTERNS := replace("""
+specs/Public/AGENTS.md
+specs/Public/TUI-PRD.md
+specs/Public/TUI.status.md
+specs/Public/TUI-Testing-Architecture.md
+specs/Public/REST-Service.md
+specs/Public/REST-Service.status.md
+specs/Public/Terminal-Multiplexers/TUI-Multiplexers-Overview.md
+specs/Public/Terminal-Multiplexers/tmux.md
+specs/Public/Terminal-Multiplexers/Kitty.md
+specs/Public/Terminal-Multiplexers/Multiplexer-Description-Template.md
+crates/aw-rest-api-contract/**
+crates/aw-rest-client/**
+crates/aw-tui/**
+crates/aw-tui-multiplexer/**
+crates/aw-tui-test/**
+crates/aw-mux-core/**
+crates/aw-mux/**
+crates/aw-test-scenarios/**
+crates/aw-rest-client-mock/**
+crates/aw-client-api/**
+test_scenarios/**
+""", "\n", ",")
+
+# Create repomix bundle of all TUI-related files (specs + implementation)
+repomix-tui:
+    @echo "📦 Creating TUI repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-TUI.md \
+        --style markdown \
+        --header-text "TUI Complete Implementation and Specification" \
+        --include "{{REPOMIX_TUI_PATTERNS}}"
+
+# AgentFS include patterns as a multiline string
+REPOMIX_AGENTFS_PATTERNS := replace("""
+specs/Public/AgentFS/**
+resources/fskit/**
+crates/agentfs-*/**
+apps/macos/AgentsWorkflow/**
+adapters/**
+crates/aw-cli/src/agent/fs.rs
+crates/aw-cli/src/agent/mod.rs
+tests/tools/e2e_macos_fskit/**
+""", "\n", ",")
+
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
 repomix-agentfs:
     @echo "📦 Creating AgentFS repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
         . \
-        --output {{REPOMIX_OUT_DIR}}/AgentFS.md \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-AgentFS.md \
         --style markdown \
         --header-text "AgentFS Complete Implementation and Specification" \
-        --include "specs/Public/AgentFS/**,resources/fskit/**,crates/agentfs-*/**,apps/macos/AgentsWorkflow/**,adapters/**,crates/aw-cli/src/agent/fs.rs,crates/aw-cli/src/agent/mod.rs,tests/tools/e2e_macos_fskit/**"
+        --include "{{REPOMIX_AGENTFS_PATTERNS}}"
 
 # Run overlay tests with E2E enforcement verification
 test-overlays:
