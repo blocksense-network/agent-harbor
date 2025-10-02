@@ -14,6 +14,9 @@
 
 set shell := ["./scripts/nix-env.sh", "-c"]
 
+# Define REPOMIX_OUT_DIR with a default value
+REPOMIX_OUT_DIR := env('REPOMIX_OUT_DIR', 'repomix')
+
 # IMPORTANT: Never use long scripts in Justfile recipes!
 # Long scripts set a custom shell, overriding our nix-env.sh setting.
 # Move complex scripts to the scripts/ folder instead.
@@ -406,7 +409,7 @@ webui-test-failed:
 
 # Create repomix bundle of all WebUI-related files (specs + implementation)
 repomix-webui:
-    mkdir -p repomix
+    mkdir -p {{REPOMIX_OUT_DIR}}
     mkdir -p /tmp/webui-bundle
     cp specs/Public/WebUI-PRD.md /tmp/webui-bundle/
     cp specs/Public/WebUI.status.md /tmp/webui-bundle/
@@ -416,8 +419,13 @@ repomix-webui:
     cp specs/Public/Agent-Workflow-GUI.md /tmp/webui-bundle/
     cp specs/Public/Schemas/session-events.schema.json /tmp/webui-bundle/
     cp -r webui/* /tmp/webui-bundle/
-    repomix -o repomix/webui.md /tmp/webui-bundle/
+    repomix -o {{REPOMIX_OUT_DIR}}/webui.md /tmp/webui-bundle/
     rm -rf /tmp/webui-bundle
+
+# Create repomix bundle of all specs files
+repomix-specs:
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix specs/ -o {{REPOMIX_OUT_DIR}}/Agent-Harbor-Specs.md --style markdown --header-text "Agents Workflow Specifications"
 
 # Install Playwright browsers for E2E tests
 webui-install-browsers:
@@ -504,9 +512,10 @@ launch-agents-workflow-release:
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
 repomix-agentfs:
     @echo "📦 Creating AgentFS repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
         . \
-        --output repomix/AgentFS.md \
+        --output {{REPOMIX_OUT_DIR}}/AgentFS.md \
         --style markdown \
         --header-text "AgentFS Complete Implementation and Specification" \
         --include "specs/Public/AgentFS/**,resources/fskit/**,crates/agentfs-*/**,apps/macos/AgentsWorkflow/**,adapters/**,crates/aw-cli/src/agent/fs.rs,crates/aw-cli/src/agent/mod.rs,tests/tools/e2e_macos_fskit/**"
