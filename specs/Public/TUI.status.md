@@ -10,6 +10,24 @@ Goal: deliver a production-ready terminal-based dashboard for creating, monitori
 
 Total estimated timeline: 12-16 weeks (broken into major phases with parallel development tracks)
 
+### PRD Compliance — Snapshot (as of 2025-10-02)
+| PRD Requirement | Status | Notes |
+|---|---|---|
+| Dashboard with Project/Branch/Agent selectors + multiline task editor | ✅ Met | Implemented with MVVM and golden snapshots for 80x24 & 120x40; keyboard navigation verified. |
+| Contextual single-line footer shortcuts | ✅ Met | Footer shows dynamic hints (e.g., "↑↓ Navigate • Ctrl+C x2 Quit") and varies by focus. |
+| Keyboard-only operation & predictable focus | ✅ Met (baseline) | Navigation (Tab/Shift+Tab, arrows, Enter/Esc) covered by tests; add a11y checks later. |
+| Multiplexer abstraction layer | ✅ Met | `aw-mux-core` trait + `aw-mux` impls; tmux + kitty done. |
+| Auto-attach/launch in multiplexer with standard split layout | ✅ Met (tmux/kitty) / ⏳ Pending (zellij/screen) | AW-specific adapter creates editor/agent/log panes. |
+| Real-time session monitoring via SSE | ⏳ Pending | Infrastructure planned; needs end-to-end SSE tests. |
+| Remote mode (REST service, cross-host attach) | ⏳ Pending | Milestone drafted; needs automated verification. |
+| Inline validation & non-intrusive errors | ◻ Partial | Baseline error handling exists; expand coverage & snapshots. |
+| Status bar (backend, last op) | ◻ Partial | Add assertions/goldens for backend indicator & last action. |
+| Persistence (last selections, theme) | ⏳ Pending | Implement local-db-backed persistence & tests. |
+| Autocomplete in editor (/@ menus) | ⏳ Pending | Implement tui-textarea autocomplete & tests. |
+| Theming & accessibility (high-contrast) | ⏳ Pending | Themes described in PRD; add implementation & a11y tests. |
+
+**Interpretation:** Core layout, MVVM, input model, and multiplexer scaffolding are in place. Gaps to full PRD: SSE monitoring, full multi-mux coverage (zellij/screen), persistence, autocomplete, a11y/themes, and remote mode verification.
+
 ### Milestone Completion & Outstanding Tasks
 
 Each milestone maintains an **outstanding tasks list** that tracks specific deliverables, bugs, and improvements. When milestones are completed, their sections are expanded with:
@@ -30,7 +48,7 @@ The TUI implementation provides these core capabilities:
 - **Session Management**: Launch tasks directly into multiplexer windows with proper pane layout
 - **Responsive Layout**: Fixed-height selectors with resizable description editor
 - **Contextual Help**: Dynamic footer showing relevant shortcuts based on current UI state
-- **Error Handling**: Inline validation messages and graceful error recovery
+ - **Error Handling**: Inline validation messages and graceful error recovery
 
 ### Parallel Development Tracks
 
@@ -460,6 +478,213 @@ The TUI implementation provides these core capabilities:
   - Multi-tenant data isolation is maintained
   - Rate limiting and quotas are properly enforced
 
+## New/Refined Milestones to Reach Full PRD
+
+> All milestones below include **automated verification** (unit + integration + golden/snapshot tests). Test names are suggestions; feel free to adopt your naming convention.
+
+### T3.4 Zellij & GNU screen Support (Multi-Mux Parity)
+**Deliverables**
+- `aw-mux` backends for **zellij** and **screen** implementing the low-level trait.
+- AW adapter support in `aw-tui-multiplexer` to create standard layouts (editor|agent|logs).
+
+**Automated Tests**
+- `aw_mux__zellij__session_lifecycle_ok`: create/focus/list windows/panes; verify via CLI introspection.
+- `aw_mux__screen__pane_split_and_exec_ok`: split h/v, `run_command`, `send_text` parity checks.
+- `aw_tui_mux__aw_layout__zellij__goldens`: VT100/expectrl snapshots at layout stages.
+- `aw_tui_mux__aw_layout__screen__goldens`: snapshot strategic points (pre/post split; after commands).
+
+**Verification Criteria**
+- All trait methods pass against live binaries when available; CI gracefully skips when unavailable.
+- Golden snapshots stable across runs; error paths (missing binary/socket) return `NotAvailable`.
+
+### T3.5 Error/Status Bar Hardening
+**Deliverables**
+- Status line shows **backend (local or host)** and **last operation result**.
+- Inline validation under selectors (e.g., missing branch/agent) with non-blocking notifications.
+
+**Automated Tests**
+- `tui_statusbar_backend_indicator_renders`: golden with `local` vs `remote-host`.
+- `tui_inline_validation_messages_render`: drive model into invalid state; assert lines in buffer.
+- `tui_non_intrusive_notifications_expire`: fake time to verify ephemeral messages disappear.
+
+**Verification Criteria**
+- Golden comparisons prove presence/format of backend & last-op text.
+- Validation and ephemeral notifications covered with deterministic fake time.
+
+### T3.6 Persistence (Selections & Theme)
+**Deliverables**
+- Persist last **project/branch/agent** selection and **theme** in config (per repo/user).
+
+**Automated Tests**
+- `persistence_writes_on_selection_change`: config file updated on interaction.
+- `persistence_restores_on_startup`: app loads persisted state (no network).
+- `theme_persistence_switches_theme`: golden before/after theme toggle.
+
+**Verification Criteria**
+- No I/O flakes: use temp dirs; golden snapshots reflect theme change.
+
+### T4.1 Real-time Session Monitoring (SSE)
+**Deliverables**
+- Live updates of session cards; reconnect with backoff; buffered events during blips.
+
+**Automated Tests**
+- `sse_event_stream_drives_ui`: mock SSE pushes; TUI updates verified via goldens.
+- `sse_network_blip_reconnects`: inject disconnect; assert backoff & eventual recovery.
+- `sse_buffered_events_applied_post_reconnect`: ensure no data loss.
+
+**Verification Criteria**
+- End-to-end with mock REST server; deterministic fake-time used for backoff schedule.
+
+## New Milestones — Inline Auto-Completion (Ratatui + forked textarea)
+
+### T4.2 Draft Autocomplete (/@)
+**Deliverables**
+- In-textarea autocomplete: `/` for workflows, `@` for files; telescope-style modal.
+
+**Please read the following research findings document that might help for all T4.2 milestones below**: [TUI-Text-Area-AutoComplete.md](../Research/TUI/TUI-Text-Area-AutoComplete.md)
+
+**Automated Tests**
+- `editor_autocomplete_menu_opens_and_filters`: keystrokes → modal; arrow/enter behavior.
+- `editor_autocomplete_inserts_tokens`: selection inserts canonical token into textarea.
+- `editor_autocomplete_esc_closes_restores_focus`: focus model checks.
+
+**Verification Criteria**
+- Goldens for menu open/filtered state; ViewModel assertions confirm token insertion & focus.
+
+### T4.2A Inline Auto-Completion — Fork & Plumbing
+**Objective**: Provide exact caret-anchored, *inline* autocomplete menus inside the editor (no modal), powered by a minimal fork of `tui-textarea`.
+
+**Deliverables**
+- Fork of `tui-textarea` exposing read-only viewport & gutter getters:
+  - `viewport_origin(&self) -> (top_row: u16, left_col: u16)`
+  - `gutter_width(&self) -> u16`
+- Feature flag `inline-autocomplete` in our workspace to guard fork use.
+- Coordinate mapper `(row,col) -> terminal (x,y)` inside editor `Rect`.
+- Non-blocking rendering path: editor first, then inline menu within the editor area using Ratatui `Clear` + `List`.
+
+**Automated Tests**
+- `textarea_fork_getters_return_stable_values`: unit tests against controlled scroll/gutter settings.
+- `coord_map_exact_anchor_ok_{80x24,120x40}`: property/golden tests ensure menu appears directly below caret and always stays clipped within editor area.
+- `intellisense_keystroke_passthrough_ok`: only ↑/↓/PgUp/PgDn/Tab/Enter/Esc intercepted while open.
+
+**Verification Criteria**
+- Zero modal behavior; focus remains in editor; popup position tracks caret in both dimensions (including horizontal scroll).
+- Goldens stable across CI for 80×24 & 120×40.
+
+### T4.2B Inline Auto-Completion — Providers, Matching & UX
+**Objective**: `/` and `@` providers with fast fuzzy matching and highlighted spans; low-latency experience on 10k+ items.
+
+**Deliverables**
+- Provider trait with `/` (workflows) and `@` (files/resources) implementations.
+- Background matcher service (Tokio task) using `nucleo` (fallback: `fuzzy-matcher`) returning top N results + match indices.
+- Debounce (60–100ms) + request IDs to discard stale results.
+- Insert-on-Enter/Tab; Esc closes; Tab cycles; PgUp/PgDn scrolls windowed results.
+
+**Automated Tests**
+- `provider_route_slash_and_at_ok`: token detection around caret with Unicode & tabs.
+- `matcher_topk_order_and_indices_ok`: deterministic corpus → ranked output with spans.
+- `insert_completion_restores_focus_ok`: editor buffer mutation + caret position verified.
+- `throughput_10k_items_latency_budget`: perf test (CI-sane) ensuring sub-frame draw time.
+
+**Verification Criteria**
+- End-to-end golden shows highlighted matches in list rows; latency targets met (render ≤ ~16ms avg on 120×40 in CI).
+
+### T4.2C Inline Auto-Completion — Edge Cases & A11y
+**Objective**: Bulletproof behavior under wrap, CJK/wide graphemes, tabs, horizontal scroll; predictable keyboard traversal.
+
+**Deliverables**
+- Grapheme-aware column mapping; tab expansion parity with editor.
+- Clipping + reflow of popup when near bottom/right edges.
+- High-contrast theme coverage for suggestion rows & highlights.
+
+**Automated Tests**
+- `grapheme_and_tabs_coord_map_ok`: property tests vs known strings.
+- `popup_clipping_near_edges_ok`: golden with caret near bottom-right.
+- `a11y_high_contrast_golden`: verify contrast + selection visibility.
+
+**Verification Criteria**
+- Popup never overflows editor area; highlight remains visible with high-contrast theme.
+
+### T4.2D Upstream & Maintenance (Stretch / Post-merge)
+**Objective**: Track upstream `tui-textarea` and open a PR for getters; keep fork minimal.
+
+**Deliverables**
+- Upstream PR draft referencing our getters + minimal docs.
+- CI job to alert on upstream releases and rebase fork (non-blocking).
+
+**Automated Tests**
+- `fork_api_surface_regression`: ensures only intended public API deltas vs upstream.
+
+**Verification Criteria**
+- Rebase script passes locally; no breakage to our public APIs.
+
+### T4.3 Accessibility & Theming
+**Deliverables**
+- High-contrast theme; ensure contrast ratios; predictable tab order for all interactives.
+
+**Automated Tests**
+- `high_contrast_theme_golden`: snapshot under high-contrast palette.
+- `tab_order_is_predictable`: synthetic key stream over all interactives, assert traversal order.
+- `keyboard_only_all_paths`: scenario covering all interactive elements without mouse.
+
+**Verification Criteria**
+- Goldens and state assertions cover theme + focus traversal on 80x24 and 120x40.
+
+### Exit Criteria for Inline Auto-Completion (Ship-Ready)
+
+1) Exact caret-anchored menu in editor (no modal), verified by goldens on 80×24 & 120×40.  
+2) `/` and `@` providers fully wired with `nucleo` matching and highlighted spans.  
+3) Insertion & navigation semantics validated (Enter/Tab/↑/↓/PgUp/PgDn/Esc).  
+4) Wide-grapheme/tabs/h-scroll correctness and edge clipping proven.  
+5) High-contrast theme snapshots present; a11y traversal predictable.  
+6) Fork gated behind `inline-autocomplete` feature; upstream PR prepared.
+
+### T4.4 Devcontainer-Aware Launch
+**Deliverables**
+- Launch editor/agent/log panes inside devcontainer when configured; local mode.
+
+**Automated Tests**
+- `devcontainer_launch_env_wired`: child process receives expected env/CWD.
+- `devcontainer_fallback_when_unavailable`: graceful degradation test.
+
+**Verification Criteria**
+- Pane commands run in container context; fallbacks produce non-intrusive notifications.
+
+### T4.5 Remote Attachment via SSH
+**Deliverables**
+- For remote sessions, create/attach panes over SSH per REST-provided details.
+
+**Automated Tests**
+- `remote_attach_invokes_ssh_with_args`: command composition unit test.
+- `remote_attach_end_to_end_mock`: spawn local ssh-echo shim; verify attach lifecycle & errors.
+
+**Verification Criteria**
+- Robust error surfacing; retries and timeouts deterministically tested.
+
+### T4.6 Complete User-Journey E2E & Performance
+**Deliverables**
+- E2E flow: **Task creation → launch → monitor (SSE) → completion** across muxes.
+- Performance baselines for large session lists and frequent updates.
+
+**Automated Tests**
+- `journey_local_tmux__ok`, `journey_remote_kitty__ok`: scripted scenarios with goldens.
+- `perf_large_session_list__budget_kept`: bounded render time; no panic on 1000+ sessions.
+- `perf_high_freq_sse__budget_kept`: sustained updates without missed frames.
+
+**Verification Criteria**
+- Budgets defined (e.g., ≤ 16ms average render frame on 120x40 in CI).
+
+### T4.7 Packaging & Docs (Hard-gated)
+**Deliverables**
+- Reproducible release builds; install scripts; user guide with screenshots.
+
+**Automated Tests**
+- `release_build_smoke`: run `--help`, `--version`.
+- `doc_examples_compile_and_match`: doctests for CLI/docs snippets.
+
+**Verification Criteria**
+- Artifacts produced in CI; docs up to date with current key bindings and flows.
+
 **T3.5 Task Creation and Launch (Local Mode)** (2 weeks)
 
 - **Deliverables**:
@@ -636,6 +861,16 @@ The TUI implementation provides these core capabilities:
 - Binary packaging and distribution for multiple platforms
 - Documentation and integration with broader AW ecosystem
 
+## PRD Compliance Exit Criteria (Ready to Ship)
+All rows in the **PRD Compliance — Snapshot** table marked ✅ with corresponding automated tests:
+1) Multi-mux parity (tmux, kitty, zellij, screen) with AW layout goldens.
+2) SSE monitoring & resilience E2E.
+3) Remote attach over SSH with error-handling tests.
+4) Persistence (selections & theme) proven via config I/O tests.
+5) Autocomplete menus (/@) with modal navigation tests.
+6) Status bar & non-intrusive errors with deterministic timers.
+7) Themes + high-contrast accessibility and keyboard-only coverage.
+8) Packaging & docs doctested.
 
 ### Risks & mitigations
 

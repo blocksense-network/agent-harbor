@@ -103,6 +103,11 @@ Variable height cards with text area and controls (keyboard navigable, Enter to 
   - **Popup menu navigation**: Tab or arrow keys to navigate suggestions, Enter to select
   - **Quick selection**: Right arrow key selects the currently active suggestion
   - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area
+- **Auto-save status indicators** in text area corners (low-contrast/dimmed text):
+  - **Unsaved** (gray): User has typed but no save request is in flight OR current in-flight request is invalidated
+  - **Saving...** (yellow): There is a valid (non-invalidated) save request currently in flight
+  - **Saved** (green): No pending changes AND most recent save request completed successfully
+  - **Error** (red): Most recent save request failed and no new typing has occurred
 - Context-sensitive keyboard shortcuts:
   - While focus is inside a draft text area, footer shows: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
   - "Agent(s)" is plural if multiple agents are selected
@@ -197,7 +202,16 @@ Single-line footer without borders showing context-sensitive shortcuts that chan
 **Shortcut behavior notes:**
 - "Agent(s)" adjusts to singular/plural based on number of selected agents
 - Enter key launches the task when in draft textarea (calls Go button action)
-- Shift+Enter creates a new line in the text area when focused
+- Shift+Enter creates a new line in the text area
+
+#### Draft Auto-Save Behavior
+
+- **Request Tracking**: Each save attempt is assigned a unique request ID to track validity
+- **Request Invalidation**: When user types while a save request is pending, that request becomes "invalidated"
+- **Save Timing**: Save requests are sent only after 500ms of continuous inactivity
+- **Concurrent Typing Protection**: Ongoing typing invalidates previous save requests
+- **Response Handling**: Save confirmations for invalidated requests are ignored if newer changes exist
+- **Local Storage**: Drafts are persisted to local storage with automatic restoration across sessions
 
 ### Task Management
 
