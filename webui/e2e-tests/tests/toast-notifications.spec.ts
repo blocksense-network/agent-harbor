@@ -23,7 +23,7 @@ test.describe("Toast Notifications", () => {
     await stopButton.click();
 
     // Check that an error toast appears
-    const toast = page.locator('.toast-item').filter({ hasText: 'Failed to stop session' });
+    const toast = page.locator('[data-toast]').filter({ hasText: 'Failed to stop session' });
     await expect(toast).toBeVisible();
 
     // Toast should have error styling (red background)
@@ -51,7 +51,7 @@ test.describe("Toast Notifications", () => {
     await cancelButton.click();
 
     // Check that an error toast appears
-    const toast = page.locator('.toast-item').filter({ hasText: 'Failed to cancel session' });
+    const toast = page.locator('[data-toast]').filter({ hasText: 'Failed to cancel session' });
     await expect(toast).toBeVisible();
 
     // Toast should have error styling
@@ -69,7 +69,7 @@ test.describe("Toast Notifications", () => {
     await stopButton.click();
 
     // Wait for toast to appear
-    const toast = page.locator('.toast-item').filter({ hasText: 'Failed to stop session' });
+    const toast = page.locator('[data-toast]').filter({ hasText: 'Failed to stop session' });
     await expect(toast).toBeVisible();
 
     // Click the dismiss button (×)
@@ -108,7 +108,7 @@ test.describe("Toast Notifications", () => {
     await stopButton.click();
 
     // Check that toast has proper ARIA attributes
-    const toast = page.locator('.toast-item').filter({ hasText: 'Failed to stop session' });
+    const toast = page.locator('[data-toast]').filter({ hasText: 'Failed to stop session' });
     await expect(toast).toHaveAttribute('role', 'alert');
     await expect(toast).toHaveAttribute('aria-live', 'assertive');
   });

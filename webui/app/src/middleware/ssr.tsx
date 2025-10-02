@@ -6,14 +6,16 @@ import * as path from "path";
 const logger = {
   log: (...args: any[]) => {
     const isQuietMode =
-      process.env.QUIET_MODE === "true" || process.env.NODE_ENV === "test";
+      process.env["QUIET_MODE"] === "true" ||
+      process.env["NODE_ENV"] === "test";
     if (!isQuietMode) {
       console.log(...args);
     }
   },
   warn: (...args: any[]) => {
     const isQuietMode =
-      process.env.QUIET_MODE === "true" || process.env.NODE_ENV === "test";
+      process.env["QUIET_MODE"] === "true" ||
+      process.env["NODE_ENV"] === "test";
     if (!isQuietMode) {
       console.warn(...args);
     }

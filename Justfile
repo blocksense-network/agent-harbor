@@ -309,6 +309,16 @@ webui-type-check:
     cd webui/app && npm run type-check
     cd webui/mock-server && npm run type-check
 
+# Check for unused files/exports/dependencies in WebUI projects
+webui-knip:
+    cd webui/app && npm run knip
+    cd webui/shared && npm run knip
+
+# Check TypeScript type coverage in WebUI projects
+webui-type-coverage:
+    cd webui/app && npm run type-coverage
+    cd webui/shared && npm run type-coverage
+
 # Format all WebUI projects
 webui-format:
     cd webui/app && npm run format
@@ -433,8 +443,10 @@ webui-install-browsers:
 
 # Run all WebUI checks (lint, type-check, build, test)
 webui-check:
-    just webui-lint
+    just webui-knip
     just webui-type-check
+    just webui-lint
+    just webui-type-coverage
     just webui-build
     just webui-build-ssr
     just webui-build-mock

@@ -110,10 +110,10 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         // Tool completed
         return {
           type: "tool",
-          name: event.tool_name,
+          name: event.tool_name!,
           output: event.tool_output,
           status: event.tool_status,
-        };
+        } as ActivityRow;
       } else {
         // Tool started (shouldn't happen in recent_events, but handle it)
         return { type: "tool", name: event.tool_name };
@@ -169,7 +169,8 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
             `[SessionCard ${session().id}] Updating status to:`,
             event.status,
           );
-          setSessionStatus(event.status);
+          // Type assertion needed due to SessionEvent having generic string vs Session having specific union
+          setSessionStatus(event.status as Session["status"]);
         }
 
         // Update live activity based on event type
@@ -203,7 +204,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
             }
             return row;
           });
-          setLiveActivity({ ...current, rows: newRows });
+          setLiveActivity({ ...current, rows: newRows } as LiveActivityState);
           console.log(
             `[SessionCard ${session().id}] Updated tool last_line IN PLACE for: ${current.currentTool}`,
           );
@@ -222,7 +223,10 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
             }
             return row;
           });
-          setLiveActivity({ rows: newRows, currentTool: null });
+          setLiveActivity({
+            rows: newRows,
+            currentTool: null,
+          } as LiveActivityState);
           console.log(
             `[SessionCard ${session().id}] Tool completed: ${event.tool_name}, cleared currentTool`,
           );
@@ -309,7 +313,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
       data-task-id={session().id}
       aria-labelledby={`session-heading-${session().id}`}
       aria-selected={props.isSelected}
-      class="bg-white border rounded-lg shadow-sm transition-all p-4"
+      class="rounded-lg border bg-white p-4 shadow-sm transition-all"
       classList={{
         "ring-2 ring-blue-500 border-blue-500 bg-blue-50 selected":
           props.isSelected,
@@ -318,21 +322,29 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
       tabindex={props.isSelected ? "0" : "-1"}
     >
       {/* First line: Status icon, clickable title, and actions */}
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center space-x-2 flex-1 min-w-0">
+      <div class="mb-2 flex items-center justify-between">
+        <div class="flex min-w-0 flex-1 items-center space-x-2">
           <span
-            class={`text-sm ${statusInfo().color}`}
+            class={`
+              text-sm
+              ${statusInfo().color}
+            `}
             aria-label={`Status: ${sessionStatus()}`}
           >
             <span aria-hidden="true">{statusInfo().icon}</span>
           </span>
           <h3
             id={`session-heading-${session().id}`}
-            class="text-sm font-semibold flex-1 min-w-0"
+            class="min-w-0 flex-1 text-sm font-semibold"
           >
             <A
               href={`/tasks/${session().id}`}
-              class="text-gray-900 hover:text-blue-600 hover:underline truncate cursor-pointer focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+              class={`
+                cursor-pointer truncate text-gray-900
+                hover:text-blue-600 hover:underline
+                focus-visible:ring-2 focus-visible:ring-blue-500
+                focus-visible:ring-offset-2
+              `}
               title={session().prompt}
               onClick={(e) => {
                 // Stop propagation to prevent parent handlers
@@ -353,7 +365,12 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
                 e.stopPropagation();
                 props.onStop?.();
               }}
-              class="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded text-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+              class={`
+                rounded p-1 text-xs text-gray-400
+                hover:bg-red-50 hover:text-red-600
+                focus-visible:ring-2 focus-visible:ring-blue-500
+                focus-visible:ring-offset-2
+              `}
               title="Stop"
               aria-label="Stop session"
             >
@@ -366,7 +383,12 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
                 e.stopPropagation();
                 props.onCancel?.();
               }}
-              class="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded text-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+              class={`
+                rounded p-1 text-xs text-gray-400
+                hover:bg-red-50 hover:text-red-600
+                focus-visible:ring-2 focus-visible:ring-blue-500
+                focus-visible:ring-offset-2
+              `}
               title="Cancel"
               aria-label="Cancel session"
             >
@@ -377,15 +399,20 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
       </div>
 
       {/* Second line: Compact metadata - Repository • Branch • Agent • Timestamp (all on one line) */}
-      <div class="flex items-center space-x-1.5 mb-2 text-xs text-gray-600">
+      <div class="mb-2 flex items-center space-x-1.5 text-xs text-gray-600">
         <span aria-hidden="true">📁</span>
-        <span class="truncate max-w-[120px]">
+        <span class="max-w-[120px] truncate">
           {getRepoName(session().repo.url)}
         </span>
         <Show when={session().repo.branch}>
           <>
             <span class="text-gray-400">•</span>
-            <span class="bg-gray-100 px-1 py-0.5 rounded text-gray-700 truncate max-w-[100px]">
+            <span
+              class={`
+                max-w-[100px] truncate rounded bg-gray-100 px-1 py-0.5
+                text-gray-700
+              `}
+            >
               {session().repo.branch}
             </span>
           </>
@@ -417,11 +444,11 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           <For each={getLiveActivity()}>
             {(activity, index) => (
               <div
-                class="text-xs h-4 overflow-hidden truncate"
+                class="h-4 truncate overflow-hidden text-xs"
                 classList={{
-                  "text-blue-600": activity && index() === 2,
-                  "text-gray-600": activity && index() !== 2,
-                  "text-transparent": !activity,
+                  "text-blue-600": Boolean(activity && index() === 2),
+                  "text-gray-600": Boolean(activity && index() !== 2),
+                  "text-transparent": Boolean(!activity),
                 }}
                 title={activity || ""}
               >

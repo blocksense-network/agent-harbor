@@ -5,7 +5,29 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "knip": "knip",
+    "knip:strict": "knip --strict",
+    "type-coverage": "type-coverage",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "typeCoverage": {
+    "atLeast": 95,
+    "detail": true,
+    "strict": true,
+    "ignoreCatch": false,
+    "cache": true,
+    "tsconfig": "tsconfig.base.json",
+    "include": [
+      "src/**/*.ts",
+      "src/**/*.tsx"
+    ],
+    "exclude": [
+      "**/*.d.ts",
+      "**/__tests__/**",
+      "**/__mocks__/**",
+      "e2e/**",
+      "tests/**"
+    ]
   },
   "keywords": [],
   "author": "",
@@ -17,7 +39,10 @@
     "eslint": "^9.36.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
+    "knip": "^5.64.1",
     "prettier": "^3.6.2",
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "type-coverage": "^2.29.7",
     "typescript": "^5.9.2"
   }
 }

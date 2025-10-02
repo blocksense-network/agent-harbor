@@ -53,9 +53,13 @@ export const SaveStatus: Component<SaveStatusProps> = (props) => {
 
   return (
     <div
-      class={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-        config().color
-      } ${config().bgColor} ${props.class || ""}`}
+      class={`
+        inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium
+        transition-colors
+        ${config().color}
+        ${config().bgColor}
+        ${props.class || ""}
+      `}
       role="status"
       aria-live="polite"
       aria-label={`Save status: ${config().text}`}

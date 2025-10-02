@@ -1,4 +1,4 @@
-import { Component, onMount, onCleanup, createEffect } from "solid-js";
+import { onMount, onCleanup, createEffect, For } from "solid-js";
 import TomSelect from "tom-select";
 
 interface TomSelectProps<T = string> {
@@ -13,7 +13,7 @@ interface TomSelectProps<T = string> {
   id?: string;
 }
 
-export const TomSelectComponent: Component<TomSelectProps> = (props) => {
+export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   let selectRef: HTMLSelectElement | undefined;
   let tomSelectInstance: any = null;
 
@@ -93,11 +93,13 @@ export const TomSelectComponent: Component<TomSelectProps> = (props) => {
         aria-label={props.placeholder}
       >
         <option value="">{props.placeholder || "Select..."}</option>
-        {props.items.map((item) => (
-          <option value={props.getKey(item)}>
-            {props.getDisplayText(item)}
-          </option>
-        ))}
+        <For each={props.items}>
+          {(item) => (
+            <option value={props.getKey(item)}>
+              {props.getDisplayText(item)}
+            </option>
+          )}
+        </For>
       </select>
     </div>
   );

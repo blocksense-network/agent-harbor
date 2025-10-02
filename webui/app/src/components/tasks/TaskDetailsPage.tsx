@@ -2,12 +2,6 @@ import { Component, createSignal, createResource, Show, For } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { apiClient } from "../../lib/api.js";
 
-import { Session } from "../../lib/api.js";
-
-interface TaskDetails extends Session {
-  logs: string[];
-}
-
 interface TaskDetailsPageProps {
   taskId?: string;
 }
@@ -15,12 +9,13 @@ interface TaskDetailsPageProps {
 export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
   const params = useParams();
   const navigate = useNavigate();
-  const taskId = () => props.taskId || params.id;
+  const taskId = () => props.taskId || params["id"];
 
   const [activeTab, setActiveTab] = createSignal("overview");
 
   // Load task details from API
   const [taskData] = createResource(taskId, async (id) => {
+    if (!id) return null;
     try {
       const result = await apiClient.getSession(id);
       return result;
@@ -53,8 +48,8 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
     try {
       await apiClient.stopSession(taskId()!);
-      // Refresh task data
-      await taskData.refetch?.();
+      // Note: SolidJS resources don't have a refetch method
+      // The UI will update automatically when the session state changes
     } catch (error) {
       console.error("Failed to stop task:", error);
     }
@@ -93,18 +88,34 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
     }
   };
 
+  if (!task()) {
+    return (
+      <div class="flex min-h-screen items-center justify-center bg-gray-50">
+        <div class="text-center">
+          <h2 class="mb-2 text-xl font-semibold text-gray-900">
+            Task not found
+          </h2>
+          <p class="text-gray-600">The requested task could not be loaded.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div class="min-h-screen bg-gray-50">
       {/* Header */}
-      <header class="bg-white border-b border-gray-200 px-6 py-4">
+      <header class="border-b border-gray-200 bg-white px-6 py-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <button
               onClick={handleBack}
-              class="text-gray-600 hover:text-gray-900 p-2"
+              class={`
+                p-2 text-gray-600
+                hover:text-gray-900
+              `}
             >
               <svg
-                class="w-5 h-5"
+                class="h-5 w-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -126,7 +137,13 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
           <div class="flex items-center space-x-3">
             <button
               onClick={handleLaunchIDE}
-              class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              class={`
+                rounded-md border border-transparent bg-green-600 px-4 py-2
+                text-sm font-medium text-white
+                hover:bg-green-700
+                focus:ring-2 focus:ring-green-500 focus:ring-offset-2
+                focus:outline-none
+              `}
             >
               Launch IDE
             </button>
@@ -134,7 +151,13 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
             <Show when={task()?.status === "running"}>
               <button
                 onClick={handlePause}
-                class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 border border-transparent rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                class={`
+                  rounded-md border border-transparent bg-yellow-600 px-4 py-2
+                  text-sm font-medium text-white
+                  hover:bg-yellow-700
+                  focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2
+                  focus:outline-none
+                `}
               >
                 Pause
               </button>
@@ -143,7 +166,13 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
             <Show when={task()?.status === "paused"}>
               <button
                 onClick={handleResume}
-                class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                class={`
+                  rounded-md border border-transparent bg-green-600 px-4 py-2
+                  text-sm font-medium text-white
+                  hover:bg-green-700
+                  focus:ring-2 focus:ring-green-500 focus:ring-offset-2
+                  focus:outline-none
+                `}
               >
                 Resume
               </button>
@@ -152,7 +181,13 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
             <Show when={task()?.status === "running"}>
               <button
                 onClick={handleStop}
-                class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                class={`
+                  rounded-md border border-transparent bg-red-600 px-4 py-2
+                  text-sm font-medium text-white
+                  hover:bg-red-700
+                  focus:ring-2 focus:ring-red-500 focus:ring-offset-2
+                  focus:outline-none
+                `}
               >
                 Stop
               </button>
@@ -161,32 +196,45 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
         </div>
       </header>
 
-      <div class="max-w-7xl mx-auto px-6 py-6">
+      <div class="mx-auto max-w-7xl px-6 py-6">
         <Show when={task()}>
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div
+            class={`
+              grid grid-cols-1 gap-6
+              lg:grid-cols-3
+            `}
+          >
             {/* Left Column - Task Info */}
             <div class="lg:col-span-1">
-              <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+              <div
+                class={`
+                  rounded-lg border border-gray-200 bg-white p-6 shadow-sm
+                `}
+              >
+                <h2 class="mb-4 text-lg font-semibold text-gray-900">
                   Task Information
                 </h2>
 
                 <div class="space-y-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">
                       Status
                     </label>
                     <div class="flex items-center space-x-2">
                       <span
-                        class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          task()!.status === "completed"
-                            ? "bg-green-100 text-green-800"
-                            : task()!.status === "running"
-                              ? "bg-blue-100 text-blue-800"
-                              : task()!.status === "failed"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-gray-100 text-gray-800"
-                        }`}
+                        class={`
+                          inline-flex items-center rounded-full px-2.5 py-0.5
+                          text-xs font-medium
+                          ${
+                            task()!.status === "completed"
+                              ? "bg-green-100 text-green-800"
+                              : task()!.status === "running"
+                                ? "bg-blue-100 text-blue-800"
+                                : task()!.status === "failed"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-gray-100 text-gray-800"
+                          }
+                        `}
                       >
                         {task()!.status}
                       </span>
@@ -194,7 +242,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                   </div>
 
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">
                       Repository
                     </label>
                     <p class="text-sm text-gray-900">
@@ -203,7 +251,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                   </div>
 
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">
                       Branch
                     </label>
                     <p class="text-sm text-gray-900">
@@ -212,7 +260,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                   </div>
 
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">
                       Agent
                     </label>
                     <p class="text-sm text-gray-900">
@@ -221,7 +269,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                   </div>
 
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">
                       Created
                     </label>
                     <p class="text-sm text-gray-900">
@@ -234,28 +282,39 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
             {/* Right Column - Tabs */}
             <div class="lg:col-span-2">
-              <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
                 {/* Tab Navigation */}
                 <div class="border-b border-gray-200">
                   <nav class="flex">
-                    {[
-                      { id: "overview", label: "Overview" },
-                      { id: "logs", label: "Live Log" },
-                      { id: "events", label: "Events" },
-                      { id: "report", label: "Report" },
-                      { id: "workspace", label: "Workspace" },
-                    ].map((tab) => (
-                      <button
-                        onClick={() => setActiveTab(tab.id)}
-                        class={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                          activeTab() === tab.id
-                            ? "border-blue-500 text-blue-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
+                    <For
+                      each={[
+                        { id: "overview", label: "Overview" },
+                        { id: "logs", label: "Live Log" },
+                        { id: "events", label: "Events" },
+                        { id: "report", label: "Report" },
+                        { id: "workspace", label: "Workspace" },
+                      ]}
+                    >
+                      {(tab) => (
+                        <button
+                          onClick={() => setActiveTab(tab.id)}
+                          class={`
+                            border-b-2 px-4 py-3 text-sm font-medium
+                            transition-colors
+                            ${
+                              activeTab() === tab.id
+                                ? "border-blue-500 text-blue-600"
+                                : `
+                                  border-transparent text-gray-500
+                                  hover:border-gray-300 hover:text-gray-700
+                                `
+                            }
+                          `}
+                        >
+                          {tab.label}
+                        </button>
+                      )}
+                    </For>
                   </nav>
                 </div>
 
@@ -263,11 +322,11 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                 <div class="p-6">
                   <Show when={activeTab() === "overview"}>
                     <div>
-                      <h3 class="text-lg font-medium text-gray-900 mb-4">
+                      <h3 class="mb-4 text-lg font-medium text-gray-900">
                         Task Overview
                       </h3>
                       <div class="prose prose-sm max-w-none">
-                        <p class="text-gray-700 whitespace-pre-wrap">
+                        <p class="whitespace-pre-wrap text-gray-700">
                           {task()!.prompt}
                         </p>
                       </div>
@@ -276,14 +335,22 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
                   <Show when={activeTab() === "logs"}>
                     <div>
-                      <h3 class="text-lg font-medium text-gray-900 mb-4">
+                      <h3 class="mb-4 text-lg font-medium text-gray-900">
                         Live Log
                       </h3>
-                      <div class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm max-h-96 overflow-y-auto">
-                        <Show when={logs().length > 0}>
+                      <div
+                        class={`
+                          max-h-96 overflow-y-auto rounded-lg bg-gray-900 p-4
+                          font-mono text-sm text-green-400
+                        `}
+                      >
+                        <Show when={(logs() || []).length > 0}>
                           <For each={logs()}>
-                            {(log, index) => {
-                              const logMessage = log.message || log;
+                            {(log, _index) => {
+                              const logMessage =
+                                typeof log === "string"
+                                  ? log
+                                  : log.message || "";
                               const isError =
                                 logMessage.toLowerCase().includes("error") ||
                                 logMessage.toLowerCase().includes("failed");
@@ -295,19 +362,24 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                                 <div class="mb-1">
                                   <span class="text-gray-400">
                                     [
-                                    {new Date(
-                                      task()!.createdAt,
-                                    ).toLocaleTimeString()}
+                                    {task()
+                                      ? new Date(
+                                          task()!.createdAt,
+                                        ).toLocaleTimeString()
+                                      : ""}
                                     ]
                                   </span>
                                   <span
-                                    class={`ml-2 ${
-                                      isError
-                                        ? "text-red-400"
-                                        : isWarning
-                                          ? "text-yellow-400"
-                                          : "text-green-400"
-                                    }`}
+                                    class={`
+                                      ml-2
+                                      ${
+                                        isError
+                                          ? "text-red-400"
+                                          : isWarning
+                                            ? "text-yellow-400"
+                                            : "text-green-400"
+                                      }
+                                    `}
                                   >
                                     {logMessage}
                                   </span>
@@ -316,7 +388,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                             }}
                           </For>
                         </Show>
-                        <Show when={logs().length === 0}>
+                        <Show when={(logs() || []).length === 0}>
                           <div class="text-gray-500">
                             No logs available yet...
                           </div>
@@ -327,7 +399,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
                   <Show when={activeTab() === "events"}>
                     <div>
-                      <h3 class="text-lg font-medium text-gray-900 mb-4">
+                      <h3 class="mb-4 text-lg font-medium text-gray-900">
                         Events
                       </h3>
                       <div class="text-sm text-gray-500">
@@ -338,7 +410,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
                   <Show when={activeTab() === "report"}>
                     <div>
-                      <h3 class="text-lg font-medium text-gray-900 mb-4">
+                      <h3 class="mb-4 text-lg font-medium text-gray-900">
                         Report
                       </h3>
                       <div class="text-sm text-gray-500">
@@ -349,7 +421,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
                   <Show when={activeTab() === "workspace"}>
                     <div>
-                      <h3 class="text-lg font-medium text-gray-900 mb-4">
+                      <h3 class="mb-4 text-lg font-medium text-gray-900">
                         Workspace
                       </h3>
                       <div class="text-sm text-gray-500">
@@ -365,7 +437,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
         </Show>
 
         <Show when={!task()}>
-          <div class="text-center py-12">
+          <div class="py-12 text-center">
             <svg
               class="mx-auto h-12 w-12 text-gray-400"
               fill="none"

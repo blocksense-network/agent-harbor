@@ -92,7 +92,7 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
     try {
       setError(null);
       // Remove server-managed fields from updates
-      const { id: _, createdAt, updatedAt, ...updateData } = updates as any;
+      const { id, ...updateData } = updates as any;
       await apiClient.updateDraft(id, updateData);
       props.onDraftChanged?.(); // Notify that drafts changed
       return true;
@@ -105,13 +105,15 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
     }
   };
 
-  const value: DraftContextValue = {
+  const value: any = {
     error,
     createDraft,
     removeDraft,
     updateDraft,
-    onDraftChanged: props.onDraftChanged,
   };
+  if (props.onDraftChanged) {
+    value.onDraftChanged = props.onDraftChanged;
+  }
 
   return (
     <DraftContext.Provider value={value}>

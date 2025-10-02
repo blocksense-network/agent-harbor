@@ -9,22 +9,32 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
   props,
 ) => {
   return (
-    <div class="min-h-screen flex items-center justify-center bg-gray-50">
-      <div class="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
-        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div class="flex min-h-screen items-center justify-center bg-gray-50">
+      <div class="w-full max-w-md rounded-lg bg-white p-6 text-center shadow-lg">
+        <div
+          class={`
+            mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full
+            bg-red-100
+          `}
+        >
           <span class="text-3xl text-red-600">⚠️</span>
         </div>
-        <h1 class="text-xl font-semibold text-gray-900 mb-2">
+        <h1 class="mb-2 text-xl font-semibold text-gray-900">
           Something went wrong
         </h1>
-        <p class="text-gray-600 mb-6">
+        <p class="mb-6 text-gray-600">
           An unexpected error occurred. Please try refreshing the page or
           contact support if the problem persists.
         </p>
         <div class="space-y-3">
           <button
             onClick={props.reset}
-            class="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+            class={`
+              w-full rounded-md bg-blue-600 px-4 py-2 text-white
+              transition-colors
+              hover:bg-blue-700
+              focus:ring-2 focus:ring-blue-500 focus:outline-none
+            `}
           >
             Try Again
           </button>
@@ -34,14 +44,24 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
                 window.location.reload();
               }
             }}
-            class="w-full bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+            class={`
+              w-full rounded-md bg-gray-200 px-4 py-2 text-gray-800
+              transition-colors
+              hover:bg-gray-300
+              focus:ring-2 focus:ring-gray-500 focus:outline-none
+            `}
           >
             Refresh Page
           </button>
         </div>
-        {process.env.NODE_ENV === "development" && (
+        {process.env["NODE_ENV"] === "development" && (
           <details class="mt-4 text-left">
-            <summary class="cursor-pointer text-sm text-gray-500 hover:text-gray-700 select-none">
+            <summary
+              class={`
+                cursor-pointer text-sm text-gray-500 select-none
+                hover:text-gray-700
+              `}
+            >
               Error Details (Development)
             </summary>
             <div class="mt-2 space-y-2">
@@ -49,7 +69,12 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
                 <label class="text-xs font-medium text-gray-700">
                   Error Message:
                 </label>
-                <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-16 select-text cursor-text">
+                <pre
+                  class={`
+                    max-h-16 cursor-text overflow-auto rounded bg-gray-100 p-2
+                    text-xs select-text
+                  `}
+                >
                   {props.error?.message || "Unknown error"}
                 </pre>
               </div>
@@ -58,7 +83,12 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
                   <label class="text-xs font-medium text-gray-700">
                     Stack Trace:
                   </label>
-                  <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-32 select-text cursor-text whitespace-pre-wrap">
+                  <pre
+                    class={`
+                      max-h-32 cursor-text overflow-auto rounded bg-gray-100 p-2
+                      text-xs whitespace-pre-wrap select-text
+                    `}
+                  >
                     {props.error.stack}
                   </pre>
                 </div>
@@ -68,7 +98,12 @@ const DefaultErrorFallback: Component<{ error: any; reset: () => void }> = (
                   <label class="text-xs font-medium text-gray-700">
                     Cause:
                   </label>
-                  <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-16 select-text cursor-text">
+                  <pre
+                    class={`
+                      max-h-16 cursor-text overflow-auto rounded bg-gray-100 p-2
+                      text-xs select-text
+                    `}
+                  >
                     {JSON.stringify(props.error.cause, null, 2)}
                   </pre>
                 </div>

@@ -100,7 +100,7 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
 
   * Keep using `af_open_by_id`/`af_create_child_by_id` (👍).
   * Replace `constructPath(for:in:)` with an ID‑first strategy. If you must build a path, round‑trip bytes safely (no `String` fallback).
-  * In `enumerateDirectory`, build `FSFileName` from the raw byte slice (up to NUL), not from a `String`. 
+  * In `enumerateDirectory`, build `FSFileName` from the raw byte slice (up to NUL), not from a `String`.
 
 * **Per‑open handles.** Replace `FSItem.userData` with a map `{openKey → (handle, pid)}` and track refcounts. Update `read/write/close` accordingly. 
 

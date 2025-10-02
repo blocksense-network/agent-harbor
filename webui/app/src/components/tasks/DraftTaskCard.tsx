@@ -1,18 +1,8 @@
-import {
-  Component,
-  createSignal,
-  createEffect,
-  onMount,
-  For,
-  Show,
-} from "solid-js";
-import { apiClient, type AgentType, type DraftTask } from "../../lib/api.js";
+import { Component, createSignal, createEffect, onMount } from "solid-js";
+import { apiClient, type DraftTask } from "../../lib/api.js";
 import { TomSelectComponent } from "../common/TomSelect.js";
 import { ModelMultiSelect } from "../common/ModelMultiSelect.js";
-import {
-  SaveStatus,
-  type SaveStatus as SaveStatusType,
-} from "../common/SaveStatus.js";
+import { SaveStatus, type SaveStatusType } from "../common/SaveStatus.js";
 import { useFocus } from "../../contexts/FocusContext.js";
 
 interface Repository {
@@ -20,12 +10,6 @@ interface Repository {
   name: string;
   url?: string;
   branch?: string;
-}
-
-interface ModelOption {
-  type: string;
-  version: string;
-  instances: number;
 }
 
 interface DraftTaskCardProps {
@@ -38,13 +22,15 @@ interface DraftTaskCardProps {
 
 export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   const [isSubmitting, setIsSubmitting] = createSignal(false);
-  const [modelSelections, setModelSelections] =
-    createSignal<Array<{ model: string; instances: number }>>([]);
-  const [autoSaveTimeoutId, setAutoSaveTimeoutId] =
-    createSignal<number | null>(null);
+  const [modelSelections, setModelSelections] = createSignal<
+    Array<{ model: string; instances: number }>
+  >([]);
+  const [autoSaveTimeoutId, setAutoSaveTimeoutId] = createSignal<number | null>(
+    null,
+  );
   const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>("saved");
   let textareaRef: HTMLTextAreaElement | undefined;
-  const { setDraftFocus, isDraftFocused } = useFocus();
+  const { setDraftFocus } = useFocus();
 
   // Convert draft data to local signals for easier handling
   const [localPrompt, setLocalPrompt] = createSignal(props.draft.prompt || "");
@@ -53,10 +39,9 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   );
 
   // Track save requests to prevent race conditions and text truncation
-  const [currentSaveRequestId, setCurrentSaveRequestId] =
-    createSignal<number | null>(null);
-  const [lastCompletedSaveRequestId, setLastCompletedSaveRequestId] =
-    createSignal<number | null>(null);
+  const [currentSaveRequestId, setCurrentSaveRequestId] = createSignal<
+    number | null
+  >(null);
 
   let nextSaveRequestId = 1;
 
@@ -77,7 +62,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
     // Clear any existing timeout
     if (autoSaveTimeoutId() !== null) {
-      clearTimeout(autoSaveTimeoutId());
+      clearTimeout(autoSaveTimeoutId()!);
     }
 
     const timeoutId = setTimeout(async () => {
@@ -89,7 +74,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       setSaveStatus("saving");
 
       try {
-        const success = await props.onUpdate({ prompt: currentPrompt });
+        await props.onUpdate({ prompt: currentPrompt });
 
         // Check again if request is still valid after async operation
         if (currentSaveRequestId() !== requestId) {
@@ -98,16 +83,14 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
         // Always update local state optimistically for better UX
         setLastSavedPrompt(currentPrompt);
-        setLastCompletedSaveRequestId(requestId);
 
         // Update status to saved only if this is still the current request
         if (currentSaveRequestId() === requestId) {
           setSaveStatus("saved");
         }
-      } catch (error) {
+      } catch {
         // API failed but still update local state optimistically
         setLastSavedPrompt(currentPrompt);
-        setLastCompletedSaveRequestId(requestId);
         if (currentSaveRequestId() === requestId) {
           setSaveStatus("saved"); // Show as saved since local state is updated
         }
@@ -141,11 +124,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   };
 
   const prompt = () => localPrompt();
-  const setPrompt = (value: string) => {
-    setLocalPrompt(value);
-  };
 
-  const selectedRepo = () =>
+  const selectedRepo = (): Repository | null =>
     props.draft.repo
       ? {
           id: props.draft.repo.url || "unknown",
@@ -153,32 +133,33 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             ? props.draft.repo.url.split("/").pop()?.replace(".git", "") ||
               "unknown"
             : "unknown",
-          url: props.draft.repo.url,
-          branch: props.draft.repo.branch,
+          ...(props.draft.repo.url !== undefined && {
+            url: props.draft.repo.url,
+          }),
+          ...(props.draft.repo.branch !== undefined && {
+            branch: props.draft.repo.branch,
+          }),
         }
       : null;
 
   const setSelectedRepo = (repo: Repository | null) => {
     if (repo) {
-      props.onUpdate({
-        repo: {
-          mode: "git" as const,
-          url: repo.url,
-          branch: repo.branch,
-        },
-      });
+      const repoUpdate: any = { mode: "git" as const };
+      if (repo.url !== undefined) repoUpdate.url = repo.url;
+      if (repo.branch !== undefined) repoUpdate.branch = repo.branch;
+      props.onUpdate({ repo: repoUpdate });
     }
   };
 
   const selectedBranch = () => props.draft.repo?.branch || "";
-  const setSelectedBranch = (branch: string) => {
-    props.onUpdate({
-      repo: {
-        mode: props.draft.repo?.mode || "git",
-        url: props.draft.repo?.url,
-        branch,
-      },
-    });
+  const setSelectedBranch = (branch: string | null) => {
+    const repoUpdate: any = {
+      mode: props.draft.repo?.mode || "git",
+      branch: branch || "",
+    };
+    if (props.draft.repo?.url !== undefined)
+      repoUpdate.url = props.draft.repo.url;
+    props.onUpdate({ repo: repoUpdate });
   };
 
   // Mock data - in real app, this would come from API
@@ -228,8 +209,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     const agents = selections.map((sel) => {
       const [type, ...versionParts] = sel.model.toLowerCase().split(" ");
       return {
-        type,
-        version: versionParts.join("-"),
+        type: type || "unknown",
+        version: versionParts.join("-") || "latest",
         instances: sel.instances,
       };
     });
@@ -242,15 +223,21 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     setIsSubmitting(true);
     try {
       // Use the first selected agent for the task creation
-      const primaryAgent = props.draft.agents![0];
+      const primaryAgent = props.draft.agents?.[0];
+      if (!primaryAgent) {
+        throw new Error("No agent selected");
+      }
 
-      const taskData = {
-        tenantId: undefined,
-        projectId: undefined,
+      const selectedRepoData = selectedRepo();
+      if (!selectedRepoData?.url) {
+        throw new Error("No repository selected");
+      }
+
+      const taskData: any = {
         prompt: prompt(),
         repo: {
           mode: "git" as const,
-          url: selectedRepo()!.url,
+          url: selectedRepoData.url,
           branch: selectedBranch(),
         },
         runtime: {
@@ -289,7 +276,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   onMount(() => {
     // Initialize model selections from draft agents if available
     if (props.draft.agents && props.draft.agents.length > 0) {
-      const initialSelections = props.draft.agents.map((agent: AgentType) => ({
+      const initialSelections = props.draft.agents.map((agent) => ({
         model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, " ")}`,
         instances: (agent as any).instances || 1,
       }));
@@ -300,7 +287,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   return (
     <div
       data-testid="draft-task-card"
-      class="rounded-lg p-4 relative"
+      class="relative rounded-lg p-4"
       classList={{
         "bg-blue-50 border-2 border-blue-500": props.isSelected,
         "bg-white border border-slate-200": !props.isSelected,
@@ -309,7 +296,13 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       {/* Close button - upper right corner */}
       <button
         onClick={handleRemove}
-        class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+        class={`
+          absolute top-2 right-2 flex h-6 w-6 cursor-pointer items-center
+          justify-center rounded text-slate-400 transition-colors
+          hover:bg-red-50 hover:text-red-600
+          focus-visible:ring-2 focus-visible:ring-blue-500
+          focus-visible:ring-offset-2
+        `}
         aria-label="Remove draft"
         title="Remove draft task"
       >
@@ -317,7 +310,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       </button>
 
       {/* Task description textarea - always visible */}
-      <div class="mb-3 relative">
+      <div class="relative mb-3">
         <textarea
           ref={textareaRef}
           data-testid="draft-task-textarea"
@@ -330,13 +323,18 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
           onFocus={handleTextareaFocus}
           onBlur={handleTextareaBlur}
           placeholder="Describe what you want the agent to do..."
-          class="w-full p-3 pr-20 border border-slate-200 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+          class={`
+            w-full resize-none rounded-md border border-slate-200 p-3 pr-20
+            text-sm
+            focus:border-transparent focus:ring-2 focus:ring-blue-500
+            focus:outline-none
+          `}
           rows="2"
           aria-label="Task description"
         />
 
         {/* Save status indicator - positioned in lower right corner of textarea */}
-        <div class="absolute bottom-2 right-2">
+        <div class="absolute right-2 bottom-2">
           <SaveStatus status={saveStatus()} />
         </div>
       </div>
@@ -348,13 +346,13 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
           <label for="repo-select" class="sr-only">
             Repository
           </label>
-          <TomSelectComponent
+          <TomSelectComponent<Repository>
             id="repo-select"
             items={repositories()}
             selectedItem={selectedRepo()}
             onSelect={setSelectedRepo}
-            getDisplayText={(repo) => repo.name}
-            getKey={(repo) => repo.id}
+            getDisplayText={(repo: Repository) => repo.name}
+            getKey={(repo: Repository) => repo.id}
             placeholder="Repository"
             class="w-48"
             testId="repo-selector"
@@ -388,7 +386,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             onSelectionChange={handleModelSelectionChange}
             placeholder="Models"
             testId="model-selector"
-            class="flex-1 min-w-48"
+            class="min-w-48 flex-1"
           />
         </div>
 
@@ -396,13 +394,17 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         <div class="flex items-center gap-2">
           <button
             onClick={handleSubmit}
-            disabled={!canSubmit() || isSubmitting()}
-            class="px-5 py-1.5 text-sm rounded-md font-medium transition-colors whitespace-nowrap"
+            disabled={Boolean(!canSubmit() || isSubmitting())}
+            class={`
+              rounded-md px-5 py-1.5 text-sm font-medium whitespace-nowrap
+              transition-colors
+            `}
             classList={{
               "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer":
-                canSubmit() && !isSubmitting(),
-              "bg-slate-300 text-slate-500 cursor-not-allowed":
+                Boolean(canSubmit() && !isSubmitting()),
+              "bg-slate-300 text-slate-500 cursor-not-allowed": Boolean(
                 !canSubmit() || isSubmitting(),
+              ),
             }}
             aria-label="Create task"
           >

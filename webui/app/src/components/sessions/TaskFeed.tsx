@@ -1,6 +1,5 @@
 import {
   Component,
-  createResource,
   createSignal,
   createEffect,
   For,
@@ -9,6 +8,7 @@ import {
 } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { apiClient, type Session } from "../../lib/api.js";
+import { type SessionsResponse } from "../../lib/server-data.js";
 import { SessionCard } from "./SessionCard.js";
 import { DraftTaskCard } from "../tasks/DraftTaskCard.js";
 import { useSession } from "../../contexts/SessionContext.js";
@@ -20,15 +20,7 @@ interface TaskFeedProps {
   draftTasks?: any[]; // Will be defined later
   onDraftTaskCreated?: (taskId: string) => void;
   onDraftTaskRemoved?: (draftId: string) => void;
-  initialSessions?: {
-    items: Session[];
-    pagination: {
-      page: number;
-      perPage: number;
-      total: number;
-      totalPages: number;
-    };
-  };
+  initialSessions?: SessionsResponse;
   initialDrafts?: any[]; // Drafts fetched during SSR
 }
 
@@ -41,8 +33,6 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const [keyboardSelectedIndex, setKeyboardSelectedIndex] =
     createSignal<number>(-1);
   const [refreshTrigger, setRefreshTrigger] = createSignal(0); // For auto-refresh every 30s
-  const [cancelConfirmSessionId, setCancelConfirmSessionId] =
-    createSignal<string | null>(null);
 
   // Progressive enhancement: Drafts rendered from props during SSR
   // Context provides CRUD operations, not the list itself
@@ -53,16 +43,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const [draftsRefreshTrigger, setDraftsRefreshTrigger] = createSignal(0);
 
   // Live region for announcing dynamic updates to screen readers
-  const [liveAnnouncements, setLiveAnnouncements] = createSignal<string[]>([]);
-
-  // Add announcement to live region
-  const announce = (message: string) => {
-    setLiveAnnouncements((prev) => [...prev, message]);
-    // Clear announcements after 5 seconds
-    setTimeout(() => {
-      setLiveAnnouncements((prev) => prev.filter((msg) => msg !== message));
-    }, 5000);
-  };
+  const [liveAnnouncements] = createSignal<string[]>([]);
 
   // Refetch drafts from API (client-side only)
   const refetchDrafts = async () => {
@@ -79,7 +60,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
   // Watch for draft changes and refetch
   createEffect(() => {
-    const _ = draftsRefreshTrigger(); // Track changes
+    draftsRefreshTrigger(); // Track changes
     if (typeof window !== "undefined") {
       refetchDrafts();
     }
@@ -146,7 +127,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   // Auto-refetch when refresh trigger fires (client-side only)
   createEffect(() => {
     // Watch refreshTrigger to trigger refetch
-    const _ = refreshTrigger(); // Track refreshTrigger changes
+    refreshTrigger(); // Track refreshTrigger changes
     if (typeof window !== "undefined") {
       refetch();
     }
@@ -183,8 +164,11 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
           clearFocus(); // Clear focus when moving to draft (draft will set its own focus)
         } else {
           const sessionIndex = nextIndex - draftsList.length;
-          setSelectedSessionId(sessions[sessionIndex].id);
-          setSessionFocus(sessions[sessionIndex].id);
+          const session = sessions[sessionIndex];
+          if (session) {
+            setSelectedSessionId(session.id);
+            setSessionFocus(session.id);
+          }
         }
 
         // Scroll selected card into view
@@ -204,8 +188,11 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
           clearFocus(); // Clear focus when moving to draft (draft will set its own focus)
         } else {
           const sessionIndex = prevIndex - draftsList.length;
-          setSelectedSessionId(sessions[sessionIndex].id);
-          setSessionFocus(sessions[sessionIndex].id);
+          const session = sessions[sessionIndex];
+          if (session) {
+            setSelectedSessionId(session.id);
+            setSessionFocus(session.id);
+          }
         }
 
         // Scroll selected card into view
@@ -334,7 +321,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   return (
     <section
       data-testid="task-feed"
-      class="flex flex-col h-full"
+      class="flex h-full flex-col"
       role="region"
       aria-label="Task feed"
     >
@@ -407,7 +394,6 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
               <ul role="listbox" class="space-y-3">
                 <For each={sessionsData()?.items}>
                   {(session, index) => {
-                    const sessions = sessionsData()?.items || [];
                     const globalIndex = drafts().length + index();
                     return (
                       <li
@@ -419,7 +405,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                         }
                       >
                         <SessionCard
-                          session={session}
+                          session={session as Session}
                           isSelected={
                             selectedSessionId() === session.id ||
                             keyboardSelectedIndex() === globalIndex
@@ -448,11 +434,11 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                   const draftCount = drafts().length;
                   if (idx >= 0 && idx < draftCount) {
                     return `Selected draft: ${drafts()[idx]?.prompt || "New task"}`;
-                  } else if (
-                    idx >= draftCount &&
-                    sessionsData()?.items[idx - draftCount]
-                  ) {
-                    return `Selected task: ${sessionsData()!.items[idx - draftCount].prompt}`;
+                  } else if (idx >= draftCount) {
+                    const session = sessionsData()?.items[idx - draftCount];
+                    if (session) {
+                      return `Selected task: ${session.prompt}`;
+                    }
                   }
                   return "";
                 })()}
@@ -484,7 +470,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
           <Show
             when={sessionsData()?.items.length === 0 && drafts().length === 0}
           >
-            <div class="text-center py-8" role="status" aria-live="polite">
+            <div class="py-8 text-center" role="status" aria-live="polite">
               <svg
                 class="mx-auto h-12 w-12 text-gray-400"
                 fill="none"

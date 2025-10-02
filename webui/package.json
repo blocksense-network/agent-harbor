@@ -1,0 +1,16 @@
+{
+  "name": "webui-workspace",
+  "private": true,
+  "workspaces": [
+    "app",
+    "shared",
+    "mock-server",
+    "e2e-tests"
+  ],
+  "scripts": {
+    "knip": "knip"
+  },
+  "devDependencies": {
+    "knip": "^5.64.1"
+  }
+}

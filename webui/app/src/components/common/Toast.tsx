@@ -67,19 +67,25 @@ const ToastItem: Component<ToastItemProps> = (props) => {
 
   return (
     <div
-      class={`toast-item ${getToastStyles(props.toast.type)} ${
-        isVisible() ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"
-      }`}
+      data-toast
+      class={`
+        ${getToastStyles(props.toast.type)}
+        ${
+          isVisible()
+            ? "translate-x-0 opacity-100"
+            : "translate-x-full opacity-0"
+        }
+      `}
       role="alert"
       aria-live="assertive"
     >
-      <div class="flex-shrink-0 mr-3">
+      <div class="mr-3 flex-shrink-0">
         <span class="text-lg" aria-hidden="true">
           {getIcon(props.toast.type)}
         </span>
       </div>
       <div class="flex-1 font-medium">{props.toast.message}</div>
-      <div class="flex items-center space-x-2 ml-3">
+      <div class="ml-3 flex items-center space-x-2">
         <For each={props.toast.actions}>
           {(action) => (
             <button
@@ -87,13 +93,27 @@ const ToastItem: Component<ToastItemProps> = (props) => {
                 action.onClick();
                 props.onRemove(props.toast.id);
               }}
-              class={`px-3 py-1 text-sm font-medium rounded transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 ${
-                action.variant === "danger"
-                  ? "bg-red-600 text-white hover:bg-red-700"
-                  : action.variant === "secondary"
-                    ? "bg-gray-600 text-white hover:bg-gray-700"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
-              }`}
+              class={`
+                rounded px-3 py-1 text-sm font-medium transition-colors
+                focus-visible:ring-2 focus-visible:ring-blue-500
+                focus-visible:ring-offset-2
+                ${
+                  action.variant === "danger"
+                    ? `
+                      bg-red-600 text-white
+                      hover:bg-red-700
+                    `
+                    : action.variant === "secondary"
+                      ? `
+                        bg-gray-600 text-white
+                        hover:bg-gray-700
+                      `
+                      : `
+                        bg-blue-600 text-white
+                        hover:bg-blue-700
+                      `
+                }
+              `}
             >
               {action.label}
             </button>
@@ -101,10 +121,17 @@ const ToastItem: Component<ToastItemProps> = (props) => {
         </For>
         <button
           onClick={() => props.onRemove(props.toast.id)}
-          class="flex-shrink-0 text-current hover:opacity-75 transition-opacity focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 rounded p-1"
+          class={`
+            flex-shrink-0 rounded p-1 text-current transition-opacity
+            hover:opacity-75
+            focus-visible:ring-2 focus-visible:ring-blue-500
+            focus-visible:ring-offset-2
+          `}
           aria-label="Dismiss notification"
         >
-          <span class="text-lg" aria-hidden="true">×</span>
+          <span class="text-lg" aria-hidden="true">
+            ×
+          </span>
         </button>
       </div>
     </div>

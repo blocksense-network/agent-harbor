@@ -182,6 +182,7 @@ export interface SessionEvent {
   tool_args?: Record<string, any>;
   tool_output?: string;
   tool_status?: string;
+  last_line?: string;
   // File edit event fields
   file_path?: string;
   lines_added?: number;

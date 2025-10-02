@@ -18,8 +18,9 @@ interface SessionProviderProps {
 }
 
 export const SessionProvider: Component<SessionProviderProps> = (props) => {
-  const [selectedSessionId, setSelectedSessionId] =
-    createSignal<string | undefined>();
+  const [selectedSessionId, setSelectedSessionId] = createSignal<
+    string | undefined
+  >();
 
   const value: SessionContextValue = {
     selectedSessionId,

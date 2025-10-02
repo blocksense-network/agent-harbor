@@ -52,13 +52,15 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
         e.preventDefault();
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
         break;
-      case "Enter":
+      case "Enter": {
         e.preventDefault();
         const items = filteredItems();
-        if (items[selectedIndex()]) {
-          handleSelect(items[selectedIndex()]);
+        const selectedItem = items[selectedIndex()];
+        if (selectedItem) {
+          handleSelect(selectedItem);
         }
         break;
+      }
       case "Escape":
         e.preventDefault();
         setIsOpen(false);
@@ -118,11 +120,19 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
       <button
         ref={buttonRef}
         onClick={handleButtonClick}
-        class={`px-3 py-1 text-sm border rounded-md transition-colors flex items-center space-x-1 ${
-          props.selectedItem
-            ? "bg-blue-50 border-blue-300 text-blue-700"
-            : "border-gray-300 text-gray-700 hover:bg-gray-50"
-        } ${props.class || ""}`}
+        class={`
+          flex items-center space-x-1 rounded-md border px-3 py-1 text-sm
+          transition-colors
+          ${
+            props.selectedItem
+              ? "border-blue-300 bg-blue-50 text-blue-700"
+              : `
+                border-gray-300 text-gray-700
+                hover:bg-gray-50
+              `
+          }
+          ${props.class || ""}
+        `}
         aria-haspopup="listbox"
         aria-expanded={isOpen()}
         aria-label={`Select ${props.placeholder.toLowerCase()}`}
@@ -139,16 +149,24 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
       </button>
 
       <Show when={isOpen()}>
-        <div class="absolute z-50 mt-1 w-80 bg-white border border-gray-200 rounded-md shadow-lg">
+        <div
+          class={`
+            absolute z-50 mt-1 w-80 rounded-md border border-gray-200 bg-white
+            shadow-lg
+          `}
+        >
           {/* Search input */}
-          <div class="p-2 border-b border-gray-200">
+          <div class="border-b border-gray-200 p-2">
             <input
               ref={inputRef}
               type="text"
               value={searchTerm()}
               onInput={(e) => setSearchTerm(e.currentTarget.value)}
               placeholder={`Search ${props.placeholder.toLowerCase()}...`}
-              class="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class={`
+                w-full rounded border border-gray-300 px-3 py-2 text-sm
+                focus:ring-2 focus:ring-blue-500 focus:outline-none
+              `}
             />
           </div>
 
@@ -159,11 +177,15 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
                 <li
                   role="option"
                   aria-selected={index() === selectedIndex()}
-                  class={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
-                    index() === selectedIndex()
-                      ? "bg-blue-50 text-blue-700"
-                      : ""
-                  }`}
+                  class={`
+                    cursor-pointer px-3 py-2 text-sm
+                    hover:bg-gray-100
+                    ${
+                      index() === selectedIndex()
+                        ? "bg-blue-50 text-blue-700"
+                        : ""
+                    }
+                  `}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setSelectedIndex(index())}
                 >
@@ -173,7 +195,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
             </For>
 
             <Show when={filteredItems().length === 0}>
-              <li class="px-3 py-2 text-sm text-gray-500 text-center">
+              <li class="px-3 py-2 text-center text-sm text-gray-500">
                 No {props.placeholder.toLowerCase()} found
               </li>
             </Show>

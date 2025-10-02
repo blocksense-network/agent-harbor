@@ -8,7 +8,8 @@ import { getSessions, getDrafts } from "../lib/server-data.js";
 const logger = {
   log: (...args: any[]) => {
     const isQuietMode =
-      process.env.QUIET_MODE === "true" || process.env.NODE_ENV === "test";
+      process.env["QUIET_MODE"] === "true" ||
+      process.env["NODE_ENV"] === "test";
     if (!isQuietMode) {
       console.log(...args);
     }

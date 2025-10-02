@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip/schema.json",
+  "entry": [
+    "src/entry-client.tsx",
+    "src/entry-server.tsx",
+    "src/routes/**/*.tsx"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}"
+  ],
+  "ignore": [
+    "**/*.d.ts",
+    "src/**/*.gen.ts",
+    "e2e-tests/**",
+    "tests/**"
+  ],
+  "tsConfigFile": "tsconfig.json",
+  "reporter": [
+    "summary"
+  ],
+  "plugins": {
+    "playwright": { "config": ["e2e-tests/playwright.config.ts"] },
+    "vite": { "config": ["app.config.ts", "vitest.config.ts"] }
+  },
+  "ignoreDependencies": []
+}

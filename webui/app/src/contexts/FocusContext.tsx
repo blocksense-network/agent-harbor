@@ -4,7 +4,6 @@ import {
   Component,
   JSX,
   createSignal,
-  createEffect,
 } from "solid-js";
 
 interface FocusState {

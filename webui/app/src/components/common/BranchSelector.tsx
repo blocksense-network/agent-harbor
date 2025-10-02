@@ -80,7 +80,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
     }
 
     // Listen for changes
-    ts.on("change", (value: string) => {
+    ts["on"]("change", (value: string) => {
       props.onChange(value);
     });
   });
@@ -99,7 +99,10 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
   return (
     <select
       ref={selectEl}
-      class={`${props.class} ${props.disabled ? "bg-gray-100 cursor-not-allowed" : ""}`}
+      class={`
+        ${props.class}
+        ${props.disabled ? "cursor-not-allowed bg-gray-100" : ""}
+      `}
       disabled={props.disabled}
     >
       <Show when={branches()}>

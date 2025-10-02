@@ -10,6 +10,12 @@
     "allowJs": true,
     "noEmit": true,
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
     "types": ["vinxi/types/client", "@types/node"],
     "isolatedModules": true,
     "paths": {

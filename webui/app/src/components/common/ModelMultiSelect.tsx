@@ -4,6 +4,7 @@ import {
   onMount,
   onCleanup,
   createEffect,
+  For,
 } from "solid-js";
 import TomSelect from "tom-select";
 
@@ -246,7 +247,10 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   return (
     <div
       data-testid={props.testId}
-      class={`model-multi-select ${props.class || ""}`}
+      class={`
+        model-multi-select
+        ${props.class || ""}
+      `}
     >
       <select
         ref={selectRef}
@@ -254,9 +258,9 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
         multiple
         aria-label={props.placeholder}
       >
-        {props.availableModels.map((model) => (
-          <option value={model}>{model}</option>
-        ))}
+        <For each={props.availableModels}>
+          {(model) => <option value={model}>{model}</option>}
+        </For>
       </select>
     </div>
   );

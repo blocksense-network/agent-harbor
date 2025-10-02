@@ -12,11 +12,11 @@ export interface FooterProps {
 }
 
 export const Footer: Component<FooterProps> = (props) => {
-  return (
-    <KeyboardShortcutsFooter
-      onNewTask={props.onNewDraft}
-      agentCount={props.agentCount || 0}
-      focusState={props.focusState}
-    />
-  );
+  const keyboardProps: any = {};
+  if (props.onNewDraft) keyboardProps.onNewTask = props.onNewDraft;
+  if (props.agentCount !== undefined)
+    keyboardProps.agentCount = props.agentCount;
+  if (props.focusState) keyboardProps.focusState = props.focusState;
+
+  return <KeyboardShortcutsFooter {...keyboardProps} />;
 };

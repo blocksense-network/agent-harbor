@@ -9,13 +9,13 @@ export default function Settings() {
         content="Configure Agent Harbor settings including tenant configuration, RBAC, API keys, and IDE integration"
       />
       <div class="flex-1 p-6">
-        <div class="max-w-4xl mx-auto">
-          <h1 class="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div class="mx-auto max-w-4xl">
+          <h1 class="mb-6 text-2xl font-bold text-gray-900">Settings</h1>
+          <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
             <p class="text-gray-600">
               Settings panel will be implemented here.
             </p>
-            <p class="text-sm text-gray-500 mt-2">
+            <p class="mt-2 text-sm text-gray-500">
               This will include tenant configuration, RBAC, API keys, and IDE
               integration settings.
             </p>

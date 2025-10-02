@@ -18,7 +18,7 @@ describe("ErrorBoundary", () => {
       throw new Error("Test error");
     };
 
-    const customFallback = (error: any, reset: () => void) => (
+    const customFallback = (error: any, _reset: () => void) => (
       <div>Custom error: {error.message}</div>
     );
 

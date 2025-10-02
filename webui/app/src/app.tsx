@@ -32,9 +32,7 @@ export default function App() {
             <FocusProvider>
               <Router
                 url={initialUrl}
-                root={(props) => (
-                  <MainLayout>{props.children}</MainLayout>
-                )}
+                root={(props) => <MainLayout>{props.children}</MainLayout>}
               >
                 <FileRoutes />
               </Router>

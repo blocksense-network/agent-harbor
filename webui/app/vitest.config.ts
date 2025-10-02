@@ -3,7 +3,7 @@ import solid from "vite-plugin-solid";
 import { resolve } from "path";
 
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid() as any],
   test: {
     environment: "jsdom",
     globals: true,

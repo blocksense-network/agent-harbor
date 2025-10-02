@@ -112,6 +112,60 @@ Browser → WebUI App → Mock Server → REST API Responses
 - **Testing**: Playwright, ESLint, Prettier
 - **Build**: Vite (frontend), TypeScript compiler (backend)
 
+## Code Quality & Linting
+
+### Handling ESLint Tailwind Class Errors
+
+When the `better-tailwindcss` ESLint plugin reports "unregistered class" errors, follow these guidelines:
+
+#### ✅ **Only Allow These Exceptions**
+
+**ESLint ignore list should ONLY contain CSS classes from third-party libraries** that are imported in `src/app.css`. No other exceptions are allowed.
+
+```javascript
+// eslint.config.js
+rules: {
+  'better-tailwindcss/no-unregistered-classes': ['error', {
+    ignore: ['tom-select-input', 'model-multi-select'] // Only third-party classes
+  }]
+}
+```
+
+NEVER add **custom semantic classes** that are used only for component identification. You can replace these with custom data attributes:
+
+```tsx
+// ❌ Bad: Semantic class (requires ESLint ignore)
+<div class="my-custom-component bg-blue-500">
+  <button>Click me</button>
+</div>
+
+// ✅ Good: Data attribute (no ESLint ignore needed)
+<div data-component class="bg-blue-500">
+  <button>Click me</button>
+</div>
+```
+
+**Benefits:**
+- ✅ No ESLint exceptions required
+- ✅ Clean separation of styling vs. identification
+- ✅ Better for E2E testing (`[data-component]` selectors)
+- ✅ Follows modern web standards
+
+#### 🧪 **E2E Testing with Data Attributes**
+
+Use data attribute selectors in your Playwright tests:
+
+```typescript
+// Component with data attribute
+<div data-toast class="bg-red-100 text-red-800">
+  Error message
+</div>
+
+// E2E test selector
+const toast = page.locator('[data-toast]');
+```
+**Remember:** The ignore list should be minimal and only contain truly unavoidable third-party classes. Everything else should use data attributes!
+
 ## Contributing
 
 1. Follow the established patterns in the codebase

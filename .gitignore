@@ -97,3 +97,15 @@ reference_projects/
 resources/
 
 webui/test-results/.last-run.json
+
+# Node.js dependencies
+node_modules/
+webui/node_modules/
+webui/app/node_modules/
+webui/shared/node_modules/
+webui/e2e-tests/node_modules/
+webui/mock-server/node_modules/
+
+# Type coverage reports
+.type-coverage/
+webui/app/.type-coverage/

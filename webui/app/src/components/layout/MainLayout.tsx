@@ -32,40 +32,46 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
   };
 
   return (
-    <div class="h-screen flex flex-col bg-white">
+    <div class="flex h-screen flex-col bg-white">
       {/* Skip to main content link */}
       <a
         href="#main"
-        class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-blue-600 text-white px-4 py-2 rounded-md z-50"
+        class={`
+          sr-only z-50 rounded-md bg-blue-600 px-4 py-2 text-white
+          focus:not-sr-only focus:absolute focus:top-2 focus:left-2
+        `}
       >
         Skip to main content
       </a>
 
       {/* Top Navigation */}
-      <header class="bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
+      <header class="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-3">
             <img
               src={agentHarborLogo}
               alt="Agent Harbor Logo"
-              class="w-8 h-8"
+              class="h-8 w-8"
               width="32"
               height="32"
             />
             <div>
               <h1 class="sr-only">Agent Harbor</h1>
-              <p class="sr-only">
-                AI Agent Management Platform
-              </p>
+              <p class="sr-only">AI Agent Management Platform</p>
             </div>
           </div>
           <nav class="flex space-x-1" aria-label="Primary">
             <A
               href="/settings"
-              class="px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+              class={`
+                rounded-lg px-4 py-2 text-sm font-medium transition-colors
+                focus-visible:ring-2 focus-visible:ring-blue-500
+                focus-visible:ring-offset-2
+              `}
               classList={{
                 "bg-slate-100 text-slate-900": isActive("/settings"),
-                "text-slate-600 hover:text-slate-900 hover:bg-slate-100": !isActive("/settings")
+                "text-slate-600 hover:text-slate-900 hover:bg-slate-100":
+                  !isActive("/settings"),
               }}
               aria-current={
                 location.pathname === "/settings" ? "page" : undefined
