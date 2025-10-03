@@ -1,4 +1,4 @@
-I want a single, holistic configuration schema for Agents‑Workflow.
+I want a single, holistic configuration schema for Agent Harbor.
 
 TOML maps closely to JSON, so using JSON Schema to validate TOML (parse TOML → JSON → validate) seems practical. Please keep it DRY by defining shared enums and shapes once (e.g., supported agents, runtimes, task runners, log levels, modes, etc.) and reusing them across the configuration.
 

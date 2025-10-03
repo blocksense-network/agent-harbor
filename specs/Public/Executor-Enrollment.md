@@ -1,10 +1,10 @@
-# AW Server Executor Enrollment
+# AH Server Executor Enrollment
 
 ## 0) Terminology / Glossary
 
-- **Client** — the user running the `aw task` command (and optionally opening an SSH session through the access point).
-- **Access point server** — the central service running `aw agent access-point` (address supplied to clients/executors via the `remote-server` option).
-- **Executors** — machines executing `aw agent enroll` (also pointed at the same `remote-server`).
+- **Client** — the user running the `ah task` command (and optionally opening an SSH session through the access point).
+- **Access point server** — the central service running `ah agent access-point` (address supplied to clients/executors via the `remote-server` option).
+- **Executors** — machines executing `ah agent enroll` (also pointed at the same `remote-server`).
 
 ---
 
@@ -13,7 +13,7 @@
 We’re building a Nomad‑like system with a **single public access point** that everything dials into. We need:
 
 1. **Executor connectivity (egress‑only):** Each executor connects _outbound_ to the access point, stays connected, and exposes internal capabilities (SSH, task execution).
-2. **Client can SSH into workers via the access point:** External users (the "client" running `aw task` or an ops shell) reach **executors' SSH** _through_ the access point, ideally over **HTTPS :443** (HTTP CONNECT or WebSocket), so firewalls are simple.
+2. **Client can SSH into workers via the access point:** External users (the "client" running `ah task` or an ops shell) reach **executors' SSH** _through_ the access point, ideally over **HTTPS :443** (HTTP CONNECT or WebSocket), so firewalls are simple.
 3. **Server‑initiated commands (RPC):** The access point can issue RPC‑like commands to executors.
 4. **Sophisticated placement:** Access point is scheduling‑aware (executor resources/labels/affinity); tasks are directed to specific executors.
 5. **Strong auth & encryption:** Mutual authentication for executors↔access point; authenticated, authorized clients; defense‑in‑depth.
@@ -41,8 +41,8 @@ Out of scope here: observability/metrics. (We’ll add later.)
   - Establishes a persistent **secure transport** to aw‑serve (egress only).
   - Hosts an internal **SSH server** (system `sshd`) and executes tasks.
 
-- **aw CLI (client)**
-  - For tasks: calls `aw agent access-point`'s [REST-Service/API.md](REST-Service/API.md) to submit work.
+- **ah CLI (client)**
+  - For tasks: calls `ah agent access-point`'s [REST-Service/API.md](REST-Service/API.md) to submit work.
   - For SSH: either uses **HTTP CONNECT** via standard `ssh` `ProxyCommand`, or uses the **web UI** with a terminal emulator.
 
 ### 2.2 Transports at a glance
@@ -58,9 +58,9 @@ Out of scope here: observability/metrics. (We’ll add later.)
 
 ### 3.1 Identities
 
-- **aw‑agent (executor) identity:** `spiffe://<org>/aw/agent/<node-id>`
-- **aw‑serve identity:** `spiffe://<org>/aw/serve`
-- **Human clients (aw CLI / web):** OIDC (JWT) or enterprise mTLS. We _can_ also support SPIFFE for internal service users.
+- **aw‑agent (executor) identity:** `spiffe://<org>/ah/agent/<node-id>`
+- **aw‑serve identity:** `spiffe://<org>/ah/serve`
+- **Human clients (ah CLI / web):** OIDC (JWT) or enterprise mTLS. We _can_ also support SPIFFE for internal service users.
 
 ### 3.2 SPIRE deployment (managed via NixOS modules)
 
@@ -71,8 +71,8 @@ Out of scope here: observability/metrics. (We’ll add later.)
 
 ### 3.3 mTLS policy
 
-- **Executor→Server:** aw‑agent presents `spiffe://<org>/aw/agent/*`; aw‑serve verifies and authorizes. The **SPIFFE ID becomes the executor's canonical ID**.
-- **Server→Executor:** aw‑serve presents `spiffe://<org>/aw/serve`; aw‑agent validates to prevent MITM.
+- **Executor→Server:** aw‑agent presents `spiffe://<org>/ah/agent/*`; aw‑serve verifies and authorizes. The **SPIFFE ID becomes the executor's canonical ID**.
+- **Server→Executor:** aw‑serve presents `spiffe://<org>/ah/serve`; aw‑agent validates to prevent MITM.
 
 ### 3.5 Pluggable Identity Providers (SPIFFE‑first)
 
@@ -228,11 +228,11 @@ Expose a single `ExecutorControl` service over `quic-rpc`. All payloads derive `
 
 #### LaunchSession (server → executor)
 
-Launch an agent coding session. This is the RPC behind `aw task …` and the REST `POST /api/v1/tasks` flow.
+Launch an agent coding session. This is the RPC behind `ah task …` and the REST `POST /api/v1/tasks` flow.
 
 | Field             | Type                      | Source               | Notes                                                                                        |
 | ----------------- | ------------------------- | -------------------- | -------------------------------------------------------------------------------------------- |
-| `session_id`      | ULID                      | aw-serve scheduler   | Stable identifier reused across CLIs, REST, and telemetry.                                   |
+| `session_id`      | ULID                      | ah-serve scheduler   | Stable identifier reused across CLIs, REST, and telemetry.                                   |
 | `tenant_id`       | String                    | REST request         | Optional multi-tenant routing key.                                                           |
 | `project_id`      | Option<String>            | REST request         | Enables project-level quota & RBAC.                                                          |
 | `controller_role` | `Leader \| Follower`      | Fleet planner        | Followers mirror the leader’s workspace; leader receives orchestration duties.               |
@@ -241,7 +241,7 @@ Launch an agent coding session. This is the RPC behind `aw task …` and the RES
 | `io`              | `IoRouting`               | CLI defaults + flags | Declares where stdout/stderr/events flow (logs, SSE, websocket, file sinks).                 |
 | `deadlines`       | `SessionDeadlines`        | Policy engine        | Contains hard (`absolute_stop`) and soft (`checkpoint_after`) cut-offs.                      |
 | `restart`         | `RestartPolicy`           | Policy engine        | Governs auto-retry for transient executor failures.                                          |
-| `stream_tokens`   | map<`channel`, `token`>   | Event service        | Bearer tokens the executor uses to publish timeline/log events back to aw-serve.             |
+| `stream_tokens`   | map<`channel`, `token`>   | Event service        | Bearer tokens the executor uses to publish timeline/log events back to ah-serve.             |
 
 `SessionSpec` consolidates everything the task spawner needs in one structure:
 
@@ -269,7 +269,7 @@ Response:
 
 #### PauseSession / ResumeSession
 
-Back interactive pause/resume flows (`aw session pause|resume`, REST `/pause` `/resume`). Requests include:
+Back interactive pause/resume flows (`ah session pause|resume`, REST `/pause` `/resume`). Requests include:
 
 - `session_id`
 - `mode` (`checkpoint` vs `suspend`): `checkpoint` tells the executor to flush workspace/cache before pausing; `suspend` only freezes processes.
@@ -279,15 +279,15 @@ Responses acknowledge with `{ acknowledged: bool, error?: ControlError }`. Execu
 
 #### StopSession
 
-Gracefully wrap up (`aw session stop`, REST `/stop`). Request carries `session_id`, `reason`, `deadline`, and a `final_snapshot` directive (take/skip snapshot, artifact policy override). Response mirrors `PauseSession`.
+Gracefully wrap up (`ah session stop`, REST `/stop`). Request carries `session_id`, `reason`, `deadline`, and a `final_snapshot` directive (take/skip snapshot, artifact policy override). Response mirrors `PauseSession`.
 
 #### CancelSession
 
-Force termination (`aw session cancel`, REST `DELETE /sessions/{id}`). Includes `cancellation_mode` (`SIGTERM`, `SIGKILL`, `reboot`) so policies can escalate if soft termination fails.
+Force termination (`ah session cancel`, REST `DELETE /sessions/{id}`). Includes `cancellation_mode` (`SIGTERM`, `SIGKILL`, `reboot`) so policies can escalate if soft termination fails.
 
 #### DispatchProcess
 
-Implements `aw session run <SESSION_ID> …`. Request contains command argv, environment delta, working directory, stdio routing, and execution policy (foreground, background, restart-on-exit). Response returns `pid`, `process_id` (stable handle), and a `log_token` for streaming output via the existing event transport.
+Implements `ah session run <SESSION_ID> …`. Request contains command argv, environment delta, working directory, stdio routing, and execution policy (foreground, background, restart-on-exit). Response returns `pid`, `process_id` (stable handle), and a `log_token` for streaming output via the existing event transport.
 
 This catalog intentionally excludes direct filesystem RPCs. Workspace access happens via the SSH tunnel (`OpenTcp`) for POSIX tooling or through the artifact subsystem. HashiCorp Nomad follows the same pattern—out-of-band HTTP endpoints for file streaming rather than primary RPC methods—so we keep the control surface minimal and auditable.
 
@@ -295,12 +295,12 @@ Mapping summary:
 
 | CLI / REST action                                  | RPC method        |
 | -------------------------------------------------- | ----------------- |
-| `aw task …` / `POST /api/v1/tasks`                 | `LaunchSession`   |
-| `aw session pause` / `POST /sessions/{id}/pause`   | `PauseSession`    |
-| `aw session resume` / `POST /sessions/{id}/resume` | `ResumeSession`   |
-| `aw session stop` / `POST /sessions/{id}/stop`     | `StopSession`     |
-| `aw session cancel` / `DELETE /sessions/{id}`      | `CancelSession`   |
-| `aw session run`                                   | `DispatchProcess` |
+| `ah task …` / `POST /api/v1/tasks`                 | `LaunchSession`   |
+| `ah session pause` / `POST /sessions/{id}/pause`   | `PauseSession`    |
+| `ah session resume` / `POST /sessions/{id}/resume` | `ResumeSession`   |
+| `ah session stop` / `POST /sessions/{id}/stop`     | `StopSession`     |
+| `ah session cancel` / `DELETE /sessions/{id}`      | `CancelSession`   |
+| `ah session run`                                   | `DispatchProcess` |
 
 ### 6.4 Namespacing & lanes
 
@@ -315,15 +315,15 @@ Keep **control** traffic on its own stream (or a tiny control service) and invok
 ### 6.6 Example RPC flow (server → executor)
 
 1. Scheduler selects executor `R` based on the latest heartbeat inventory and opens a `LaunchSession` stream. `R` validates policy, provisions the workspace/runtime, and responds `{ accepted: true, executor_session_id: "session-123" }`.
-2. CLI requests `aw session run …` → aw-serve opens `DispatchProcess` on `R` with the session handle. The executor returns `process_id` and starts streaming stdout/stderr back via the log channel referenced in the request.
-3. User presses pause in the TUI → aw-serve issues `PauseSession { mode: checkpoint }`. Executor moves the agent into a quiescent state, emits `session.pausing`/`session.paused` timeline events, and acknowledges the RPC.
+2. CLI requests `ah session run …` → ah-serve opens `DispatchProcess` on `R` with the session handle. The executor returns `process_id` and starts streaming stdout/stderr back via the log channel referenced in the request.
+3. User presses pause in the TUI → ah-serve issues `PauseSession { mode: checkpoint }`. Executor moves the agent into a quiescent state, emits `session.pausing`/`session.paused` timeline events, and acknowledges the RPC.
 4. When the SLA window expires, the policy engine sends `StopSession { final_snapshot: { mode: take, label: "auto" } }`. Executor flushes artifacts, captures the snapshot, and acknowledges.
-5. If the executor becomes unhealthy before the stop completes, aw-serve escalates with `CancelSession { cancellation_mode: SIGKILL }` and records the failure for rescheduling.
+5. If the executor becomes unhealthy before the stop completes, ah-serve escalates with `CancelSession { cancellation_mode: SIGKILL }` and records the failure for rescheduling.
 
 ### 6.7 Scheduling hook
 
 - Executor `Hello` includes rich static metadata:
-  - `executor_id`, semantic version of aw-agent, build hash.
+  - `executor_id`, semantic version of ah-agent, build hash.
   - Host facts: OS name/version/build, kernel, architecture, virtualization hints, region/zone, tags/labels, supported runtimes, and SSH endpoint fingerprint.
   - `ResourceCapacity` block summarizing total allocatable resources: logical CPU cores (and clock info), memory bytes, ephemeral storage, dedicated NVMe, GPU inventory (vendor, model, driver version, VRAM), and network characteristics (max egress throughput, latency tier). Align capacities with Kubernetes `capacity/allocatable` semantics so the scheduler can reason about overcommit in a familiar way.
 
@@ -384,18 +384,18 @@ let
   domain = "ap.example.com";
 in {
   services.spire-server.enable = true;            # or run spire-server elsewhere
-  services.spire-agent.enable = true;             # so aw-serve can fetch its SVID
+  services.spire-agent.enable = true;             # so ah-serve can fetch its SVID
 
-  # Expose the Workload API socket to aw-serve
-  systemd.services.aw-serve = {
+  # Expose the Workload API socket to ah-serve
+  systemd.services.ah-serve = {
     wantedBy = [ "multi-user.target" ];
     after    = [ "network-online.target" "spire-agent.service" ];
     serviceConfig = {
       Environment = [
         "SPIFFE_ENDPOINT_SOCKET=/run/spire/sockets/agent.sock"
-        "AW_LISTEN_ADDR=0.0.0.0:443"
+        "AH_LISTEN_ADDR=0.0.0.0:443"
       ];
-      ExecStart = "${pkgs.aw}/bin/aw agent access-point";    # our binary
+      ExecStart = "${pkgs.ah}/bin/ah agent access-point";    # our binary
       DynamicUser = true;
       AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
     };
@@ -409,24 +409,24 @@ in {
 { config, pkgs, lib, ... }:
 {
   services.openssh.enable = true;                 # executor's sshd (on 127.0.0.1:22 allowed)
-  services.spire-agent.enable = true;             # fetch SVID for aw-agent
+  services.spire-agent.enable = true;             # fetch SVID for ah-agent
 
-  systemd.services.aw-agent = {
+  systemd.services.ah-agent = {
     wantedBy = [ "multi-user.target" ];
     after    = [ "network-online.target" "spire-agent.service" "sshd.service" ];
     serviceConfig = {
       Environment = [
         "SPIFFE_ENDPOINT_SOCKET=/run/spire/sockets/agent.sock"
-        "AW_REMOTE_SERVER=https://ap.example.com"  # used by enroll
+        "AH_REMOTE_SERVER=https://ap.example.com"  # used by enroll
       ];
-      ExecStart = "${pkgs.aw}/bin/aw agent enroll --remote-server ${config.environment.variables.AW_REMOTE_SERVER} --identity spiffe --spiffe-socket /run/spire/sockets/agent.sock --expected-server-id spiffe://example.org/aw/serve";
+      ExecStart = "${pkgs.ah}/bin/ah agent enroll --remote-server ${config.environment.variables.AH_REMOTE_SERVER} --identity spiffe --spiffe-socket /run/spire/sockets/agent.sock --expected-server-id spiffe://example.org/ah/serve";
       DynamicUser = true;
     };
   };
 }
 ```
 
-> In SPIRE, define registration entries so that processes matching `aw-agent` and `aw-serve` receive the intended SPIFFE IDs. Choose appropriate node/workload attestors (e.g., `x509pop`, cloud IID, k8s) for your environment.
+> In SPIRE, define registration entries so that processes matching `ah-agent` and `ah-serve` receive the intended SPIFFE IDs. Choose appropriate node/workload attestors (e.g., `x509pop`, cloud IID, k8s) for your environment.
 
 ---
 
@@ -491,7 +491,7 @@ Usage: `ssh ubuntu@w-123`.
 
 ### 11.3 Task submission
 
-- `aw task run --remote-server https://ap.example.com --executor w-123 ./job.yaml`
+- `ah task run --remote-server https://ap.example.com --executor w-123 ./job.yaml`
 
 ---
 

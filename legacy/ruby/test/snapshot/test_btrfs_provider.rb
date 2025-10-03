@@ -24,7 +24,7 @@ class TestBtrfsProvider < Minitest::Test
     skip 'Btrfs tools not available' unless system('which', 'btrfs', out: File::NULL, err: File::NULL)
 
     # Check for pre-created test filesystem
-    @cache_dir = File.expand_path('~/.cache/agents-workflow')
+    @cache_dir = File.expand_path('~/.cache/agent-harbor')
     @btrfs_loop = '/dev/loop99'
     @subvolume_path = File.join(@cache_dir, 'btrfs_mount', 'test_subvol')
 
@@ -332,7 +332,7 @@ class TestBtrfsProvider < Minitest::Test
   end
 
   def daemon_available?
-    socket_path = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    socket_path = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
     File.socket?(socket_path)
   end
 

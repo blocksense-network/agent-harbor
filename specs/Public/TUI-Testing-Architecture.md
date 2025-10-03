@@ -5,13 +5,13 @@
 
 ### Overview
 
-This document specifies the testing architecture for the Agents-Workflow TUI. The goal is to provide a deterministic, comprehensive, and scalable test system that validates user flows end-to-end while keeping the majority of logic tests fast and reliable.
+This document specifies the testing architecture for the agent-harbor TUI. The goal is to provide a deterministic, comprehensive, and scalable test system that validates user flows end-to-end while keeping the majority of logic tests fast and reliable.
 
 The architecture combines:
 
 - A pure state-machine driven GUI with fake time
 - MVVM rendering separation for testability
-- Scenario-driven mock REST client using schema types from `aw-rest-api-contract`
+- Scenario-driven mock REST client using schema types from `ah-rest-api-contract`
 - Automated and interactive test runners
 - Assertions on both ViewModel state and golden files rendered via Ratatui `TestBackend`
 
@@ -29,7 +29,7 @@ The architecture combines:
 - The TUI runtime funnels all external stimuli into typed messages/events consumed by a state-machine (the Model’s `update(msg)`):
   - Keyboard input (mapped into `Msg::Key`)
   - Time (mapped into `Msg::Tick`), driven by Tokio fake time during tests
-  - REST results and SSE streams (mapped into `Msg::Net(…)` variants reflecting `aw-rest-api-contract` types)
+  - REST results and SSE streams (mapped into `Msg::Net(…)` variants reflecting `ah-rest-api-contract` types)
 
 2. MVVM Layering
 
@@ -39,12 +39,12 @@ The architecture combines:
 
 3. Scenario-Driven Mocking
 
-- A new Rust crate `aw-test-scenarios` reads a structured scenario format (compatible with the mock-server inputs)
-- A `aw-rest-client-mock` crate implements the same public trait(s)/interface as the real REST client but is fed by `aw-test-scenarios` to return prespecified responses
+- A new Rust crate `ah-test-scenarios` reads a structured scenario format (compatible with the mock-server inputs)
+- A `ah-rest-client-mock` crate implements the same public trait(s)/interface as the real REST client but is fed by `ah-test-scenarios` to return prespecified responses
 - Scenarios express sequences of:
   - User actions (key presses, filters, selections)
   - Agent actions and state transitions
-  - SSE events (status/log/moment/delivery, matching `aw-rest-api-contract` event types)
+  - SSE events (status/log/moment/delivery, matching `ah-rest-api-contract` event types)
   - Timing directives (logical time or steps to advance fake time)
 
 4. Runners
@@ -54,7 +54,7 @@ The architecture combines:
 
 ### Data & Types
 
-- All REST entities and SSE events in scenarios use the canonical types from `aw-rest-api-contract` to avoid drift between product and tests
+- All REST entities and SSE events in scenarios use the canonical types from `ah-rest-api-contract` to avoid drift between product and tests
 - Scenario file schema (high-level):
 
 ```json
@@ -72,7 +72,7 @@ The architecture combines:
 }
 ```
 
-Note: Concrete schema lives with `aw-test-scenarios` and is validated in CI.
+Note: Concrete schema lives with `ah-test-scenarios` and is validated in CI.
 
 ### Execution Flow
 
@@ -89,7 +89,7 @@ Note: Concrete schema lives with `aw-test-scenarios` and is validated in CI.
 - ViewModel Assertions: inspect derived state (focus, selections, error banners, footer hints)
 - Golden Files: serialize Ratatui buffer from `TestBackend` and compare
   - Prefer stable golden files (strip volatile metadata, normalize whitespace)
-  - Store under `crates/aw-tui/tests/__goldens__/<scenario>/<step>.golden`
+  - Store under `crates/ah-tui/tests/__goldens__/<scenario>/<step>.golden`
 
 ### Tooling & Libraries
 
@@ -135,25 +135,25 @@ ARGUMENTS:
 
 ### Package & Code Layout
 
-- `crates/aw-tui/` TUI app (Model/ViewModel/View + runtime)
-- `crates/aw-rest-api-contract/` canonical API/SSE types
-- `crates/aw-rest-client/` real client
-- `crates/aw-test-scenarios/` scenario loader + validator
-- `crates/aw-rest-client-mock/` client trait impl backed by scenarios
-- `crates/aw-tui/tests/` scenario-backed tests, VM assertions, golden files
+- `crates/ah-tui/` TUI app (Model/ViewModel/View + runtime)
+- `crates/ah-rest-api-contract/` canonical API/SSE types
+- `crates/ah-rest-client/` real client
+- `crates/ah-test-scenarios/` scenario loader + validator
+- `crates/ah-rest-client-mock/` client trait impl backed by scenarios
+- `crates/ah-tui/tests/` scenario-backed tests, VM assertions, golden files
 
 ### Verification Strategy
 
 - Unit Tests (Model, ViewModel): comprehensive, no terminal or async
 - Rendering Tests: minimal golden files for critical screens/states
 - Scenario Tests: automated runner across curated scenarios in CI
-- Interactive Debugging: use `aw tui-test play` to diagnose failures locally
+- Interactive Debugging: use `ah tui-test play` to diagnose failures locally
 
 ### Risks & Mitigations
 
 - Golden file brittleness → normalize buffer output, keep golden files minimal and focused
-- Scenario drift vs API → reuse `aw-rest-api-contract` types and validate scenarios in CI
-- Flakiness → use fake time; single-draw-per-step; avoid parallel UI draws
+- Scenario drift vs API → reuse `ah-rest-api-contract` types and validate scenarios in CI
+- Flakiness → use fake time; single-drah-per-step; avoid parallel UI draws
 
 ### Future Work
 

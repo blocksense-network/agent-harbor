@@ -1,0 +1,6 @@
+---
+source: crates/ah-mux/src/tmux.rs
+expression: snapshot
+---
+[?25h[m[H[Jecho 'hello world'
+some input text[1;7m%[m

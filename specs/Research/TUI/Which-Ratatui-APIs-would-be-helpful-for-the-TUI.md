@@ -1,4 +1,4 @@
-This is a list of Ratatui APIs that might be helpful for the development of the AW TUI.
+This is a list of Ratatui APIs that might be helpful for the development of the Agent Harbor TUI.
 
 # Core plumbing
 

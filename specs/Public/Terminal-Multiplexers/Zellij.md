@@ -22,16 +22,16 @@ Automate Zellij layouts and commands using its CLI and layout files (KDL).
 Use a layout file (KDL) to create an editor (left-top), TUI follower (right), and logs (left-bottom).
 
 ```
-// aw-task.kdl
+// ah-task.kdl
 layout {
   cwd "."
-  tab name="aw-task-${TASK_ID}" {
+  tab name="ah-task-${TASK_ID}" {
     pane size=1 borderless=false {
       split_direction "vertical"
       pane { command "nvim" args "." }
-      pane size=30% { command "aw" args "session" "logs" "${TASK_ID}" "-f" }
+      pane size=30% { command "ah" args "session" "logs" "${TASK_ID}" "-f" }
     }
-    pane { command "aw" args "tui" "--follow" "${TASK_ID}" }
+    pane { command "ah" args "tui" "--follow" "${TASK_ID}" }
   }
 }
 ```
@@ -40,7 +40,7 @@ Launch it:
 
 ```
 TASK_ID=ABC
-zellij --session "aw-${TASK_ID}" --layout ./aw-task.kdl
+zellij --session "ah-${TASK_ID}" --layout ./ah-task.kdl
 ```
 
 Notes
@@ -49,7 +49,7 @@ Notes
 
 ## Launching Commands in Each Pane
 
-- In layouts: `pane { command "aw" args "tui" "--follow" TASK_ID }`. [2]
+- In layouts: `pane { command "ah" args "tui" "--follow" TASK_ID }`. [2]
 - One‑off: `zellij run -- <command>` opens a new pane running that command in the current tab. [4]
 
 ## Scripting Interactive Answers (Send Keys)
@@ -58,7 +58,7 @@ Notes
 
 ## Focusing an Existing Task’s Pane/Window
 
-- Name the session `aw-<id>` and `zellij attach aw-<id>` to reattach. [1]
+- Name the session `ah-<id>` and `zellij attach ah-<id>` to reattach. [1]
 
 ## Programmatic Control Interfaces
 
@@ -76,7 +76,7 @@ Notes
 
 ## Example: TUI Follow Flow
 
-Generate `aw-task.kdl` with `TASK_ID`, start/attach a session named `aw-<id>` using `--layout`, and rely on the layout to launch `aw tui --follow <id>` and logs.
+Generate `ah-task.kdl` with `TASK_ID`, start/attach a session named `ah-<id>` using `--layout`, and rely on the layout to launch `ah tui --follow <id>` and logs.
 
 ## References
 

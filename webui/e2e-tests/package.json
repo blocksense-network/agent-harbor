@@ -1,7 +1,7 @@
 {
-  "name": "aw-webui-e2e-tests",
+  "name": "ah-webui-e2e-tests",
   "version": "1.0.0",
-  "description": "End-to-end tests for Agents-Workflow WebUI using Playwright",
+  "description": "End-to-end tests for the Agent Harbor WebUI using Playwright",
   "scripts": {
     "test": "playwright test",
     "test:e2e": "./start-servers.sh",
@@ -20,13 +20,13 @@
     "testing",
     "playwright",
     "webui",
-    "agents-workflow"
+    "agent-harbor"
   ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "^1.45.0",
     "@types/node": "^24.5.2",
     "eslint": "^9.36.0",
     "prettier": "^3.6.2",
@@ -34,5 +34,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "playwright": "^1.45.0"
   }
 }

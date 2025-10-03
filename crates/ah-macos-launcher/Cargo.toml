@@ -1,0 +1,18 @@
+[package]
+name = "ah-macos-launcher"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Launcher that mounts AgentFS (external), chroots, applies Seatbelt, and execs"
+
+[[bin]]
+name = "ah-macos-launcher"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+ah-sandbox-macos = { path = "../ah-sandbox-macos" }
+libc = "0.2"

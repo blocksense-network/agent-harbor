@@ -73,6 +73,9 @@ echo "Directory created."
 # Export test run directory for reporters to access
 export TEST_RUN_DIR="$TEST_RUN_DIR"
 
+# Set Playwright browsers path to use local browsers directory
+export PLAYWRIGHT_BROWSERS_PATH="$(pwd)/browsers"
+
 echo "🧪 Running tests... (server logs captured to $TEST_RUN_DIR)"
 echo "   📄 View server logs: cat $TEST_RUN_DIR/*.log"
 echo ""

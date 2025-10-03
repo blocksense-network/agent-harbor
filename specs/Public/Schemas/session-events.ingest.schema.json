@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agents-workflow.example/schemas/session-events.ingest.schema.json",
+  "$id": "https://schemas.blocksense.network/agent-hardbor/session-events.ingest.schema.json",
   "title": "Session Events Ingest (Batch or NDJSON)",
   "oneOf": [
     {

@@ -1,8 +1,8 @@
-## AW Configuration
+## AH Configuration
 
 ### Overview
 
-- `aw config` subcommand with Git-like interface for reading and updating configuration.
+- `ah config` subcommand with Git-like interface for reading and updating configuration.
 - Schema validation on both config file loading and CLI-based modification.
 - Precedence for `~/.config` over `%APPDATA%` on Windows only when both are present.
 - Motivation and support for tracking the origin of each configuration value, with use cases such as: debug-level log reporting, enforced setting explanation, and editor pre-fill mes
@@ -13,24 +13,24 @@ Layered configuration supports system, user, repo, and repo-user scopes. Values 
 ### Locations (by scope)
 
 - System (OS‑level):
-  - Linux: `/etc/agents-workflow/config.toml`
-  - macOS: `/Library/Application Support/agents-workflow/config.toml`
-  - Windows: `%ProgramData%/Agents-Workflow/config.toml`
+  - Linux: `/etc/agent-harbor/config.toml`
+  - macOS: `/Library/Application Support/agent-harbor/config.toml`
+  - Windows: `%ProgramData%/agent-harbor/config.toml`
 - User:
-  - Linux: `$XDG_CONFIG_HOME/agents-workflow/config.toml` or `$HOME/.config/agents-workflow/config.toml`
-  - macOS: `$HOME/Library/Application Support/agents-workflow/config.toml`
-  - Windows: `%APPDATA%/Agents-Workflow/config.toml` (precedence is given to `~/.config` when both exist as noted below)
-  - Custom (when `AW_HOME` is set): `$AW_HOME/config.toml`
+  - Linux: `$XDG_CONFIG_HOME/agent-harbor/config.toml` or `$HOME/.config/agent-harbor/config.toml`
+  - macOS: `$HOME/Library/Application Support/agent-harbor/config.toml`
+  - Windows: `%APPDATA%/agent-harbor/config.toml` (precedence is given to `~/.config` when both exist as noted below)
+  - Custom (when `AH_HOME` is set): `$AH_HOME/config.toml`
 - Repo: `<repo>/.agents/config.toml`
 - Repo‑user: `<repo>/.agents/config.user.toml` (ignored by VCS; add to `.gitignore`)
 
-Paths are illustrative; the CLI prints the exact search order in `aw config --explain` and logs them at debug level.
+Paths are illustrative; the CLI prints the exact search order in `ah config --explain` and logs them at debug level.
 
-The `AW_HOME` environment variable can override the default user configuration and data directory locations. When set, it changes the user configuration file to `$AW_HOME/config.toml` and the local SQLite database to `$AW_HOME/state.db` (see [State-Persistence.md](State-Persistence.md)).
+The `AH_HOME` environment variable can override the default user configuration and data directory locations. When set, it changes the user configuration file to `$AH_HOME/config.toml` and the local SQLite database to `$AH_HOME/state.db` (see [State-Persistence.md](State-Persistence.md)).
 
 ### Admin‑enforced values
 
-Enterprise deployments may enforce specific keys at the System scope. Enforced values are read‑only to lower scopes. The CLI surfaces enforcement in `aw config <key> --explain` output and prevents writes with a clear error. See the initial rationale in [Configuration](../Initial-Developer-Input/Configuration.md).
+Enterprise deployments may enforce specific keys at the System scope. Enforced values are read‑only to lower scopes. The CLI surfaces enforcement in `ah config <key> --explain` output and prevents writes with a clear error. See the initial rationale in [Configuration](../Initial-Developer-Input/Configuration.md).
 
 Use a single key `ui` (not `ui.default`) to control the default UI.
 
@@ -38,26 +38,26 @@ Use a single key `ui` (not `ui.default`) to control the default UI.
 
 To keep things mechanical and predictable:
 
-- TOML sections correspond to subcommand groups (e.g., `[repo]` for `aw repo ...`).
+- TOML sections correspond to subcommand groups (e.g., `[repo]` for `ah repo ...`).
 - CLI option keys preserve dashes in TOML (e.g., `default-mode`, `task-runner`). The name of the options should be chosen to read well both on the command-line and inside a configuration file.
 - There are options that are available only within configuration files (e.g. `[[fleet]]` as described below).
-- JSON and environment variables replace dashes with underscores. ENV vars keep the `AGENTS_WORKFLOW_` prefix.
+- JSON and environment variables replace dashes with underscores. ENV vars keep the `AH_` prefix.
 
 Examples:
 
-- Flag `--remote-server` ↔ TOML `remote-server` ↔ ENV `AGENTS_WORKFLOW_REMOTE_SERVER`
+- Flag `--remote-server` ↔ TOML `remote-server` ↔ ENV `AH_REMOTE_SERVER`
 - Per-server URLs are defined under `[[server]]` entries; `remote-server` may refer to a server `name` or be a raw URL.
 - WebUI-only: key `service-base-url` selects the REST base URL used by the browser client when the WebUI is hosted persistently at a fixed origin.
-- Flag `--task-runner` ↔ TOML `repo.task-runner` ↔ ENV `AGENTS_WORKFLOW_REPO_TASK_RUNNER`
+- Flag `--task-runner` ↔ TOML `repo.task-runner` ↔ ENV `AH_REPO_TASK_RUNNER`
 
 ### Keys
 
-- `ui`: string — default UI to launch with bare `aw` (values: `"tui"` | `"webui"`).
+- `ui`: string — default UI to launch with bare `ah` (values: `"tui"` | `"webui"`).
 - `browser-automation`: `boolean` — enable/disable site automation.
 - `browser-profile`: string — preferred agent browser profile name.
 - `chatgpt-username`: string — optional default ChatGPT username used for profile discovery.
 - `codex-workspace`: string — default Codex workspace to select before pressing "Code".
-- `remote-server`: string — either a known server `name` (from `[[server]]`) or a raw URL. If set, AW uses REST; otherwise it uses local SQLite state.
+- `remote-server`: string — either a known server `name` (from `[[server]]`) or a raw URL. If set, AH uses REST; otherwise it uses local SQLite state.
 - `tui-font-style`: string — TUI symbol style (values: `"nerdfont"` | `"unicode"` | `"ascii"`). Auto-detected based on terminal capabilities.
 - `tui-font`: string — TUI font name for advanced terminal font customization.
 
@@ -65,9 +65,9 @@ Examples:
 
 - CLI flags override environment, which override repo-user, repo, user, then system scope.
 - On Windows, `~/.config` takes precedence over `%APPDATA%` only when both are present.
-- The CLI can read, write, and explain config values via `aw config`.
-- Backend selection: if `remote-server` is set (by flag/env/config), AW uses the REST API; otherwise it uses the local SQLite database.
-- Repo detection: when `--repo` is not specified, AW walks parent directories to find a VCS root among supported systems; commands requiring a repo fail with a clear error when none is found.
+- The CLI can read, write, and explain config values via `ah config`.
+- Backend selection: if `remote-server` is set (by flag/env/config), AH uses the REST API; otherwise it uses the local SQLite database.
+- Repo detection: when `--repo` is not specified, AH walks parent directories to find a VCS root among supported systems; commands requiring a repo fail with a clear error when none is found.
 
 ### Validation
 
@@ -105,18 +105,18 @@ nix develop --command just conf-schema-validate
 
 ### Servers, Fleets, and Sandboxes
 
-AW supports declaring remote servers, fleets (multi-environment presets), and sandbox profiles.
+AH supports declaring remote servers, fleets (multi-environment presets), and sandbox profiles.
 
 ```toml
 remote-server = "office-1"  # optional; can be a name from [[server]] or a raw URL
 
 [[server]]
 name = "office-1"
-url  = "https://aw.office-1.corp/api"
+url  = "https:/ah.office-1.corp/api"
 
 [[server]]
 name = "office-2"
-url  = "https://aw.office-2.corp/api"
+url  = "https://ah.office-2.corp/api"
 
 # Fleets define a combination of local testing strategies and remote servers
 # to be used as presets in multi-OS or multi-environment tasks.
@@ -130,7 +130,7 @@ name = "default"  # chosen when no other fleet is provided
 
   [[fleet.member]]
   type = "remote"      # special value; not a sandbox profile
-  url  = "https://aw.office-1.corp/api"  # or `server = "office-1"`
+  url  = "https://ah.office-1.corp/api"  # or `server = "office-1"`
 
 [[sandbox]]
 name = "container"
@@ -139,7 +139,7 @@ type = "container"      # predefined types with their own options
 # Examples (type-specific options are illustrative and optional):
 # [sandbox.options]
 # engine = "docker"           # docker|podman
-# image  = "ghcr.io/aw/agents-base:latest"
+# image  = "ghcr.io/ah/agents-base:latest"
 # user   = "1000:1000"        # uid:gid inside the container
 # network = "isolated"         # bridge|host|none|isolated
 ```
@@ -148,7 +148,7 @@ Flags and mapping:
 
 - `--remote-server <NAME|URL>` selects a server (overrides `remote-server` in config).
 - `--fleet <NAME>` selects a fleet; default is the fleet named `default`.
-- Bare `aw` uses `ui` to decide between TUI and WebUI (defaults to `tui`).
+- Bare `ah` uses `ui` to decide between TUI and WebUI (defaults to `tui`).
 
 ### Filesystem Snapshots
 
@@ -162,14 +162,14 @@ working-copy = "auto"        # auto|cow-overlay|worktree|in-place
 
 # Provider‑specific (optional; may be organized under a [snapshots] section in the future)
 # git.includeUntracked = false
-# git.worktreesDir = "/var/tmp/aw-worktrees"
-# git.shadowRepoDir = "/var/cache/aw/shadow-repos"
+# git.worktreesDir = "/var/tmp/ah-worktrees"
+# git.shadowRepoDir = "/var/cache/ah/shadow-repos"
 ```
 
 Flag and ENV mapping:
 
 - Flags: `--fs-snapshots`, `--working-copy`
-- ENV: `AGENTS_WORKFLOW_FS_SNAPSHOTS`, `AGENTS_WORKFLOW_WORKING_COPY`
+- ENV: `AH_FS_SNAPSHOTS`, `AH_WORKING_COPY`
 
 Behavior:
 
@@ -186,7 +186,7 @@ terminal-multiplexer = "tmux"
 
 editor = "nvim"
 
-service-base-url = "https://aw.office-1.corp/api"  # WebUI fetch base; browser calls this URL
+service-base-url = "https://ah.office-1.corp/api"  # WebUI fetch base; browser calls this URL
 
 # Browser automation (no subcommand section; single keys match CLI flags)
 browser-automation = true
@@ -215,6 +215,6 @@ Notes:
 ENV examples:
 
 ```
-AGENTS_WORKFLOW_REMOTE_SERVER=office-1
-AGENTS_WORKFLOW_REPO_SUPPORTED_AGENTS=all
+AH_REMOTE_SERVER=office-1
+AH_REPO_SUPPORTED_AGENTS=all
 ```

@@ -16,7 +16,7 @@ if (process.env['QUIET_MODE'] === 'true') {
 }
 
 // API server configuration
-// In production: access point daemon (aw agent access-point) runs as subprocess/sidecar
+// In production: access point daemon (ah agent access-point) runs as subprocess/sidecar
 // In development: mock server simulates the API
 const API_TARGET = process.env['API_SERVER_URL'] || 'http://localhost:3001';
 
@@ -30,8 +30,8 @@ export default defineConfig({
   },
   vite: {
     plugins: [
-      tailwindcss(),
-      checker({ typescript: true, eslint: { lintCommand: 'eslint src --ext .ts,.tsx' } })
+      tailwindcss() as any,
+      checker({ typescript: true, eslint: { lintCommand: 'eslint src --ext .ts,.tsx' } }) as any
     ],
     server: {
       proxy: {

@@ -65,16 +65,16 @@ The devcontainer uses Docker volumes for caching:
 
 ## Health Check Entrypoint (Contract)
 
-- Purpose: Provide a standard, scriptable way for `aw repo check` (host side) to verify that a project's devcontainer is healthy and ready.
+- Purpose: Provide a standard, scriptable way for `ah repo check` (host side) to verify that a project's devcontainer is healthy and ready.
 
 - Entrypoint locations (first match wins):
-  - `.devcontainer/aw-healthcheck` (preferred)
+  - `.devcontainer/ah-healthcheck` (preferred)
   - `.devcontainer/healthcheck.sh`
 
 - Invocation (host side):
   - If Dev Containers CLI is available, run inside the container workspace:
-    - `devcontainer exec --workspace-folder <repo-root> -- .devcontainer/aw-healthcheck --json`
-  - Otherwise, projects may provide `just health` or `make health` as fallbacks (host‑side). `aw repo check` can try these when the script is absent.
+    - `devcontainer exec --workspace-folder <repo-root> -- .devcontainer/ah-healthcheck --json`
+  - Otherwise, projects may provide `just health` or `make health` as fallbacks (host‑side). `ah repo check` can try these when the script is absent.
 
 - Invocation (inside container):
   - Executable must accept `--json` and default to human‑readable output when omitted.

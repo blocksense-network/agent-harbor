@@ -1,14 +1,14 @@
-## AW CLI — Command-Line and TUI Specification
+## AH CLI — Command-Line and TUI Specification
 
 ### Overview
 
-The AW CLI (`aw`) unifies local and remote workflows for launching and managing agent coding sessions. Running `aw` with no subcommands starts the TUI dashboard. Subcommands provide scriptable operations for task/session lifecycle, configuration, repository management, and developer ergonomics.
+The AH CLI (`ah`) unifies local and remote workflows for launching and managing agent coding sessions. Running `ah` with no subcommands starts the TUI dashboard. Subcommands provide scriptable operations for task/session lifecycle, configuration, repository management, and developer ergonomics.
 
-The CLI honors the layered configuration model in [Configuration](Configuration.md) (system, user, repo, repo-user, env, CLI flags). Flags map from config keys using the `--a-b-c` convention and env var prefix `AGENTS_WORKFLOW_`.
+The CLI honors the layered configuration model in [Configuration](Configuration.md) (system, user, repo, repo-user, env, CLI flags). Flags map from config keys using the `--a-b-c` convention and env var prefix `AH_`.
 
 #### Implementation Approach
 
-The AW CLI will be implemented in Rust using the Ratatui library for the TUI components. All core functionality will be developed as reusable Rust crate(s) with a clean separation of concerns:
+The AH CLI will be implemented in Rust using the Ratatui library for the TUI components. All core functionality will be developed as reusable Rust crate(s) with a clean separation of concerns:
 
 - **Core crates**: Implement the business logic, configuration management, REST API client, local state management, and all operational functionality
 - **CLI/TUI crate**: Provides a thin UI layer on top of the core crates using Ratatui for terminal interface components.
@@ -32,7 +32,7 @@ See the clap guide: [How-to-use-clap](../Research/How-to-use-clap.md).
 
 To keep the CLI spec and generated help aligned, every command section in this document MUST include the following, mirroring guidance from the [Rust CLI book](https://rust-cli.github.io/book/in-depth/docs.html) and the [Better CLI help page](https://bettercli.org/design/cli-help-page/).
 
-- **Synopsis block** using fenced code with the exact invocation string (`aw <command> [OPTIONS] [ARGS...]`).
+- **Synopsis block** using fenced code with the exact invocation string (`ah <command> [OPTIONS] [ARGS...]`).
 - **DESCRIPTION** paragraph summarizing purpose and side-effects in one or two sentences.
 - **OPTIONS** table or bullet list including flag name, parameter placeholder, default, and whether it is repeatable.
 - **ARGUMENTS** section for positional parameters (if any).
@@ -40,7 +40,7 @@ To keep the CLI spec and generated help aligned, every command section in this d
 
 When a command set is defined elsewhere (e.g., sandboxing or repo tooling), link to the section and still include at least the synopsis plus a pointer to detailed docs. The clap-derived help text in code MUST match the synopsis and option descriptions captured here so that generated man pages, `--help`, and the spec remain in sync.
 
-Shell completions are provided via the `aw shell-completion` command group. They can be installed with `aw shell-completion install` or printed with `aw shell-completion script [shell]`.
+Shell completions are provided via the `ah shell-completion` command group. They can be installed with `ah shell-completion install` or printed with `ah shell-completion script [shell]`.
 
 ### Primary Goals
 
@@ -54,18 +54,18 @@ Shell completions are provided via the `aw shell-completion` command group. They
 
 ### Modes of Operation
 
-- **Local vs Remote:** Local mode manages state with a local SQLite DB and runs tasks on the current machine; see [Local-Mode](Local-Mode.md). Remote mode targets an Agents‑Workflow REST service; the CLI becomes a thin client while execution/state live on the server; see [Remote-Mode](Remote-Mode.md).
-- **TUI vs WebUI:** `aw` can start either a terminal dashboard (TUI) or open the WebUI. The UIs present the same concepts (tasks, sessions, logs, time‑travel) with different affordances. See [TUI-PRD](TUI-PRD.md) and [WebUI-PRD](WebUI-PRD.md).
+- **Local vs Remote:** Local mode manages state with a local SQLite DB and runs tasks on the current machine; see [Local-Mode](Local-Mode.md). Remote mode targets an Agent Harbor REST service; the CLI becomes a thin client while execution/state live on the server; see [Remote-Mode](Remote-Mode.md).
+- **TUI vs WebUI:** `ah` can start either a terminal dashboard (TUI) or open the WebUI. The UIs present the same concepts (tasks, sessions, logs, time‑travel) with different affordances. See [TUI-PRD](TUI-PRD.md) and [WebUI-PRD](WebUI-PRD.md).
 - **Orthogonal choices:** UI (TUI/WebUI) and execution location (local/remote) are orthogonal. Any combination is possible; e.g., run the TUI against a remote REST service or use the WebUI locally.
-- **Fleets combine local and remote:** [Multi-OS testing fleets](Multi-OS%20Testing.md) can mix local and remote agents. For example, a local Linux container leader may have remote followers (e.g., a Windows VM on a server). The `aw` client and server may need to orchestrate together the connectivity between all the machines in the fleet.
+- **Fleets combine local and remote:** [Multi-OS testing fleets](Multi-OS%20Testing.md) can mix local and remote agents. For example, a local Linux container leader may have remote followers (e.g., a Windows VM on a server). The `ah` client and server may need to orchestrate together the connectivity between all the machines in the fleet.
 - **Sandbox profiles (orthogonal):** When launching locally, sandbox profiles define the isolation level (local, container, VM, or nosandbox per policy). See [Sandbox-Profiles](Sandbox-Profiles.md) and configuration mapping below.
 
 ### Global Behavior and Flags
 
-- `aw` (no args): Launches the default UI (TUI by default). Config key `ui` controls whether this is TUI or WebUI; built‑in default is `tui`.
+- `ah` (no args): Launches the default UI (TUI by default). Config key `ui` controls whether this is TUI or WebUI; built‑in default is `tui`.
 - Common global flags (apply to all subcommands unless noted):
   - `--remote-server <NAME|URL>`: If provided, use the REST API at this server (by name lookup in config or raw URL). Otherwise run in local mode.
-  - `--repo <PATH|URL>`: Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AW auto-detects a VCS root by walking parent directories and checking all supported VCS.
+  - `--repo <PATH|URL>`: Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AH auto-detects a VCS root by walking parent directories and checking all supported VCS.
   - `--workspace <NAME>`: Named workspace (only valid on servers that support workspaces). Errors if unsupported by the selected server.
   - `--multiplexer <tmux|zellij|screen>`: Which multiplexer to use for when launching a TUI session.
   - `--json`: Emit machine-readable JSON.
@@ -80,15 +80,15 @@ Shell completions are provided via the `aw shell-completion` command group. They
 
 #### 1) TUI
 
-- `aw` or `aw tui [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Auto-attaches to or launches the configured multiplexer session, then starts the TUI dashboard within it. See [TUI-PRD](TUI-PRD.md) for full UI details and flows.
-- `aw tui dashboard [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Launches the TUI dashboard directly (for use within multiplexer windows).
-- The main `aw tui` command handles multiplexer session management; the `dashboard` subcommand provides the actual task management interface.
+- `ah` or `ah tui [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Auto-attaches to or launches the configured multiplexer session, then starts the TUI dashboard within it. See [TUI-PRD](TUI-PRD.md) for full UI details and flows.
+- `ah tui dashboard [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Launches the TUI dashboard directly (for use within multiplexer windows).
+- The main `ah tui` command handles multiplexer session management; the `dashboard` subcommand provides the actual task management interface.
 - With `--remote-server` (or configured `remote-server`), the same dashboard is presented, but task windows may attach to remote sessions over SSH. See [Multi‑OS Testing](Multi-OS%20Testing.md) for details on QUIC control plane, SSH via HTTP CONNECT, and client‑side relay in hybrid fleets.
 
 #### 2) Tasks
 
 ```
-aw task [OPTIONS] [BRANCH_NAME]
+ah task [OPTIONS] [BRANCH_NAME]
 
 Note: `[BRANCH_NAME]` is optional. When omitted, behavior follows the flow in this spec: if already on an agent branch, a follow‑up task is recorded; otherwise a new branch name is required (via flag or prompt unless `--non-interactive`).
 
@@ -184,20 +184,20 @@ While these options can be supplied on the command line, typical usage involves 
 
 ```bash
 # Set cloud workspace for current project
-aw config codex-workspace "workspace-name-used-at-codex"
-aw config workspace "workspace-name-used-everywhere-else"
+ah config codex-workspace "workspace-name-used-at-codex"
+ah config workspace "workspace-name-used-everywhere-else"
 ```
 
 Behavior overview:
 
-- Local vs Remote: With a configured/provided `remote-server`, AW calls the server's REST API to create/manage the task. Otherwise, AW runs locally.
-- Third‑party clouds: Some agents can run on external clouds (e.g., Google Jules, OpenAI Cloud Codex). In such cases, flags like `--instances`, `--browser-*`, or `--codex-workspace` apply only when supported by the selected agent/platform. AW surfaces capabilities via discovery and validates flags accordingly.
+- Local vs Remote: With a configured/provided `remote-server`, AH calls the server's REST API to create/manage the task. Otherwise, AH runs locally.
+- Third‑party clouds: Some agents can run on external clouds (e.g., Google Jules, OpenAI Cloud Codex). In such cases, flags like `--instances`, `--browser-*`, or `--codex-workspace` apply only when supported by the selected agent/platform. AH surfaces capabilities via discovery and validates flags accordingly.
 - Sandbox/runtime: Local runs honor `--sandbox`: `devcontainer` (when available), `local` (default, process sandbox/profile), or `disabled` (policy‑gated, direct host process execution). See [Sandbox-Profiles](Sandbox-Profiles.md) and [FS-Snapshots-Overview](../Public/FS Snapshots/FS-Snapshots-Overview.md).
 - Target branch: `--target-branch` specifies the branch where agent results should be delivered/pushed (used with `--delivery branch` or `--delivery pr` modes).
 
 #### Preserved `agent-task` Behaviors
 
-The `aw task` command preserves and extends the core functionality of the existing `agent-task` command. The preserved behavior is implemented in the following Ruby modules:
+The `ah task` command preserves and extends the core functionality of the existing `agent-task` command. The preserved behavior is implemented in the following Ruby modules:
 
 - **CLI Implementation**: [`legacy/ruby/lib/agent_task/cli.rb`](../../legacy/ruby/lib/agent_task/cli.rb) - Core CLI functionality and command processing
 - **VCS Operations**: [`legacy/ruby/lib/vcs_repo.rb`](../../legacy/ruby/lib/vcs_repo.rb) - Repository detection, branch management, and VCS integration
@@ -260,7 +260,7 @@ Flow (high‑level):
 ```mermaid
 flowchart TD
   %% High-level Task Creation Flow with explicit assignments and subgraphs
-  start_aw_task["Start: aw task invoked"] --> are_we_inside_repo{Inside VCS repository?}
+  start_ah_task["Start: ah task invoked"] --> are_we_inside_repo{Inside VCS repository?}
 
   are_we_inside_repo -->|Yes| are_task_files_enabled{create-task-files enabled?}
   are_we_inside_repo -->|No| are_repo_or_workspace_provided{--repo or --workspace provided?}
@@ -345,7 +345,7 @@ flowchart TD
   are_notifications_enabled{notifications enabled?} -->|Yes| configure_notification_parameters["Configure notification parameters for subprocesses"]
   are_notifications_enabled -->|No| skip_notification_parameters["Skip notification parameters"]
 
-  configure_notification_parameters --> launch_record_follow["Launch aw agent record/follow as applicable"]
+  configure_notification_parameters --> launch_record_follow["Launch ah agent record/follow as applicable"]
   skip_notification_parameters --> launch_record_follow
 
   launch_record_follow --> monitor_until_completion["Monitor execution until completion"]
@@ -428,7 +428,7 @@ Push to default remote? [Y/n]:
 
 - Runtimes: `devcontainer`, `local` (sandbox profile), `disabled` (policy‑gated).
 - Multi‑OS fleets: Snapshots are taken on the leader only; followers receive synchronized state. See [Multi-OS Testing](Multi-OS%20Testing.md).
-- Fleet resolution and orchestration: When `--fleet` is provided (or a default fleet is defined in config), the `aw task` invocation produces an explicit fleet plan that assigns each member to a controller (`client` or `server`). No reachability probing is used to decide this. The client then orchestrates both local and remote execution accordingly:
+- Fleet resolution and orchestration: When `--fleet` is provided (or a default fleet is defined in config), the `ah task` invocation produces an explicit fleet plan that assigns each member to a controller (`client` or `server`). No reachability probing is used to decide this. The client then orchestrates both local and remote execution accordingly:
   - Local members (controller: client): The client creates one or more local executions, potentially combining a local sandbox and local VMs, applying the selected sandbox profile to each member.
   - Remote members (controller: server): The client issues the appropriate remote‑server requests per member (respecting per‑member server selection) and monitors returned `taskId`s.
   - Membership info for remote executors is discovered via the server’s existing endpoints (e.g., `GET /api/v1/executors`) and selected by the user/config.
@@ -438,7 +438,7 @@ Push to default remote? [Y/n]:
 
 **Advanced Features:**
 
-- Fleet resolution: When `--fleet` is provided (or a default fleet is defined in config), AW expands the fleet into one or more members. For local members, it applies the referenced sandbox profile; for `remote` members, it targets the specified server URL/name. See also the orchestration details above.
+- Fleet resolution: When `--fleet` is provided (or a default fleet is defined in config), AH expands the fleet into one or more members. For local members, it applies the referenced sandbox profile; for `remote` members, it targets the specified server URL/name. See also the orchestration details above.
 - Browser automation: When `--browser-automation true` (default), launches site-specific browser automation (e.g., Codex) using the selected agent browser profile. When `false`, web automation is skipped
 - Browser automation modes: with local branch/task file creation (default) or server/cloud-only mode when `--create-task-files no`
 - Codex integration: If `--browser-profile` is not specified, discovers or creates a ChatGPT profile per [Codex browser automation](Browser%20Automation/Codex.md), optionally filtered by `--chatgpt-username`. Workspace is taken from `--codex-workspace` or config; branch is taken from `--branch`.
@@ -455,7 +455,7 @@ Push to default remote? [Y/n]:
 
 #### Exit Codes
 
-The `aw task` command returns the following exit codes:
+The `ah task` command returns the following exit codes:
 
 | Exit Code | Description              | Example Causes                                  |
 | --------- | ------------------------ | ----------------------------------------------- |
@@ -474,7 +474,7 @@ The `aw task` command returns the following exit codes:
 #### Notifications System
 
 The `--notifications` option (default: "yes") controls whether OS-level notifications are emitted when tasks complete.
-The behavior is defined in the [Handling-AW-URL-Scheme](Handling-AW-URL-Scheme.md) document.
+The behavior is defined in the [Handling-AH-URL-Scheme](Handling-AH-URL-Scheme.md) document.
 
 #### Agent Execution Architecture
 
@@ -483,7 +483,7 @@ When agents are spawned, the execution follows this detailed process:
 ##### Local Agent Execution
 
 1. **SQLite Recording**: Agent spawn details are immediately recorded in the local SQLite database with session metadata
-2. **Thin Wrapper Process**: Local agents are executed via `aw agent record` command that:
+2. **Thin Wrapper Process**: Local agents are executed via `ah agent record` command that:
    - Wraps the agent process with session recording
    - Uses asciinema to capture terminal output and timing
    - Monitors process lifecycle and detects completion
@@ -503,9 +503,9 @@ See the implementation roadmap in [Cloud-Automation.status.md](Cloud-Automation.
    - Submits the task with proper parameters
    - Monitors execution progress in real-time
 2. **Dual Monitoring**: Cloud agents support both:
-   - **Browser Stream Monitoring**: `aw agent follow-cloud-task` translates live browser output to terminal display
-   - **TUI Integration**: Launch `aw tui` interface to monitor cloud agent progress alongside local activities
-3. **Unified Recording**: Cloud monitoring processes are recorded using the same `aw agent record` mechanism as local agents
+   - **Browser Stream Monitoring**: `ah agent follow-cloud-task` translates live browser output to terminal display
+   - **TUI Integration**: Launch `ah tui` interface to monitor cloud agent progress alongside local activities
+3. **Unified Recording**: Cloud monitoring processes are recorded using the same `ah agent record` mechanism as local agents
 
 ##### Notification and Result Delivery
 
@@ -514,12 +514,12 @@ When tasks complete:
 1. **Wrapper Notification**: The thin wrapper process emits OS notifications with:
 
    - Task completion status
-   - Custom `agents-workflow://` links to results
+   - Custom `agent-harbor://` links to results
    - Platform-specific notification actions
 
 2. **WebUI Integration**: Clicking notification links:
 
-   - Checks if AW WebUI server is running
+   - Checks if AH WebUI server is running
    - Auto-launches WebUI server if needed
    - Opens the specific task results page
    - Displays all recorded session data from SQLite
@@ -529,7 +529,7 @@ When tasks complete:
 #### 3) Sessions
 
 ```
-aw session list [OPTIONS]
+ah session list [OPTIONS]
 
 OPTIONS:
   --status <...>              Filter by session status
@@ -544,16 +544,16 @@ SESSION IDENTIFIERS:
 - Primary form: `<branch_name>` (branch name on the target repo).
 - If the same branch exists in multiple repos, we use `<repo>/<branch_name>` as the session ID where `<repo>` is the VCS root directory name.
 - If still ambiguous (multiple sessions with same `<repo>/<branch_name>`), numeric suffix: `<repo>/<branch_name>.<N>` (N starts at 1).
-- `aw session list` includes repo name and creation time; output is sorted by creation time (most recent first).
+- `ah session list` includes repo name and creation time; output is sorted by creation time (most recent first).
 
 ```
-aw session attach <SESSION_ID>
+ah session attach <SESSION_ID>
 
 DESCRIPTION: Attaches to the terminal multiplexer started for this session.
 ```
 
 ```
-aw session run <SESSION_ID> <PROCESS> [ARGS...]
+ah session run <SESSION_ID> <PROCESS> [ARGS...]
 
 DESCRIPTION: Launch a process (e.g. VS Code, Debugger, etc) inside the session namespace,
              so you can inspect the state of the filesystem, the running processes, etc.
@@ -563,7 +563,7 @@ ARGS:    Arguments to pass to the process
 ```
 
 ```
-aw session logs <SESSION_ID> [OPTIONS]
+ah session logs <SESSION_ID> [OPTIONS]
 
 OPTIONS:
   -f                         Follow log output
@@ -571,17 +571,17 @@ OPTIONS:
 ```
 
 ```
-aw session pause <SESSION_ID>
+ah session pause <SESSION_ID>
 ```
 
 ```
-aw session resume <SESSION_ID> [PROMPT]
+ah session resume <SESSION_ID> [PROMPT]
 ```
 
 PROMPT behavior: When omitted, the session is resumed with the prompt "Please continue".
 
 ```
-aw session cancel <SESSION_ID>
+ah session cancel <SESSION_ID>
 ```
 
 Defaults: When `<SESSION_ID>` is omitted from `logs`, `attach`, `pause`, `resume`, and `cancel`, the CLI targets the most recently launched session.
@@ -592,31 +592,31 @@ Behavior:
 
 Remote sessions:
 
-- When a session runs on another machine (VM or remote host), the REST service returns SSH connection details. `aw attach` uses these to open a remote multiplexer session (e.g., `ssh -t host tmux attach -t <name>`), or zellij/screen equivalents.
+- When a session runs on another machine (VM or remote host), the REST service returns SSH connection details. `ah attach` uses these to open a remote multiplexer session (e.g., `ssh -t host tmux attach -t <name>`), or zellij/screen equivalents.
 - Connectivity when hosts lack public IPs: SSH over HTTP CONNECT via access points, with optional client‑side relay in hybrid fleets. See [Multi‑OS Testing](Multi-OS%20Testing.md) and [Can SSH work over HTTPS?](../Research/Can-SSH-work-over-HTTPS.md).
 
 #### 5) Repositories and Projects
 
 ```
-aw repo list
+ah repo list
 ```
 
 Local: from recent usage; REST: from server workspaces.
 
 ```
-aw repo add <PATH|URL>
+ah repo add <PATH|URL>
 ```
 
 Local only by default.
 
 ```
-aw repo remove <PATH|URL>
+ah repo remove <PATH|URL>
 ```
 
 Local; protected confirm.
 
 ```
-aw workspace list
+ah workspace list
 ```
 
 Workspaces represent named collections of repositories. In local mode, a workspace is a logical grouping stored in local state (workspace name plus a list of repository paths). In server mode, workspaces are defined by admins and contain curated repository URLs. Commands operate against the selected workspace when provided.
@@ -624,7 +624,7 @@ Workspaces represent named collections of repositories. In local mode, a workspa
 When the `codex-cloud` agent is specified with `--agent`, the list returns the workspaces defined in the Codex Cloud service.
 
 ```
-aw workspace create [OPTIONS] <DIR_OR_URL>...
+ah workspace create [OPTIONS] <DIR_OR_URL>...
 
 OPTIONS:
   --name <NAME>                 Workspace name (required in local mode)
@@ -642,7 +642,7 @@ Behavior:
 #### 5a) Repo Init & Instructions
 
 ```
-aw repo init [OPTIONS] [PROJECT-DESCRIPTION]
+ah repo init [OPTIONS] [PROJECT-DESCRIPTION]
 
 OPTIONS:
   --template <url|github-slug>
@@ -669,13 +669,13 @@ Behavior and defaults:
 - Agent-driven initialization: Combines the selected options and the description into a task prompt and launches a local agent in conversational mode to initialize the repo. The prompt instructs the agent to:
   - Propose testing frameworks and linters appropriate for the project; ask the user for approval.
   - Upon approval, generate an [AGENTS.md](../AGENTS.md) documenting how to run tests and lints using the selected task runner.
-- Post-initialization linking: After [AGENTS.md](../AGENTS.md) exists, create symlinks for all supported agents so their instruction files resolve to [AGENTS.md](../AGENTS.md) (same behavior as `aw repo instructions link --supported-agents=<...>`). Relative symlinks; add to VCS.
+- Post-initialization linking: After [AGENTS.md](../AGENTS.md) exists, create symlinks for all supported agents so their instruction files resolve to [AGENTS.md](../AGENTS.md) (same behavior as `ah repo instructions link --supported-agents=<...>`). Relative symlinks; add to VCS.
 - Dev environment scaffolding: Based on flags, scaffold devcontainer, direnv, and the development environment (e.g., Nix flake) using the agent flow. `--devenv no|none` skips dev env scaffolding.
 - VCS: Initializes the selected VCS if the directory is not yet a repository; for existing repos, proceeds without reinitializing.
-- When `nix` and `just` are enabled, uses the `set shell := ["./scripts/nix-env.sh", "-c"]` trick that is used by the agents-workflow repository.
-- The `dynamic-instructions(\.md|\.txt)?` file is processed like a task description file and it may include [workflow commands](./Workflows.md). The result of processing the file is written to AGENTS.md and then symlinks are created in the usual way for all supported agent types. This is typically done in the nix flake devShell shellHook or the .envrc file. It uses the shebang `#!/usr/bin/env aw agent instructions` which makes it easy to implement minor edit modes in editors such as vim and emacs. When dynamic instructions are used, the created instruction file links are added to the VCS ignore files.
+- When `nix` and `just` are enabled, uses the `set shell := ["./scripts/nix-env.sh", "-c"]` trick that is used by the agent-harbor repository.
+- The `dynamic-instructions(\.md|\.txt)?` file is processed like a task description file and it may include [workflow commands](./Workflows.md). The result of processing the file is written to AGENTS.md and then symlinks are created in the usual way for all supported agent types. This is typically done in the nix flake devShell shellHook or the .envrc file. It uses the shebang `#!/usr/bin/env ah agent instructions` which makes it easy to implement minor edit modes in editors such as vim and emacs. When dynamic instructions are used, the created instruction file links are added to the VCS ignore files.
 
-The whole repo initialization is performed as an agentic task. The `aw repo` tool combines automated steps with prompt engineering to adapt to the specifics of the user project.
+The whole repo initialization is performed as an agentic task. The `ah repo` tool combines automated steps with prompt engineering to adapt to the specifics of the user project.
 
 ### Repo init templates
 
@@ -684,7 +684,7 @@ The whole repo initialization is performed as an agentic task. The `aw repo` too
 3. The CLI parser should allow arbitrary name/value pairs to supplied to this command. Supplying a parameter that's not declared in the template is an error. If a parameter doesn't have a default value specified in the template, not supplying it on the command-line is considered an error.
 4. The syntax of the GitHub slug is `org/repo:file`. `org:file` is also a valid syntax. The repo then is assumed to be named `repository-templates`. Supplying just `org` is also a valid syntax. The template is then assumed to be `repository-templates:default`.
 5. The template is passed as an initial prompt to the agent. Typically, it will instruct the agent to ask clarifying questions before initializing the repository.
-6. Once the repository is initialized, `aw repo instructions link` is automatically executed to create agent instruction symlinks.
+6. Once the repository is initialized, `ah repo instructions link` is automatically executed to create agent instruction symlinks.
 
 Editor behavior:
 
@@ -698,12 +698,12 @@ Output and exit codes:
 Examples:
 
 ```bash
-aw repo init --task-runner just --deps nix --devcontainer yes --direnv yes "CLI tool for repo automation"
-aw repo init --vcs hg --devenv none --devcontainer no --direnv no  # no dev env scaffolding
+ah repo init --task-runner just --deps nix --devcontainer yes --direnv yes "CLI tool for repo automation"
+ah repo init --vcs hg --devenv none --devcontainer no --direnv no  # no dev env scaffolding
 ```
 
 ```
-aw repo instructions create [OPTIONS]
+ah repo instructions create [OPTIONS]
 
 OPTIONS:
   --dynamic-agent-instructions <yes|no>    Creates agent instructions files from a single file stored
@@ -721,7 +721,7 @@ Output and exit codes:
 - Mirrors `repo init` keys where applicable; adds `reviewFindings` list in `--json` mode.
 
 ```
-aw repo instructions link [OPTIONS] [SOURCE-FILE]
+ah repo instructions link [OPTIONS] [SOURCE-FILE]
 
 DESCRIPTION: Create relative symlinks from per‑agent instruction paths to a single source file.
 
@@ -753,7 +753,7 @@ Notes:
 - In `repo init` and `repo instructions create`, this symlink step is executed automatically after [AGENTS.md](../AGENTS.md) exists.
 
 ```
-aw repo check [OPTIONS]
+ah repo check [OPTIONS]
 
 OPTIONS:
   --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
@@ -763,7 +763,7 @@ OPTIONS:
 Behavior:
 
 - Validates repository state against configuration and best practices:
-  - Instruction files: verify that [AGENTS.md](../AGENTS.md) (or chosen source) exists and that symlinks for the configured `supported-agents` are present. Report any mismatches or missing links and suggest `aw repo instructions link` to fix.
+  - Instruction files: verify that [AGENTS.md](../AGENTS.md) (or chosen source) exists and that symlinks for the configured `supported-agents` are present. Report any mismatches or missing links and suggest `ah repo instructions link` to fix.
   - Devcontainer: check for presence of `.devcontainer/` and run its health‑check procedure (documented in [Nix-Devcontainer/Devcontainer-User-Setup](Nix-Devcontainer/Devcontainer-User-Setup.md) and [Nix-Devcontainer/Devcontainer-Design](Nix-Devcontainer/Devcontainer-Design.md)). Report status and hints to fix.
   - Dev environment: check `--devenv` (from config/flags) coherence with project files (e.g., Nix flake, direnv). Report inconsistencies.
 
@@ -773,7 +773,7 @@ Output and exit codes:
 
 ```
 
-aw health [OPTIONS]
+ah health [OPTIONS]
 
 OPTIONS:
 --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
@@ -793,19 +793,19 @@ Output and exit codes:
 
 ```
 
-aw remote agents
+ah remote agents
 
 ```
 
 ```
 
-aw remote runtimes
+ah remote runtimes
 
 ```
 
 ```
 
-aw remote executors
+ah remote executors
 
 ```
 
@@ -816,7 +816,7 @@ Useful for inspecting the capabilities of the remote server.
 #### 7) Config (Git-like)
 
 ```
-aw config [OPTIONS] [KEY [VALUE]]
+ah config [OPTIONS] [KEY [VALUE]]
 
 ARGUMENTS:
   KEY                          Configuration key to get or set (optional)
@@ -835,31 +835,31 @@ OPTIONS:
 
 **Usage Patterns:**
 
-- `aw config` - List all configuration settings
-- `aw config <KEY>` - Get the value of a configuration key
-- `aw config <KEY> <VALUE>` - Set a configuration key to a value
-- `aw config <KEY> --delete` - Delete a configuration key
+- `ah config` - List all configuration settings
+- `ah config <KEY>` - Get the value of a configuration key
+- `ah config <KEY> <VALUE>` - Set a configuration key to a value
+- `ah config <KEY> --delete` - Delete a configuration key
 
 **Examples:**
 
 ```bash
 # List all configuration
-aw config
+ah config
 
 # Get a specific setting
-aw config ui.theme
+ah config ui.theme
 
 # Set a configuration value
-aw config ui.theme dark
+ah config ui.theme dark
 
 # Delete a configuration key
-aw config codex-workspace --delete
+ah config codex-workspace --delete
 
 # Show configuration with origins
-aw config --show-origin
+ah config --show-origin
 
 # Set with specific scope
-aw config --user ui.theme dark
+ah config --user ui.theme dark
 ```
 
 Mirrors [Configuration.md](Configuration.md) including provenance, precedence, and Windows behavior.
@@ -867,7 +867,7 @@ Mirrors [Configuration.md](Configuration.md) including provenance, precedence, a
 #### 8) Service and WebUI (local developer convenience)
 
 ```
-aw webui [OPTIONS]
+ah webui [OPTIONS]
 
 OPTIONS:
   --bind <ADDRESS>            Bind address (default: 127.0.0.1)
@@ -877,13 +877,13 @@ OPTIONS:
 
 BEHAVIOR:
 
-- If `--remote-server` is not provided, `aw webui` starts a local access point daemon
-  in‑process (same code path as `aw agent access-point`) and points the WebUI at it.
+- If `--remote-server` is not provided, `ah webui` starts a local access point daemon
+  in‑process (same code path as `ah agent access-point`) and points the WebUI at it.
 
 #### 9) Shell Completion
 
 ```
-aw shell-completion install [--shell <bash|zsh|fish|pwsh>] [--dest <DIR>] [--force]
+ah shell-completion install [--shell <bash|zsh|fish|pwsh>] [--dest <DIR>] [--force]
 
 DESCRIPTION: Install the completion script for your shell.
 
@@ -893,9 +893,9 @@ OPTIONS:
   --force                       Overwrite existing file if present
 
 DEFAULT INSTALL LOCATIONS:
-  bash: ~/.local/share/bash-completion/completions/aw
-  zsh:  ~/.zsh/completions/_aw  (ensures fpath contains ~/.zsh/completions)
-  fish: ~/.config/fish/completions/aw.fish
+  bash: ~/.local/share/bash-completion/completions/ah
+  zsh:  ~/.zsh/completions/_ah  (ensures fpath contains ~/.zsh/completions)
+  fish: ~/.config/fish/completions/ah.fish
   pwsh: Appends to $PROFILE to dot-source the generated script on startup
 
 NOTES:
@@ -904,7 +904,7 @@ NOTES:
 ```
 
 ```
-aw shell-completion script [SHELL]
+ah shell-completion script [SHELL]
 
 DESCRIPTION: Print the completion script to stdout.
 
@@ -914,26 +914,26 @@ ARGUMENTS:
 USAGE:
   # Bash (per-user)
   mkdir -p ~/.local/share/bash-completion/completions && \
-  aw shell-completion script bash > ~/.local/share/bash-completion/completions/aw
+  ah shell-completion script bash > ~/.local/share/bash-completion/completions/ah
 
   # Zsh
   mkdir -p ~/.zsh/completions && \
-  aw shell-completion script zsh > ~/.zsh/completions/_aw && \
+  ah shell-completion script zsh > ~/.zsh/completions/_ah && \
   echo 'fpath=(~/.zsh/completions $fpath); autoload -U compinit && compinit' >> ~/.zshrc
 
   # Fish
   mkdir -p ~/.config/fish/completions && \
-  aw shell-completion script fish > ~/.config/fish/completions/aw.fish
+  ah shell-completion script fish > ~/.config/fish/completions/ah.fish
 
   # PowerShell (current session)
-  aw shell-completion script pwsh | Out-String | Invoke-Expression
+  ah shell-completion script pwsh | Out-String | Invoke-Expression
 
 NOTES:
   - Scripts are generated from the CLI definition (`clap_complete`).
 ```
 
 ```
-aw shell-completion complete [--shell <SHELL>] [--line <LINE>] [--cursor <N>]
+ah shell-completion complete [--shell <SHELL>] [--line <LINE>] [--cursor <N>]
 
 DESCRIPTION: Emit dynamic completion suggestions for the current input line.
 
@@ -957,12 +957,12 @@ NOTES:
     the relevant sections of this spec (see Branch autocompletion under Tasks).
 ```
 
-#### 10) Agent Utilities (`aw agent ...`)
+#### 10) Agent Utilities (`ah agent ...`)
 
-- Subcommands used only in agent dev environments live under `aw agent ...`. This keeps end‑user command space clean while still scriptable for agents.
+- Subcommands used only in agent dev environments live under `ah agent ...`. This keeps end‑user command space clean while still scriptable for agents.
 
 ```
-aw agent access-point [OPTIONS]
+ah agent access-point [OPTIONS]
 
 DESCRIPTION: Run a local access point daemon for executors. The access point accepts
              QUIC control connections from executors, exposes an HTTP CONNECT handler
@@ -987,7 +987,7 @@ NOTE: The following command is part of the same daemon code path; flags select
 identity provider and optional embedded REST API.
 
 ```
-aw agent enroll [OPTIONS]
+ah agent enroll [OPTIONS]
 
 DESCRIPTION: Enrolls an executor machine with an agents workflow access point server.
              Once enrolled, the executor remains connected and ready to receive tasks.
@@ -1010,13 +1010,13 @@ OPTIONS (choose identity via --identity; SPIFFE is default):
 
   --identity <spiffe|files|vault|exec|insecure>  Identity provider (default: spiffe)
   --spiffe-socket <PATH>         SPIFFE Workload API socket path (default: /run/spire/sockets/agent.sock)
-  --expected-server-id <SPIFFE>  Expected SPIFFE ID of the access point (e.g., spiffe://example.org/aw/serve)
+  --expected-server-id <SPIFFE>  Expected SPIFFE ID of the access point (e.g., spiffe://example.org/ah/serve)
   --spiffe-mode <x509|jwt>       SPIFFE SVID type to request (default: x509)
 
   --cert-file <PATH>             [files] Client certificate (PEM)
   --key-file <PATH>              [files] Client private key (PEM)
   --ca-file <PATH>               [files] CA bundle (PEM)
-  --server-san <LIST>            [files|vault|exec] Peer verification policy: comma‑sep items like dns=ap.example.com,uri=spiffe://example.org/aw/serve,pin=<sha256>
+  --server-san <LIST>            [files|vault|exec] Peer verification policy: comma‑sep items like dns=ap.example.com,uri=spiffe://example.org/ah/serve,pin=<sha256>
 
   --vault-addr <URL>             [vault] Vault address
   --vault-role <ROLE>            [vault] Role name (AppRole/JWT auth implied by env/config)
@@ -1036,11 +1036,11 @@ BEHAVIOR:
 - `--ssh` defaults to `enabled`; when `disabled`, CONNECT/OpenTcp to this executor is refused.
 - `--ssh-dst` specifies the exact destination enforced by the agent for `OpenTcp` (default `127.0.0.1:22`).
 
-When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the REST API documented in [REST-Service/API.md](REST-Service/API.md). This is the same code path used by `aw agent access-point`, so enabling it effectively turns the enrolling executor into a valid `remote-server` for `aw task` clients.
+When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the REST API documented in [REST-Service/API.md](REST-Service/API.md). This is the same code path used by `ah agent access-point`, so enabling it effectively turns the enrolling executor into a valid `remote-server` for `ah task` clients.
 ```
 
 ```
-aw agent get-task [OPTIONS]
+ah agent get-task [OPTIONS]
 
 DESCRIPTION: Prints the current task prompt for agents. When --autopush is specified,
              automatically configures VCS hooks to push changes on each commit.
@@ -1054,7 +1054,7 @@ OPTIONS:
 ```
 
 ```
-aw agent get-setup-env [OPTIONS]
+ah agent get-setup-env [OPTIONS]
 
 DESCRIPTION: Extracts and prints environment variables from @agents-setup directives
              in the current task file(s). Processes all tasks (initial task + follow-up tasks)
@@ -1071,7 +1071,7 @@ OPTIONS:
 ```
 
 ```
-aw agent sandbox [OPTIONS] -- <CMD> [ARGS...]
+ah agent sandbox [OPTIONS] -- <CMD> [ARGS...]
 
 DESCRIPTION: Launches a process inside the configured sandbox profile. Useful for testing.
 
@@ -1091,7 +1091,7 @@ OPTIONS:
 
 BEHAVIOR:
 
-The `aw agent sandbox` command provides a seamless workflow for launching the TUI dashboard within a sandboxed environment with automatic filesystem snapshot management.
+The `ah agent sandbox` command provides a seamless workflow for launching the TUI dashboard within a sandboxed environment with automatic filesystem snapshot management.
 
 **Filesystem Detection and Snapshot Strategy:**
 
@@ -1099,7 +1099,7 @@ The `aw agent sandbox` command provides a seamless workflow for launching the TU
 
 2. **Filesystem Provider Auto-Detection**: Analyzes the detected repository's filesystem type and capabilities:
 
-   - **ZFS**: Uses CoW (Copy-on-Write) overlay mode with snapshots and clones via the `aw-fs-snapshots-daemon`
+   - **ZFS**: Uses CoW (Copy-on-Write) overlay mode with snapshots and clones via the `ah-fs-snapshots-daemon`
    - **Btrfs**: Uses CoW overlay mode with subvolume snapshots
    - **Other filesystems**: Exits with an error.
 
@@ -1126,7 +1126,7 @@ The `aw agent sandbox` command provides a seamless workflow for launching the TU
 
 **Integration Points:**
 
-- **FS Snapshots**: Leverages the `aw-fs-snapshots-daemon` for sudo-less privileged operations
+- **FS Snapshots**: Leverages the `ah-fs-snapshots-daemon` for sudo-less privileged operations
 - **Sandbox Core**: Uses Linux sandboxing implementation from [Local-Sandboxing-on-Linux.status.md](Sandboxing/Local-Sandboxing-on-Linux.status.md)
 - **TUI Dashboard**: Provides the interactive interface described in [TUI-PRD.md](TUI-PRD.md)
 - **Security Model**: Maximum isolation by default with explicit opt-in for additional capabilities
@@ -1138,7 +1138,7 @@ TODO: Verify that these align with everything described in [Sandbox-Profiles.md]
 See also: Local-Sandboxing-on-Linux.md for detailed semantics.
 
 ```
-aw agent instructions [OPTIONS] [SOURCE-FILE]
+ah agent instructions [OPTIONS] [SOURCE-FILE]
 
 DESCRIPTION: Process a dynamic agent instruction file into the final prompt text
              that an agent will use. Expands workflow commands (see [Workflows.md](Workflows.md))
@@ -1170,11 +1170,11 @@ JSON output and exit codes:
 
 Notes:
 
-- Useful for manual testing and editor shebang usage. Example shebang: `#!/usr/bin/env aw agent instructions`.
-- Linking per‑agent instruction file paths is handled by `aw repo instructions link`.
+- Useful for manual testing and editor shebang usage. Example shebang: `#!/usr/bin/env ah agent instructions`.
+- Linking per‑agent instruction file paths is handled by `ah repo instructions link`.
 
 ```
-aw agent start-work [OPTIONS]
+ah agent start-work [OPTIONS]
 
 DESCRIPTION: Records a task description and optionally creates a new branch.
              When on an existing agent branch, appends the description as a follow-up task.
@@ -1188,7 +1188,7 @@ OPTIONS:
 ```
 
 ```
-aw agent network get-keys [OPTIONS]
+ah agent network get-keys [OPTIONS]
 
 DESCRIPTION: Request session connectivity credentials.
 
@@ -1199,7 +1199,7 @@ OPTIONS:
 ```
 
 ```
-aw agent relay tail --session <ID> --host <NAME> [OPTIONS]
+ah agent relay tail --session <ID> --host <NAME> [OPTIONS]
 
 DESCRIPTION: Relay utilities (fallback).
 
@@ -1209,19 +1209,19 @@ OPTIONS:
 ```
 
 ```
-aw agent relay send --session <ID> --host <NAME> --control <JSON>
+ah agent relay send --session <ID> --host <NAME> --control <JSON>
 ```
 
 Relay send control payloads (fallback).
 
 ```
-aw agent relay socks5 --session <ID> --bind <ADDRESS:PORT>
+ah agent relay socks5 --session <ID> --bind <ADDRESS:PORT>
 ```
 
 Start a client-side CONNECT relay for this session (multi-hop across access points).
 
 ```
-aw agent fs status [OPTIONS]
+ah agent fs status [OPTIONS]
 
 DESCRIPTION: Run filesystem detection and report capabilities, provider selection,
              and mount point information for the current working directory or specified path.
@@ -1262,14 +1262,14 @@ JSON output schema (example):
 
 Implementation notes:
 
-- MUST call `aw_fs_snapshots::provider_for(path)` for provider detection and capability scoring.
+- MUST call `ah_fs_snapshots::provider_for(path)` for provider detection and capability scoring.
 - Errors MUST be descriptive (e.g., invalid path, permission denied); `--json` mode emits `{ "error": "..." }` with non‑zero exit.
 
 Examples:
 
 ```bash
-aw agent fs status --json
-aw agent fs status --path . --verbose
+ah agent fs status --json
+ah agent fs status --path . --verbose
 ```
 
 Exit codes:
@@ -1277,14 +1277,14 @@ Exit codes:
 - 0 success; non‑zero on detection errors (invalid path, permissions) or internal errors.
 
 ```
-aw agent fs init-session [OPTIONS]
+ah agent fs init-session [OPTIONS]
 ```
 
 The `init-session` command was present in earlier versions of the CLI, but it was removed.
 All remaining references to it in the code or elsewhere in this spec should be removed.
 
 ```
-aw agent followers accept-connections --session <ID> [OPTIONS]
+ah agent followers accept-connections --session <ID> [OPTIONS]
 
 DESCRIPTION: Initiate and wait for follower acks; prints per-host status.
 
@@ -1294,13 +1294,13 @@ OPTIONS:
 ```
 
 ```
-aw agent followers list
+ah agent followers list
 ```
 
 List configured follower hosts and tags (diagnostics; same data as GET /api/v1/followers when in REST mode).
 
 ```
-aw agent followers sync-fence [OPTIONS]
+ah agent followers sync-fence [OPTIONS]
 
 DESCRIPTION: Perform a synchronization fence ensuring followers match the leader snapshot
              before execution; emits per-host status.
@@ -1313,7 +1313,7 @@ OPTIONS:
 ```
 
 ```
-aw agent followers run [OPTIONS] [--] <COMMAND> [ARGS...]
+ah agent followers run [OPTIONS] [--] <COMMAND> [ARGS...]
 
 DESCRIPTION: Run a command on selected followers (multi‑OS fleet execution).
 
@@ -1329,11 +1329,11 @@ ARGUMENTS:
 
 Execution model:
 
-- These `aw agent` subcommands execute on the leader for the session and fan out to followers over SSH (via HTTP CONNECT, with optional client‑side relay in hybrid fleets). The REST service never connects to followers; it only receives events for observability.
-- For remote sessions, prefer: `ssh <leader> -- aw agent ...` so execution remains leader‑local.
+- These `ah agent` subcommands execute on the leader for the session and fan out to followers over SSH (via HTTP CONNECT, with optional client‑side relay in hybrid fleets). The REST service never connects to followers; it only receives events for observability.
+- For remote sessions, prefer: `ssh <leader> -- ah agent ...` so execution remains leader‑local.
 
 ```
-aw agent record [OPTIONS] [--] <AGENT_COMMAND> [ARGS...]
+ah agent record [OPTIONS] [--] <AGENT_COMMAND> [ARGS...]
 
 DESCRIPTION: Thin wrapper process that records agent execution with asciinema
              and monitors completion for both local and cloud agents.
@@ -1348,7 +1348,7 @@ ARGUMENTS:
 ```
 
 ```
-aw agent follow-cloud-task [OPTIONS] <TASK_ID>
+ah agent follow-cloud-task [OPTIONS] <TASK_ID>
 
 DESCRIPTION: Monitor cloud agent execution by translating live browser output
               to terminal display. Enables TUI monitoring of cloud agents.
@@ -1363,11 +1363,11 @@ ARGUMENTS:
 ```
 
 ```
-aw agent follow-remote-task [OPTIONS] <TASK_ID>
+ah agent follow-remote-task [OPTIONS] <TASK_ID>
 
 DESCRIPTION: Monitor remote task execution by connecting to server SSE events
               and translating them into terminal output. Enables real-time monitoring
-              of tasks running on remote AW servers.
+              of tasks running on remote AH servers.
 
 OPTIONS:
   --remote-server <NAME|URL>  Remote server to connect to (uses configured server if not specified)
@@ -1379,12 +1379,12 @@ ARGUMENTS:
 ```
 
 - Filesystem (AgentFS) snapshot/branch utilities:
-  - `aw agent fs status [OPTIONS]` — Run filesystem detection and report capabilities, provider selection, and mount point information.
-  - `aw agent fs snapshot [--name <NAME>] [--repo <PATH|URL>] [--json]` — Create a snapshot of the enclosing repository session.
-  - `aw agent fs snapshots <SESSION_ID>` — List snapshots created in a particular agent coding session.
-  - `aw agent fs branch create <SNAPSHOT_ID> [--name <NAME>]` — Create a writable branch from a snapshot.
-  - `aw agent fs branch bind <BRANCH_ID>` — Bind the current (or specified) process to the branch view.
-  - `aw agent fs branch exec <BRANCH_ID> -- <COMMAND> [ARGS...]` — Bind then exec a command within the branch context.
+  - `ah agent fs status [OPTIONS]` — Run filesystem detection and report capabilities, provider selection, and mount point information.
+  - `ah agent fs snapshot [--name <NAME>] [--repo <PATH|URL>] [--json]` — Create a snapshot of the enclosing repository session.
+  - `ah agent fs snapshots <SESSION_ID>` — List snapshots created in a particular agent coding session.
+  - `ah agent fs branch create <SNAPSHOT_ID> [--name <NAME>]` — Create a writable branch from a snapshot.
+  - `ah agent fs branch bind <BRANCH_ID>` — Bind the current (or specified) process to the branch view.
+  - `ah agent fs branch exec <BRANCH_ID> -- <COMMAND> [ARGS...]` — Bind then exec a command within the branch context.
 
 TODO: Use the consistent style used in the rest of the document when describing the commands above.
 
@@ -1394,7 +1394,7 @@ Local enumeration and management of running sessions is backed by the canonical 
 
 ### Daemonization
 
-`aw webui`, `aw agent access-point`, and `aw agent enroll --rest-api yes` all invoke the shared **daemon** path in the codebase.
+`ah webui`, `ah agent access-point`, and `ah agent enroll --rest-api yes` all invoke the shared **daemon** path in the codebase.
 
 ### Multiplexer Integration
 
@@ -1412,7 +1412,7 @@ Layout on launch:
 
 Remote attach:
 
-- Using SSH details from the REST service, run the appropriate attach command remotely (e.g., `ssh -t host tmux new-session -A -s aw:<id> ...`).
+- Using SSH details from the REST service, run the appropriate attach command remotely (e.g., `ssh -t host tmux new-session -A -s ah:<id> ...`).
 
 Devcontainers:
 
@@ -1432,7 +1432,7 @@ Commit step details:
 
 ### Session Workspace Recording
 
-Before spawning the agent process (local mode), AW writes to the local state DB:
+Before spawning the agent process (local mode), AH writes to the local state DB:
 
 - provider (zfs|btrfs|agentfs|git|disable)
 - working-copy (auto|cow-overlay|worktree|in-place) — resolved value
@@ -1447,7 +1447,7 @@ Remote mode: the REST service records equivalent fields in its backend store; th
 
 ### IDE and Terminal Agent Integration
 
-- Launch IDEs using the `aw session run <SESSION_ID> <PROCESS> [ARGS...]` command, which executes the IDE within the session namespace. Example: `aw session run <SESSION_ID> vscode` or `aw session run <SESSION_ID> cursor`.
+- Launch IDEs using the `ah session run <SESSION_ID> <PROCESS> [ARGS...]` command, which executes the IDE within the session namespace. Example: `ah session run <SESSION_ID> vscode` or `ah session run <SESSION_ID> cursor`.
 - Terminal-based editor alongside the agent is still supported in the multiplexer layout (left pane), configurable via editor settings.
 
 ### Examples
@@ -1455,7 +1455,7 @@ Remote mode: the REST service records equivalent fields in its backend store; th
 Create a task locally and immediately open TUI window/panes:
 
 ```bash
-aw task \
+ah task \
   --prompt "Refactor checkout service for reliability" \
   --repo . \
   --agent openhands \
@@ -1467,7 +1467,7 @@ aw task \
 Specify Codex with automation enabled and a specific browser profile:
 
 ```bash
-aw task \
+ah task \
   --prompt "Kick off Codex" \
   --agent codex \
   --browser-profile work-codex \
@@ -1477,7 +1477,7 @@ aw task \
 Run without web automation (browser profile is ignored when automation is disabled):
 
 ```bash
-aw task \
+ah task \
   --prompt "Run without web automation" \
   --agent openhands \
   --browser-automation false
@@ -1486,20 +1486,20 @@ aw task \
 List and tail logs for sessions:
 
 ```bash
-aw session list --status running --json
-aw session logs my-repo/feature/auth-refactor -f --tail 500
+ah session list --status running --json
+ah session logs my-repo/feature/auth-refactor -f --tail 500
 ```
 
 Attach to a running session window:
 
 ```bash
-aw attach my-repo/feature/auth-refactor --pane left
+ah attach my-repo/feature/auth-refactor --pane left
 ```
 
 Inspect sandbox audit trail for a session:
 
 ```bash
-aw session audit <SESSION_ID> [--format <text|json>] [--tail <N>] [--follow]
+ah session audit <SESSION_ID> [--format <text|json>] [--tail <N>] [--follow]
 
 DESCRIPTION: Print the sandbox audit log for a session. The log includes filesystem approval prompts, network access decisions, and resource usage deltas captured by the sandbox supervisor. For remote sessions the CLI streams the same audit events exposed by the REST service so results match the WebUI/TUI.
 
@@ -1514,21 +1514,21 @@ See [Sandboxing/Local-Sandboxing-on-Linux.md](Sandboxing/Local-Sandboxing-on-Lin
 Run the TUI against a REST service:
 
 ```bash
-aw tui --remote-server office-1 --multiplexer tmux
+ah tui --remote-server office-1 --multiplexer tmux
 ```
 
 Start local REST service and WebUI for a single developer:
 
 ```bash
-aw serve rest --local --port 8081
-aw webui --local --port 8080 --rest http://127.0.0.1:8081
+ah serve rest --local --port 8081
+ah webui --local --port 8080 --rest http://127.0.0.1:8081
 ```
 
 ### General Exit Codes
 
 - 0 success; non-zero on validation, environment, or network errors (with descriptive stderr messages).
 
-For detailed exit codes specific to the `aw task` command, see the [Exit Codes](#exit-codes) section above.
+For detailed exit codes specific to the `ah task` command, see the [Exit Codes](#exit-codes) section above.
 
 ### Security Notes
 

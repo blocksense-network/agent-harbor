@@ -72,12 +72,12 @@ insta-pending:
     cargo insta pending-snapshots
 
 # Run snapshot tests for specific packages (useful for focused testing)
-# Example: just insta-test-pkg aw-mux
+# Example: just insta-test-pkg ah-mux
 insta-test-pkg pkg:
     cargo insta test -p {{pkg}}
 
 # Accept snapshots for specific packages (useful when only one package changed)
-# Example: just insta-accept-pkg aw-mux
+# Example: just insta-accept-pkg ah-mux
 insta-accept-pkg pkg:
     cargo insta accept -p {{pkg}}
 
@@ -168,7 +168,7 @@ md-spell:
     cspell "specs/**/*.md"
 
 # Create reusable file-backed filesystems for testing ZFS and Btrfs providers
-# This sets up persistent test environments in ~/.cache/agents-workflow
+# This sets up persistent test environments in ~/.cache/agent-harbor
 create-test-filesystems:
     scripts/create-test-filesystems.sh
 
@@ -180,48 +180,48 @@ check-test-filesystems:
 cleanup-test-filesystems:
     scripts/cleanup-test-filesystems.sh
 
-# Launch the AW filesystem snapshots daemon for testing (requires sudo)
-legacy-start-aw-fs-snapshots-daemon:
-    legacy/scripts/launch-aw-fs-snapshots-daemon.sh
+# Launch the AH filesystem snapshots daemon for testing (requires sudo)
+legacy-start-ah-fs-snapshots-daemon:
+    legacy/scripts/launch-ah-fs-snapshots-daemon.sh
 
-# Stop the AW filesystem snapshots daemon
-legacy-stop-aw-fs-snapshots-daemon:
-    legacy/scripts/stop-aw-fs-snapshots-daemon.sh
+# Stop the AH filesystem snapshots daemon
+legacy-stop-ah-fs-snapshots-daemon:
+    legacy/scripts/stop-ah-fs-snapshots-daemon.sh
 
-# Check status of AW filesystem snapshots daemon
-legacy-check-aw-fs-snapshots-daemon:
-    ruby legacy/scripts/check-aw-fs-snapshots-daemon.rb
+# Check status of AH filesystem snapshots daemon
+legacy-check-ah-fs-snapshots-daemon:
+    ruby legacy/scripts/check-ah-fs-snapshots-daemon.rb
 
-# Build aw-fs-snapshots-daemon binary
+# Build ah-fs-snapshots-daemon binary
 build-daemon:
-    cargo build --package aw-fs-snapshots-daemon
+    cargo build --package ah-fs-snapshots-daemon
 
 # Build all binaries needed for daemon integration tests
 build-daemon-tests: build-daemon
 
-# Launch the new Rust AW filesystem snapshots daemon for testing (requires sudo)
-start-aw-fs-snapshots-daemon:
-    scripts/start-aw-fs-snapshots-daemon.sh
+# Launch the new Rust AH filesystem snapshots daemon for testing (requires sudo)
+start-ah-fs-snapshots-daemon:
+    scripts/start-ah-fs-snapshots-daemon.sh
 
-# Stop the new Rust AW filesystem snapshots daemon
-stop-aw-fs-snapshots-daemon:
-    scripts/stop-aw-fs-snapshots-daemon.sh
+# Stop the new Rust AH filesystem snapshots daemon
+stop-ah-fs-snapshots-daemon:
+    scripts/stop-ah-fs-snapshots-daemon.sh
 
-# Check status of the new Rust AW filesystem snapshots daemon
-check-aw-fs-snapshots-daemon:
-    scripts/check-aw-fs-snapshots-daemon.sh
+# Check status of the new Rust AH filesystem snapshots daemon
+check-ah-fs-snapshots-daemon:
+    scripts/check-ah-fs-snapshots-daemon.sh
 
 # Run comprehensive daemon integration tests (requires test filesystems)
 test-daemon-integration: build-daemon-tests
-    cargo test --package aw-fs-snapshots-daemon -- --nocapture integration
+    cargo test --package ah-fs-snapshots-daemon -- --nocapture integration
 
 # Run filesystem snapshot provider integration tests (requires root for ZFS/Btrfs operations)
 test-fs-snapshots: build-daemon-tests
-    cargo test --package aw-fs-snapshots -- --nocapture integration
+    cargo test --package ah-fs-snapshots -- --nocapture integration
 
 # Run filesystem snapshot provider unit tests only (no root required)
 test-fs-snapshots-unit:
-    cargo test --package aw-fs-snapshots
+    cargo test --package ah-fs-snapshots
 
 # Run all spec linting/validation in one go
 lint-specs:
@@ -239,9 +239,9 @@ build-overlay-test-binaries:
 build-sbx-helper:
     cargo build -p sbx-helper --bin sbx-helper
 
-# Build macOS sandbox launcher (aw-macos-launcher)
-build-aw-macos-launcher:
-    cargo build --bin aw-macos-launcher
+# Build macOS sandbox launcher (ah-macos-launcher)
+build-ah-macos-launcher:
+    cargo build --bin ah-macos-launcher
 
 # Build all test binaries needed for cgroup enforcement tests
 build-cgroup-tests: build-sbx-helper build-cgroup-test-binaries
@@ -474,59 +474,59 @@ build-agentfs-extension-debug:
 build-agentfs-extension-release:
     cd adapters/macos/xcode/AgentFSKitExtension && CONFIGURATION=release ./build.sh
 
-# Build the AgentsWorkflow Xcode project (includes embedded AgentFSKitExtension)
-build-agents-workflow-xcode:
-    @echo "🔨 Building AgentsWorkflow macOS app..."
+# Build the AgentHarbor Xcode project (includes embedded AgentFSKitExtension)
+build-agent-harbor-xcode:
+    @echo "🔨 Building AgentHarbor macOS app..."
     just build-agentfs-extension
-    cd apps/macos/AgentsWorkflow && (test -d AgentsWorkflow.xcodeproj || (echo "❌ Xcode project not found at apps/macos/AgentsWorkflow/AgentsWorkflow.xcodeproj" && echo "💡 Run 'just setup-agents-workflow-xcode' to create it" && exit 1))
-    cd apps/macos/AgentsWorkflow && xcodebuild build -project AgentsWorkflow.xcodeproj -scheme AgentsWorkflow -configuration Debug -arch x86_64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+    cd apps/macos/AgentHarbor && (test -d AgentHarbor.xcodeproj || (echo "❌ Xcode project not found at apps/macos/AgentHarbor/AgentHarbor.xcodeproj" && echo "💡 Run 'just setup-agent-harbor-xcode' to create it" && exit 1))
+    cd apps/macos/AgentHarbor && xcodebuild build -project AgentHarbor.xcodeproj -scheme AgentHarbor -configuration Debug -arch x86_64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
-# Set up the Xcode project for AgentsWorkflow (run once after cloning)
-setup-agents-workflow-xcode:
-    @echo "🔧 Setting up AgentsWorkflow Xcode project..."
+# Set up the Xcode project for AgentHarbor (run once after cloning)
+setup-agent-harbor-xcode:
+    @echo "🔧 Setting up AgentHarbor Xcode project..."
     @echo "Generating Xcode project from project.yml using XcodeGen..."
-    cd apps/macos/AgentsWorkflow && xcodegen generate
+    cd apps/macos/AgentHarbor && xcodegen generate
     @echo ""
     @echo "✅ Xcode project generated successfully!"
-    @echo "You can now open AgentsWorkflow.xcodeproj in Xcode or run:"
-    @echo "  just build-agents-workflow"
+    @echo "You can now open AgentHarbor.xcodeproj in Xcode or run:"
+    @echo "  just build-agent-harbor"
 
-# Build the complete AgentsWorkflow macOS app (debug build for development)
-build-agents-workflow:
+# Build the complete AgentHarbor macOS app (debug build for development)
+build-agent-harbor:
     just build-agentfs-extension-debug
-    @echo "🔨 Building AgentsWorkflow macOS app with Swift Package Manager (debug)..."
-    cd apps/macos/AgentsWorkflow && swift build --configuration debug
+    @echo "🔨 Building AgentHarbor macOS app with Swift Package Manager (debug)..."
+    cd apps/macos/AgentHarbor && swift build --configuration debug
     @echo "📦 Ensuring extension is properly embedded in app bundle..."
     # Swift PM creates the app bundle, we just need to ensure the extension is copied
-    mkdir -p "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/PlugIns"
-    cp -R "adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app/Contents/PlugIns/"
-    @echo "✅ AgentsWorkflow (debug) built successfully!"
+    mkdir -p "apps/macos/AgentHarbor/.build/arm64-apple-macosx/debug/AgentHarbor.app/Contents/PlugIns"
+    cp -R "adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex" "apps/macos/AgentHarbor/.build/arm64-apple-macosx/debug/AgentHarbor.app/Contents/PlugIns/"
+    @echo "✅ AgentHarbor (debug) built successfully!"
 
-# Build the complete AgentsWorkflow macOS app (release build)
-build-agents-workflow-release:
+# Build the complete AgentHarbor macOS app (release build)
+build-agent-harbor-release:
     just build-agentfs-extension-release
-    @echo "🔨 Building AgentsWorkflow macOS app with Swift Package Manager (release)..."
-    cd apps/macos/AgentsWorkflow && swift build --configuration release
+    @echo "🔨 Building AgentHarbor macOS app with Swift Package Manager (release)..."
+    cd apps/macos/AgentHarbor && swift build --configuration release
     @echo "📦 Ensuring extension is properly embedded in app bundle..."
     # Swift PM creates the app bundle, we just need to ensure the extension is copied
-    mkdir -p "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/PlugIns"
-    cp -R "adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex" "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app/Contents/PlugIns/"
-    @echo "✅ AgentsWorkflow (release) built successfully!"
+    mkdir -p "apps/macos/AgentHarbor/.build/arm64-apple-macosx/release/AgentHarbor.app/Contents/PlugIns"
+    cp -R "adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex" "apps/macos/AgentHarbor/.build/arm64-apple-macosx/release/AgentHarbor.app/Contents/PlugIns/"
+    @echo "✅ AgentHarbor (release) built successfully!"
 
-# Test the AgentsWorkflow macOS app (builds and validates extension)
-test-agents-workflow:
-    @echo "🧪 Testing AgentsWorkflow macOS app..."
-    just build-agents-workflow-xcode || (echo "⚠️  Xcode build failed (likely environment issue), checking for existing app..." && find ~/Library/Developer/Xcode/DerivedData/AgentsWorkflow-*/Build/Products/Debug -name "AgentsWorkflow.app" -type d -exec echo "📱 Using existing built app at {}" \;)
+# Test the AgentHarbor macOS app (builds and validates extension)
+test-agent-harbor:
+    @echo "🧪 Testing AgentHarbor macOS app..."
+    just build-agent-harbor-xcode || (echo "⚠️  Xcode build failed (likely environment issue), checking for existing app..." && find ~/Library/Developer/Xcode/DerivedData/AgentHarbor-*/Build/Products/Debug -name "AgentHarbor.app" -type d -exec echo "📱 Using existing built app at {}" \;)
 
-# Launch the debug build of AgentsWorkflow
-launch-agents-workflow-debug:
-    @echo "🚀 Launching AgentsWorkflow (debug build)..."
-    open "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/debug/AgentsWorkflow.app"
+# Launch the debug build of AgentHarbor
+launch-agent-harbor-debug:
+    @echo "🚀 Launching AgentHarbor (debug build)..."
+    open "apps/macos/AgentHarbor/.build/arm64-apple-macosx/debug/AgentHarbor.app"
 
-# Launch the release build of AgentsWorkflow
-launch-agents-workflow-release:
-    @echo "🚀 Launching AgentsWorkflow (release build)..."
-    open "apps/macos/AgentsWorkflow/.build/arm64-apple-macosx/release/AgentsWorkflow.app"
+# Launch the release build of AgentHarbor
+launch-agent-harbor-release:
+    @echo "🚀 Launching AgentHarbor (release build)..."
+    open "apps/macos/AgentHarbor/.build/arm64-apple-macosx/release/AgentHarbor.app"
 
 # TUI include patterns as a multiline string
 REPOMIX_TUI_PATTERNS := replace("""
@@ -540,16 +540,16 @@ specs/Public/Terminal-Multiplexers/TUI-Multiplexers-Overview.md
 specs/Public/Terminal-Multiplexers/tmux.md
 specs/Public/Terminal-Multiplexers/Kitty.md
 specs/Public/Terminal-Multiplexers/Multiplexer-Description-Template.md
-crates/aw-rest-api-contract/**
-crates/aw-rest-client/**
-crates/aw-tui/**
-crates/aw-tui-multiplexer/**
-crates/aw-tui-test/**
-crates/aw-mux-core/**
-crates/aw-mux/**
-crates/aw-test-scenarios/**
-crates/aw-rest-client-mock/**
-crates/aw-client-api/**
+crates/ah-rest-api-contract/**
+crates/ah-rest-client/**
+crates/ah-tui/**
+crates/ah-tui-multiplexer/**
+crates/ah-tui-test/**
+crates/ah-mux-core/**
+crates/ah-mux/**
+crates/ah-test-scenarios/**
+crates/ah-rest-client-mock/**
+crates/ah-client-api/**
 test_scenarios/**
 """, "\n", ",")
 
@@ -569,10 +569,10 @@ REPOMIX_AGENTFS_PATTERNS := replace("""
 specs/Public/AgentFS/**
 resources/fskit/**
 crates/agentfs-*/**
-apps/macos/AgentsWorkflow/**
+apps/macos/AgentHarbor/**
 adapters/**
-crates/aw-cli/src/agent/fs.rs
-crates/aw-cli/src/agent/mod.rs
+crates/ah-cli/src/agent/fs.rs
+crates/ah-cli/src/agent/mod.rs
 tests/tools/e2e_macos_fskit/**
 """, "\n", ",")
 
@@ -659,8 +659,8 @@ e2e-fskit:
     bash scripts/e2e-fskit.sh
 
 # macOS FSKit provisioning helpers (refer to Research doc)
-install-agentsworkflow-app:
-    bash scripts/install-agentsworkflow-app.sh
+install-agent-harbor-app:
+    bash scripts/install-agent-harbor-app.sh
 
 systemextensions-devmode-and-status:
     bash scripts/systemextensions-devmode-and-status.sh

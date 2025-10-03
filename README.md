@@ -175,8 +175,8 @@ This architecture allows you to share common setup logic across all agent system
 In your Codex environment's Advanced settings, enter the following setup script:
 
 ```
-git clone https://github.com/metacraft-labs/agents-workflow
-agents-workflow/codex-setup
+git clone https://github.com/blocksense-network/agent-harbor
+agent-harbor/codex-setup
 ```
 
 ### Jules
@@ -185,8 +185,8 @@ In the Jules web-interface, select a codebase in the left-hand-side panel, click
 "Configuration" and enter the following Initial Script:
 
 ```
-git clone https://github.com/metacraft-labs/agents-workflow
-agents-workflow/codex-setup
+git clone https://github.com/blocksense-network/agent-harbor
+agent-harbor/codex-setup
 ```
 
 ### Goose
@@ -210,7 +210,7 @@ agents-workflow/codex-setup
 The scripts can be installed as a gem for easier reuse:
 
 ```bash
-gem install --local agents-workflow.gem
+gem install --local agent-harbor.gem
 ```
 
 This will provide the `agent-task`, `get-task`, and `download-internet-resources` executables in your `PATH`.
@@ -222,13 +222,13 @@ To enable bash completion for `agent-task`, source the script `scripts/agent-tas
 This repository also provides a Nix flake. The default package installs the `agent-task` binary with `codex` and `goose` available in its `PATH`. An additional `agent-utils` package bundles the `get-task` and `start-work` binaries.
 
 ```bash
-nix run github:metacraft-labs/agents-workflow
+nix run github:blocksense-network/agent-harbor
 ```
 
 Or install the utilities package:
 
 ```bash
-nix profile install github:metacraft-labs/agents-workflow#agent-utils
+nix profile install github:blocksense-network/agent-harbor#agent-utils
 ```
 
 ### What's included?

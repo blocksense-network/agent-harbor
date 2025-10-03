@@ -1,6 +1,6 @@
 # Agents Workflow Specs
 
-This folder contains a work-in-progress specification for the next iteration of the agents-workflow product.
+This folder contains a work-in-progress specification for the next iteration of the agent-harbor product.
 
 The main ideas of the product are described in the [Product-One-Pager](../docs/Product-One-Pager.md) document. Please read it.
 
@@ -18,7 +18,7 @@ Some of the markdown files have standardized Obsidian headers indicating their c
 
 ## Planning the implementation and tracking progress
 
-Implementation efforts have now started on the Agents-Workflow MVP. Implementation plans break down the work into granular tasks and milestones, each with well-defined success criteria that can be tested with fully automated tests.
+Implementation efforts have now started on the agent-harbor MVP. Implementation plans break down the work into granular tasks and milestones, each with well-defined success criteria that can be tested with fully automated tests.
 
 The planning and status file typically exists as a separate markdown file with an extension `.status.md` . It may be named after a corresponding spec file. The [MVP.status.md](Public/MVP.status.md) file serves as the primary example for other status.md files, demonstrating the expected structure with clearly specified deliverables and verification criteria based on automated tests.
 
@@ -81,7 +81,7 @@ When documenting CLI commands with multiple parameters, use the following format
 **Good Format:**
 
 ```
-aw command [OPTIONS] [ARGUMENTS]
+ah command [OPTIONS] [ARGUMENTS]
 
 DESCRIPTION: The precise user-facing brief description of the command
 
@@ -98,7 +98,7 @@ ARGUMENTS:
 **Bad Format (hard to review in PRs):**
 
 ```
-- `aw command [--option1 <value>] [--option2] [--long-option-name <type>] [argument1] [argument2]`
+- `ah command [--option1 <value>] [--option2] [--long-option-name <type>] [argument1] [argument2]`
 ```
 
 **Benefits of the good format:**

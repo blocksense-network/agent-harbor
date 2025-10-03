@@ -66,7 +66,7 @@ Testability strategy from day one:
     - ZFS: instantaneous snapshots and cheap writable clones (SessionBranch from snapshot via clone).
     - Btrfs: subvolume snapshots (constant-time), cheap writable snapshots for SessionBranching.
     - Git fallback: capture shadow commits with a temporary index (include untracked optional); materialize branches via `git worktree` when isolation is desired.
-    - Copy fallback: Present in early versions of AW, but now removed. Please clean up references to it if noticed in the code or the specs.
+    - Copy fallback: Present in early versions of AH, but now removed. Please clean up references to it if noticed in the code or the specs.
     - AgentFS (FSKit, WinFsp): Provide a user-space filesystem with native snapshots/branches for inspection and SessionBranching, with per-process cow-overlay (path-stable CoW) mounts.
 - **SessionBranch Semantics**:
   - Writable clones are native on ZFS/Btrfs. On macOS and Windows, SessionBranching is implemented via AgentFS (FSKit/WinFsp) rather than native OS snapshots.
@@ -82,7 +82,7 @@ Testability strategy from day one:
 
 - **Runtime Integration**: The agent execution system executes a hook that creates the snapshot in between chat messages, agent thinking streams and tool executions.
 - **Advanced (future)**: eBPF capture of PTY I/O and/or FS mutations
-- **Multi‑OS Sync Fence**: When multi‑OS testing is enabled, each execution cycle performs `fs_snapshot_and_sync` on the leader (create FsSnapshot, then fence Mutagen sessions to followers) before invoking `aw agent followers run`. See [Multi-OS Testing.md](Multi-OS%20Testing.md).
+- **Multi‑OS Sync Fence**: When multi‑OS testing is enabled, each execution cycle performs `fs_snapshot_and_sync` on the leader (create FsSnapshot, then fence Mutagen sessions to followers) before invoking `ah agent followers run`. See [Multi-OS Testing.md](Multi-OS%20Testing.md).
 
 ### Restarting the agent from a SessionMoment
 
@@ -112,7 +112,7 @@ Baseline flows (ordered by fidelity):
    - Relaunch the agent in "resume prior session" mode pointing to the trimmed session artifacts in the branch, then inject the new user message.
 
 3. Prompt replay (fallback for stateless agents)
-   - Extract the prompt turns up to the target timestamp from the captured terminal stream and AW task files (initial and follow‑up tasks). Where feasible, prefer fetching structured prompts from agent logs instead of scraping terminal output.
+   - Extract the prompt turns up to the target timestamp from the captured terminal stream and AH task files (initial and follow‑up tasks). Where feasible, prefer fetching structured prompts from agent logs instead of scraping terminal output.
    - Launch the agent fresh in the SessionBranch workspace and replay the concatenated turns to reconstruct approximate context, then inject the new user message.
    - Note: This yields lower fidelity than checkpoint/resume; we annotate the new SessionBranch with `contextReconstruction: "replay"` and surface a UI hint.
 
@@ -131,7 +131,7 @@ Safety and validation:
 
 - Before launching, validate agent support level: `checkpoint | resume | stateless` using the per‑agent catalog; emit a clear warning when falling back to replay.
 - Verify that the selected FsSnapshot exists and mounts successfully; otherwise propose the nearest valid snapshot.
-- For resume/trim, operate only on copied artifacts in the SessionBranch. Maintain a backup of pre‑trim copies in the branch under `.aw/restore/` for diagnostics.
+- For resume/trim, operate only on copied artifacts in the SessionBranch. Maintain a backup of pre‑trim copies in the branch under `.ah/restore/` for diagnostics.
 
 Observability:
 
@@ -230,7 +230,7 @@ Phase 5 — REST/TUI/WebUI integration polish
 
 ### CLI Commands
 
-See the `aw agent fs` [commands](./CLI.md).
+See the `ah agent fs` [commands](./CLI.md).
 
 ### WebUI UX
 

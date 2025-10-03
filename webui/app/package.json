@@ -1,7 +1,7 @@
 {
-  "name": "aw-webui-ssr-sidecar",
+  "name": "ah-webui-ssr-sidecar",
   "version": "1.0.0",
-  "description": "SSR sidecar server for Agents-Workflow WebUI providing server-side rendering and REST API proxy",
+  "description": "SSR sidecar server for agent-harbor WebUI providing server-side rendering and REST API proxy",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -46,7 +46,7 @@
     "solidjs",
     "express",
     "proxy",
-    "agents-workflow"
+    "agent-harbor"
   ],
   "author": "",
   "license": "ISC",

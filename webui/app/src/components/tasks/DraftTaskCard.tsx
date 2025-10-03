@@ -169,18 +169,18 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   const [repositories] = createSignal<Repository[]>([
     {
       id: "1",
-      name: "agents-workflow-webui",
-      url: "https://github.com/example/agents-workflow-webui.git",
+      name: "agent-harbor-webui",
+      url: "https://github.com/example/agent-harbor-webui.git",
     },
     {
       id: "2",
-      name: "agents-workflow-core",
-      url: "https://github.com/example/agents-workflow-core.git",
+      name: "agent-harbor-core",
+      url: "https://github.com/example/agent-harbor-core.git",
     },
     {
       id: "3",
-      name: "agents-workflow-cli",
-      url: "https://github.com/example/agents-workflow-cli.git",
+      name: "agent-harbor-cli",
+      url: "https://github.com/example/agent-harbor-cli.git",
     },
   ]);
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Attempt to trigger FSKit extension loading by mounting a minimal dummy device
-# Assumes AgentsWorkflow.app with AgentFSKitExtension.appex is installed/enabled
+# Assumes AgentHarbor.app with AgentFSKitExtension.appex is installed/enabled
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

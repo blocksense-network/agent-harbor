@@ -1,0 +1,43 @@
+[package]
+name = "ah-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal User Interface for agent-harbor"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "ah-tui"
+path = "src/main.rs"
+
+[dependencies]
+ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+ah-client-api = { path = "../ah-client-api" }
+ah-rest-client = { path = "../ah-rest-client" }
+ah-test-scenarios = { path = "../ah-test-scenarios" }
+tokio = { workspace = true, features = ["full", "test-util"] }
+tokio-util = "0.7"
+ratatui = "0.29"
+crossterm = "0.29"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+futures = { workspace = true }
+unicode-width = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+ratatui-textarea = "0.3"
+similar = "2.5"
+ratatui-image = { version = "8", features = ["crossterm"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+ah-test-scenarios = { path = "../ah-test-scenarios" }
+url = { workspace = true }
+tempfile = "3.0"
+expectrl = "0.3"
+vt100 = "0.15"
+insta = { version = "1.40", features = ["json"] }
+regex = "1.0"

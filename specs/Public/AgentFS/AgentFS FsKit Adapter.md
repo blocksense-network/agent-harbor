@@ -86,7 +86,7 @@ The XPC service name is `com.agentfs.AgentFSKitExtension.control` and implements
 - Binding processes to branches
 - Listing snapshots and branches
 
-External tools and the `aw agent fs` CLI connect to this XPC service to perform control operations on the mounted filesystem.
+External tools and the `ah agent fs` CLI connect to this XPC service to perform control operations on the mounted filesystem.
 
 ### Notes and Limits
 

@@ -2,7 +2,7 @@
 
 ### Overview
 
-AgentFS exposes a small control plane to manage snapshots and branches on a mounted filesystem volume. The CLI (`aw agent fs ...`) and other tools communicate with the running user‑space filesystem server (adapter) using OS‑specific transports, but the payloads and semantics are shared.
+AgentFS exposes a small control plane to manage snapshots and branches on a mounted filesystem volume. The CLI (`ah agent fs ...`) and other tools communicate with the running user‑space filesystem server (adapter) using OS‑specific transports, but the payloads and semantics are shared.
 
 ### Operations
 

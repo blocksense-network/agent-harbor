@@ -103,7 +103,10 @@ const ToastItem: Component<ToastItemProps> = (props) => {
                   action.onClick();
                   props.onRemove(props.toast.id);
                 }}
-                class={`${baseClasses} ${variantClasses[variant]}`}
+                class={`
+                  ${baseClasses}
+                  ${variantClasses[variant]}
+                `}
               >
                 {action.label}
               </button>

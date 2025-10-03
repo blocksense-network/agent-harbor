@@ -16,8 +16,8 @@ Total estimated timeline: 12-16 weeks (broken into major phases with parallel de
 | Dashboard with Project/Branch/Agent selectors + multiline task editor | ✅ Met | Implemented with MVVM and golden snapshots for 80x24 & 120x40; keyboard navigation verified. |
 | Contextual single-line footer shortcuts | ✅ Met | Footer shows dynamic hints (e.g., "↑↓ Navigate • Ctrl+C x2 Quit") and varies by focus. |
 | Keyboard-only operation & predictable focus | ✅ Met (baseline) | Navigation (Tab/Shift+Tab, arrows, Enter/Esc) covered by tests; add a11y checks later. |
-| Multiplexer abstraction layer | ✅ Met | `aw-mux-core` trait + `aw-mux` impls; tmux + kitty done. |
-| Auto-attach/launch in multiplexer with standard split layout | ✅ Met (tmux/kitty) / ⏳ Pending (zellij/screen) | AW-specific adapter creates editor/agent/log panes. |
+| Multiplexer abstraction layer | ✅ Met | `ah-mux-core` trait + `ah-mux` impls; tmux + kitty done. |
+| Auto-attach/launch in multiplexer with standard split layout | ✅ Met (tmux/kitty) / ⏳ Pending (zellij/screen) | AH-specific adapter creates editor/agent/log panes. |
 | Real-time session monitoring via SSE | ⏳ Pending | Infrastructure planned; needs end-to-end SSE tests. |
 | Remote mode (REST service, cross-host attach) | ⏳ Pending | Milestone drafted; needs automated verification. |
 | Inline validation & non-intrusive errors | ◻ Partial | Baseline error handling exists; expand coverage & snapshots. |
@@ -57,13 +57,13 @@ The TUI implementation provides these core capabilities:
 - **UI Components Track** ✅ **COMPLETED**: Full MVVM architecture with Ratatui widgets, state management, and keyboard navigation
 - **REST Client Track** ✅ **COMPLETED**: Rust REST API client crate fully implemented and tested
 - **Multiplexer Integration Track** 📋 **READY**: tmux/zellij/screen abstraction layer (T3 Task Creation and Launch)
-- **CLI Integration Track** ✅ **COMPLETED**: `aw tui` command with proper flag handling integrated
+- **CLI Integration Track** ✅ **COMPLETED**: `ah tui` command with proper flag handling integrated
 - **Testing Infrastructure Track** ✅ **COMPLETED**: Comprehensive TUI testing framework with scenario automation and interactive debugging
 
 ### Approach
 
 - **Ratatui + Crossterm**: Modern Rust terminal UI framework with cross-platform terminal handling
-- **REST Client Crate**: Dedicated `aw-rest-client` crate for API communication with mock server development
+- **REST Client Crate**: Dedicated `ah-rest-client` crate for API communication with mock server development
 - **Multiplexer Abstraction**: Unified interface for tmux/zellij/screen with auto-detection and fallback
 - **State-Driven UI**: Reactive UI updates based on REST API responses and user interactions
 - **Mock-First Development**: Start with comprehensive REST client testing against mock server ([Mock Server README](../webui/mock-server/README.md))
@@ -80,8 +80,8 @@ The TUI implementation provides these core capabilities:
 
 - **Deliverables**:
 
-  - ✅ Rust REST API contracts crate (`aw-rest-api-contract`) with schema types and validation
-  - ✅ Rust REST client crate (`aw-rest-client`) with full API coverage
+  - ✅ Rust REST API contracts crate (`ah-rest-api-contract`) with schema types and validation
+  - ✅ Rust REST client crate (`ah-rest-client`) with full API coverage
   - ✅ Ratatui + Crossterm project scaffolding with basic event loop
   - ✅ Mock server integration for development and testing
   - ✅ Basic CLI command structure with `--remote-server` flag support
@@ -102,7 +102,7 @@ The TUI implementation provides these core capabilities:
   - [x] Unit tests for REST API contracts crate covering schema validation
   - [x] Unit tests for REST client crate covering all API endpoints against mock server
   - [x] Integration tests against mock server for end-to-end API flows and error scenarios
-  - [x] CLI tests verifying `aw tui --remote-server` command parsing
+  - [x] CLI tests verifying `ah tui --remote-server` command parsing
   - [x] Build tests: All crates compile successfully with Cargo
   - [x] Tooling tests: Clippy and rustfmt configurations work across all crates
 
@@ -112,18 +112,18 @@ The TUI implementation provides these core capabilities:
   - **REST API Contracts**: Complete type definitions for all [REST-Service/](REST-Service/) endpoints with serde serialization and validator-based input validation
   - **REST Client**: Full async HTTP client with reqwest, supporting authentication (API key, JWT), error handling, and SSE streaming (placeholder)
   - **TUI Framework**: Ratatui + Crossterm with event-driven architecture, basic dashboard layout, and keyboard navigation
-  - **CLI Integration**: `aw tui --remote-server` command with authentication options integrated into existing aw-cli structure
+  - **CLI Integration**: `ah tui --remote-server` command with authentication options integrated into existing ah-cli structure
   - **Mock Server Ready**: Client configured to work with mock server at `http://localhost:3001` as specified
 
 - **Key Source Files**:
 
-  - `crates/aw-rest-api-contract/src/types.rs` - Complete API schema definitions
-  - `crates/aw-rest-api-contract/src/validation.rs` - Input validation logic
-  - `crates/aw-rest-client/src/client.rs` - HTTP client implementation
-  - `crates/aw-rest-client/src/auth.rs` - Authentication handling
-  - `crates/aw-tui/src/app.rs` - Main TUI application logic
-  - `crates/aw-tui/src/ui.rs` - UI components and rendering
-  - `crates/aw-cli/src/tui.rs` - CLI command integration
+  - `crates/ah-rest-api-contract/src/types.rs` - Complete API schema definitions
+  - `crates/ah-rest-api-contract/src/validation.rs` - Input validation logic
+  - `crates/ah-rest-client/src/client.rs` - HTTP client implementation
+  - `crates/ah-rest-client/src/auth.rs` - Authentication handling
+  - `crates/ah-tui/src/app.rs` - Main TUI application logic
+  - `crates/ah-tui/src/ui.rs` - UI components and rendering
+  - `crates/ah-cli/src/tui.rs` - CLI command integration
 
 - **Integration Points**:
 
@@ -171,11 +171,11 @@ The TUI implementation provides these core capabilities:
 
 - **Key Source Files**:
 
-  - `crates/aw-tui/src/model.rs` - State machine and business logic
-  - `crates/aw-tui/src/viewmodel.rs` - Presentation state derivation
-  - `crates/aw-tui/src/msg.rs` - Message types for state transitions
-  - `crates/aw-tui/src/test_runtime.rs` - Deterministic test execution engine
-  - `crates/aw-tui-test/src/main.rs` - Interactive and automated test runners
+  - `crates/ah-tui/src/model.rs` - State machine and business logic
+  - `crates/ah-tui/src/viewmodel.rs` - Presentation state derivation
+  - `crates/ah-tui/src/msg.rs` - Message types for state transitions
+  - `crates/ah-tui/src/test_runtime.rs` - Deterministic test execution engine
+  - `crates/ah-tui-test/src/main.rs` - Interactive and automated test runners
   - `test_scenarios/basic_navigation.json` - Sample test scenario
 
 - **Integration Points**:
@@ -223,16 +223,16 @@ The TUI implementation provides these core capabilities:
   - **Interactive Debugging**: Rich interface for stepping through and inspecting scenarios
   - **Mock-First Development**: Enables testing without external dependencies
   - **Golden Files**: File-based golden file comparison with stable normalization, diff reporting, and multi-line TUI visualization showing actual terminal rendering
-  - **Golden File Storage**: Organized under `crates/aw-tui/tests/__goldens__/<scenario>/<step>.golden`
+  - **Golden File Storage**: Organized under `crates/ah-tui/tests/__goldens__/<scenario>/<step>.golden`
 
 - **Key Source Files**:
 
-  - `crates/aw-test-scenarios/src/lib.rs` - Scenario model and JSON parsing
-  - `crates/aw-rest-client-mock/src/lib.rs` - Mock REST client implementation
-  - `crates/aw-client-api/src/lib.rs` - Client API trait for testing
-  - `crates/aw-tui-test/src/main.rs` - Interactive and automated test runners
-  - `crates/aw-tui/src/test_runtime.rs` - Test runtime with full golden file integration
-  - `crates/aw-tui/src/golden.rs` - Golden file management with diff support
+  - `crates/ah-test-scenarios/src/lib.rs` - Scenario model and JSON parsing
+  - `crates/ah-rest-client-mock/src/lib.rs` - Mock REST client implementation
+  - `crates/ah-client-api/src/lib.rs` - Client API trait for testing
+  - `crates/ah-tui-test/src/main.rs` - Interactive and automated test runners
+  - `crates/ah-tui/src/test_runtime.rs` - Test runtime with full golden file integration
+  - `crates/ah-tui/src/golden.rs` - Golden file management with diff support
   - `[TUI-Testing-Architecture.md](TUI-Testing-Architecture.md)` - Complete testing framework specification
 
 - **Integration Points**:
@@ -248,9 +248,9 @@ The TUI implementation provides these core capabilities:
 
 - **Deliverables**:
 
-  - `aw-mux-core` crate with low-level multiplexer trait and shared types
-  - `aw-mux` crate with pure multiplexer implementations (tmux, kitty, etc.)
-  - `aw-tui-multiplexer` crate with AW-specific abstractions and layouts
+  - `ah-mux-core` crate with low-level multiplexer trait and shared types
+  - `ah-mux` crate with pure multiplexer implementations (tmux, kitty, etc.)
+  - `ah-tui-multiplexer` crate with AH-specific abstractions and layouts
   - Core trait definitions following [TUI-Multiplexers-Overview.md](Terminal-Multiplexers/TUI-Multiplexers-Overview.md) specifications
 
 - **Test Coverage**:
@@ -266,17 +266,17 @@ The TUI implementation provides these core capabilities:
 
 - **Implementation Details**:
 
-  - **aw-mux-core**: Complete trait definitions with WindowId/PaneId types, SplitDirection enum, WindowOptions/CommandOptions structs, and comprehensive error handling
-  - **aw-mux**: Pure multiplexer implementations with tmux backend (placeholder implementations for now)
-  - **aw-tui-multiplexer**: AW-specific adapter with LayoutHandle, PaneRole enum, LayoutConfig struct, and standard layout creation functions
-  - **Architecture**: Clean three-layer separation: core traits → multiplexer implementations → AW-specific workflows following [TUI-Multiplexers-Overview.md](Terminal-Multiplexers/TUI-Multiplexers-Overview.md)
+  - **ah-mux-core**: Complete trait definitions with WindowId/PaneId types, SplitDirection enum, WindowOptions/CommandOptions structs, and comprehensive error handling
+  - **ah-mux**: Pure multiplexer implementations with tmux backend (placeholder implementations for now)
+  - **ah-tui-multiplexer**: AH-specific adapter with LayoutHandle, PaneRole enum, LayoutConfig struct, and standard layout creation functions
+  - **Architecture**: Clean three-layer separation: core traits → multiplexer implementations → AH-specific workflows following [TUI-Multiplexers-Overview.md](Terminal-Multiplexers/TUI-Multiplexers-Overview.md)
 
 - **Key Source Files**:
 
-  - `crates/aw-mux-core/src/lib.rs` - Core trait definitions and types
-  - `crates/aw-mux/src/lib.rs` - Pure multiplexer implementations
-  - `crates/aw-mux/src/tmux.rs` - tmux multiplexer implementation
-  - `crates/aw-tui-multiplexer/src/lib.rs` - AW-specific adapter and layouts
+  - `crates/ah-mux-core/src/lib.rs` - Core trait definitions and types
+  - `crates/ah-mux/src/lib.rs` - Pure multiplexer implementations
+  - `crates/ah-mux/src/tmux.rs` - tmux multiplexer implementation
+  - `crates/ah-tui-multiplexer/src/lib.rs` - AH-specific adapter and layouts
   - `[TUI-Multiplexers-Overview.md](Terminal-Multiplexers/TUI-Multiplexers-Overview.md)` - Specification reference
 
 - **Integration Points**:
@@ -297,7 +297,7 @@ The TUI implementation provides these core capabilities:
     - Text sending/scripted answers via send-keys
     - Window/pane focusing and discovery
     - Session management and persistence
-  - AW-specific layout creation (editor + agent panes)
+  - AH-specific layout creation (editor + agent panes)
   - Task window discovery and focusing
 
 - **Testing Strategy**:
@@ -349,18 +349,18 @@ The TUI implementation provides these core capabilities:
 
 - **Implementation Details**:
 
-  - **Complete Multiplexer Trait Implementation**: All methods from aw-mux-core trait fully implemented using tmux CLI commands
+  - **Complete Multiplexer Trait Implementation**: All methods from ah-mux-core trait fully implemented using tmux CLI commands
   - **Session Management**: Automatic session creation and management with proper cleanup
   - **Window Operations**: `new-window -P` for creation, `select-window` for focusing, `list-windows` for discovery
   - **Pane Operations**: `split-window -h/-v` for splitting, `send-keys` for command execution and text input, `select-pane` for focusing, `list-panes` for discovery
-  - **AW Integration**: Works seamlessly with aw-tui-multiplexer for creating editor + agent pane layouts
+  - **AH Integration**: Works seamlessly with ah-tui-multiplexer for creating editor + agent pane layouts
   - **Error Handling**: Comprehensive error handling with clear error messages for tmux command failures
   - **Testing**: Full test suite covering all functionality with proper tmux session cleanup
 
 - **Key Source Files**:
 
-  - `crates/aw-mux/src/tmux.rs` - Complete tmux multiplexer implementation
-  - `crates/aw-tui-multiplexer/src/lib.rs` - AW-specific layout creation and task management
+  - `crates/ah-mux/src/tmux.rs` - Complete tmux multiplexer implementation
+  - `crates/ah-tui-multiplexer/src/lib.rs` - AH-specific layout creation and task management
   - `[tmux.md](Terminal-Multiplexers/tmux.md)` - tmux integration specification
 
 - **Integration Points**:
@@ -383,7 +383,7 @@ The TUI implementation provides these core capabilities:
     - Text sending via `kitty @ send-text --no-newline`
     - Window focusing and tab management via `kitty @ focus-window`
     - Remote control socket management with `KITTY_LISTEN_ON` support
-  - ✅ AW-specific layout creation with kitty's split model
+  - ✅ AH-specific layout creation with kitty's split model
   - ✅ Task window discovery using title matching with `kitty @ ls`
 
 - **Test Coverage** (20 comprehensive unit tests with state verification):
@@ -431,8 +431,8 @@ The TUI implementation provides these core capabilities:
 
 - **Key Source Files**:
 
-  - `crates/aw-mux/src/kitty.rs` - Complete kitty multiplexer implementation
-  - `crates/aw-mux/src/lib.rs` - Kitty integration with feature flags and multiplexer selection
+  - `crates/ah-mux/src/kitty.rs` - Complete kitty multiplexer implementation
+  - `crates/ah-mux/src/lib.rs` - Kitty integration with feature flags and multiplexer selection
   - `specs/Public/Terminal-Multiplexers/Kitty.md` - Kitty integration specification
 
 - **Integration Points**:
@@ -451,7 +451,7 @@ The TUI implementation provides these core capabilities:
   - REST API server with all endpoints: task creation, session management, logs, events
   - SSE/WebSocket streaming for real-time session updates
   - Authentication and authorization (API keys, JWT, RBAC)
-  - Database integration for session state persistence. Please note that the SQLx dependencies suggested in the ([REST Service Tech Stack](REST-Service/Tech-Stack.md)) should actually be integrated in the aw-local-db crate.
+  - Database integration for session state persistence. Please note that the SQLx dependencies suggested in the ([REST Service Tech Stack](REST-Service/Tech-Stack.md)) should actually be integrated in the ah-local-db crate.
   - Executor registration and heartbeat management
   - Workspace provisioning and snapshot management integration
 
@@ -484,14 +484,14 @@ The TUI implementation provides these core capabilities:
 
 ### T3.4 Zellij & GNU screen Support (Multi-Mux Parity)
 **Deliverables**
-- `aw-mux` backends for **zellij** and **screen** implementing the low-level trait.
-- AW adapter support in `aw-tui-multiplexer` to create standard layouts (editor|agent|logs).
+- `ah-mux` backends for **zellij** and **screen** implementing the low-level trait.
+- AH adapter support in `ah-tui-multiplexer` to create standard layouts (editor|agent|logs).
 
 **Automated Tests**
-- `aw_mux__zellij__session_lifecycle_ok`: create/focus/list windows/panes; verify via CLI introspection.
-- `aw_mux__screen__pane_split_and_exec_ok`: split h/v, `run_command`, `send_text` parity checks.
-- `aw_tui_mux__aw_layout__zellij__goldens`: VT100/expectrl snapshots at layout stages.
-- `aw_tui_mux__aw_layout__screen__goldens`: snapshot strategic points (pre/post split; after commands).
+- `ah_mux__zellij__session_lifecycle_ok`: create/focus/list windows/panes; verify via CLI introspection.
+- `ah_mux__screen__pane_split_and_exec_ok`: split h/v, `run_command`, `send_text` parity checks.
+- `ah_tui_mux__ah_layout__zellij__goldens`: VT100/expectrl snapshots at layout stages.
+- `ah_tui_mux__ah_layout__screen__goldens`: snapshot strategic points (pre/post split; after commands).
 
 **Verification Criteria**
 - All trait methods pass against live binaries when available; CI gracefully skips when unavailable.
@@ -859,11 +859,11 @@ The TUI implementation provides these core capabilities:
 - Terminal automation test suite covering all user journeys
 - Performance testing and optimization validation
 - Binary packaging and distribution for multiple platforms
-- Documentation and integration with broader AW ecosystem
+- Documentation and integration with broader AH ecosystem
 
 ## PRD Compliance Exit Criteria (Ready to Ship)
 All rows in the **PRD Compliance — Snapshot** table marked ✅ with corresponding automated tests:
-1) Multi-mux parity (tmux, kitty, zellij, screen) with AW layout goldens.
+1) Multi-mux parity (tmux, kitty, zellij, screen) with AH layout goldens.
 2) SSE monitoring & resilience E2E.
 3) Remote attach over SSH with error-handling tests.
 4) Persistence (selections & theme) proven via config I/O tests.

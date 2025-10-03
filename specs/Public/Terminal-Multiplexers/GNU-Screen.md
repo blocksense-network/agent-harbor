@@ -18,11 +18,11 @@ Automate GNU Screen sessions, windows, and regions using its CLI and `-X` comman
 
 ## Creating a New Tab With Split Layout
 
-Example creates a session `aw-<id>`, splits the screen vertically, then opens a bottom region in the left side for logs.
+Example creates a session `ah-<id>`, splits the screen vertically, then opens a bottom region in the left side for logs.
 
 ```
 TASK_ID=ABC
-SESSION="aw-${TASK_ID}"
+SESSION="ah-${TASK_ID}"
 
 # Start detached session with editor in window 0
 screen -dmS "$SESSION" bash -lc 'nvim .'
@@ -30,13 +30,13 @@ screen -dmS "$SESSION" bash -lc 'nvim .'
 # Split vertically (left/right) and create a new region on the right running the TUI follower
 screen -S "$SESSION" -X split -v
 screen -S "$SESSION" -X focus right
-screen -S "$SESSION" -X screen bash -lc "aw tui --follow ${TASK_ID}"
+screen -S "$SESSION" -X screen bash -lc "ah tui --follow ${TASK_ID}"
 
 # Focus left, split horizontally for logs, run tailing logs
 screen -S "$SESSION" -X focus left
 screen -S "$SESSION" -X split
 screen -S "$SESSION" -X focus down
-screen -S "$SESSION" -X screen bash -lc "aw session logs ${TASK_ID} -f"
+screen -S "$SESSION" -X screen bash -lc "ah session logs ${TASK_ID} -f"
 
 # Return focus to the TUI (right region)
 screen -S "$SESSION" -X focus up
@@ -58,7 +58,7 @@ Notes
 
 ## Focusing an Existing Task’s Pane/Window
 
-- Reattach with `screen -r aw-<id>`; switch windows with `select` or cycle focus between regions with `focus`. [2]
+- Reattach with `screen -r ah-<id>`; switch windows with `select` or cycle focus between regions with `focus`. [2]
 
 ## Programmatic Control Interfaces
 
@@ -76,7 +76,7 @@ Notes
 
 ## Example: TUI Follow Flow
 
-Create or reattach the `aw-<id>` session, set up regions with `split`/`focus`, then create windows with editor/TUI/logs via `screen -X screen bash -lc '<cmd>'`.
+Create or reattach the `ah-<id>` session, set up regions with `split`/`focus`, then create windows with editor/TUI/logs via `screen -X screen bash -lc '<cmd>'`.
 
 ## References
 

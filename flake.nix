@@ -1,5 +1,5 @@
 {
-  description = "agents-workflow";
+  description = " Agent Harbor";
 
   inputs = {
     # Pinned to specific commit for Playwright compatibility
@@ -162,7 +162,7 @@
           overlays = [ rust-overlay.overlays.default ];
           config.allowUnfree = true; # Allow unfree packages like claude-code
         };
-        aw-script = pkgs.writeShellScriptBin "aw" ''
+        ah-script = pkgs.writeShellScriptBin "ah" ''
           PATH=${pkgs.lib.makeBinPath [
             pkgs.goose-cli
             pkgs.claude-code
@@ -185,19 +185,19 @@
           paths = [get-task start-work];
         };
       in {
-        aw = aw-script;
+        ah = ah-script;
         agent-utils = agent-utils;
         sosumi-docs-downloader = sosumi-docs-downloader.packages.${system}.sosumi-docs-downloader;
-        default = aw-script;
+        default = ah-script;
       }
     );
 
     apps = forAllSystems (system: {
-      aw = {
+      ah = {
         type = "app";
-        program = "${self.packages.${system}.aw}/bin/aw";
+        program = "${self.packages.${system}.ah}/bin/ah";
       };
-      default = self.apps.${system}.aw;
+      default = self.apps.${system}.ah;
     });
 
     devShells = forAllSystems (system: let
@@ -320,14 +320,18 @@
                     self.checks.${system}.pre-commit-check.enabledPackages;
 
       # Platform-specific shell hook additions
-      linuxShellHook = if isLinux then ''
+      exportLinuxEnvVars = if isLinux then ''
+        export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-linux/chrome"
+        export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-linux/chrome"
         export PUPPETEER_EXECUTABLE_PATH="${pkgs.chromium}/bin/chromium"
       '' else "";
 
-      darwinShellHook = if isDarwin then ''
+      exportDarwinEnvVars = if isDarwin then ''
         # Clean up environment variables that might point to wrong tools
         unset DEVELOPER_DIR
         unset SDKROOT
+        export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+        export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
         export PUPPETEER_EXECUTABLE_PATH="${pkgs.google-chrome}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
       '' else "";
 
@@ -338,21 +342,16 @@
         shellHook = ''
           # Install git pre-commit hook invoking our Nix-defined hooks
           ${self.checks.${system}.pre-commit-check.shellHook}
-          echo "Agent workflow development environment loaded${if isDarwin then " (macOS)" else if isLinux then " (Linux)" else ""}"
+          echo "Agent harbor development environment loaded${if isDarwin then " (macOS)" else if isLinux then " (Linux)" else ""}"
 
           # Playwright setup (use Nix-provided browsers, skip runtime downloads)
           export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
           export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
           export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
           export PLAYWRIGHT_NODEJS_PATH="${pkgs.nodejs}/bin/node"
-          ${if isLinux then ''
-            export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-linux/chrome"
-          '' else if isDarwin then ''
-            export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
-          '' else ""}
 
-          ${linuxShellHook}
-          ${darwinShellHook}
+          ${exportLinuxEnvVars}
+          ${exportDarwinEnvVars}
 
           export PUPPETEER_PRODUCT=chrome
           # Use the Nix-provided browser path (fully reproducible)

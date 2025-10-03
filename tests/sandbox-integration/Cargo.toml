@@ -16,5 +16,5 @@ sandbox-core = { path = "../../crates/sandbox-core" }
 sandbox-fs = { path = "../../crates/sandbox-fs" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-aw-sandbox-macos = { path = "../../crates/aw-sandbox-macos" }
+ah-sandbox-macos = { path = "../../crates/ah-sandbox-macos" }
 which = "6"

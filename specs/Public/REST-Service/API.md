@@ -1,4 +1,4 @@
-## Agents-Workflow REST Service — Purpose and Specification
+## Agent Harbor REST Service — Purpose and Specification
 
 ### Purpose
 
@@ -15,8 +15,8 @@
 
 ### Architecture Overview
 
-- **API Server (stateless)**: Exposes REST + SSE/WebSocket endpoints to localhost only by default. Optionally persists state in a database. Also known as the "access point daemon" (same code path as `aw agent access-point`).
-- **WebUI Integration**: When launched via `aw webui`, the SSR server acts as a proxy for all `/api/v1/*` requests, forwarding them to the access point daemon. This enables the SSR server to implement user access policies and security controls. The daemon runs either as an in-process component (local mode) or as a subprocess/sidecar.
+- **API Server (stateless)**: Exposes REST + SSE/WebSocket endpoints to localhost only by default. Optionally persists state in a database. Also known as the "access point daemon" (same code path as `ah agent access-point`).
+- **WebUI Integration**: When launched via `ah webui`, the SSR server acts as a proxy for all `/api/v1/*` requests, forwarding them to the access point daemon. This enables the SSR server to implement user access policies and security controls. The daemon runs either as an in-process component (local mode) or as a subprocess/sidecar.
 - **Executors**: One or many worker processes/hosts that provision workspaces and run agents.
 - **Workspace provisioning**: Uses ZFS/Btrfs snapshots when available; falls back to OverlayFS or copy; can orchestrate devcontainers.
 - **Transport**: JSON over HTTPS; events over SSE (preferred) and WebSocket (optional).
@@ -262,7 +262,7 @@ Accepted event types (minimum set):
 - `GET /api/v1/executors` → Execution hosts (terminology aligned with CLI.md).
   - Response entries include: `id`, `os`, `arch`, `snapshotCapabilities` (e.g., `zfs`, `btrfs`, `overlay`, `copy`), and health.
   - Long‑lived executors:
-    - Executors register with the Remote Service when `aw serve` starts and send heartbeats including overlay status and addresses (MagicDNS/IP).
+    - Executors register with the Remote Service when `ah serve` starts and send heartbeats including overlay status and addresses (MagicDNS/IP).
     - The `GET /executors` response includes `overlay`: `{ provider, address, magicName, state }` and `controller` hints (typically `server`).
 
 #### Draft Task Management
@@ -336,12 +336,12 @@ Drafts allow users to save incomplete task configurations for later completion a
 CLI parity:
 
 ```
-aw remote repos [--tenant <id>] [--project <id>] [--json]
-aw remote workspaces [--status <state>] [--json]
-aw remote workspace show <WORKSPACE_ID>
+ah remote repos [--tenant <id>] [--project <id>] [--json]
+ah remote workspaces [--status <state>] [--json]
+ah remote workspace show <WORKSPACE_ID>
 ```
 
-The `aw remote` subcommands call the endpoints above and surface consistent column layouts (name, provider, branch for repos; workspace state, executor, age for workspaces). They support `--json` for scripting and respect the CLI’s existing pager/formatting options.
+The `ah remote` subcommands call the endpoints above and surface consistent column layouts (name, provider, branch for repos; workspace state, executor, age for workspaces). They support `--json` for scripting and respect the CLI’s existing pager/formatting options.
 
 #### Followers and Multi‑OS Execution
 
@@ -396,13 +396,13 @@ curl -X POST "$BASE/api/v1/tasks" \
 
 ### Alignment with CLI.md (current)
 
-- `aw task` → `POST /api/v1/tasks` (returns `sessionId` usable for polling and SSE).
-- `aw session list|get|logs|events` → `GET /api/v1/sessions[/{id}]`, `GET /api/v1/sessions/{id}/logs`, `GET /api/v1/sessions/{id}/events`.
-- `aw session run <SESSION_ID> <IDE>` → `POST /api/v1/sessions/{id}/open/ide`.
-- `aw remote agents|runtimes|executors` → `GET /api/v1/agents`, `GET /api/v1/runtimes`, `GET /api/v1/executors`.
-- `aw remote repos|workspaces` → `GET /api/v1/repos`, `GET /api/v1/workspaces` (and `GET /api/v1/workspaces/{id}` for detail views).
-- `aw agent followers list` → QUIC `SessionFollowers` stream for real-time membership; the REST `GET /api/v1/sessions/{id}/info` endpoint remains available for static snapshots. QUIC keeps the connection open so membership and health changes arrive with minimal latency, matching the transport used elsewhere in the control plane.
-- `aw agent sync-fence|followers run` → leader‑executed over SSH; server observes via the control plane (QUIC) and rebroadcasts on session SSE.
+- `ah task` → `POST /api/v1/tasks` (returns `sessionId` usable for polling and SSE).
+- `ah session list|get|logs|events` → `GET /api/v1/sessions[/{id}]`, `GET /api/v1/sessions/{id}/logs`, `GET /api/v1/sessions/{id}/events`.
+- `ah session run <SESSION_ID> <IDE>` → `POST /api/v1/sessions/{id}/open/ide`.
+- `ah remote agents|runtimes|executors` → `GET /api/v1/agents`, `GET /api/v1/runtimes`, `GET /api/v1/executors`.
+- `ah remote repos|workspaces` → `GET /api/v1/repos`, `GET /api/v1/workspaces` (and `GET /api/v1/workspaces/{id}` for detail views).
+- `ah agent followers list` → QUIC `SessionFollowers` stream for real-time membership; the REST `GET /api/v1/sessions/{id}/info` endpoint remains available for static snapshots. QUIC keeps the connection open so membership and health changes arrive with minimal latency, matching the transport used elsewhere in the control plane.
+- `ah agent sync-fence|followers run` → leader‑executed over SSH; server observes via the control plane (QUIC) and rebroadcasts on session SSE.
 
 SSE event taxonomy for sessions:
 

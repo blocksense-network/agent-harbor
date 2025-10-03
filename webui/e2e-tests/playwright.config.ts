@@ -59,6 +59,13 @@ export default defineConfig({
     },
     {
       name: 'browser-tests',
+      use: {
+        browserName: 'chromium',
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.BASE_URL || 'http://localhost:3002',
+        // Force use of Nix browser (platform-specific path set by Nix devshell)
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+      },
       testMatch: [
         '**/layout-navigation.spec.ts',
         '**/accessibility.spec.ts',
@@ -82,15 +89,7 @@ export default defineConfig({
         '**/reporter-validation.spec.ts',
         '**/simple-test.spec.ts',
         '**/tom-select-upward-positioning.spec.ts',
-      ],
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: process.env.BASE_URL || 'http://localhost:3002',
-        // Use Nix store browser when PLAYWRIGHT_BROWSERS_PATH is set
-        ...(process.env.PLAYWRIGHT_BROWSERS_PATH && {
-          executablePath: `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium-1169/chrome-linux/chrome`
-        })
-      },
+      ]
     },
   ],
 

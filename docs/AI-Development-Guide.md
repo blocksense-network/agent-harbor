@@ -44,9 +44,9 @@ Coding agents work best when you ask them to make small incremental changes to y
 
 We use our own workflow that records most of the interactions with the agents in the git history of the project, so you can learn from the prompting strategies of your team mates. See the README below for more details:
 
-<https://github.com/blocksense-network/agents-workflow>
+<https://github.com/blocksense-network/agent-harbor>
 
-As an example, you can see the prompts that were used to develop `agents-workflow` itself in the project’s task history: [agents-workflow/.agents/tasks/2025/05](https://github.com/blocksense-network/agents-workflow/tree/main/.agents/tasks/2025/05).
+As an example, you can see the prompts that were used to develop `agent-harbor` itself in the project’s task history: [agent-harbor/.agents/tasks/2025/05](https://github.com/blocksense-network/agent-harbor/tree/main/.agents/tasks/2025/05).
 
 Your project should have a defined workspace in Codex and a devcontainer setup that will be used when invoking agents locally (e.g. Codex CLI, GitHub Copilot, Goose, OpenHands, etc).
 
@@ -66,4 +66,4 @@ TBD
 
 1. Ask a thinking model to generate prompts according to the plan or start writing them yourself.
 
-2. Submit tasks with `aw task`.
+2. Submit tasks with `ah task`.

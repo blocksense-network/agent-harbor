@@ -83,7 +83,7 @@ cat >"$SCRIPT_DIR/AgentFSKitExtension.appex/Contents/Info.plist" <<EOF
 	<key>CFBundleExecutable</key>
 	<string>AgentFSKitExtension</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.agentsworkflow.AgentFSKitExtension</string>
+	<string>com.AgentHarbor.AgentFSKitExtension</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

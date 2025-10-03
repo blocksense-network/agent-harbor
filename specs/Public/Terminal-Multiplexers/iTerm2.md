@@ -24,7 +24,7 @@ Automate iTerm2 using its AppleScript dictionary (built‑in) or the official Py
 osascript <<'OSA'
 on run argv
   set taskId to item 1 of argv
-  set title to "aw-task-" & taskId
+  set title to "ah-task-" & taskId
   tell application "iTerm"
     activate
     set newwin to (create window with default profile)
@@ -35,11 +35,11 @@ on run argv
     tell current tab of newwin
       set rightPane to (split vertically with default profile)
       tell rightPane
-        write text "aw tui --follow " & taskId
+        write text "ah tui --follow " & taskId
       end tell
       set bottomPane to (split horizontally with default profile)
       tell bottomPane
-        write text "aw session logs " & taskId & " -f"
+        write text "ah session logs " & taskId & " -f"
       end tell
     end tell
   end tell
@@ -57,7 +57,7 @@ OSA
 
 ## Focusing an Existing Task’s Pane/Window
 
-- Maintain a window/tab title like `aw-task-<id>` and loop through windows/tabs to find it; call `activate`. [1]
+- Maintain a window/tab title like `ah-task-<id>` and loop through windows/tabs to find it; call `activate`. [1]
 
 ## Programmatic Control Interfaces
 
@@ -75,7 +75,7 @@ OSA
 
 ## Example: TUI Follow Flow
 
-Use the AppleScript above to create/focus a titled window and run `aw tui --follow <id>` and logs in dedicated panes. Store the window title in the TUI control index for reuse.
+Use the AppleScript above to create/focus a titled window and run `ah tui --follow <id>` and logs in dedicated panes. Store the window title in the TUI control index for reuse.
 
 ## References
 

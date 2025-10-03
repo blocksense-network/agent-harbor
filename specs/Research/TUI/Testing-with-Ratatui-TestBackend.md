@@ -170,7 +170,7 @@ Notes:
 
 - **Determinism:** `start_paused` + explicit `advance()` removes flakiness from timers.
 - **Backpressure:** using bounded `mpsc` channels often surfaces bugs sooner (e.g., if you forget to await).
-- **One-draw-per-step:** keeping “render once per step” makes visual snapshots stable.
+- **One-drah-per-step:** keeping “render once per step” makes visual snapshots stable.
 
 ---
 

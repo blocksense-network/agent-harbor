@@ -7,7 +7,7 @@ edition = "2021"
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 lazy_static = "1.4"
-# SSZ serialization (matching aw-fs-snapshots-daemon)
+# SSZ serialization (matching ah-fs-snapshots-daemon)
 ethereum_ssz = "0.8"
 ethereum_ssz_derive = "0.8"
 agentfs-core = { path = "../agentfs-core" }

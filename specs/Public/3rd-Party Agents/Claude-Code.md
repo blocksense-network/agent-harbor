@@ -257,7 +257,7 @@ Your custom server should implement Anthropic's Messages API:
 
 ### Testing with Mock Servers
 
-The agents-workflow project includes a mock API server that can be used for testing Claude Code integrations:
+The agent-harbor project includes a mock API server that can be used for testing Claude Code integrations:
 
 ```bash
 # Start the mock server
@@ -282,7 +282,7 @@ This makes Claude Code highly flexible for enterprise deployments with custom LL
 
 - Tooling: `specs/Research/Tools/SessionFileExperiments/claude.py` runs a minimal session (pexpect‑only) and sets up a temporary `PostToolUse` hook. It also includes a filesystem fallback to discover transcripts without relying on hooks.
 - Transcript paths (observed): JSONL transcripts under `~/.claude/projects/<project-id>/<session-id>.jsonl`. On this machine and repo, the `<project-id>` resolved to:
-  - `~/.claude/projects/-home-zahary-blocksense-agents-workflow-specs/<UUID>.jsonl`
+  - `~/.claude/projects/-home-zahary-blocksense-agent-harbor-specs/<UUID>.jsonl`
 - Minimal JSONL structure (observed): one JSON object per line; fields include `type` ("user"|"assistant"|"summary"), `sessionId`, `uuid`, `timestamp`, `cwd`, `version`, and a `message` object with `role`, `content` (array of parts), and optional `usage`. API errors appear as assistant entries with `isApiErrorMessage=true` and text like "Credit balance is too low".
 - Hook capture: `PostToolUse` hooks fire after a successful tool step. If authentication/permissions prevent tools from running, the fallback locates the latest transcript for the current working directory and proceeds.
 - Trimming: `trim_jsonl_midpoint()` safely trims sufficiently long transcripts after creating a timestamped backup. If a transcript is too short (<4 lines), the script skips trimming and advises letting the session run longer.
@@ -290,7 +290,7 @@ This makes Claude Code highly flexible for enterprise deployments with custom LL
 
 Trim test (this machine):
 
-- Source: `~/.claude/projects/-home-zahary-blocksense-agents-workflow-specs/95d9929f-a314-472f-89d8-135f9d1c4ffc.jsonl`
+- Source: `~/.claude/projects/-home-zahary-blocksense-agent-harbor-specs/95d9929f-a314-472f-89d8-135f9d1c4ffc.jsonl`
 - Backup: same path with `.bak-YYYYMMDD-HHMMSS`
 - Output: same path with `.trimmed` (keeps first half of lines)
 

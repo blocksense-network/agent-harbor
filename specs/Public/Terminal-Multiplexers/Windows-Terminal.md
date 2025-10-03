@@ -22,16 +22,16 @@ Automate Windows Terminal via its `wt.exe` command‑line arguments.
 ```
 @echo off
 set TASK_ID=%1
-set TITLE=aw-task-%TASK_ID%
+set TITLE=ah-task-%TASK_ID%
 
 rem New tab with editor
 wt -w 0 new-tab --title "%TITLE%" powershell -NoExit -Command "nvim ." ^&^& exit ; ^
 
 rem Right split for TUI
-split-pane -H powershell -NoExit -Command "aw tui --follow %TASK_ID%" ; ^
+split-pane -H powershell -NoExit -Command "ah tui --follow %TASK_ID%" ; ^
 
 rem Focus left and split bottom for logs
-move-focus left ; split-pane -V powershell -NoExit -Command "aw session logs %TASK_ID% -f"
+move-focus left ; split-pane -V powershell -NoExit -Command "ah session logs %TASK_ID% -f"
 ```
 
 Notes

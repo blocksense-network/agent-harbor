@@ -1,0 +1,228 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'socket'
+require 'json'
+require 'fileutils'
+
+# AH Filesystem Snapshots Daemon - handles privileged filesystem snapshot operations
+class AhFsSnapshotsDaemon
+  DAEMON_SOCKET_PATH = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
+
+  def initialize
+    @server = nil
+  end
+
+  def start
+    # Ensure socket directory exists
+    FileUtils.mkdir_p(File.dirname(DAEMON_SOCKET_PATH))
+
+    # Remove existing socket if it exists
+    FileUtils.rm_f(DAEMON_SOCKET_PATH)
+
+    @server = UNIXServer.new(DAEMON_SOCKET_PATH)
+    # Set permissions to allow anyone to connect (since tests run as regular user)
+    File.chmod(0o666, DAEMON_SOCKET_PATH)
+    puts "ZFS Clone Daemon started. Socket: #{DAEMON_SOCKET_PATH}"
+    puts 'Press Ctrl+C to stop.'
+
+    # Ensure socket cleanup on any exit (normal or abnormal)
+    at_exit { cleanup }
+
+    trap_signals
+
+    loop do
+      client = @server.accept
+      handle_client(client)
+    rescue Interrupt
+      break
+    rescue StandardError => e
+      warn "Error handling client: #{e.message}"
+    end
+  ensure
+    cleanup
+  end
+
+  private
+
+  def trap_signals
+    %w[INT TERM].each do |signal|
+      trap(signal) do
+        puts "\nShutting down daemon..."
+        cleanup
+        exit(0)
+      end
+    end
+  end
+
+  def handle_client(client)
+    request_line = client.gets
+    return unless request_line
+
+    begin
+      request = JSON.parse(request_line.strip)
+      response = process_request(request)
+      client.puts(response.to_json)
+    rescue JSON::ParserError => e
+      error_response = { 'success' => false, 'error' => "Invalid JSON: #{e.message}" }
+      client.puts(error_response.to_json)
+    rescue StandardError => e
+      STDERR.puts "DEBUG: Daemon error: #{e.message}"
+      error_response = { 'success' => false, 'error' => e.message }
+      client.puts(error_response.to_json)
+    ensure
+      client.close
+    end
+  end
+
+  def process_request(request)
+    command = request['command']
+    filesystem = request['filesystem'] || 'zfs' # Default to zfs for backward compatibility
+
+    case command
+    when 'ping'
+      { 'success' => true }
+    when 'clone'
+      handle_clone(request, filesystem)
+    when 'snapshot'
+      handle_snapshot(request, filesystem)
+    when 'delete'
+      handle_delete(request, filesystem)
+    else
+      { 'success' => false, 'error' => "Unknown command: #{command}" }
+    end
+  end
+
+  def handle_clone(request, filesystem)
+    case filesystem
+    when 'zfs'
+      handle_zfs_clone(request)
+    when 'btrfs'
+      handle_btrfs_snapshot(request)
+    else
+      { 'success' => false, 'error' => "Unsupported filesystem: #{filesystem}" }
+    end
+  end
+
+  def handle_snapshot(request, filesystem)
+    case filesystem
+    when 'zfs'
+      handle_zfs_snapshot(request)
+    when 'btrfs'
+      handle_btrfs_snapshot(request)
+    else
+      { 'success' => false, 'error' => "Unsupported filesystem: #{filesystem}" }
+    end
+  end
+
+  def handle_delete(request, filesystem)
+    case filesystem
+    when 'zfs'
+      handle_zfs_delete(request)
+    when 'btrfs'
+      handle_btrfs_delete(request)
+    else
+      { 'success' => false, 'error' => "Unsupported filesystem: #{filesystem}" }
+    end
+  end
+
+  def handle_zfs_clone(request)
+    snapshot = request['snapshot']
+    clone = request['clone']
+
+    return { 'success' => false, 'error' => 'Missing snapshot or clone parameter' } unless snapshot && clone
+
+    # Execute zfs clone with sudo
+    clone_success = system('sudo', 'zfs', 'clone', snapshot, clone)
+
+    if clone_success
+      # Get the mountpoint of the cloned dataset
+      mountpoint = `sudo zfs get -H -o value mountpoint #{clone} 2>/dev/null`.strip
+
+      # Set ownership to the user who started the daemon
+      user = ENV['SUDO_USER'] || ENV.fetch('USER', nil)
+      system('sudo', 'chown', '-R', user, mountpoint) if mountpoint && mountpoint != 'none' && mountpoint != 'legacy'
+
+      { 'success' => true, 'mountpoint' => mountpoint }
+    else
+      { 'success' => false, 'error' => "Failed to create ZFS clone #{clone} from #{snapshot}" }
+    end
+  end
+
+  def handle_zfs_snapshot(request)
+    source = request['source']
+    snapshot = request['snapshot']
+
+    return { 'success' => false, 'error' => 'Missing source or snapshot parameter' } unless source && snapshot
+
+    # Execute zfs snapshot with sudo
+    snapshot_success = system('sudo', 'zfs', 'snapshot', snapshot)
+
+    if snapshot_success
+      { 'success' => true }
+    else
+      { 'success' => false, 'error' => "Failed to create ZFS snapshot #{snapshot}" }
+    end
+  end
+
+  def handle_zfs_delete(request)
+    target = request['target']
+
+    return { 'success' => false, 'error' => 'Missing target parameter' } unless target
+
+    # Execute zfs destroy with sudo
+    delete_success = system('sudo', 'zfs', 'destroy', '-r', target)
+
+    if delete_success
+      { 'success' => true }
+    else
+      { 'success' => false, 'error' => "Failed to delete ZFS dataset #{target}" }
+    end
+  end
+
+  def handle_btrfs_snapshot(request)
+    source = request['source']
+    destination = request['destination']
+
+    return { 'success' => false, 'error' => 'Missing source or destination parameter' } unless source && destination
+
+    # Execute btrfs subvolume snapshot with sudo
+    snapshot_success = system('sudo', 'btrfs', 'subvolume', 'snapshot', source, destination)
+
+    if snapshot_success
+      # Set ownership to the user who started the daemon
+      user = ENV['SUDO_USER'] || ENV.fetch('USER', nil)
+      system('sudo', 'chown', '-R', user, destination) if File.exist?(destination)
+
+      { 'success' => true, 'path' => destination }
+    else
+      { 'success' => false, 'error' => "Failed to create Btrfs snapshot #{destination} from #{source}" }
+    end
+  end
+
+  def handle_btrfs_delete(request)
+    target = request['target']
+
+    return { 'success' => false, 'error' => 'Missing target parameter' } unless target
+
+    # Execute btrfs subvolume delete with sudo
+    delete_success = system('sudo', 'btrfs', 'subvolume', 'delete', '-R', target)
+
+    if delete_success
+      { 'success' => true }
+    else
+      { 'success' => false, 'error' => "Failed to delete Btrfs subvolume #{target}" }
+    end
+  end
+
+  def cleanup
+    @server&.close
+    FileUtils.rm_f(DAEMON_SOCKET_PATH)
+  end
+end
+
+# Run the daemon if this script is executed directly
+if __FILE__ == $PROGRAM_NAME
+  daemon = AhFsSnapshotsDaemon.new
+  daemon.start
+end

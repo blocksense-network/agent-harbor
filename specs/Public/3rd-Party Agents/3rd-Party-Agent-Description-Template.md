@@ -73,4 +73,4 @@ Where are the agent login credentials stored? What are the precise paths of its 
 
 ### Known issues and quirks
 
-Platform limitations, rate limits, stability notes, experimental features, and any other gotchas relevant to AW integration.
+Platform limitations, rate limits, stability notes, experimental features, and any other gotchas relevant to AH integration.

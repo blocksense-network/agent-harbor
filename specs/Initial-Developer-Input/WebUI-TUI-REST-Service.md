@@ -1,6 +1,6 @@
 I'd like to write few more specs in the docs folder. Before we start please read the existing docs.
 
-1. It will be possible to launch agents-workflow as a REST service. The service will be able to spawn tasks on demand and list currently active coding sessions (as explained in [fs-snapshots-overview](../Public/FS%20Snapshots/FS-Snapshots-Overview.md)). We need a document describing the purpose of this service and its specification. It's intended for usage by companies that set up on-premise or private cloud clusters for running coding tasks or for developers who prefer a WebUI experience.
+1. It will be possible to launch agent-harbor as a REST service. The service will be able to spawn tasks on demand and list currently active coding sessions (as explained in [fs-snapshots-overview](../Public/FS%20Snapshots/FS-Snapshots-Overview.md)). We need a document describing the purpose of this service and its specification. It's intended for usage by companies that set up on-premise or private cloud clusters for running coding tasks or for developers who prefer a WebUI experience.
 
 2. There will be a WebUI front-end that will consume the REST service. It needs something like PRD document and detailed spec of its UI.
 

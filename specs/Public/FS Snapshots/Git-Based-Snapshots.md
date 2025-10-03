@@ -20,8 +20,8 @@ This provider complements CoW filesystem and AgentFS providers and participates 
 - Snapshot commit: a commit object that records the working state at a moment in time
 - Session branch: a writable branch created from a snapshot commit, materialized as a worktree
 - Provider ref namespace:
-  - Snapshots: `refs/aw/sessions/<sid>/snapshots/<n>`
-  - Branches: `refs/aw/branches/<sid>/<name>`
+  - Snapshots: `refs/ah/sessions/<sid>/snapshots/<n>`
+  - Branches: `refs/ah/branches/<sid>/<name>`
 
 ## Shadow Repository (Performance Backbone)
 
@@ -57,8 +57,8 @@ First snapshot of a session (tracked changes only):
    - Update the shadow index entries directly: `git -C <shadow> update-index --index-info` (lines: `MODE OID\tPATH`).
    - Simpler (slower) alternative: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <primary> add -A`.
 5) Write a tree: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> write-tree` → `TREE_OID`.
-6) Create a commit object parented to `<primary-HEAD>`: `git -C <shadow> commit-tree TREE_OID -p <primary-HEAD> -m "aw: snapshot <sid>/<n> <label?> <ts>"` → `COMMIT_OID`.
-7) Atomically set the session ref: `git -C <shadow> update-ref --create-reflog refs/aw/sessions/<sid>/snapshots/<n> COMMIT_OID`.
+6) Create a commit object parented to `<primary-HEAD>`: `git -C <shadow> commit-tree TREE_OID -p <primary-HEAD> -m "ah: snapshot <sid>/<n> <label?> <ts>"` → `COMMIT_OID`.
+7) Atomically set the session ref: `git -C <shadow> update-ref --create-reflog refs/ah/sessions/<sid>/snapshots/<n> COMMIT_OID`.
 
 Including untracked files (opt‑in):
 
@@ -74,16 +74,16 @@ Properties:
 Subsequent snapshots in the same session (incremental):
 
 1) Seed index from the last session snapshot tree instead of `<primary-HEAD>`:
-   - Read last commit: `PREV=$(git -C <shadow> rev-parse --verify refs/aw/sessions/<sid>/snapshots/<n-1>)`
+   - Read last commit: `PREV=$(git -C <shadow> rev-parse --verify refs/ah/sessions/<sid>/snapshots/<n-1>)`
    - `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> read-tree -m $PREV^{tree}`
 2) Overlay only changed tracked files since the last capture (same as steps above, but the set to update is still computed vs the primary working copy). This minimizes re‑hashing unchanged paths.
 3) Continue with write‑tree, commit (parent to PREV), and update the snapshot ref `<n>`.
 
 ## Writable Workspaces (Session Branches)
 
-1) Create a namespaced branch from a snapshot commit: `git branch --force refs/aw/branches/<sid>/<name> <COMMIT_OID>`.
+1) Create a namespaced branch from a snapshot commit: `git branch --force refs/ah/branches/<sid>/<name> <COMMIT_OID>`.
 2) Materialize a worktree: `git worktree add --detach <worktrees_dir>/<sid>/<name> <COMMIT_OID>`.
-   - Optionally check out the branch instead of detached HEAD: `git worktree add <dir> refs/aw/branches/<sid>/<name>`.
+   - Optionally check out the branch instead of detached HEAD: `git worktree add <dir> refs/ah/branches/<sid>/<name>`.
 3) Return `exec_path = <dir>` when `WorkingCopyMode::Worktree`.
 4) Cow‑overlay is not supported by the Git provider. If cow‑overlay is requested, the orchestrator SHALL select a provider that supports it (ZFS/Btrfs on Linux, AgentFS on macOS/Windows) or fall back to Worktree with a diagnostic.
 
@@ -108,8 +108,8 @@ When a session ends or `cleanup(token)` is invoked:
 
 - Remove worktrees created by the session: `git worktree remove --force <dir>`.
 - Delete namespaced branches and snapshot refs:
-  - `git update-ref -d refs/aw/branches/<sid>/<name>`
-  - `git update-ref -d refs/aw/sessions/<sid>/snapshots/<n>` (or prune the whole `refs/aw/sessions/<sid>`)
+  - `git update-ref -d refs/ah/branches/<sid>/<name>`
+  - `git update-ref -d refs/ah/sessions/<sid>/snapshots/<n>` (or prune the whole `refs/ah/sessions/<sid>`)
 - Optionally run `git gc --prune=now` when all refs are gone (guarded by a heuristic to avoid heavy GC during active work).
   - Shadow repo GC is deferred; a scheduled maintenance task MAY repack shared objects when the project is idle.
 
@@ -126,7 +126,7 @@ When a session ends or `cleanup(token)` is invoked:
 ## Configuration Keys (Provider‑specific)
 
 - `git.includeUntracked`: boolean (default false) — include untracked files during snapshot capture.
-- `git.worktreesDir`: path (optional) — base directory for worktrees; default `.git/worktrees-aw/` under repo `.git` directory, falling back to an OS temp directory when `.git` is bare or not writable.
+- `git.worktreesDir`: path (optional) — base directory for worktrees; default `.git/worktrees-ah/` under repo `.git` directory, falling back to an OS temp directory when `.git` is bare or not writable.
 - `git.shadowRepoDir`: path (optional) — location of the shadow bare repository used for namespaced refs and the per‑session index. By default this is the main repo `.git` directory; when isolation is desired, a separate bare repository may be created under the project’s cache directory (recorded in session metadata).
 
 Keys live under the `[fs]` section; see [Configuration.md](../Configuration.md).
@@ -142,12 +142,12 @@ Keys live under the `[fs]` section; see [Configuration.md](../Configuration.md).
 
 ## CLI Diagnostics
 
-- `aw doctor` prints detection results and the selected provider.
-- `aw session info` shows `{ provider, workingCopy, execPath }` and latest snapshot ref.
+- `ah doctor` prints detection results and the selected provider.
+- `ah session info` shows `{ provider, workingCopy, execPath }` and latest snapshot ref.
 
 ## Security Considerations
 
-- Provider never amends or force‑moves the user’s branches; all refs live under `refs/aw/...`.
+- Provider never amends or force‑moves the user’s branches; all refs live under `refs/ah/...`.
 - Worktrees are owned by the current user; no privilege escalation required.
 
 ## Future Work

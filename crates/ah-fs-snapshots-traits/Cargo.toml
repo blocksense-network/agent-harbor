@@ -1,0 +1,13 @@
+[package]
+name = "ah-fs-snapshots-traits"
+version = "0.1.0"
+edition = "2021"
+description = "Common traits and types for filesystem snapshot providers"
+
+[dependencies]
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait = "0.1"

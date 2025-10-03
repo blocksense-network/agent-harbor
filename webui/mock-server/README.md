@@ -1,10 +1,10 @@
 # Mock REST API Server
 
-Express.js mock REST API server for Agents-Workflow WebUI development and testing.
+Express.js mock REST API server for the Agent Harbor WebUI development and testing.
 
 ## Overview
 
-This mock server implements the [REST-Service.md](../../specs/Public/REST-Service.md) specification to provide a complete API for developing and testing the Agents-Workflow WebUI and TUI applications. It serves as a development and testing backend that mimics the behavior of the production REST service.
+This mock server implements the [REST-Service.md](../../specs/Public/REST-Service.md) specification to provide a complete API for developing and testing the agent-harbor WebUI and TUI applications. It serves as a development and testing backend that mimics the behavior of the production REST service.
 
 ## Quick Start
 
@@ -96,7 +96,7 @@ just webui-test
 just webui-mock-server
 
 # Terminal 2: Run TUI development
-cargo run --bin aw-tui -- --remote-server http://localhost:3001
+cargo run --bin ah-tui -- --remote-server http://localhost:3001
 ```
 
 ## Technology Stack

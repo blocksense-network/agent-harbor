@@ -1,0 +1,44 @@
+[package]
+name = "ah-fs-snapshots"
+version = "0.1.0"
+edition = "2021"
+description = "Filesystem snapshot provider abstractions for Agents Workflow"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3.8"
+regex = "1.10"
+libc = "0.2"
+ah-repo = { path = "../ah-repo" }
+
+[features]
+default = ["zfs", "btrfs", "git"]
+zfs = ["dep:ah-fs-snapshots-zfs"]
+btrfs = ["dep:ah-fs-snapshots-btrfs"]
+git = ["dep:ah-fs-snapshots-git"]
+
+[dependencies.ah-fs-snapshots-btrfs]
+path = "../ah-fs-snapshots-btrfs"
+optional = true
+
+[dependencies.ah-core]
+path = "../ah-core"
+
+[dependencies.ah-fs-snapshots-traits]
+path = "../ah-fs-snapshots-traits"
+
+[dependencies.ah-fs-snapshots-zfs]
+path = "../ah-fs-snapshots-zfs"
+optional = true
+
+[dependencies.ah-fs-snapshots-git]
+path = "../ah-fs-snapshots-git"
+optional = true

@@ -34,10 +34,10 @@ Goals: determinism, reuse, and clarity across products.
       { "path": "README.md", "contents": "hello" }
     ]
   },
-  "aw": {
+  "ah": {
     "cmd": "task",
     "flags": ["--agent=mock", "--working-copy", "in-place"],
-    "env": { "AW_LOG": "debug" }
+    "env": { "AH_LOG": "debug" }
   },
   "mockAgent": {
     "flags": ["--scenario", "basic"],
@@ -74,7 +74,7 @@ Goals: determinism, reuse, and clarity across products.
   - `branch`: Optional branch to start on or create.
   - `dir`: Optional path to a folder co‑located with the scenario that seeds the initial repository contents. When provided, its tree is copied into the temp repo before the run.
   - `files[]`: Optional inline seed files (path, contents as string or base64 object `{ base64: "..." }`). Applied after `dir`.
-- **aw**:
+- **ah**:
   - `cmd`: Primary command (e.g., `task`).
   - `flags[]`: Flat array of CLI tokens (exact order preserved).
   - `env{}`: Extra environment variables for the process under test.
@@ -127,7 +127,7 @@ Runners MAY extend assertions; unknown keys are ignored with a warning.
 ### Conventions
 
 - All paths are relative to the temporary test workspace root unless prefixed with `/`.
-- Shell tokens in `aw.flags[]` and `mockAgent.flags[]` are not re‑parsed; runners pass them verbatim.
+- Shell tokens in `ah.flags[]` and `mockAgent.flags[]` are not re‑parsed; runners pass them verbatim.
 - Keep scenarios small and focused; prefer composing many short scenarios.
 
 ### References

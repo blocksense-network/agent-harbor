@@ -45,9 +45,9 @@ adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex
 adapters/macos/xcode/AgentFSKitExtension/libs/
 adapters/macos/xcode/libs/
 
-# AgentsWorkflow app build artifacts
-apps/macos/AgentsWorkflow/libs/
-apps/macos/AgentsWorkflow/build/
+# AgentHarbor app build artifacts
+apps/macos/AgentHarbor/libs/
+apps/macos/AgentHarbor/build/
 
 # Distribution packages
 *.pkg
@@ -103,9 +103,27 @@ node_modules/
 webui/node_modules/
 webui/app/node_modules/
 webui/shared/node_modules/
+webui/shared/package-lock.json
 webui/e2e-tests/node_modules/
+webui/e2e-tests/package-lock.json
 webui/mock-server/node_modules/
+webui/mock-server/package-lock.json
 
 # Type coverage reports
 .type-coverage/
 webui/app/.type-coverage/
+
+# WebUI build artifacts and temporary files
+webui/app/.vinxi/
+webui/app/.output/
+webui/app/dist/
+webui/app/app.config.timestamp_*.js
+
+# WebUI test artifacts
+webui/e2e-tests/test-results/
+webui/e2e-tests/browsers/
+
+# WebUI development files
+webui/app/.vite/
+webui/mock-server/dist/
+webui/shared/dist/

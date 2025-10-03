@@ -105,7 +105,7 @@ fn send_task_complete_notification() -> Result<(), Box<dyn Error>> {
             .summary("Task Completed")
             .body("Your agent workflow has finished successfully.")
             .icon("/path/to/icon.png")
-            .appname("AW GUI")
+            .appname("AgentHarbor")
             .sound("default") // Linux/Windows
             .timeout(Timeout::Milliseconds(5000))
             .action("view", "View Details"); // Actions on Linux/Windows

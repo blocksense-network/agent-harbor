@@ -296,20 +296,20 @@ fn insert_completion(vm: &InlineMenuVM, ta: &mut TextArea) {
 
 ## 9) Testing (must-have)
 
-1. **Golden Snapshots** `crates/aw-tui/tests/golden_inline_menu.rs`
+1. **Golden Snapshots** `crates/ah-tui/tests/golden_inline_menu.rs`
 
    * `golden_inline_{80x24,120x40}_caret_anchor_ok`
    * `golden_inline_high_contrast_visible`
    * `golden_inline_right_bottom_clipping_ok`
-2. **Unit** `crates/aw-tui/tests/coord_map.rs`
+2. **Unit** `crates/ah-tui/tests/coord_map.rs`
 
    * `coord_map_with_scroll_and_gutter_ok`
    * `coord_map_tabs_and_wide_graphemes_ok`
-3. **Behavior** `crates/aw-tui/tests/behavior_autocomplete.rs`
+3. **Behavior** `crates/ah-tui/tests/behavior_autocomplete.rs`
 
    * `keystroke_passthrough_and_nav_ok`
    * `insert_and_restore_focus_ok`
-4. **Perf (sanity)** `crates/aw-tui/tests/perf_matcher.rs`
+4. **Perf (sanity)** `crates/ah-tui/tests/perf_matcher.rs`
 
    * `topk_on_10k_items_sub_budget`
 

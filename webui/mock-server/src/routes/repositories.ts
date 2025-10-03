@@ -14,31 +14,31 @@ interface Repository {
 const mockRepositories: Repository[] = [
   {
     id: '1',
-    name: 'agents-workflow-webui',
+    name: 'agent-harbor-webui',
     branch: 'main',
     lastCommit: 'feat: Add real-time session updates',
-    url: 'https://github.com/example/agents-workflow-webui.git',
+    url: 'https://github.com/example/agent-harbor-webui.git',
   },
   {
     id: '2',
-    name: 'agents-workflow-core',
+    name: 'agent-harbor-core',
     branch: 'develop',
     lastCommit: 'refactor: Improve API error handling',
-    url: 'https://github.com/example/agents-workflow-core.git',
+    url: 'https://github.com/example/agent-harbor-core.git',
   },
   {
     id: '3',
-    name: 'agents-workflow-cli',
+    name: 'agent-harbor-cli',
     branch: 'main',
     lastCommit: 'fix: Resolve path resolution issues',
-    url: 'https://github.com/example/agents-workflow-cli.git',
+    url: 'https://github.com/example/agent-harbor-cli.git',
   },
   {
     id: '4',
-    name: 'agents-workflow-docs',
+    name: 'agent-harbor-docs',
     branch: 'main',
     lastCommit: 'docs: Update API documentation',
-    url: 'https://github.com/example/agents-workflow-docs.git',
+    url: 'https://github.com/example/agent-harbor-docs.git',
   },
 ];
 

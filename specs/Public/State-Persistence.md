@@ -1,33 +1,33 @@
 # State Persistence
 
-This document specifies how Agents‑Workflow (AW) persists CLI/TUI state locally and how it aligns with a remote server. It defines selection rules, storage locations, and the canonical SQL schema used by the local state database and mirrored (logically) by the server.
+This document specifies how Agent Harbor (AH) persists CLI/TUI state locally and how it aligns with a remote server. It defines selection rules, storage locations, and the canonical SQL schema used by the local state database and mirrored (logically) by the server.
 
 ## Overview
 
-- AW operates against one of two backends:
-  - **Local SQLite**: the CLI performs state mutations directly against a per‑user SQLite database. Multiple `aw` processes may concurrently read/write this DB.
+- AH operates against one of two backends:
+  - **Local SQLite**: the CLI performs state mutations directly against a per‑user SQLite database. Multiple `ah` processes may concurrently read/write this DB.
   - **Remote REST**: the CLI talks to a remote server which implements the same logical schema and API endpoints.
 
 Both backends share the same logical data model so behavior is consistent.
 
 ## Backend Selection
 
-- If a `remote-server` is provided via the configuration system (or via an equivalent CLI flag), AW uses the REST API of that server.
-- Otherwise, AW uses the local SQLite database.
+- If a `remote-server` is provided via the configuration system (or via an equivalent CLI flag), AH uses the REST API of that server.
+- Otherwise, AH uses the local SQLite database.
 
 All behavior follows standard configuration layering (CLI flags > env > project‑user > project > user > system).
 
 ## DB Locations
 
 - Local SQLite DB:
-  - Linux: `${XDG_STATE_HOME:-~/.local/state}/agents-workflow/state.db`
-  - macOS: `~/Library/Application Support/Agents-Workflow/state.db`
-  - Windows: `%LOCALAPPDATA%\Agents-Workflow\state.db`
-  - Custom (when `AW_HOME` is set): `$AW_HOME/state.db`
+  - Linux: `${XDG_STATE_HOME:-~/.local/state}/agent-harbor/state.db`
+  - macOS: `~/Library/Application Support/agent-harbor/state.db`
+  - Windows: `%LOCALAPPDATA%\agent-harbor\state.db`
+  - Custom (when `AH_HOME` is set): `$AH_HOME/state.db`
 
 SQLite is opened in WAL mode. The CLI manages `PRAGMA user_version` for migrations (see Schema Versioning).
 
-The `AW_HOME` environment variable can override the default database location. When set, the database file is located at `$AW_HOME/state.db` instead of the platform-specific default path (see [Configuration.md](Configuration.md)).
+The `AH_HOME` environment variable can override the default database location. When set, the database file is located at `$AH_HOME/state.db` instead of the platform-specific default path (see [Configuration.md](Configuration.md)).
 
 ## Relationship to Prior Drafts
 
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS kv (
 
 ### Concurrency and Locking
 
-- SQLite operates in WAL mode to minimize writer contention. Multiple `aw` processes can write concurrently; all writes use transactions with retry on `SQLITE_BUSY`.
+- SQLite operates in WAL mode to minimize writer contention. Multiple `ah` processes can write concurrently; all writes use transactions with retry on `SQLITE_BUSY`.
 
 ### Security and Privacy
 
@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS kv (
 
 ## Repo Detection
 
-When `--repo` is not supplied, AW detects a repository by walking up from the current directory until it finds a VCS root. All supported VCS are checked (git, hg, etc.). If none is found, commands requiring a repository fail with a clear error.
+When `--repo` is not supplied, AH detects a repository by walking up from the current directory until it finds a VCS root. All supported VCS are checked (git, hg, etc.). If none is found, commands requiring a repository fail with a clear error.
 
 ## Workspaces
 

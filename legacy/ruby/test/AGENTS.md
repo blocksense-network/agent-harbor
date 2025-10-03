@@ -24,22 +24,22 @@ just create-test-filesystems
 
 ### Daemon Testing Setup
 
-Tests that interact with privileged filesystem operations require the AW filesystem snapshots daemon to be running. Check the daemon status with:
+Tests that interact with privileged filesystem operations require the AH filesystem snapshots daemon to be running. Check the daemon status with:
 
 ```bash
-just legacy-check-aw-fs-snapshots-daemon
+just legacy-check-ah-fs-snapshots-daemon
 ```
 
 If the daemon is not running, start it with:
 
 ```bash
-just legacy-start-aw-fs-snapshots-daemon
+just legacy-start-ah-fs-snapshots-daemon
 ```
 
 Stop the daemon when done:
 
 ```bash
-just legacy-stop-aw-fs-snapshots-daemon
+just legacy-stop-ah-fs-snapshots-daemon
 ```
 
 **Note:** The daemon requires sudo privileges and runs in the background. It handles privileged filesystem snapshot operations on behalf of the test suite.

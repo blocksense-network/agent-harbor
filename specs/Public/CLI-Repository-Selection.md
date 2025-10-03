@@ -2,13 +2,13 @@
 
 ### Purpose
 
-Defines how the AW CLI selects a repository (and working directory) for commands that operate on source code. This document provides a canonical, self‑contained description for reuse across commands.
+Defines how the AH CLI selects a repository (and working directory) for commands that operate on source code. This document provides a canonical, self‑contained description for reuse across commands.
 
 ### Scope
 
 Applies to commands that:
 
-- Need a repository root to operate (e.g., `aw task`, `aw agent fs init-session`, repo utilities)
+- Need a repository root to operate (e.g., `ah task`, `ah agent fs init-session`, repo utilities)
 - Accept `--repo <PATH|URL>` and optionally `--workspace <NAME>`
 
 ### Inputs
@@ -49,7 +49,7 @@ Applies to commands that:
 
 4. Validate repository state
 
-- Determine the default branch name for the VCS (e.g., Git: `main`/`master` resolution; see the `aw-repo` crate).
+- Determine the default branch name for the VCS (e.g., Git: `main`/`master` resolution; see the `ah-repo` crate).
 - Commands that prohibit running on primary branches MUST enforce protection (`main`, `master`, `trunk`, `default`) when applicable.
 - Ensure required tools for the detected VCS are available in PATH when the command needs them; otherwise abort with an actionable error.
 
@@ -80,5 +80,5 @@ Applies to commands that:
 
 ### References
 
-- See `aw task` behavior and flow for branch protection and task‑file behaviors that depend on repository selection.
-- See `aw-repo` crate for VCS operations and root detection helpers.
+- See `ah task` behavior and flow for branch protection and task‑file behaviors that depend on repository selection.
+- See `ah-repo` crate for VCS operations and root detection helpers.

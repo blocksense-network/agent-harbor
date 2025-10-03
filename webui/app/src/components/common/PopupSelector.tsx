@@ -121,7 +121,11 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
       <button
         ref={buttonRef}
         onClick={handleButtonClick}
-        class={`flex items-center space-x-1 rounded-md border px-3 py-1 text-sm transition-colors ${props.class || ""}`}
+        class={`
+          flex items-center space-x-1 rounded-md border px-3 py-1 text-sm
+          transition-colors
+          ${props.class || ""}
+        `}
         classList={{
           "border-blue-300 bg-blue-50 text-blue-700": !!props.selectedItem,
           "border-gray-300 text-gray-700 hover:bg-gray-50": !props.selectedItem,
@@ -170,7 +174,10 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
                 <li
                   role="option"
                   aria-selected={index() === selectedIndex()}
-                  class="cursor-pointer px-3 py-2 text-sm hover:bg-gray-100"
+                  class={`
+                    cursor-pointer px-3 py-2 text-sm
+                    hover:bg-gray-100
+                  `}
                   classList={{
                     "bg-blue-50 text-blue-700": index() === selectedIndex(),
                   }}

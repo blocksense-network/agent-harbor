@@ -7,7 +7,7 @@ require 'socket'
 module Snapshot
   # Btrfs subvolume snapshot implementation
   class BtrfsProvider < Provider
-    DAEMON_SOCKET_PATH = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    DAEMON_SOCKET_PATH = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
 
     def self.available?(path)
       # Btrfs is only available on Linux in this implementation

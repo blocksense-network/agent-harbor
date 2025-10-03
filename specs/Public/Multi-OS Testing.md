@@ -7,7 +7,7 @@ Enable agents to validate builds and tests across multiple operating systems in 
 - One of the executors acts as the leader workspace (typically a Linux executor, due to the stronger support for [CoW Snapshots](FS%20Snapshots/FS-Snapshots-Overview.md)).
 - One or more follower workspaces (macOS, Windows, Linux) mirror the leader via Mutagen high‑speed file sync.
 - Each execution cycle fences the filesystem state (FsSnapshot + sync).
-- The agent on the leader can drive the execution of arbitrary commands (typically tests) on all executors via instructions to run the `aw agent run-everywhere` command.
+- The agent on the leader can drive the execution of arbitrary commands (typically tests) on all executors via instructions to run the `ah agent run-everywhere` command.
 
 ### Goals
 
@@ -19,10 +19,10 @@ Enable agents to validate builds and tests across multiple operating systems in 
 
 ### Terminology
 
-- **End-User**: The user invoking the `aw task` command and the software components being part of this executable.
-- **Executor Access Point**: A server started with `aw serve` that offers the end-user a set of APIs for launching agentic coding tasks on one or more executors. The end-user specifies the address of the access point through the `remote-server` configuration option.
-- **Logical Coordinator** is the union of the end user’s `aw` client and the access point servers, listed in the fleet config. The fleet config fully determines which fleet members are managed directly by the end user and which are managed by the configured `remote-server` on the user’s behalf.
-- **Executors**: Executors typically run `aw agent enroll`, registering themselves with the access point and maintaining a persistent QUIC control connection. See [Executor Enrollment](Executor-Enrollment.md) for mode details. The server running `aw serve` can also act as an executor. Executors are long‑lived and expected to be "always‑on" and ready to start tasks quickly, leveraging the FS Snapshot mechanisms defined in [FS Snapshots Overview](FS%20Snapshots/FS-Snapshots-Overview.md).
+- **End-User**: The user invoking the `ah task` command and the software components being part of this executable.
+- **Executor Access Point**: A server started with `ah serve` that offers the end-user a set of APIs for launching agentic coding tasks on one or more executors. The end-user specifies the address of the access point through the `remote-server` configuration option.
+- **Logical Coordinator** is the union of the end user’s `ah` client and the access point servers, listed in the fleet config. The fleet config fully determines which fleet members are managed directly by the end user and which are managed by the configured `remote-server` on the user’s behalf.
+- **Executors**: Executors typically run `ah agent enroll`, registering themselves with the access point and maintaining a persistent QUIC control connection. See [Executor Enrollment](Executor-Enrollment.md) for mode details. The server running `ah serve` can also act as an executor. Executors are long‑lived and expected to be "always‑on" and ready to start tasks quickly, leveraging the FS Snapshot mechanisms defined in [FS Snapshots Overview](FS%20Snapshots/FS-Snapshots-Overview.md).
 - **Leader**: The primary executor in a fleet (Linux preferred) that owns FsSnapshots and initiates `sync-fence` and `run‑everywhere`.
 - **Followers**: Secondary executors un a fleet (Windows/macOS/Linux) that execute commands and validate builds/tests.
 - **Sync Fence**: An explicit operation ensuring all follower file trees match the leader FsSnapshot before execution.
@@ -40,20 +40,20 @@ Enable agents to validate builds and tests across multiple operating systems in 
 - Execute `fs_snapshot_and_sync`:
 - Create a leader [FsSnapshot](FS%20Snapshots/FS-Snapshots-Overview.md).
 - Issue a sync fence: run `mutagen project flush` and wait until followers reflect the leader snapshot content.
-- Invoke `aw agent followers run` with the project‑specific test commands, specified in the agent instructions.
+- Invoke `ah agent followers run` with the project‑specific test commands, specified in the agent instructions.
 
 Initiator:
 
 - Default: The leader connects with SSH to followers using persistent connections. If a follower is directly reachable by TCP per policy, the leader may connect directly; otherwise it uses HTTP CONNECT via the access point.
-- Hybrid: When the fleet spans multiple access points, the logical coordinator (aw client) relays bytes between CONNECT streams as needed.
+- Hybrid: When the fleet spans multiple access points, the logical coordinator (ah client) relays bytes between CONNECT streams as needed.
 
 ### Targeting and Selectors (overview)
 
-Fleet member selection (by host name or tag) is defined in Fleet config and can be overridden per task from `aw task`. See CLI (fleet options) for the exact flags; the leader’s followers run honors that selection.
+Fleet member selection (by host name or tag) is defined in Fleet config and can be overridden per task from `ah task`. See CLI (fleet options) for the exact flags; the leader’s followers run honors that selection.
 
 ### Project Contract: followers run
 
-- Option parsing precedes the forwarded command: `aw agent followers run [--host <name>]... [--tag <k=v>]... [--all] [--] <command> [args...]`.
+- Option parsing precedes the forwarded command: `ah agent followers run [--host <name>]... [--tag <k=v>]... [--all] [--] <command> [args...]`.
 - Supports (but does not require) `--` to delimit its own options from the forwarded command.
 - Per‑host command adapters (what this means):
   - Purpose: A thin OS-specific shim that ensures the same logical command runs correctly on each follower.
@@ -67,7 +67,7 @@ Fleet member selection (by host name or tag) is defined in Fleet config and can 
     - Linux follower:
       - `ssh lin-01 -- bash -lc 'cd /workspaces/proj && pytest -q'`
     - macOS follower (FSKit path):
-      - `ssh mac-01 -- zsh -lc 'cd /Volumes/aw-overlays/proj && pytest -q'`
+      - `ssh mac-01 -- zsh -lc 'cd /Volumes/ah-overlays/proj && pytest -q'`
     - Windows follower (PowerShell with S: mapping):
       - `ssh win-01 powershell -NoProfile -Command "Set-Location S:\\; npm test"`
 - Exit code aggregation: return non‑zero if any selected host fails.
@@ -76,13 +76,13 @@ Illustrative usage:
 
 ```bash
 # Run tests on all followers (default)
-aw agent followers run -- test
+ah agent followers run -- test
 
 # Run build only on Windows hosts
-aw agent followers run --tag os=windows -- build
+ah agent followers run --tag os=windows -- build
 
 # Run lint on a specific host
-aw agent followers run --host win-12 -- lint
+ah agent followers run --host win-12 -- lint
 ```
 
 ### REST Observability (control‑plane)
@@ -105,7 +105,7 @@ aw agent followers run --host win-12 -- lint
 
 ### Fetching files from followers
 
-This is done through the `aw agent followers slurp` command which takes a list of file sets. Each file set has the following properties:
+This is done through the `ah agent followers slurp` command which takes a list of file sets. Each file set has the following properties:
 
 * name: string (consisting of alphanumeric characters, dashes and underscores)
 * include: array of paths and blobs (in URL-encoded form can be repeated)
@@ -133,7 +133,7 @@ All metadata (host, mtime, checksum) is recorded in the session timeline so REST
 
 The execution of tests can be accelerated by adding more followers.
 
-`aw agent followers run` accepts multiple `--command` entries and shards them across all matching executors. The scheduler builds a job queue and assigns tasks round-robin while respecting per-host concurrency=1 to avoid oversubscription. Each command is scheduled on exactly one executor per operating system. All outputs are collected before being returned to the agent.
+`ah agent followers run` accepts multiple `--command` entries and shards them across all matching executors. The scheduler builds a job queue and assigns tasks round-robin while respecting per-host concurrency=1 to avoid oversubscription. Each command is scheduled on exactly one executor per operating system. All outputs are collected before being returned to the agent.
 
 
 ## Connectivity Layer — QUIC Control + SSH over CONNECT
@@ -231,7 +231,7 @@ To minimize SSH handshake costs during a session, the leader (or the logical coo
 
 ### Connectivity Algorithm (simplified)
 
-This section specifies the algorithm the Coordinator (aw client or WebUI backend acting as coordinator) uses to establish connectivity between the leader and followers for a fleet. The server never dials followers; all data‑plane connections originate from the leader (or are stitched by the client in hybrid multi‑hop).
+This section specifies the algorithm the Coordinator (ah client or WebUI backend acting as coordinator) uses to establish connectivity between the leader and followers for a fleet. The server never dials followers; all data‑plane connections originate from the leader (or are stitched by the client in hybrid multi‑hop).
 
 Inputs
 
@@ -248,7 +248,7 @@ High‑Level Stages
 
 #### Stage 1: Session initialization
 
-1. QUIC control connections are established (executors already run `aw agent enroll`).
+1. QUIC control connections are established (executors already run `ah agent enroll`).
 2. The leader (or logical coordinator) creates persistent SSH masters to followers via CONNECT (multiplexing enabled).
 3. The leader writes a Mutagen project file covering all followers and starts it.
 

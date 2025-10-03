@@ -1,0 +1,14 @@
+[package]
+name = "ah-rest-client-mock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ah-client-api = { path = "../ah-client-api" }
+ah-test-scenarios = { path = "../ah-test-scenarios" }
+ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+url = { workspace = true }

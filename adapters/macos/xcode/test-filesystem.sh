@@ -199,15 +199,15 @@ test_control_plane() {
     return 0 # Skip if mount fails
   fi
 
-  # Test snapshot creation via aw agent fs CLI
-  if ! aw agent fs init-session --mount "$mount_point" --name "test_session"; then
+  # Test snapshot creation via ah agent fs CLI
+  if ! ah agent fs init-session --mount "$mount_point" --name "test_session"; then
     echo "Failed to create initial session via CLI"
     unmount_device "$mount_point"
     return 1
   fi
 
   # Test snapshot listing
-  if ! aw agent fs snapshots test_session >/dev/null 2>&1; then
+  if ! ah agent fs snapshots test_session >/dev/null 2>&1; then
     echo "Failed to list snapshots via CLI"
     unmount_device "$mount_point"
     return 1
@@ -215,7 +215,7 @@ test_control_plane() {
 
   # Get snapshot ID from listing (simplified - assume first snapshot)
   local snapshot_id
-  snapshot_id=$(aw agent fs snapshots --mount "$mount_point" test_session | head -1 | awk '{print $1}')
+  snapshot_id=$(ah agent fs snapshots --mount "$mount_point" test_session | head -1 | awk '{print $1}')
 
   if [ -z "$snapshot_id" ]; then
     echo "No snapshot ID found"
@@ -224,14 +224,14 @@ test_control_plane() {
   fi
 
   # Test branch creation
-  if ! aw agent fs branch create --mount "$mount_point" --from "$snapshot_id" --name "test_branch" >/dev/null 2>&1; then
+  if ! ah agent fs branch create --mount "$mount_point" --from "$snapshot_id" --name "test_branch" >/dev/null 2>&1; then
     echo "Failed to create branch via CLI"
     unmount_device "$mount_point"
     return 1
   fi
 
   # Test branch binding
-  if ! aw agent fs branch bind --mount "$mount_point" --branch "test_branch" >/dev/null 2>&1; then
+  if ! ah agent fs branch bind --mount "$mount_point" --branch "test_branch" >/dev/null 2>&1; then
     echo "Failed to bind branch via CLI"
     unmount_device "$mount_point"
     return 1

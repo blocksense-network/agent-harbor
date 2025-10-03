@@ -1,6 +1,0 @@
----
-source: crates/aw-mux/src/tmux.rs
-expression: snapshot
----
-[?25h[m[H[Jecho 'editor pane'[5C│echo 'agent pane'
-editor pane[12C│[7;24H│

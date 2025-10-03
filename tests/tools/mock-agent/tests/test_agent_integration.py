@@ -310,7 +310,7 @@ class MockAgentIntegrationTest(unittest.TestCase):
 
     def verify_hooks_executed(self, expected_executions: int, agent_type: str = "claude"):
         """Verify that hooks were executed by checking the hook execution log."""
-        hook_execution_log = os.path.join(self.workspace, ".aw", "snapshots", "hook_executions.log")
+        hook_execution_log = os.path.join(self.workspace, ".ah", "snapshots", "hook_executions.log")
 
         # Wait a moment for hooks to complete
         time.sleep(1)
@@ -347,7 +347,7 @@ class MockAgentIntegrationTest(unittest.TestCase):
 
     def verify_snapshot_hooks_called(self, expected_snapshots: int, agent_type: str = "claude"):
         """Verify that filesystem snapshot hooks were called and created evidence."""
-        evidence_file = os.path.join(self.workspace, ".aw", "snapshots", "evidence.log")
+        evidence_file = os.path.join(self.workspace, ".ah", "snapshots", "evidence.log")
 
         # Wait a moment for hooks to complete
         time.sleep(1)
@@ -819,7 +819,7 @@ class MockAgentIntegrationTest(unittest.TestCase):
             self.assertTrue(os.path.exists(hello_py))
 
             # Verify snapshot evidence file exists
-            evidence_file = os.path.join(workspace, ".aw", "snapshots", "evidence.log")
+            evidence_file = os.path.join(workspace, ".ah", "snapshots", "evidence.log")
             self.assertTrue(os.path.exists(evidence_file), "Snapshot evidence file should exist")
 
             # Read and verify evidence file contents
@@ -876,7 +876,7 @@ class MockAgentIntegrationTest(unittest.TestCase):
             self.assertTrue(os.path.exists(session_path))
 
             # Verify snapshot evidence file exists and has correct content
-            evidence_file = os.path.join(workspace, ".aw", "snapshots", "evidence.log")
+            evidence_file = os.path.join(workspace, ".ah", "snapshots", "evidence.log")
             self.assertTrue(os.path.exists(evidence_file))
 
             with open(evidence_file, 'r', encoding='utf-8') as f:

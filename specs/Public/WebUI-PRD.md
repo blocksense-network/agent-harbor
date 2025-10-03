@@ -2,7 +2,7 @@
 
 ### Product Summary
 
-The WebUI provides a browser-based experience for creating, monitoring, and managing agent coding sessions backed by the Agents-Workflow REST Service. It targets:
+The WebUI provides a browser-based experience for creating, monitoring, and managing agent coding sessions backed by the agent-harbor REST Service. It targets:
 
 - Engineering teams running on-prem/private cloud clusters.
 - Individual developers preferring a graphical dashboard over CLI.
@@ -359,7 +359,7 @@ TODO: This has to be re-thought. How does it work in [Local-Mode](Local-Mode.md)
 - SPA built with SolidJS + SolidStart + TypeScript + Tailwind CSS, SSE for events, OpenAPI client for REST.
 - **TOM Select Integration**: Use [TOM Select](https://tom-select.js.org/) JavaScript library for repository, branch, and model selector widgets with fuzzy search
 - **Proxy-Based Architecture**: The SSR server acts as the single entry point for all requests (HTML, CSS, JS, and API calls). The SSR server proxies all `/api/v1/*` requests to the API server (access point daemon). This architecture enables the SSR server to implement user access policies and security controls before forwarding requests to the underlying API.
-- **API Server Integration**: The API server (access point daemon, same code path as `aw agent access-point`) runs either as a subprocess or sidecar process, communicating with the SSR server via HTTP or stdin/stdout for subprocess mode. The `aw webui` command starts both the SSR server and the access point daemon in-process.
+- **API Server Integration**: The API server (access point daemon, same code path as `ah agent access-point`) runs either as a subprocess or sidecar process, communicating with the SSR server via HTTP or stdin/stdout for subprocess mode. The `ah webui` command starts both the SSR server and the access point daemon in-process.
 
 #### Progressive Enhancement and Server-Side Rendering
 
@@ -399,12 +399,12 @@ Planning and status tracking for this WebUI implementation live in [WebUI.status
 ### Local Mode (--local)
 
 - Purpose: Provide a zero-setup, single-developer experience. The WebUI binds to `127.0.0.1` only and automatically starts a local access point daemon.
-- Invocation: `aw webui [--port <port>]`. In this mode:
+- Invocation: `ah webui [--port <port>]`. In this mode:
   - Network binding: SSR server listens on localhost only (e.g., `http://127.0.0.1:3002`).
-  - Access point daemon: Started in-process (same code path as `aw agent access-point`) and bound to a separate port (e.g., `http://127.0.0.1:3001`). The SSR server proxies all `/api/v1/*` requests to this daemon.
+  - Access point daemon: Started in-process (same code path as `ah agent access-point`) and bound to a separate port (e.g., `http://127.0.0.1:3001`). The SSR server proxies all `/api/v1/*` requests to this daemon.
   - Auth and tenancy: No RBAC/tenants; implicit single user. Admin panels are hidden (Agents/Runtimes/Hosts/Settings for multi-tenant ops).
   - Config discovery: When `--remote-server` is provided, the SSR server proxies to that external access point instead of starting a local daemon.
-  - Intention: By default, `aw webui` provides a fully self-contained experience. The `--remote-server` option enables connecting to a shared access point for team workflows.
+  - Intention: By default, `ah webui` provides a fully self-contained experience. The `--remote-server` option enables connecting to a shared access point for team workflows.
   - IDE integration: Unchanged; IDE launch helpers assume local filesystem access to the workspace mount.
   - Persistence: Uses browser local storage for UI preferences. No external DB required.
   - Security: No TLS in local mode; not intended for remote access.

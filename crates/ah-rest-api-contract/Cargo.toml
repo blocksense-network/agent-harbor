@@ -1,0 +1,18 @@
+[package]
+name = "ah-rest-api-contract"
+version = "0.1.0"
+edition = "2021"
+description = "Schema types and validation for agent-harbor REST API contracts"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+url = "2.5"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+validator = { version = "0.18", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -398,7 +398,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Implementation Details**:
 
   - **New Architecture**: Complete shift from three-pane layout to simplified task-centric design
-  - **Branding Overhaul**: Changed from "Agents-Workflow" to "Agent Harbor" with SVG logo integration
+  - **Branding Overhaul**: Changed from "agent-harbor" to "Agent Harbor" with SVG logo integration
   - **Component Redesign**: New TaskCard with status-aware rendering and live activity display
   - **TOM's Select Widgets**: Implemented fuzzy search popup combo-boxes for Repository and Branch
   - **Model Instance Counters**: Multi-select model picker with +/- buttons for instance management

@@ -35,8 +35,8 @@ else
   echo -e "${GREEN}✅ Confirmed: Nix is not initially available (expected)${NC}"
 fi
 
-# Change to the agents-workflow directory within user-project (mimicking real codex environment)
-cd /workspace/user-project/agents-workflow
+# Change to the agent-harbor directory within user-project (mimicking real codex environment)
+cd /workspace/user-project/agent-harbor
 
 # Set NIX=1 environment variable
 export NIX=1

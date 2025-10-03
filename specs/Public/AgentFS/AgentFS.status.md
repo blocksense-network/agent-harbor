@@ -2,7 +2,7 @@
 
 This document tracks the implementation status of the [AgentFS](AgentFS.md) subsystem and serves as the single source of truth for the execution plan, milestones, automated success criteria, and cross‑team integration points.
 
-Goal: deliver a cross‑platform, high‑performance, user‑space filesystem with snapshots, writable branches, and per‑process branch binding, usable by AW across Linux, macOS, and Windows.
+Goal: deliver a cross‑platform, high‑performance, user‑space filesystem with snapshots, writable branches, and per‑process branch binding, usable by AH across Linux, macOS, and Windows.
 
 Approach: Build a reusable Rust core (`agentfs-core`) with a strict API and strong test harnesses. Provide thin platform adapters (FUSE/libfuse, WinFsp, FSKit) that delegate semantics to the core and expose platform-specific control planes for CLI and tools: ioctl-based `.agentfs/control` files (Linux), DeviceIoControl (Windows), and XPC services (macOS). Land functionality in incremental milestones with CI gates and platform‑specific acceptance suites.
 
@@ -339,9 +339,9 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 M10. Control plane and CLI integration (4–5d) - IN PROGRESS
 
 - Finalize `agentfs-proto` SSZ schemas and union types (similar to fs-snapshot-daemon); generate Rust types.
-- Implement `aw agent fs` subcommands for session-aware AgentFS operations: DeviceIoControl (Windows), ioctl on control file (FUSE), XPC service (FSKit).
+- Implement `ah agent fs` subcommands for session-aware AgentFS operations: DeviceIoControl (Windows), ioctl on control file (FUSE), XPC service (FSKit).
 - Success criteria (CLI tests):
-  - `aw agent fs init-session`, `snapshots <SESSION_ID>`, and `branch create/bind/exec` behave as specified across platforms.
+  - `ah agent fs init-session`, `snapshots <SESSION_ID>`, and `branch create/bind/exec` behave as specified across platforms.
   - SSZ union type validation enforced; informative errors on invalid payloads.
   - Session-aware operations integrate with the broader agent workflow system.
 
@@ -366,26 +366,26 @@ Acceptance checklist (M10)
 
 M10.4. AgentFS CLI Control Plane Operations (3–4d)
 
-- Implement the `aw agent fs` subcommands for session-aware AgentFS operations across all platforms
+- Implement the `ah agent fs` subcommands for session-aware AgentFS operations across all platforms
 - Create CLI handlers that translate command-line arguments to SSZ control messages
 - Implement session management integration for AgentFS operations
 - Success criteria (CLI tests):
-  - `aw agent fs init-session` creates initial session snapshots from current working copy state
-  - `aw agent fs snapshots <SESSION_ID>` lists all snapshots for a given session
-  - `aw agent fs branch create <SNAPSHOT_ID>` creates writable branches from snapshots
-  - `aw agent fs branch bind <BRANCH_ID>` binds current process to branch view
-  - `aw agent fs branch exec <BRANCH_ID> -- <COMMAND>` executes commands in branch context
+  - `ah agent fs init-session` creates initial session snapshots from current working copy state
+  - `ah agent fs snapshots <SESSION_ID>` lists all snapshots for a given session
+  - `ah agent fs branch create <SNAPSHOT_ID>` creates writable branches from snapshots
+  - `ah agent fs branch bind <BRANCH_ID>` binds current process to branch view
+  - `ah agent fs branch exec <BRANCH_ID> -- <COMMAND>` executes commands in branch context
   - Cross-platform support: DeviceIoControl (Windows), ioctl on control file (FUSE), XPC service (FSKit)
   - Session-aware operations integrate with broader agent workflow system
   - Comprehensive CLI tests covering all subcommands and error conditions
 
 Acceptance checklist (M10.4)
 
-- [ ] `aw agent fs init-session` creates initial session snapshots
-- [ ] `aw agent fs snapshots <SESSION_ID>` lists session snapshots
-- [ ] `aw agent fs branch create <SNAPSHOT_ID>` creates branches from snapshots
-- [ ] `aw agent fs branch bind <BRANCH_ID>` binds processes to branches
-- [ ] `aw agent fs branch exec <BRANCH_ID>` executes commands in branch context
+- [ ] `ah agent fs init-session` creates initial session snapshots
+- [ ] `ah agent fs snapshots <SESSION_ID>` lists session snapshots
+- [ ] `ah agent fs branch create <SNAPSHOT_ID>` creates branches from snapshots
+- [ ] `ah agent fs branch bind <BRANCH_ID>` binds processes to branches
+- [ ] `ah agent fs branch exec <BRANCH_ID>` executes commands in branch context
 - [ ] Cross-platform control plane transport (DeviceIoControl/FUSE ioctl/XPC service)
 - [ ] Session management integration
 - [ ] CLI tests pass for all subcommands
@@ -472,7 +472,7 @@ Acceptance checklist (M10.9)
 
 M11. Scenario, performance, and fault‑injection suites (4–7d)
 
-- Scenario tests for AW workflows (per [AgentFS-Core-Testing.md](AgentFS%20Core%20Testing.md)): multi‑process branches, repo tasks, discard/keep flows.
+- Scenario tests for AH workflows (per [AgentFS-Core-Testing.md](AgentFS%20Core%20Testing.md)): multi‑process branches, repo tasks, discard/keep flows.
 - Criterion microbenchmarks; fsbench/fio macro tests; spill‑to‑disk stress; induced failures in `StorageBackend`.
 - Implement comprehensive stress testing using fs-stress, stress-filesystem, and CrashMonkey/ACE-like fault injection.
 - Success criteria:
@@ -508,14 +508,14 @@ Acceptance checklist (M12)
 - Core: `cargo test` unit/property tests; mutation tests on critical modules; structured tracing behind a feature.
 - Component: FFI surface exercised via a small C harness; UTF‑8/UTF‑16 round‑trips.
 - Integration: libfuse adapter on Linux/macOS dev; WinFsp batteries on Windows; FSKit sample‑like flows.
-- Scenario: AW lifecycle simulations; golden tests for control SSZ round‑trip using union types in `agentfs-proto`.
+- Scenario: AH lifecycle simulations; golden tests for control SSZ round‑trip using union types in `agentfs-proto`.
 - Performance: criterion microbenchmarks; fsbench/fio macro; memory spill and ENOSPC coverage.
 
 ### Deliverables
 
 - Crates: agentfs-core, agentfs-proto, agentfs-fuse-host, agentfs-winfsp-host.
 - FSKit extension target with XPC control service.
-- `aw agent fs` CLI subcommands wired to transports and schemas.
+- `ah agent fs` CLI subcommands wired to transports and schemas.
 - Comprehensive CI matrix and acceptance suites per platform with documented pass/fail gates.
 
 ### FSKit Adapter Development Plan (M13-M17)
@@ -626,18 +626,18 @@ M18. Xcode Project Migration COMPLETED (3-4d)
 - Set up code signing, entitlements, and FSKit capabilities
 - Configure universal binary builds
 
-**Implementation Details:** Successfully migrated from Swift Package Manager to proper Xcode project structure as recommended in [Compiling-FsKit-Extensions.md](../Research/Compiling-FsKit-Extensions.md). Created **AgentsWorkflow.app** host macOS application that embeds the AgentFSKitExtension filesystem extension for proper system registration and code signing. The agentfs-ffi crate is built as a static library using cargo and linked with the Swift extension as part of the Xcode build process.
+**Implementation Details:** Successfully migrated from Swift Package Manager to proper Xcode project structure as recommended in [Compiling-FsKit-Extensions.md](../Research/Compiling-FsKit-Extensions.md). Created **AgentHarbor.app** host macOS application that embeds the AgentFSKitExtension filesystem extension for proper system registration and code signing. The agentfs-ffi crate is built as a static library using cargo and linked with the Swift extension as part of the Xcode build process.
 
 **Production-Ready Integration:** All major Swift functions now call the Rust backend instead of returning hard-coded values. The filesystem extension properly integrates with the AgentFS core through the FFI bridge, including file operations (create, open, read, write, close), directory operations (lookup, enumerate), attribute management, and control plane operations (snapshot, branch, bind). This provides a fully functional filesystem implementation backed by the Rust AgentFS core.
 
 **Key Source Files:**
 
-- `apps/macos/AgentsWorkflow/AgentsWorkflow.xcodeproj/` - Xcode project file for host app with embedded extension target
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/` - Host app source files (AppDelegate, MainViewController)
-- `apps/macos/AgentsWorkflow/AgentFSKitExtension/` - Migrated extension source files
-- `apps/macos/AgentsWorkflow/build-rust-libs.sh` - Build script for Rust static libraries
-- `apps/macos/AgentsWorkflow/libs/` - Directory containing built Rust static libraries
-- `Justfile` - Added `build-agentfs-rust-libs`, `build-agents-workflow-xcode`, `build-agents-workflow` targets
+- `apps/macos/AgentHarbor/AgentHarbor.xcodeproj/` - Xcode project file for host app with embedded extension target
+- `apps/macos/AgentHarbor/AgentHarbor/` - Host app source files (AppDelegate, MainViewController)
+- `apps/macos/AgentHarbor/AgentFSKitExtension/` - Migrated extension source files
+- `apps/macos/AgentHarbor/build-rust-libs.sh` - Build script for Rust static libraries
+- `apps/macos/AgentHarbor/libs/` - Directory containing built Rust static libraries
+- `Justfile` - Added `build-agentfs-rust-libs`, `build-agent-harbor-xcode`, `build-agent-harbor` targets
 - `.github/workflows/ci.yml` - Added macOS CI job using just targets
 
 **Verification Results:**
@@ -646,7 +646,7 @@ M18. Xcode Project Migration COMPLETED (3-4d)
 - [x] Extension properly embedded in host app bundle structure
 - [x] Code signing configuration set up (requires development team for production)
 - [x] Universal binary support configured via local cargo builds
-- [x] Just targets added for local development (`just build-agentfs-rust-libs`, `just build-agents-workflow`)
+- [x] Just targets added for local development (`just build-agentfs-rust-libs`, `just build-agent-harbor`)
 - [x] macOS CI job added using just targets exclusively (follows CI policy)
 - [x] Production-ready Swift-Rust integration (all major functions call Rust backend)
 - [x] File operations (create, open, read, write, close) wired to Rust FFI
@@ -660,16 +660,16 @@ M19. Host App & Extension Registration COMPLETED (2-3d)
 - Implement proper extension lifecycle management
 - Add system extension approval workflow documentation
 
-**Implementation Details:** Successfully created **AgentsWorkflow.app** - the main macOS host application that embeds the AgentFSKitExtension filesystem extension. The application implements proper extension lifecycle management using PlugInKit for older macOS versions and OSSystemExtensionManager for macOS 13.0+. The host app provides real-time status monitoring and automatic extension registration on launch.
+**Implementation Details:** Successfully created **AgentHarbor.app** - the main macOS host application that embeds the AgentFSKitExtension filesystem extension. The application implements proper extension lifecycle management using PlugInKit for older macOS versions and OSSystemExtensionManager for macOS 13.0+. The host app provides real-time status monitoring and automatic extension registration on launch.
 
 **Key Source Files:**
 
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/AppDelegate.swift` - Host app delegate with PlugInKit and SystemExtensions integration
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/main.swift` - Host app entry point
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/MainViewController.swift` - Main UI with extension status monitoring
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/Info.plist` - Host app metadata
-- `apps/macos/AgentsWorkflow/PlugIns/AgentFSKitExtension.appex/` - Embedded extension bundle (built by Xcode)
-- `apps/macos/AgentsWorkflow/README.md` - Comprehensive documentation including approval workflow
+- `apps/macos/AgentHarbor/AgentHarbor/AppDelegate.swift` - Host app delegate with PlugInKit and SystemExtensions integration
+- `apps/macos/AgentHarbor/AgentHarbor/main.swift` - Host app entry point
+- `apps/macos/AgentHarbor/AgentHarbor/MainViewController.swift` - Main UI with extension status monitoring
+- `apps/macos/AgentHarbor/AgentHarbor/Info.plist` - Host app metadata
+- `apps/macos/AgentHarbor/PlugIns/AgentFSKitExtension.appex/` - Embedded extension bundle (built by Xcode)
+- `apps/macos/AgentHarbor/README.md` - Comprehensive documentation including approval workflow
 
 **Outstanding Tasks:**
 
@@ -743,7 +743,7 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
     - Endpoint Security Extensions: `com.apple.ExtensionsPreferences?extensionPointIdentifier=com.apple.system_extension.endpoint_security.extension-point`
   - Fallback deep link for macOS < 15 to Privacy & Security (documented or gated).
   - Utility to check status (via attempting a mount/XPC or by observing delegate completion) and to re‑prompt if approval remains pending.
-  - Just targets to assist local testing: `systemextensions-devmode-and-status`, `install-agentsworkflow-app`, `register-fskit-extension` (already added) referenced from docs. <!-- cspell:ignore systempreferences systemextensions devmode agentsworkflow -->
+  - Just targets to assist local testing: `systemextensions-devmode-and-status`, `install-AgentHarbor-app`, `register-fskit-extension` (already added) referenced from docs. <!-- cspell:ignore systempreferences systemextensions devmode AgentHarbor -->
 
 - Success criteria:
 
@@ -761,8 +761,8 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
 
 **Key Source Files:**
 
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/AppDelegate.swift` – Activation submission and `OSSystemExtensionRequestDelegate` handling
-- `apps/macos/AgentsWorkflow/AgentsWorkflow/MainViewController.swift` – Approval UI, deep link, retry, and live status updates
+- `apps/macos/AgentHarbor/AgentHarbor/AppDelegate.swift` – Activation submission and `OSSystemExtensionRequestDelegate` handling
+- `apps/macos/AgentHarbor/AgentHarbor/MainViewController.swift` – Approval UI, deep link, retry, and live status updates
 
 **Current Issues:**
 

@@ -1,14 +1,14 @@
-# Ratatui API Guide for AW TUI Implementation
+# Ratatui API Guide for AH TUI Implementation
 
 ## Overview
 
-This guide provides a comprehensive overview of Ratatui APIs that can be used to implement the Agents Workflow (AW) Terminal User Interface (TUI) as specified in the TUI PRD and [CLI.md](../Public/CLI.md). Ratatui's modular architecture and rich widget ecosystem make it perfectly suited for building complex terminal dashboards.
+This guide provides a comprehensive overview of Ratatui APIs that can be used to implement the Agent Harbor (AH) Terminal User Interface (TUI) as specified in the TUI PRD and [CLI.md](../Public/CLI.md). Ratatui's modular architecture and rich widget ecosystem make it perfectly suited for building complex terminal dashboards.
 
 ## Core Architecture Mapping
 
 ### TUI Requirements → Ratatui Components
 
-| AW TUI Component               | Ratatui API                               | Key Features Used                             |
+| AH TUI Component               | Ratatui API                               | Key Features Used                             |
 | ------------------------------ | ----------------------------------------- | --------------------------------------------- |
 | Dashboard Layout               | `Layout`, `Constraint`                    | Vertical/horizontal splits, responsive design |
 | Project/Branch/Agent Selectors | `List`, `ListState`                       | Filtering, navigation, highlighting           |
@@ -386,7 +386,7 @@ use ratatui::text::{Line, Span};
 impl App {
     fn render_status_bar(&self, frame: &mut Frame, area: Rect) {
         let status_parts = vec![
-            Span::styled("AW TUI", Style::default().fg(Color::Cyan)),
+            Span::styled("AH TUI", Style::default().fg(Color::Cyan)),
             Span::raw(" | "),
             Span::styled(self.get_backend_status(), Style::default().fg(Color::Green)),
             Span::raw(" | "),
@@ -531,7 +531,7 @@ impl App {
     fn load_config() -> Result<AppConfig> {
         let config_path = dirs::config_dir()
             .ok_or_else(|| eyre::eyre!("Could not find config directory"))?
-            .join("aw-tui")
+            .join("ah-tui")
             .join("config.toml");
 
         if config_path.exists() {
@@ -553,7 +553,7 @@ impl App {
 
         let config_path = dirs::config_dir()
             .ok_or_else(|| eyre::eyre!("Could not find config directory"))?
-            .join("aw-tui");
+            .join("ah-tui");
 
         fs::create_dir_all(&config_path)?;
         let contents = toml::to_string(&config)?;
@@ -662,17 +662,17 @@ impl App {
     fn create_task_window(&self) -> Result<()> {
         match self.multiplexer {
             MultiplexerType::Tmux => {
-                // tmux new-window -n "aw-task-123" "aw agent record --task-id 123"
+                // tmux new-window -n "ah-task-123" "ah agent record --task-id 123"
                 std::process::Command::new("tmux")
-                    .args(&["new-window", "-n", &format!("aw-task-{}", self.task_id),
-                           &format!("aw agent record --task-id {}", self.task_id)])
+                    .args(&["new-window", "-n", &format!("ah-task-{}", self.task_id),
+                           &format!("ah agent record --task-id {}", self.task_id)])
                     .spawn()?;
             }
             MultiplexerType::Zellij => {
-                // zellij run --name "aw-task-123" "aw agent record --task-id 123"
+                // zellij run --name "ah-task-123" "ah agent record --task-id 123"
                 std::process::Command::new("zellij")
-                    .args(&["run", "--name", &format!("aw-task-{}", self.task_id),
-                           &format!("aw agent record --task-id {}", self.task_id)])
+                    .args(&["run", "--name", &format!("ah-task-{}", self.task_id),
+                           &format!("ah agent record --task-id {}", self.task_id)])
                     .spawn()?;
             }
             _ => {}
@@ -1099,4 +1099,4 @@ impl App {
 - Accessibility: high-contrast theme; keyboard-only operation; predictable focus.
 - Performance: tick/poll loop, avoid unnecessary work, show scrollbars.
 
-This expanded guide now covers event loop patterns, resize handling, scrollbars, filtering, help overlays, async/SSE integration, theming, testing, and performance—answering the practical questions needed to implement the AW TUI per the TUI PRD and [CLI.md](../Public/CLI.md).
+This expanded guide now covers event loop patterns, resize handling, scrollbars, filtering, help overlays, async/SSE integration, theming, testing, and performance—answering the practical questions needed to implement the AH TUI per the TUI PRD and [CLI.md](../Public/CLI.md).

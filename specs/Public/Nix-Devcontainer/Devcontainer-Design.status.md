@@ -6,7 +6,7 @@ Goals:
 
 - Deliver layered images (Nix Base → Agents Base → Project) that provide a consistent developer experience across Linux, macOS (Docker Desktop), and Windows (WSL2/Hyper‑V).
 - Implement credential propagation, host↔guest cache sharing, and time‑travel hooks as specified in [Devcontainer-Design.md](Devcontainer-Design.md).
-- Provide a standard `.devcontainer/aw-healthcheck` contract invoked by `aw repo check`.
+- Provide a standard `.devcontainer/ah-healthcheck` contract invoked by `ah repo check`.
 - Ship a robust, automated test matrix validating cache behavior, credentials, health, and hooks per [Devcontainer-Test-Suite.md](Devcontainer-Test-Suite.md).
 
 References:
@@ -18,13 +18,13 @@ References:
 
 ### Deliverables
 
-1. `agents-workflow-nix-base` image (GHCR)
+1. `agent-harbor-nix-base` image (GHCR)
 
 - Nix with flakes enabled, substituters/cachix configured.
 - Declared persistent volumes for `/nix` and common caches.
 - Minimal init and entrypoint that sources project devshell if present.
 
-2. `agents-workflow-agents-base` image (GHCR)
+2. `agent-harbor-agents-base` image (GHCR)
 
 - FROM nix base, installs supported agentic CLIs via Nix; aligns versions with repository’s Nix package set.
 - Integrations with agent‑provided hook mechanisms (e.g., Claude Code hooks) to emit SessionMoments and trigger FsSnapshots. Shell‑level hooks are out of scope.
@@ -33,12 +33,12 @@ References:
 3. Reference project devcontainer
 
 - `devcontainer.json` consuming Agents Base; named volumes for caches; `postCreateCommand` hooks.
-- `.devcontainer/aw-healthcheck` implementing the health contract with `--json` output.
+- `.devcontainer/ah-healthcheck` implementing the health contract with `--json` output.
 
-4. AW CLI integration
+4. AH CLI integration
 
-- `aw repo check` invokes `.devcontainer/aw-healthcheck` via Dev Containers CLI when available; falls back to `just health`/`make health` on host.
-- `aw health --caches` prints configured cache mounts and sizes.
+- `ah repo check` invokes `.devcontainer/ah-healthcheck` via Dev Containers CLI when available; falls back to `just health`/`make health` on host.
+- `ah health --caches` prints configured cache mounts and sizes.
 
 5. CI pipeline
 
@@ -49,7 +49,7 @@ References:
 - Cross‑platform: Linux, macOS (Docker Desktop), Windows (WSL2) flows work without manual fixes.
 - Caches persist across rebuilds and speed up builds measurably; offline warm builds succeed where expected.
 - Credential propagation makes common agent tools usable without re‑auth inside the container.
-- `.devcontainer/aw-healthcheck --json` passes and is stable/parseable; `aw repo check` reports clear diagnostics on failure.
+- `.devcontainer/ah-healthcheck --json` passes and is stable/parseable; `ah repo check` reports clear diagnostics on failure.
 - Built‑in agent hooks emit SessionMoments reliably at tool boundaries; are opt‑out via agent configuration.
 
 ### Milestones and tasks (with automated tests)
@@ -83,10 +83,10 @@ M4. Cache sharing mounts (3–4d)
 - Documented in [Devcontainer-Cache-Guidelines.md](Devcontainer-Cache-Guidelines.md); mount defaults and opt‑ins implemented.
 - Tests: per‑manager cold→warm speedups; lockfile change invalidation; concurrent builds; offline warm builds.
 
-M5. Healthcheck contract and AW integration (2–3d)
+M5. Healthcheck contract and AH integration (2–3d)
 
-- Provide `.devcontainer/aw-healthcheck` with `--json`; checks for nix, devshell, task‑runner, git, disk, optionally network.
-- Implement `aw repo check` flow that prefers devcontainer exec, with fallbacks as documented.
+- Provide `.devcontainer/ah-healthcheck` with `--json`; checks for nix, devshell, task‑runner, git, disk, optionally network.
+- Implement `ah repo check` flow that prefers devcontainer exec, with fallbacks as documented.
 - Tests: golden JSON output, exit codes (0/1/2) behavior, CLI fallback paths.
 
 M6. Time‑travel hooks via agent integrations (2–3d)

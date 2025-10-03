@@ -1,4 +1,4 @@
-This document specifies the filesystem snapshot abstraction used by Agents‑Workflow (Rust rewrite) and the provider matrix that implements it across platforms. It supersedes the legacy Ruby‑era overview while preserving the original objectives and context.
+This document specifies the filesystem snapshot abstraction used by Agent Harbor (Rust rewrite) and the provider matrix that implements it across platforms. It supersedes the legacy Ruby‑era overview while preserving the original objectives and context.
 
 ## Objectives & Context
 
@@ -115,7 +115,7 @@ Two top‑level options select snapshotting and working‑copy strategies. Both 
 Mapping:
 
 - CLI flags: `--fs-snapshots` and `--working-copy`
-- Env: `AGENTS_WORKFLOW_FS_SNAPSHOTS`, `AGENTS_WORKFLOW_WORKING_COPY`
+- Env: `AH_FS_SNAPSHOTS`, `AH_WORKING_COPY`
 - TOML: under `[fs]` in [Configuration.md](../Configuration.md) and JSON Schema
 
 Rationale: Users may prefer a Git worktree–based flow even when a more efficient CoW setup is available, or enforce `worktree` mounting to avoid per‑process mounts.
@@ -134,7 +134,7 @@ Working‑copy compatibility:
 
 - When `workingCopy = InPlace`, select providers that support in‑place capture (e.g., Git commit‑tree with a temp index; ZFS/Btrfs native snapshots). Do not select providers that require a separate user‑space mount for isolation.
 
-Diagnostics surface detection notes and the final decision in `aw doctor` and verbose logs.
+Diagnostics surface detection notes and the final decision in `ah doctor` and verbose logs.
 
 ## Workflow Overview
 
@@ -155,7 +155,7 @@ The trait intentionally omits loosely‑typed `opts` maps. Common behavior is ca
 
 ## State Persistence Integration
 
-Before launching a local agent session, AW writes session workspace information to the local state DB (see State Persistence):
+Before launching a local agent session, AH writes session workspace information to the local state DB (see State Persistence):
 
 - Selected `provider` (zfs|btrfs|agentfs|git|disable) and `workingCopy` mode
 - `workspace_path` (when applicable)
@@ -173,7 +173,7 @@ This record is created before the agent process starts and updated as snapshots/
 Git provider captures the working state as a commit without mutating the user’s branch, then uses `git worktree` for writable workspaces. Details are in "[Git-Based-Snapshots.md](Git-Based-Snapshots.md)". Key properties:
 
 - Zero changes to the primary index and branch; uses a separate temporary index (`GIT_INDEX_FILE`) and `git stash create`/`commit‑tree` to capture staged + unstaged changes. Untracked files can be included via an opt‑in mode that enumerates untracked paths into the temporary index.
-- Snapshot refs are stored under `refs/aw/sessions/<session>/snapshots/<n>`; writable branches under `refs/aw/branches/<session>/<name>`.
+- Snapshot refs are stored under `refs/ah/sessions/<session>/snapshots/<n>`; writable branches under `refs/ah/branches/<session>/<name>`.
 - Path‑preserving requires an AgentFS bind mount or Linux mount namespace tricks; otherwise runs as a worktree.
 
 ## Integration with Agent Time‑Travel

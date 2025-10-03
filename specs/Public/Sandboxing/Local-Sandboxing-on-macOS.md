@@ -190,7 +190,7 @@ Notes:
 ## 13) CLI & configuration defaults (macOS)
 
 ```
-aw sandbox [OPTIONS] -- CMD [ARGS...]
+ah sandbox [OPTIONS] -- CMD [ARGS...]
 
 DESCRIPTION: Launch a macOS sandboxed session (AgentFS + chroot + Seatbelt + ES) and run CMD.
 

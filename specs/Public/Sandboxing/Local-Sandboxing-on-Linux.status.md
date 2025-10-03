@@ -1,9 +1,9 @@
 ### Overview
 
 This document tracks the implementation status of the [Local-Sandboxing-on-Linux](Local-Sandboxing-on-Linux.md) functionality.
-Please also read [Sandboxing Strategies](Agents-Workflow-Sandboxing-Strategies.md) for a wider context.
+Please also read [Sandboxing Strategies](Agent-Harbor-Sandboxing-Strategies.md) for a wider context.
 
-Goal: deliver a production‑ready local Linux sandbox with dynamic read allow‑list, static RO/overlay mode, network isolation, resource limits, and developer‑friendly UX, surfaced through `aw session audit` and automated policy enforcement.
+Goal: deliver a production‑ready local Linux sandbox with dynamic read allow‑list, static RO/overlay mode, network isolation, resource limits, and developer‑friendly UX, surfaced through `ah session audit` and automated policy enforcement.
 
 Total estimated timeline: 6-8 months (broken into major phases with parallel development tracks)
 
@@ -464,13 +464,13 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 
 - Deliverables:
 
-  - Emit sandbox audit events consumable via `aw session audit` (local) and the REST service (remote).
+  - Emit sandbox audit events consumable via `ah session audit` (local) and the REST service (remote).
   - Map config keys: terminal.editor.command (passed to left pane), tui.recording.scope, sandbox.default.
   - Acceptance suite runs: mount, seccomp, network, cgroups, overlays, debug toggles.
 
 - Verification:
   - Acceptance test suite passes all sandbox integration scenarios
-  - E2E test: `aw session audit` displays sandbox events correctly
+  - E2E test: `ah session audit` displays sandbox events correctly
   - Integration test: config keys properly mapped and applied
   - E2E test: all sandbox features work end-to-end in CLI workflow
 
@@ -486,7 +486,7 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 
 - Reusable crates published (internal registry): sandbox-core, sandbox-fs, sandbox-seccomp, sandbox-cgroups, sandbox-net, sandbox-proto.
 - `sbx-helper` binary with documented CLI.
-- Updated AW CLI (`aw session audit`) bound to the sandbox supervisor.
+- Updated AH CLI (`ah session audit`) bound to the sandbox supervisor.
 - Comprehensive automated test matrix with documented acceptance criteria.
 
 ### Risks & mitigations

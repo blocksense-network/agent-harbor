@@ -1,6 +1,6 @@
 # Codex-Setup Integration Tests
 
-This directory contains integration tests specifically for the `codex-setup` script in the agent-workflow system, testing the Nix installation via environment sourcing in the target Ubuntu environment.
+This directory contains integration tests specifically for the `codex-setup` script in the agent-harbor system, testing the Nix installation via environment sourcing in the target Ubuntu environment.
 
 ## Overview
 

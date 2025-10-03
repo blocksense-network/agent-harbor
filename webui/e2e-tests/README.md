@@ -1,6 +1,6 @@
-# Agents-Workflow WebUI E2E Tests
+# Agent Harbor WebUI E2E Tests
 
-This directory contains comprehensive end-to-end tests for the Agents-Workflow WebUI, implementing the test coverage requirements outlined in `WebUI.status.md`.
+This directory contains comprehensive end-to-end tests for the agent-harbor WebUI, implementing the test coverage requirements outlined in `WebUI.status.md`.
 
 ## Test Coverage Implemented
 

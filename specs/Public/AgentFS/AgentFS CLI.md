@@ -1,4 +1,4 @@
-## AgentFS CLI — Snapshots and Branches (integrated into `aw`)
+## AgentFS CLI — Snapshots and Branches (integrated into `ah`)
 
 ### Purpose
 
@@ -8,7 +8,7 @@ Specify a cross‑platform command‑line interface to:
 - Create branches (writable clones) from a given snapshot
 - Bind a process (or launch a command) within a specific branch view
 
-This CLI is integrated as subcommands of the main `aw` CLI. It controls the running user‑space filesystem server (adapter) hosting AgentFS Core. Delivery mechanisms and message schemas are specified in [AgentFS Control Messages](AgentFS%20Control%20Messages.md). Control is relayed using platform‑appropriate mechanisms validated by reference projects:
+This CLI is integrated as subcommands of the main `ah` CLI. It controls the running user‑space filesystem server (adapter) hosting AgentFS Core. Delivery mechanisms and message schemas are specified in [AgentFS Control Messages](AgentFS%20Control%20Messages.md). Control is relayed using platform‑appropriate mechanisms validated by reference projects:
 
 - Windows (WinFsp): DeviceIoControl to the mounted volume (maps to WinFsp `Control` entry‑point)
 - Linux/macOS (FUSE): ioctl on a special control file in the mount or the file’s inode (maps to libfuse `ioctl` op)
@@ -16,11 +16,11 @@ This CLI is integrated as subcommands of the main `aw` CLI. It controls the runn
 
 ### Command Overview
 
-- aw agent fs snapshot create [--name <NAME>] --mount <MOUNT>
-- aw agent fs snapshot list --mount <MOUNT>
-- aw agent fs branch create --from <SNAPSHOT_ID> [--name <NAME>] --mount <MOUNT>
-- aw agent fs branch bind --branch <BRANCH_ID> --mount <MOUNT> [--pid <PID>]
-- aw agent fs branch exec --branch <BRANCH_ID> --mount <MOUNT> -- <COMMAND> [ARGS...]
+- ah agent fs snapshot create [--name <NAME>] --mount <MOUNT>
+- ah agent fs snapshot list --mount <MOUNT>
+- ah agent fs branch create --from <SNAPSHOT_ID> [--name <NAME>] --mount <MOUNT>
+- ah agent fs branch bind --branch <BRANCH_ID> --mount <MOUNT> [--pid <PID>]
+- ah agent fs branch exec --branch <BRANCH_ID> --mount <MOUNT> -- <COMMAND> [ARGS...]
 
 Notes:
 
@@ -86,18 +86,18 @@ Notes:
 ### Examples
 
 - Create a snapshot with a name:
-  - Windows: `aw agent fs snapshot create --mount X: --name clean`
-  - FUSE: `aw agent fs snapshot create --mount /mnt/aw --name clean`
+  - Windows: `ah agent fs snapshot create --mount X: --name clean`
+  - FUSE: `ah agent fs snapshot create --mount /mnt/ah --name clean`
 
 - List snapshots:
-  - `aw agent fs snapshot list --mount /mnt/aw`
+  - `ah agent fs snapshot list --mount /mnt/ah`
 
 - Create a branch from snapshot and bind current shell:
-  - `aw agent fs branch create --mount /mnt/aw --from 01HV... --name task-123 > branch.json`
-  - `aw agent fs branch bind --mount /mnt/aw --branch $(jq -r .id branch.json)`
+  - `ah agent fs branch create --mount /mnt/ah --from 01HV... --name task-123 > branch.json`
+  - `ah agent fs branch bind --mount /mnt/ah --branch $(jq -r .id branch.json)`
 
 - Run a command in a branch:
-  - `aw agent fs branch exec --mount /mnt/aw --branch 01HW... -- bash -lc "make test"`
+  - `ah agent fs branch exec --mount /mnt/ah --branch 01HW... -- bash -lc "make test"`
 
 ### Security Considerations
 

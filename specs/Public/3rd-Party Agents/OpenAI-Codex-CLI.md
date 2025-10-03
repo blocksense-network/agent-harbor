@@ -46,7 +46,7 @@ Codex CLI can be started with a specific task prompt in several ways:
 
 ### Checkpointing (point-in-time restore of chat + filesystem)
 
-There is no evidence of an official checkpointing feature in the Codex CLI that restores both chat and filesystem to a specific moment. Some materials reference applying diffs, but this is not equivalent to AW’s checkpointing requirement.
+There is no evidence of an official checkpointing feature in the Codex CLI that restores both chat and filesystem to a specific moment. Some materials reference applying diffs, but this is not equivalent to AH’s checkpointing requirement.
 
 - Scope: No official checkpoints. Diff application is not a full checkpoint/restore.
 - Restore: N/A. Applying a diff is not a full restore, and requires manual Git management.

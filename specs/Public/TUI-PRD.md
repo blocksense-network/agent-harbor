@@ -13,8 +13,8 @@ Backends:
 
 ### Auto-Attach and Window Model
 
-- On start, `aw tui` auto-attaches to the configured multiplexer session (creating one if needed) and launches the TUI dashboard in a single window initially. Existing task windows are left intact.
-- The TUI dashboard (`aw tui dashboard`) is the main interface for task management and runs inside a multiplexer window.
+- On start, `ah tui` auto-attaches to the configured multiplexer session (creating one if needed) and launches the TUI dashboard in a single window initially. Existing task windows are left intact.
+- The TUI dashboard (`ah tui dashboard`) is the main interface for task management and runs inside a multiplexer window.
 - Launching a new task from the dashboard creates a new multiplexer window with split panes:
   - Right pane = agent activity and logs, left pane = terminal or configured editor in the workspace.
   - Devcontainer and remote-server runs: panes are inside the container/remote context.

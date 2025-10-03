@@ -1,7 +1,7 @@
 {
-  "name": "aw-webui-mock-server",
+  "name": "ah-webui-mock-server",
   "version": "1.0.0",
-  "description": "Mock REST API server for Agents-Workflow WebUI development and testing",
+  "description": "Mock REST API server for the Agent Harbor WebUI development and testing",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -19,7 +19,7 @@
     "mock",
     "api",
     "rest",
-    "agents-workflow"
+    "agent-harbor"
   ],
   "author": "",
   "license": "ISC",

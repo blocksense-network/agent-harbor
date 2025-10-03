@@ -17,8 +17,8 @@ Automate the Codex WebUI to initiate coding sessions for both local and cloud ag
 7. If the expected login is not present, relaunch in visible mode to let the user authenticate, then continue.
 8. Navigate to Codex, select workspace and branch, enter the task description, and press "Code":
    - Workspace comes from `--codex-workspace` or `config: codex-workspace` (see [Configuration.md](../Configuration.md)).
-   - Branch comes from the `aw task --branch` value.
-9. For cloud agents: integrate with `aw agent record` for session monitoring and `aw agent follow-cloud-task` for real-time progress tracking.
+   - Branch comes from the `ah task --branch` value.
+9. For cloud agents: integrate with `ah agent record` for session monitoring and `ah agent follow-cloud-task` for real-time progress tracking.
 10. Record success and trigger completion notifications if enabled.
 
 If the automation code fails to execute due to potential changes in the Codex WebUI. Report detailed diagnostic information for the user (e.g. which UI element you were trying to locate; Which selectors were used and what happened - the expected element was not found, more than one element was found, etc).
@@ -29,9 +29,9 @@ If the automation code fails to execute due to potential changes in the Codex We
 
 ### Configuration
 
-Controlled via AW configuration (see `docs/cli-spec.md` and `docs/configuration.md`):
+Controlled via AH configuration (see `docs/cli-spec.md` and `docs/configuration.md`):
 
-- Enable/disable automation for `aw task`.
+- Enable/disable automation for `ah task`.
 - Select or override the agent browser profile name.
 - Set default Codex workspace: `codex-workspace`.
 

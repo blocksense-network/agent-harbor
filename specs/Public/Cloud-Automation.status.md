@@ -62,7 +62,7 @@ M2. Provider-specific adapters with streaming (6–8d)
 - Implement adapters for each cloud provider: OpenAI Codex (ChatGPT), GitHub Copilot, Cursor Claude, Google Jules.
 - Add provider-specific navigation, task submission, result extraction, and custom streaming for real-time monitoring.
 - Implement provider detection and automatic adapter selection.
-- Integrate with CLI monitoring commands (`aw agent follow-cloud-task`).
+- Integrate with CLI monitoring commands (`ah agent follow-cloud-task`).
 - Success criteria (integration tests):
   - Each provider adapter can submit tasks, extract results, and stream progress.
   - Provider auto-detection works reliably.
@@ -79,8 +79,8 @@ Acceptance checklist (M2)
 
 M3. CLI integration and monitoring (4–6d)
 
-- Integrate cloud automation into main CLI (`aw agent run --cloud-*`).
-- Implement `aw agent follow-cloud-task` for browser stream monitoring.
+- Integrate cloud automation into main CLI (`ah agent run --cloud-*`).
+- Implement `ah agent follow-cloud-task` for browser stream monitoring.
 - Add TUI integration for cloud agent progress alongside local activities.
 - Success criteria (CLI tests):
   - Cloud agent commands work end-to-end from task submission to completion.
@@ -131,7 +131,7 @@ Acceptance checklist (M4)
 
 - Cloud automation Rust crates: agent-browser-profiles, cloud-automation-core, cloud-providers.
 - cloud-worker binary for browser automation execution.
-- Updated AW CLI with cloud agent support and monitoring commands.
+- Updated AH CLI with cloud agent support and monitoring commands.
 - Comprehensive integration with agent browser profiles system.
 - Documentation and examples for cloud agent usage.
 

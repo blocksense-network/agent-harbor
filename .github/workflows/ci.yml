@@ -10,7 +10,7 @@
 #   just test-rust-verbose # Run tests with verbose output
 #   just build-sbx-helper-release # Build release binary
 #   just build-agentfs-rust-libs # Build AgentFS Rust libraries (macOS only)
-#   just test-agents-workflow   # Build and validate macOS AgentsWorkflow app (macOS only)
+#   just test-agent-harbor   # Build and validate macOS AgentHarbor app (macOS only)
 
 name: CI
 
@@ -159,5 +159,5 @@ jobs:
     - name: Build AgentFS Rust libraries
       run: just build-agentfs-rust-libs
 
-    - name: Build and validate AgentsWorkflow macOS app
-      run: just test-agents-workflow
+    - name: Build and validate AgentHarbor macOS app
+      run: just test-agent-harbor

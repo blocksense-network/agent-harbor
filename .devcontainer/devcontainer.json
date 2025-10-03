@@ -1,5 +1,5 @@
 {
-  "name": "agents-workflow",
+  "name": "agent-harbor",
   "build": {
     "dockerfile": "Dockerfile"
   },
@@ -55,7 +55,7 @@
     // Persistent Nix store using named volume - preserves build-time content
     // Named volumes retain the initial directory structure from the Docker image
     // unlike bind mounts which always overlay empty host directories
-    "source=agents-workflow-nix-store,target=/nix/store,type=volume",
+    "source=agent-harbor-nix-store,target=/nix/store,type=volume",
 
     // Mount host Cargo cache as read-only for sharing downloaded crates
     // This allows reusing .crate files and registry index from the host
@@ -64,7 +64,7 @@
     // Persistent Cargo cache using named volume - preserves build-time directory structure
     // Named volumes retain the initial directory structure from the Docker image
     // and provide persistence for container-specific compiled artifacts
-    "source=agents-workflow-cargo-cache,target=/home/vscode/.cargo,type=volume"
+    "source=agent-harbor-cargo-cache,target=/home/vscode/.cargo,type=volume"
   ],
 
   // Propagate environment variables from host for API keys and credentials

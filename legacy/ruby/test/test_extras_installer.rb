@@ -156,14 +156,14 @@ class TestExtrasInstaller < Minitest::Test
 
     # Temporarily override the constant
     original_marker_dir = ExtrasInstaller::MARKER_DIR
-    ExtrasInstaller.const_set(:AGENTS_WORKFLOW_DIR, @temp_dir)
+    ExtrasInstaller.const_set(:AH_DIR, @temp_dir)
 
     begin
       ExtrasInstaller.clean_markers
       refute Dir.exist?(File.join(@temp_dir, '.install-markers'))
     ensure
       # Restore original constant (though it may not matter for this test)
-      ExtrasInstaller.const_set(:AGENTS_WORKFLOW_DIR, File.dirname(original_marker_dir))
+      ExtrasInstaller.const_set(:AH_DIR, File.dirname(original_marker_dir))
     end
   end
 
@@ -200,7 +200,7 @@ class TestExtrasTaskCLI < Minitest::Test
 
   def test_install_extras_with_clean_flag
     # Create a marker file so clean_markers has something to clean
-    marker_dir = File.join(ExtrasInstaller::AGENTS_WORKFLOW_DIR, '.install-markers')
+    marker_dir = File.join(ExtrasInstaller::AH_DIR, '.install-markers')
     FileUtils.mkdir_p(marker_dir)
     File.write(File.join(marker_dir, 'test.done'), 'test')
 

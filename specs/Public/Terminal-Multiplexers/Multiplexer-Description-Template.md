@@ -60,7 +60,7 @@ Notes
 
 ## Detection and Version Compatibility
 
-- How the `aw` CLI detects availability.
+- How the `ah` CLI detects availability.
 - Minimum version required and feature gates.
 
 ## Cross‑Platform Notes
@@ -71,7 +71,7 @@ Notes
 
 ## Example: TUI Follow Flow
 
-Provide a realistic end‑to‑end example script that creates or focuses the session layout for a task id and starts `aw tui --follow <id>` within the appropriate pane.
+Provide a realistic end‑to‑end example script that creates or focuses the session layout for a task id and starts `ah tui --follow <id>` within the appropriate pane.
 
 ## References
 

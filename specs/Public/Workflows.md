@@ -1,6 +1,6 @@
 # Agent Workflow Commands
 
-This specification describes the workflow commands feature implemented in the agents-workflow project. This feature allows task descriptions to include dynamic content and environment variable setup through special directives.
+This specification describes the workflow commands feature implemented in the agent-harbor project. This feature allows task descriptions to include dynamic content and environment variable setup through special directives.
 
 ## Overview
 
@@ -25,9 +25,9 @@ The workflow commands are implemented in the Ruby codebase with the following ke
 
 Under the new Rust CLI architecture, workflow commands will be handled by:
 
-- **`aw agent get-task`**: Replaces the current `get-task` command, processes workflow commands and environment directives
-- **`aw agent get-setup-env`**: Dedicated command for extracting environment variables from workflow directives
-- **`aw agent start-work`**: Creates tasks with workflow processing support
+- **`ah agent get-task`**: Replaces the current `get-task` command, processes workflow commands and environment directives
+- **`ah agent get-setup-env`**: Dedicated command for extracting environment variables from workflow directives
+- **`ah agent start-work`**: Creates tasks with workflow processing support
 
 ## Workflow Commands
 
@@ -144,7 +144,7 @@ end
 All setup scripts include this pattern:
 
 ```bash
-SETUP_ENV="$("$AGENTS_WORKFLOW_DIR/bin/get-task" --get-setup-env 2>/dev/null)"
+SETUP_ENV="$("$AH_DIR/bin/get-task" --get-setup-env 2>/dev/null)"
 if [ -n "$SETUP_ENV" ]; then
   while IFS= read -r line; do
     export "$line"
@@ -158,7 +158,7 @@ The Rust CLI will provide:
 
 ```bash
 # Get environment variables
-SETUP_ENV="$(aw agent get-setup-env 2>/dev/null)"
+SETUP_ENV="$(ah agent get-setup-env 2>/dev/null)"
 if [ -n "$SETUP_ENV" ]; then
   while IFS= read -r line; do
     export "$line"
@@ -168,7 +168,7 @@ fi
 
 ## Manual Testing
 
-- You can manually test dynamic instruction and task prompts using `aw agent instructions`. It processes a dynamic instruction file by expanding workflow commands per the rules above and outputs the final prompt text.
+- You can manually test dynamic instruction and task prompts using `ah agent instructions`. It processes a dynamic instruction file by expanding workflow commands per the rules above and outputs the final prompt text.
 
 ### Command Line Interface
 
@@ -179,9 +179,9 @@ fi
 
 **Future (Rust):**
 
-- `aw agent get-task [--autopush] [--agent TYPE] [--model MODEL]`: Get processed task
-- `aw agent get-setup-env`: Extract environment variables only
-- `aw agent start-work --task-description DESC [--branch-name NAME]`: Create task with workflow support
+- `ah agent get-task [--autopush] [--agent TYPE] [--model MODEL]`: Get processed task
+- `ah agent get-setup-env`: Extract environment variables only
+- `ah agent start-work --task-description DESC [--branch-name NAME]`: Create task with workflow support
 
 ## Processing Flow
 

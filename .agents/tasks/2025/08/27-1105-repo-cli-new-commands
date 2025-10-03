@@ -2,10 +2,10 @@ Read the work-in-progress specs in the specs folder.
 
 We'll be expanding the CLI spec with some new commands:
 
-* aw repo init [--vcs=git|hg|etc] [--devenv=no|nix|spack|bazel|etc] [--devcontainer=yes|no] [--direnv=yes|no] [--task-runner=just|make|etc] [--supported-agents=all|codex|claude|etc] [optional-project-description-string]
+* ah repo init [--vcs=git|hg|etc] [--devenv=no|nix|spack|bazel|etc] [--devcontainer=yes|no] [--direnv=yes|no] [--task-runner=just|make|etc] [--supported-agents=all|codex|claude|etc] [optional-project-description-string]
 
 When the project description is not provided. We launch an editor in the standard configurable way and the user enters the project description there
-The aw tool then launches a local agent to initialize the repo. The standard command-line and configuration settings control which agent is used and how it is launched.
+The ah tool then launches a local agent to initialize the repo. The standard command-line and configuration settings control which agent is used and how it is launched.
 
 git is the default version control system.
 just is the default task runner.
@@ -16,13 +16,13 @@ just is the default task runner.
 --supported-agents is set to all by default.
 
 The selected command-line options and project description are combined into a suitable task prompt that is handed off to the agent in conversational mode.
-The prompt suggests to the agent to collect any additional details for initializing the repo from the user. The agent is asked to suggest the use of specific testing frameworks and linters. The instructions tell the agent that if the user approves these choices, at the end of the conversation the agent should create an AGENTS.md file providing the instructions for running the tests and lints using the selected task runner. The init command completes by creating symlinks for all supported agents (see the `aw repo instructions link` command below which executes the same step in an already initialized repo)
+The prompt suggests to the agent to collect any additional details for initializing the repo from the user. The agent is asked to suggest the use of specific testing frameworks and linters. The instructions tell the agent that if the user approves these choices, at the end of the conversation the agent should create an AGENTS.md file providing the instructions for running the tests and lints using the selected task runner. The init command completes by creating symlinks for all supported agents (see the `ah repo instructions link` command below which executes the same step in an already initialized repo)
 
-* aw repo instructions create
+* ah repo instructions create
 
 Uses a similar process to the init command above, but the agent is additionally prompted to review the repo before collecting information from the user.
 
-* aw repo instructions link [--supported-agents=all|codex|etc] [source-file]
+* ah repo instructions link [--supported-agents=all|codex|etc] [source-file]
 
 This command will have behavior similar to the following ruby program:
 
@@ -245,7 +245,7 @@ puts "(dry-run: nothing actually changed)" if opts[:dry_run]
 When a source-file is not provided, the command will look for an existing instructions file (for one of the supported agents).
 If there is a single existing instructions file, it would be assumed to be the source file.
 
-* aw repo check [--supported-agents=...]
+* ah repo check [--supported-agents=...]
 
 This command will perform various checks:
 
@@ -253,7 +253,7 @@ This command will perform various checks:
 
 * Is there a devcontainer setup? Does its own health check procedure pass (please document that such procedure will be available in the devcontainer spec)
 
-* aw health [--supported-agents=...]
+* ah health [--supported-agents=...]
 
 Performs diagnostic health checks for the presence and login status of the configured agentic tools.
 

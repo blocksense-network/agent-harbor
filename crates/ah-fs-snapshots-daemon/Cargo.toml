@@ -1,0 +1,29 @@
+[package]
+name = "ah-fs-snapshots-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# SSZ serialization (TODO: implement proper SSZ)
+ethereum_ssz = { workspace = true }
+ethereum_ssz_derive = { workspace = true }
+
+# Temporary JSON serialization for length-prefixed protocol
+serde_json = { workspace = true }
+
+# Additional dependencies
+clap = { workspace = true, features = ["derive"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+futures = "0.3"
+hex = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"

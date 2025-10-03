@@ -14,6 +14,6 @@ Browser automation serves as the foundation for cloud agent support, enabling se
 - Use Playwright persistent contexts bound to a selected profile.
 - Prefer headless execution when the profile's login expectations are met; otherwise, switch to headful and guide the user.
 - Detect UI drift and fail fast with actionable diagnostics. When possible, surface the browser window to help the user investigate.
-- Integrate with `aw agent record` for session recording and `aw agent follow-cloud-task` for real-time monitoring.
-- Support completion notifications with custom `agents-workflow://` links for seamless WebUI integration.
+- Integrate with `ah agent record` for session recording and `ah agent follow-cloud-task` for real-time monitoring.
+- Support completion notifications with custom `agent-harbor://` links for seamless WebUI integration.
 - Enable dual monitoring: browser automation can run alongside TUI interfaces for comprehensive progress tracking.

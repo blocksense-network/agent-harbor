@@ -1,6 +1,6 @@
 ### Overview
 
-This document tracks the implementation status of the [Handling-AW-URL-Scheme](Handling-AW-URL-Scheme.md) functionality.
+This document tracks the implementation status of the [Handling-AH-URL-Scheme](Handling-AH-URL-Scheme.md) functionality.
 
 Goal: Implement a secure, cross‑platform URL scheme handler that opens tasks and (optionally) creates tasks with an explicit confirmation dialog. Support TUI reuse when a task is already followed in an existing terminal window.
 
@@ -10,7 +10,7 @@ M0. Protocol installation and basic registration (3–4d)
 
 - Implement Windows registry (HKCU) and MSIX URI activation.
 - Implement macOS `CFBundleURLTypes` and Electron deep‑link handling.
-- Implement Linux `.desktop` with `x-scheme-handler/agents-workflow`.
+- Implement Linux `.desktop` with `x-scheme-handler/agent-harbor`.
 - Create minimal test handler binary that logs URL reception for testing automation frameworks.
 - Success criteria (system integration tests):
   - OS registration succeeds without elevation.
@@ -47,7 +47,7 @@ Acceptance checklist (M1)
 
 M2. Core handler skeleton (3–5d)
 
-- Build Rust binary `aw-url-handler` (Windows/macOS/Linux) with structured logging.
+- Build Rust binary `ah-url-handler` (Windows/macOS/Linux) with structured logging.
 - Implement URL parsing/validation; reject unknown hosts/components and secrets in query.
 - Implement config resolution (webui base, rest base) + health probes.
 - Success criteria (unit tests):
@@ -64,7 +64,7 @@ Acceptance checklist (M2)
 
 M3. WebUI bootstrap and REST probing (3–4d)
 
-- Implement WebUI startup when absent, waiting for `/_aw/healthz`.
+- Implement WebUI startup when absent, waiting for `/_ah/healthz`.
 - Implement optional REST probing at `/api/v1/readyz`.
 - Implement cross-platform browser opening to `${webuiBase}/tasks/<id>`.
 - Success criteria (integration tests):
@@ -83,7 +83,7 @@ M4. TUI integration and reuse (4–6d)
 
 - Implement TUI control index reading `${STATE_DIR}/tui-sessions.json` and socket queries.
 - Implement existing session reuse via tmux/WezTerm/Kitty commands with platform focus helpers.
-- Implement fallback: start `aw tui --follow <id>` (non-blocking).
+- Implement fallback: start `ah tui --follow <id>` (non-blocking).
 - Success criteria (integration tests):
   - Existing TUI sessions are detected and reused instead of spawning new ones.
   - Platform-specific focus commands execute successfully.
@@ -150,14 +150,14 @@ Acceptance checklist (M6)
     - Windows: PowerShell + UIAutomation (or Python `uiautomation`) to locate and click buttons by name; fallback AutoHotkey.
     - macOS: AppleScript/JXA using Accessibility API to detect browser confirmation sheets; standard `osascript` runner in CI.
     - Linux: AT‑SPI via `dogtail` (preferred) to find "External Protocol Request" dialogs; X11 fallback via `xdotool`.
-  - Handler observability: temporary test log sink `${TMPDIR}/aw-url-handler-test.log` with structured events.
+  - Handler observability: temporary test log sink `${TMPDIR}/ah-url-handler-test.log` with structured events.
 - Fixtures: Stub WebUI server, optional stub REST, TUI control stub with sessions.json and socket.
 - Test matrix: OS (Windows Win10/11, macOS 13+, Linux GNOME/KDE), Browsers (Chrome/Chromium, Edge, Firefox, Safari).
 - Golden tests for structured logs, protocol compliance, and dialog interactions.
 
 ### Deliverables
 
-- Rust binary `aw-url-handler` with cross-platform builds.
+- Rust binary `ah-url-handler` with cross-platform builds.
 - OS-specific packaging and registration scripts.
 - Comprehensive automated test suite with CI matrix.
 - Updated documentation and CLI examples.
@@ -189,7 +189,7 @@ Acceptance checklist (M6)
 - M5: pending
 - M6: pending
 
-### GUI integration notes (when AW GUI is installed)
+### GUI integration notes (when AH GUI is installed)
 
 - Delegation: The protocol handler delegates to the GUI main process via IPC when the GUI is running.
 - Window reuse: A new browser window is not spawned if the GUI window exists; the GUI focuses its window and navigates to the route.

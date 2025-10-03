@@ -23,11 +23,11 @@ Using actions (left/right/down) and `--command`:
 
 ```
 TASK_ID=$1
-tilix --new-window --title="aw-task-${TASK_ID}" \
+tilix --new-window --title="ah-task-${TASK_ID}" \
   --command="bash -lc 'nvim .'" &
 sleep 0.3
-tilix --action=app-new-session-right --command="bash -lc 'aw tui --follow ${TASK_ID}'"
-tilix --action=app-new-session-down --command="bash -lc 'aw session logs ${TASK_ID} -f'"
+tilix --action=app-new-session-right --command="bash -lc 'ah tui --follow ${TASK_ID}'"
+tilix --action=app-new-session-down --command="bash -lc 'ah session logs ${TASK_ID} -f'"
 ```
 
 Alternatively, define a reusable session JSON and load it with `--session FILE`. [1]
@@ -59,7 +59,7 @@ Alternatively, define a reusable session JSON and load it with `--session FILE`.
 
 ## Example: TUI Follow Flow
 
-Use the action commands above or a session JSON to create the layout and run `aw tui --follow <id>` and logs.
+Use the action commands above or a session JSON to create the layout and run `ah tui --follow <id>` and logs.
 
 ## References
 

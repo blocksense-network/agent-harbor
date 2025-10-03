@@ -23,7 +23,7 @@ Each line in a Claude session file is a JSON object representing a single conver
   "parentUuid": "c3be33fc-f78a-44e9-8a59-505d86d17429",
   "isSidechain": false,
   "userType": "external",
-  "cwd": "/Users/zahary/blocksense/agents-workflow",
+  "cwd": "/Users/zahary/blocksense/agent-harbor",
   "sessionId": "8f9e1698-672b-40ee-af6d-ec906d4910c0",
   "version": "1.0.98",
   "gitBranch": "main",
@@ -334,7 +334,7 @@ Each entry captures git repository state:
 ```json
 {
   "gitBranch": "main",
-  "cwd": "/Users/zahary/blocksense/agents-workflow"
+  "cwd": "/Users/zahary/blocksense/agent-harbor"
 }
 ```
 

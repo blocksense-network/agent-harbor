@@ -57,12 +57,11 @@ async fn test_sandbox_integration() {
 #[cfg(target_os = "macos")]
 #[test]
 fn test_sbpl_builder_snapshot() {
-    use aw_sandbox_macos::SbplBuilder;
+    use ah_sandbox_macos::SbplBuilder;
     let sbpl = SbplBuilder::new()
         .allow_read_subpath("/usr/bin")
         .allow_write_subpath("/tmp")
         .allow_exec_subpath("/bin")
-        .loopback_only()
         .harden_process_info()
         .allow_signal_same_group()
         .deny_apple_events()
@@ -78,7 +77,7 @@ fn test_sbpl_builder_snapshot() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn test_aw_macos_launcher_denies_write_outside_tmp() {
+fn test_ah_macos_launcher_denies_write_outside_tmp() {
     use std::path::PathBuf;
     use std::process::Command;
 
@@ -89,11 +88,11 @@ fn test_aw_macos_launcher_denies_write_outside_tmp() {
         .expect("failed to resolve project root")
         .to_path_buf();
 
-    let launcher_path = project_root.join("target/debug/aw-macos-launcher");
+    let launcher_path = project_root.join("target/debug/ah-macos-launcher");
 
     if !launcher_path.exists() {
         eprintln!(
-            "⚠️  Skipping macOS E2E - aw-macos-launcher not found at {:?}. Build it first: cargo build --bin aw-macos-launcher",
+            "⚠️  Skipping macOS E2E - ah-macos-launcher not found at {:?}. Build it first: cargo build --bin ah-macos-launcher",
             launcher_path
         );
         return;
@@ -102,7 +101,7 @@ fn test_aw_macos_launcher_denies_write_outside_tmp() {
     // Try to write outside allowed path (/tmp) and expect denial under Seatbelt
     let script = r#"
         home="$HOME"
-        if echo "test" > "$home/aw_macos_launcher_should_fail.txt"; then
+        if echo "test" > "$home/ah_macos_launcher_should_fail.txt"; then
             exit 42
         else
             exit 0
@@ -118,11 +117,11 @@ fn test_aw_macos_launcher_denies_write_outside_tmp() {
             "sh", "-c", script,
         ])
         .status()
-        .expect("failed to run aw-macos-launcher");
+        .expect("failed to run ah-macos-launcher");
 
     // Regardless of exit code, assert that the file was not created in $HOME
     let home = std::env::var("HOME").unwrap();
-    let path = PathBuf::from(home).join("aw_macos_launcher_should_fail.txt");
+    let path = PathBuf::from(home).join("ah_macos_launcher_should_fail.txt");
     if path.exists() {
         // Clean up if created erroneously to avoid polluting home dir
         let _ = std::fs::remove_file(&path);

@@ -64,8 +64,8 @@ else
     echo -e "${GREEN}✅ Confirmed: Nix is not initially available (expected)${NC}"
 fi
 
-# Change to the agent-workflow directory
-cd /agent-workflow
+# Change to the agent-harbor directory
+cd /agent-harbor
 
 # Set NIX=1 environment variable
 export NIX=1
@@ -165,26 +165,26 @@ RUN adduser -D -s /bin/bash testuser
 USER testuser
 WORKDIR /home/testuser
 
-# Copy the agent-workflow repository from the build context
-COPY . /agent-workflow/
+# Copy the agent-harbor repository from the build context
+COPY . /agent-harbor/
 
 # Make scripts executable
-RUN find /agent-workflow -name "*.sh" -exec chmod +x {} \; && \
-    chmod +x /agent-workflow/codex-setup /agent-workflow/common-* 2>/dev/null || true
+RUN find /agent-harbor -name "*.sh" -exec chmod +x {} \; && \
+    chmod +x /agent-harbor/codex-setup /agent-harbor/common-* 2>/dev/null || true
 
 # Set the working directory
-WORKDIR /agent-workflow
+WORKDIR /agent-harbor
 EOF
 
 echo -e "${YELLOW}📦 Building Docker image...${NC}"
 
-# Build the Docker image from the source directory (where the agent-workflow files are)
+# Build the Docker image from the source directory (where the  Agent Harbor files are)
 # We need to copy the Dockerfile to the source directory temporarily
 cp "$DOCKERFILE" "$(pwd)/Dockerfile.tmp"
 cd "$(pwd)"
 
 # Build the Docker image
-docker build -f Dockerfile.tmp -t agent-workflow-test .
+docker build -f Dockerfile.tmp -t agent-harbor-test .
 
 # Clean up the temporary Dockerfile
 rm Dockerfile.tmp
@@ -195,9 +195,9 @@ echo -e "${YELLOW}🐳 Running test in Docker container...${NC}"
 # Use --rm to clean up the container after the test
 # Mount the test script and run it
 docker run --rm \
-  --name agent-workflow-integration-test \
+  --name agent-harbor-integration-test \
   -v "$TEST_SCRIPT:/test-inside-container.sh" \
-  agent-workflow-test \
+  agent-harbor-test \
   /bin/bash /test-inside-container.sh
 
 # Check the exit code

@@ -1,5 +1,0 @@
----
-source: crates/aw-mux/src/tmux.rs
-expression: snapshot
----
-

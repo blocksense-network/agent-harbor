@@ -42,9 +42,9 @@ test.describe('TOM Select Components', () => {
       await expect(dropdown).toBeVisible();
       
       // Verify dropdown contains repository options
-      await expect(dropdown).toContainText('agents-workflow-webui');
-      await expect(dropdown).toContainText('agents-workflow-core');
-      await expect(dropdown).toContainText('agents-workflow-cli');
+      await expect(dropdown).toContainText('agent-harbor-webui');
+      await expect(dropdown).toContainText('agent-harbor-core');
+      await expect(dropdown).toContainText('agent-harbor-cli');
     });
 
     test('fuzzy search filters repository list', async ({ page }) => {
@@ -57,8 +57,8 @@ test.describe('TOM Select Components', () => {
       
       // Verify filtered results
       const dropdown = page.locator('.ts-dropdown, [role="listbox"]');
-      await expect(dropdown).toContainText('agents-workflow-webui');
-      await expect(dropdown).not.toContainText('agents-workflow-cli');
+      await expect(dropdown).toContainText('agent-harbor-webui');
+      await expect(dropdown).not.toContainText('agent-harbor-cli');
     });
 
     test('fuzzy search matches partial strings', async ({ page }) => {
@@ -70,9 +70,9 @@ test.describe('TOM Select Components', () => {
       // Search with non-contiguous characters
       await input.fill('awcore');
       
-      // Should match "agents-workflow-core"
+      // Should match "agent-harbor-core"
       const dropdown = page.locator('.ts-dropdown, [role="listbox"]');
-      await expect(dropdown).toContainText('agents-workflow-core');
+      await expect(dropdown).toContainText('agent-harbor-core');
     });
 
     test('selecting repository updates draft state', async ({ page }) => {
@@ -80,10 +80,10 @@ test.describe('TOM Select Components', () => {
       await repoSelector.click();
       
       // Select a repository
-      await page.locator('.ts-dropdown-content:has-text("agents-workflow-webui")').click();
+      await page.locator('.ts-dropdown-content:has-text("agent-harbor-webui")').click();
       
       // Verify selection is displayed
-      await expect(repoSelector).toContainText('agents-workflow-webui');
+      await expect(repoSelector).toContainText('agent-harbor-webui');
       
       // Verify dropdown closes
       const dropdown = page.locator('.ts-dropdown');
@@ -94,14 +94,14 @@ test.describe('TOM Select Components', () => {
       // Select a repository
       const repoSelector = page.locator('[data-testid="repo-selector"]');
       await repoSelector.click();
-      await page.locator('.ts-dropdown-content:has-text("agents-workflow-core")').click();
+      await page.locator('.ts-dropdown-content:has-text("agent-harbor-core")').click();
       
       // Create a new draft task
       await page.locator('footer button:has-text("New Task")').click();
       
       // Verify new draft has the same repository pre-selected
       const newDraftRepoSelector = page.locator('[data-testid="repo-selector"]').last();
-      await expect(newDraftRepoSelector).toContainText('agents-workflow-core');
+      await expect(newDraftRepoSelector).toContainText('agent-harbor-core');
     });
 
     test('keyboard navigation works in dropdown', async ({ page }) => {
@@ -180,7 +180,7 @@ test.describe('TOM Select Components', () => {
       // First select a repository
       const repoSelector = page.locator('[data-testid="repo-selector"]');
       await repoSelector.click();
-      await page.locator('.ts-dropdown-content:has-text("agents-workflow-webui")').click();
+      await page.locator('.ts-dropdown-content:has-text("agent-harbor-webui")').click();
       
       // Wait for API call to load branches
       await page.waitForTimeout(500);
@@ -519,11 +519,11 @@ test.describe('TOM Select Components', () => {
     test('screen readers announce selected value', async ({ page }) => {
       const repoSelector = page.locator('[data-testid="repo-selector"]');
       await repoSelector.click();
-      await page.locator('.ts-dropdown-content:has-text("agents-workflow-webui")').click();
+      await page.locator('.ts-dropdown-content:has-text("agent-harbor-webui")').click();
       
       // Verify aria-label or aria-describedby announces selection
       const ariaLabel = await repoSelector.getAttribute('aria-label');
-      expect(ariaLabel).toContain('agents-workflow-webui');
+      expect(ariaLabel).toContain('agent-harbor-webui');
     });
 
     test('keyboard shortcuts are accessible', async ({ page }) => {

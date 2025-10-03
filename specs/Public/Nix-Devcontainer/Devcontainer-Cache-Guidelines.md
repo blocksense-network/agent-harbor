@@ -66,5 +66,5 @@
 
 ### Observability
 
-- Expose cache directories and sizes via `aw health`.
+- Expose cache directories and sizes via `ah health`.
 - Emit basic metrics (hits/misses) where tools provide them (cargo, sccache).

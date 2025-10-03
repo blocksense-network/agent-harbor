@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-script minSpecVersion="2.0">
-    <title>AgentsWorkflow</title>
-    <organization>com.blocksense.agents-workflow</organization>
+    <title>AgentHarbor</title>
+    <organization>com.blocksense.agent-harbor</organization>
     <domains enable_anywhere="true"/>
     <options customize="never" require-scripts="false"/>
     <welcome file="Welcome.txt"/>
@@ -9,12 +9,12 @@
     <conclusion file="Conclusion.txt"/>
     <choices-outline>
         <line choice="default">
-            <line choice="agents-workflow"/>
+            <line choice="agent-harbor"/>
         </line>
     </choices-outline>
     <choice id="default"/>
-    <choice id="agents-workflow" visible="false">
-        <pkg-ref id="com.blocksense.agents-workflow"/>
+    <choice id="agent-harbor" visible="false">
+        <pkg-ref id="com.blocksense.agent-harbor"/>
     </choice>
-    <pkg-ref id="com.blocksense.agents-workflow" version="1.0.0" onConclusion="none">#AgentsWorkflow.pkg</pkg-ref>
+    <pkg-ref id="com.blocksense.agent-harbor" version="1.0.0" onConclusion="none">#AgentHarbor.pkg</pkg-ref>
 </installer-script>

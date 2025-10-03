@@ -22,17 +22,17 @@ This document describes automating WezTerm layouts and pane commands via the `we
 
 ```
 TASK_ID=$1
-TITLE="aw-task-${TASK_ID}"
+TITLE="ah-task-${TASK_ID}"
 
 # New window running editor
 wezterm cli spawn --new-window --cwd "$PWD" -- bash -lc "printf '\e]2;%s\a' '$TITLE'; nvim ."
 
 # Right split for TUI (60%)
-wezterm cli split-pane --right --percent 60 -- bash -lc "aw tui --follow ${TASK_ID}"
+wezterm cli split-pane --right --percent 60 -- bash -lc "ah tui --follow ${TASK_ID}"
 
 # Bottom split for logs (30%) in the left pane
 wezterm cli activate-pane-direction left
-wezterm cli split-pane --bottom --percent 30 -- bash -lc "aw session logs ${TASK_ID} -f"
+wezterm cli split-pane --bottom --percent 30 -- bash -lc "ah session logs ${TASK_ID} -f"
 
 # Optionally focus the TUI pane
 wezterm cli activate-pane-direction right
@@ -56,7 +56,7 @@ Notes
 
 ```
 TASK_ID=$1
-WINDOW_ID=$(wezterm cli list --format json | jq -r '.[] | select(.title=="aw-task-'"${TASK_ID}"'") | .window_id' | head -n1)
+WINDOW_ID=$(wezterm cli list --format json | jq -r '.[] | select(.title=="ah-task-'"${TASK_ID}"'") | .window_id' | head -n1)
 [ -n "$WINDOW_ID" ] && wezterm cli activate --window-id "$WINDOW_ID"
 ```
 

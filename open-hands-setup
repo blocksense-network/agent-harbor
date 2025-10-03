@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-AGENTS_WORKFLOW_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+AH_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-bash "$AGENTS_WORKFLOW_DIR/common-pre-setup"
+bash "$AH_DIR/common-pre-setup"
 
-SETUP_ENV="$("$AGENTS_WORKFLOW_DIR/bin/get-task" --get-setup-env 2>/dev/null)"
+SETUP_ENV="$("$AH_DIR/bin/get-task" --get-setup-env 2>/dev/null)"
 if [ -n "$SETUP_ENV" ]; then
   while IFS= read -r line; do
     export "$line"

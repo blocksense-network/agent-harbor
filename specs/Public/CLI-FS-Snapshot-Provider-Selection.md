@@ -2,11 +2,11 @@
 
 ### Purpose
 
-Defines how the AW CLI selects a filesystem snapshot provider for a repository/workspace path. This document consolidates the logic implemented in the `aw-fs-snapshots` crates for reference across CLI commands.
+Defines how the AH CLI selects a filesystem snapshot provider for a repository/workspace path. This document consolidates the logic implemented in the `ah-fs-snapshots` crates for reference across CLI commands.
 
 ### Scope
 
-Applies to commands that need to determine the snapshot provider for a path (e.g., `aw agent fs status`, `aw agent fs init-session`, sandbox preparation, and time‑travel operations).
+Applies to commands that need to determine the snapshot provider for a path (e.g., `ah agent fs status`, `ah agent fs init-session`, sandbox preparation, and time‑travel operations).
 
 ### Inputs
 
@@ -54,5 +54,5 @@ Applies to commands that need to determine the snapshot provider for a path (e.g
 
 ### References
 
-- See implementation in `crates/aw-fs-snapshots/` and provider crates (`aw-fs-snapshots-zfs`, `aw-fs-snapshots-btrfs`).
-- See CLI behavior in `aw agent fs status` and `aw agent fs init-session` sections of [CLI.md](CLI.md).
+- See implementation in `crates/ah-fs-snapshots/` and provider crates (`ah-fs-snapshots-zfs`, `ah-fs-snapshots-btrfs`).
+- See CLI behavior in `ah agent fs status` and `ah agent fs init-session` sections of [CLI.md](CLI.md).

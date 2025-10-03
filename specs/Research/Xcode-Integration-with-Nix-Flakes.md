@@ -119,8 +119,8 @@ Once Xcode is properly configured, build scripts can use `xcodebuild`:
 #!/bin/bash
 # Build Swift app with xcodebuild
 xcodebuild build \
-  -project AgentsWorkflow.xcodeproj \
-  -scheme AgentsWorkflow \
+  -project AgentHarbor.xcodeproj \
+  -scheme AgentHarbor \
   -configuration Release \
   -destination 'platform=macOS'
 ```

@@ -1,0 +1,18 @@
+[package]
+name = "ah-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["process", "io-util", "fs"] }
+async-trait = "0.1"
+tracing = "0.1"
+regex = "1.10"
+dirs = "5.0"
+chrono = "0.4"
+tempfile = "3.8"
+
+[dev-dependencies]
+tempfile = "3.0"
+tokio = { version = "1.0", features = ["rt", "macros", "process", "io-util"] }

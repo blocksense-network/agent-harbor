@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-AGENTS_WORKFLOW_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+AH_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Configure ~/.netrc for Git hosting services
 NETRC_CONTENT=""
@@ -23,7 +23,7 @@ else
 fi
 
 # Create AGENTS.md file if we can write to the parent directory
-if [ -w "$(dirname "$AGENTS_WORKFLOW_DIR")" ]; then
+if [ -w "$(dirname "$AH_DIR")" ]; then
   cat > ../AGENTS.md << EOF
 When you a given a task description or developer instructions that
 just state "go", execute the shell command \`${GET_TASK_CMD}\` under
@@ -51,9 +51,9 @@ else
   echo "Warning: Cannot write to parent directory, skipping AGENTS.md creation"
 fi
 
-. "$AGENTS_WORKFLOW_DIR/common-pre-setup"
+. "$AH_DIR/common-pre-setup"
 
-SETUP_ENV="$("$AGENTS_WORKFLOW_DIR/bin/get-task" --get-setup-env 2>/dev/null)"
+SETUP_ENV="$("$AH_DIR/bin/get-task" --get-setup-env 2>/dev/null)"
 if [ -n "$SETUP_ENV" ]; then
   # Export each line as an environment variable
   while IFS= read -r line; do
@@ -71,4 +71,4 @@ if [ -f .agents/common-post-setup ]; then
   .agents/common-post-setup
 fi
 
-. "$AGENTS_WORKFLOW_DIR/common-post-setup"
+. "$AH_DIR/common-post-setup"

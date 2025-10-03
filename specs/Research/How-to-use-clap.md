@@ -441,11 +441,11 @@ Add `propagate_version = true` (already shown in the quickstart) so `-V/--versio
 
 ### Completions subcommand pattern
 
-Wire a dedicated command group for shell completions, matching `aw shell-completion script [shell]` behavior in the CLI spec (plus `install` and `complete`).
+Wire a dedicated command group for shell completions, matching `ah shell-completion script [shell]` behavior in the CLI spec (plus `install` and `complete`).
 
 Note:
 - The helper functions shown below (`detect_shell`, `install_to_default`, `read_shell_line_and_cursor`, `compute_dynamic_suggestions`) are application-provided utilities. They are not part of `clap`/`clap_complete`.
-- `clap_complete` generates static scripts by default. To support dynamic, runtime suggestions, you must customize the installed completion script to call back into your binary (e.g., invoke `aw shell-completion complete ...`) using shell-specific mechanisms (bash `complete -C`, zsh functions, fish `complete --command` with a wrapper function).
+- `clap_complete` generates static scripts by default. To support dynamic, runtime suggestions, you must customize the installed completion script to call back into your binary (e.g., invoke `ah shell-completion complete ...`) using shell-specific mechanisms (bash `complete -C`, zsh functions, fish `complete --command` with a wrapper function).
 
 ```rust
 use clap::{Parser, Subcommand, CommandFactory};
@@ -515,7 +515,7 @@ fn main() {
 
 ### Dynamic completion hooks per shell
 
-`clap_complete` generates static scripts. For runtime/dynamic suggestions (e.g., listing branches from the current repo), install a shell hook that calls your binary's `aw shell-completion complete` subcommand and prints one suggestion per line. Below are minimal, widely used patterns per shell.
+`clap_complete` generates static scripts. For runtime/dynamic suggestions (e.g., listing branches from the current repo), install a shell hook that calls your binary's `ah shell-completion complete` subcommand and prints one suggestion per line. Below are minimal, widely used patterns per shell.
 
 #### Bash
 
@@ -524,35 +524,35 @@ Two viable approaches exist; pick the one you prefer.
 Option A: External completer (bash sets `COMP_LINE` and `COMP_POINT` automatically):
 
 ```bash
-complete -o bashdefault -o default -C 'aw shell-completion complete --shell bash' aw
+complete -o bashdefault -o default -C 'ah shell-completion complete --shell bash' ah
 ```
 
 Option B: Function-based completer using `compgen`:
 
 ```bash
-_aw_complete() {
+_ah_complete() {
   local cur
   cur="${COMP_WORDS[COMP_CWORD]}"
   local suggestions
-  suggestions=$(aw shell-completion complete --shell bash --line "$COMP_LINE" --cursor "$COMP_POINT")
+  suggestions=$(ah shell-completion complete --shell bash --line "$COMP_LINE" --cursor "$COMP_POINT")
   COMPREPLY=( $(compgen -W "$suggestions" -- "$cur") )
 }
-complete -F _aw_complete aw
+complete -F _ah_complete ah
 ```
 
-In both cases, `aw shell-completion complete` should write newline-delimited candidates to stdout.
+In both cases, `ah shell-completion complete` should write newline-delimited candidates to stdout.
 
 #### Zsh
 
 Zsh completion functions can call back into your CLI and then use `_describe` or `compadd`:
 
 ```zsh
-_aw() {
+_ah() {
   local -a suggestions
-  suggestions=(${(f)$(aw shell-completion complete --shell zsh --line "$BUFFER" --cursor "$CURSOR")})
-  _describe -t commands 'aw suggestions' suggestions
+  suggestions=(${(f)$(ah shell-completion complete --shell zsh --line "$BUFFER" --cursor "$CURSOR")})
+  _describe -t commands 'ah suggestions' suggestions
 }
-compdef _aw aw
+compdef _ah ah
 ```
 
 #### Fish
@@ -560,12 +560,12 @@ compdef _aw aw
 Fish supports command substitutions for dynamic candidates. Use `commandline` to read the buffer and cursor position:
 
 ```fish
-function __aw_complete
+function __ah_complete
     set -l line (commandline --current-process)
     set -l cursor (commandline --cursor)
-    aw shell-completion complete --shell fish --line "$line" --cursor $cursor
+    ah shell-completion complete --shell fish --line "$line" --cursor $cursor
 end
-complete -c aw -a '(__aw_complete)'
+complete -c ah -a '(__ah_complete)'
 ```
 
 #### PowerShell (pwsh)
@@ -573,10 +573,10 @@ complete -c aw -a '(__aw_complete)'
 Register a native argument completer that forwards the current buffer and cursor position:
 
 ```powershell
-Register-ArgumentCompleter -Native -CommandName aw -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName ah -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $line = $commandAst.Extent.Text
-  aw shell-completion complete --shell pwsh --line $line --cursor $cursorPosition |
+  ah shell-completion complete --shell pwsh --line $line --cursor $cursorPosition |
     ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 ```
@@ -592,14 +592,14 @@ When `--line/--cursor` are omitted, your CLI can read standard shell-provided va
 
 ### Install directories and detection heuristics
 
-For `aw shell-completion install`, prefer user-level locations and create parents as needed. Common defaults:
+For `ah shell-completion install`, prefer user-level locations and create parents as needed. Common defaults:
 
-- Bash (user): `~/.local/share/bash-completion/completions/aw`
-  - macOS (Homebrew): `/opt/homebrew/etc/bash_completion.d/aw` (Apple Silicon), `/usr/local/etc/bash_completion.d/aw` (Intel)
-  - System-wide (Linux): `/etc/bash_completion.d/aw` or `/usr/share/bash-completion/completions/aw`
-- Zsh (user): `~/.zsh/completions/_aw` and ensure in `~/.zshrc`:
+- Bash (user): `~/.local/share/bash-completion/completions/ah`
+  - macOS (Homebrew): `/opt/homebrew/etc/bash_completion.d/ah` (Apple Silicon), `/usr/local/etc/bash_completion.d/ah` (Intel)
+  - System-wide (Linux): `/etc/bash_completion.d/ah` or `/usr/share/bash-completion/completions/ah`
+- Zsh (user): `~/.zsh/completions/_ah` and ensure in `~/.zshrc`:
   - `fpath=(~/.zsh/completions $fpath)` then `autoload -U compinit && compinit`
-- Fish (user): `~/.config/fish/completions/aw.fish`
+- Fish (user): `~/.config/fish/completions/ah.fish`
 - PowerShell: Append to `$PROFILE` to dot-source the script for each session, or register a completer at startup (as shown above).
 
 Heuristics:
@@ -610,7 +610,7 @@ Heuristics:
 
 ### Minimal Rust helpers for dynamic completion
 
-Your `aw shell-completion complete` can accept `--shell <SHELL>`, `--line <STRING>`, and `--cursor <usize>`, apply fallbacks, and print suggestions:
+Your `ah shell-completion complete` can accept `--shell <SHELL>`, `--line <STRING>`, and `--cursor <usize>`, apply fallbacks, and print suggestions:
 
 ```rust
 use clap::{Parser, Subcommand, CommandFactory};
@@ -682,5 +682,5 @@ This section focuses on wiring. See the CLI spec for the specific dynamic source
 ### Environment variable prefix strategy
 
 - Clap supports per-argument environment variables via `#[arg(env = "NAME")]` or builder `.env("NAME")`.
-- It does not auto-apply an env prefix across all args; define env vars per arg using a consistent `AGENTS_WORKFLOW_` prefix (e.g., `AGENTS_WORKFLOW_REPO`, `AGENTS_WORKFLOW_JSON`).
+- It does not auto-apply an env prefix across all args; define env vars per arg using a consistent `AH_` prefix (e.g., `AH_REPO`, `AH_JSON`).
 - If you prefer centralization, set env names programmatically using the builder API via `Cli::command()` and updating each `Arg`.

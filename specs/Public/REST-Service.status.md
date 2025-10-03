@@ -1,4 +1,4 @@
-# Agents‑Workflow REST Service — Status and Plan
+# Agent Harbor REST Service — Status and Plan
 
 Spec: See [REST-Service/API.md](REST-Service/API.md) for the API behavior. This file tracks the implementation plan, success criteria, and an automated test strategy per specs/AGENTS.md.
 
@@ -12,23 +12,23 @@ This plan is expanded to explicitly cover multi‑OS execution and connectivity 
 
 1. Shared transport crate
 
-- Crate `aw-rest-api-contract` defining request/response types, error schema, SSE event enums, idempotency headers, and OpenAPI derives.
+- Crate `ah-rest-api-contract` defining request/response types, error schema, SSE event enums, idempotency headers, and OpenAPI derives.
 - JSON compatibility tests and golden samples; ensure OpenAPI can be generated without running the full server.
 
 2. Mock server (deterministic)
 
-- Crate `aw-rest-mock` using `axum` with in‑memory stores and seedable RNG.
+- Crate `ah-rest-mock` using `axum` with in‑memory stores and seedable RNG.
 - Endpoints: `/healthz`, `/readyz`, `/version`, `/api/v1/openapi.json`.
 - Minimal tasks/sessions implementation with synthetic SSE events.
 
 3. CLI first loop
 
-- Point `aw` CLI to the mock via `AW_REST_BASE`/`--rest-base`.
-- Implement `aw task`, `aw session list|get|logs|events`, and IDE open helpers against transport types.
+- Point `ah` CLI to the mock via `AH_REST_BASE`/`--rest-base`.
+- Implement `ah task`, `ah session list|get|logs|events`, and IDE open helpers against transport types.
 
 4. Black‑box transport tests
 
-- Start `aw-rest-mock` in‑process during tests; exercise HTTP and SSE flows using the shared types.
+- Start `ah-rest-mock` in‑process during tests; exercise HTTP and SSE flows using the shared types.
 - Scenarios: create task (idempotent), poll session, read logs, stream events, stop/cancel, and workspace summary.
 
 5. Capability discovery
@@ -73,7 +73,7 @@ Success criteria
 
 - Fixture a single Linux host running: one REST server, one leader, N followers as separate containers/VMs (Incus preferred; Docker acceptable).
 - Provide a host catalog for the fleet (`.agents/hosts.json`) surfaced by `/api/v1/followers`.
-- Prove end‑to‑end flows over container networking via SSH: `sync-fence` and `aw agent followers run` with per‑host SSE.
+- Prove end‑to‑end flows over container networking via SSH: `sync-fence` and `ah agent followers run` with per‑host SSE.
 - Add failure‑injection knobs (pause a follower, simulate packet loss/latency with `tc netem`, drop ports with iptables/Incus profiles).
 
 12. Connectivity layer E2E (Linux host)
@@ -84,7 +84,7 @@ Success criteria
 13. Cross‑OS executors (true multi‑OS)
 
 - Bring up at least one follower per OS: Linux, macOS, Windows (physical/VM). Use SSH over CONNECT; no dynamic VPNs.
-- Verify Mutagen leader→followers sync fence semantics and `aw agent followers run` adapters (POSIX shells vs PowerShell) per Multi‑OS Testing.
+- Verify Mutagen leader→followers sync fence semantics and `ah agent followers run` adapters (POSIX shells vs PowerShell) per Multi‑OS Testing.
 
 14. Resilience and partition tolerance
 
@@ -99,7 +99,7 @@ Success criteria
 Harness components
 
 - Rust integration tests using `tokio::test` and in‑process `axum` server instances.
-- CLI E2E tests invoking `aw` with `--rest-base=http://127.0.0.1:<port>` and capturing stdout/stderr.
+- CLI E2E tests invoking `ah` with `--rest-base=http://127.0.0.1:<port>` and capturing stdout/stderr.
 - SSE test helper that reads `EventSource` lines, decodes with transport enums, and asserts sequence and liveness heartbeats.
 
 Fixtures
@@ -180,7 +180,7 @@ Objective: Prove the communication topology and APIs work on a single Linux box 
 - A1: Connectivity — executors connected over QUIC; leader reaches followers via CONNECT.
   - A2: Mutagen session up — leader→followers one‑way sync sessions established; ignore rules applied; report health.
   - A3: Sync fence happy path — agent runs `fs_snapshot_and_sync`; leader ingests `fenceStarted/fenceResult`; SSE reflects consistent across hosts < 5s.
-  - A4: fleet run fan‑out — invoke `aw agent followers run` on leader; leader ingests `host*` and `summary`; SSE aggregates match CLI output.
+  - A4: fleet run fan‑out — invoke `ah agent followers run` on leader; leader ingests `host*` and `summary`; SSE aggregates match CLI output.
   - A5: Fence timeout — `tc netem delay 1500ms loss 20%` on follower‑2; `fenceResult` shows timeout for that host only.
   - A6: Partial failure — stop SSH on follower‑3; run‑everywhere `summary` marks that host failed; others succeed.
   - A7: SSE liveness — long‑running runs stream heartbeats/logs without blocking.
@@ -207,7 +207,7 @@ Objective: Verify real multi‑OS synchronization and command adapters.
 
 - Scenarios (C1–C8)
   - C1: Sync fence across OSes — leader snapshot → `fenceResult` shows consistent on macOS and Windows.
-  - C2: Command adapters — `aw agent followers run -- npm test` executes via zsh (macOS) and PowerShell (Windows) with correct quoting.
+  - C2: Command adapters — `ah agent followers run -- npm test` executes via zsh (macOS) and PowerShell (Windows) with correct quoting.
   - C3: Env normalization — required env vars and PATH present; toolchain discovery succeeds on all followers.
   - C4: Large tree — sync efficiency across ignores; no runaway CPU on followers.
   - C5: File rename edge cases — case sensitivity mismatch (Windows/macOS) handled; no oscillation.

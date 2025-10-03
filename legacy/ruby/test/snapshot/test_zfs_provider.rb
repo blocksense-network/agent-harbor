@@ -21,8 +21,8 @@ class TestZfsProvider < Minitest::Test
     skip 'ZFS tools not available' unless system('which', 'zfs', out: File::NULL, err: File::NULL)
 
     # Check for pre-created test filesystem
-    @cache_dir = File.expand_path('~/.cache/agents-workflow')
-    @pool_name = 'agents_workflow_test_zfs'
+    @cache_dir = File.expand_path('~/.cache/agent-harbor')
+    @pool_name = 'AH_test_zfs'
     @dataset_name = "#{@pool_name}/test_dataset"
 
     unless zfs_pool_exists?(@pool_name)
@@ -90,7 +90,7 @@ class TestZfsProvider < Minitest::Test
     end
 
     # Also clean up any agent snapshots without PID (legacy)
-    `zfs list -H -o name -t snapshot 2>/dev/null | grep "^agents_workflow_test_zfs/test_dataset@agent[0-9]"`
+    `zfs list -H -o name -t snapshot 2>/dev/null | grep "^AH_test_zfs/test_dataset@agent[0-9]"`
       .each_line do |snapshot|
       snapshots_to_destroy << snapshot.strip!
     end
@@ -122,7 +122,7 @@ class TestZfsProvider < Minitest::Test
   def provider_skip_reason
     # ZFS provider needs the daemon for reliable concurrent operations
     # The daemon provides proper isolation and mounting for concurrent ZFS clones
-    daemon_socket = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    daemon_socket = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
 
     # Check if socket exists and we can actually connect to it
     if File.socket?(daemon_socket)
@@ -275,7 +275,7 @@ class TestZfsProvider < Minitest::Test
 
   def zfs_mounting_available?
     # Check if daemon is available and responding
-    daemon_socket = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    daemon_socket = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
     if File.socket?(daemon_socket)
       begin
         # Try to connect to test if daemon is actually running
@@ -332,7 +332,7 @@ class TestZfsProvider < Minitest::Test
   def test_zfs_snapshot_and_clone_operations
     unless zfs_mounting_available?
       skip 'ZFS mounting not available for regular users. ' \
-           'Start the daemon with `just legacy-start-aw-fs-snapshots-daemon`'
+           'Start the daemon with `just legacy-start-ah-fs-snapshots-daemon`'
     end
     provider = Snapshot::ZfsProvider.new(@repo_dir)
     workspace_dir = create_workspace_destination('clone_test')
@@ -377,7 +377,7 @@ class TestZfsProvider < Minitest::Test
   def test_zfs_error_conditions
     unless zfs_mounting_available?
       skip 'ZFS mounting not available for regular users. ' \
-           'Start the daemon with `just legacy-start-aw-fs-snapshots-daemon`'
+           'Start the daemon with `just legacy-start-ah-fs-snapshots-daemon`'
     end
     provider = Snapshot::ZfsProvider.new(@repo_dir)
 
@@ -398,7 +398,7 @@ class TestZfsProvider < Minitest::Test
   def test_daemon_success_error_reporting
     # Test that daemon operations work when daemon is available
     # This test will be skipped if daemon is not running
-    daemon_socket = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    daemon_socket = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
     if File.socket?(daemon_socket)
       begin
         # Try to connect to test if daemon is actually running
@@ -449,7 +449,7 @@ class TestZfsProvider < Minitest::Test
   end
 
   def daemon_available?
-    socket_path = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    socket_path = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
     File.socket?(socket_path)
   end
 

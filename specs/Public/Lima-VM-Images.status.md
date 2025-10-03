@@ -6,7 +6,7 @@ Goals:
 
 - Deliver layered Lima VM images (Alpine+Nix and Ubuntu LTS variants) that provide a consistent multi-OS testing environment across macOS hosts
 - Implement automated build pipelines, credential propagation, and comprehensive validation suites as specified in the design
-- Provide a standard `aw lima images fetch` command and fleet planner integration
+- Provide a standard `ah lima images fetch` command and fleet planner integration
 - Ship a robust, automated test matrix validating boot, agent enrollment, performance, and security
 
 References:
@@ -19,15 +19,15 @@ References:
 
 - infra/lima/: Shared cloud-config templates, build scripts, and provisioning logic
 - build/lima-images/: `just` recipes and CI automation for image creation and distribution
-- aw-cli/lima-commands/: `aw lima images fetch` and fleet planner extensions
+- ah-cli/lima-commands/: `ah lima images fetch` and fleet planner extensions
 - test/lima-validation/: Smoke tests, performance benchmarks, and security validation suites
 
 All components use standard shell scripting and Nix for reproducibility; macOS CI runners required for Lima testing.
 
 ### Deliverables
 
-1. `agents-workflow-lima-alpine` and `agents-workflow-lima-ubuntu` images (GHCR)
-   - Alpine+Nix and Ubuntu LTS base images with Nix, AgentFS dependencies, and AW tooling
+1. `agent-harbor-lima-alpine` and `agent-harbor-lima-ubuntu` images (GHCR)
+   - Alpine+Nix and Ubuntu LTS base images with Nix, AgentFS dependencies, and AH tooling
    - Pre-configured cloud-init for SSH tunneling and agent auto-enrollment
    - Published with content digests and SHA256SUMS for verification
 
@@ -36,8 +36,8 @@ All components use standard shell scripting and Nix for reproducibility; macOS C
    - Cloud-config templates under `infra/lima/`
    - CI pipeline for automated image building and publishing
 
-3. AW CLI integration
-   - `aw lima images fetch <variant>` with automatic verification and progress reporting
+3. AH CLI integration
+   - `ah lima images fetch <variant>` with automatic verification and progress reporting
    - Fleet planner support for `profile = lima:<variant>` resolution
    - Sample `lima.yaml` configurations with shared directory mounts
 
@@ -50,7 +50,7 @@ All components use standard shell scripting and Nix for reproducibility; macOS C
 
 - Cross-platform: Alpine and Ubuntu variants boot successfully on macOS with Lima
 - Automation: `just build-lima-images` produces verifiable QCOW2 artifacts for both variants
-- Integration: `aw lima images fetch` downloads and verifies images; fleet planner resolves Lima profiles correctly
+- Integration: `ah lima images fetch` downloads and verifies images; fleet planner resolves Lima profiles correctly
 - Validation: CI pipeline runs comprehensive tests with clear pass/fail gates and regression detection
 - Performance: Boot times and filesystem operations meet baseline expectations with automated benchmarking
 
@@ -73,9 +73,9 @@ M2. Build automation (4–6d)
 - Implement `qemu-img convert -c` compression and XZ distribution with SHA256SUMS.
 - Tests: artifacts build successfully; compression reduces size by 50%+; checksums verify integrity.
 
-M3. AW CLI integration (3–5d)
+M3. AH CLI integration (3–5d)
 
-- Implement `aw lima images fetch <variant>` with verification and progress reporting.
+- Implement `ah lima images fetch <variant>` with verification and progress reporting.
 - Extend fleet planner to resolve `profile = lima:<variant>` to SSH endpoints and tag sets.
 - Tests: CLI commands work end-to-end; fleet planner integration passes schema validation.
 
@@ -105,7 +105,7 @@ Acceptance checklist (M2)
 
 Acceptance checklist (M3)
 
-- [ ] `aw lima images fetch alpine` downloads and verifies images
+- [ ] `ah lima images fetch alpine` downloads and verifies images
 - [ ] Fleet planner resolves `profile = lima:ubuntu` to correct endpoints
 - [ ] Sample `lima.yaml` files enable workspace sharing
 

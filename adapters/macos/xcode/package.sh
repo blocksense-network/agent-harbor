@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-APP_NAME="AgentsWorkflow"
+APP_NAME="AgentHarbor"
 BUILD_TYPE="${1:-Release}" # Default to Release if not specified
 SIGNING_IDENTITY="${2:-}"  # Optional: specify code signing identity
 TEAM_ID="${3:-}"           # Optional: specify development team ID

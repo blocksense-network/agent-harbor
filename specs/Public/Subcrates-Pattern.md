@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Agents-Workflow project uses a **subcrates pattern** to organize related functionality into hierarchical crate structures. This pattern balances modularity, compile times, and maintainability while avoiding excessive crate proliferation.
+The agent-harbor project uses a **subcrates pattern** to organize related functionality into hierarchical crate structures. This pattern balances modularity, compile times, and maintainability while avoiding excessive crate proliferation.
 
 ## When to Use This Pattern
 
@@ -39,12 +39,12 @@ Users can depend directly on the monolith crate and enable only the backends the
 
 ```toml
 [dependencies]
-aw-fs-snapshots = { version = "0.1", features = ["zfs", "btrfs"] }
+ah-fs-snapshots = { version = "0.1", features = ["zfs", "btrfs"] }
 ```
 
 ```rust
 // All enabled backends are available
-use aw_fs_snapshots::{provider_for, FsSnapshotProvider};
+use ah_fs_snapshots::{provider_for, FsSnapshotProvider};
 ```
 
 ### Facade Crate Usage
@@ -53,12 +53,12 @@ For applications that need only a specific backend, use the tiny facade crates:
 
 ```toml
 [dependencies]
-aw-fs-snapshots-zfs = "0.1"
+ah-fs-snapshots-zfs = "0.1"
 ```
 
 ```rust
 // Only ZFS functionality is available
-use aw_fs_snapshots_zfs::ZfsProvider;
+use ah_fs_snapshots_zfs::ZfsProvider;
 ```
 
 ### Automatic Feature Resolution
@@ -67,13 +67,13 @@ When multiple facade crates are combined in an application, Cargo automatically 
 
 ```toml
 [dependencies]
-aw-fs-snapshots-zfs = "0.1"      # Enables "zfs" feature on monolith
-aw-fs-snapshots-btrfs = "0.1"   # Enables "btrfs" feature on monolith
+ah-fs-snapshots-zfs = "0.1"      # Enables "zfs" feature on monolith
+ah-fs-snapshots-btrfs = "0.1"   # Enables "btrfs" feature on monolith
 ```
 
 Cargo resolves this to:
 ```toml
-aw-fs-snapshots = { features = ["zfs", "btrfs"] }  # Automatically determined
+ah-fs-snapshots = { features = ["zfs", "btrfs"] }  # Automatically determined
 ```
 
 This ensures optimal compilation - only the requested backends are compiled while shared code is compiled once.
@@ -122,4 +122,4 @@ When converting from Ruby implementations:
 - **Version alignment**: Keep monolith and facade versions synchronized
 - **Documentation**: Document feature requirements clearly for users
 
-This pattern enables the Agents-Workflow project to scale to multiple platforms and backends while maintaining fast compile times and clear code organization.
+This pattern enables the agent-harbor project to scale to multiple platforms and backends while maintaining fast compile times and clear code organization.

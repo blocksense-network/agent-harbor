@@ -1,0 +1,18 @@
+[package]
+name = "ah-sandbox-linux"
+version = "0.1.0"
+edition = "2021"
+description = "Linux-specific sandbox implementation for Agents Workflow"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+nix = "0.27"
+
+[dependencies.ah-sandbox]
+path = "../ah-sandbox"

@@ -70,7 +70,7 @@ VOLUME /host-cargo
 VOLUME /home/vscode/.cargo
 
 # Set working directory
-WORKDIR /workspaces/agents-workflow
+WORKDIR /workspaces/agent-harbor
 
 # Ensure proper permissions
 USER root

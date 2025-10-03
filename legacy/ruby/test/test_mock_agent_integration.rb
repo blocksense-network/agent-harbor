@@ -435,7 +435,7 @@ class TestMockAgentIsolation < Minitest::Test
         "name": "test-repo",
         "version": "1.0.0",
         "description": "Test repository for agent isolation",
-        "author": "agents-workflow test suite"
+        "author": "agent-harbor test suite"
       }
     JSON
 

@@ -2,7 +2,7 @@
 
 ### Scope
 
-Define a layered devcontainer architecture for Agents‑Workflow:
+Define a layered devcontainer architecture for Agent Harbor:
 
 - A lower‑level Nix devcontainer base that standardizes Nix, caches, and host↔guest cache sharing.
 - An Agents Base Image that builds on the Nix base and ships all supported agentic CLIs plus the framework glue for task execution, recording, and credential propagation.
@@ -39,7 +39,7 @@ This document describes requirements, rationale, and implementation details. Nix
 
 2. Agents Base Image
    - FROM: Nix Devcontainer Base.
-   - Installs all supported agentic CLIs using Nix. The list of agents is shared with the agents-workflow Nix package, defined at the root of this repository, ensuring consistency between the devcontainer and the Nix package set.
+   - Installs all supported agentic CLIs using Nix. The list of agents is shared with the agent-harbor Nix package, defined at the root of this repository, ensuring consistency between the devcontainer and the Nix package set.
    - Prepares integration with agent‑provided hook mechanisms (e.g., Claude Code hooks) to emit SessionMoments and trigger FsSnapshots.
    - Prepares netrc/SSH/gh credential bridges (runtime only; nothing baked into the image).
 
@@ -54,8 +54,8 @@ Downstream projects consume the base like this (illustrative):
 
 ```json
 {
-  "name": "agents-workflow-dev",
-  "image": "ghcr.io/blocksense/agents-workflow-agents-base:latest",
+  "name": "agent-harbor-dev",
+  "image": "ghcr.io/blocksense/agent-harbor-agents-base:latest",
   "features": {},
   "remoteUser": "vscode",
   "updateRemoteUserUID": true,
@@ -64,11 +64,11 @@ Downstream projects consume the base like this (illustrative):
     "NIX_CONFIG": "experimental-features = nix-command flakes"
   },
   "mounts": [
-    "source=aw-nix-store,target=/nix,type=volume",
-    "source=aw-cache-home,target=/home/vscode/.cache,type=volume",
-    "source=aw-cargo,target=/home/vscode/.cargo,type=volume",
-    "source=aw-go-cache,target=/home/vscode/.cache/go-build,type=volume",
-    "source=aw-go-mod,target=/home/vscode/go/pkg/mod,type=volume"
+    "source=ah-nix-store,target=/nix,type=volume",
+    "source=ah-cache-home,target=/home/vscode/.cache,type=volume",
+    "source=ah-cargo,target=/home/vscode/.cargo,type=volume",
+    "source=ah-go-cache,target=/home/vscode/.cache/go-build,type=volume",
+    "source=ah-go-mod,target=/home/vscode/go/pkg/mod,type=volume"
   ],
   "runArgs": ["--init"],
   "customizations": {
@@ -116,7 +116,7 @@ Each agent’s exact mapping is captured in `docs/agents/<tool>.md` and validate
 
 - User/UID: set `remoteUser` to a non‑root user matching host UID to simplify shared cache permissions.
 - Entrypoint: minimal init (tini), run `common-pre-setup`, source project hooks if present `.agents/*-setup`, then `common-post-setup`.
-- Health: ship `aw health` checks for snapshot providers, Nix, caches, gh/ssh/auth readiness.
+- Health: ship `ah health` checks for snapshot providers, Nix, caches, gh/ssh/auth readiness.
 - Security: secrets via env or forwarded sockets; config mounts read‑only; no tokens written to image layers.
 
 ### Testing and CI

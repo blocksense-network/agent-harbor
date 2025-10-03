@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agents-workflow.example/schemas/session-events.schema.json",
+  "$id": "https://schemas.blocksense.network/agent-hardbor/session-events.schema.json",
   "title": "Session Event (Leader → Server Ingest)",
   "type": "object",
   "oneOf": [

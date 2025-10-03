@@ -2,11 +2,11 @@
 
 set -e  # Exit on any error
 
-AGENTS_WORKFLOW_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+AH_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Use portable temp directory that works across all environments
 TEMP_DIR="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
-TEMP_AGENTS_DIR="$TEMP_DIR/agents-workflow"
+TEMP_AGENTS_DIR="$TEMP_DIR/agent-harbor"
 
 # Create the temp directory if it doesn't exist
 sudo mkdir -p "$TEMP_DIR"
@@ -19,10 +19,10 @@ fi
 
 # Try to move the directory - this should work since the script is loaded in memory
 # This prevents agents from looking into it (wastes their time)
-if ! mv "$AGENTS_WORKFLOW_DIR" "$TEMP_AGENTS_DIR"; then
+if ! mv "$AH_DIR" "$TEMP_AGENTS_DIR"; then
   echo "Move failed, falling back to copy strategy"
-  cp -r "$AGENTS_WORKFLOW_DIR" "$TEMP_AGENTS_DIR"
-  rm -rf "$AGENTS_WORKFLOW_DIR" || true
+  cp -r "$AH_DIR" "$TEMP_AGENTS_DIR"
+  rm -rf "$AH_DIR" || true
 fi
 
 # Try standard system directories that are already in PATH for all users

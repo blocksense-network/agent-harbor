@@ -21,14 +21,14 @@ Drive a split layout inside Vim or Neovim using built‑in terminal buffers and 
 ```
 local task_id = os.getenv("TASK_ID") or "ABC"
 vim.cmd("tabnew")
-vim.cmd("file aw-task-" .. task_id)
+vim.cmd("file ah-task-" .. task_id)
 vim.cmd("vsplit")
 -- Right pane: TUI follow
-vim.cmd("terminal aw tui --follow " .. task_id)
+vim.cmd("terminal ah tui --follow " .. task_id)
 -- Focus left and create bottom split for logs
 vim.cmd("wincmd h")
 vim.cmd("split")
-vim.cmd("terminal aw session logs " .. task_id .. " -f")
+vim.cmd("terminal ah session logs " .. task_id .. " -f")
 -- Optional: open editor in top-left (current buffer is terminal; open a new buffer)
 vim.cmd("wincmd k")
 vim.cmd("enew")
@@ -46,7 +46,7 @@ vim.cmd("enew")
 
 ## Focusing an Existing Task’s Pane/Window
 
-- Set the tab title or buffer name to `aw-task-<id>` and navigate by cycling tabs/buffers; external focus is handled by the terminal emulator/OS.
+- Set the tab title or buffer name to `ah-task-<id>` and navigate by cycling tabs/buffers; external focus is handled by the terminal emulator/OS.
 
 ## Programmatic Control Interfaces
 
@@ -64,7 +64,7 @@ vim.cmd("enew")
 
 ## Example: TUI Follow Flow
 
-Set `TASK_ID` in the environment, run the Lua above inside Neovim (or adapt to Vimscript) to create splits and start `aw tui --follow <id>`.
+Set `TASK_ID` in the environment, run the Lua above inside Neovim (or adapt to Vimscript) to create splits and start `ah tui --follow <id>`.
 
 ## References
 

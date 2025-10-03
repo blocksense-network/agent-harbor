@@ -258,7 +258,7 @@ test.describe.skip('Keyboard Navigation', () => {
       
       // Select repository
       await page.locator('button:has-text("Repository")').click();
-      await page.locator('text=agents-workflow-webui').click();
+      await page.locator('text=agent-harbor-webui').click();
       
       // Select branch
       await page.locator('button:has-text("Branch")').click();

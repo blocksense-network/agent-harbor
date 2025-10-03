@@ -1,0 +1,12 @@
+[package]
+name = "ah-tui-multiplexer"
+version = "0.1.0"
+edition = "2021"
+description = "agent-harbor specific multiplexer abstractions for TUI integration"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+ah-mux-core = { path = "../ah-mux-core" }
+ah-mux = { path = "../ah-mux", default-features = false }
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }

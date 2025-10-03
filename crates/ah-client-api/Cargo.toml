@@ -1,0 +1,10 @@
+[package]
+name = "ah-client-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

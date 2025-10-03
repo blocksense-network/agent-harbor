@@ -20,9 +20,9 @@ class ExtrasInstaller
   NIX_DEPENDENT_COMPONENTS = %w[direnv cachix].freeze
 
   # Path configuration relative to the project root
-  AGENTS_WORKFLOW_DIR = File.expand_path('../../..', __dir__)
-  INSTALL_DIR = File.join(AGENTS_WORKFLOW_DIR, 'install')
-  MARKER_DIR = File.join(AGENTS_WORKFLOW_DIR, '.install-markers')
+  AH_DIR = File.expand_path('../../..', __dir__)
+  INSTALL_DIR = File.join(AH_DIR, 'install')
+  MARKER_DIR = File.join(AH_DIR, '.install-markers')
 
   def initialize(extras_string = nil, **options)
     @test_mode = options.fetch(:test_mode, false)
@@ -149,7 +149,7 @@ class ExtrasInstaller
 
   # Clean all installation markers (for testing/debugging)
   def self.clean_markers
-    marker_dir = File.join(AGENTS_WORKFLOW_DIR, '.install-markers')
+    marker_dir = File.join(AH_DIR, '.install-markers')
     return unless Dir.exist?(marker_dir)
 
     FileUtils.rm_rf(marker_dir)

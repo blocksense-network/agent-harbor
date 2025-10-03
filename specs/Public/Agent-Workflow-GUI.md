@@ -2,13 +2,13 @@
 
 ## Overview
 
-The Agent Workflow GUI (AW GUI) is a cross-platform Electron application that provides a native desktop wrapper around the `aw webui` process. It adds desktop-specific features like system tray integration, custom URL scheme handling, and native notifications while delegating all workflow functionality to the underlying WebUI.
+The Agent Workflow GUI (AH GUI) is a cross-platform Electron application that provides a native desktop wrapper around the `ah webui` process. It adds desktop-specific features like system tray integration, custom URL scheme handling, and native notifications while delegating all workflow functionality to the underlying WebUI.
 
 ## Core Responsibilities
 
 ### WebUI Process Management
 
-- Launches and monitors the `aw webui` process
+- Launches and monitors the `ah webui` process
 - Handles process lifecycle (start, restart, shutdown)
 - Manages port conflicts and service discovery
 - Provides graceful error handling for WebUI failures
@@ -21,7 +21,7 @@ The Agent Workflow GUI (AW GUI) is a cross-platform Electron application that pr
 
 ### Custom URL Scheme Handler
 
-- Registers `agents-workflow://` protocol on installation and acts as the preferred handler when the GUI is present. Headless systems use the standalone AW URL Handler binary.
+- Registers `agent-harbor://` protocol on installation and acts as the preferred handler when the GUI is present. Headless systems use the standalone AH URL Handler binary.
 - Routes incoming URLs to appropriate WebUI pages or delegates to an existing GUI window via IPC to reuse the window/tab instead of spawning a new one.
 - Handles URL scheme conflicts and fallbacks.
 
@@ -36,7 +36,7 @@ The Agent Workflow GUI (AW GUI) is a cross-platform Electron application that pr
 
 ### Bundled CLI Tools
 
-The GUI application bundles the complete AW CLI toolchain, making all `aw` commands available without separate installation.
+The GUI application bundles the complete AH CLI toolchain, making all `ah` commands available without separate installation.
 
 ### Packaging Strategy
 
@@ -59,7 +59,7 @@ The bundled CLI tools are made available through multiple mechanisms:
 
    ```bash
    # GUI provides wrapper scripts that execute bundled CLI
-   # Example: /Applications/AW GUI.app/Contents/Resources/cli/aw
+   # Example: /Applications/AgentHarbor.app/Contents/Resources/cli/ah
    # This ensures CLI always uses the same version as the GUI
    ```
 
@@ -72,7 +72,7 @@ The bundled CLI tools are made available through multiple mechanisms:
 
 **Windows:**
 
-- Installer adds `%PROGRAMFILES%\AW GUI\resources\cli` to system PATH
+- Installer adds `%PROGRAMFILES%\AgentHarbor\resources\cli` to system PATH
 - Registry entries for command completion
 - MSI integration for Add/Remove Programs
 
@@ -113,7 +113,7 @@ When CLI tools are invoked from the command line, they:
 
 ## Configuration Integration
 
-The GUI integrates with the layered configuration system defined in [Configuration.md](Configuration.md). GUI-specific settings are stored in GUI configuration files and accessed via `aw config` commands.
+The GUI integrates with the layered configuration system defined in [Configuration.md](Configuration.md). GUI-specific settings are stored in GUI configuration files and accessed via `ah config` commands.
 
 ## Platform-Specific Implementation
 
@@ -180,4 +180,4 @@ This specification focuses on GUI-specific concerns and delegates to:
 - **[WebUI PRD.md](WebUI-PRD.md)**: All WebUI functionality and user interface details
 - **[Configuration.md](../Initial-Developer-Input/Configuration.md)**: Configuration system and file formats
 - **[CLI.md](CLI.md)**: CLI command specifications and behavior
-  - **[Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md)**: URL scheme desired behavior. See the `.status.md` sibling for milestones and tests.
+  - **[Handling-AH-URL-Scheme.md](Handling-AH-URL-Scheme.md)**: URL scheme desired behavior. See the `.status.md` sibling for milestones and tests.

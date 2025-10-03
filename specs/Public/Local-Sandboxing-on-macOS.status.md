@@ -2,18 +2,18 @@
 
 This document tracks the implementation status and plan for Local Sandboxing on macOS and serves as the single source of truth for milestones, automated success criteria, and cross‑team integration points.
 
-Goal: deliver a production‑ready macOS sandbox for agents with an FSKit‑backed AgentFS overlay filesystem, process‑scoped branch binding, chroot+Seatbelt hardening, and Endpoint Security (ES)‑based interactive file/network approvals, surfaced via the AW CLI and supervisor.
+Goal: deliver a production‑ready macOS sandbox for agents with an FSKit‑backed AgentFS overlay filesystem, process‑scoped branch binding, chroot+Seatbelt hardening, and Endpoint Security (ES)‑based interactive file/network approvals, surfaced via the AH CLI and supervisor.
 
 Total estimated timeline: 6–8 months (phased with parallel tracks)
 
 ### Components
 
 - FSKit adapter and XPC control service: `adapters/macos/xcode/AgentFSKitExtension/` (filesystem and control plane)
-- Host app for extension registration: `apps/macos/AgentsWorkflow/`
+- Host app for extension registration: `apps/macos/AgentHarbor/`
 - AgentFS Rust core and FFI: `crates/agentfs-core/`, `crates/agentfs-ffi/`, `crates/agentfs-proto/`
 - Sandbox launcher (macOS): new target to orchestrate FSKit mount → chroot → Seatbelt → `exec(2)`
 - Endpoint Security system extension: new target providing file/process/network authorization
-- Supervisor UI/daemon: prompts, policy store, and audit, integrated with AW CLI
+- Supervisor UI/daemon: prompts, policy store, and audit, integrated with AH CLI
 
 ### Key design clarifications (macOS)
 
@@ -26,7 +26,7 @@ Total estimated timeline: 6–8 months (phased with parallel tracks)
 - AgentFS/FSKit track: FSKit adapter, XPC control, per‑process binding; chroot handoff flows.
 - Endpoint Security track: authorization clients for file open/exec, signal, and connect; supervisor prompt; policy cache.
 - Seatbelt/profile track: SBPL authoring, launcher integration, and code signing.
-- Supervisor/UX track: prompts, policy persistence, audit, AW CLI.
+- Supervisor/UX track: prompts, policy persistence, audit, AH CLI.
 - Test/acceptance track: macOS specific harnesses (simulator where possible), reproducible E2E runs.
 
 ### Milestones (with automated success criteria)
@@ -68,27 +68,27 @@ M3. Seatbelt profile hardening (SBPL) ✅ COMPLETED (3–5d)
 
 — Implementation details —
 
-- Implemented macOS Seatbelt support as reusable Rust crate `crates/aw-sandbox-macos/`:
+- Implemented macOS Seatbelt support as reusable Rust crate `crates/ah-sandbox-macos/`:
   - `SbplBuilder`: programmatic SBPL construction with deny‑by‑default, `(subpath "…")` read/write/exec allow‑lists, optional loopback‑only network, process‑info hardening, signal restriction to same‑group, and denials for Apple Events and Mach lookup.
   - `apply_profile` and `apply_builder`: safe wrappers over `libsandbox` (`sandbox_init`/`sandbox_free_error`).
-- Added thin launcher `crates/aw-macos-launcher/` that performs optional `chroot` → `chdir` → apply Seatbelt → `exec(2)` of the workload.
+- Added thin launcher `crates/ah-macos-launcher/` that performs optional `chroot` → `chdir` → apply Seatbelt → `exec(2)` of the workload.
 - Workspace wiring in `Cargo.toml`; builds on non‑macOS via stubs.
  - Defaults aligned with cross‑strategy requirements:
    - Network egress is OFF by default (egress‑off baseline); enable explicitly via `--allow-network`.
   - Filesystem writes are denied by default except for explicitly allowed sub-paths (e.g., `/tmp`).
    - Process hardening (process‑info restrictions and signal policy) is optional and disabled by default; fine‑grained rules will be enforced in ES milestones (M5).
- - Launcher CLI parsing expects the workload after `--` (e.g., `aw-macos-launcher ... -- sh -c 'echo hi'`).
+ - Launcher CLI parsing expects the workload after `--` (e.g., `ah-macos-launcher ... -- sh -c 'echo hi'`).
 
 — Key source files —
 
-- `crates/aw-sandbox-macos/src/lib.rs` — SBPL builder and libsandbox FFI.
-- `crates/aw-macos-launcher/src/main.rs` — chroot + Seatbelt + exec launcher.
+- `crates/ah-sandbox-macos/src/lib.rs` — SBPL builder and libsandbox FFI.
+- `crates/ah-macos-launcher/src/main.rs` — chroot + Seatbelt + exec launcher.
 
 — Verification status —
 
 - [x] Workspace compiles with new crates added.
 - [x] SBPL builder snapshot test (macOS) validates key rules are emitted.
-- [x] macOS E2E: deny writes outside allowed paths via `aw-macos-launcher`; test asserts that a file under `$HOME` is not created while writes under `/tmp` remain allowed (`tests/sandbox-integration`).
+- [x] macOS E2E: deny writes outside allowed paths via `ah-macos-launcher`; test asserts that a file under `$HOME` is not created while writes under `/tmp` remain allowed (`tests/sandbox-integration`).
 
 M4. Endpoint Security: filesystem gating (AUTH_OPEN/EXEC) (5–7d)
 
@@ -131,11 +131,11 @@ M7. Supervisor integration + policy persistence (3–5d)
   - Golden tests for policy serialization; audit snapshots.
   - E2E: policy persists across sessions; non‑interactive mode defaults to deny.
 
-M8. AW CLI integration & acceptance suite (3–5d)
+M8. AH CLI integration & acceptance suite (3–5d)
 
 - Deliverables:
-  - `aw sandbox` orchestration: create AgentFS branch → mount FSKit → chroot → apply Seatbelt → exec workload → ES active.
-  - `aw session audit` shows ES/FS decisions; config keys wired.
+  - `ah sandbox` orchestration: create AgentFS branch → mount FSKit → chroot → apply Seatbelt → exec workload → ES active.
+  - `ah session audit` shows ES/FS decisions; config keys wired.
 - Verification:
   - Acceptance: filesystem gating, network gating, process isolation, debug toggles all pass.
   - CLI E2E: run, approve, deny, persist; teardown leaves no residue.
@@ -164,7 +164,7 @@ M9. Security review, performance, and fault injection (4–6d)
 - ES system extension implementing file/process/network authorization gates with supervisor prompts.
 - Seatbelt SBPL profile and launcher integration.
 - Supervisor app with policy stores and audit.
-- AW CLI orchestration and acceptance suite.
+- AH CLI orchestration and acceptance suite.
 
 ### Risks & mitigations
 
@@ -181,5 +181,5 @@ M9. Security review, performance, and fault injection (4–6d)
 ### References
 
 - [AgentFS status](AgentFS/AgentFS.status.md)
-- [Sandboxing Strategies](Sandboxing/Agents-Workflow-Sandboxing-Strategies.md)
+- [Sandboxing Strategies](Sandboxing/agent-harbor-Sandboxing-Strategies.md)
 - [Local Sandboxing on Linux (status)](Sandboxing/Local-Sandboxing-on-Linux.status.md)

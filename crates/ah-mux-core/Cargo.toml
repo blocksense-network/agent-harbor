@@ -1,0 +1,10 @@
+[package]
+name = "ah-mux-core"
+version = "0.1.0"
+edition = "2021"
+description = "Low-level, AH-agnostic multiplexer trait and shared types for terminal multiplexers"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }

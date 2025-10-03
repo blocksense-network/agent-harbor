@@ -23,12 +23,12 @@ References: tmux(1) manual: windows/panes, `split-window`, `send-keys`, `-c` for
 
 ## Creating a New Tab With Split Layout
 
-Example creates a window titled `aw-task-<id>` with editor (top‑left), TUI follower (top‑right), and logs (bottom):
+Example creates a window titled `ah-task-<id>` with editor (top‑left), TUI follower (top‑right), and logs (bottom):
 
 ```
-SESSION=${SESSION:-aw}
+SESSION=${SESSION:-ah}
 TASK_ID=$1
-TITLE="aw-task-${TASK_ID}"
+TITLE="ah-task-${TASK_ID}"
 
 # Ensure session exists (detached)
 (tmux has-session -t "$SESSION" 2>/dev/null) || tmux new-session -d -s "$SESSION" -c "$PWD"
@@ -40,8 +40,8 @@ tmux select-pane -t "$WIN".1 && tmux split-window -v -t "$WIN" -c "$PWD"  # bott
 
 # Launch commands
 tmux send-keys -t "$WIN".1 "nvim ." C-m
-tmux send-keys -t "$WIN".2 "aw tui --follow ${TASK_ID}" C-m
-tmux send-keys -t "$WIN".3 "aw session logs ${TASK_ID} -f" C-m
+tmux send-keys -t "$WIN".2 "ah tui --follow ${TASK_ID}" C-m
+tmux send-keys -t "$WIN".3 "ah session logs ${TASK_ID} -f" C-m
 
 # Focus TUI pane
 tmux select-window -t "$WIN" && tmux select-pane -t "$WIN".2
@@ -55,7 +55,7 @@ Notes
 ## Launching Commands in Each Pane
 
 - Prefer starting the command as part of `new-window`/`split-window`:
-  - `tmux split-window -v -c "$PWD" "aw tui --follow ${TASK_ID}"`
+  - `tmux split-window -v -c "$PWD" "ah tui --follow ${TASK_ID}"`
 - Alternatively use `send-keys 'cmd' C-m` to simulate Enter. [2]
 
 ## Scripting Interactive Answers (Send Keys)
@@ -67,7 +67,7 @@ Notes
 
 ```
 TASK_ID=$1
-WIN=$(tmux list-windows -a -F '#S:#I:#W' | awk -F: -v t="aw-task-${TASK_ID}" '$3==t{print $1":"$2; exit}')
+WIN=$(tmux list-windows -a -F '#S:#I:#W' | awk -F: -v t="ah-task-${TASK_ID}" '$3==t{print $1":"$2; exit}')
 [ -n "$WIN" ] && tmux select-window -t "$WIN"
 ```
 
@@ -88,7 +88,7 @@ WIN=$(tmux list-windows -a -F '#S:#I:#W' | awk -F: -v t="aw-task-${TASK_ID}" '$3
 
 ## Example: TUI Follow Flow
 
-Combine the creation script above with the TUI control index to either focus an existing `aw-task-<id>` window or create it and then run `aw tui --follow <id>`.
+Combine the creation script above with the TUI control index to either focus an existing `ah-task-<id>` window or create it and then run `ah tui --follow <id>`.
 
 ## References
 

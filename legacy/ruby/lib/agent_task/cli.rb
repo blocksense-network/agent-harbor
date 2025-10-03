@@ -3,7 +3,7 @@
 # Command Line Interface Specification
 # ====================================
 #
-# This module implements the core functionality for all agent-workflow commands:
+# This module implements the core functionality for all agent-harbor commands:
 #
 # `agent-task` (CLI.start_task) is used to record coding tasks that will be
 # developed by AI agents. It has two modes of operation:

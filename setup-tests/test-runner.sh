@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Docker-based integration test runner for agent-workflow setup
+# Docker-based integration test runner for agent-harbor setup
 # Tests sourcing codex-setup with NIX=1 in a clean Alpine container
 
 set -euo pipefail
@@ -32,8 +32,8 @@ echo -e "${YELLOW}📁 Repository root: $REPO_ROOT${NC}"
 echo -e "${YELLOW}📦 Building Docker image...${NC}"
 cd "$SCRIPT_DIR"
 
-# Build the Docker image from the repository root (where the agent-workflow files are)
-docker build -f Dockerfile -t agent-workflow-test "$REPO_ROOT"
+# Build the Docker image from the repository root (where the agent-harbor files are)
+docker build -f Dockerfile -t agent-harbor-test "$REPO_ROOT"
 
 echo -e "${YELLOW}🐳 Running test in Docker container...${NC}"
 
@@ -41,9 +41,9 @@ echo -e "${YELLOW}🐳 Running test in Docker container...${NC}"
 # Use --rm to clean up the container after the test
 # Mount the container test script
 docker run --rm \
-  --name agent-workflow-integration-test \
+  --name agent-harbor-integration-test \
   -v "$SCRIPT_DIR/container-test.sh:/container-test.sh" \
-  agent-workflow-test \
+  agent-harbor-test \
   sudo /bin/bash /container-test.sh
 
 # Check the exit code
@@ -51,7 +51,7 @@ TEST_EXIT_CODE=$?
 
 # Clean up
 echo -e "${YELLOW}🧹 Cleaning up Docker image...${NC}"
-docker rmi agent-workflow-test >/dev/null 2>&1 || true
+docker rmi agent-harbor-test >/dev/null 2>&1 || true
 
 if [ $TEST_EXIT_CODE -eq 0 ]; then
   echo -e "${GREEN}🎊 Docker-based codex-setup integration test completed successfully!${NC}"

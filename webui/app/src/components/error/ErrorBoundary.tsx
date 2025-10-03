@@ -12,10 +12,10 @@ const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (
     <div class="flex min-h-screen items-center justify-center bg-gray-50">
       <div class="w-full max-w-md rounded-lg bg-white p-6 text-center shadow-lg">
         <div
-          class="
-          mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full
-          bg-red-100
-        "
+          class={`
+            mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full
+            bg-red-100
+          `}
         >
           <span class="text-3xl text-red-600">⚠️</span>
         </div>
@@ -101,7 +101,12 @@ const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (
                   <label class="text-xs font-medium text-gray-700">
                     Cause:
                   </label>
-                  <pre class="max-h-16 cursor-text overflow-auto rounded bg-gray-100 p-2 text-xs select-text">
+                  <pre
+                    class={`
+                      max-h-16 cursor-text overflow-auto rounded bg-gray-100 p-2
+                      text-xs select-text
+                    `}
+                  >
                     {String((props.error as Error & { cause?: unknown }).cause)}
                   </pre>
                 </div>

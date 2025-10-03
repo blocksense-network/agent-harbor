@@ -1,5 +1,3 @@
-"use server";
-
 // Server-side data fetching for SSR
 // This file contains server functions that fetch data from the API server during SSR
 

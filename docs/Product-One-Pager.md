@@ -1,16 +1,16 @@
-### **Unlocking Developer Productivity: The Agents-Workflow Advantage**
+### **Unlocking Developer Productivity: The Agent Harbor Advantage**
 
 **For Marketing & Business Development Teams**
 
 #### **Executive Summary**
 
-Agents-Workflow is a comprehensive platform engineered to unlock maximum developer productivity through effective and secure AI agent delegation. Our key innovations directly address the limitations of existing tools. We provide **instantaneous, sandboxed workspaces** for local and on-premise agent runners, eliminating slow setup times. We offer a unique **agent time-travel** feature that allows developers to rewind and precisely guide an agent's work, ensuring quality without constant live supervision. Furthermore, we empower agents to validate code across **multiple operating systems in parallel**, a critical capability for professional development. By combining the autonomous, "fire-and-forget" experience of cloud systems with the speed of a local environment, Agents-Workflow allows developers to truly focus on high-level architecture and innovation.
+agent-harbor is a comprehensive platform engineered to unlock maximum developer productivity through effective and secure AI agent delegation. Our key innovations directly address the limitations of existing tools. We provide **instantaneous, sandboxed workspaces** for local and on-premise agent runners, eliminating slow setup times. We offer a unique **agent time-travel** feature that allows developers to rewind and precisely guide an agent's work, ensuring quality without constant live supervision. Furthermore, we empower agents to validate code across **multiple operating systems in parallel**, a critical capability for professional development. By combining the autonomous, "fire-and-forget" experience of cloud systems with the speed of a local environment, agent-harbor allows developers to truly focus on high-level architecture and innovation.
 
 ---
 
-#### **The Agents-Workflow Difference: Key Benefits**
+#### **The Agent Harbor Difference: Key Benefits**
 
-While cloud-based AI coding assistants offer a glimpse into the future, Agents-Workflow delivers a practical, powerful, and polished solution for today.
+While cloud-based AI coding assistants offer a glimpse into the future, agent-harbor delivers a practical, powerful, and polished solution for today.
 
 - **Parallel, Autonomous Workstreams:** Launch multiple, fully sandboxed AI agents that can work on different tasks concurrently. Unlike local agents that require developers to approve each command—interrupting their workflow and stealing focus—our sandboxed environment enables true autonomy. Developers can delegate a task and switch their attention to other productive activities, confident that the agent can work safely and without interruption until it delivers a high-quality, test-passing Pull Request.
 - **Multi-OS Validation in Parallel:** Empower agents to run builds and tests across multiple operating systems simultaneously. By leveraging local VMs or distributed build environments connected by the high-speed Mutagen file synchronization tool, an agent can validate its changes on Linux, macOS, and Windows in parallel, ensuring comprehensive test coverage without slowing down the development cycle.
@@ -30,10 +30,10 @@ We directly solve the most common frustrations developers and organizations face
 Cloud agents like Codex and Jules are ineffective without a perfectly replicated development environment. Developers must spend significant time writing and debugging complex setup scripts before any meaningful work can start. Worse, these scripts must be executed from scratch for every new task, making agent start-up painfully slow and expensive.
 
 **Our Solution: A Spectrum of Instant-On Environments**
-Agents-Workflow offers a range of start-up options to fit any scenario, all managed through a unified, seamless user experience. We support and augment all existing CLI, GUI and cloud agent environments to ensure a consistent workflow, regardless of the underlying agent runner.
+agent-harbor offers a range of start-up options to fit any scenario, all managed through a unified, seamless user experience. We support and augment all existing CLI, GUI and cloud agent environments to ensure a consistent workflow, regardless of the underlying agent runner.
 
 - **Local & On-Premise:** Launch agents locally or on an on-premise cluster, leveraging a full development environment. With our snapshot technology, a new, fully-provisioned agent workspace can be started in milliseconds.
-- **Third-Party Cloud Environments:** Keep the option to use all existing and future cloud solutions through off-the-shelf setup scripts, prompt engineering and UI automation that ensures the full agent-workflows experience just works.
+- **Third-Party Cloud Environments:** Keep the option to use all existing and future cloud solutions through off-the-shelf setup scripts, prompt engineering and UI automation that ensures the full agent-harbors experience just works.
 
 ##### **Problem 2: The "Runaway Agent" and Lack of Precise Control**
 
@@ -51,7 +51,7 @@ Our platform's most powerful feature provides a complete solution.
 Many local AI agents have direct access to a developer's machine. To prevent catastrophic accidents from prompt injection or agent error, they must ask for confirmation before executing commands. This constant supervision shatters developer concentration and negates the primary benefit of delegation—freeing up the developer's time and focus.
 
 **Our Solution: Secure Autonomy with Sandboxed Workspaces**
-Agents-Workflow resolves this dilemma by providing the best of both worlds. We enable the cloud-like autonomous experience, but without the downsides. By creating secure, sandboxed workspaces for every task using filesystem snapshots and container technologies, we isolate the agent from the host system. Within this secure sandbox, the agent can operate autonomously without requiring confirmation for every command. This allows the developer to truly "fire-and-forget," focusing on other critical work until the agent reports back with a completed, high-quality result.
+agent-harbor resolves this dilemma by providing the best of both worlds. We enable the cloud-like autonomous experience, but without the downsides. By creating secure, sandboxed workspaces for every task using filesystem snapshots and container technologies, we isolate the agent from the host system. Within this secure sandbox, the agent can operate autonomously without requiring confirmation for every command. This allows the developer to truly "fire-and-forget," focusing on other critical work until the agent reports back with a completed, high-quality result.
 
 ---
 

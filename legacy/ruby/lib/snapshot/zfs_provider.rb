@@ -7,7 +7,7 @@ require 'socket'
 module Snapshot
   # ZFS snapshot implementation
   class ZfsProvider < Provider
-    DAEMON_SOCKET_PATH = '/tmp/agent-workflow/aw-fs-snapshots-daemon'
+    DAEMON_SOCKET_PATH = '/tmp/agent-harbor/ah-fs-snapshots-daemon'
 
     def self.available?(path)
       # ZFS is only available on Linux in this implementation
@@ -75,7 +75,7 @@ module Snapshot
 
       # Clone is not properly accessible - this indicates ZFS mounting permissions issue
       raise 'ZFS clone created but not accessible - check ZFS mounting permissions ' \
-            'or start the AW filesystem snapshots daemon with `just legacy-start-aw-fs-snapshots-daemon`'
+            'or start the AH filesystem snapshots daemon with `just legacy-start-ah-fs-snapshots-daemon`'
     end
 
     def cleanup_workspace(dest)

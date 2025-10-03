@@ -196,7 +196,7 @@ class WorkflowAdditionalTest < Minitest::Test
 
     VCSRepo.new(repo).checkout_branch('feat')
 
-    clone = Dir.mktmpdir('aw_clone')
+    clone = Dir.mktmpdir('ah_clone')
     FileUtils.cp_r(File.join(RepoTestHelper::ROOT, '.'), clone)
 
     stub_dir = Dir.mktmpdir('stubs')
@@ -222,7 +222,7 @@ class WorkflowAdditionalTest < Minitest::Test
     FileUtils.remove_entry(remote) if remote && File.exist?(remote)
     FileUtils.remove_entry(clone) if defined?(clone) && clone && File.exist?(clone)
     FileUtils.remove_entry(stub_dir) if defined?(stub_dir) && stub_dir && File.exist?(stub_dir)
-    FileUtils.rm_rf('/tmp/agents-workflow')
+    FileUtils.rm_rf('/tmp/agent-harbor')
   end
 end
 

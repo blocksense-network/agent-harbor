@@ -1,5 +1,5 @@
 name: 'Setup Development Environment'
-description: 'Sets up SCM tools, just, Ruby, and RuboCop for the agents-workflow project'
+description: 'Sets up SCM tools, just, Ruby, and RuboCop for the agent-harbor project'
 
 runs:
   using: 'composite'

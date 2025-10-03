@@ -17,7 +17,7 @@ Assumptions for all scenarios:
 
 - Workspace folder is the repository root: `$WS`.
 - Dev Containers CLI is installed: `devcontainer --version` works on host.
-- Base images are available locally or via GHCR: `ghcr.io/blocksense/agents-workflow-nix-base:latest` and `ghcr.io/blocksense/agents-workflow-agents-base:latest`.
+- Base images are available locally or via GHCR: `ghcr.io/blocksense/agent-harbor-nix-base:latest` and `ghcr.io/blocksense/agent-harbor-agents-base:latest`.
 - `devcontainer.json` defines named volumes for caches as in the reference spec.
 
 1) Cold → Warm Install
@@ -30,7 +30,7 @@ Steps:
 
 ```bash
 # 1) Remove existing named volumes used by devcontainer.json (idempotent)
-for v in aw-nix-store aw-cache-home aw-cargo aw-go-cache aw-go-mod; do docker volume rm "$v" 2>/dev/null || true; done
+for v in ah-nix-store ah-cache-home ah-cargo ah-go-cache ah-go-mod; do docker volume rm "$v" 2>/dev/null || true; done
 
 # 2) Bring up the devcontainer
 devcontainer up --workspace-folder "$WS"
@@ -216,7 +216,7 @@ devcontainer exec --workspace-folder "$WS" -- bash -lc 'mkdir -p /work/go && cd 
 # pnpm (offline)
 devcontainer exec --workspace-folder "$WS" -- bash -lc 'cd /work/node && pnpm i --offline'
 # Maven (offline)
-devcontainer exec --workspace-folder "$WS" -- bash -lc 'mkdir -p /work/java && cd /work/java && mvn -o -q archetype:generate -DgroupId=aw.test -DartifactId=aw-offline -DarchetypeArtifactId=maven-archetype-quickstart -DinteractiveMode=false && cd aw-offline && mvn -o -q -DskipTests package'
+devcontainer exec --workspace-folder "$WS" -- bash -lc 'mkdir -p /work/java && cd /work/java && mvn -o -q archetype:generate -DgroupId=ah.test -DartifactId=ah-offline -DarchetypeArtifactId=maven-archetype-quickstart -DinteractiveMode=false && cd ah-offline && mvn -o -q -DskipTests package'
 ```
 
 Expected results:
@@ -348,7 +348,7 @@ Steps:
 devcontainer exec --workspace-folder "$WS" -- bash -lc '
   export AW_CACHE_COMPAT_OVERRIDE="python:cp310-manylinux_2_27_x86_64"  # example mismatch
   # 2) Run health to see which caches are enabled
-  aw health --caches | tee /tmp/health_caches.txt
+  ah health --caches | tee /tmp/health_caches.txt
 '
 
 # 3) Inspect that python cache mounts are disabled due to mismatch
@@ -359,7 +359,7 @@ devcontainer exec --workspace-folder "$WS" -- bash -lc '
 # 4) Clear override and verify caches enable when compatible
 devcontainer exec --workspace-folder "$WS" -- bash -lc '
   unset AW_CACHE_COMPAT_OVERRIDE
-  aw health --caches | tee /tmp/health_caches2.txt
+  ah health --caches | tee /tmp/health_caches2.txt
   rg -n "python.*compat: ok" /tmp/health_caches2.txt || true
 '
 ```
@@ -378,7 +378,7 @@ Expected results:
 
 ### Automation
 
-- Provide `aw health --caches` to print configured mounts and sizes.
+- Provide `ah health --caches` to print configured mounts and sizes.
 - CI jobs per package manager with synthetic sample projects.
 
 Implementation Plan: See [Devcontainer Design.status.md](Devcontainer-Design.status.md) for milestones, success criteria, and CI strategy.

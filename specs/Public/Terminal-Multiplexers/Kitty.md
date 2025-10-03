@@ -22,15 +22,15 @@ This document describes automating Kitty via its remote‑control interface `kit
 
 ```
 TASK_ID=$1
-TITLE="aw-task-${TASK_ID}"
+TITLE="ah-task-${TASK_ID}"
 
 # Ensure there is a controlling socket; if running from inside Kitty, $KITTY_LISTEN_ON is set.
-# Otherwise start Kitty with: kitty --listen-on unix:/tmp/kitty-aw.sock &
-TO=${KITTY_LISTEN_ON:-unix:/tmp/kitty-aw.sock}
+# Otherwise start Kitty with: kitty --listen-on unix:/tmp/kitty-ah.sock &
+TO=${KITTY_LISTEN_ON:-unix:/tmp/kitty-ah.sock}
 
 kitty @ --to "$TO" launch --type=tab --cwd "$PWD" --title "$TITLE" -- bash -lc 'nvim .'
-kitty @ --to "$TO" launch --type=window --location=hsplit --cwd "$PWD" -- bash -lc "aw tui --follow ${TASK_ID}"
-kitty @ --to "$TO" launch --type=window --location=vsplit --cwd "$PWD" -- bash -lc "aw session logs ${TASK_ID} -f"
+kitty @ --to "$TO" launch --type=window --location=hsplit --cwd "$PWD" -- bash -lc "ah tui --follow ${TASK_ID}"
+kitty @ --to "$TO" launch --type=window --location=vsplit --cwd "$PWD" -- bash -lc "ah session logs ${TASK_ID} -f"
 ```
 
 ## Launching Commands in Each Pane
@@ -45,7 +45,7 @@ kitty @ --to "$TO" launch --type=window --location=vsplit --cwd "$PWD" -- bash -
 
 ```
 TASK_ID=$1
-kitty @ focus-window --match title:"aw-task-${TASK_ID}"
+kitty @ focus-window --match title:"ah-task-${TASK_ID}"
 ```
 
 ## Programmatic Control Interfaces

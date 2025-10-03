@@ -42,7 +42,7 @@ Goose can be started with a specific task prompt in several ways:
 
 No official checkpointing mechanism was found in Goose docs that restores both chat and filesystem to a specific moment in time. Documentation emphasizes sessions and recipes/extensions; file‑system snapshots or rollbacks are not documented as a built‑in feature.
 
-- Scope: No documented file snapshots. Checkpointing not supported as defined by AW.
+- Scope: No documented file snapshots. Checkpointing not supported as defined by AH.
 - Restore semantics: N/A. Use external VCS or your own tooling for file rollback.
 
 ### Session continuation (conversation resume)

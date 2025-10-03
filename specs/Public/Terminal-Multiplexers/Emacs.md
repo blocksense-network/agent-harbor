@@ -19,10 +19,10 @@ Create/focus Emacs window layouts and run interactive commands using `vterm` (re
 ## Creating a New Tab With Split Layout (Elisp)
 
 ```
-(defun aw-open-task (task-id)
-  "Open AW layout for TASK-ID with TUI and logs in vterms."
+(defun ah-open-task (task-id)
+  "Open AH layout for TASK-ID with TUI and logs in vterms."
   (interactive "sTask ID: ")
-  (let ((title (format "aw-task-%s" task-id)))
+  (let ((title (format "ah-task-%s" task-id)))
     (tab-new)
     (rename-buffer title)
     (delete-other-windows)
@@ -30,14 +30,14 @@ Create/focus Emacs window layouts and run interactive commands using `vterm` (re
     (split-window-right)
     (other-window 1)
     (vterm)
-    (vterm-send-string (format "aw tui --follow %s" task-id))
+    (vterm-send-string (format "ah tui --follow %s" task-id))
     (vterm-send-return)
     ;; Left-bottom split: logs
     (other-window -1)
     (split-window-below)
     (other-window 1)
     (vterm)
-    (vterm-send-string (format "aw session logs %s -f" task-id))
+    (vterm-send-string (format "ah session logs %s -f" task-id))
     (vterm-send-return)))
 ```
 
@@ -51,7 +51,7 @@ Create/focus Emacs window layouts and run interactive commands using `vterm` (re
 
 ## Focusing an Existing Task’s Pane/Window
 
-- Name tabs/buffers with `aw-task-<id>`; switch via `tab-bar-switch-to-tab` or buffer selection.
+- Name tabs/buffers with `ah-task-<id>`; switch via `tab-bar-switch-to-tab` or buffer selection.
 
 ## Programmatic Control Interfaces
 
@@ -67,7 +67,7 @@ Create/focus Emacs window layouts and run interactive commands using `vterm` (re
 
 ## Example: TUI Follow Flow
 
-Call `(aw-open-task "ABC")` (or via `emacsclient -e`) to create splits and run TUI/logs.
+Call `(ah-open-task "ABC")` (or via `emacsclient -e`) to create splits and run TUI/logs.
 
 ## References
 

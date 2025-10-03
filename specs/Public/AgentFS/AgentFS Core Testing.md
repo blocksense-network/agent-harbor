@@ -71,11 +71,11 @@ The following plans are the authoritative, step-by-step procedures. Sections bel
 
 Prerequisite: libfuse available; adapter binary built.
 
-1. Start the FUSE host mounting to a temporary directory (e.g., `/tmp/awfs`).
-2. `mkdir /tmp/awfs/dir` → expect success; `ls` shows `dir`.
-3. `sh -lc 'echo hello > /tmp/awfs/dir/a.txt'`.
-4. `cat /tmp/awfs/dir/a.txt` → expect `hello`.
-5. `mv /tmp/awfs/dir/a.txt /tmp/awfs/dir/b.txt`; `stat` reflects new name.
+1. Start the FUSE host mounting to a temporary directory (e.g., `/tmp/ahfs`).
+2. `mkdir /tmp/ahfs/dir` → expect success; `ls` shows `dir`.
+3. `sh -lc 'echo hello > /tmp/ahfs/dir/a.txt'`.
+4. `cat /tmp/ahfs/dir/a.txt` → expect `hello`.
+5. `mv /tmp/ahfs/dir/a.txt /tmp/ahfs/dir/b.txt`; `stat` reflects new name.
 6. Unmount cleanly; no panics or leaks in logs.
 
 #### I2. FUSE control plane (integration)
@@ -103,7 +103,7 @@ Prerequisite: FSKit extension built and signed; XPC client available.
 2. Create directory/file; enumerate; read/write succeed.
 3. Send XPC control messages for snapshot/branch/bind; verify behavior.
 
-#### S1. AW workflow scenario: branch-per-task
+#### S1. AH workflow scenario: branch-per-task
 
 1. Mount an adapter (FUSE/WinFsp/FSKit) to a test mount.
 2. Create `snapshot.create(name="clean")`.
@@ -160,9 +160,9 @@ Prerequisite: FSKit extension built and signed; XPC client available.
   - Run WinFsp’s test batteries: winfstest, IfsTest, fsbench read/write tests, change notification tests.
   - Validate delete‑on‑close, share modes, ADS.
 
-4. Scenario tests (AW workflows)
+4. Scenario tests (AH workflows)
 
-- Simulate AW ‘task session’ lifecycle: snapshot baseline → branch per task → writes → verify isolation → branch discard/keep.
+- Simulate AH ‘task session’ lifecycle: snapshot baseline → branch per task → writes → verify isolation → branch discard/keep.
 - Codify per‑process view isolation: two processes bound to different branches operating on same absolute paths get divergent results.
 - Browser automation artifacts: ensure xattrs (quarantine, FinderInfo) round‑trip on macOS.
 

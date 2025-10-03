@@ -337,7 +337,7 @@ Hooks receive JSON input via stdin containing:
 
 ### Filesystem Snapshot Testing
 
-The mock agent includes built-in support for testing filesystem snapshot functionality through hooks. A sample hook script `hooks/simulate_snapshot.py` simulates taking snapshots by appending evidence to `.aw/snapshots/evidence.log`.
+The mock agent includes built-in support for testing filesystem snapshot functionality through hooks. A sample hook script `hooks/simulate_snapshot.py` simulates taking snapshots by appending evidence to `.ah/snapshots/evidence.log`.
 
 **Running Snapshot Tests:**
 
@@ -346,7 +346,7 @@ The mock agent includes built-in support for testing filesystem snapshot functio
 python -m src.cli run --scenario examples/snapshot_test_scenario.json --workspace /tmp/snapshot-test --format claude
 
 # Check that snapshots were taken
-cat /tmp/snapshot-test/.aw/snapshots/evidence.log
+cat /tmp/snapshot-test/.ah/snapshots/evidence.log
 ```
 
 **Current Status**: Hook verification infrastructure is complete:
@@ -517,7 +517,7 @@ The integration tests create the following files (automatically cleaned up after
 
 **Hook Evidence Files** (created during hook testing):
 
-- `.aw/snapshots/evidence.log` - JSONL file containing snapshot evidence entries
+- `.ah/snapshots/evidence.log` - JSONL file containing snapshot evidence entries
 - Each entry proves a hook was executed with tool details and timestamps
 
 **Interactive Scenarios** (in `tests/tools/mock-agent/scenarios/`):

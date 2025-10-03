@@ -2,14 +2,14 @@
 
 This folder tracks first‑class integrations with terminal multiplexers and terminal emulators that can host multiple tabs/panes and run interactive agent sessions, as referenced by the TUI PRD and the URL handler spec.
 
-## Rust Traits: Low‑Level Multiplexer API (AW‑agnostic) and AW Adapter
+## Rust Traits: Low‑Level Multiplexer API (AH‑agnostic) and AH Adapter
 
 We split responsibilities into two layers:
 
-- Low‑level AW‑agnostic trait: a toolbox of generic window/pane primitives that any terminal multiplexer/editor can implement.
-- High‑level AW adapter: translates Agents‑Workflow concepts (task IDs, standard layouts, pane roles) into calls to the low‑level API. This lives in an AW crate and is not part of the low‑level trait.
+- Low‑level AH‑agnostic trait: a toolbox of generic window/pane primitives that any terminal multiplexer/editor can implement.
+- High‑level AH adapter: translates Agent Harbor concepts (task IDs, standard layouts, pane roles) into calls to the low‑level API. This lives in an AH crate and is not part of the low‑level trait.
 
-### Low‑Level Trait (AW‑agnostic)
+### Low‑Level Trait (AH‑agnostic)
 
 ```rust
 /// Opaque identifiers; implementations may encode native IDs/titles internally.
@@ -83,21 +83,21 @@ pub trait Multiplexer {
 
 Design choices and rationale
 
-- AW‑agnostic surface: No task IDs, pane roles, or AW layouts leak into the trait. Callers work with generic windows/panes, titles, and commands.
+- AH‑agnostic surface: No task IDs, pane roles, or AH layouts leak into the trait. Callers work with generic windows/panes, titles, and commands.
 - Common denominators only: The methods reflect capabilities present across tmux/wezterm/kitty/iTerm2/Tilix/Vim/Emacs, enabling portable automation.
 - Optional `send_text`: Some backends provide reliable text injection (tmux/wezterm/kitty). Others may only support initial commands; making this optional preserves portability.
 - Discovery is best‑effort: Not all backends have robust enumeration APIs. We expose list methods with minimal filters and rely on higher layers to track handles/titles.
 - Sync Result API: Keeps CLI/TUI code straightforward. Implementations internally enforce timeouts and non‑blocking behavior.
 
-### High‑Level AW Adapter (in `aw-mux` monolith)
+### High‑Level AH Adapter (in `ah-mux` monolith)
 
-An AW‑specific adapter provides:
+An AH‑specific adapter provides:
 
-- Standard AW layouts (per TUI PRD) expressed as composition of `open_window` + `split_pane` + `run_command`.
+- Standard AH layouts (per TUI PRD) expressed as composition of `open_window` + `split_pane` + `run_command`.
 - Role mapping (editor/tui/logs) to concrete PaneIds maintained in an adapter‑level `LayoutHandle`.
 - Discovery/reuse using title hints and the low‑level `list_*` methods.
 
-This separation keeps the low‑level trait reusable outside Agents‑Workflow and allows us to iterate on AW layouts without changing backend implementations. In the repository, the AW adapter and all backend implementations live in the `aw-mux` monolith crate under feature‑gated modules; optional facade crates re‑export individual backends when separate packages are desirable.
+This separation keeps the low‑level trait reusable outside Agent Harbor and allows us to iterate on AH layouts without changing backend implementations. In the repository, the AH adapter and all backend implementations live in the `ah-mux` monolith crate under feature‑gated modules; optional facade crates re‑export individual backends when separate packages are desirable.
 
 Scope includes classic multiplexers and terminal apps with comparable capabilities (tabs, splits, focus control, programmatic command launch), and editors with built‑in terminals.
 

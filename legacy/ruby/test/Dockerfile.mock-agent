@@ -47,6 +47,6 @@ ENTRYPOINT ["/app/bin/mock-agent"]
 CMD ["--workspace", "/workspace"]
 
 # Metadata
-LABEL description="MockAgent test environment for agents-workflow snapshot testing"
+LABEL description="MockAgent test environment for agent-harbor snapshot testing"
 LABEL version="1.0.0"
-LABEL maintainer="agents-workflow"
+LABEL maintainer="agent-harbor"

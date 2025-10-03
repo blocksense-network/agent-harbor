@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://blocksense.dev/schemas/agents-workflow/config.schema.json",
-  "title": "Agents-Workflow Configuration",
+  "$id": "https://schamas.blocksense.network/agent-harbor/config.schema.json",
+  "title": "Agent Harbor Configuration",
   "type": "object",
   "additionalProperties": false,
   "$defs": {

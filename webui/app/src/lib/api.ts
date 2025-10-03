@@ -1,4 +1,4 @@
-// API client for Agents-Workflow REST service
+// API client for the Agent Harbor REST service
 
 export interface Repository {
   mode: "git" | "upload" | "none";
