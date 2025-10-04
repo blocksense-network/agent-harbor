@@ -39,7 +39,7 @@ fn main() {
         iterations += 1;
 
         // Report progress every 100 iterations
-        if iterations.is_multiple_of(100) {
+        if iterations % 100 == 0 {
             let elapsed = start_time.elapsed();
             println!(
                 "Completed {} iterations in {:.2}s (avg: {:.0} iter/s)",

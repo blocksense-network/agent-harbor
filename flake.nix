@@ -180,25 +180,49 @@
         start-work = pkgs.writeShellScriptBin "start-work" ''
           exec ${pkgs.ruby}/bin/ruby ${./bin/start-work} "$@"
         '';
-        agent-utils = pkgs.symlinkJoin {
+        legacy-cloud-agent-utils = pkgs.symlinkJoin {
           name = "agent-utils";
           paths = [get-task start-work];
         };
+        # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
+        ah-binary = pkgs.rustPlatform.buildRustPackage rec {
+          pname = "agent-harbor-cli";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = ["--bin" "ah"];
+          doCheck = false; # Skip tests for faster builds
+          meta = with pkgs.lib; {
+            description = "Agent Harbor CLI";
+            license = licenses.mit;
+          };
+        };
+        ah-fs-snapshot-daemon-binary = pkgs.rustPlatform.buildRustPackage rec {
+          pname = "agent-harbor-daemon";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = ["--bin" "ah-fs-snapshots-daemon"];
+          doCheck = false; # Skip tests for faster builds
+          meta = with pkgs.lib; {
+            description = "Agent Harbor Filesystem Snapshot Daemon";
+            license = licenses.mit;
+          };
+        };
+        # Combine both binaries into the agent-harbor package
+        agent-harbor = pkgs.symlinkJoin {
+          name = "agent-harbor";
+          paths = [ah-binary ah-fs-snapshot-daemon-binary];
+        };
       in {
-        ah = ah-script;
-        agent-utils = agent-utils;
+        ah = ah-binary;
+        ah-fs-snapshot-daemon = ah-fs-snapshot-daemon-binary;
+        agent-harbor = agent-harbor;
+        legacy-cloud-agent-utils = legacy-cloud-agent-utils;
         sosumi-docs-downloader = sosumi-docs-downloader.packages.${system}.sosumi-docs-downloader;
         default = ah-script;
       }
     );
-
-    apps = forAllSystems (system: {
-      ah = {
-        type = "app";
-        program = "${self.packages.${system}.ah}/bin/ah";
-      };
-      default = self.apps.${system}.ah;
-    });
 
     devShells = forAllSystems (system: let
       pkgs = import nixpkgs {

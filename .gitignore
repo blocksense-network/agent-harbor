@@ -22,7 +22,6 @@ legacy/ruby/test/logs/
 
 # Rust build artifacts
 target/
-Cargo.lock
 
 # Swift Package Manager build artifacts
 .build/

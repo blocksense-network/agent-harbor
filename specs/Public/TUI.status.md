@@ -11,6 +11,7 @@ Goal: deliver a production-ready terminal-based dashboard for creating, monitori
 Total estimated timeline: 12-16 weeks (broken into major phases with parallel development tracks)
 
 ### PRD Compliance — Snapshot (as of 2025-10-02)
+
 | PRD Requirement | Status | Notes |
 |---|---|---|
 | Dashboard with Project/Branch/Agent selectors + multiline task editor | ✅ Met | Implemented with MVVM and golden snapshots for 80x24 & 120x40; keyboard navigation verified. |
