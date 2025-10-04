@@ -148,13 +148,71 @@ python -m src.cli demo --workspace /tmp/mock-ws
 # Run with Claude format
 python -m src.cli demo --workspace /tmp/mock-ws --format claude
 
+# Run in fast mode (no timing delays)
+python -m src.cli demo --workspace /tmp/mock-ws --fast-mode
+
+# Run with checkpoint command (executes after each tool use)
+python -m src.cli demo --workspace /tmp/mock-ws --checkpoint-cmd "echo 'Tool executed'"
+
 # Run a custom scenario
-python -m src.cli run --scenario examples/hello_scenario.json --workspace /tmp/mock-ws
+python -m src.cli run --scenario examples/hello_scenario.yaml --workspace /tmp/mock-ws
 
 # Run with different formats
-python -m src.cli run --scenario examples/hello_scenario.json --workspace /tmp/mock-ws --format codex
-python -m src.cli run --scenario examples/hello_scenario.json --workspace /tmp/mock-ws --format claude
+python -m src.cli run --scenario examples/hello_scenario.yaml --workspace /tmp/mock-ws --format codex
+python -m src.cli run --scenario examples/hello_scenario.yaml --workspace /tmp/mock-ws --format claude
 ```
+
+### Command Line Options
+
+- `--workspace PATH`: Directory where the agent will create and modify files
+- `--format FORMAT`: Session file format (`codex` or `claude`, default: `codex`)
+- `--fast-mode`: Fast mode - sorts events by time and executes sequentially without timing delays
+- `--checkpoint-cmd COMMAND`: Command to execute after each `agentToolUse` and `agentEdits` event
+- `--codex-home PATH`: Custom codex home directory (default: `~/.codex`)
+
+### Fast Mode
+
+Fast mode (`--fast-mode`) optimizes execution for speed by:
+
+1. **Collecting all timeline events** with their timestamps
+2. **Sorting events by time** to maintain temporal order
+3. **Executing events sequentially** without sleep delays
+4. **Maintaining event dependencies** while eliminating timing delays
+
+This is useful for:
+- **CI/CD pipelines** where fast execution is preferred
+- **Bulk scenario testing** where timing accuracy is less important
+- **Development workflows** where you want quick feedback
+
+**Example:**
+```bash
+# Normal execution with timing
+python -m src.cli run --scenario scenario.json --workspace /tmp/ws
+# Takes ~2.5 seconds with timing delays
+
+# Fast mode execution
+python -m src.cli run --scenario scenario.json --workspace /tmp/ws --fast-mode
+# Takes ~0.5 seconds without timing delays
+```
+
+### Checkpoint Commands
+
+The `--checkpoint-cmd` option allows you to execute a command after each tool use or file edit:
+
+```bash
+# Example: Take filesystem snapshots after each tool execution
+python -m src.cli run --scenario scenario.json --workspace /tmp/ws \
+  --checkpoint-cmd "ah agent fs snapshot"
+
+# Example: Log tool execution
+python -m src.cli run --scenario scenario.json --workspace /tmp/ws \
+  --checkpoint-cmd "echo 'Tool executed at $(date)' >> /tmp/tool.log"
+```
+
+This is particularly useful for:
+- **Filesystem snapshots** for time travel functionality
+- **Audit logging** of tool executions
+- **Custom post-processing** after agent actions
 
 ### Output Locations
 
@@ -257,38 +315,8 @@ See [Codex Session File Format](../../../specs/Research/Codex-Session-File-Forma
 
 ## Scenario Format
 
-Create custom scenarios using JSON files. Example structure:
+Scenarios use a YAML-based format for defining agent interactions. See the [Scenario Format Specification](../../specs/Public/Scenario-Format.md) for complete details on structure, events, timing, and configuration options.
 
-```json
-{
-  "meta": {
-    "instructions": "You are a helpful coding agent.",
-    "turn_context": {
-      "cwd": "/workspace",
-      "model": "mock-model"
-    }
-  },
-  "turns": [
-    { "user": "Create hello.py" },
-    { "think": "I'll create a Python file" },
-    {
-      "tool": {
-        "name": "write_file",
-        "args": { "path": "hello.py", "text": "print('Hello!')\n" }
-      }
-    },
-    { "assistant": "Created hello.py successfully" }
-  ]
-}
-```
-
-**Supported turn types:**
-
-- `user`: User message
-- `think`: Assistant reasoning/thinking
-- `tool`: Tool call with name and arguments
-- `assistant`: Assistant response
-- `shell`: Shell command execution
 
 ## Hooks Support
 

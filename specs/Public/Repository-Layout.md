@@ -76,7 +76,7 @@ agent-harbor/
 │  ├─ ah-rest-api-contract/    # Schema types, input validation, etc (shared between mock servers and production server)
 │  ├─ ah-rest-client/          # Client for remote REST mode
 │  ├─ ah-rest-mock-server/     # Mock REST API server for development and testing
-│  ├─ ah-rest-server/          # Optional local REST service (lib + bin)
+│  ├─ ah-rest-server/          # Agent Harbor REST service (lib)
 │  ├─ ah-connectivity/         # SSH, relays, followers, rendezvous
 │  ├─ ah-notify/               # Cross-platform notifications
 │  ├─ ah-fleet/                # Multi-OS fleet orchestration primitives

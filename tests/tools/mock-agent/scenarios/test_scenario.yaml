@@ -1,0 +1,20 @@
+name: test_scenario
+repo:
+  init: true
+timeline:
+  - think:
+      - [500, "Processing request for test_scenario"]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "test.txt"
+        text: "Test content for test_scenario"
+      result: "File created"
+      status: "ok"
+  - assistant:
+      - [300, "Completed test_scenario scenario"]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "test.txt"

@@ -42,7 +42,7 @@ class TestMockAgent:
 
     def test_hello_scenario_file_creation(self, temp_workspace, temp_codex_home, project_root):
         """Test that running the hello scenario creates the expected file."""
-        scenario_path = project_root / "examples" / "hello_scenario.json"
+        scenario_path = project_root / "examples" / "hello_scenario.yaml"
         
         # Run the agent
         result = subprocess.run([
@@ -65,7 +65,7 @@ class TestMockAgent:
 
     def test_hello_scenario_terminal_output(self, temp_workspace, temp_codex_home, project_root):
         """Test that the agent produces expected terminal output."""
-        scenario_path = project_root / "examples" / "hello_scenario.json"
+        scenario_path = project_root / "examples" / "hello_scenario.yaml"
         
         # Use pexpect to capture live output
         proc = pexpect.spawn(
@@ -125,7 +125,7 @@ class TestMockAgent:
 
     def test_rollout_file_creation(self, temp_workspace, temp_codex_home, project_root):
         """Test that rollout files are created in the correct location."""
-        scenario_path = project_root / "examples" / "hello_scenario.json"
+        scenario_path = project_root / "examples" / "hello_scenario.yaml"
         
         result = subprocess.run([
             "python", "-m", "src.cli", "run",
@@ -159,7 +159,7 @@ class TestMockAgent:
 
     def test_session_log_creation(self, temp_workspace, temp_codex_home, project_root):
         """Test that session log files are created."""
-        scenario_path = project_root / "examples" / "hello_scenario.json"
+        scenario_path = project_root / "examples" / "hello_scenario.yaml"
         
         result = subprocess.run([
             "python", "-m", "src.cli", "run",

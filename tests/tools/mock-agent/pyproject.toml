@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A mock coding agent that emits thinking traces, tool-use messages, and writes Codex-compatible session files; includes a mock OpenAI/Anthropic API server."
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{ name = "Your Name", email = "you@example.com" }]
+authors = [{ name = "Zahary Karadjov", email = "zahary@blocksense.network" }]
 dependencies = []
 
 [project.optional-dependencies]

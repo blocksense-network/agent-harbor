@@ -1,0 +1,29 @@
+name: hello_scenario
+repo:
+  init: true
+timeline:
+  - think:
+      - [500, "I'll create hello.py with a print statement."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "hello.py"
+        text: "print('Hello, World!')\n"
+      result: "File created"
+      status: "ok"
+  - assistant:
+      - [300, "Created hello.py. Run: python hello.py"]
+  - agentToolUse:
+      toolName: "read_file"
+      args:
+        path: "hello.py"
+      result: "File read successfully"
+      status: "ok"
+  - assistant:
+      - [200, "Confirmed content of hello.py."]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "hello.py"
+  

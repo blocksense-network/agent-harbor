@@ -592,6 +592,9 @@ test-overlays:
     just build-overlay-tests
     cargo test -p sandbox-integration-tests --verbose
 
+test-mock-agent-simple:
+    cd tests/tools/mock-agent && python3 tests/test_agent_simple.py
+
 # Run mock-agent integration tests
 test-mock-agent-integration:
     cd tests/tools/mock-agent && python3 tests/test_agent_integration.py

@@ -30,7 +30,7 @@ pip install -e . >/dev/null 2>&1
 
 # Run the hello scenario
 echo "Running hello scenario..."
-python -m src.cli run --scenario examples/hello_scenario.json --workspace "$WS" --codex-home "$CODEX_HOME"
+python -m src.cli run --scenario examples/hello_scenario.yaml --workspace "$WS" --codex-home "$CODEX_HOME"
 
 # Verify the expected file was created
 echo

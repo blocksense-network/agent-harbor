@@ -820,6 +820,45 @@ Parallel development enables faster progress while maintaining clean dependency 
   - [ ] All VCS types tested (Git, Hg, Fossil) with same test patterns as Ruby
   - [ ] All integration tests use custom `AH_HOME` for environment isolation from user configuration
 
+**T3.4 REST Service Implementation** (4 weeks)
+
+- **Deliverables**:
+
+  - Complete implementation of [REST-Service/](REST-Service/) specification
+  - REST API server with all endpoints: task creation, session management, logs, events
+  - SSE/WebSocket streaming for real-time session updates
+  - Authentication and authorization (API keys, JWT, RBAC)
+  - Database integration for session state persistence. Please note that the SQLx dependencies suggested in the ([REST Service Tech Stack](REST-Service/Tech-Stack.md)) should actually be integrated in the ah-local-db crate.
+  - Executor registration and heartbeat management
+  - Workspace provisioning and snapshot management integration
+
+- **Testing Strategy**:
+
+  - Comprehensive API contract tests against mock clients
+  - End-to-end integration tests with mock executors
+  - Authentication and authorization test suites
+  - SSE streaming reliability tests
+  - Database persistence and recovery tests
+  - Multi-tenant isolation tests
+  - Rate limiting and quota enforcement tests
+
+- **Verification**:
+
+  - All REST endpoints match [REST-Service/](REST-Service/) specification
+  - API contract tests pass against mock server (100% endpoint coverage)
+  - SSE streaming works reliably under various network conditions
+  - Authentication flows work correctly (API key, JWT, OIDC)
+  - RBAC permissions are properly enforced
+  - Session state persistence survives server restarts
+  - Executor heartbeat and health monitoring works
+  - Workspace provisioning integrates correctly with snapshot providers
+  - Multi-tenant data isolation is maintained
+  - Rate limiting and quotas are properly enforced
+
+## New/Refined Milestones to Reach Full PRD
+
+> All milestones below include **automated verification** (unit + integration + golden/snapshot tests). Test names are suggestions; feel free to adopt your naming convention.
+
 **Phase 6: TUI Dashboard Implementation** (with sophisticated E2E testing)
 
 **6.1 TUI Core Infrastructure**
@@ -1085,6 +1124,151 @@ The MVP implementation must coordinate across multiple specifications with prope
   - Session management handles multiple concurrent agent types
   - Mock agent integration enables deterministic testing
   - Agent process monitoring detects completion/failure correctly
+
+**2.4 AH Agent Start Command** (depends on 2.3 + mock-agent infrastructure)
+
+|- **Deliverables**:
+
+  - Complete `ah agent start` command implementation in `ah-core` with thin wrapper in `ah-cli` with Clap derive API
+  - Agent execution coordination with sandbox and workspace setup
+
+|- **Mock-Agent Infrastructure Status**:
+
+  - Mock agent infrastructure is already implemented and functional ([tests/tools/mock-agent/](../../tests/tools/mock-agent/))
+  - Supports both Codex and Claude Code agent formats with session file generation
+  - Includes API server for testing IDE integrations with deterministic responses
+  - Provides asciinema recording capabilities for session demonstrations
+  - Extensive test suite validates CLI functionality, file operations, and session recording
+  
+|- **Cross-Spec Dependencies**:
+
+  - **[CLI.md](../../specs/Public/CLI.md)**: Defines the `ah agent start` command specification and argument interface
+  - **[Agent-Time-Travel.md](../../specs/Public/Agent-Time-Travel.md)**: Provides agent execution architecture and session recording patterns
+  - **[FS-Snapshots-Overview.md](../../specs/Public/FS Snapshots/FS-Snapshots-Overview.md)**: Defines workspace preparation for agent execution
+  - **[tests/tools/mock-agent/](../../tests/tools/mock-agent/)**: Provides mock agent and API server for testing
+  - **[Local-Sandboxing-on-Linux.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md)**: Provides sandbox execution environment for agents
+
+**2.4.1 AH Agent Start In-Place Mode E2E Tests** (depends on 2.4)
+
+|- **Deliverables**:
+
+  - E2E test scenarios validating `ah agent start` in in-place working copy mode
+  - Shared repo setup code with existing `ah task` integration tests
+  - Test repo created in temporary folder with predefined state
+  - Verification that expected side effects from scenarios occur correctly
+
+|- **Testing Strategy**:
+
+  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+  - Scenarios define repo initialization, agent execution, and expected outcomes
+  - Share repository setup utilities from existing `ah task` E2E tests
+  - Run scenarios in isolated temporary directories
+
+|- **Verification Results**:
+
+  - [ ] Scenarios execute successfully in in-place mode
+  - [ ] File system side effects match scenario expectations
+  - [ ] Agent execution completes without workspace isolation issues
+  - [ ] Test repo cleanup works properly after scenario completion
+
+**2.4.2 AH Agent Start FS Snapshots Mode E2E Tests** (depends on 2.4.1)
+
+|- **Deliverables**:
+
+  - E2E test scenarios validating `ah agent start` with FS snapshots enabled
+  - Use test filesystem infrastructure from FS snapshot tests (ZFS/Btrfs test pools)
+  - Sandbox disabled to isolate filesystem snapshot behavior
+  - Verification that workspace snapshots work correctly during agent execution
+
+|- **Testing Strategy**:
+
+  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+  - Scenarios configure FS snapshot provider (ZFS/Btrfs) and working copy mode
+  - Test filesystem setup via `just create-test-filesystems` and `just check-test-filesystems`
+  - Validate snapshot creation and cleanup during agent execution
+
+|- **Verification Results**:
+
+  - [ ] FS snapshots created at appropriate points during agent execution
+  - [ ] Workspace isolation works correctly with snapshot providers
+  - [ ] Agent execution completes successfully in snapshotted environment
+  - [ ] Snapshots are correctly produced at the expected moments in the scenario and each snapshot can be restored with the expected state of the working copy files.
+  - [ ] Snapshot cleanup happens properly after scenario completion
+  - [ ] No conflicts between multiple concurrent agent executions
+
+**2.4.3 AH Agent Start Sandbox Mode E2E Tests** (depends on 2.4.2)
+
+|- **Deliverables**:
+
+  - E2E test scenarios validating `ah agent start` with both FS snapshots and sandbox enabled
+  - Combine test filesystem infrastructure with sandbox execution
+  - Full agent isolation including filesystem snapshots and process sandboxing
+  - Verification that sandboxed agent execution produces correct side effects
+
+|- **Testing Strategy**:
+
+  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+  - Scenarios configure both FS snapshot provider and sandbox profile
+  - Test filesystem + sandbox setup ensures complete agent isolation
+  - Validate that sandbox restrictions don't interfere with agent functionality
+
+|- **Verification Results**:
+
+  - [ ] Agent execution works correctly within sandbox environment
+  - [ ] FS snapshots integrate properly with sandboxed workspace
+  - [ ] Sandbox resource limits don't break agent functionality
+  - [ ] File system side effects occur correctly despite sandbox isolation
+  - [ ] Sandbox cleanup happens properly after scenario completion
+
+**2.4.4 AH Agent Start Codex Integration E2E Tests** (depends on 2.4.3)
+
+|- **Deliverables**:
+
+  - All previous test scenarios (2.4.1-2.4.3) executed with real Codex CLI instead of mock agent
+  - Codex CLI backed by mock LLM API server for deterministic testing
+  - Full integration testing of real agent binary with workspace isolation
+
+|- **Testing Strategy**:
+
+  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+  - Configure Codex to use mock API server from `tests/tools/mock-agent/`
+  - Run all E2E scenarios (in-place, FS snapshots, sandbox) with real Codex binary
+  - Validate that real agent behavior matches mock agent expectations
+
+|- **Verification Results**:
+
+  - [ ] Codex CLI integration works with all workspace modes (in-place, snapshots, sandbox)
+  - [ ] Mock API server provides deterministic responses for Codex
+  - [ ] Real Codex execution produces same side effects as mock agent
+  - [ ] Error handling and edge cases work with real agent
+
+**2.4.5 AH Agent Start Session Recording E2E Tests** (depends on 2.4.4)
+
+|- **Deliverables**:
+
+  - Session recording validation for both mock agent and real Codex CLI
+  - Asciinema recording integration with `ah agent record` command
+  - Session file generation in appropriate formats (Codex/Claude)
+  - Session timeline creation for time travel functionality
+  - Recording verification across all workspace modes (in-place, snapshots, sandbox)
+
+|- **Testing Strategy**:
+
+  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+  - Validate session recordings are created correctly during agent execution
+  - Test both mock agent recordings and real Codex CLI recordings
+  - Verify asciinema format and playback capability
+  - Ensure session files match expected formats for time travel integration
+
+|- **Verification Results**:
+
+  - [ ] Mock agent session recording works correctly with asciinema
+  - [ ] Session files generated in proper Codex/Claude formats
+  - [ ] Session timeline data captured for time travel functionality
+  - [ ] Real Codex CLI session recording matches mock agent behavior
+  - [ ] Session recordings work across all workspace modes (in-place, snapshots, sandbox)
+  - [ ] Recording cleanup and storage works properly
+  - [ ] Session playback and inspection capabilities verified
 
 **Phase 3: Agent Time Travel** (depends on Phase 2 agent integration, with incremental implementation)
 

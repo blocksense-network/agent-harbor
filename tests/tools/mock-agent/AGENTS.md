@@ -194,7 +194,7 @@ WS=$(mktemp -d) && python -m src.cli demo --workspace "$WS" --format codex && ls
 WS=$(mktemp -d) && python -m src.cli demo --workspace "$WS" --format claude && ls -la "$WS"
 
 # Verify session file creation
-python -m src.cli run --scenario examples/hello_scenario.json --workspace /tmp/test-ws --format claude
+python -m src.cli run --scenario examples/hello_scenario.yaml --workspace /tmp/test-ws --format claude
 find ~/.claude/projects -name "*.jsonl" | head -1 | xargs cat | jq .
 ```
 
@@ -277,7 +277,7 @@ find ~/.claude/projects -name "*.jsonl" | head -1 | xargs cat | jq .
 python -c "
 import json
 from src.agent import run_scenario
-result = run_scenario('examples/hello_scenario.json', '/tmp/debug-ws', format='claude')
+result = run_scenario('examples/hello_scenario.yaml', '/tmp/debug-ws', format='claude')
 print(f'Session file: {result}')
 "
 ```
@@ -294,7 +294,7 @@ Tests create and clean up temporary directories automatically:
 
 ### Test Scenarios
 
-**Built-in hello scenario** (`examples/hello_scenario.json`):
+**Built-in hello scenario** (`examples/hello_scenario.yaml`):
 
 - User requests hello.py creation
 - Agent thinks about the task

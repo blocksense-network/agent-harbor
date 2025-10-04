@@ -1095,18 +1095,10 @@ The `ah agent sandbox` command provides a seamless workflow for launching the TU
 
 **Filesystem Detection and Snapshot Strategy:**
 
-1. **Repository Detection**: First detects the VCS repository root by walking parent directories from the current working directory, supporting Git, Mercurial, Bazaar, and Fossil repositories.
+- **Repository Selection**: Selects the working directory through the standard [Repository Selection](CLI-Repository-Selection.md) logic.
+- **FS Snapshots Provider Selection**: Applies the standard [FS Snapshot Provider Selection](CLI-FS-Snapshot-Provider-Selection.md) algorithm with the repository root to select a provider.
 
-2. **Filesystem Provider Auto-Detection**: Analyzes the detected repository's filesystem type and capabilities:
-
-   - **ZFS**: Uses CoW (Copy-on-Write) overlay mode with snapshots and clones via the `ah-fs-snapshots-daemon`
-   - **Btrfs**: Uses CoW overlay mode with subvolume snapshots
-   - **Other filesystems**: Exits with an error.
-
-3. **Pre-Sandbox Snapshot Creation**: Before entering the sandbox, creates filesystem snapshots/clones to preserve the current workspace state:
-   - ZFS: Creates snapshots and clones using privileged daemon operations
-   - Btrfs: Creates subvolume snapshots
-   - Provides source→destination path pairs for bind mounting
+3. **Pre-Sandbox Snapshot Creation**: Before entering the sandbox, creates filesystem snapshots/clones to preserve the current workspace state.
 
 **Sandbox Entry and TUI Launch:**
 
@@ -1136,6 +1128,107 @@ This command enables safe experimentation with agent workflows while preserving 
 TODO: Verify that these align with everything described in [Sandbox-Profiles.md](Sandbox-Profiles.md)
 
 See also: Local-Sandboxing-on-Linux.md for detailed semantics.
+
+```
+ah agent start [OPTIONS] <TASK_ID|SESSION_ID>
+
+DESCRIPTION: Starts an agent on a given task by setting up an isolated working copy,
+             configuring the chosen sandbox environment, and launching the coding agent
+             software with the task prompt. This command is used internally by the TUI
+             to execute agents in the agent pane.
+
+OPTIONS:
+  --task-id <ID>                     Task ID to execute (alternative to positional argument)
+  --session-id <ID>                  Session ID to execute (alternative to positional argument)
+  --agent <TYPE>[@VERSION]           Agent type and optional version to use
+  --repo <PATH>                      Repository path (auto-detected if not provided)
+  --working-copy <auto|cow-overlay|worktree|in-place>
+                                     Working copy mode for isolation (default: auto)
+  --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
+                                     Filesystem snapshot provider (default: auto)
+  --sandbox <local|devcontainer|vm|disabled>
+                                     Sandbox profile to use (default: local)
+  --devcontainer <PATH|TAG>          Devcontainer path or image/tag
+  --allow-egress <yes|no>            Allow network egress from sandbox (default: no)
+  --allow-containers <yes|no>        Permit nested containers (default: no)
+  --allow-vms <yes|no>               Permit nested virtualization (default: no)
+  --env <KEY=VALUE>...               Additional environment variables for agent
+  --timeout <DURATION>               Maximum execution time before auto-termination
+  --record-output <yes|no>           Record agent output with asciinema (default: yes)
+  --output-dir <PATH>                Directory for recordings and artifacts
+  --follow                           Monitor execution and emit notifications on completion
+
+ARGUMENTS:
+  TASK_ID|SESSION_ID                 Task or session identifier to execute
+```
+
+BEHAVIOR:
+
+The `ah agent start` command orchestrates the complete agent execution workflow, integrating filesystem isolation, sandboxing, and agent launching. This is the core execution command used by the TUI's agent pane.
+
+**Working Copy Setup:**
+
+- **Repository Selection**: Selects the working directory through the standard [Repository Selection](CLI-Repository-Selection.md) logic.
+- **FS Snapshots Provider Selection**: Applies the standard [FS Snapshot Provider Selection](CLI-FS-Snapshot-Provider-Selection.md) algorithm with the repository root to select a provider.
+
+3. **Workspace Preparation**: Creates an isolated working copy according to `--working-copy` mode:
+   - `cow-overlay`: Copy-on-write overlay preserving original repo paths
+   - `worktree`: Isolated directory with bind mounts for path preservation
+   - `in-place`: Direct execution on current working copy (no isolation)
+   - `auto`: Selects optimal mode for the chosen provider
+
+**Sandbox Environment Setup:**
+
+4. **Sandbox Profile Selection**: Configures the execution environment based on `--sandbox`:
+   - `local`: Process sandbox with namespaces and resource limits
+   - `devcontainer`: Launches inside VS Code devcontainer
+   - `vm`: Executes in lightweight virtual machine
+   - `disabled`: Direct host execution (policy-gated)
+
+5. **Sandbox Configuration**: Applies sandbox-specific settings:
+   - Network isolation with optional egress via `--allow-egress`
+   - Nested container/VM permissions via `--allow-containers`/`--allow-vms`
+   - Resource limits and device access controls
+   - Environment variable injection via `--env`
+
+**Agent Execution:**
+
+6. **Agent Launch**: Executes the specified agent type with the task prompt:
+   - Local agents: Launches directly in the prepared sandbox environment
+   - Cloud agents: May use browser automation when `--browser-automation true`
+   - Session recording: Captures output with asciinema when `--record-output yes`
+
+7. **Monitoring and Completion**: Tracks agent execution and handles completion:
+   - Real-time event streaming for TUI integration
+   - OS notifications on completion when `--follow` is specified
+   - Automatic cleanup of workspaces and sandbox resources
+
+**Integration Points:**
+
+- **FS Snapshots**: Leverages the `ah-fs-snapshots-daemon` for sudo-less privileged operations
+- **TUI Agent Pane**: This command runs inside the right pane of multiplexer windows created by the TUI dashboard (usually wrapped in a `ah agent record` invocation)
+- **Time Travel**: Creates FsSnapshots at logical boundaries for later inspection and branching
+- **Multi-OS Fleets**: Supports execution on leader and follower machines in coordinated fleets
+
+**Error Handling:**
+
+- Validates task/session existence and accessibility
+- Ensures provider and sandbox compatibility
+- Provides clear error messages for configuration conflicts
+- Graceful cleanup on execution failures
+
+**Examples:**
+
+```bash
+# Start agent on a task with default isolation and sandboxing
+ah agent start task-abc-123
+
+# Execute with specific agent and devcontainer sandbox
+ah agent start --agent claude --sandbox devcontainer --devcontainer .devcontainer/devcontainer.json task-abc-123
+
+# Run in-place without isolation (policy-gated)
+ah agent start --working-copy in-place --sandbox disabled --agent openhands session-xyz-789
+```
 
 ```
 ah agent instructions [OPTIONS] [SOURCE-FILE]
@@ -1174,17 +1267,17 @@ Notes:
 - Linking per‑agent instruction file paths is handled by `ah repo instructions link`.
 
 ```
-ah agent start-work [OPTIONS]
+ah agent starting-cloud-task [OPTIONS]
 
 DESCRIPTION: Records a task description and optionally creates a new branch.
              When on an existing agent branch, appends the description as a follow-up task.
              When not on an agent branch, requires --branch-name and creates a new agent
-             branch with the initial task.
+             branch with the initial task. This command is executed by cloud agents
+             (via prompt engineering) when they begin processing a task.
 
 OPTIONS:
-  --task-description <DESC>   Task description
-  --branch-name <NAME>        Branch name to create
-  --repo <PATH>               Repository path
+  --task-description <DESC>   Record the given task description
+  --branch-name <NAME>        Name to use for the task description file
 ```
 
 ```
@@ -1213,12 +1306,6 @@ ah agent relay send --session <ID> --host <NAME> --control <JSON>
 ```
 
 Relay send control payloads (fallback).
-
-```
-ah agent relay socks5 --session <ID> --bind <ADDRESS:PORT>
-```
-
-Start a client-side CONNECT relay for this session (multi-hop across access points).
 
 ```
 ah agent fs status [OPTIONS]
