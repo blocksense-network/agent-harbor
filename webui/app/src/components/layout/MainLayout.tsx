@@ -56,8 +56,7 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
               height="32"
             />
             <div>
-              <h1 class="sr-only">Agent Harbor</h1>
-              <p class="sr-only">AI Agent Management Platform</p>
+              <h1 class="text-xl font-bold text-gray-900">Agent Harbor</h1>
             </div>
           </div>
           <nav class="flex space-x-1" aria-label="Primary">

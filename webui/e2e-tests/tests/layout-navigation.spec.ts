@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe.skip('Layout and Navigation Tests', () => {
+test.describe('Layout and Navigation Tests', () => {
   test('Simplified task-centric layout renders correctly', async ({ page }) => {
     await page.goto('/');
 
@@ -95,7 +95,7 @@ test.describe.skip('Layout and Navigation Tests', () => {
     // Verify footer shows task feed context shortcuts (default view)
     // When on task feed, should show navigation shortcuts
     await expect(footer).toContainText('Navigate');
-    await expect(footer).toContainText('Select Task');
+    await expect(footer).toContainText('Go');
 
     // Focus on draft textarea to trigger draft-task context
     const draftTextarea = page.locator('[data-testid="draft-task-textarea"]').first();

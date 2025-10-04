@@ -96,7 +96,7 @@ repomix/
 reference_projects/
 resources/
 
-webui/test-results/.last-run.json
+test-results/
 
 # Node.js dependencies
 node_modules/
@@ -120,6 +120,7 @@ webui/app/dist/
 webui/app/app.config.timestamp_*.js
 
 # WebUI test artifacts
+webui/test-results/
 webui/e2e-tests/test-results/
 webui/e2e-tests/browsers/
 

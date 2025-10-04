@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe.skip('Fixed-Height Card Requirements', () => {
+test.describe('Fixed-Height Card Requirements', () => {
   test('active session cards always show exactly 3 activity rows', async ({ page }) => {
     await page.goto('/');
     

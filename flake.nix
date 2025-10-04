@@ -6,7 +6,7 @@
     # Playwright 1.52.0 expects chromium-1169, which is available in this commit
     # but not in current nixpkgs-unstable. Can be updated when Playwright version
     # is upgraded or when nixpkgs-unstable has compatible chromium version.
-    nixpkgs.url = "github:NixOS/nixpkgs/979daf34c8cacebcd917d540070b52a3c2b9b16e";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     rust-overlay.url = "github:oxalica/rust-overlay";
     git-hooks.url = "github:cachix/git-hooks.nix";
     codex = {
@@ -244,11 +244,11 @@
         pkgs.noto-fonts
 
         # Markdown linting & link/prose checking
-        (pkgs.nodePackages.markdownlint-cli2)
+        pkgs.nodePackages.markdownlint-cli2
         pkgs.lychee
         pkgs.vale
-        (pkgs.nodePackages.cspell)
-        (pkgs.nodePackages.prettier)
+        pkgs.nodePackages.cspell
+        pkgs.nodePackages.prettier
         pkgs.shfmt
         pkgs.taplo
 
@@ -305,8 +305,8 @@
           versions = [ "16.0" ];  # Match your installed Xcode version
         })
         # Apple SDK frameworks
-        pkgs.darwin.apple_sdk.frameworks.CoreFoundation
-        pkgs.darwin.apple_sdk.frameworks.Security
+        # pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+        # pkgs.darwin.apple_sdk.frameworks.Security
         # macOS-specific tools
         pkgs.lima # Linux virtual machines on macOS
         # Xcode project generation

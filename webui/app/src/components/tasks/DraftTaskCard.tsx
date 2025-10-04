@@ -20,12 +20,20 @@ interface Repository {
 interface DraftTaskCardProps {
   draft: DraftTask;
   isSelected?: boolean; // Keyboard navigation selection
+  onDebug?: () => void; // Debug callback
   onUpdate: (updates: Partial<DraftTask>) => void;
   onRemove: () => void;
   onTaskCreated?: (taskId: string) => void;
 }
 
 export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
+  // Debug effect for selection changes
+  createEffect(() => {
+    if (props.onDebug) {
+      props.onDebug();
+    }
+  });
+
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [modelSelections, setModelSelections] = createSignal<
     Array<{ model: string; instances: number }>

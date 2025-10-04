@@ -32,6 +32,12 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const { addToast, addToastWithActions } = useToast();
   const [keyboardSelectedIndex, setKeyboardSelectedIndex] =
     createSignal<number>(-1);
+
+  // Debug keyboard selection changes
+  createEffect(() => {
+    const index = keyboardSelectedIndex();
+    console.debug("[TaskFeed] keyboardSelectedIndex changed to:", index);
+  });
   const [refreshTrigger, setRefreshTrigger] = createSignal(0); // For auto-refresh every 30s
 
   // Progressive enhancement: Drafts rendered from props during SSR
@@ -143,19 +149,42 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
   // Handle keyboard navigation (drafts first, then sessions)
   const handleKeyDown = (e: KeyboardEvent) => {
+    console.log("[TaskFeed] Keyboard event:", e.key);
     const sessions = sessionsData()?.items || [];
     const draftsList = drafts();
     const totalItems = draftsList.length + sessions.length;
 
+    console.log(
+      "[TaskFeed] Total items:",
+      totalItems,
+      "drafts:",
+      draftsList.length,
+      "sessions:",
+      sessions.length,
+    );
+
     if (totalItems === 0) return;
 
     const currentIndex = keyboardSelectedIndex();
+    console.log("[TaskFeed] Current index:", currentIndex);
 
     switch (e.key) {
       case "ArrowDown": {
         e.preventDefault();
         const nextIndex = currentIndex < totalItems - 1 ? currentIndex + 1 : 0;
+        console.log("[TaskFeed] Setting keyboardSelectedIndex to:", nextIndex);
         setKeyboardSelectedIndex(nextIndex);
+
+        // Add a debug attribute to the keyboard navigation element for testing
+        const keyboardNavEl = document.querySelector(
+          '[aria-label="Task list navigation"]',
+        );
+        if (keyboardNavEl) {
+          keyboardNavEl.setAttribute(
+            "data-keyboard-index",
+            nextIndex.toString(),
+          );
+        }
 
         // Update selected session ID and focus state
         // Drafts are first (0 to draftsList.length - 1), sessions follow
@@ -179,7 +208,19 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       case "ArrowUp": {
         e.preventDefault();
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : totalItems - 1;
+        console.log("[TaskFeed] Setting keyboardSelectedIndex to:", prevIndex);
         setKeyboardSelectedIndex(prevIndex);
+
+        // Add a debug attribute to the keyboard navigation element for testing
+        const keyboardNavEl = document.querySelector(
+          '[aria-label="Task list navigation"]',
+        );
+        if (keyboardNavEl) {
+          keyboardNavEl.setAttribute(
+            "data-keyboard-index",
+            prevIndex.toString(),
+          );
+        }
 
         // Update selected session ID and focus state
         // Drafts are first (0 to draftsList.length - 1), sessions follow
@@ -325,6 +366,11 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       role="region"
       aria-label="Task feed"
     >
+      {/* Task Feed Heading */}
+      <div class="border-b border-gray-200 bg-white px-6 py-4">
+        <h2 class="text-lg font-semibold text-gray-900">Task Feed</h2>
+      </div>
+
       <section
         class="flex-1 overflow-y-auto"
         role="region"
@@ -345,6 +391,16 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                       <DraftTaskCard
                         draft={draft}
                         isSelected={keyboardSelectedIndex() === globalIndex}
+                        onDebug={() =>
+                          console.log(
+                            `[TaskFeed] Draft ${draft.id} isSelected:`,
+                            keyboardSelectedIndex() === globalIndex,
+                            "keyboardIndex:",
+                            keyboardSelectedIndex(),
+                            "globalIndex:",
+                            globalIndex,
+                          )
+                        }
                         onUpdate={async (updates) => {
                           const success = await draftOps.updateDraft(
                             draft.id,

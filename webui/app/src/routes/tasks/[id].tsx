@@ -1,4 +1,4 @@
-import { Component } from "solid-js";
+import { Component, onMount, onCleanup } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { Title, Meta } from "@solidjs/meta";
 
@@ -11,6 +11,22 @@ const TaskDetailsPage: Component = () => {
     navigate("/", { replace: true });
   };
 
+  // Handle Esc key to go back
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      handleGoBack();
+    }
+  };
+
+  onMount(() => {
+    document.addEventListener("keydown", handleKeyDown);
+  });
+
+  onCleanup(() => {
+    document.removeEventListener("keydown", handleKeyDown);
+  });
+
   return (
     <>
       <Title>Agent Harbor — Task {taskId}</Title>
@@ -18,7 +34,7 @@ const TaskDetailsPage: Component = () => {
         name="description"
         content={`View details and monitor progress for task ${taskId}`}
       />
-      <div class="flex h-full flex-col p-4">
+      <div class="flex h-full flex-col p-4" data-testid="task-details">
         <h2 class="mb-4 text-2xl font-bold">Task Details: {taskId}</h2>
         <div class="flex-1 rounded-lg border border-gray-200 bg-white p-6">
           <p class="text-gray-700">

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Draft Persistence & Preferences', () => {
-  test.skip('Draft task card is present and can be edited', async ({ page }) => {
+  test('Draft task card is present and can be edited', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction(() => !!document.querySelector('header'), { timeout: 20000 });
 
