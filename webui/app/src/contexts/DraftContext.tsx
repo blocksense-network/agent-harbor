@@ -35,15 +35,21 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
   const createDraft = async (draft: DraftCreate): Promise<DraftTask | null> => {
     try {
       setError(null);
-      console.log("[DraftContext] Creating draft...", draft);
+      if (!import.meta.env.PROD) {
+        console.log("[DraftContext] Creating draft...", draft);
+      }
       const fullDraft = await apiClient.createDraft(draft);
-      console.log("[DraftContext] Draft created:", fullDraft);
+      if (!import.meta.env.PROD) {
+        console.log("[DraftContext] Draft created:", fullDraft);
+      }
 
       props.onDraftChanged?.(); // Notify that drafts changed
 
       // Dispatch custom event for components to listen to
       if (typeof window !== "undefined") {
-        console.log("[DraftContext] Dispatching draft-created event");
+        if (!import.meta.env.PROD) {
+          console.log("[DraftContext] Dispatching draft-created event");
+        }
         window.dispatchEvent(
           new CustomEvent("draft-created", { detail: fullDraft }),
         );

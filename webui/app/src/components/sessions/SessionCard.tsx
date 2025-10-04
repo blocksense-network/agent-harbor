@@ -157,19 +157,30 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
     ].includes(session().status);
     if (!isActive) return;
 
-    console.log(`[SessionCard] Subscribing to SSE for session ${session().id}`);
+    if (!import.meta.env.PROD) {
+      console.log(
+        `[SessionCard] Subscribing to SSE for session ${session().id}`,
+      );
+    }
 
     const unsubscribe = subscribeToSession(
       session().id,
       (event: SessionEvent) => {
-        console.log(`[SessionCard ${session().id}] SSE event received:`, event);
+        if (!import.meta.env.PROD) {
+          console.log(
+            `[SessionCard ${session().id}] SSE event received:`,
+            event,
+          );
+        }
 
         // Update status
         if (event.type === "status") {
-          console.log(
-            `[SessionCard ${session().id}] Updating status to:`,
-            event.status,
-          );
+          if (!import.meta.env.PROD) {
+            console.log(
+              `[SessionCard ${session().id}] Updating status to:`,
+              event.status,
+            );
+          }
           setSessionStatus(event.status as Session["status"]);
         }
 
@@ -181,9 +192,11 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           const newRow: ActivityRow = { type: "thinking", text: event.thought };
           const newRows = [...current.rows, newRow].slice(-3); // Keep last 3
           setLiveActivity({ ...current, rows: newRows });
-          console.log(
-            `[SessionCard ${session().id}] Added thinking row, total rows: ${newRows.length}`,
-          );
+          if (!import.meta.env.PROD) {
+            console.log(
+              `[SessionCard ${session().id}] Added thinking row, total rows: ${newRows.length}`,
+            );
+          }
         }
 
         // Tool start - adds new row, scrolls up, tracks tool name
@@ -195,9 +208,11 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           const newRow: ActivityRow = { type: "tool", name: event.tool_name };
           const newRows = [...current.rows, newRow].slice(-3); // Keep last 3
           setLiveActivity({ rows: newRows, currentTool: event.tool_name });
-          console.log(
-            `[SessionCard ${session().id}] Added tool start row: ${event.tool_name}, total rows: ${newRows.length}`,
-          );
+          if (!import.meta.env.PROD) {
+            console.log(
+              `[SessionCard ${session().id}] Added tool start row: ${event.tool_name}, total rows: ${newRows.length}`,
+            );
+          }
         }
 
         // Tool last_line - updates current tool row IN PLACE, no scroll
@@ -209,9 +224,11 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
             return row;
           });
           setLiveActivity({ ...current, rows: newRows } as LiveActivityState);
-          console.log(
-            `[SessionCard ${session().id}] Updated tool last_line IN PLACE for: ${current.currentTool}`,
-          );
+          if (!import.meta.env.PROD) {
+            console.log(
+              `[SessionCard ${session().id}] Updated tool last_line IN PLACE for: ${current.currentTool}`,
+            );
+          }
         }
 
         // Tool complete - replaces tool row with completion, clears currentTool
@@ -231,9 +248,11 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
             rows: newRows,
             currentTool: null,
           } as LiveActivityState);
-          console.log(
-            `[SessionCard ${session().id}] Tool completed: ${event.tool_name}, cleared currentTool`,
-          );
+          if (!import.meta.env.PROD) {
+            console.log(
+              `[SessionCard ${session().id}] Tool completed: ${event.tool_name}, cleared currentTool`,
+            );
+          }
         }
 
         // File edit event - adds new row, scrolls up
@@ -246,23 +265,29 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           };
           const newRows = [...current.rows, newRow].slice(-3); // Keep last 3
           setLiveActivity({ ...current, rows: newRows });
-          console.log(
-            `[SessionCard ${session().id}] Added file edit row, total rows: ${newRows.length}`,
-          );
+          if (!import.meta.env.PROD) {
+            console.log(
+              `[SessionCard ${session().id}] Added file edit row, total rows: ${newRows.length}`,
+            );
+          }
         }
 
-        console.log(
-          `[SessionCard ${session().id}] Live activity rows:`,
-          liveActivity().rows.length,
-        );
+        if (!import.meta.env.PROD) {
+          console.log(
+            `[SessionCard ${session().id}] Live activity rows:`,
+            liveActivity().rows.length,
+          );
+        }
       },
     );
 
     // Cleanup on unmount
     onCleanup(() => {
-      console.log(
-        `[SessionCard] Unsubscribing from SSE for session ${session().id}`,
-      );
+      if (!import.meta.env.PROD) {
+        console.log(
+          `[SessionCard] Unsubscribing from SSE for session ${session().id}`,
+        );
+      }
       unsubscribe();
     });
   });

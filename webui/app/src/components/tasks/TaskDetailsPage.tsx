@@ -60,7 +60,9 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
     try {
       // For now, just show a placeholder - pause/resume would need API endpoints
-      console.log("Pause task:", taskId());
+      if (!import.meta.env.PROD) {
+        console.log("Pause task:", taskId());
+      }
     } catch (error) {
       console.error("Failed to pause task:", error);
     }
@@ -71,7 +73,9 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
     try {
       // For now, just show a placeholder - pause/resume would need API endpoints
-      console.log("Resume task:", taskId());
+      if (!import.meta.env.PROD) {
+        console.log("Resume task:", taskId());
+      }
     } catch (error) {
       console.error("Failed to resume task:", error);
     }
@@ -82,7 +86,9 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
     try {
       // For now, just show a placeholder - IDE launch would need API endpoint
-      console.log("Launch IDE for task:", taskId());
+      if (!import.meta.env.PROD) {
+        console.log("Launch IDE for task:", taskId());
+      }
     } catch (error) {
       console.error("Failed to launch IDE:", error);
     }

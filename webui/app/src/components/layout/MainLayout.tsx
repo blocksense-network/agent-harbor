@@ -19,7 +19,9 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
   const draftOps = useDrafts();
 
   const handleNewDraft = async () => {
-    console.log("[MainLayout] New Task button clicked");
+    if (!import.meta.env.PROD) {
+      console.log("[MainLayout] New Task button clicked");
+    }
     // Create a new empty draft
     const created = await draftOps.createDraft({
       prompt: "",
@@ -28,7 +30,9 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
       runtime: { type: "devcontainer" },
       delivery: { mode: "pr" },
     });
-    console.log("[MainLayout] Draft creation result:", created);
+    if (!import.meta.env.PROD) {
+      console.log("[MainLayout] Draft creation result:", created);
+    }
   };
 
   return (

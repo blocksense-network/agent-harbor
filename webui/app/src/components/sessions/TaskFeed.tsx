@@ -36,7 +36,9 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   // Debug keyboard selection changes
   createEffect(() => {
     const index = keyboardSelectedIndex();
-    console.debug("[TaskFeed] keyboardSelectedIndex changed to:", index);
+    if (!import.meta.env.PROD) {
+      console.debug("[TaskFeed] keyboardSelectedIndex changed to:", index);
+    }
   });
   const [refreshTrigger, setRefreshTrigger] = createSignal(0); // For auto-refresh every 30s
 
@@ -149,30 +151,41 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
   // Handle keyboard navigation (drafts first, then sessions)
   const handleKeyDown = (e: KeyboardEvent) => {
-    console.log("[TaskFeed] Keyboard event:", e.key);
+    if (!import.meta.env.PROD) {
+      console.log("[TaskFeed] Keyboard event:", e.key);
+    }
     const sessions = sessionsData()?.items || [];
     const draftsList = drafts();
     const totalItems = draftsList.length + sessions.length;
 
-    console.log(
-      "[TaskFeed] Total items:",
-      totalItems,
-      "drafts:",
-      draftsList.length,
-      "sessions:",
-      sessions.length,
-    );
+    if (!import.meta.env.PROD) {
+      console.log(
+        "[TaskFeed] Total items:",
+        totalItems,
+        "drafts:",
+        draftsList.length,
+        "sessions:",
+        sessions.length,
+      );
+    }
 
     if (totalItems === 0) return;
 
     const currentIndex = keyboardSelectedIndex();
-    console.log("[TaskFeed] Current index:", currentIndex);
+    if (!import.meta.env.PROD) {
+      console.log("[TaskFeed] Current index:", currentIndex);
+    }
 
     switch (e.key) {
       case "ArrowDown": {
         e.preventDefault();
         const nextIndex = currentIndex < totalItems - 1 ? currentIndex + 1 : 0;
-        console.log("[TaskFeed] Setting keyboardSelectedIndex to:", nextIndex);
+        if (!import.meta.env.PROD) {
+          console.log(
+            "[TaskFeed] Setting keyboardSelectedIndex to:",
+            nextIndex,
+          );
+        }
         setKeyboardSelectedIndex(nextIndex);
 
         // Add a debug attribute to the keyboard navigation element for testing
@@ -208,7 +221,12 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       case "ArrowUp": {
         e.preventDefault();
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : totalItems - 1;
-        console.log("[TaskFeed] Setting keyboardSelectedIndex to:", prevIndex);
+        if (!import.meta.env.PROD) {
+          console.log(
+            "[TaskFeed] Setting keyboardSelectedIndex to:",
+            prevIndex,
+          );
+        }
         setKeyboardSelectedIndex(prevIndex);
 
         // Add a debug attribute to the keyboard navigation element for testing
@@ -296,7 +314,9 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     // Listen for draft creation events (client-side only)
     if (typeof window !== "undefined") {
       const handleDraftCreated = () => {
-        console.log("[TaskFeed] Draft created, refetching...");
+        if (!import.meta.env.PROD) {
+          console.log("[TaskFeed] Draft created, refetching...");
+        }
         setDraftsRefreshTrigger((prev) => prev + 1);
       };
       window.addEventListener("draft-created", handleDraftCreated);
@@ -391,16 +411,18 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                       <DraftTaskCard
                         draft={draft}
                         isSelected={keyboardSelectedIndex() === globalIndex}
-                        onDebug={() =>
-                          console.log(
-                            `[TaskFeed] Draft ${draft.id} isSelected:`,
-                            keyboardSelectedIndex() === globalIndex,
-                            "keyboardIndex:",
-                            keyboardSelectedIndex(),
-                            "globalIndex:",
-                            globalIndex,
-                          )
-                        }
+                        onDebug={() => {
+                          if (!import.meta.env.PROD) {
+                            console.log(
+                              `[TaskFeed] Draft ${draft.id} isSelected:`,
+                              keyboardSelectedIndex() === globalIndex,
+                              "keyboardIndex:",
+                              keyboardSelectedIndex(),
+                              "globalIndex:",
+                              globalIndex,
+                            );
+                          }
+                        }}
                         onUpdate={async (updates) => {
                           const success = await draftOps.updateDraft(
                             draft.id,
