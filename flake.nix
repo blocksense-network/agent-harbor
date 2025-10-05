@@ -233,6 +233,13 @@
       isLinux = pkgs.stdenv.isLinux;
       isDarwin = pkgs.stdenv.isDarwin;
 
+      # Yarn plugins
+      yarnOutdated = pkgs.fetchurl {
+        # mskelton's redirect for Yarn v4 bundle
+        url = "https://go.mskelton.dev/yarn-outdated/v4";
+        sha256 = "1bhcl1sb8y7x29iy40v2gs23jkw6hyhqc3a3wbcq559jzmfqh49y";
+      };
+
       # Common packages for all systems
       commonPackages = [
         # Rust toolchain
@@ -368,6 +375,11 @@
         shellHook = ''
           # Install git pre-commit hook invoking our Nix-defined hooks
           ${self.checks.${system}.pre-commit-check.shellHook}
+
+          # Load Yarn plugins
+          export YARN_PLUGINS="${yarnOutdated}"
+          echo "Loaded yarn-outdated plugin from Nix: $YARN_PLUGINS"
+
           echo "Agent harbor development environment loaded${if isDarwin then " (macOS)" else if isLinux then " (Linux)" else ""}"
 
           # Python packages setup (add to PYTHONPATH)

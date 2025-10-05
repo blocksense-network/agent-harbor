@@ -60,6 +60,7 @@ apps/macos/AgentHarbor/build/
 
 # IDE files
 .vscode/
+!.vscode/settings.json
 .idea/
 
 # Obsidian workspace configuration

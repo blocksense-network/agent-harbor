@@ -11,7 +11,9 @@
     "knip": "knip"
   },
   "devDependencies": {
+    "eslint": "^9.37.0",
     "knip": "^5.64.1",
+    "typescript": "^5.9.3",
     "vite": "^7.1.9"
   },
   "dependencies": {

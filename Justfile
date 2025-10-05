@@ -674,3 +674,8 @@ register-fskit-extension:
 # Download macOS sandbox documentation
 download-mac-sandbox-docs:
     nix run .#sosumi-docs-downloader -- fskit endpointsecurity -o resources
+
+# Check for outdated dependencies
+outdated:
+    cargo outdated
+    yarn outdated
