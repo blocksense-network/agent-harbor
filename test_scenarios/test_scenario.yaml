@@ -1,0 +1,42 @@
+name: test_scenario
+tags: ["test", "cli"]
+repo:
+  init: true
+  files:
+    - path: "README.md"
+      contents: |
+        # Test Scenario
+
+        A simple test scenario for the mock server.
+timeline:
+  - think:
+      - [1000, "Starting test scenario"]
+      - [500, "This is a simple test to verify scenario execution"]
+
+  - agentToolUse:
+      toolName: "run_command"
+      args:
+        command: "echo 'Hello from scenario'"
+        cwd: "."
+      progress:
+        - [200, "Running echo command..."]
+      result: "Hello from scenario"
+      status: "ok"
+
+  - agentEdits:
+      path: "test.txt"
+      linesAdded: 1
+      linesRemoved: 0
+
+  - assistant:
+      - [1000, "Test scenario completed successfully"]
+      - [500, "All events processed"]
+
+  - complete: true
+  - merge: true
+
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "README.md"

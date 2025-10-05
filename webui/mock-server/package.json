@@ -27,7 +27,8 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
-    "morgan": "^1.10.1"
+    "morgan": "^1.10.1",
+    "yaml": "^2.4.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

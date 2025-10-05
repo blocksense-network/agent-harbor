@@ -114,7 +114,9 @@ expect:
   - `userCommand`: Simulate user executing a command (not an agent tool call). Fields:
     - `cmd`: Command string to execute.
     - `cwd`: Optional working directory relative to the scenario.
-
+  - `complete`: Event indicating that the scenario task has completed successfully. This marks the session status as completed and triggers any completion logic.
+  - `merge`: Event indicating that this scenario session should be merged into the session list upon completion. When present, the scenario session will be marked as completed but remain visible in session listings. When omitted, completed scenarios are not shown in session listings.
+  
   Compatibility with existing scenarios (type‑based events):
   - Runners MUST also accept timeline of the form `{ "type": "advanceMs", "ms": 50 }`, `{ "type": "screenshot", "name": "..." }`, `{ "type": "userInputs", "inputs": [[100, "text"]] }`, `{ "type": "assertVm", ... }` as used in `test_scenarios/basic_navigation.yaml`.
 - **expect**:

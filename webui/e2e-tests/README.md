@@ -131,6 +131,40 @@ cd ../app && npm start
 cd ../e2e-tests && npm test
 ```
 
+### Scenario Testing
+
+The test suite includes comprehensive scenario testing that validates the mock server's ability to execute scenario files and stream events with correct timing.
+
+#### Prerequisites for Scenario Tests
+
+Scenario tests require the mock server to be started with specific scenario files:
+
+```bash
+# Terminal 1: Start mock server with scenarios
+cd ../mock-server
+node dist/index.js --scenario ../../test_scenarios/test_scenario.yaml --scenario ../../test_scenarios/timing_test_scenario.yaml --merge-completed
+
+# Terminal 2: Start SSR sidecar (if testing WebUI integration)
+cd ../app && npm start
+
+# Terminal 3: Run scenario tests
+cd ../e2e-tests
+npm test -- --grep "Scenario Testing"
+```
+
+#### Scenario Test Coverage
+
+- **Basic Scenario Execution**: Verifies scenarios are loaded and executed
+- **SSE Event Timing**: Validates event streaming with correct timing
+- **Session Management**: Tests scenario sessions in API listings
+- **Merge Behavior**: Verifies completed scenarios remain visible when merged
+- **Error Handling**: Tests graceful handling of invalid scenarios
+
+#### Test Scenarios
+
+- `test_scenarios/test_scenario.yaml`: Basic scenario with merge event
+- `test_scenarios/timing_test_scenario.yaml`: Timing verification scenario with specific delays
+
 ### Test Configuration
 
 The tests are organized into different Playwright projects:

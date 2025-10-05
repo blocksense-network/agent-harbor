@@ -10,6 +10,7 @@ import { executorsRouter } from './routes/executors.js';
 import { tasksRouter } from './routes/tasks.js';
 import repositoriesRouter from './routes/repositories.js';
 import draftsRouter from './routes/drafts.js';
+import { ScenarioRunner } from './scenario-runner.js';
 
 // Redirect output to file if SERVER_LOG_FILE is set
 if (process.env.SERVER_LOG_FILE) {
@@ -28,6 +29,25 @@ if (process.env.SERVER_LOG_FILE) {
     logStream.write(chunk, encoding, callback);
     return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
   };
+}
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const scenarioFiles: string[] = [];
+let mergeCompleted = false;
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === '--scenario' || arg === '-s') {
+    if (i + 1 < args.length) {
+      scenarioFiles.push(args[i + 1]);
+      i++; // Skip next arg
+    }
+  } else if (arg === '--merge-completed') {
+    mergeCompleted = true;
+  } else if (arg.startsWith('--scenario=')) {
+    scenarioFiles.push(arg.split('=')[1]);
+  }
 }
 
 // Simple logger that respects quiet mode
@@ -67,6 +87,13 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Initialize scenario runner if scenarios are provided
+let scenarioRunner: ScenarioRunner | null = null;
+if (scenarioFiles.length > 0) {
+  scenarioRunner = new ScenarioRunner(scenarioFiles, mergeCompleted);
+  logger.log(`Loaded ${scenarioFiles.length} scenario(s): ${scenarioFiles.join(', ')}`);
+}
 
 // API routes
 app.use('/api/v1/sessions', sessionsRouter);
@@ -115,11 +142,17 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
   });
 });
 
+// Export scenario runner for use in routes
+export { scenarioRunner };
+
 app
   .listen(PORT, () => {
     if (!isQuietMode) {
       console.log(`Mock API server running on http://localhost:${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
+      if (scenarioRunner) {
+        console.log(`Running ${scenarioFiles.length} scenario(s) in background`);
+      }
     }
   })
   .on('error', (err) => {

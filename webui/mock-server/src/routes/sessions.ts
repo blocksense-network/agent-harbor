@@ -5,6 +5,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { setInterval, clearInterval } from 'timers';
 import { logger } from '../index.js';
+import { scenarioRunner } from '../index.js';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -240,7 +241,51 @@ if (mockSessions.length === 0) {
 router.get('/', (req, res) => {
   const { status, projectId, page = 1, perPage = 20 } = req.query;
 
-  let filteredSessions = mockSessions;
+  let filteredSessions = [...mockSessions];
+
+  // Add scenario sessions if scenario runner is active
+  if (scenarioRunner) {
+    const scenarioSessions = scenarioRunner.getActiveSessions().map(session => ({
+      id: session.id,
+      tenantId: 'scenario',
+      projectId: 'scenario-project',
+      status: session.status,
+      createdAt: session.startTime.toISOString(),
+      prompt: `Scenario: ${session.scenarioName}`,
+      repo: { mode: 'git', url: 'https://github.com/scenario/repo.git', branch: 'main' },
+      agent: { type: 'mock', version: 'latest' },
+      runtime: { type: 'mock' },
+      metadata: { scenario: session.scenarioName },
+      links: {
+        self: `/api/v1/sessions/${session.id}`,
+        events: `/api/v1/sessions/${session.id}/events`,
+        logs: `/api/v1/sessions/${session.id}/logs`,
+      },
+    }));
+
+    // Add completed sessions if they should be merged
+    const completedSessions = scenarioRunner.getCompletedSessions()
+      .filter(session => session.status === 'completed' && session.merged)
+      .map(session => ({
+        id: session.id,
+        tenantId: 'scenario',
+        projectId: 'scenario-project',
+        status: 'completed',
+        createdAt: session.startTime.toISOString(),
+        prompt: `Scenario: ${session.scenarioName}`,
+        repo: { mode: 'git', url: 'https://github.com/scenario/repo.git', branch: 'main' },
+        agent: { type: 'mock', version: 'latest' },
+        runtime: { type: 'mock' },
+        metadata: { scenario: session.scenarioName, merged: true },
+        links: {
+          self: `/api/v1/sessions/${session.id}`,
+          events: `/api/v1/sessions/${session.id}/events`,
+          logs: `/api/v1/sessions/${session.id}/logs`,
+        },
+      }));
+
+    filteredSessions = [...filteredSessions, ...scenarioSessions, ...completedSessions];
+  }
 
   if (status) {
     filteredSessions = filteredSessions.filter((s) => s.status === status);
@@ -267,7 +312,38 @@ router.get('/', (req, res) => {
 
 // GET /api/v1/sessions/:id - Get Session
 router.get('/:id', (req, res) => {
-  const session = mockSessions.find((s) => s.id === req.params.id);
+  // First check regular mock sessions
+  let session = mockSessions.find((s) => s.id === req.params.id);
+
+  // If not found and scenario runner is active, check scenario sessions
+  if (!session && scenarioRunner) {
+    const scenarioSession = scenarioRunner.getSessionById(req.params.id);
+    if (scenarioSession) {
+      session = {
+        id: scenarioSession.id,
+        tenantId: 'scenario',
+        projectId: 'scenario-project',
+        status: scenarioSession.status,
+        createdAt: scenarioSession.startTime.toISOString(),
+        prompt: `Scenario: ${scenarioSession.scenarioName}`,
+        repo: { mode: 'git', url: 'https://github.com/scenario/repo.git', branch: 'main' },
+        agent: { type: 'mock', version: 'latest' },
+        runtime: { type: 'mock' },
+        metadata: {
+          scenario: scenarioSession.scenarioName,
+          merged: scenarioSession.merged,
+          completed: scenarioSession.completed,
+          currentEventIndex: scenarioSession.currentEventIndex,
+          totalEvents: scenarioSession.scenario.timeline.length,
+        },
+        links: {
+          self: `/api/v1/sessions/${scenarioSession.id}`,
+          events: `/api/v1/sessions/${scenarioSession.id}/events`,
+          logs: `/api/v1/sessions/${scenarioSession.id}/logs`,
+        },
+      };
+    }
+  }
 
   if (!session) {
     return res.status(404).json({
@@ -317,14 +393,30 @@ router.delete('/:id', (req, res) => {
 
 // GET /api/v1/sessions/:id/events - SSE Events
 router.get('/:id/events', (req, res) => {
-  const session = mockSessions.find((s) => s.id === req.params.id);
+  const sessionId = req.params.id;
+
+  // First check regular mock sessions
+  let session = mockSessions.find((s) => s.id === sessionId);
+
+  // If not found and scenario runner is active, check scenario sessions
+  let isScenarioSession = false;
+  if (!session && scenarioRunner) {
+    const scenarioSession = scenarioRunner.getSessionById(sessionId);
+    if (scenarioSession) {
+      isScenarioSession = true;
+      session = {
+        id: scenarioSession.id,
+        status: scenarioSession.status,
+      } as any;
+    }
+  }
 
   if (!session) {
     return res.status(404).json({
       type: 'https://docs.example.com/errors/not-found',
       title: 'Session Not Found',
       status: 404,
-      detail: `Session ${req.params.id} not found`,
+      detail: `Session ${sessionId} not found`,
     });
   }
 
@@ -358,7 +450,68 @@ router.get('/:id/events', (req, res) => {
     return;
   }
 
-  // For real SSE clients, stream continuous events for active sessions
+  // For scenario sessions, handle differently
+  if (isScenarioSession && scenarioRunner) {
+    const scenarioSession = scenarioRunner.getSessionById(sessionId);
+    if (!scenarioSession) {
+      res.end();
+      return;
+    }
+
+    // Send all accumulated events for scenario sessions
+    const events = scenarioRunner.getSessionEvents(sessionId);
+    for (const event of events) {
+      sendEvent(event.type, event);
+    }
+
+    // If session is completed, send final status and close
+    if (scenarioSession.status === 'completed' || scenarioSession.status === 'failed') {
+      sendEvent('status', {
+        sessionId: scenarioSession.id,
+        status: scenarioSession.status,
+        ts: new Date().toISOString(),
+      });
+      res.end();
+      return;
+    }
+
+    // For active scenario sessions, poll for new events
+    let lastEventIndex = events.length;
+    const pollInterval = setInterval(() => {
+      if (!scenarioRunner) {
+        clearInterval(pollInterval);
+        res.end();
+        return;
+      }
+
+      const newEvents = scenarioRunner.getSessionEvents(sessionId, lastEventIndex);
+      for (const event of newEvents) {
+        sendEvent(event.type, event);
+      }
+      lastEventIndex += newEvents.length;
+
+      // Check if session completed
+      const currentSession = scenarioRunner.getSessionById(sessionId);
+      if (currentSession && (currentSession.status === 'completed' || currentSession.status === 'failed')) {
+        sendEvent('status', {
+          sessionId: currentSession.id,
+          status: currentSession.status,
+          ts: new Date().toISOString(),
+        });
+        clearInterval(pollInterval);
+        res.end();
+      }
+    }, 1000); // Poll every second
+
+    req.on('close', () => {
+      clearInterval(pollInterval);
+      res.end();
+    });
+
+    return;
+  }
+
+  // For regular sessions, continue with existing logic
   // For completed sessions, just send initial status and close
   if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
     sendEvent('status', {
@@ -555,7 +708,23 @@ router.get('/:id/events', (req, res) => {
 
 // GET /api/v1/sessions/:id/logs - Get Logs
 router.get('/:id/logs', (req, res) => {
-  const session = mockSessions.find((s) => s.id === req.params.id);
+  const sessionId = req.params.id;
+
+  // First check regular mock sessions
+  let session = mockSessions.find((s) => s.id === sessionId);
+
+  // If not found and scenario runner is active, check scenario sessions
+  let isScenarioSession = false;
+  if (!session && scenarioRunner) {
+    const scenarioSession = scenarioRunner.getSessionById(sessionId);
+    if (scenarioSession) {
+      isScenarioSession = true;
+      session = {
+        id: scenarioSession.id,
+        status: scenarioSession.status,
+      } as any;
+    }
+  }
 
   if (!session) {
     return res.status(404).json({
@@ -566,9 +735,78 @@ router.get('/:id/logs', (req, res) => {
     });
   }
 
-  // Generate logs based on the session's assigned scenario
-  const logs: Array<{ level: string; message: string; ts: string }> = [];
-  const scenario = scenarioReplayer.getScenarioForSession(session.id);
+  let logs: Array<{ level: string; message: string; ts: string }> = [];
+
+  if (isScenarioSession && scenarioRunner) {
+    // Generate logs from scenario events
+    const scenarioSession = scenarioRunner.getSessionById(sessionId);
+    if (scenarioSession) {
+      const events = scenarioRunner.getSessionEvents(sessionId);
+      let timestamp = scenarioSession.startTime.getTime();
+
+      logs.push({
+        level: 'info',
+        message: `Scenario session started: ${scenarioSession.scenarioName}`,
+        ts: scenarioSession.startTime.toISOString(),
+      });
+
+      for (const event of events) {
+        timestamp += 1000; // Add 1 second per event for simplicity
+        let message = '';
+
+        switch (event.type) {
+          case 'thinking':
+            message = `Thinking: ${event.thought}`;
+            break;
+          case 'tool_execution':
+            if (event.tool_name && event.tool_args) {
+              message = `Tool: ${event.tool_name}(${JSON.stringify(event.tool_args)})`;
+            } else if (event.last_line) {
+              message = `Tool progress: ${event.last_line}`;
+            } else if (event.tool_output) {
+              message = `Tool result: ${event.tool_output}`;
+            }
+            break;
+          case 'file_edit':
+            message = `File edit: ${event.file_path} (+${event.lines_added} -${event.lines_removed})`;
+            break;
+          case 'log':
+            message = event.message || 'Log message';
+            break;
+          case 'status':
+            message = `Status: ${event.status}`;
+            break;
+          default:
+            message = `${event.type}: ${JSON.stringify(event)}`;
+        }
+
+        if (message) {
+          logs.push({
+            level: 'info',
+            message,
+            ts: new Date(timestamp).toISOString(),
+          });
+        }
+      }
+
+      // Add completion message if session is done
+      if (scenarioSession.status === 'completed') {
+        logs.push({
+          level: 'info',
+          message: `Scenario completed: ${scenarioSession.scenarioName}`,
+          ts: new Date().toISOString(),
+        });
+      } else if (scenarioSession.status === 'failed') {
+        logs.push({
+          level: 'error',
+          message: `Scenario failed: ${scenarioSession.scenarioName}`,
+          ts: new Date().toISOString(),
+        });
+      }
+    }
+  } else {
+    // Generate logs based on the session's assigned scenario (existing logic)
+    const scenario = scenarioReplayer.getScenarioForSession(session.id);
 
   if (scenario && scenario.turns) {
     // Generate logs from scenario turns
@@ -645,6 +883,7 @@ router.get('/:id/logs', (req, res) => {
         ts: new Date(Date.now() - 200000).toISOString(),
       }
     );
+  }
   }
 
   // Apply tail parameter if provided

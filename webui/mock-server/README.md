@@ -31,12 +31,36 @@ just webui-install
 
 ### Running the Server
 
+#### Basic Usage
+
 ```bash
 # From the project root
 just webui-mock-server
 ```
 
 The server will start on `http://localhost:3001` by default in **development mode with hot reloading**.
+
+#### Scenario-Based Testing
+
+The mock server supports running predefined scenarios for deterministic testing:
+
+```bash
+# Run with a single scenario
+node webui/mock-server/dist/index.js --scenario test_scenarios/my_scenario.yaml
+
+# Run multiple scenarios
+node webui/mock-server/dist/index.js --scenario scenario1.yaml --scenario scenario2.yaml
+
+# Run scenarios and merge completed ones into session listings
+node webui/mock-server/dist/index.js --scenario test_scenarios/my_scenario.yaml --merge-completed
+```
+
+**CLI Flags:**
+
+- `--scenario <file>` / `-s <file>`: Load and execute a scenario file (can be used multiple times)
+- `--merge-completed`: Include completed scenarios in session listings (requires scenario files)
+
+See [Scenario Format](../../specs/Public/Scenario-Format.md) for details on scenario file structure.
 
 ## API Endpoints
 
@@ -120,6 +144,38 @@ npm run format       # Format code with Prettier
 npm run format:check # Check formatting
 npm run type-check   # TypeScript type checking
 ```
+
+## Scenario-Based Testing
+
+The mock server supports deterministic scenario replay for testing complex interactions. Scenarios are defined in YAML files following the [Scenario Format](../../specs/Public/Scenario-Format.md) specification.
+
+### How Scenarios Work
+
+1. **Timeline Execution**: Scenarios define a timeline of events (agent actions, user inputs, assertions) with precise timing
+2. **Session Creation**: Each scenario creates a mock session that appears in the API
+3. **Event Streaming**: Events are streamed via SSE to simulate real-time agent execution
+4. **State Management**: Scenarios can modify mock filesystem state and trigger various API responses
+5. **Merge Behavior**: Completed scenarios can be merged into session listings for persistent visibility
+
+### Example Scenario
+
+```yaml
+name: basic_task_completion
+timeline:
+  - think:
+      - [1000, "Analyzing user request"]
+  - agentToolUse:
+      toolName: "run_command"
+      args:
+        command: "echo 'Hello World'"
+        cwd: "."
+      result: "Hello World"
+      status: "ok"
+  - complete: true  # Mark task as completed
+  - merge: true     # Keep this session in listings after completion
+```
+
+See the `test_scenarios/` directory for examples and the [Scenario Format](../../specs/Public/Scenario-Format.md) specification for complete documentation.
 
 ## Mock Data
 
