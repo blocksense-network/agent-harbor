@@ -57,7 +57,7 @@ Shell completions are provided via the `ah shell-completion` command group. They
 - **Local vs Remote:** Local mode manages state with a local SQLite DB and runs tasks on the current machine; see [Local-Mode](Local-Mode.md). Remote mode targets an Agent Harbor REST service; the CLI becomes a thin client while execution/state live on the server; see [Remote-Mode](Remote-Mode.md).
 - **TUI vs WebUI:** `ah` can start either a terminal dashboard (TUI) or open the WebUI. The UIs present the same concepts (tasks, sessions, logs, time‑travel) with different affordances. See [TUI-PRD](TUI-PRD.md) and [WebUI-PRD](WebUI-PRD.md).
 - **Orthogonal choices:** UI (TUI/WebUI) and execution location (local/remote) are orthogonal. Any combination is possible; e.g., run the TUI against a remote REST service or use the WebUI locally.
-- **Fleets combine local and remote:** [Multi-OS testing fleets](Multi-OS%20Testing.md) can mix local and remote agents. For example, a local Linux container leader may have remote followers (e.g., a Windows VM on a server). The `ah` client and server may need to orchestrate together the connectivity between all the machines in the fleet.
+- **Fleets combine local and remote:** [Multi-OS testing fleets](Multi-OS-Testing.md) can mix local and remote agents. For example, a local Linux container leader may have remote followers (e.g., a Windows VM on a server). The `ah` client and server may need to orchestrate together the connectivity between all the machines in the fleet.
 - **Sandbox profiles (orthogonal):** When launching locally, sandbox profiles define the isolation level (local, container, VM, or nosandbox per policy). See [Sandbox-Profiles](Sandbox-Profiles.md) and configuration mapping below.
 
 ### Global Behavior and Flags
@@ -83,7 +83,7 @@ Shell completions are provided via the `ah shell-completion` command group. They
 - `ah` or `ah tui [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Auto-attaches to or launches the configured multiplexer session, then starts the TUI dashboard within it. See [TUI-PRD](TUI-PRD.md) for full UI details and flows.
 - `ah tui dashboard [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Launches the TUI dashboard directly (for use within multiplexer windows).
 - The main `ah tui` command handles multiplexer session management; the `dashboard` subcommand provides the actual task management interface.
-- With `--remote-server` (or configured `remote-server`), the same dashboard is presented, but task windows may attach to remote sessions over SSH. See [Multi‑OS Testing](Multi-OS%20Testing.md) for details on QUIC control plane, SSH via HTTP CONNECT, and client‑side relay in hybrid fleets.
+- With `--remote-server` (or configured `remote-server`), the same dashboard is presented, but task windows may attach to remote sessions over SSH. See [Multi‑OS Testing](Multi-OS-Testing.md) for details on QUIC control plane, SSH via HTTP CONNECT, and client‑side relay in hybrid fleets.
 
 #### 2) Tasks
 
@@ -427,12 +427,12 @@ Push to default remote? [Y/n]:
 **Runtime and Execution:**
 
 - Runtimes: `devcontainer`, `local` (sandbox profile), `disabled` (policy‑gated).
-- Multi‑OS fleets: Snapshots are taken on the leader only; followers receive synchronized state. See [Multi-OS Testing](Multi-OS%20Testing.md).
+- Multi‑OS fleets: Snapshots are taken on the leader only; followers receive synchronized state. See [Multi-OS-Testing](Multi-OS-Testing.md).
 - Fleet resolution and orchestration: When `--fleet` is provided (or a default fleet is defined in config), the `ah task` invocation produces an explicit fleet plan that assigns each member to a controller (`client` or `server`). No reachability probing is used to decide this. The client then orchestrates both local and remote execution accordingly:
   - Local members (controller: client): The client creates one or more local executions, potentially combining a local sandbox and local VMs, applying the selected sandbox profile to each member.
   - Remote members (controller: server): The client issues the appropriate remote‑server requests per member (respecting per‑member server selection) and monitors returned `taskId`s.
   - Membership info for remote executors is discovered via the server’s existing endpoints (e.g., `GET /api/v1/executors`) and selected by the user/config.
-  - Coordination: The client emits/consumes events required by the multi‑OS flow (leader FsSnapshot, sync‑fence, run‑everywhere), as specified in [Multi-OS Testing](Multi-OS%20Testing.md).
+  - Coordination: The client emits/consumes events required by the multi‑OS flow (leader FsSnapshot, sync‑fence, run‑everywhere), as specified in [Multi-OS-Testing](Multi-OS-Testing.md).
 - State: The CLI MUST persist session/task state in the local SQLite database.
 - Outside a repo (remote/cloud targeting): Branch creation and task recording MUST occur server/cloud‑side; the CLI MUST return/display the `taskId`.
 
@@ -441,7 +441,7 @@ Push to default remote? [Y/n]:
 - Fleet resolution: When `--fleet` is provided (or a default fleet is defined in config), AH expands the fleet into one or more members. For local members, it applies the referenced sandbox profile; for `remote` members, it targets the specified server URL/name. See also the orchestration details above.
 - Browser automation: When `--browser-automation true` (default), launches site-specific browser automation (e.g., Codex) using the selected agent browser profile. When `false`, web automation is skipped
 - Browser automation modes: with local branch/task file creation (default) or server/cloud-only mode when `--create-task-files no`
-- Codex integration: If `--browser-profile` is not specified, discovers or creates a ChatGPT profile per [Codex browser automation](Browser%20Automation/Codex.md), optionally filtered by `--chatgpt-username`. Workspace is taken from `--codex-workspace` or config; branch is taken from `--branch`.
+- Codex integration: If `--browser-profile` is not specified, discovers or creates a ChatGPT profile per [Codex browser automation](Browser-Automation/Codex.md), optionally filtered by `--chatgpt-username`. Workspace is taken from `--codex-workspace` or config; branch is taken from `--branch`.
 - Branch autocompletion: Uses standard git protocol for suggestions:
   - Local mode: `git for-each-ref` on the repo; cached with debounce
   - REST mode: server uses `git ls-remote`/refs against admin-configured URL to populate its cache; CLI/Web query capability endpoints for suggestions
@@ -593,7 +593,7 @@ Behavior:
 Remote sessions:
 
 - When a session runs on another machine (VM or remote host), the REST service returns SSH connection details. `ah attach` uses these to open a remote multiplexer session (e.g., `ssh -t host tmux attach -t <name>`), or zellij/screen equivalents.
-- Connectivity when hosts lack public IPs: SSH over HTTP CONNECT via access points, with optional client‑side relay in hybrid fleets. See [Multi‑OS Testing](Multi-OS%20Testing.md) and [Can SSH work over HTTPS?](../Research/Can-SSH-work-over-HTTPS.md).
+- Connectivity when hosts lack public IPs: SSH over HTTP CONNECT via access points, with optional client‑side relay in hybrid fleets. See [Multi‑OS Testing](Multi-OS-Testing.md) and [Can SSH work over HTTPS?](../Research/Can-SSH-work-over-HTTPS.md).
 
 #### 5) Repositories and Projects
 

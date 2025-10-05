@@ -33,4 +33,4 @@ Configuration:
 
 Notes:
 
-- Snapshot preference and workspace mounting are described in [FS Snapshots/FS-Snapshots-Overview](FS%20Snapshots/FS-Snapshots-Overview.md). In fleets, snapshots are taken on the leader host only.
+- Snapshot preference and workspace mounting are described in [FS-Snapshots/FS-Snapshots-Overview](FS-Snapshots/FS-Snapshots-Overview.md). In fleets, snapshots are taken on the leader host only.

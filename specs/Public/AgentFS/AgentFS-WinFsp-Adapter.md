@@ -2,7 +2,7 @@
 
 ### Purpose
 
-Implement a thin Windows adapter that maps WinFsp’s `FSP_FILE_SYSTEM_INTERFACE` operations to AgentFS Core (`FsCore`) calls. This enables mounting an AgentFS volume on Windows as a WinFsp user‑mode filesystem, honoring NT semantics (share modes, delete‑on‑close, security descriptors, reparse points, ADS). Control plane delivery and message schemas are detailed in [AgentFS Control Messages](AgentFS%20Control%20Messages.md).
+Implement a thin Windows adapter that maps WinFsp’s `FSP_FILE_SYSTEM_INTERFACE` operations to AgentFS Core (`FsCore`) calls. This enables mounting an AgentFS volume on Windows as a WinFsp user‑mode filesystem, honoring NT semantics (share modes, delete‑on‑close, security descriptors, reparse points, ADS). Control plane delivery and message schemas are detailed in [AgentFS-Control-Messages](AgentFS-Control-Messages.md).
 
 ### References
 

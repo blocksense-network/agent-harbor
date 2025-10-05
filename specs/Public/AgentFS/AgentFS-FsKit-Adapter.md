@@ -2,7 +2,7 @@
 
 ### Purpose
 
-Describe a thin adapter that maps Apple FSKit file system operations to AgentFS Core (`FsCore`) calls. FSKit is Apple’s user‑space filesystem framework (macOS 15+). This document focuses on the unary filesystem flow (FSUnaryFileSystem) as used in sample projects, mapping its key operations to core APIs. Control plane delivery and message schemas are detailed in [AgentFS Control Messages](AgentFS%20Control%20Messages.md).
+Describe a thin adapter that maps Apple FSKit file system operations to AgentFS Core (`FsCore`) calls. FSKit is Apple’s user‑space filesystem framework (macOS 15+). This document focuses on the unary filesystem flow (FSUnaryFileSystem) as used in sample projects, mapping its key operations to core APIs. Control plane delivery and message schemas are detailed in [AgentFS-Control-Messages](AgentFS-Control-Messages.md).
 
 ### References
 

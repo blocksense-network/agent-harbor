@@ -2,7 +2,7 @@
 
 ### Purpose
 
-- **Central orchestration**: Provide a network API to create and manage isolated agent coding sessions on demand, aligned with the filesystem snapshot model described in [FS-Snapshots-Overview](FS%20Snapshots/FS-Snapshots-Overview.md).
+- **Central orchestration**: Provide a network API to create and manage isolated agent coding sessions on demand, aligned with the filesystem snapshot model described in [FS-Snapshots-Overview](../FS-Snapshots/FS-Snapshots-Overview.md).
 - **On‑prem/private cloud ready**: Designed for enterprises running self‑managed clusters or single hosts.
 - **UI consumers**: Back the WebUI and TUI dashboards; enable custom internal portals and automations.
 - **Uniform abstraction**: Normalize differences between agents (Claude Code, OpenHands, Copilot, etc.), runtimes (devcontainer/local), and snapshot providers (ZFS/Btrfs/Overlay/copy).

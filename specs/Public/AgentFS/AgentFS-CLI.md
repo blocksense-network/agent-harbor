@@ -8,7 +8,7 @@ Specify a cross‑platform command‑line interface to:
 - Create branches (writable clones) from a given snapshot
 - Bind a process (or launch a command) within a specific branch view
 
-This CLI is integrated as subcommands of the main `ah` CLI. It controls the running user‑space filesystem server (adapter) hosting AgentFS Core. Delivery mechanisms and message schemas are specified in [AgentFS Control Messages](AgentFS%20Control%20Messages.md). Control is relayed using platform‑appropriate mechanisms validated by reference projects:
+This CLI is integrated as subcommands of the main `ah` CLI. It controls the running user‑space filesystem server (adapter) hosting AgentFS Core. Delivery mechanisms and message schemas are specified in [AgentFS-Control-Messages](AgentFS-Control-Messages.md). Control is relayed using platform‑appropriate mechanisms validated by reference projects:
 
 - Windows (WinFsp): DeviceIoControl to the mounted volume (maps to WinFsp `Control` entry‑point)
 - Linux/macOS (FUSE): ioctl on a special control file in the mount or the file’s inode (maps to libfuse `ioctl` op)

@@ -71,7 +71,7 @@ TA‑1 In‑Place Local Mode (Foundational E2E)
 TA‑2 Provider and Working Copy Resolution (Smoke)
 
 - Resolution reporting only (no actual mounts):
-  - `--working-copy in-place|worktree|cow-overlay` with `--fs-snapshots auto|git|disable` → verify resolved values and emitted selection records match rules in [FS-Snapshots-Overview](FS%20Snapshots/FS-Snapshots-Overview.md). (Local DB entries asserted when applicable.)
+  - `--working-copy in-place|worktree|cow-overlay` with `--fs-snapshots auto|git|disable` → verify resolved values and emitted selection records match rules in [FS-Snapshots-Overview](FS-Snapshots/FS-Snapshots-Overview.md). (Local DB entries asserted when applicable.)
 - Git fallback snapshot (summary path only, not exercising external tools):
   - `--fs-snapshots git --working-copy worktree` with mock agent run; verify selection and scenario artifacts, but avoid external git calls beyond repository initialization used by test harness.
 
@@ -112,7 +112,7 @@ Milestone TA‑2 — Resolution Smoke (Working Copy + Provider)
   - Scenarios enumerating combinations of `--working-copy` and `--fs-snapshots`
   - Assertions on resolved values and emitted records (no mounts)
 - Verification:
-  - [x] Resolved values match [CLI.md](CLI.md) and [FS-Snapshots-Overview](FS%20Snapshots/FS-Snapshots-Overview.md)
+  - [x] Resolved values match [CLI.md](CLI.md) and [FS-Snapshots-Overview](FS-Snapshots/FS-Snapshots-Overview.md)
 
 Milestone TA‑3 — Remote Mode Surface with Mock API
 
@@ -133,7 +133,7 @@ Milestone TA‑3 — Remote Mode Surface with Mock API
 - CLI flow and behaviors: [CLI.md](CLI.md)
 - TUI testing foundations and status: [TUI.status.md](TUI.status.md)
 - Mock agent test guide: [AGENTS.md](../../tests/tools/mock-agent/AGENTS.md)
-- Snapshot providers overview: [FS-Snapshots-Overview](FS%20Snapshots/FS-Snapshots-Overview.md)
+- Snapshot providers overview: [FS-Snapshots-Overview](FS-Snapshots/FS-Snapshots-Overview.md)
 - REST service contract (for TA‑3 scope): [REST-Service/API.md](REST-Service/API.md)
 
 

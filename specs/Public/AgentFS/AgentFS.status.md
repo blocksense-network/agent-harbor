@@ -31,8 +31,8 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 - **Implementation Details**:
 
   - Created Cargo workspace structure with 5 AgentFS crates: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`
-  - Implemented core type definitions from [AgentFS Core.md](AgentFS%20Core.md): `FsConfig`, `FsError`, `CaseSensitivity`, `MemoryPolicy`, `FsLimits`, `CachePolicy`, `Attributes`, `FileTimes`, etc.
-  - Added basic control plane message types in `agentfs-proto` crate based on [AgentFS Control Messages.md](AgentFS%20Control%20Messages.md)
+  - Implemented core type definitions from [AgentFS Core.md](AgentFS-Core.md): `FsConfig`, `FsError`, `CaseSensitivity`, `MemoryPolicy`, `FsLimits`, `CachePolicy`, `Attributes`, `FileTimes`, etc.
+  - Added basic control plane message types in `agentfs-proto` crate based on [AgentFS Control Messages.md](AgentFS-Control-Messages.md)
   - Created C ABI surface in `agentfs-ffi` with proper error mappings and function signatures
   - Set up platform-specific host crates with conditional dependencies (FUSE for Linux/macOS, WinFsp for Windows)
   - Added minimal unit tests in `agentfs-core` demonstrating config creation and error handling
@@ -57,7 +57,7 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 **M2. Core VFS skeleton and in‑memory storage** COMPLETED (3–5d)
 
 - Implement minimal path resolver, directories, create/open/read/write/close, unlink/rmdir, getattr/set_times, symlink/readlink.
-- Provide `InMemoryBackend` storage and `FsConfig`, `OpenOptions`, `Attributes` types as specified in [AgentFS-Core.md](AgentFS%20Core.md).
+- Provide `InMemoryBackend` storage and `FsConfig`, `OpenOptions`, `Attributes` types as specified in [AgentFS-Core.md](AgentFS-Core.md).
 - Success criteria (unit tests):
   - Create/read/write/close round‑trip works; metadata times update; readdir lists contents.
   - Unlink exhibits delete‑on‑close semantics at core level.
@@ -472,7 +472,7 @@ Acceptance checklist (M10.9)
 
 M11. Scenario, performance, and fault‑injection suites (4–7d)
 
-- Scenario tests for AH workflows (per [AgentFS-Core-Testing.md](AgentFS%20Core%20Testing.md)): multi‑process branches, repo tasks, discard/keep flows.
+- Scenario tests for AH workflows (per [AgentFS-Core-Testing.md](AgentFS-Core-Testing.md)): multi‑process branches, repo tasks, discard/keep flows.
 - Criterion microbenchmarks; fsbench/fio macro tests; spill‑to‑disk stress; induced failures in `StorageBackend`.
 - Implement comprehensive stress testing using fs-stress, stress-filesystem, and CrashMonkey/ACE-like fault injection.
 - Success criteria:
@@ -883,5 +883,5 @@ Notes:
 
 ### References
 
-- See [AgentFS Core.md](AgentFS%20Core.md), [AgentFS FUSE Adapter.md](AgentFS%20FUSE%20Adapter.md), [AgentFS WinFsp Adapter.md](AgentFS%20WinFsp%20Adapter.md), [AgentFS FsKit Adapter.md](AgentFS%20FsKit%20Adapter.md), and [AgentFS Control Messages.md](AgentFS%20Control%20Messages.md).
+- See [AgentFS Core.md](AgentFS-Core.md), [AgentFS FUSE Adapter.md](AgentFS-FUSE-Adapter.md), [AgentFS WinFsp Adapter.md](AgentFS-WinFsp-Adapter.md), [AgentFS FsKit Adapter.md](AgentFS-FsKit-Adapter.md), and [AgentFS Control Messages.md](AgentFS-Control-Messages.md).
 - Reference code in `reference_projects/libfuse`, `reference_projects/winfsp`, and `reference_projects/FSKitSample`.

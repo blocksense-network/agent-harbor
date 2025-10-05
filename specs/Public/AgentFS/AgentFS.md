@@ -50,7 +50,7 @@ Unlike traditional overlay filesystems or mount namespace simulation, AgentFS im
 
 ## Files in This Directory
 
-- [AgentFS: Per-process FS mounts](AgentFS%20-%20Per-process%20FS%20mounts.md): Detailed specification for per-process mount namespace simulation
-- [AgentFS: Snapshots and Branching](AgentFS%20-%20Snapshots%20and%20Branching.md): Comprehensive specification for snapshot and branching functionality
+- [AgentFS: Per-process FS mounts](AgentFS-Per-process-FS-mounts.md): Detailed specification for per-process mount namespace simulation
+- [AgentFS: Snapshots and Branching](AgentFS-Snapshots-and-Branching.md): Comprehensive specification for snapshot and branching functionality
 
 Implementation Status: See [AgentFS.status.md](AgentFS.status.md) for current milestones, tasks, and success criteria.

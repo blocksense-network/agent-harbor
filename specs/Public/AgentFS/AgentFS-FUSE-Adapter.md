@@ -2,7 +2,7 @@
 
 ### Purpose
 
-Implement a thin FUSE host that maps `struct fuse_operations` to AgentFS Core (`FsCore`) calls. Targets Linux/macOS (via libfuse or macFUSE during development). Aligns with libfuse semantics, caching knobs, readdir/readdir+ behavior, and optional advanced ops. Control plane delivery and message schemas are detailed in [AgentFS Control Messages](AgentFS%20Control%20Messages.md).
+Implement a thin FUSE host that maps `struct fuse_operations` to AgentFS Core (`FsCore`) calls. Targets Linux/macOS (via libfuse or macFUSE during development). Aligns with libfuse semantics, caching knobs, readdir/readdir+ behavior, and optional advanced ops. Control plane delivery and message schemas are detailed in [AgentFS-Control-Messages](AgentFS-Control-Messages.md).
 
 ### References
 

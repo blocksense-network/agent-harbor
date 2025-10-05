@@ -4,7 +4,7 @@
 
 Enable agents to validate builds and tests across multiple operating systems in parallel with a simple, reliable flow:
 
-- One of the executors acts as the leader workspace (typically a Linux executor, due to the stronger support for [CoW Snapshots](FS%20Snapshots/FS-Snapshots-Overview.md)).
+- One of the executors acts as the leader workspace (typically a Linux executor, due to the stronger support for [CoW Snapshots](FS-Snapshots/FS-Snapshots-Overview.md)).
 - One or more follower workspaces (macOS, Windows, Linux) mirror the leader via Mutagen high‑speed file sync.
 - Each execution cycle fences the filesystem state (FsSnapshot + sync).
 - The agent on the leader can drive the execution of arbitrary commands (typically tests) on all executors via instructions to run the `ah agent run-everywhere` command.
@@ -22,7 +22,7 @@ Enable agents to validate builds and tests across multiple operating systems in 
 - **End-User**: The user invoking the `ah task` command and the software components being part of this executable.
 - **Executor Access Point**: A server started with `ah serve` that offers the end-user a set of APIs for launching agentic coding tasks on one or more executors. The end-user specifies the address of the access point through the `remote-server` configuration option.
 - **Logical Coordinator** is the union of the end user’s `ah` client and the access point servers, listed in the fleet config. The fleet config fully determines which fleet members are managed directly by the end user and which are managed by the configured `remote-server` on the user’s behalf.
-- **Executors**: Executors typically run `ah agent enroll`, registering themselves with the access point and maintaining a persistent QUIC control connection. See [Executor Enrollment](Executor-Enrollment.md) for mode details. The server running `ah serve` can also act as an executor. Executors are long‑lived and expected to be "always‑on" and ready to start tasks quickly, leveraging the FS Snapshot mechanisms defined in [FS Snapshots Overview](FS%20Snapshots/FS-Snapshots-Overview.md).
+- **Executors**: Executors typically run `ah agent enroll`, registering themselves with the access point and maintaining a persistent QUIC control connection. See [Executor Enrollment](Executor-Enrollment.md) for mode details. The server running `ah serve` can also act as an executor. Executors are long‑lived and expected to be "always‑on" and ready to start tasks quickly, leveraging the FS Snapshot mechanisms defined in [FS Snapshots Overview](FS-Snapshots/FS-Snapshots-Overview.md).
 - **Leader**: The primary executor in a fleet (Linux preferred) that owns FsSnapshots and initiates `sync-fence` and `run‑everywhere`.
 - **Followers**: Secondary executors un a fleet (Windows/macOS/Linux) that execute commands and validate builds/tests.
 - **Sync Fence**: An explicit operation ensuring all follower file trees match the leader FsSnapshot before execution.
@@ -38,7 +38,7 @@ Enable agents to validate builds and tests across multiple operating systems in 
 
 - Agent edits files on the leader.
 - Execute `fs_snapshot_and_sync`:
-- Create a leader [FsSnapshot](FS%20Snapshots/FS-Snapshots-Overview.md).
+- Create a leader [FsSnapshot](FS-Snapshots/FS-Snapshots-Overview.md).
 - Issue a sync fence: run `mutagen project flush` and wait until followers reflect the leader snapshot content.
 - Invoke `ah agent followers run` with the project‑specific test commands, specified in the agent instructions.
 
