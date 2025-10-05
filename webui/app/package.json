@@ -5,11 +5,11 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "npx vinxi build",
-    "build:client": "npx vinxi build --mode client",
-    "build:server": "npx vinxi build --mode server",
-    "dev": "npx vinxi dev",
-    "start": "npx vinxi start",
+    "build": "yarn vinxi build",
+    "build:client": "yarn vinxi build --mode client",
+    "build:server": "yarn vinxi build --mode server",
+    "dev": "yarn vinxi dev",
+    "start": "yarn vinxi start",
     "lint": "eslint src --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint src --ext .ts,.tsx,.js,.jsx --fix",
     "format": "prettier --write src/**/*.{ts,tsx,js,jsx,json}",
@@ -59,6 +59,7 @@
     "vinxi": "^0.5.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.37.0",
     "@solidjs/testing-library": "^0.8.10",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.0.7",
@@ -80,7 +81,9 @@
     "tailwindcss": "^4.0.7",
     "type-coverage": "^2.29.7",
     "typescript": "^5.7.2",
+    "vite": "^7.1.9",
     "vite-plugin-checker": "^0.11.0",
+    "vite-plugin-solid": "^2.11.9",
     "vitest": "^2.0.5"
   },
   "engines": {

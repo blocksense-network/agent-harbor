@@ -86,9 +86,9 @@ cd webui && nix develop
 2. Install dependencies for all WebUI projects:
 ```bash
 # From webui/ directory (still in nix develop shell)
-cd webui/mock-server && npm install
-cd ../app && npm install
-cd ../e2e-tests && npm install
+yarn workspace ah-webui-mock-server install
+yarn workspace ah-webui-ssr-sidecar install
+yarn workspace ah-webui-e2e-tests install
 ```
 
 **Note**: With Nix, Playwright browsers are automatically provided and don't need manual installation. The environment variables for Playwright are set automatically in the Nix shell.
@@ -97,16 +97,16 @@ cd ../e2e-tests && npm install
 
 ```bash
 # API contract tests (require mock server)
-npm run test -- --project=api-tests
+yarn workspace ah-webui-e2e-tests run test -- --project=api-tests
 
 # Build and tooling tests
-npm run test -- --project=build-tooling-tests
+yarn workspace ah-webui-e2e-tests run test -- --project=build-tooling-tests
 
 # Infrastructure tests
-npm run test -- --project=infrastructure-tests
+yarn workspace ah-webui-e2e-tests run test -- --project=infrastructure-tests
 
 # Browser-based UI tests (require both servers)
-npm run test -- --project=browser-tests
+yarn workspace ah-webui-e2e-tests run test -- --project=browser-tests
 ```
 
 ### Running All Tests
@@ -115,20 +115,20 @@ To run all tests with automatic server management (recommended):
 
 ```bash
 # This starts both servers, waits for them to be ready, runs tests, and cleans up
-npm run test:e2e
+yarn workspace ah-webui-e2e-tests run test:e2e
 ```
 
 For manual server management (for debugging):
 
 ```bash
 # Terminal 1: Start mock server
-cd ../mock-server && npm run dev
+yarn workspace ah-webui-mock-server run dev
 
 # Terminal 2: Start SSR sidecar
-cd ../app && npm start
+yarn workspace ah-webui-ssr-sidecar run start
 
 # Terminal 3: Run all tests
-cd ../e2e-tests && npm test
+yarn workspace ah-webui-e2e-tests run test
 ```
 
 ### Scenario Testing
@@ -145,11 +145,10 @@ cd ../mock-server
 node dist/index.js --scenario ../../test_scenarios/test_scenario.yaml --scenario ../../test_scenarios/timing_test_scenario.yaml --merge-completed
 
 # Terminal 2: Start SSR sidecar (if testing WebUI integration)
-cd ../app && npm start
+yarn workspace ah-webui-ssr-sidecar run start
 
 # Terminal 3: Run scenario tests
-cd ../e2e-tests
-npm test -- --grep "Scenario Testing"
+yarn workspace ah-webui-e2e-tests run test -- --grep "Scenario Testing"
 ```
 
 #### Scenario Test Coverage
@@ -178,7 +177,7 @@ The tests are organized into different Playwright projects:
 
 After running tests, view the HTML report:
 ```bash
-npm run report
+yarn workspace ah-webui-e2e-tests run report
 ```
 
 ## CI/CD Integration
@@ -216,20 +215,20 @@ These tests are designed to run in CI/CD pipelines with the following workflow:
 2. **Browser dependencies missing**: Playwright should use Nix-provided browsers automatically; verify `PLAYWRIGHT_BROWSERS_PATH` is set
 3. **Servers not starting**: Ensure mock-server and app dependencies are installed
 4. **Port conflicts**: Tests expect mock server on port 3001, SSR on port 3000
-5. **TypeScript compilation errors**: Ensure all projects have been built with `npm run build`
+5. **TypeScript compilation errors**: Ensure all projects have been built with `yarn workspace ah-webui-ssr-sidecar run build`
 
 ### Debug Mode
 
 Run tests in debug mode:
 ```bash
-npm run test:debug -- --project=api-tests
+yarn workspace ah-webui-e2e-tests run test:debug -- --project=api-tests
 ```
 
 ### Verbose Output
 
 For detailed test execution:
 ```bash
-DEBUG=pw:api npm test -- --project=api-tests
+DEBUG=pw:api yarn workspace ah-webui-e2e-tests run test -- --project=api-tests
 ```
 
 ### Nix-Specific Troubleshooting

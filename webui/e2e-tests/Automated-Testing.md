@@ -33,8 +33,8 @@ just webui-test-api
 Test server-side HTML generation using the SSR server + mock API.
 
 ```bash
-cd webui/app
-timeout 120 npm test 2>&1 | tee /tmp/ssr-test.log
+cd webui
+timeout 120 yarn workspace ah-webui-ssr-sidecar run test:run 2>&1 | tee /tmp/ssr-test.log
 ```
 
 **What this validates:**
@@ -342,8 +342,8 @@ grep "❌" test-results/logs/*.log -l | xargs grep -A 5 "\[PAGE_ERROR\]"
 
 ## Never Do
 
-❌ Manually start `npm run dev` servers  
-❌ Run tests directly with `npx playwright test` (use just commands)  
+❌ Manually start `yarn workspace <package> run dev` servers
+❌ Run tests directly with `yarn workspace ah-webui-e2e-tests run test` (use just commands)  
 ❌ Use `curl` commands that can hang  
 ❌ Leave servers running between test runs  
 ❌ Manually manage log capture (it's automatic)  

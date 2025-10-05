@@ -265,6 +265,7 @@
         pkgs.fossil
         pkgs.mercurial
         pkgs.nodejs # for npx-based docson helper
+        pkgs.yarn-berry # Yarn PnP package manager
         # Mermaid validation (diagram syntax)
         (pkgs.nodePackages."@mermaid-js/mermaid-cli")
         pkgs.noto-fonts
@@ -289,8 +290,7 @@
         pkgs.netcat  # For port checking (nc command)
         pkgs.procps  # For process management (pgrep, kill, etc.)
         pkgs.process-compose  # Process orchestration for API testing
-        # Note: playwright and tsx are installed via npm in individual packages
-
+        
         # AI Coding Assistants (available in current nixpkgs)
         pkgs.goose-cli # Goose AI coding assistant
         pkgs.claude-code # Claude Code - agentic coding tool

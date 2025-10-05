@@ -1,9 +1,3 @@
-# Dependencies - these should not be committed as shared/ is just for tooling configs
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
 # Build artifacts
 dist/
 build/
@@ -32,3 +26,9 @@ logs/
 # Cache
 .cache/
 *.tsbuildinfo
+
+# Legacy npm files (should not exist but ignore if present)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

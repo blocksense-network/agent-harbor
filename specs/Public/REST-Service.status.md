@@ -207,7 +207,7 @@ Objective: Verify real multi‑OS synchronization and command adapters.
 
 - Scenarios (C1–C8)
   - C1: Sync fence across OSes — leader snapshot → `fenceResult` shows consistent on macOS and Windows.
-  - C2: Command adapters — `ah agent followers run -- npm test` executes via zsh (macOS) and PowerShell (Windows) with correct quoting.
+  - C2: Command adapters — `ah agent followers run -- yarn workspace <package> run test` executes via zsh (macOS) and PowerShell (Windows) with correct quoting.
   - C3: Env normalization — required env vars and PATH present; toolchain discovery succeeds on all followers.
   - C4: Large tree — sync efficiency across ignores; no runaway CPU on followers.
   - C5: File rename edge cases — case sensitivity mismatch (Windows/macOS) handled; no oscillation.

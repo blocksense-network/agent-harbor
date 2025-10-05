@@ -97,16 +97,15 @@ resources/
 
 test-results/
 
-# Node.js dependencies
+# Yarn PnP dependencies (replaces node_modules)
+.yarn/
+.pnp.*
+.yarnrc.yml
+
+# Legacy npm files (should not exist but ignore if present)
 node_modules/
-webui/node_modules/
-webui/app/node_modules/
-webui/shared/node_modules/
-webui/shared/package-lock.json
-webui/e2e-tests/node_modules/
-webui/e2e-tests/package-lock.json
-webui/mock-server/node_modules/
-webui/mock-server/package-lock.json
+package-lock.json
+webui/package-lock.json
 
 # Type coverage reports
 .type-coverage/

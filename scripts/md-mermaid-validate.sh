@@ -10,9 +10,9 @@ else
     echo "mmdc (mermaid-cli) not found in Nix dev shell. Fix flake.nix devShell inputs; no fallbacks allowed." >&2
     exit 127
   fi
-  # Outside Nix shell: allow best-effort npx fallback with system Chrome/Chromium
-  if command -v npx >/dev/null 2>&1; then
-    MMDC_CMD="npx -y @mermaid-js/mermaid-cli"
+  # Outside Nix shell: allow best-effort yarn fallback with system Chrome/Chromium
+  if command -v yarn >/dev/null 2>&1; then
+    MMDC_CMD="yarn dlx @mermaid-js/mermaid-cli"
     for bin in chromium chromium-browser google-chrome google-chrome-stable; do
       if command -v "$bin" >/dev/null 2>&1; then
         export PUPPETEER_EXECUTABLE_PATH="$(command -v "$bin")"

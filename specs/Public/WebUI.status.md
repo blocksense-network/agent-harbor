@@ -142,7 +142,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Consider adding API documentation generation (OpenAPI/Swagger)
 
 - **Verification Results**:
-  - [x] Project builds successfully with `npm run build`
+  - [x] Project builds successfully with `yarn workspace ah-webui-ssr-sidecar run build`
   - [x] Mock server starts and responds to all [REST-Service/API.md](REST-Service/API.md) endpoints with proper validation
   - [x] Development server runs on localhost with hot reload
   - [x] Playwright tests verify basic component rendering and routing works
@@ -202,7 +202,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Implement caching strategies for improved performance
 
 - **Verification Results**:
-  - [x] SolidStart application builds successfully with `npm run build`
+  - [x] SolidStart application builds successfully with `just webui-build`
   - [x] Server starts and listens on configured port (default 3000)
   - [x] API proxy middleware forwards requests to mock server in development mode
   - [x] Server serves HTML template for initial page loads without JavaScript

@@ -82,6 +82,24 @@
       "name": "Release AgentsWorkflow (apps/macos/AgentsWorkflow)",
       "program": "${workspaceFolder:AgentFS}/apps/macos/AgentsWorkflow/.build/release/AgentsWorkflow",
       "preLaunchTask": "swift: Build Release AgentsWorkflow (apps/macos/AgentsWorkflow)"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:webui}/apps/macos/AgentHarbor",
+      "name": "Debug AgentHarbor (apps/macos/AgentHarbor)",
+      "program": "${workspaceFolder:webui}/apps/macos/AgentHarbor/.build/debug/AgentHarbor",
+      "preLaunchTask": "swift: Build Debug AgentHarbor (apps/macos/AgentHarbor)"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:webui}/apps/macos/AgentHarbor",
+      "name": "Release AgentHarbor (apps/macos/AgentHarbor)",
+      "program": "${workspaceFolder:webui}/apps/macos/AgentHarbor/.build/release/AgentHarbor",
+      "preLaunchTask": "swift: Build Release AgentHarbor (apps/macos/AgentHarbor)"
     }
   ]
 }

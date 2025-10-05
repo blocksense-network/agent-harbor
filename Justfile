@@ -273,61 +273,61 @@ test-cgroups:
 
 # Install dependencies for mock server only
 mock-server-install:
-    cd webui/mock-server && npm ci
+    yarn workspace ah-webui-mock-server install
 
 # Install dependencies for all WebUI projects
 webui-install:
-    cd webui/shared && npm ci
-    cd webui/app && npm ci
+    yarn workspace shared install
+    yarn workspace ah-webui-ssr-sidecar install
     just mock-server-install
-    cd webui/e2e-tests && npm ci
+    yarn workspace ah-webui-e2e-tests install
 
 # Build WebUI application
 webui-build:
-    cd webui/app && npm run build
+    yarn workspace ah-webui-ssr-sidecar run build
 
 # Build mock server
 webui-build-mock:
-    cd webui/mock-server && npm run build
+    yarn workspace ah-webui-mock-server run build
 
 # Run WebUI development server
 webui-dev:
-    cd webui/app && npm run dev
+    yarn workspace ah-webui-ssr-sidecar run dev
 
 # Run mock REST API server
 webui-mock-server:
-    cd webui/mock-server && npm run dev
+    yarn workspace ah-webui-mock-server run dev
 
 # Lint all WebUI projects
 webui-lint:
-    cd webui/app && npm run lint
-    cd webui/mock-server && npm run lint
-    cd webui/e2e-tests && npm run lint
+    yarn workspace ah-webui-ssr-sidecar run lint
+    yarn workspace ah-webui-mock-server run lint
+    yarn workspace ah-webui-e2e-tests run lint
 
 # Type check all WebUI projects
 webui-type-check:
-    cd webui/app && npm run type-check
-    cd webui/mock-server && npm run type-check
+    yarn workspace ah-webui-ssr-sidecar run type-check
+    yarn workspace ah-webui-mock-server run type-check
 
 # Check for unused files/exports/dependencies in WebUI projects
 webui-knip:
-    cd webui/app && npm run knip
-    cd webui/shared && npm run knip
+    yarn workspace ah-webui-ssr-sidecar run knip
+    yarn workspace shared run knip
 
 # Check TypeScript type coverage in WebUI projects
 webui-type-coverage:
-    cd webui/app && npm run type-coverage
-    cd webui/shared && npm run type-coverage
+    yarn workspace ah-webui-ssr-sidecar run type-coverage
+    yarn workspace shared run type-coverage
 
 # Format all WebUI projects
 webui-format:
-    cd webui/app && npm run format
-    cd webui/mock-server && npm run format
-    cd webui/e2e-tests && npm run format
+    yarn workspace ah-webui-ssr-sidecar run format
+    yarn workspace ah-webui-mock-server run format
+    yarn workspace ah-webui-e2e-tests run format
 
 # Run WebUI E2E tests
 webui-test-unit:
-    cd webui/app && npm run test:run
+    yarn workspace ah-webui-ssr-sidecar run test:run
 
 webui-test *args:
     cd webui/e2e-tests && ./start-servers.sh {{args}}
@@ -338,7 +338,7 @@ webui-test-api: webui-build-mock
 
 # Build WebUI SSR server (SolidStart)
 webui-build-ssr:
-    cd webui/app && npm run build
+    yarn workspace ah-webui-ssr-sidecar run build
 
 # Start WebUI with mock server for manual testing (cycles through 5 scenarios)
 webui-manual-test:
@@ -346,19 +346,19 @@ webui-manual-test:
 
 # Run WebUI E2E tests in headed mode (visible browser)
 webui-test-headed:
-    cd webui/e2e-tests && npm run test:headed
+    yarn workspace ah-webui-e2e-tests run test:headed
 
 # Run WebUI E2E tests in debug mode
 webui-test-debug:
-    cd webui/e2e-tests && npm run test:debug
+    yarn workspace ah-webui-e2e-tests run test:debug
 
 # Run WebUI E2E tests in UI mode
 webui-test-ui:
-    cd webui/e2e-tests && npm run test:ui
+    yarn workspace ah-webui-e2e-tests run test:ui
 
 # Show WebUI test reports
 webui-test-report:
-    cd webui/e2e-tests && npm run report
+    yarn workspace ah-webui-e2e-tests run report
 
 # Show failed WebUI tests from the most recent run
 webui-test-failed:
@@ -446,7 +446,7 @@ repomix-specs:
 
 # Install Playwright browsers for E2E tests
 webui-install-browsers:
-    cd webui/e2e-tests && npm run install-browsers
+    yarn workspace ah-webui-e2e-tests run install-browsers
 
 # Run all WebUI checks (lint, type-check, build, test)
 webui-check:

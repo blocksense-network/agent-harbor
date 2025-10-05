@@ -12,13 +12,12 @@ echo "Note: Using development servers (not production build) for hot reload and 
 echo ""
 
 # Start mock server in background
-cd webui/mock-server
-npm run dev &
+cd webui
+yarn workspace ah-webui-mock-server run dev &
 MOCK_PID=$!
 
 # Start SSR dev server in background
-cd ../app
-npm run dev &
+yarn workspace ah-webui-ssr-sidecar run dev &
 SSR_PID=$!
 
 # Wait a moment for servers to start

@@ -18,27 +18,25 @@ mkdir -p "$TEST_RUN_DIR"
 
 # Kill any existing server processes
 echo "Killing any existing server processes..."
-pkill -f "npm run dev" || true
+pkill -f "yarn.*dev" || true
 sleep 2
 
 # Build and start mock server (port 3001) with quiet mode
 (
-  cd ../mock-server
-  npm run build
+  yarn workspace ah-webui-mock-server run build
   echo "Starting mock server..."
-  QUIET_MODE=true npm run dev
+  QUIET_MODE=true yarn workspace ah-webui-mock-server run dev
 ) >"$TEST_RUN_DIR/mock-server.log" 2>&1 &
 MOCK_PID=$!
 echo "Started mock server (PID: $MOCK_PID)"
 
 # Build and start SSR sidecar (port 3002) with quiet mode
 (
-  cd ../app
-  npm run build
+  yarn workspace ah-webui-ssr-sidecar run build
   # Export PORT to ensure it's available to all child processes
   export PORT=3002
   echo "Starting SSR server..."
-  QUIET_MODE=true npm run dev
+  QUIET_MODE=true yarn workspace ah-webui-ssr-sidecar run dev
 ) >"$TEST_RUN_DIR/ssr-server.log" 2>&1 &
 SSR_PID=$!
 echo "Started SSR server (PID: $SSR_PID)"
@@ -80,6 +78,6 @@ echo "🧪 Running tests... (server logs captured to $TEST_RUN_DIR)"
 echo "   📄 View server logs: cat $TEST_RUN_DIR/*.log"
 echo ""
 
-npx playwright test "$@"
+yarn test "$@"
 
 # Cleanup happens via trap

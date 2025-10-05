@@ -8,8 +8,8 @@ else
     echo "Error: 'ajv' is missing inside Nix dev shell. Add pkgs.nodePackages.\"ajv-cli\" to flake.nix devShell inputs." >&2
     exit 127
   fi
-  echo "ajv not found; falling back to 'npx ajv-cli' outside Nix shell (requires network)" >&2
-  AJV='npx -y ajv-cli'
+  echo "ajv not found; falling back to 'yarn dlx ajv-cli' outside Nix shell (requires network)" >&2
+  AJV='yarn dlx ajv-cli'
 fi
 
 for f in specs/schemas/*.json; do

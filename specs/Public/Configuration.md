@@ -82,7 +82,7 @@ Tools in the dev shell:
 
 - `taplo` (taplo-cli): TOML validation with JSON Schema mapping
 - `ajv` (ajv-cli): JSON Schema `validator` for JSON instances
-- `docson` (via shell function): local schema viewer using `npx` (no global install)
+- `docson` (via shell function): local schema viewer using `yarn dlx` (no global install)
 
 Examples (use Just targets inside the Nix dev shell):
 

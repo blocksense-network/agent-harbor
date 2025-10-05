@@ -8,10 +8,10 @@ This mock server implements the [REST-Service.md](../../specs/Public/REST-Servic
 
 ## Quick Start
 
-### Prerequisites
+### Prerequisites (managed via nix flake)
 
 - Node.js >= 22
-- npm or yarn
+- yarn
 
 ### Installation
 
@@ -135,14 +135,14 @@ cargo run --bin ah-tui -- --remote-server http://localhost:3001
 ## Available Scripts
 
 ```bash
-npm run build        # Build for production
-npm run dev          # Development with hot reload (use 'just webui-mock-server' instead)
-npm run start        # Start production server
-npm run lint         # Run ESLint
-npm run lint:fix     # Fix ESLint issues
-npm run format       # Format code with Prettier
-npm run format:check # Check formatting
-npm run type-check   # TypeScript type checking
+yarn workspace ah-webui-mock-server run build        # Build for production
+yarn workspace ah-webui-mock-server run dev          # Development with hot reload (use 'just webui-mock-server' instead)
+yarn workspace ah-webui-mock-server run start        # Start production server
+yarn workspace ah-webui-mock-server run lint         # Run ESLint
+yarn workspace ah-webui-mock-server run lint:fix     # Fix ESLint issues
+yarn workspace ah-webui-mock-server run format       # Format code with Prettier
+yarn workspace ah-webui-mock-server run format:check # Check formatting
+yarn workspace ah-webui-mock-server run type-check   # TypeScript type checking
 ```
 
 ## Scenario-Based Testing

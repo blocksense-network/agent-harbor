@@ -9,19 +9,19 @@ For debugging individual test failures, run in headed mode to see the browser:
 ```bash
 cd webui/e2e-tests
 
-# Option 1: Using npm script
-npm run test:headed -- --grep "SSE"
+# Option 1: Using yarn script
+yarn workspace ah-webui-e2e-tests run test:headed -- --grep "SSE"
 
 # Option 2: Direct Playwright command (requires manual server setup)
 # Terminal 1:
-cd ../mock-server && npm run dev
+yarn workspace ah-webui-mock-server run dev
 
 # Terminal 2:
-cd ../app && npm run dev
+yarn workspace ah-webui-ssr-sidecar run dev
 
 # Terminal 3:
 cd ../e2e-tests
-npx playwright test --headed --grep "SSE"
+yarn test --headed --grep "SSE"
 ```
 
 ## Interactive UI Mode
@@ -29,8 +29,8 @@ npx playwright test --headed --grep "SSE"
 Playwright's UI mode provides a visual test runner:
 
 ```bash
-cd webui/e2e-tests
-npm run test:ui
+cd webui
+yarn workspace ah-webui-e2e-tests run test:ui
 ```
 
 This opens a GUI where you can:

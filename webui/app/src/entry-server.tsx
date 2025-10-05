@@ -3,7 +3,15 @@ import { createHandler, StartServer } from "@solidjs/start/server";
 
 export default createHandler(() => (
   <StartServer
-    document={({ assets, children, scripts }) => (
+    document={({
+      assets,
+      children,
+      scripts,
+    }: {
+      assets: any;
+      children?: any;
+      scripts: any;
+    }) => (
       <html lang="en">
         <head>
           <meta charset="utf-8" />

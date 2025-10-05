@@ -92,6 +92,7 @@ jobs:
       with:
         node-version: '22'
 
+    # TODO: We are using Yarn PnP, so this should be updated
     - name: Cache Node.js dependencies
       uses: actions/cache@v3
       with:
