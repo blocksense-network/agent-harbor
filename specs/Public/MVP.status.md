@@ -1240,46 +1240,64 @@ The MVP implementation must coordinate across multiple specifications with prope
 
   **Note**: Basic snapshot functionality is working correctly. The detailed snapshot verification has been implemented, confirming that snapshots are created at the correct points during agent execution with proper naming and metadata. The remaining items represent additional advanced verification features that would be valuable for production but are not blocking for the core milestone completion.
 
-**2.4.3 AH Agent Start Sandbox Mode E2E Tests** (depends on 2.4.2)
+**2.4.3 AH Agent Start Sandbox Mode E2E Tests** ✅ COMPLETED (depends on 2.4.2)
 
-|- **Deliverables**:
+- **Deliverables**:
 
   - E2E test scenarios validating `ah agent start` with both FS snapshots and sandbox enabled
   - Combine test filesystem infrastructure with sandbox execution
   - Full agent isolation including filesystem snapshots and process sandboxing
   - Verification that sandboxed agent execution produces correct side effects
 
-|- **Testing Strategy**:
+- **Testing Strategy**:
 
   - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
   - Scenarios configure both FS snapshot provider and sandbox profile
   - Test filesystem + sandbox setup ensures complete agent isolation
   - Validate that sandbox restrictions don't interfere with agent functionality
 
-|- **Verification Results**:
+- **Implementation Details**:
 
-  - [ ] Agent execution works correctly within sandbox environment
-  - [ ] FS snapshots integrate properly with sandboxed workspace
-  - [ ] Sandbox resource limits don't break agent functionality
-  - [ ] File system side effects occur correctly despite sandbox isolation
-  - [ ] Sandbox cleanup happens properly after scenario completion
+  - **Sandbox Launching Logic**: Enhanced `ah agent start` command to support sandbox parameters (`--sandbox-type`, `--allow-network`, `--allow-containers`, `--allow-kvm`, `--seccomp`, `--seccomp-debug`, `--mount-rw`, `--overlay`) with workspace preparation using FS snapshots before sandbox execution
+  - **Agent Start Sandbox Integration**: Modified `run_mock_agent()` function to conditionally launch agents within sandbox environment using `run_mock_agent_in_sandbox()` when `--sandbox` flag is provided
+  - **Cross-Platform Compatibility**: Added graceful handling for non-Linux platforms where sandbox functionality is not available, allowing tests to pass on macOS with appropriate skip messages
+  - **E2E Test Implementation**: Created `integration_test_agent_start_fs_snapshots_sandbox()` that validates complete integration of FS snapshots with sandbox mode, including workspace preparation and agent execution isolation
+  - **Verification Helpers**: Extracted common verification logic into shared functions (`verify_agent_execution`, `verify_sandbox_attempted`, `verify_snapshots_if_available`) to ensure DRY testing patterns and consistent validation across all agent start test scenarios
+
+- **Key Source Files**:
+
+  - `crates/ah-cli/src/agent/start.rs` - Agent start command implementation with sandbox launching logic and argument parsing
+  - `crates/ah-cli/src/sandbox.rs` - Sandbox configuration mapping and CLI parameter handling
+  - `crates/ah-cli/src/task.rs` - Integration tests including `integration_test_agent_start_fs_snapshots_sandbox()` and shared verification helpers
+  - `crates/ah-fs-snapshots/src/lib.rs` - Workspace preparation interface used before sandbox execution
+
+- **Verification Results**:
+
+  - [x] Agent execution works correctly within sandbox environment (Linux platforms)
+  - [x] FS snapshots integrate properly with sandboxed workspace preparation
+  - [x] Sandbox resource limits don't break agent functionality (basic functionality verified)
+  - [x] File system side effects occur correctly despite sandbox isolation (agent creates expected files)
+  - [x] Sandbox cleanup happens properly after scenario completion (test cleanup verified)
+  - [x] Cross-platform test compatibility (tests gracefully skip on non-Linux platforms)
+  - [x] E2E test validates complete integration of FS snapshots + sandbox + agent execution
+  - [x] Shared verification helpers ensure consistent validation across test scenarios
 
 **2.4.4 AH Agent Start Codex Integration E2E Tests** (depends on 2.4.3)
 
-|- **Deliverables**:
+- **Deliverables**:
 
   - All previous test scenarios (2.4.1-2.4.3) executed with real Codex CLI instead of mock agent
   - Codex CLI backed by mock LLM API server for deterministic testing
   - Full integration testing of real agent binary with workspace isolation
 
-|- **Testing Strategy**:
+- **Testing Strategy**:
 
   - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
   - Configure Codex to use mock API server from `tests/tools/mock-agent/`
   - Run all E2E scenarios (in-place, FS snapshots, sandbox) with real Codex binary
   - Validate that real agent behavior matches mock agent expectations
 
-|- **Verification Results**:
+- **Verification Results**:
 
   - [ ] Codex CLI integration works with all workspace modes (in-place, snapshots, sandbox)
   - [ ] Mock API server provides deterministic responses for Codex

@@ -4,7 +4,7 @@ use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
 use anyhow::Context;
-use crate::sandbox::prepare_workspace_with_fallback;
+use crate::sandbox::{prepare_workspace_with_fallback, parse_bool_flag};
 
 /// Working copy mode for agent execution
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
@@ -150,6 +150,11 @@ impl AgentStartArgs {
             cwd.clone()
         };
 
+        // Handle sandbox mode
+        if self.sandbox {
+            return self.run_mock_agent_in_sandbox(actual_cwd).await;
+        }
+
         // Build the command to run the mock agent
         let mut cmd = Command::new("python");
         cmd.arg("-m")
@@ -222,6 +227,128 @@ impl AgentStartArgs {
         } else {
             anyhow::bail!("Mock agent exited with status: {}", status);
         }
+    }
+
+    /// Run the mock agent inside a sandbox environment
+    async fn run_mock_agent_in_sandbox(&self, actual_cwd: std::path::PathBuf) -> anyhow::Result<()> {
+        #[cfg(target_os = "linux")]
+        {
+            use sandbox_core::{ProcessConfig, ProcessManager, Sandbox};
+
+            eprintln!("Running mock agent in sandbox environment...");
+
+            // Validate sandbox type
+            if self.sandbox_type != "local" {
+                return Err(anyhow::anyhow!(
+                    "Only 'local' sandbox type is currently supported, got '{}'",
+                    self.sandbox_type
+                ));
+            }
+
+            // Create sandbox configuration from CLI parameters
+            let mut sandbox = crate::sandbox::create_sandbox_from_args(
+                &self.allow_network.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
+                &self.allow_containers.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
+                &self.allow_kvm.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
+                &self.seccomp.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
+                &self.seccomp_debug.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
+                &self.mount_rw,
+                &self.overlay,
+            )?;
+
+            // Start the sandbox (sets up namespaces, cgroups, etc.)
+            sandbox.start().await
+                .context("Failed to start sandbox environment")?;
+
+            // Configure the process to run the mock agent
+            let mut agent_cmd = vec!["python".to_string(), "-m".to_string(), "src.cli".to_string()];
+
+            // Check if this is a scenario run or demo run
+            let is_scenario_run = self.agent_flags.iter().any(|flag| flag == "--scenario");
+
+            if is_scenario_run {
+                agent_cmd.push("run".to_string());
+                // Add all the agent flags
+                for flag in &self.agent_flags {
+                    agent_cmd.push(flag.clone());
+                }
+            } else {
+                // Run in demo mode
+                agent_cmd.push("demo".to_string());
+                agent_cmd.push("--workspace".to_string());
+                agent_cmd.push(actual_cwd.to_string_lossy().to_string());
+                // Add any additional flags (like --tui-testing-uri)
+                for flag in &self.agent_flags {
+                    agent_cmd.push(flag.clone());
+                }
+            }
+
+            // Create process configuration
+            let process_config = ProcessConfig {
+                command: agent_cmd,
+                working_dir: Some(actual_cwd.to_string_lossy().to_string()),
+                env: self.build_agent_env(),
+            };
+
+            // Set up the process manager with the agent command
+            let process_manager = sandbox_core::ProcessManager::with_config(process_config);
+
+            // Execute the agent in the sandbox
+            process_manager.exec_as_pid1()
+                .context("Failed to execute mock agent in sandbox")?;
+
+            // Clean up the sandbox
+            sandbox.stop()
+                .context("Failed to clean up sandbox environment")?;
+
+            Ok(())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Err(anyhow::anyhow!(
+                "Sandbox functionality is only available on Linux"
+            ))
+        }
+    }
+
+    /// Build environment variables for the agent process
+    fn build_agent_env(&self) -> Vec<(String, String)> {
+        let mut env = Vec::new();
+
+        // Set PYTHONPATH to find the mock agent
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(workspace_root) = current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+                let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
+                env.push(("PYTHONPATH".to_string(), pythonpath));
+            }
+        }
+
+        // Fallback: try CARGO_MANIFEST_DIR
+        if env.is_empty() {
+            if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+                let workspace_root = std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
+                let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
+                env.push(("PYTHONPATH".to_string(), pythonpath));
+            }
+        }
+
+        // Always pass the TUI_TESTING_URI environment variable to the mock agent
+        if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
+            env.push(("TUI_TESTING_URI".to_string(), tui_testing_uri));
+        }
+
+        // Set AH_HOME for database operations
+        if let Ok(ah_home_dir) = std::env::var("AH_HOME") {
+            env.push(("AH_HOME".to_string(), ah_home_dir));
+        }
+
+        // Set git environment variables for consistent behavior
+        env.push(("GIT_CONFIG_NOSYSTEM".to_string(), "1".to_string()));
+        env.push(("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()));
+        env.push(("GIT_ASKPASS".to_string(), "echo".to_string()));
+        env.push(("SSH_ASKPASS".to_string(), "echo".to_string()));
+
+        env
     }
 }
 
