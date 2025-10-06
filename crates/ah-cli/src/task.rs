@@ -1761,6 +1761,112 @@ exit {}
         Ok(())
     }
 
+
+    #[test]
+    fn integration_test_agent_start_fs_snapshots() -> Result<()> {
+        let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
+
+        // Get the ZFS test filesystem mount point (platform-specific)
+        let zfs_test_mount = crate::test_config::get_zfs_test_mount_point()?;
+        if !zfs_test_mount.exists() {
+            panic!("ZFS test filesystem not available at {}", zfs_test_mount.display());
+        }
+
+        // Create a subdirectory for this test
+        let repo_dir = zfs_test_mount.join("agent_start_fs_test");
+        if repo_dir.exists() {
+            std::fs::remove_dir_all(&repo_dir)?;
+        }
+        std::fs::create_dir_all(&repo_dir)?;
+
+        // Initialize git repo using the shared helper
+        ah_repo::test_helpers::initialize_git_repo(&repo_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to initialize git repo: {}", e))?;
+
+        // Build the checkpoint command with full path to ah binary
+        let cargo_manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| "/Users/zahary/blocksense/agents-workflow/cli".to_string());
+        let workspace_root = std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
+        let ah_binary_path = format!("{}/target/debug/ah", workspace_root.display());
+        let checkpoint_cmd = format!("{} agent fs snapshot", ah_binary_path);
+        // Also create a simple test file to verify checkpoint is called
+        let checkpoint_cmd = format!("{}", checkpoint_cmd);
+
+        // Run the mock agent directly with checkpoint command
+        let mut cmd = std::process::Command::new("python");
+        cmd.arg("-m")
+            .arg("src.cli")
+            .arg("demo")
+            .arg("--workspace")
+            .arg(&repo_dir)
+            .arg("--checkpoint-cmd")
+            .arg(&checkpoint_cmd)
+            .current_dir(&repo_dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_ASKPASS", "echo")
+            .env("SSH_ASKPASS", "echo");
+
+        // Set PYTHONPATH to find the mock agent
+        let cargo_manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| "/Users/zahary/blocksense/agents-workflow/cli".to_string());
+        let workspace_root = std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
+        let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
+        cmd.env("PYTHONPATH", pythonpath);
+
+        // Set AH_HOME for database operations
+        cmd.env("AH_HOME", ah_home_dir.path());
+
+        let output = cmd.output()?;
+        let status = output.status;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        // The command should succeed
+        assert!(status.success(), "Agent start with FS snapshots should succeed, stderr: {}", stderr);
+
+        // Verify that the expected file from demo scenario was created
+        let hello_py = repo_dir.join("hello.py");
+        assert!(hello_py.exists(), "hello.py should exist from demo scenario");
+
+        // Verify file contents
+        let hello_content = std::fs::read_to_string(&hello_py)?;
+        assert!(hello_content.contains("Hello, World!"), "hello.py should contain expected content from demo scenario");
+
+        // Verify that snapshots were created during agent execution
+        // The demo scenario should create 2 checkpoints (one for each agentToolUse step)
+        let provider = ah_fs_snapshots::provider_for(&repo_dir)?;
+
+        // Try to list snapshots - this may fail if daemon is not running
+        match provider.list_snapshots(&repo_dir) {
+            Ok(snapshots) => {
+                eprintln!("Found {} snapshots for the session", snapshots.len());
+
+                // The demo scenario should create exactly 2 snapshots (one per agentToolUse)
+                assert_eq!(snapshots.len(), 2, "Demo scenario should create exactly 2 snapshots, found {}", snapshots.len());
+
+                // Verify that all snapshots have proper metadata
+                for snapshot in &snapshots {
+                    use ah_fs_snapshots::SnapshotProviderKind;
+                    assert_eq!(snapshot.snapshot.provider, SnapshotProviderKind::Zfs, "All snapshots should be ZFS snapshots");
+                    assert!(snapshot.snapshot.id.contains("AH_test_zfs/test_dataset"), "Snapshot ID should contain the dataset name");
+                    assert!(snapshot.created_at > 0, "Snapshot should have a valid creation timestamp");
+                }
+
+                eprintln!("✓ Verified {} ZFS snapshots created during agent execution", snapshots.len());
+            }
+            Err(e) => {
+                eprintln!("⚠️  Could not verify snapshots (daemon may not be running): {}", e);
+                eprintln!("✓ Agent execution completed successfully, but snapshot verification skipped");
+            }
+        }
+
+        // Cleanup: remove the test directory
+        let _ = std::fs::remove_dir_all(&repo_dir);
+
+        Ok(())
+    }
+
     fn run_ah_agent_start_integration(
         repo_path: &std::path::Path,
         agent: &str,

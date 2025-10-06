@@ -3,9 +3,11 @@
 use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
+use anyhow::Context;
+use crate::sandbox::prepare_workspace_with_fallback;
 
 /// Working copy mode for agent execution
-#[derive(Clone, Debug, ValueEnum)]
+#[derive(Clone, Debug, PartialEq, ValueEnum)]
 pub enum WorkingCopyMode {
     /// Execute agent directly in the current working directory
     InPlace,
@@ -131,11 +133,28 @@ impl AgentStartArgs {
             std::env::current_dir()?
         };
 
+        // Handle workspace preparation for snapshots mode
+        let actual_cwd = if self.working_copy == WorkingCopyMode::Snapshots {
+            // Prepare a snapshot-based workspace
+            eprintln!("Preparing workspace with filesystem snapshots...");
+            match crate::sandbox::prepare_workspace_with_fallback(&cwd).await {
+                Ok(prepared_workspace) => {
+                    eprintln!("Workspace prepared at: {:?}", prepared_workspace.exec_path);
+                    prepared_workspace.exec_path
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        } else {
+            cwd.clone()
+        };
+
         // Build the command to run the mock agent
         let mut cmd = Command::new("python");
         cmd.arg("-m")
             .arg("src.cli")
-            .current_dir(&cwd)
+            .current_dir(&actual_cwd)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());

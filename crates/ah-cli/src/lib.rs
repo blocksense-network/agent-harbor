@@ -3,6 +3,7 @@
 pub mod agent;
 pub mod sandbox;
 pub mod task;
+pub mod test_config;
 pub mod transport;
 pub mod tui;
 

@@ -134,10 +134,6 @@ pub async fn prepare_workspace_with_fallback(
         let capabilities = provider.detect_capabilities(workspace_path);
 
         if capabilities.score > 0 {
-            println!(
-                "Trying {} provider (score: {})...",
-                name, capabilities.score
-            );
 
             // Try CoW overlay mode first if supported, otherwise try in-place mode
             let modes_to_try = if capabilities.supports_cow_overlay {
@@ -157,7 +153,6 @@ pub async fn prepare_workspace_with_fallback(
                         return Ok(workspace);
                     }
                     Err(e) => {
-                        println!("  {} provider failed with mode {:?}: {}", name, mode, e);
                         continue;
                     }
                 }

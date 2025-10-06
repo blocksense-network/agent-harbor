@@ -566,6 +566,12 @@ impl FsSnapshotProvider for GitProvider {
         }
     }
 
+    fn list_snapshots(&self, _directory: &Path) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
+        // Git provider doesn't store snapshots in a listable format like ZFS
+        // Return empty list for now - Git snapshots are managed through git refs
+        Ok(Vec::new())
+    }
+
     fn cleanup(&self, token: &str) -> Result<()> {
         if token.starts_with("git:inplace:") {
             // Nothing to cleanup for in-place mode

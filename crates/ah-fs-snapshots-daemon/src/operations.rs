@@ -8,6 +8,10 @@ pub async fn process_request(request: Request) -> Response {
 
     match request {
         Request::Ping(_) => Response::success(),
+        Request::ListZfsSnapshots(dataset) => {
+            let dataset_str = String::from_utf8_lossy(&dataset).to_string();
+            handle_zfs_list_snapshots(dataset_str).await
+        }
         Request::CloneZfs((snapshot, clone)) => {
             let snapshot_str = String::from_utf8_lossy(&snapshot).to_string();
             let clone_str = String::from_utf8_lossy(&clone).to_string();
@@ -234,6 +238,39 @@ async fn get_zfs_mountpoint(dataset: &str) -> Result<String, String> {
 
 fn get_sudo_user() -> Option<String> {
     std::env::var("SUDO_USER").ok().or_else(|| std::env::var("USER").ok())
+}
+
+async fn handle_zfs_list_snapshots(dataset: String) -> Response {
+    debug!("Listing ZFS snapshots for dataset: {}", dataset);
+
+    // Run zfs list to get all snapshots for this dataset
+    let result = Command::new("zfs")
+        .args(["list", "-t", "snapshot", "-H", "-o", "name", "-r", &dataset])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await;
+
+    match result {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let snapshots: Vec<String> = stdout
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.trim().to_string())
+                .collect();
+
+            match serde_json::to_string(&snapshots) {
+                Ok(json) => Response::success_with_list(json),
+                Err(e) => Response::error(format!("Failed to serialize snapshot list: {}", e)),
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Response::error(format!("ZFS list command failed: {}", stderr))
+        }
+        Err(e) => Response::error(format!("Failed to execute zfs list: {}", e)),
+    }
 }
 
 pub async fn zfs_dataset_exists(dataset: &str) -> bool {

@@ -83,6 +83,17 @@ pub struct SnapshotRef {
     pub meta: HashMap<String, String>,
 }
 
+/// Information about a snapshot.
+#[derive(Clone, Debug)]
+pub struct SnapshotInfo {
+    /// The snapshot reference.
+    pub snapshot: SnapshotRef,
+    /// When the snapshot was created (Unix timestamp).
+    pub created_at: u64,
+    /// Optional session ID this snapshot belongs to.
+    pub session_id: Option<String>,
+}
+
 /// Generate a unique identifier for resources.
 /// This function provides thread-safe, globally unique identifiers across all snapshot providers.
 pub fn generate_unique_id() -> String {
@@ -126,6 +137,9 @@ pub trait FsSnapshotProvider: Send + Sync {
         snap: &SnapshotRef,
         mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace>;
+
+    /// List all snapshots for a directory.
+    fn list_snapshots(&self, directory: &Path) -> Result<Vec<SnapshotInfo>>;
 
     /// Cleanup/destroy any resources created by this provider (workspaces, mounts).
     fn cleanup(&self, token: &str) -> Result<()>;

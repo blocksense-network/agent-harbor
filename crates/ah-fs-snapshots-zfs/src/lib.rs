@@ -3,7 +3,7 @@
 use ah_fs_snapshots_daemon::client::{DaemonClient, DaemonError};
 use ah_fs_snapshots_traits::{
     FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotProviderKind,
-    SnapshotRef, WorkingCopyMode,
+    SnapshotInfo, SnapshotRef, WorkingCopyMode,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,8 +25,8 @@ impl ZfsProvider {
 
     /// Check if ZFS is available on this system.
     fn zfs_available() -> bool {
-        // Only available on Linux
-        if !cfg!(target_os = "linux") {
+        // Available on Linux and macOS (OpenZFS)
+        if !cfg!(any(target_os = "linux", target_os = "macos")) {
             return false;
         }
 
@@ -42,20 +42,42 @@ impl ZfsProvider {
 
     /// Get the filesystem type for a given path.
     fn fs_type(path: &Path) -> Result<String> {
-        let output = std::process::Command::new("stat")
+        // Try Linux syntax first (stat -f -c %T)
+        let linux_output = std::process::Command::new("stat")
             .args(["-f", "-c", "%T"])
             .arg(path)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output()?;
 
-        if !output.status.success() {
-            return Err(ah_fs_snapshots_traits::Error::provider(
-                "Failed to determine filesystem type",
-            ));
+        if linux_output.status.success() {
+            return Ok(String::from_utf8_lossy(&linux_output.stdout).trim().to_string());
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        // Fall back to checking mount output for ZFS (works on macOS and Linux)
+        let mount_output = std::process::Command::new("mount")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()?;
+
+        if mount_output.status.success() {
+            let mount_stdout = String::from_utf8_lossy(&mount_output.stdout);
+            // Check if the path is on a ZFS mount
+            for line in mount_stdout.lines() {
+                if line.contains("zfs") {
+                    // Extract the mount point and check if our path is under it
+                    if let Some(mount_point) = line.split_whitespace().nth(2) {
+                        if path.starts_with(mount_point) {
+                            return Ok("zfs".to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(ah_fs_snapshots_traits::Error::provider(
+            "Failed to determine filesystem type",
+        ))
     }
 
     /// Get the ZFS dataset for a given path.
@@ -121,6 +143,76 @@ impl ZfsProvider {
             .unwrap_or_default()
             .as_nanos();
         format!("ah_{}_{}", std::process::id(), timestamp)
+    }
+
+    /// Find the dataset that contains the given path.
+    fn find_dataset_for_path(&self, path: &Path) -> Result<String> {
+        let output = std::process::Command::new("zfs")
+            .args(["list", "-H", "-o", "name", "-t", "filesystem"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()?;
+
+        if !output.status.success() {
+            return Err(ah_fs_snapshots_traits::Error::provider("Failed to list ZFS datasets"));
+        }
+
+        let datasets = String::from_utf8(output.stdout)
+            .map_err(|_| ah_fs_snapshots_traits::Error::provider("Invalid ZFS output"))?;
+
+        let path_str = path.to_string_lossy();
+
+        // Find the most specific dataset that contains this path
+        let mut best_match: Option<String> = None;
+        for dataset in datasets.lines() {
+            let dataset = dataset.trim();
+            if dataset.is_empty() {
+                continue;
+            }
+
+            // Get mountpoint for this dataset
+            let mountpoint_output = std::process::Command::new("zfs")
+                .args(["get", "-H", "-o", "value", "mountpoint", dataset])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output()?;
+
+            if mountpoint_output.status.success() {
+                let mountpoint = String::from_utf8(mountpoint_output.stdout)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+
+                if !mountpoint.is_empty() && mountpoint != "-" && path_str.starts_with(&mountpoint) {
+                    // Check if this is a better match (longer mountpoint path)
+                    if let Some(ref current_best) = best_match {
+                        if mountpoint.len() > current_best.len() {
+                            best_match = Some(dataset.to_string());
+                        }
+                    } else {
+                        best_match = Some(dataset.to_string());
+                    }
+                }
+            }
+        }
+
+        best_match.ok_or_else(|| ah_fs_snapshots_traits::Error::provider(format!(
+            "No ZFS dataset found for path: {}", path.display()
+        )))
+    }
+
+    /// Parse timestamp from snapshot name if it follows a pattern like "snapshot_1234567890"
+    fn parse_snapshot_timestamp(&self, snapshot_name: &str) -> Option<u64> {
+        // Try to extract timestamp from common patterns
+        if snapshot_name.starts_with("snapshot_") {
+            snapshot_name.strip_prefix("snapshot_")?
+                .parse::<u64>()
+                .ok()
+        } else if snapshot_name.chars().all(|c| c.is_ascii_digit()) {
+            snapshot_name.parse::<u64>().ok()
+        } else {
+            None
+        }
     }
 }
 
@@ -326,6 +418,41 @@ impl FsSnapshotProvider for ZfsProvider {
                 "ZFS branching only supports CowOverlay mode",
             )),
         }
+    }
+
+    fn list_snapshots(&self, directory: &Path) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
+        use ah_fs_snapshots_traits::SnapshotInfo;
+
+        // Find the dataset for this directory
+        let dataset = self.find_dataset_for_path(directory)?;
+        let snapshots = self.daemon_client.list_zfs_snapshots(&dataset)
+            .map_err(|e| ah_fs_snapshots_traits::Error::provider(format!("Failed to list ZFS snapshots: {}", e)))?;
+
+        let mut result = Vec::new();
+        for snap_name in snapshots {
+            if let Some(snapshot_part) = snap_name.split('@').nth(1) {
+                let created_at = self.parse_snapshot_timestamp(snapshot_part)
+                    .unwrap_or_else(|| std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs());
+
+                let snapshot_ref = SnapshotRef {
+                    id: snap_name.clone(),
+                    label: Some(snapshot_part.to_string()),
+                    provider: SnapshotProviderKind::Zfs,
+                    meta: HashMap::new(),
+                };
+
+                result.push(SnapshotInfo {
+                    snapshot: snapshot_ref,
+                    created_at,
+                    session_id: None,
+                });
+            }
+        }
+
+        Ok(result)
     }
 
     fn cleanup(&self, token: &str) -> Result<()> {

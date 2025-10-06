@@ -7,6 +7,7 @@ use ssz_derive::{Decode, Encode};
 #[ssz(enum_behaviour = "union")]
 pub enum Request {
     Ping(Vec<u8>),                     // empty vec for ping
+    ListZfsSnapshots(Vec<u8>),         // dataset
     CloneZfs((Vec<u8>, Vec<u8>)),      // (snapshot, clone)
     SnapshotZfs((Vec<u8>, Vec<u8>)),   // (source, snapshot)
     DeleteZfs(Vec<u8>),                // target
@@ -21,6 +22,7 @@ pub enum Response {
     Success(Vec<u8>),               // empty vec for success
     SuccessWithMountpoint(Vec<u8>), // mountpoint
     SuccessWithPath(Vec<u8>),       // path
+    SuccessWithList(Vec<u8>),       // JSON-encoded list
     Error(Vec<u8>),                 // message
 }
 
@@ -29,6 +31,10 @@ pub enum Response {
 impl Request {
     pub fn ping() -> Self {
         Self::Ping(vec![])
+    }
+
+    pub fn list_zfs_snapshots(dataset: String) -> Self {
+        Self::ListZfsSnapshots(dataset.into_bytes())
     }
 
     pub fn clone_zfs(snapshot: String, clone: String) -> Self {
@@ -67,6 +73,10 @@ impl Response {
 
     pub fn success_with_path(path: String) -> Self {
         Self::SuccessWithPath(path.into_bytes())
+    }
+
+    pub fn success_with_list(list: String) -> Self {
+        Self::SuccessWithList(list.into_bytes())
     }
 
     pub fn error(message: String) -> Self {

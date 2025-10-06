@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use ah_fs_snapshots::{provider_for, ProviderCapabilities, SnapshotProviderKind};
+use ah_fs_snapshots::{provider_for, ProviderCapabilities, SnapshotProviderKind, FsSnapshotProvider};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -100,6 +100,9 @@ pub enum AgentFsCommands {
     /// Create initial AgentFS snapshot for a session
     InitSession(InitSessionOptions),
 
+    /// Create a snapshot at the current state
+    Snapshot,
+
     /// List snapshots for a session
     Snapshots(SnapshotsOptions),
 
@@ -115,6 +118,7 @@ impl AgentFsCommands {
         match self {
             AgentFsCommands::Status(opts) => Self::status(opts).await,
             AgentFsCommands::InitSession(opts) => Self::init_session(opts).await,
+            AgentFsCommands::Snapshot => Self::snapshot().await,
             AgentFsCommands::Snapshots(opts) => Self::list_snapshots(opts).await,
             AgentFsCommands::Branch { subcommand } => match subcommand {
                 BranchCommands::Create { snapshot_id, name } => {
@@ -244,6 +248,67 @@ impl AgentFsCommands {
         }
         println!("Note: AgentFS and database persistence not yet implemented in this milestone");
         println!("When implemented, this will create initial filesystem snapshots for time travel");
+
+        Ok(())
+    }
+
+    async fn snapshot() -> Result<()> {
+        let repo_path = std::env::current_dir().unwrap();
+
+        // For ZFS testing, create ZFS provider directly (like the integration tests)
+        #[cfg(feature = "zfs")]
+        {
+            use ah_fs_snapshots_zfs::ZfsProvider;
+            use ah_fs_snapshots::{FsSnapshotProvider, WorkingCopyMode};
+
+            let zfs_provider = ZfsProvider::new();
+
+            // Check if this path is on ZFS
+            let capabilities = zfs_provider.detect_capabilities(&repo_path);
+            if capabilities.score > 0 {
+                // Create a minimal PreparedWorkspace for in-place mode
+                let workspace = ah_fs_snapshots::PreparedWorkspace {
+                    exec_path: repo_path.clone(),
+                    working_copy: WorkingCopyMode::InPlace,
+                    provider: zfs_provider.kind(),
+                    cleanup_token: format!("test:inplace:{}", repo_path.display()),
+                };
+
+                // Create the snapshot
+                let snapshot_ref = zfs_provider.snapshot_now(&workspace, Some("checkpoint"))?;
+
+                // Output the snapshot information in a format that the mock agent can parse
+                println!("Snapshot created: {}", snapshot_ref.id);
+                println!("Provider: {:?}", snapshot_ref.provider);
+                if let Some(label) = &snapshot_ref.label {
+                    println!("Label: {}", label);
+                }
+
+                return Ok(());
+            }
+        }
+
+        // Fallback to the generic provider detection
+        let provider = ah_fs_snapshots::provider_for(&repo_path)?;
+
+        // Create a minimal PreparedWorkspace for in-place mode
+        use ah_fs_snapshots::{PreparedWorkspace, WorkingCopyMode, SnapshotProviderKind};
+        let workspace = PreparedWorkspace {
+            exec_path: repo_path.clone(),
+            working_copy: WorkingCopyMode::InPlace,
+            provider: provider.kind(),
+            cleanup_token: format!("test:inplace:{}", repo_path.display()),
+        };
+
+        // Create the snapshot
+        let snapshot_ref = provider.snapshot_now(&workspace, Some("checkpoint"))?;
+
+        // Output the snapshot information in a format that the mock agent can parse
+        println!("Snapshot created: {}", snapshot_ref.id);
+        println!("Provider: {:?}", snapshot_ref.provider);
+        if let Some(label) = &snapshot_ref.label {
+            println!("Label: {}", label);
+        }
 
         Ok(())
     }

@@ -109,6 +109,21 @@ impl BtrfsProvider {
             .as_nanos();
         format!("ah_{}_{}", std::process::id(), timestamp)
     }
+
+    /// Parse timestamp from snapshot directory name if it follows a pattern like "ah_1234567890_123"
+    fn parse_snapshot_timestamp(&self, dir_name: &str) -> Option<u64> {
+        // Try to extract timestamp from ah_ format
+        if dir_name.starts_with("ah_") {
+            let parts: Vec<&str> = dir_name.split('_').collect();
+            if parts.len() >= 2 {
+                parts[1].parse::<u64>().ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl FsSnapshotProvider for BtrfsProvider {
@@ -284,6 +299,54 @@ impl FsSnapshotProvider for BtrfsProvider {
             _ => Err(ah_fs_snapshots_traits::Error::provider(
                 "Btrfs branching only supports CowOverlay mode",
             )),
+        }
+    }
+
+    fn list_snapshots(&self, directory: &Path) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
+        use ah_fs_snapshots_traits::SnapshotInfo;
+
+        // For Btrfs, look in the parent directory for snapshot-like directories
+        if let Some(parent) = directory.parent() {
+            let mut snapshots = Vec::new();
+
+            // Look for .snapshot directories or snapshot-like directories
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    if let Ok(file_type) = entry.file_type() {
+                        if file_type.is_dir() {
+                            let path = entry.path();
+                            if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                                // Check if this looks like a snapshot directory
+                                if dir_name.contains("snapshot") || dir_name.starts_with("ah_") {
+                                    // Try to parse timestamp from directory name
+                                    let created_at = self.parse_snapshot_timestamp(dir_name)
+                                        .unwrap_or_else(|| std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_secs());
+
+                                    let snapshot_ref = ah_fs_snapshots_traits::SnapshotRef {
+                                        id: path.to_string_lossy().to_string(),
+                                        label: Some(dir_name.to_string()),
+                                        provider: ah_fs_snapshots_traits::SnapshotProviderKind::Btrfs,
+                                        meta: std::collections::HashMap::new(),
+                                    };
+
+                                    snapshots.push(SnapshotInfo {
+                                        snapshot: snapshot_ref,
+                                        created_at,
+                                        session_id: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(snapshots)
+        } else {
+            Ok(Vec::new())
         }
     }
 

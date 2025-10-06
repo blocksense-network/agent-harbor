@@ -87,6 +87,26 @@ impl DaemonClient {
         }
     }
 
+    /// List all snapshots for a ZFS dataset.
+    pub fn list_zfs_snapshots(&self, dataset: &str) -> Result<Vec<String>, DaemonError> {
+        let response = self.send_request(Request::list_zfs_snapshots(dataset.to_string()))?;
+
+        match response {
+            Response::SuccessWithList(data) => {
+                let json_str = String::from_utf8_lossy(&data);
+                serde_json::from_str(&json_str).map_err(|e| {
+                    DaemonError::CommunicationError(format!("Failed to parse snapshot list JSON: {}", e))
+                })
+            }
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to list_zfs_snapshots".to_string(),
+            )),
+        }
+    }
+
     /// Create a ZFS snapshot.
     pub fn snapshot_zfs(&self, source: &str, snapshot: &str) -> Result<(), DaemonError> {
         let response = self.send_request(Request::snapshot_zfs(
