@@ -9,6 +9,7 @@ export interface KeyboardShortcutsFooterProps {
     focusedElement: "draft-textarea" | "session-card" | "none";
     focusedDraftId?: string;
     focusedSessionId?: string;
+    focusedDraftAgentCount?: number;
   };
 }
 
@@ -97,6 +98,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label="Keyboard shortcut: Navigate between tasks"
           >
             <kbd class="font-semibold">↑↓</kbd>
             <span>Navigate</span>
@@ -106,6 +108,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label={`Keyboard shortcut: Enter ${getEnterShortcut()}`}
           >
             <kbd class="font-semibold">Enter</kbd>
             <span>{getEnterShortcut()}</span>
@@ -119,6 +122,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label={`Keyboard shortcut: Enter ${getEnterShortcut()}`}
           >
             <kbd class="font-semibold">Enter</kbd>
             <span>{getEnterShortcut()}</span>
@@ -128,6 +132,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label="Keyboard shortcut: Shift+Enter inserts a new line"
           >
             <kbd class="font-semibold">Shift+Enter</kbd>
             <span>New Line</span>
@@ -137,6 +142,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label="Keyboard shortcut: Tab moves to the next field"
           >
             <kbd class="font-semibold">Tab</kbd>
             <span>Next Field</span>
@@ -150,6 +156,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label="Keyboard shortcut: Navigate between tasks"
           >
             <kbd class="font-semibold">↑↓</kbd>
             <span>Navigate</span>
@@ -159,6 +166,7 @@ export const KeyboardShortcutsFooter: Component<
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
+            aria-label={`Keyboard shortcut: Enter ${getEnterShortcut()}`}
           >
             <kbd class="font-semibold">Enter</kbd>
             <span>{getEnterShortcut()}</span>

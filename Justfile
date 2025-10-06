@@ -342,6 +342,7 @@ webui-build-ssr:
 
 # Start WebUI with mock server for manual testing (cycles through 5 scenarios)
 manual-test-webui:
+    ./scripts/manual-test-webui.sh
 
 # Launch manual agent start script for testing agent integration
 manual-test-agent-start *args:

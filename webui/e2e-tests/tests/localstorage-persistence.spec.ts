@@ -69,7 +69,7 @@ test.describe('Draft Persistence & Preferences', () => {
     expect(persistedTheme === null || typeof persistedTheme === 'string').toBe(true);
   });
 
-  test.skip('Draft editor maintains state during navigation', async ({ page }) => {
+  test('Draft editor maintains state during navigation', async ({ page }) => {
     await page.goto('/');
 
     // Wait for client-side JavaScript to load and render

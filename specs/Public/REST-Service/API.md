@@ -190,6 +190,8 @@ Example session with recent events:
 
 - `GET /api/v1/sessions/{id}/logs?tail=1000` → historical logs.
 - `GET /api/v1/sessions/{id}/events` (SSE) → live status, logs, and milestones.
+- `GET /api/v1/sessions/{id}/events?type=thought,file_edit&page=1&perPage=50` → paginated historical events with filtering.
+- `GET /api/v1/sessions/{id}/events?since=2025-01-01T12:00:00Z&until=2025-01-01T13:00:00Z` → events within time range.
 
 Event payload (SSE `data:` line):
 
@@ -201,6 +203,1007 @@ Event payload (SSE `data:` line):
   "ts": "2025-01-01T12:00:00Z"
 }
 ```
+
+Additional event types for agent activity:
+
+```json
+{
+  "type": "thought",
+  "thought": "Analyzing the codebase structure to understand the authentication flow",
+  "reasoning": "Need to understand current auth implementation before making changes",
+  "ts": "2025-01-01T12:00:00Z"
+}
+```
+
+```json
+{
+  "type": "tool_use",
+  "tool_name": "search_codebase",
+  "tool_args": { "query": "authentication", "include_pattern": "*.ts" },
+  "status": "started",
+  "ts": "2025-01-01T12:00:05Z"
+}
+```
+
+```json
+{
+  "type": "tool_result",
+  "tool_name": "search_codebase",
+  "tool_output": "Found 42 matches in 12 files",
+  "status": "completed",
+  "ts": "2025-01-01T12:00:08Z"
+}
+```
+
+```json
+{
+  "type": "file_edit",
+  "file_path": "src/auth.ts",
+  "lines_added": 5,
+  "lines_removed": 2,
+  "description": "Enhanced error handling in authenticate function",
+  "ts": "2025-01-01T12:05:00Z"
+}
+```
+
+Query parameters for events endpoint:
+- `type`: Filter by event types (comma-separated: `thought,tool_use,file_edit,log,status`)
+- `level`: Filter by log level (`debug`, `info`, `warn`, `error`)
+- `since`, `until`: Time range filtering (ISO 8601 timestamps)
+- `page`, `perPage`: Pagination (default: 50, max: 200)
+- `sort`: Sort order (`asc`, `desc`) (default: desc for newest first)
+
+#### File Operations and Diffs
+
+Endpoints for TaskDetails page file browsing and diff viewing:
+
+- `GET /api/v1/sessions/{id}/files` → List all files modified during the session.
+
+  Response `200 OK`:
+  ```json
+  {
+    "items": [
+      {
+        "path": "src/auth.ts",
+        "status": "modified",
+        "lines_added": 5,
+        "lines_removed": 2,
+        "last_modified": "2025-01-01T12:05:00Z",
+        "size_bytes": 2048,
+        "change_type": "content"
+      },
+      {
+        "path": "tests/auth.test.ts",
+        "status": "added",
+        "lines_added": 25,
+        "lines_removed": 0,
+        "last_modified": "2025-01-01T12:10:00Z",
+        "size_bytes": 1024,
+        "change_type": "content"
+      }
+    ],
+    "total": 2
+  }
+  ```
+
+  Query parameters:
+  - `status`: Filter by file status (`added`, `modified`, `deleted`, `renamed`)
+  - `path`: Filter by file path (supports wildcards)
+  - `page`, `perPage`: Pagination
+
+- `GET /api/v1/sessions/{id}/files/{filePath}` → Get detailed file information and metadata.
+
+  Response `200 OK`:
+  ```json
+  {
+    "path": "src/auth.ts",
+    "status": "modified",
+    "lines_added": 5,
+    "lines_removed": 2,
+    "last_modified": "2025-01-01T12:05:00Z",
+    "size_bytes": 2048,
+    "change_type": "content",
+    "encoding": "utf-8",
+    "mime_type": "text/plain",
+    "history": [
+      {
+        "timestamp": "2025-01-01T12:05:00Z",
+        "event_type": "file_edit",
+        "description": "Updated authentication logic"
+      }
+    ]
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/diff/{filePath}?context=3&full=false` → Get file diff with configurable context.
+
+  Response `200 OK`:
+  ```json
+  {
+    "path": "src/auth.ts",
+    "status": "modified",
+    "diff": "@@ -10,7 +10,12 @@ function authenticate(user) {\n-  return user.isActive;\n+  if (!user) {\n+    throw new Error('User required');\n+  }\n+\n+  if (!user.isActive) {\n+    throw new Error('User not active');\n+  }\n+\n+  return true;\n",
+    "lines_added": 5,
+    "lines_removed": 2,
+    "context_lines": 3,
+    "full_file": false,
+    "file_content": null,
+    "hunks": [
+      {
+        "old_start": 10,
+        "old_lines": 7,
+        "new_start": 10,
+        "new_lines": 12,
+        "content": "@@ -10,7 +10,12 @@ function authenticate(user) {\n-  return user.isActive;\n+  if (!user) {\n+    throw new Error('User required');\n+  }\n+\n+  if (!user.isActive) {\n+    throw new Error('User not active');\n+  }\n+\n+  return true;\n"
+      }
+    ]
+  }
+  ```
+
+  Query parameters:
+  - `context`: Number of context lines before/after changes (default: 3, max: 10)
+  - `full`: Include full file content instead of just diff (default: false)
+  - `format`: Diff format (`unified`, `split`, `html`) (default: unified)
+
+- `GET /api/v1/sessions/{id}/diff?files=src/auth.ts,tests/auth.test.ts&format=html` → Get diffs for multiple files.
+
+  Response `200 OK`:
+  ```json
+  {
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "status": "modified",
+        "diff": "@@ -10,7 +10,12 @@ ...",
+        "lines_added": 5,
+        "lines_removed": 2,
+        "context_lines": 3,
+        "full_file": false
+      },
+      {
+        "path": "tests/auth.test.ts",
+        "status": "added",
+        "diff": "@@ -0,0 +1,25 @@ ...",
+        "lines_added": 25,
+        "lines_removed": 0,
+        "context_lines": 3,
+        "full_file": false
+      }
+    ],
+    "total_lines_added": 30,
+    "total_lines_removed": 2
+  }
+  ```
+
+  Query parameters:
+  - `files`: Comma-separated list of file paths to include (if not specified, returns all modified files)
+  - `context`: Context lines for all files (default: 3)
+  - `full`: Include full file content for all files (default: false)
+  - `format`: Diff format (`unified`, `split`, `html`) (default: unified)
+
+- `GET /api/v1/sessions/{id}/workspace/files?path=src&recursive=true` → Browse workspace file tree.
+
+  Response `200 OK`:
+  ```json
+  {
+    "path": "src",
+    "type": "directory",
+    "children": [
+      {
+        "path": "src/auth.ts",
+        "type": "file",
+        "size_bytes": 2048,
+        "last_modified": "2025-01-01T12:05:00Z",
+        "is_modified": true
+      },
+      {
+        "path": "src/utils",
+        "type": "directory",
+        "children": [...]
+      }
+    ]
+  }
+  ```
+
+  Query parameters:
+  - `path`: Directory path to list (default: root)
+  - `recursive`: Include subdirectories (default: false)
+  - `modified_only`: Show only files modified during session (default: false)
+
+#### Chat and Context Management
+
+Endpoints for interactive chat interface with agents:
+
+- `GET /api/v1/sessions/{id}/chat` → Get chat history for the session.
+
+  Response `200 OK`:
+  ```json
+  {
+    "messages": [
+      {
+        "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+        "role": "user",
+        "content": "Please fix the authentication logic in src/auth.ts",
+        "timestamp": "2025-01-01T12:00:00Z",
+        "attachments": []
+      },
+      {
+        "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+        "role": "assistant",
+        "content": "I'll analyze the authentication code and fix the issues I find.",
+        "timestamp": "2025-01-01T12:00:05Z",
+        "attachments": [],
+        "tool_calls": [
+          {
+            "id": "call_01HVZ6K9T1N8S6M3V3Q3F0X5B9",
+            "type": "function",
+            "function": {
+              "name": "read_file",
+              "arguments": {
+                "target_file": "src/auth.ts"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "total": 2
+  }
+  ```
+
+  Query parameters:
+  - `limit`: Maximum messages to return (default: 50, max: 200)
+  - `before`: Return messages before this message ID
+  - `after`: Return messages after this message ID
+
+- `POST /api/v1/sessions/{id}/chat/messages` → Send a message to the agent.
+
+  Request:
+  ```json
+  {
+    "content": "Please review and fix the authentication logic",
+    "attachments": [
+      {
+        "type": "file",
+        "file_path": "src/auth.ts",
+        "content": "function authenticate(user) { ... }"
+      }
+    ],
+    "context_files": ["src/auth.ts", "tests/auth.test.ts"],
+    "tools_enabled": ["read_file", "search_codebase", "run_terminal_cmd"],
+    "model_override": "claude-3-5-sonnet-20241022"
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "role": "user",
+    "content": "Please review and fix the authentication logic",
+    "timestamp": "2025-01-01T12:00:00Z",
+    "attachments": [...],
+    "context_files": ["src/auth.ts", "tests/auth.test.ts"],
+    "tools_enabled": ["read_file", "search_codebase", "run_terminal_cmd"],
+    "model_override": "claude-3-5-sonnet-20241022"
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/context` → Get current context window usage and configuration.
+
+  Response `200 OK`:
+  ```json
+  {
+    "context_window": {
+      "total_tokens": 8192,
+      "used_tokens": 3456,
+      "remaining_tokens": 4736,
+      "percentage_used": 42.2,
+      "input_tokens": 2048,
+      "output_tokens": 1408
+    },
+    "context_files": [
+      {
+        "path": "src/auth.ts",
+        "tokens": 512,
+        "last_modified": "2025-01-01T12:05:00Z"
+      },
+      {
+        "path": "tests/auth.test.ts",
+        "tokens": 256,
+        "last_modified": "2025-01-01T12:10:00Z"
+      }
+    ],
+    "enabled_tools": ["read_file", "search_codebase", "run_terminal_cmd"],
+    "active_model": {
+      "type": "claude-3-5-sonnet-20241022",
+      "context_window": 8192,
+      "input_pricing": 0.003,
+      "output_pricing": 0.015
+    }
+  }
+  ```
+
+- `PUT /api/v1/sessions/{id}/context` → Update context configuration.
+
+  Request:
+  ```json
+  {
+    "add_files": ["src/utils.ts"],
+    "remove_files": ["tests/old.test.ts"],
+    "enable_tools": ["grep_search"],
+    "disable_tools": ["run_terminal_cmd"],
+    "model_override": "gpt-4"
+  }
+  ```
+
+  Response `200 OK`:
+  ```json
+  {
+    "context_window": { ... },
+    "context_files": [ ... ],
+    "enabled_tools": [ ... ],
+    "active_model": { ... }
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/models` → Get available models and their capabilities.
+
+  Response `200 OK`:
+  ```json
+  {
+    "models": [
+      {
+        "id": "claude-3-5-sonnet-20241022",
+        "name": "Claude 3.5 Sonnet",
+        "provider": "anthropic",
+        "context_window": 8192,
+        "input_pricing": 0.003,
+        "output_pricing": 0.015,
+        "capabilities": ["function_calling", "vision", "code_execution"],
+        "status": "available"
+      },
+      {
+        "id": "gpt-4",
+        "name": "GPT-4",
+        "provider": "openai",
+        "context_window": 8192,
+        "input_pricing": 0.03,
+        "output_pricing": 0.06,
+        "capabilities": ["function_calling", "vision"],
+        "status": "available"
+      }
+    ]
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/chat/messages/{messageId}/retry` → Retry a failed message or regenerate response.
+
+  Response `200 OK`:
+  ```json
+  {
+    "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+    "role": "assistant",
+    "content": "Let me try a different approach to fix the authentication logic.",
+    "timestamp": "2025-01-01T12:01:00Z",
+    "attachments": [],
+    "tool_calls": [...]
+  }
+  ```
+
+- `DELETE /api/v1/sessions/{id}/chat/messages/{messageId}` → Delete a message from chat history.
+
+  Response `204 No Content`
+
+#### Advanced Chat Features
+
+Additional endpoints for sophisticated chat interface functionality:
+
+- `GET /api/v1/sessions/{id}/workspace/search/files?q={query}&type={type}&limit={limit}` → Search and autocomplete file paths in workspace.
+
+  Response `200 OK`:
+  ```json
+  {
+    "query": "src/auth",
+    "files": [
+      {
+        "path": "src/auth.ts",
+        "type": "file",
+        "size_bytes": 2048,
+        "last_modified": "2025-01-01T12:05:00Z",
+        "is_modified": true,
+        "preview": "function authenticate(user) {\n  if (!user) {\n    throw new Error('User required');\n  }\n  // ...",
+        "relevance_score": 0.95
+      },
+      {
+        "path": "src/auth-utils.ts",
+        "type": "file",
+        "size_bytes": 1024,
+        "last_modified": "2025-01-01T12:00:00Z",
+        "is_modified": false,
+        "preview": "export function validateToken(token) {\n  return token && token.length > 0;\n}",
+        "relevance_score": 0.87
+      }
+    ],
+    "directories": [
+      {
+        "path": "src/auth/",
+        "type": "directory",
+        "file_count": 3,
+        "last_modified": "2025-01-01T12:05:00Z"
+      }
+    ],
+    "total": 5
+  }
+  ```
+
+  Query parameters:
+  - `q`: Search query (supports fuzzy matching, partial paths)
+  - `type`: Filter by type (`file`, `directory`, `both`) (default: both)
+  - `limit`: Maximum results (default: 20, max: 100)
+  - `include_preview`: Include file content preview (default: true for files under 10KB)
+  - `modified_only`: Show only files modified during session (default: false)
+
+- `GET /api/v1/sessions/{id}/files/{filePath}/preview` → Get file content preview for attachment consideration.
+
+  Response `200 OK`:
+  ```json
+  {
+    "path": "src/auth.ts",
+    "content_preview": "function authenticate(user) {\n  if (!user) {\n    throw new Error('User required');\n  }\n\n  if (!user.isActive) {\n    throw new Error('User not active');\n  }\n\n  return true;\n}",
+    "language": "typescript",
+    "size_bytes": 2048,
+    "lines": 15,
+    "estimated_tokens": 128,
+    "is_binary": false,
+    "encoding": "utf-8"
+  }
+  ```
+
+  Query parameters:
+  - `max_lines`: Maximum lines to preview (default: 20, max: 50)
+  - `max_bytes`: Maximum bytes to preview (default: 5000, max: 10000)
+
+- `POST /api/v1/sessions/{id}/chat/messages/{messageId}/attachments` → Add file attachments to an existing message.
+
+  Request:
+  ```json
+  {
+    "attachments": [
+      {
+        "type": "file",
+        "file_path": "src/auth.ts",
+        "include_full_content": true,
+        "preview_lines": 20
+      },
+      {
+        "type": "image",
+        "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+        "filename": "screenshot.png"
+      }
+    ]
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "attachments": [
+      {
+        "id": "att-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+        "type": "file",
+        "file_path": "src/auth.ts",
+        "content": "function authenticate(user) { ... }",
+        "size_bytes": 2048,
+        "token_count": 128
+      }
+    ]
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/chat/messages/{messageId}/attachments/{attachmentId}` → Get specific attachment content.
+
+  Response `200 OK`:
+  ```json
+  {
+    "id": "att-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+    "type": "file",
+    "file_path": "src/auth.ts",
+    "content": "function authenticate(user) {\n  if (!user) {\n    throw new Error('User required');\n  }\n  // ... full file content",
+    "size_bytes": 2048,
+    "token_count": 128,
+    "created_at": "2025-01-01T12:00:00Z"
+  }
+  ```
+
+- `DELETE /api/v1/sessions/{id}/chat/messages/{messageId}/attachments/{attachmentId}` → Remove attachment from message.
+
+  Response `204 No Content`
+
+- `PUT /api/v1/sessions/{id}/chat/messages/{messageId}` → Edit an existing message.
+
+  Request:
+  ```json
+  {
+    "content": "Updated message content",
+    "attachments": [
+      {
+        "id": "att-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+        "include_full_content": false,
+        "preview_lines": 10
+      }
+    ]
+  }
+  ```
+
+  Response `200 OK`:
+  ```json
+  {
+    "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "content": "Updated message content",
+    "edited_at": "2025-01-01T12:05:00Z",
+    "attachments": [...]
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/chat/threads` → Get conversation threads for branching discussions.
+
+  Response `200 OK`:
+  ```json
+  {
+    "threads": [
+      {
+        "id": "thread-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+        "title": "Authentication fixes",
+        "message_count": 5,
+        "last_activity": "2025-01-01T12:10:00Z",
+        "participants": ["user", "assistant"],
+        "status": "active"
+      }
+    ],
+    "total": 1
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/chat/threads` → Create a new conversation thread.
+
+  Request:
+  ```json
+  {
+    "title": "Database optimization",
+    "initial_message": {
+      "content": "Let's discuss optimizing the database queries",
+      "context_files": ["src/database.ts"]
+    }
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "thread-01HVZ6K9T1N8S6M3V3Q3F0X5B9",
+    "title": "Database optimization",
+    "created_at": "2025-01-01T12:15:00Z",
+    "initial_message_id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B10"
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/chat/suggestions` → Get contextual suggestions for chat input.
+
+  Response `200 OK`:
+  ```json
+  {
+    "context_suggestions": [
+      {
+        "type": "file",
+        "title": "Fix authentication logic",
+        "description": "src/auth.ts has validation issues",
+        "file_path": "src/auth.ts",
+        "relevance": "high"
+      },
+      {
+        "type": "action",
+        "title": "Run tests",
+        "description": "Execute the test suite to verify changes",
+        "command": "npm test",
+        "relevance": "medium"
+      }
+    ],
+    "quick_actions": [
+      {
+        "id": "run_tests",
+        "label": "Run Tests",
+        "icon": "play",
+        "action": "run_terminal_cmd",
+        "params": { "command": "npm test" }
+      },
+      {
+        "id": "format_code",
+        "label": "Format Code",
+        "icon": "format",
+        "action": "run_terminal_cmd",
+        "params": { "command": "prettier --write ." }
+      }
+    ]
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/chat/stream` → Stream chat response in real-time (alternative to polling).
+
+  Headers:
+  ```
+  Content-Type: application/json
+  Accept: text/event-stream
+  ```
+
+  Request:
+  ```json
+  {
+    "content": "Please analyze this code",
+    "attachments": [...],
+    "context_files": ["src/auth.ts"],
+    "stream": true
+  }
+  ```
+
+  SSE Response:
+  ```
+  event: message_start
+  data: {"id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7", "timestamp": "2025-01-01T12:00:00Z"}
+
+  event: content_delta
+  data: {"delta": "I'll analyze the authentication code"}
+
+  event: content_delta
+  data: {"delta": " and fix the issues I find."}
+
+  event: tool_call
+  data: {"tool_name": "read_file", "tool_args": {"target_file": "src/auth.ts"}}
+
+  event: message_complete
+  data: {"id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7", "final_content": "I'll analyze..."}
+  ```
+
+- `GET /api/v1/sessions/{id}/files/search` → Advanced file search for context inclusion.
+
+  Response `200 OK`:
+  ```json
+  {
+    "results": [
+      {
+        "path": "src/auth.ts",
+        "matches": [
+          {
+            "line": 5,
+            "content": "function authenticate(user) {",
+            "line_number": 5,
+            "match_type": "function_definition"
+          }
+        ],
+        "score": 0.95,
+        "language": "typescript"
+      }
+    ],
+    "facets": {
+      "languages": {"typescript": 15, "javascript": 8, "json": 3},
+      "file_types": {".ts": 15, ".js": 8, ".json": 3},
+      "directories": {"src": 20, "tests": 6}
+    },
+    "total": 26
+  }
+  ```
+
+  Query parameters:
+  - `q`: Search query (supports regex, fuzzy matching)
+  - `path`: Restrict search to specific paths
+  - `type`: File type filter (e.g., `ts`, `js`, `json`)
+  - `include_pattern`: Glob pattern for file inclusion
+  - `exclude_pattern`: Glob pattern for file exclusion
+  - `case_sensitive`: Case sensitive search (default: false)
+  - `limit`: Maximum results (default: 50, max: 200)
+
+#### Session Timeline and Time-Travel
+
+Endpoints for session history navigation, branching, and time-travel functionality:
+
+- `GET /api/v1/sessions/{id}/timeline` → Get session timeline with moments and snapshots for time-travel navigation.
+
+  Response `200 OK`:
+  ```json
+  {
+    "sessionId": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "durationSec": 1234.5,
+    "currentTime": 567.8,
+    "recording": {
+      "format": "cast",
+      "uri": "s3://bucket/session-recordings/01HVZ6K9T1N8S6M3V3Q3F0X5B7.cast",
+      "width": 120,
+      "height": 30,
+      "hasInput": true
+    },
+    "moments": [
+      {
+        "id": "m1",
+        "ts": 12.34,
+        "label": "git clone",
+        "kind": "auto",
+        "type": "tool_boundary",
+        "description": "Cloned repository"
+      },
+      {
+        "id": "m2",
+        "ts": 45.67,
+        "label": "tests passed",
+        "kind": "manual",
+        "type": "milestone",
+        "description": "All tests passing"
+      }
+    ],
+    "fsSnapshots": [
+      {
+        "id": "s1",
+        "ts": 12.4,
+        "label": "post-clone",
+        "provider": "btrfs",
+        "snapshot": {
+          "id": "repo@tt-001",
+          "mount": "/.snapshots/repo@tt-001",
+          "size_bytes": 10485760
+        },
+        "branchable": true
+      },
+      {
+        "id": "s2",
+        "ts": 45.7,
+        "label": "tests-passed",
+        "provider": "btrfs",
+        "snapshot": {
+          "id": "repo@tt-002",
+          "mount": "/.snapshots/repo@tt-002",
+          "size_bytes": 10485760
+        },
+        "branchable": true
+      }
+    ]
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/fs-snapshots` → Create a manual filesystem snapshot at current time.
+
+  Request:
+  ```json
+  {
+    "label": "manual-snapshot",
+    "description": "User-requested snapshot for time-travel branching"
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "s3",
+    "ts": 123.45,
+    "label": "manual-snapshot",
+    "provider": "btrfs",
+    "snapshot": {
+      "id": "repo@tt-003",
+      "mount": "/.snapshots/repo@tt-003",
+      "size_bytes": 10485760
+    }
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/moments` → Create a manual session moment at current time.
+
+  Request:
+  ```json
+  {
+    "label": "checkpoint",
+    "description": "Manual checkpoint for time-travel",
+    "type": "milestone"
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "m3",
+    "ts": 123.45,
+    "label": "checkpoint",
+    "kind": "manual",
+    "type": "milestone"
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/seek` → Seek session player to a specific timestamp or snapshot for inspection.
+
+  Request:
+  ```json
+  {
+    "ts": 45.67,
+    "fsSnapshotId": "s2",
+    "mountReadonly": true,
+    "pausePlayer": true
+  }
+  ```
+
+  Response `200 OK`:
+  ```json
+  {
+    "seekTime": 45.67,
+    "fsSnapshotId": "s2",
+    "mountPath": "/tmp/ah-seek-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "playerPaused": true,
+    "workspaceView": "readonly"
+  }
+  ```
+
+- `POST /api/v1/sessions/{id}/session-branch` → Create a new session branch from a timestamp or snapshot.
+
+  Request:
+  ```json
+  {
+    "fromTs": 45.67,
+    "fsSnapshotId": "s2",
+    "name": "fix-auth-alternative",
+    "injectedMessage": "Try a different approach to fix the authentication logic",
+    "autoSummarize": true
+  }
+  ```
+
+  Response `201 Created`:
+  ```json
+  {
+    "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+    "name": "fix-auth-alternative",
+    "parentSessionId": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "branchFromTs": 45.67,
+    "fsSnapshotId": "s2",
+    "injectedMessageId": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B9",
+    "workspaceMount": "/tmp/ah-branch-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+    "status": "provisioning"
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/fs-snapshots` → List all filesystem snapshots for the session.
+
+  Response `200 OK`:
+  ```json
+  {
+    "snapshots": [
+      {
+        "id": "s1",
+        "ts": 12.4,
+        "label": "post-clone",
+        "provider": "btrfs",
+        "snapshot": {
+          "id": "repo@tt-001",
+          "mount": "/.snapshots/repo@tt-001",
+          "size_bytes": 10485760,
+          "created_at": "2025-01-01T12:00:12Z"
+        },
+        "branchable": true,
+        "used_in_branches": ["01HVZ6K9T1N8S6M3V3Q3F0X5B8"]
+      }
+    ],
+    "total": 1
+  }
+  ```
+
+  Query parameters:
+  - `branchable`: Filter for snapshots that can be used for branching (default: true)
+  - `limit`: Maximum snapshots to return (default: 50, max: 200)
+
+- `POST /api/v1/sessions/{id}/summarize` → Generate a short summary name for a session or branch.
+
+  Request:
+  ```json
+  {
+    "prompt": "Fix authentication logic using JWT tokens instead of sessions",
+    "maxLength": 30,
+    "style": "kebab-case"
+  }
+  ```
+
+  Response `200 OK`:
+  ```json
+  {
+    "summary": "jwt-auth-refactor",
+    "confidence": 0.85,
+    "alternatives": [
+      "fix-jwt-auth",
+      "jwt-authentication",
+      "auth-jwt-migration"
+    ]
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/branches` → List all session branches (sub-sessions).
+
+  Response `200 OK`:
+  ```json
+  {
+    "branches": [
+      {
+        "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B8",
+        "name": "jwt-auth-refactor",
+        "parentSessionId": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+        "branchFromTs": 45.67,
+        "fsSnapshotId": "s2",
+        "injectedMessageId": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B9",
+        "createdAt": "2025-01-01T12:15:00Z",
+        "status": "running"
+      }
+    ],
+    "total": 1
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/recording?startTime=0&endTime=100` → Get session recording data for playback.
+
+  Response `200 OK`:
+  ```json
+  {
+    "format": "cast",
+    "width": 120,
+    "height": 30,
+    "events": [
+      [12.34, "o", "git clone https://github.com/user/repo.git\r\n"],
+      [12.45, "o", "Cloning into 'repo'...\r\n"],
+      [45.67, "o", "Running tests...\r\n"]
+    ],
+    "moments": [
+      {
+        "ts": 12.34,
+        "id": "m1",
+        "label": "git clone"
+      }
+    ]
+  }
+  ```
+
+  Query parameters:
+  - `startTime`: Start time in seconds (default: 0)
+  - `endTime`: End time in seconds (default: session duration)
+  - `format`: Response format (`cast`, `ttyrec`) (default: cast)
+
+- `GET /api/v1/sessions/{id}/files/{filePath}/content` → Get full file content for diff viewer.
+
+  Response `200 OK`:
+  ```json
+  {
+    "path": "src/auth.ts",
+    "content": "function authenticate(user) {\n  if (!user) {\n    throw new Error('User required');\n  }\n\n  if (!user.isActive) {\n    throw new Error('User not active');\n  }\n\n  return true;\n}",
+    "encoding": "utf-8",
+    "size_bytes": 2048,
+    "last_modified": "2025-01-01T12:05:00Z",
+    "is_modified": true
+  }
+  ```
+
+- `GET /api/v1/sessions/{id}/workspace/info` → Get workspace summary and metadata.
+
+  Response `200 OK`:
+  ```json
+  {
+    "id": "ws-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "session_id": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "root_path": "/workspace",
+    "snapshot_provider": "overlay",
+    "size_bytes": 104857600,
+    "file_count": 1247,
+    "created_at": "2025-01-01T11:00:00Z",
+    "mount_path": "/tmp/ah-workspace-01HVZ6K9T1...",
+    "executor_id": "executor-linux-01"
+  }
+  ```
+
+Additional workspace endpoints (for IDE integration and advanced features):
+
+- `POST /api/v1/sessions/{id}/open/ide` → Launch IDE connected to workspace (existing endpoint enhanced).
+- `GET /api/v1/sessions/{id}/workspace/download` → Download workspace as archive.
+- `POST /api/v1/sessions/{id}/workspace/snapshot` → Create named snapshot of current workspace state.
 
 #### Event Ingestion (leader → server)
 
@@ -399,6 +1402,11 @@ curl -X POST "$BASE/api/v1/tasks" \
 - `ah task` → `POST /api/v1/tasks` (returns `sessionId` usable for polling and SSE).
 - `ah session list|get|logs|events` → `GET /api/v1/sessions[/{id}]`, `GET /api/v1/sessions/{id}/logs`, `GET /api/v1/sessions/{id}/events`.
 - `ah session run <SESSION_ID> <IDE>` → `POST /api/v1/sessions/{id}/open/ide`.
+- `ah session files <SESSION_ID>` → `GET /api/v1/sessions/{id}/files` (list modified files).
+- `ah session diff <SESSION_ID> [FILE]` → `GET /api/v1/sessions/{id}/diff` (show file diffs).
+- `ah session timeline <SESSION_ID>` → `GET /api/v1/sessions/{id}/timeline` (get session timeline and snapshots).
+- `ah session branch <SESSION_ID> <TIMESTAMP|SNAPSHOT_ID>` → `POST /api/v1/sessions/{id}/session-branch` (create session branch).
+- `ah session snapshots <SESSION_ID>` → `GET /api/v1/sessions/{id}/fs-snapshots` (list session snapshots).
 - `ah remote agents|runtimes|executors` → `GET /api/v1/agents`, `GET /api/v1/runtimes`, `GET /api/v1/executors`.
 - `ah remote repos|workspaces` → `GET /api/v1/repos`, `GET /api/v1/workspaces` (and `GET /api/v1/workspaces/{id}` for detail views).
 - `ah agent followers list` → QUIC `SessionFollowers` stream for real-time membership; the REST `GET /api/v1/sessions/{id}/info` endpoint remains available for static snapshots. QUIC keeps the connection open so membership and health changes arrive with minimal latency, matching the transport used elsewhere in the control plane.

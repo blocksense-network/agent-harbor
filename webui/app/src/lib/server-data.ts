@@ -2,7 +2,7 @@
 // This file contains server functions that fetch data from the API server during SSR
 
 import { cache } from "@solidjs/router";
-import { DraftTask } from "./api.js";
+import { DraftTask, Session } from "./api.js";
 
 // Simple logger that respects quiet mode for testing
 const logger = {
@@ -22,36 +22,7 @@ const logger = {
 const API_BASE_URL = process.env["SSR_SERVER_URL"] || "http://localhost:3002";
 
 export interface SessionsResponse {
-  items: Array<{
-    id: string;
-    tenantId?: string;
-    projectId?: string;
-    status: string;
-    createdAt: string;
-    completedAt?: string;
-    prompt: string;
-    repo: {
-      mode: string;
-      url?: string;
-      branch?: string;
-    };
-    agent: {
-      type: string;
-      version: string;
-    };
-    runtime: {
-      type: string;
-    };
-    delivery?: {
-      mode: string;
-      prUrl?: string;
-    };
-    links: {
-      self: string;
-      events: string;
-      logs: string;
-    };
-  }>;
+  items: Session[];
   pagination: {
     page: number;
     perPage: number;

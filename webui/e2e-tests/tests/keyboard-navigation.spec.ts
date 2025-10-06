@@ -140,8 +140,8 @@ test.describe('Keyboard Navigation', () => {
     });
   });
 
-  test.describe.skip('Enter Key Navigation', () => {
-    test.skip('pressing Enter on selected task navigates to task details page', async ({ page }) => {
+  test.describe('Enter Key Navigation', () => {
+    test('pressing Enter on selected task navigates to task details page', async ({ page }) => {
       // Wait for page to load with data
       await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
 
@@ -235,9 +235,10 @@ test.describe('Keyboard Navigation', () => {
       await draftTextArea.click();
       
       // Select only one agent
-      const modelSelector = page.locator('[aria-label="Select models"]');
+      const modelSelector = page.locator('[data-testid="model-selector"]');
       await modelSelector.click();
-      await page.locator('text=claude 3.5-sonnet').click();
+      await page.locator('.ts-dropdown-content:has-text("Claude 3.5 Sonnet")').first().click();
+      await page.locator('body').click();
       
       // Verify footer shows singular form
       const footer = page.locator('footer');
@@ -249,10 +250,12 @@ test.describe('Keyboard Navigation', () => {
       await draftTextArea.click();
       
       // Select multiple agents
-      const modelSelector = page.locator('[aria-label="Select models"]');
+      const modelSelector = page.locator('[data-testid="model-selector"]');
       await modelSelector.click();
-      await page.locator('button[aria-label="Increment claude 3.5-sonnet"]').click();
-      await page.locator('button[aria-label="Increment gpt 4"]').click();
+      await page.locator('.ts-dropdown-content:has-text("Claude 3.5 Sonnet")').first().click();
+      await modelSelector.click();
+      await page.locator('.ts-dropdown-content:has-text("GPT-4")').first().click();
+      await page.locator('body').click();
       
       // Verify footer shows plural form
       const footer = page.locator('footer');
@@ -290,17 +293,20 @@ test.describe('Keyboard Navigation', () => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.fill('Implement feature X');
       
-      // Select repository
-      await page.locator('button:has-text("Repository")').click();
-      await page.locator('text=agent-harbor-webui').click();
+      // Select repository via TOM Select
+      const repoSelector = page.locator('[data-testid="repo-selector"]');
+      await repoSelector.click();
+      await page.locator('.ts-dropdown-content:has-text("agent-harbor-webui")').first().click();
       
       // Select branch
-      await page.locator('button:has-text("Branch")').click();
-      await page.locator('text=main').click();
+      const branchSelector = page.locator('[data-testid="branch-selector"]');
+      await branchSelector.click();
+      await page.locator('.ts-dropdown-content:has-text("main")').first().click();
       
       // Select model
-      await page.locator('[aria-label="Select models"]').click();
-      await page.locator('button[aria-label="Increment claude 3.5-sonnet"]').click();
+      const modelSelector = page.locator('[data-testid="model-selector"]');
+      await modelSelector.click();
+      await page.locator('.ts-dropdown-content:has-text("Claude 3.5 Sonnet")').first().click();
       await page.locator('body').click(); // Close popup
       
       // Focus back on text area and press Enter
@@ -344,21 +350,30 @@ test.describe('Keyboard Navigation', () => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.focus();
       
-      // Tab should move to repository selector
+      // Tab should move to repository selector input
       await page.keyboard.press('Tab');
-      const repoSelector = page.locator('button:has-text("Repository")');
-      await expect(repoSelector).toBeFocused();
-      
+      const repoFocused = await page.evaluate(() => {
+        const active = document.activeElement;
+        return !!active?.closest('[data-testid="repo-selector"]');
+      });
+      expect(repoFocused).toBe(true);
+
       // Tab should move to branch selector
       await page.keyboard.press('Tab');
-      const branchSelector = page.locator('button:has-text("Branch")');
-      await expect(branchSelector).toBeFocused();
-      
+      const branchFocused = await page.evaluate(() => {
+        const active = document.activeElement;
+        return !!active?.closest('[data-testid="branch-selector"]');
+      });
+      expect(branchFocused).toBe(true);
+
       // Tab should move to model selector
       await page.keyboard.press('Tab');
-      const modelSelector = page.locator('[aria-label="Select models"]');
-      await expect(modelSelector).toBeFocused();
-      
+      const modelFocused = await page.evaluate(() => {
+        const active = document.activeElement;
+        return !!active?.closest('[data-testid="model-selector"]');
+      });
+      expect(modelFocused).toBe(true);
+
       // Tab should move to Go button
       await page.keyboard.press('Tab');
       const goButton = page.locator('button:has-text("Go")');
@@ -370,6 +385,9 @@ test.describe('Keyboard Navigation', () => {
     test('Ctrl+N creates new draft task', async ({ page }) => {
       const initialDraftCount = await page.locator('[data-testid="draft-task-card"]').count();
       
+      // Ensure focus is on the document body
+      await page.locator('body').click();
+
       // Press Ctrl+N (Cmd+N on macOS)
       const isMac = process.platform === 'darwin';
       await page.keyboard.press(isMac ? 'Meta+KeyN' : 'Control+KeyN');
@@ -417,6 +435,7 @@ test.describe('Keyboard Navigation', () => {
 
     test('selected task state is announced', async ({ page }) => {
       await page.keyboard.press('Tab');
+      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
       
       const selectedCard = page.locator('[data-testid="task-card"][aria-selected="true"]').first();

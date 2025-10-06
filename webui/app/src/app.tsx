@@ -6,6 +6,7 @@ import { SessionProvider } from "./contexts/SessionContext.js";
 import { DraftProvider } from "./contexts/DraftContext.js";
 import { FocusProvider } from "./contexts/FocusContext.js";
 import { ToastProvider } from "./contexts/ToastContext.js";
+import { BreadcrumbProvider } from "./contexts/BreadcrumbContext.js";
 import { isServer, getRequestEvent } from "solid-js/web";
 import "./app.css";
 
@@ -30,12 +31,14 @@ export default function App() {
         <SessionProvider>
           <DraftProvider>
             <FocusProvider>
-              <Router
-                url={initialUrl}
-                root={(props) => <MainLayout>{props.children}</MainLayout>}
-              >
-                <FileRoutes />
-              </Router>
+              <BreadcrumbProvider>
+                <Router
+                  url={initialUrl}
+                  root={(props) => <MainLayout>{props.children}</MainLayout>}
+                >
+                  <FileRoutes />
+                </Router>
+              </BreadcrumbProvider>
             </FocusProvider>
           </DraftProvider>
         </SessionProvider>

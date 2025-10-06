@@ -172,6 +172,11 @@ class MinimalReporter {
   }
 
   createSummaryFiles() {
+    // Ensure run directory still exists before writing summary artifacts
+    if (!fs.existsSync(this.runDir)) {
+      fs.mkdirSync(this.runDir, { recursive: true });
+    }
+
     // Create failed tests summary (human readable)
     const failedSummaryPath = path.join(this.runDir, 'failed-tests.txt');
     const failedContent = this.failedTests.map(test => {

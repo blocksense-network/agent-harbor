@@ -584,7 +584,65 @@ PROMPT behavior: When omitted, the session is resumed with the prompt "Please co
 ah session cancel <SESSION_ID>
 ```
 
-Defaults: When `<SESSION_ID>` is omitted from `logs`, `attach`, `pause`, `resume`, and `cancel`, the CLI targets the most recently launched session.
+```
+ah session files <SESSION_ID> [OPTIONS]
+
+DESCRIPTION: List all files modified during the specified session.
+
+OPTIONS:
+  --status <added|modified|deleted|renamed>  Filter by file status
+  --path <PATTERN>                          Filter by file path (supports wildcards)
+  --json                                    Output in JSON format
+
+ARGUMENTS:
+  SESSION_ID                                Session identifier
+
+BEHAVIOR:
+- Lists all files that were modified during the agent session
+- Shows file status, lines added/removed, and modification timestamps
+- Supports filtering and JSON output for scripting
+```
+
+```
+ah session diff <SESSION_ID> [FILE_PATH] [OPTIONS]
+
+DESCRIPTION: Show file diffs for the specified session or individual file.
+
+OPTIONS:
+  --context <N>                             Number of context lines (default: 3, max: 10)
+  --full                                    Include full file content instead of just diff
+  --format <unified|split|html>             Diff format (default: unified)
+  --files <FILE1,FILE2,...>                 Specific files to include (default: all modified files)
+  --json                                    Output in JSON format
+
+ARGUMENTS:
+  SESSION_ID                                Session identifier
+  FILE_PATH                                 Optional specific file path
+
+BEHAVIOR:
+- Shows unified diff format by default with configurable context lines
+- Supports showing diffs for all modified files or specific files
+- Can display full file content when --full is specified
+- Supports HTML format for web integration
+```
+
+```
+ah session snapshots <SESSION_ID> [OPTIONS]
+
+DESCRIPTION: List all filesystem snapshots for the session.
+
+OPTIONS:
+  --format <table|json>             Output format (default: table)
+  --json                            Output in JSON format
+
+BEHAVIOR:
+- Lists all available filesystem snapshots for the session
+- Shows snapshot metadata including size, creation time, and usability for branching
+- Provides detailed information for snapshot management and cleanup
+```
+
+
+Defaults: When `<SESSION_ID>` is omitted from `logs`, `attach`, `pause`, `resume`, `cancel`, `files`, `diff`, and `snapshots`, the CLI targets the most recently launched session.
 
 Behavior:
 

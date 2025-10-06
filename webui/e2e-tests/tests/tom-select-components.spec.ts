@@ -204,10 +204,11 @@ test.describe('TOM Select Components', () => {
       const modelSelector = page.locator('[data-testid="model-selector"]');
       
       await expect(modelSelector).toBeVisible();
-      await expect(modelSelector).toContainText('Model');
-      
-      // Verify it's a multi-select variant
-      await expect(modelSelector).toHaveClass(/ts-wrapper|tom-select/);
+      const wrapper = modelSelector.locator('.ts-wrapper');
+      await expect(wrapper).toBeVisible();
+
+      const control = wrapper.locator('.ts-control');
+      await expect(control).toContainText('Models');
     });
 
     test('opens popup with model list and instance counters', async ({ page }) => {
@@ -219,10 +220,10 @@ test.describe('TOM Select Components', () => {
       await expect(popup).toBeVisible();
       
       // Verify models are listed
-      await expect(popup).toContainText('claude 3.5-sonnet');
-      await expect(popup).toContainText('claude 3-haiku');
-      await expect(popup).toContainText('gpt 4');
-      await expect(popup).toContainText('gpt 3.5-turbo');
+      await expect(popup).toContainText('Claude 3.5 Sonnet');
+      await expect(popup).toContainText('Claude 3 Haiku');
+      await expect(popup).toContainText('GPT-4');
+      await expect(popup).toContainText('GPT-3.5 Turbo');
       
       // Verify each model has +/- buttons
       const plusButtons = popup.locator('button[aria-label*="Increment"]');
@@ -234,17 +235,17 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Find Claude 3.5 Sonnet increment button
-      const incrementBtn = page.locator('button[aria-label="Increment claude 3.5-sonnet"]');
-      
+      const incrementBtn = page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]');
+
       // Verify initial count is 0
-      const initialCount = page.locator('text=claude 3.5-sonnet').locator('..').locator('text=/^\\d+$/');
-      await expect(initialCount).toContainText('0');
+      const claudeCount = page.locator('.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display');
+      await expect(claudeCount).toHaveText('0');
       
       // Click increment
       await incrementBtn.click();
       
       // Verify count increased to 1
-      await expect(initialCount).toContainText('1');
+      await expect(claudeCount).toHaveText('1');
     });
 
     test('decrement button decreases instance count', async ({ page }) => {
@@ -252,27 +253,27 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Increment to 2
-      const incrementBtn = page.locator('button[aria-label="Increment claude 3.5-sonnet"]');
+      const incrementBtn = page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]');
       await incrementBtn.click();
       await incrementBtn.click();
       
       // Verify count is 2
-      const count = page.locator('text=claude 3.5-sonnet').locator('..').locator('text=/^\\d+$/');
-      await expect(count).toContainText('2');
+      const countDisplay = page.locator('.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display');
+      await expect(countDisplay).toHaveText('2');
       
       // Decrement
-      const decrementBtn = page.locator('button[aria-label="Decrement claude 3.5-sonnet"]');
+      const decrementBtn = page.locator('button[aria-label="Decrease Claude 3.5 Sonnet instances"]');
       await decrementBtn.click();
       
       // Verify count decreased to 1
-      await expect(count).toContainText('1');
+      await expect(countDisplay).toHaveText('1');
     });
 
     test('decrement button disabled at zero instances', async ({ page }) => {
       const modelSelector = page.locator('[data-testid="model-selector"]');
       await modelSelector.click();
       
-      const decrementBtn = page.locator('button[aria-label="Decrement claude 3.5-sonnet"]');
+      const decrementBtn = page.locator('button[aria-label="Decrease Claude 3.5 Sonnet instances"]');
       
       // Should be disabled when count is 0
       await expect(decrementBtn).toBeDisabled();
@@ -283,14 +284,17 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Select multiple models
-      await page.locator('button[aria-label="Increment claude 3.5-sonnet"]').click();
-      await page.locator('button[aria-label="Increment gpt 4"]').click();
+      await page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]').click();
+      await page.locator('button[aria-label="Increment GPT-4 instances"]').click();
       
       // Close popup
       await page.locator('body').click();
       
-      // Verify model selector shows count
-      await expect(modelSelector).toContainText('2 models selected');
+      // Verify two badges are rendered with counts
+      const badges = modelSelector.locator('.ts-control .model-badge');
+      await expect(badges).toHaveCount(2);
+      await expect(badges.first().locator('.count-badge')).toContainText('×1');
+      await expect(badges.nth(1).locator('.count-badge')).toContainText('×1');
     });
 
     test('model selector shows singular when one model selected', async ({ page }) => {
@@ -298,13 +302,15 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Select one model
-      await page.locator('button[aria-label="Increment claude 3.5-sonnet"]').click();
+      await page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]').click();
       
       // Close popup
       await page.locator('body').click();
       
-      // Verify singular form
-      await expect(modelSelector).toContainText('1 model selected');
+      // Verify a single badge with ×1 is shown
+      const badge = modelSelector.locator('.ts-control .model-badge').first();
+      await expect(badge).toBeVisible();
+      await expect(badge.locator('.count-badge')).toContainText('×1');
     });
 
     test('zero instances removes model from selection', async ({ page }) => {
@@ -312,8 +318,8 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Increment then decrement back to 0
-      const incrementBtn = page.locator('button[aria-label="Increment claude 3.5-sonnet"]');
-      const decrementBtn = page.locator('button[aria-label="Decrement claude 3.5-sonnet"]');
+      const incrementBtn = page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]');
+      const decrementBtn = page.locator('button[aria-label="Decrease Claude 3.5 Sonnet instances"]');
       
       await incrementBtn.click();
       await decrementBtn.click();
@@ -321,8 +327,8 @@ test.describe('TOM Select Components', () => {
       // Close popup
       await page.locator('body').click();
       
-      // Verify no models selected
-      await expect(modelSelector).toContainText('Model'); // back to placeholder
+      // Verify no models selected and placeholder restored
+      await expect(modelSelector.locator('.ts-control .text-gray-500')).toHaveText('Models');
     });
 
     test('instance counters persist when reopening popup', async ({ page }) => {
@@ -330,9 +336,9 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Set counts
-      await page.locator('button[aria-label="Increment claude 3.5-sonnet"]').click();
-      await page.locator('button[aria-label="Increment claude 3.5-sonnet"]').click();
-      await page.locator('button[aria-label="Increment gpt 4"]').click();
+      await page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]').click();
+      await page.locator('button[aria-label="Increment Claude 3.5 Sonnet instances"]').click();
+      await page.locator('button[aria-label="Increment GPT-4 instances"]').click();
       
       // Close popup
       await page.keyboard.press('Escape');
@@ -341,11 +347,11 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
       
       // Verify counts persisted
-      const claudeCount = page.locator('text=claude 3.5-sonnet').locator('..').locator('text=/^\\d+$/');
-      const gptCount = page.locator('text=gpt 4').locator('..').locator('text=/^\\d+$/');
-      
-      await expect(claudeCount).toContainText('2');
-      await expect(gptCount).toContainText('1');
+      const claudeCount = page.locator('.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display');
+      const gptCount = page.locator('.ts-dropdown .option[data-value="GPT-4"] .count-display');
+
+      await expect(claudeCount).toHaveText('2');
+      await expect(gptCount).toHaveText('1');
     });
 
     test('fuzzy search filters model list', async ({ page }) => {
@@ -357,9 +363,9 @@ test.describe('TOM Select Components', () => {
       await searchInput.fill('claude');
       
       const dropdown = page.locator('.ts-dropdown');
-      await expect(dropdown).toContainText('claude 3.5-sonnet');
-      await expect(dropdown).toContainText('claude 3-haiku');
-      await expect(dropdown).not.toContainText('gpt 4');
+      await expect(dropdown).toContainText('Claude 3.5 Sonnet');
+      await expect(dropdown).toContainText('Claude 3 Haiku');
+      await expect(dropdown).not.toContainText('GPT-4');
     });
   });
 

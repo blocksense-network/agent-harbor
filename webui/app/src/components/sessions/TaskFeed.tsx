@@ -2,6 +2,7 @@ import {
   Component,
   createSignal,
   createEffect,
+  createMemo,
   For,
   Show,
   onMount,
@@ -24,6 +25,8 @@ interface TaskFeedProps {
   initialDrafts?: DraftTask[]; // Drafts fetched during SSR
 }
 
+type StatusFilter = Session["status"] | "";
+
 export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const navigate = useNavigate();
   const { selectedSessionId, setSelectedSessionId } = useSession();
@@ -41,6 +44,21 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     }
   });
   const [refreshTrigger, setRefreshTrigger] = createSignal(0); // For auto-refresh every 30s
+  const [statusFilter, setStatusFilter] = createSignal<StatusFilter>("");
+  const statusOptions: Array<{ value: StatusFilter; label: string }> = [
+    { value: "", label: "All Sessions" },
+    { value: "running", label: "Running" },
+    { value: "queued", label: "Queued" },
+    { value: "provisioning", label: "Provisioning" },
+    { value: "paused", label: "Paused" },
+    { value: "pausing", label: "Pausing" },
+    { value: "resuming", label: "Resuming" },
+    { value: "stopping", label: "Stopping" },
+    { value: "stopped", label: "Stopped" },
+    { value: "completed", label: "Completed" },
+    { value: "failed", label: "Failed" },
+    { value: "cancelled", label: "Cancelled" },
+  ];
 
   // Progressive enhancement: Drafts rendered from props during SSR
   // Context provides CRUD operations, not the list itself
@@ -74,6 +92,13 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     }
   });
 
+  createEffect(() => {
+    statusFilter();
+    setKeyboardSelectedIndex(-1);
+    setSelectedSessionId(undefined);
+    clearFocus();
+  });
+
   // Ensure there's always at least one draft (PRD requirement)
   const drafts = (): DraftTask[] => {
     const draftsList = clientDrafts();
@@ -98,7 +123,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   // Progressive enhancement: Render directly from props during SSR
   // This ensures the page works without JavaScript - all content visible in initial HTML
   // createResource is used ONLY for client-side filtering/refreshing after hydration
-  const [clientSessions, setClientSessions] = createSignal(
+  const [clientSessions, setClientSessions] = createSignal<SessionsResponse>(
     props.initialSessions || {
       items: [],
       pagination: { page: 1, perPage: 50, total: 0, totalPages: 0 },
@@ -117,6 +142,16 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       ),
     };
   };
+
+  const filteredSessions = createMemo<Session[]>(() => {
+    const filter = statusFilter();
+    const data = sessionsData();
+    const sessions = data?.items ?? [];
+    if (!filter) {
+      return sessions;
+    }
+    return sessions.filter((session) => session.status === filter);
+  });
 
   // Refetch function for client-side updates (refreshing)
   const refetch = async () => {
@@ -154,7 +189,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     if (!import.meta.env.PROD) {
       console.log("[TaskFeed] Keyboard event:", e.key);
     }
-    const sessions = sessionsData()?.items || [];
+    const sessions = filteredSessions();
     const draftsList = drafts();
     const totalItems = draftsList.length + sessions.length;
 
@@ -372,7 +407,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       return draft ? `draft-task-${draft.id}` : undefined;
     } else {
       // Session card
-      const sessions = sessionsData()?.items || [];
+      const sessions = filteredSessions();
       const sessionIndex = currentIndex - draftsList.length;
       const session = sessions[sessionIndex];
       return session ? `task-${session.id}` : undefined;
@@ -388,7 +423,48 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     >
       {/* Task Feed Heading */}
       <div class="border-b border-gray-200 bg-white px-6 py-4">
-        <h2 class="text-lg font-semibold text-gray-900">Task Feed</h2>
+        <div
+          class={`
+            flex flex-col gap-3
+            md:flex-row md:items-center md:justify-between
+          `}
+        >
+          <h2 class="text-lg font-semibold text-gray-900">Task Feed</h2>
+
+          <div
+            class="flex items-center gap-3"
+            role="group"
+            aria-label="Task filters"
+          >
+            <label
+              for="status-filter"
+              class="text-sm font-medium text-gray-700"
+            >
+              Status
+            </label>
+            <select
+              id="status-filter"
+              data-testid="status-filter"
+              class={`
+                rounded-md border border-gray-300 bg-white px-3 py-1 text-sm
+                text-gray-700 shadow-sm transition
+                focus:border-blue-500 focus:ring-2 focus:ring-blue-500
+                focus:outline-none
+              `}
+              aria-label="Filter sessions by status"
+              value={statusFilter()}
+              onInput={(event) => {
+                setStatusFilter(event.currentTarget.value as StatusFilter);
+              }}
+            >
+              <For each={statusOptions}>
+                {(option) => (
+                  <option value={option.value}>{option.label}</option>
+                )}
+              </For>
+            </select>
+          </div>
+        </div>
       </div>
 
       <section
@@ -483,10 +559,10 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
           </Show>
 
           {/* Session tasks - render below drafts, sorted newest first */}
-          <Show when={sessionsData()?.items.length > 0}>
+          <Show when={filteredSessions().length > 0}>
             <div class={drafts().length > 0 ? "mt-6" : ""}>
               <ul role="listbox" class="space-y-3">
-                <For each={sessionsData()?.items}>
+                <For each={filteredSessions()}>
                   {(session, index) => {
                     const globalIndex = drafts().length + index();
                     return (
@@ -529,7 +605,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                   if (idx >= 0 && idx < draftCount) {
                     return `Selected draft: ${drafts()[idx]?.prompt || "New task"}`;
                   } else if (idx >= draftCount) {
-                    const session = sessionsData()?.items[idx - draftCount];
+                    const session = filteredSessions()[idx - draftCount];
                     if (session) {
                       return `Selected task: ${session.prompt}`;
                     }
@@ -553,10 +629,26 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                   class="mt-4 text-center text-sm text-gray-500"
                   role="status"
                 >
-                  Showing {sessionsData()?.items.length} of{" "}
+                  Showing {filteredSessions().length} of{" "}
                   {sessionsData()?.pagination.total} sessions
                 </div>
               </Show>
+            </div>
+          </Show>
+
+          {/* Filtered empty state */}
+          <Show
+            when={
+              sessionsData()?.items.length > 0 &&
+              filteredSessions().length === 0
+            }
+          >
+            <div
+              class="py-8 text-center text-sm text-gray-500"
+              role="status"
+              aria-live="polite"
+            >
+              No sessions match the selected filter.
             </div>
           </Show>
 

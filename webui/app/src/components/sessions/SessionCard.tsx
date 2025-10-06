@@ -368,6 +368,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           >
             <A
               href={`/tasks/${session().id}`}
+              data-testid="task-title-link"
               class={`
                 cursor-pointer truncate text-gray-900
                 hover:text-blue-600 hover:underline

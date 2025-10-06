@@ -1,9 +1,10 @@
-import { Component, JSX } from "solid-js";
+import { Component, JSX, onMount, onCleanup, For } from "solid-js";
 import { useLocation, A } from "@solidjs/router";
 import agentHarborLogo from "../../assets/agent-harbor-logo.svg";
 import { Footer } from "./Footer";
 import { useDrafts } from "../../contexts/DraftContext.js";
 import { useFocus } from "../../contexts/FocusContext.js";
+import { useBreadcrumbs } from "../../contexts/BreadcrumbContext.js";
 
 interface MainLayoutProps {
   children?: JSX.Element;
@@ -13,6 +14,7 @@ interface MainLayoutProps {
 export const MainLayout: Component<MainLayoutProps> = (props) => {
   const location = useLocation();
   const { focusState } = useFocus();
+  const { breadcrumbs } = useBreadcrumbs();
   const isActive = (path: string) => location.pathname === path;
 
   // Access DraftProvider for creating new drafts
@@ -35,6 +37,36 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
     }
   };
 
+  onMount(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+
+      if (event.key.toLowerCase() !== "n") {
+        return;
+      }
+
+      const target = event.target;
+      if (target && target instanceof window.HTMLElement) {
+        const tagName = target.tagName?.toLowerCase();
+        const isEditable =
+          tagName === "input" ||
+          tagName === "textarea" ||
+          target.isContentEditable;
+        if (isEditable) {
+          return;
+        }
+      }
+
+      event.preventDefault();
+      void handleNewDraft();
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    onCleanup(() => window.removeEventListener("keydown", handleShortcut));
+  });
+
   return (
     <div class="flex h-screen flex-col bg-white">
       {/* Skip to main content link */}
@@ -49,8 +81,8 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
       </a>
 
       {/* Top Navigation */}
-      <header class="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
-        <div class="flex items-center justify-between">
+      <header class="border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
+        <div class="flex items-center">
           <div class="flex items-center space-x-3">
             <img
               src={agentHarborLogo}
@@ -59,10 +91,46 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
               width="32"
               height="32"
             />
-            <div>
-              <h1 class="text-xl font-bold text-gray-900">Agent Harbor</h1>
-            </div>
+            <h1 class="text-xl font-bold text-gray-900">Agent Harbor</h1>
           </div>
+
+          {/* Centered Breadcrumbs */}
+          <div class="flex-1 flex justify-center">
+            {breadcrumbs().length > 0 && (
+              <nav
+                class="flex items-center space-x-1 text-xs text-gray-500"
+                aria-label="Breadcrumb"
+              >
+                <For each={breadcrumbs()}>
+                  {(crumb, index) => (
+                    <>
+                      {index() > 0 && <span class="mx-1">/</span>}
+                      {crumb.href ? (
+                        <A
+                          href={crumb.href}
+                          class="hover:text-blue-600 hover:underline transition-colors"
+                        >
+                          {crumb.label}
+                        </A>
+                      ) : crumb.onClick ? (
+                        <button
+                          onClick={crumb.onClick}
+                          class="hover:text-blue-600 hover:underline transition-colors"
+                        >
+                          {crumb.label}
+                        </button>
+                      ) : (
+                        <span class="text-gray-700 font-medium">
+                          {crumb.label}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </For>
+              </nav>
+            )}
+          </div>
+
           <nav class="flex space-x-1" aria-label="Primary">
             <A
               href="/settings"
@@ -92,7 +160,16 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
       </main>
 
       {/* Footer with keyboard shortcuts */}
-      <Footer onNewDraft={handleNewDraft} focusState={focusState()} />
+      {(() => {
+        const state = focusState();
+        return (
+          <Footer
+            onNewDraft={handleNewDraft}
+            focusState={state}
+            agentCount={state.focusedDraftAgentCount}
+          />
+        );
+      })()}
     </div>
   );
 };

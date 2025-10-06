@@ -4,7 +4,7 @@ This document tracks the implementation status of the [WebUI-PRD.md](WebUI-PRD.m
 
 Goal: deliver a production-ready web-based dashboard for creating, monitoring, and managing agent coding sessions with real-time visibility, seamless IDE integration, and comprehensive governance controls.
 
-**Current Status**: 🟢 **FOUNDATION COMPLETE** - All critical issues resolved: SessionProvider contexts working, client-side hydration functional, draft task persistence implemented, task-centric UI operational. Ready for W5 IDE Integration and W6 Governance features.
+**Current Status**: 🟢 **FOUNDATION COMPLETE** - All critical issues resolved: SessionProvider contexts working, client-side hydration functional, draft task persistence implemented, task-centric UI operational. Ready for W5 IDE Integration, W6 Governance features, and W4.6 Task Details page implementation.
 **Test Results**: 23/162 E2E tests passing (139 tests skipped - features not yet implemented)
 **Last Updated**: October 1, 2025
 
@@ -224,7 +224,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 
   - Task creation form with repository selection and validation
   - Session list with filtering, sorting, and pagination
-  - Session detail view with status display and basic controls
+  - Task details page with two-panel layout (modified files list + agent activity on left, diff viewer on right)
   - Form validation with policy-aware defaults and error handling
   - Integration with mock server for CRUD operations
 
@@ -235,7 +235,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] Repository selection tests: URL validation, branch field validation
   - [x] Session CRUD tests: Create, list, select, and control sessions via UI
   - [x] Session list tests: Display, filtering, selection, and status badges
-  - [x] Session detail tests: Tab navigation, overview display, logs viewing
+  - [x] Task details tests: Two-panel layout, file list navigation, diff viewer interactions, agent activity display
   - [x] Error handling tests: API failures and validation error display
   - [x] Navigation tests: URL hash-based session selection and bookmarking
   - [x] Session controls tests: Stop, pause, resume button functionality
@@ -435,6 +435,132 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] **COMPLETED**: All critical functionality working - context providers, hydration, and draft task persistence implemented
   - [x] **COMPLETED**: E2E test expectations updated for current task-centric UI structure (layout-navigation.spec.ts updated)
   - [ ] **PENDING**: Full E2E test suite execution (47 tests) - requires proper server orchestration setup
+
+**W4.6. Task Details Page** (2-3 weeks)
+
+- **Deliverables**:
+
+  - Task Details page with two-panel layout (modified files + agent activity on left, unified diff viewer on right)
+  - REST API endpoints for retrieving task metadata, modified files, and activity events
+  - Mock server implementation with scenario-based E2E testing
+  - Browser integration with dynamic data loading and real-time updates
+
+- **Test Coverage** (Planned):
+
+  - [ ] Task details page navigation tests: URL routing and bookmarking
+  - [ ] Two-panel layout tests: Resizable split view and panel interactions
+  - [ ] Modified files panel tests: File list display, status indicators, and click navigation
+  - [ ] Agent activity panel tests: Event timeline display and live updates
+  - [ ] Diff viewer tests: Unified diff display, syntax highlighting, and file navigation
+  - [ ] API contract tests: Task details endpoints with proper data schemas
+  - [ ] Scenario-based E2E tests: Mock server responses for deterministic testing
+
+**W4.6.1. Task Details Page Design with Static Data** (1 week)
+
+- **Deliverables**:
+
+  - Task Details page component with two-panel layout HTML structure
+  - Static mock data for modified files list and agent activity timeline
+  - Basic navigation from task cards to details page
+  - Responsive design adapting to different screen sizes
+
+- **Test Coverage** (Planned):
+
+  - [ ] Page navigation tests: Clicking task titles navigates to details page
+  - [ ] Layout tests: Two-panel structure renders correctly with proper proportions
+  - [ ] Static content tests: Mock data displays in both panels
+  - [ ] Responsive tests: Layout adapts properly on mobile/tablet/desktop
+  - [ ] Breadcrumb navigation tests: Header shows task context and back navigation
+
+- **Verification**:
+
+  - Playwright tests verify page navigation and basic layout structure
+  - Manual verification of responsive design across screen sizes
+  - Static content renders correctly without API dependencies
+
+**W4.6.2. Task Details REST API Design** (1 week, parallel with W4.6.1)
+
+- **Deliverables**:
+
+  - REST API specification for task details endpoints based on Scenario-Format.md capabilities
+  - Analysis of PRD features that can be implemented through scenarios
+  - API design focused on features testable via deterministic mock responses
+  - Subset of advanced features (chat interface, time-travel, branching) deferred
+
+- **Features Included** (based on Scenario-Format.md analysis):
+
+  - Task metadata retrieval (`GET /api/v1/tasks/{id}`)
+  - Modified files list (`GET /api/v1/tasks/{id}/files`)
+  - Agent activity events (`GET /api/v1/tasks/{id}/events`)
+  - Unified diff data (`GET /api/v1/tasks/{id}/diffs`)
+  - Session control actions (pause/resume/stop)
+
+- **Features Deferred** (cannot be easily implemented through scenarios):
+
+  - Interactive chat interface for sending agent instructions
+  - Time-travel functionality and branching from timeline events
+  - Context management panel with file picker
+  - Token usage tracking and model performance metrics
+  - Sub-session creation and management
+
+- **Test Coverage** (Planned):
+
+  - [ ] API specification tests: Endpoints match REST-Service/API.md contracts
+  - [ ] Schema validation tests: Response formats match expected data structures
+  - [ ] Scenario compatibility tests: All endpoints can be implemented via Scenario-Format.md
+
+- **Verification**:
+
+  - API contract tests validate endpoint specifications
+  - Manual review confirms feature subset is implementable through scenarios
+  - Documentation updated to reflect deferred advanced features
+
+**W4.6.3. Mock API Server Implementation** (1 week, parallel with W4.6.1-2)
+
+- **Deliverables**:
+
+  - Mock server endpoints for all task details APIs
+  - Scenario files for E2E testing of task details functionality
+  - Deterministic responses for modified files, activity events, and diffs
+  - External E2E tests running outside browser environment
+
+- **Test Coverage** (Comprehensive E2E):
+
+  - [ ] API contract tests: All new endpoints respond with correct schemas
+  - [ ] Scenario-based tests: Deterministic mock responses for task details
+  - [ ] File list tests: Modified files endpoint returns proper file metadata
+  - [ ] Event timeline tests: Activity events stream correctly
+  - [ ] Diff data tests: Unified diff responses match expected format
+  - [ ] Error handling tests: Invalid task IDs return appropriate errors
+
+- **Verification** (Automated E2E):
+
+  - Playwright tests verify API responses match specifications
+  - Scenario files execute successfully with deterministic outcomes
+  - Mock server handles all edge cases and error conditions
+
+**W4.6.4. Browser Integration and Dynamic Content** (1 week, after W4.6.1-3)
+
+- **Deliverables**:
+
+  - Integration of task details APIs in browser page
+  - Dynamic loading replacing all static mock content
+  - Real-time updates for activity events via SSE
+  - Error handling and loading states throughout UI
+
+- **Test Coverage** (Browser E2E):
+
+  - [ ] Dynamic loading tests: API calls replace static content on page load
+  - [ ] Real-time updates tests: Activity events update UI automatically
+  - [ ] Error handling tests: API failures display appropriate error states
+  - [ ] Loading states tests: Spinners and placeholders during data fetching
+  - [ ] Navigation tests: Back/forward browser navigation preserves state
+
+- **Verification** (Automated E2E):
+
+  - Playwright tests verify dynamic content loading and real-time updates
+  - Manual verification of error states and loading indicators
+  - Browser navigation works correctly with dynamic routing
 
 **Phase 3: Advanced Features and Polish** (3-4 weeks total)
 

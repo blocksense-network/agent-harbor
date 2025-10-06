@@ -1,10 +1,10 @@
 import {
   Component,
-  createSignal,
-  onMount,
-  onCleanup,
-  createEffect,
   For,
+  createEffect,
+  createSignal,
+  onCleanup,
+  onMount,
 } from "solid-js";
 import TomSelect from "tom-select";
 
@@ -22,252 +22,524 @@ interface ModelMultiSelectProps {
   class?: string;
 }
 
-// Type for Tom Select option data
-interface TomSelectOptionData {
-  text: string;
+const MIN_SELECTED_INSTANCES = 1;
+const MAX_INSTANCES = 10;
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+type CountsMap = Record<string, number>;
+
+type ModelAction = "increase" | "decrease";
+type BadgeAction = ModelAction | "remove";
+
+interface OptionTemplateData {
   value: string;
+  label: string;
+  count?: number;
+}
+
+const modelKey = (value: string) => encodeURIComponent(value.toLowerCase());
+
+declare module "tom-select" {
+  interface TomSelectOption {
+    count?: number;
+  }
+
+  interface TomSelect {
+    /**
+     * Clears cached render output to force Tom Select to use latest option data.
+     * https://tom-select.js.org/docs/#methods-clearcache
+     */
+    clearCache(template?: "item" | "option"): void;
+  }
 }
 
 export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   let selectRef: HTMLSelectElement | undefined;
-  let tomSelectInstance: TomSelect | undefined;
-  const [localSelections, setLocalSelections] = createSignal<ModelSelection[]>(
-    props.selectedModels || [],
-  );
+  let tomSelect: TomSelect | undefined;
+  let dropdownClickHandler: ((event: MouseEvent) => void) | undefined;
+  let controlClickHandler: ((event: MouseEvent) => void) | undefined;
+  let dropdownPointerDownHandler: ((event: MouseEvent) => void) | undefined;
+  let controlPointerDownHandler: ((event: MouseEvent) => void) | undefined;
+  let externalSyncKey = "";
+  let lastNotifiedKey = "";
 
-  // Track instance counts for ALL models (selected or not) to preserve dropdown increments
-  const instanceCounts = new Map<string, number>();
+  const [counts, setCounts] = createSignal<CountsMap>({});
 
-  // Initialize counts from props
-  props.selectedModels?.forEach((s) => {
-    instanceCounts.set(s.model, s.instances);
-  });
+  const models = () => props.availableModels ?? [];
+  const containerClass = () =>
+    props.class && props.class.trim().length > 0
+      ? `relative ${props.class}`
+      : "relative";
 
-  const getInstanceCount = (model: string): number => {
-    return instanceCounts.get(model) || 1;
+  const updateTomSelectOption = (model: string, count: number) => {
+    if (!tomSelect) {
+      return;
+    }
+
+    const existing = tomSelect.options[model];
+    const payload = {
+      value: model,
+      text: existing?.["text"] ?? model,
+      label: (existing as { label?: string })?.label ?? model,
+      count,
+    };
+
+    logDebug("updateOption", model, payload);
+    tomSelect.updateOption(model, payload);
+    if (tomSelect.options[model]) {
+      Object.assign(tomSelect.options[model], payload);
+    }
+    if (typeof tomSelect.clearCache === "function") {
+      tomSelect.clearCache();
+    }
   };
 
-  const updateInstanceCount = (model: string, delta: number) => {
-    const currentCount = getInstanceCount(model);
-    const newCount = Math.max(1, Math.min(10, currentCount + delta));
-    instanceCounts.set(model, newCount);
+  const buildCountsMap = (
+    selections: ModelSelection[] | undefined,
+  ): CountsMap => {
+    const base: CountsMap = {};
+    for (const model of models()) {
+      base[model] = 0;
+    }
 
-    // If the model is already selected, update localSelections
-    const isSelected = localSelections().some((s) => s.model === model);
-    if (isSelected) {
-      const updated = localSelections().map((s) => {
-        if (s.model === model) {
-          return { ...s, instances: newCount };
+    if (selections) {
+      for (const selection of selections) {
+        if (selection.model in base) {
+          base[selection.model] = clamp(
+            selection.instances,
+            MIN_SELECTED_INSTANCES,
+            MAX_INSTANCES,
+          );
         }
-        return s;
+      }
+    }
+
+    return base;
+  };
+
+  const notifyParent = (countsMap: CountsMap) => {
+    const selections: ModelSelection[] = [];
+    for (const model of models()) {
+      const count = countsMap[model] ?? 0;
+      if (count > 0) {
+        selections.push({ model, instances: count });
+      }
+    }
+
+    const key = JSON.stringify(selections);
+    if (key === lastNotifiedKey) {
+      return;
+    }
+
+    lastNotifiedKey = key;
+    props.onSelectionChange(selections);
+  };
+
+  const commitCounts = (
+    nextCounts: CountsMap,
+    options: { notifyParent?: boolean; manageSelection?: boolean } = {},
+  ) => {
+    externalSyncKey = JSON.stringify(nextCounts);
+    setCounts(nextCounts);
+
+    if (tomSelect) {
+      for (const model of models()) {
+        const count = nextCounts[model] ?? 0;
+        updateTomSelectOption(model, count);
+      }
+
+      if (options.manageSelection !== false) {
+        const selectedValues = models().filter(
+          (model) => (nextCounts[model] ?? 0) > 0,
+        );
+
+        for (const value of [...tomSelect.items]) {
+          if (!selectedValues.includes(value)) {
+            tomSelect.removeItem(value, true);
+          }
+        }
+
+        for (const value of selectedValues) {
+          if (!tomSelect.items.includes(value)) {
+            tomSelect.addItem(value, true);
+          }
+        }
+      }
+
+      tomSelect.refreshItems();
+      tomSelect.refreshOptions();
+      logDebug("refreshUI", {
+        items: [...tomSelect.items],
+        dropdownItems: Object.keys(nextCounts),
       });
-      setLocalSelections(updated);
-      props.onSelectionChange(updated);
+    }
+
+    if (options.notifyParent !== false) {
+      notifyParent(nextCounts);
     }
   };
 
-  const removeModel = (model: string) => {
-    if (tomSelectInstance) {
-      tomSelectInstance.removeItem(model, true);
+  const applyCountChange = (
+    model: string,
+    desired: number,
+    options: {
+      min?: number;
+      notifyParent?: boolean;
+      manageSelection?: boolean;
+    } = {},
+  ) => {
+    const current = counts();
+    const min = options.min ?? 0;
+    const clampedValue = clamp(desired, min, MAX_INSTANCES);
+
+    if ((current[model] ?? 0) === clampedValue) {
+      return;
     }
-    // Reset count to 1 when model is removed (optional - could also delete from Map)
-    instanceCounts.set(model, 1);
-    const updated = localSelections().filter((s) => s.model !== model);
-    setLocalSelections(updated);
-    props.onSelectionChange(updated);
+
+    const nextCounts: CountsMap = { ...current, [model]: clampedValue };
+    commitCounts(nextCounts, options);
+  };
+
+  const handleDropdownClick = (event: MouseEvent) => {
+    if (!tomSelect) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof globalThis.HTMLElement)) {
+      return;
+    }
+
+    const button = target.closest<HTMLButtonElement>("[data-model-action]");
+
+    if (!button) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const value = button.getAttribute("data-value");
+    const actionAttr = button.getAttribute("data-model-action");
+
+    if (!value || !actionAttr) {
+      return;
+    }
+
+    const action = actionAttr as ModelAction;
+    const currentCount = counts()[value] ?? 0;
+    if (action === "increase") {
+      const next = Math.min(currentCount + 1, MAX_INSTANCES);
+      applyCountChange(value, next, {
+        notifyParent: false,
+      });
+      logDebug("dropdown increase", value, { currentCount, next });
+      tomSelect.open(); // keep dropdown visible when adjusting counts in-place
+    } else if (action === "decrease") {
+      const next = Math.max(currentCount - 1, 0);
+      applyCountChange(value, next, {
+        notifyParent: false,
+      });
+      logDebug("dropdown decrease", value, { currentCount, next });
+      tomSelect.open(); // re-open in case Tom Select processed the click as a selection
+    }
+  };
+
+  const handleBadgeClick = (event: MouseEvent) => {
+    if (!tomSelect) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof globalThis.HTMLElement)) {
+      return;
+    }
+
+    const button = target.closest<HTMLButtonElement>("[data-badge-action]");
+
+    if (!button) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const value = button.getAttribute("data-value");
+    const actionAttr = button.getAttribute("data-badge-action");
+
+    if (!value || !actionAttr) {
+      return;
+    }
+
+    const action = actionAttr as BadgeAction;
+    const currentCount = counts()[value] ?? MIN_SELECTED_INSTANCES;
+    if (action === "increase") {
+      const next = Math.min(currentCount + 1, MAX_INSTANCES);
+      applyCountChange(value, next, {
+        min: MIN_SELECTED_INSTANCES,
+        notifyParent: true,
+      });
+      logDebug("badge increase", value, { currentCount, next });
+      return;
+    }
+
+    if (action === "decrease") {
+      const next = Math.max(currentCount - 1, MIN_SELECTED_INSTANCES);
+      applyCountChange(value, next, {
+        min: MIN_SELECTED_INSTANCES,
+        notifyParent: true,
+      });
+      logDebug("badge decrease", value, { currentCount, next });
+      return;
+    }
+
+    if (action === "remove") {
+      applyCountChange(value, 0, {
+        notifyParent: true,
+      });
+      logDebug("badge remove", value);
+    }
+  };
+
+  // Guard against Tom Select interpreting button presses as option selections.
+  const preventTomSelectSelection = (event: MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof globalThis.HTMLElement)) {
+      return;
+    }
+
+    const interactiveElement = target.closest(
+      "[data-model-action], [data-badge-action]",
+    );
+
+    if (interactiveElement) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   onMount(() => {
-    if (!selectRef || typeof window === "undefined") return;
+    const initialCounts = buildCountsMap(props.selectedModels);
+    setCounts(initialCounts);
 
-    // Initialize TOM Select with custom templates
-    tomSelectInstance = new TomSelect(selectRef, {
-      create: false,
+    tomSelect = new TomSelect(selectRef!, {
+      options: models().map((model) => ({
+        value: model,
+        label: model,
+        count: initialCounts[model] ?? 0,
+      })),
+      items: models().filter((model) => (initialCounts[model] ?? 0) > 0),
+      placeholder: props.placeholder ?? "Models",
+      valueField: "value",
+      labelField: "label",
+      searchField: ["label"],
       maxItems: null,
-      placeholder: props.placeholder || "Select models...",
-      searchField: ["text"],
-      maxOptions: 100,
-      plugins: [],
-      dropdownParent: "body",
-
-      onChange: (values: string[]) => {
-        // Update selections, preserving instance counts from the Map
-        const newSelections = values.map((model) => {
-          return {
-            model,
-            instances: getInstanceCount(model), // Use Map instead of looking up in localSelections
-          };
-        });
-        setLocalSelections(newSelections);
-        props.onSelectionChange(newSelections);
-      },
-
+      closeAfterSelect: false,
       render: {
-        // Custom option template (dropdown) - ALWAYS show +/- buttons
         option: (
-          data: TomSelectOptionData,
-          escape: (str: string) => string,
+          data: OptionTemplateData,
+          escape: (value: string) => string,
         ) => {
-          const model = escape(data.text);
-          const count = getInstanceCount(data.text);
-
-          const div = document.createElement("div");
-          div.className =
-            "flex items-center justify-between p-2 hover:bg-gray-50";
-          div.innerHTML = `
-            <span class="flex-1 text-sm">${model}</span>
-            <div class="flex items-center gap-1 model-counter" data-model="${model}">
-              <button type="button" class="decrease-btn w-6 h-6 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-100 text-sm font-bold" data-action="decrease">−</button>
-              <span class="count-display w-8 text-center text-sm font-medium">${count}</span>
-              <button type="button" class="increase-btn w-6 h-6 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-700 hover:bg-gray-100 text-sm font-bold" data-action="increase">+</button>
+          const count = counts()[data.value] ?? 0;
+          const decreaseDisabled = count <= 0 ? "disabled" : "";
+          const key = modelKey(data.value);
+          return `
+            <div class="flex items-center justify-between gap-3">
+              <span class="model-label">${escape(data.label)}</span>
+              <div class="model-counter flex items-center gap-1" data-model-key="${key}">
+                <button
+                  type="button"
+                  class="decrease-btn flex h-6 w-6 items-center justify-center rounded border border-gray-300 bg-white text-sm font-bold text-gray-700"
+                  data-model-action="decrease"
+                  data-value="${escape(data.value)}"
+                  aria-label="Decrease ${escape(data.label)} instances"
+                  ${decreaseDisabled}
+                >
+                  −
+                </button>
+                <span class="count-display w-8 text-center text-sm font-medium" data-role="count">${count}</span>
+                <button
+                  type="button"
+                  class="increase-btn flex h-6 w-6 items-center justify-center rounded border border-gray-300 bg-white text-sm font-bold text-gray-700"
+                  data-model-action="increase"
+                  data-value="${escape(data.value)}"
+                  aria-label="Increment ${escape(data.label)} instances"
+                >
+                  +
+                </button>
+              </div>
             </div>
           `;
-
-          // Attach event handlers to the buttons
-          setTimeout(() => {
-            const decreaseBtn = div.querySelector(".decrease-btn");
-            const increaseBtn = div.querySelector(".increase-btn");
-            const countDisplay = div.querySelector(".count-display");
-
-            if (decreaseBtn && increaseBtn && countDisplay) {
-              decreaseBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                updateInstanceCount(data.text, -1);
-                // Update display immediately
-                const newCount = Math.max(1, count - 1);
-                countDisplay.textContent = newCount.toString();
-              });
-
-              increaseBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                updateInstanceCount(data.text, 1);
-                // Update display immediately
-                const newCount = Math.min(10, count + 1);
-                countDisplay.textContent = newCount.toString();
-              });
-            }
-          }, 0);
-
-          return div;
         },
-
-        // Custom item template (selected badge) - overlay +/- buttons
-        item: (data: TomSelectOptionData, escape: (str: string) => string) => {
-          const model = escape(data.text);
-          const count = getInstanceCount(data.text);
-
-          const div = document.createElement("div");
-          div.className =
-            "relative inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-sm";
-          div.setAttribute("data-value", data.value);
-          div.innerHTML = `
-            <span class="model-label">${model}</span>
-            <span class="count-badge text-xs font-semibold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">×${count}</span>
-            <div class="badge-controls flex items-center gap-0.5 ml-1">
-              <button type="button" class="decrease-badge-btn w-4 h-4 flex items-center justify-center bg-white border border-blue-300 rounded text-blue-700 hover:bg-blue-100 text-xs font-bold leading-none" data-action="decrease">−</button>
-              <button type="button" class="increase-badge-btn w-4 h-4 flex items-center justify-center bg-white border border-blue-300 rounded text-blue-700 hover:bg-blue-100 text-xs font-bold leading-none" data-action="increase">+</button>
-              <button type="button" class="remove-badge-btn w-4 h-4 flex items-center justify-center text-red-600 hover:bg-red-50 rounded text-xs font-bold leading-none ml-0.5" data-action="remove">×</button>
+        item: (data: OptionTemplateData, escape: (value: string) => string) => {
+          const count = counts()[data.value] ?? MIN_SELECTED_INSTANCES;
+          const key = modelKey(data.value);
+          return `
+            <div class="model-badge item inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-sm" data-model-key="${key}">
+              <span class="model-label">${escape(data.label)}</span>
+              <span class="count-badge rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">×${count}</span>
+              <div class="badge-controls ml-1 flex items-center gap-0.5">
+                <button
+                  type="button"
+                  class="decrease-badge-btn flex h-4 w-4 items-center justify-center rounded border border-blue-300 bg-white text-xs font-bold leading-none text-blue-700"
+                  data-badge-action="decrease"
+                  data-value="${escape(data.value)}"
+                  aria-label="Decrease ${escape(data.label)} instances"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  class="increase-badge-btn flex h-4 w-4 items-center justify-center rounded border border-blue-300 bg-white text-xs font-bold leading-none text-blue-700"
+                  data-badge-action="increase"
+                  data-value="${escape(data.value)}"
+                  aria-label="Increment ${escape(data.label)} instances"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  class="remove-badge-btn ml-0.5 flex h-4 w-4 items-center justify-center rounded text-xs font-bold leading-none text-red-600"
+                  data-badge-action="remove"
+                  data-value="${escape(data.value)}"
+                  aria-label="Remove ${escape(data.label)}"
+                >
+                  ×
+                </button>
+              </div>
             </div>
           `;
-
-          // Attach event handlers
-          setTimeout(() => {
-            const decreaseBtn = div.querySelector(".decrease-badge-btn");
-            const increaseBtn = div.querySelector(".increase-badge-btn");
-            const removeBtn = div.querySelector(".remove-badge-btn");
-            const countBadge = div.querySelector(".count-badge");
-
-            if (decreaseBtn && increaseBtn && removeBtn && countBadge) {
-              decreaseBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const newCount = Math.max(1, count - 1);
-                updateInstanceCount(data.text, -1);
-                countBadge.textContent = `×${newCount}`;
-              });
-
-              increaseBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const newCount = Math.min(10, count + 1);
-                updateInstanceCount(data.text, 1);
-                countBadge.textContent = `×${newCount}`;
-              });
-
-              removeBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                removeModel(data.text);
-              });
-            }
-          }, 0);
-
-          return div;
         },
       },
     });
 
-    // Workaround: prevent dropdown translucency overlapping footer in dark mode
-    if (tomSelectInstance.dropdown) {
-      tomSelectInstance.dropdown.style.backgroundColor = "#ffffff";
-      tomSelectInstance.dropdown.style.border = "1px solid #cccccc";
-      tomSelectInstance.dropdown.style.borderRadius = "4px";
-      tomSelectInstance.dropdown.style.boxShadow =
-        "0 2px 8px rgba(0, 0, 0, 0.1)";
-      tomSelectInstance.dropdown.style.zIndex = "9999";
-    }
+    dropdownClickHandler = handleDropdownClick;
+    controlClickHandler = handleBadgeClick;
+    dropdownPointerDownHandler = preventTomSelectSelection;
+    controlPointerDownHandler = preventTomSelectSelection;
 
-    // Set initial values if provided
-    if (props.selectedModels && props.selectedModels.length > 0) {
-      tomSelectInstance.setValue(
-        props.selectedModels.map((s) => s.model),
-        true,
-      );
-      setLocalSelections(props.selectedModels);
-    }
-  });
+    tomSelect.dropdown_content?.addEventListener("click", dropdownClickHandler);
+    tomSelect.control?.addEventListener("click", controlClickHandler);
+    tomSelect.dropdown_content?.addEventListener(
+      "pointerdown",
+      dropdownPointerDownHandler,
+      true,
+    );
+    tomSelect.dropdown_content?.addEventListener(
+      "mousedown",
+      dropdownPointerDownHandler,
+      true,
+    );
+    tomSelect.control?.addEventListener(
+      "pointerdown",
+      controlPointerDownHandler,
+      true,
+    );
+    tomSelect.control?.addEventListener(
+      "mousedown",
+      controlPointerDownHandler,
+      true,
+    );
 
-  // Re-render items when instance counts change
-  createEffect(() => {
-    if (!tomSelectInstance) return;
-
-    const selections = localSelections();
-    // Force TOM Select to re-render items by refreshing
-    selections.forEach((selection) => {
-      const item = tomSelectInstance!.getItem(selection.model);
-      if (item) {
-        const countBadge = item.querySelector(".count-badge");
-        if (countBadge) {
-          countBadge.textContent = `×${selection.instances}`;
-        }
-      }
+    tomSelect["on"]("item_add", (value: string) => {
+      const current = counts()[value] ?? 0;
+      const next = current > 0 ? current : MIN_SELECTED_INSTANCES;
+      applyCountChange(value, next, {
+        min: MIN_SELECTED_INSTANCES,
+        manageSelection: false,
+      });
     });
+
+    tomSelect["on"]("item_remove", (value: string) => {
+      applyCountChange(value, 0, {
+        manageSelection: false,
+      });
+    });
+
+    if (selectRef) {
+      selectRef.removeAttribute("hidden");
+      selectRef.classList.remove("ts-hidden-accessible");
+      selectRef.style.display = "block";
+      selectRef.style.position = "absolute";
+      selectRef.style.opacity = "0.01";
+      selectRef.style.pointerEvents = "none";
+      selectRef.style.height = "1px";
+      selectRef.style.width = "1px";
+    }
+
+    commitCounts(initialCounts, { notifyParent: false });
   });
 
   onCleanup(() => {
-    tomSelectInstance?.destroy();
+    if (tomSelect) {
+      if (dropdownClickHandler) {
+        const dropdownEl = tomSelect.dropdown_content;
+        dropdownEl?.removeEventListener("click", dropdownClickHandler);
+      }
+
+      if (controlClickHandler) {
+        const controlEl = tomSelect.control;
+        controlEl?.removeEventListener("click", controlClickHandler);
+      }
+
+      if (dropdownPointerDownHandler) {
+        const dropdownEl = tomSelect.dropdown_content;
+        dropdownEl?.removeEventListener(
+          "pointerdown",
+          dropdownPointerDownHandler,
+          true,
+        );
+        dropdownEl?.removeEventListener(
+          "mousedown",
+          dropdownPointerDownHandler,
+          true,
+        );
+      }
+
+      if (controlPointerDownHandler) {
+        const controlEl = tomSelect.control;
+        controlEl?.removeEventListener(
+          "pointerdown",
+          controlPointerDownHandler,
+          true,
+        );
+        controlEl?.removeEventListener(
+          "mousedown",
+          controlPointerDownHandler,
+          true,
+        );
+      }
+
+      tomSelect.destroy();
+      tomSelect = undefined;
+    }
+  });
+
+  createEffect(() => {
+    if (!tomSelect) {
+      return;
+    }
+
+    const nextCounts = buildCountsMap(props.selectedModels);
+    const key = JSON.stringify(nextCounts);
+
+    if (key !== externalSyncKey) {
+      commitCounts(nextCounts, { notifyParent: false });
+    }
   });
 
   return (
-    <div
-      data-testid={props.testId}
-      class={`
-        model-multi-select
-        ${props.class || ""}
-      `}
-    >
-      <select
-        ref={selectRef}
-        class="tom-select-input"
-        multiple
-        aria-label={props.placeholder}
-      >
-        <For each={props.availableModels}>
+    <div data-testid={props.testId} class={containerClass()}>
+      <select ref={selectRef} multiple class="tom-select-input">
+        <For each={models()}>
           {(model) => <option value={model}>{model}</option>}
         </For>
       </select>
     </div>
   );
 };
+
+const logDebug = (...args: unknown[]) =>
+  console.debug("[ModelMultiSelect]", ...args);

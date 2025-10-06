@@ -11,6 +11,11 @@ echo ""
 echo "Note: Using development servers (not production build) for hot reload and better debugging"
 echo ""
 
+# Kill any existing server processes
+echo "Killing any existing server processes..."
+pkill -f "yarn.*dev" || true
+sleep 2
+
 # Start mock server in background
 cd webui
 yarn workspace ah-webui-mock-server run dev &

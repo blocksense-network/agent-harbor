@@ -10,12 +10,14 @@ interface FocusState {
   focusedElement: "draft-textarea" | "session-card" | "none";
   focusedDraftId?: string;
   focusedSessionId?: string;
+  focusedDraftAgentCount?: number;
 }
 
 interface FocusContextValue {
   focusState: () => FocusState;
-  setDraftFocus: (draftId: string) => void;
+  setDraftFocus: (draftId: string, agentCount?: number) => void;
   setSessionFocus: (sessionId: string) => void;
+  updateDraftAgentCount: (draftId: string, agentCount: number) => void;
   clearFocus: () => void;
   isDraftFocused: (draftId: string) => boolean;
   isSessionFocused: (sessionId: string) => boolean;
@@ -28,10 +30,13 @@ export const FocusProvider: Component<{ children: JSX.Element }> = (props) => {
     focusedElement: "none",
   });
 
-  const setDraftFocus = (draftId: string) => {
+  const setDraftFocus = (draftId: string, agentCount?: number) => {
     setFocusState({
       focusedElement: "draft-textarea",
       focusedDraftId: draftId,
+      ...(agentCount !== undefined && {
+        focusedDraftAgentCount: agentCount,
+      }),
     });
   };
 
@@ -64,10 +69,26 @@ export const FocusProvider: Component<{ children: JSX.Element }> = (props) => {
     );
   };
 
+  const updateDraftAgentCount = (draftId: string, agentCount: number) => {
+    setFocusState((prev) => {
+      if (
+        prev.focusedElement === "draft-textarea" &&
+        prev.focusedDraftId === draftId
+      ) {
+        return {
+          ...prev,
+          focusedDraftAgentCount: agentCount,
+        };
+      }
+      return prev;
+    });
+  };
+
   const contextValue: FocusContextValue = {
     focusState,
     setDraftFocus,
     setSessionFocus,
+    updateDraftAgentCount,
     clearFocus,
     isDraftFocused,
     isSessionFocused,

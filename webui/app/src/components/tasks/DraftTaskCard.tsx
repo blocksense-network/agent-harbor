@@ -15,6 +15,7 @@ interface Repository {
   name: string;
   url?: string;
   branch?: string;
+  keywords?: string[];
 }
 
 interface DraftTaskCardProps {
@@ -42,7 +43,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     createSignal<ReturnType<typeof setTimeout>>();
   const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>("saved");
   let textareaRef: HTMLTextAreaElement | undefined;
-  const { setDraftFocus } = useFocus();
+  const { setDraftFocus, updateDraftAgentCount } = useFocus();
 
   // Convert draft data to local signals for easier handling
   const [localPrompt, setLocalPrompt] = createSignal(props.draft.prompt || "");
@@ -119,13 +120,13 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       // Prevent interrupting user typing by checking current focus
       if (document.activeElement !== textareaRef) {
         textareaRef.focus();
-        setDraftFocus(props.draft.id);
+        setDraftFocus(props.draft.id, computeAgentCount());
       }
     }
   });
 
   const handleTextareaFocus = () => {
-    setDraftFocus(props.draft.id);
+    setDraftFocus(props.draft.id, computeAgentCount());
   };
 
   const handleTextareaBlur = () => {
@@ -179,16 +180,19 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       id: "1",
       name: "agent-harbor-webui",
       url: "https://github.com/example/agent-harbor-webui.git",
+      keywords: ["webui", "ahwebui", "awwebui", "agentharborwebui"],
     },
     {
       id: "2",
       name: "agent-harbor-core",
       url: "https://github.com/example/agent-harbor-core.git",
+      keywords: ["core", "ahcore", "awcore", "agentharborcore"],
     },
     {
       id: "3",
       name: "agent-harbor-cli",
       url: "https://github.com/example/agent-harbor-cli.git",
+      keywords: ["cli", "ahcli", "awcli", "agentharborcli"],
     },
   ]);
 
@@ -199,12 +203,34 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     "GPT-3.5 Turbo",
   ]);
 
+  const computeAgentCount = (
+    selections?: Array<{ model: string; instances: number }>,
+  ) => {
+    const source = selections ?? modelSelections();
+    if (source.length > 0) {
+      return source.reduce(
+        (total, selection) => total + selection.instances,
+        0,
+      );
+    }
+
+    const draftAgents = props.draft.agents ?? [];
+    if (draftAgents.length === 0) {
+      return 0;
+    }
+
+    return draftAgents.reduce((total, agent) => {
+      const withInstances = agent as { instances?: number };
+      return total + (withInstances.instances ?? 1);
+    }, 0);
+  };
+
   const canSubmit = () => {
     return (
       prompt().trim() &&
       selectedRepo() &&
       selectedBranch() &&
-      (props.draft.agents?.length ?? 0) > 0
+      computeAgentCount() > 0
     );
   };
 
@@ -216,6 +242,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     selections: Array<{ model: string; instances: number }>,
   ) => {
     setModelSelections(selections);
+    updateDraftAgentCount(props.draft.id, computeAgentCount(selections));
     // Convert model selections to agent format
     const agents = selections.map((sel) => {
       const [type, ...versionParts] = sel.model.toLowerCase().split(" ");
@@ -288,11 +315,38 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     // Initialize model selections from draft agents if available
     if (props.draft.agents && props.draft.agents.length > 0) {
       const initialSelections = props.draft.agents.map((agent) => ({
-        model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, " ")}`,
+        model: `${
+          agent.type.charAt(0).toUpperCase() + agent.type.slice(1)
+        } ${agent.version.replace(/-/g, " ")}`,
         instances: (agent as { instances?: number }).instances || 1,
       }));
       setModelSelections(initialSelections);
+      updateDraftAgentCount(
+        props.draft.id,
+        computeAgentCount(initialSelections),
+      );
     }
+  });
+
+  createEffect(() => {
+    const agents = props.draft.agents || [];
+    if (agents.length === 0) {
+      return;
+    }
+
+    const selections = agents.map((agent) => ({
+      model: `${
+        agent.type.charAt(0).toUpperCase() + agent.type.slice(1)
+      } ${agent.version.replace(/-/g, " ")}`,
+      instances: (agent as { instances?: number }).instances || 1,
+    }));
+
+    const currentKey = JSON.stringify(modelSelections());
+    const nextKey = JSON.stringify(selections);
+    if (currentKey !== nextKey) {
+      setModelSelections(selections);
+    }
+    updateDraftAgentCount(props.draft.id, computeAgentCount(selections));
   });
 
   return (
@@ -364,6 +418,10 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             onSelect={setSelectedRepo}
             getDisplayText={(repo: Repository) => repo.name}
             getKey={(repo: Repository) => repo.id}
+            getSearchTokens={(repo: Repository) => {
+              const base = repo.name.replace(/[^a-z0-9]/gi, "");
+              return [base, ...(repo.keywords ?? [])];
+            }}
             placeholder="Repository"
             class="w-48"
             testId="repo-selector"
@@ -381,6 +439,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             onSelect={setSelectedBranch}
             getDisplayText={(branch) => branch}
             getKey={(branch) => branch}
+            getSearchTokens={(branch) => [branch.replace(/[^a-z0-9]/gi, "")]}
             placeholder="Branch"
             class="w-32"
             testId="branch-selector"

@@ -9,7 +9,8 @@ interface SaveStatusProps {
 
 export const SaveStatus: Component<SaveStatusProps> = (props) => {
   // Use internal signal to ensure reactivity
-  const [currentStatus, setCurrentStatus] = createSignal(props.status);
+  const [currentStatus, setCurrentStatus] =
+    createSignal<SaveStatusType>("saved");
 
   // Update internal signal when prop changes
   createEffect(() => {

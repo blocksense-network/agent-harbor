@@ -7,6 +7,7 @@ interface TomSelectProps<T = string> {
   onSelect: (item: T | null) => void;
   getDisplayText: (item: T) => string;
   getKey: (item: T) => string;
+  getSearchTokens?: (item: T) => string[];
   placeholder?: string;
   class?: string;
   testId?: string;
@@ -16,6 +17,25 @@ interface TomSelectProps<T = string> {
 export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   let selectRef: HTMLSelectElement | undefined;
   let tomSelectInstance: TomSelect | undefined;
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[^a-z0-9]/g, "");
+
+  const isFuzzyMatch = (text: string, query: string) => {
+    if (!query.length) return true;
+    let index = 0;
+    for (const char of text) {
+      if (char === query[index]) {
+        index += 1;
+        if (index === query.length) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
 
   onMount(() => {
     if (!selectRef || typeof window === "undefined") return;
@@ -25,8 +45,31 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
       create: false,
       maxItems: 1,
       placeholder: props.placeholder || "Select...",
-      searchField: ["text"],
+      searchField: props.getSearchTokens ? ["text", "searchTokens"] : ["text"],
       maxOptions: 100,
+      score: (search: { query: string }) => {
+        const query = normalize(search?.query ?? "");
+        if (!query.length) {
+          return () => 1;
+        }
+        return (option: Record<string, unknown>) => {
+          const rawText = option["text"];
+          const textValue = typeof rawText === "string" ? rawText : "";
+          const normalizedText = normalize(textValue);
+          if (normalizedText.includes(query)) {
+            return query.length / (normalizedText.length + 1);
+          }
+          const rawTokens = option["searchTokens"];
+          const tokenValue = typeof rawTokens === "string" ? rawTokens : "";
+          const extraTokens = normalize(tokenValue);
+          if (extraTokens.includes(query)) {
+            return 0.8;
+          }
+          return isFuzzyMatch(normalizedText, query)
+            ? query.length / (normalizedText.length + 5)
+            : 0;
+        };
+      },
       onChange: (value: string) => {
         const item = props.items.find((item) => props.getKey(item) === value);
         props.onSelect(item || null);
@@ -55,9 +98,14 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
       tomSelectInstance!.clearOptions();
 
       props.items.forEach((item) => {
+        const displayText = props.getDisplayText(item);
+        const normalizedText = normalize(displayText);
+        const tokens = props.getSearchTokens ? props.getSearchTokens(item) : [];
         tomSelectInstance!.addOption({
           value: props.getKey(item),
-          text: props.getDisplayText(item),
+          text: displayText,
+          normalizedText,
+          searchTokens: tokens.map((token) => token.toLowerCase()).join(" "),
         });
       });
 

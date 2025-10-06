@@ -1,25 +1,45 @@
-import { Component } from "solid-js";
+import { Component, createMemo } from "solid-js";
 import {
   KeyboardShortcutsFooter,
-  KeyboardShortcutsFooterProps,
+  type KeyboardShortcutsFooterProps,
 } from "../common/KeyboardShortcutsFooter.js";
 
 export interface FooterProps {
   onNewDraft?: () => void;
-  agentCount?: number;
+  agentCount?: number | undefined;
   focusState?: {
     focusedElement: "draft-textarea" | "session-card" | "none";
     focusedDraftId?: string;
     focusedSessionId?: string;
+    focusedDraftAgentCount?: number;
   };
 }
 
 export const Footer: Component<FooterProps> = (props) => {
-  const keyboardProps: KeyboardShortcutsFooterProps = {
-    ...(props.onNewDraft && { onNewTask: props.onNewDraft }),
-    ...(props.agentCount !== undefined && { agentCount: props.agentCount }),
-    ...(props.focusState && { focusState: props.focusState }),
-  };
+  const resolvedAgentCount = createMemo(
+    () => props.agentCount ?? props.focusState?.focusedDraftAgentCount,
+  );
 
-  return <KeyboardShortcutsFooter {...keyboardProps} />;
+  const computedProps = createMemo<Partial<KeyboardShortcutsFooterProps>>(
+    () => {
+      const partial: Partial<KeyboardShortcutsFooterProps> = {};
+
+      if (props.onNewDraft) {
+        partial.onNewTask = props.onNewDraft;
+      }
+
+      const agentCount = resolvedAgentCount();
+      if (agentCount !== undefined) {
+        partial.agentCount = agentCount;
+      }
+
+      if (props.focusState) {
+        partial.focusState = props.focusState;
+      }
+
+      return partial;
+    },
+  );
+
+  return <KeyboardShortcutsFooter {...computedProps()} />;
 };

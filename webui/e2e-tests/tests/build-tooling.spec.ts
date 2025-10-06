@@ -76,8 +76,12 @@ test.describe('Build and Tooling Tests', () => {
     await runCommandWithLogging('cd ../mock-server && npm run build', [], 'Mock server build');
   });
 
-  test.skip('E2E tests build successfully with TypeScript strict mode', async () => {
-    await runCommandWithLogging('npx tsc --noEmit', [], 'E2E TypeScript compilation');
+  test('E2E tests build successfully with TypeScript strict mode', async () => {
+    await runCommandWithLogging(
+      'yarn',
+      ['exec', 'tsc', '--noEmit'],
+      'E2E TypeScript compilation'
+    );
   });
 
   test('Prettier configuration works across all projects', async () => {

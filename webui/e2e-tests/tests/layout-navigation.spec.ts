@@ -50,15 +50,17 @@ test.describe('Layout and Navigation Tests', () => {
     // Check that the task feed header is visible (use specific selector to avoid strict mode violation)
     await expect(page.getByRole('heading', { name: 'Task Feed' })).toBeVisible();
 
-    // Check that the status filter is present
-    await expect(page.locator('select#status-filter')).toBeVisible();
-
     // Wait a moment for content to load
     await page.waitForTimeout(2000);
 
-    // Should show either sessions or empty state
-    const taskFeed = page.locator('.flex-1.overflow-y-auto');
-    await expect(taskFeed).toBeVisible();
+    // Should show task cards (sessions and/or drafts)
+    // In the simplified design, there are no global filters - just the task feed
+    const taskCards = page.locator('[data-testid="task-card"]');
+    const draftCards = page.locator('[data-testid="draft-task-card"]');
+
+    // Should have at least draft cards (always visible) and possibly session cards
+    const totalCards = await taskCards.count() + await draftCards.count();
+    expect(totalCards).toBeGreaterThan(0);
   });
 
   test('Draft task cards are always visible at bottom', async ({ page }) => {
@@ -100,9 +102,12 @@ test.describe('Layout and Navigation Tests', () => {
     // Focus on draft textarea to trigger draft-task context
     const draftTextarea = page.locator('[data-testid="draft-task-textarea"]').first();
     await draftTextarea.click();
-    
+
+    // Wait a moment for focus state to update
+    await page.waitForTimeout(100);
+
     // Footer should update to show draft-specific shortcuts
-    await expect(footer).toContainText('Launch');
+    await expect(footer).toContainText('Launch Agent');
     await expect(footer).toContainText('New Line');
   });
 
@@ -150,20 +155,65 @@ test.describe('Layout and Navigation Tests', () => {
     }
   });
 
-  test.skip('Task details page navigation - not yet implemented', async ({ page: _page }) => {
-    // Task details pages are not yet implemented in the current UI
-    // The current UI shows sessions in a feed format, not individual task detail pages
-    expect(true).toBe(true);
+  test('Task details page navigation works correctly', async ({ page }) => {
+    // Wait for page to load with data
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+
+    // Get the first session's task ID
+    const sessionCards = page.locator('[data-testid="task-card"]');
+    const firstSessionCard = sessionCards.first();
+    const taskId = await firstSessionCard.getAttribute('data-task-id');
+
+    // Click on the task title to navigate to details
+    const taskTitle = firstSessionCard.locator('[data-testid="task-title-link"]');
+    await taskTitle.click();
+
+    // Verify task details page renders
+    await expect(page.locator('[data-testid="task-details"]')).toBeVisible();
+    await expect(page.locator('h2')).toContainText(`Task Details: ${taskId}`);
   });
 
-  test.skip('Task details page action buttons - not yet implemented', async ({ page: _page }) => {
-    // Task details pages with action buttons are not yet implemented
-    expect(true).toBe(true);
+  test('Task details page action buttons work correctly', async ({ page }) => {
+    // Wait for page to load with data
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+
+    // Get the first session's task ID
+    const sessionCards = page.locator('[data-testid="task-card"]');
+    const firstSessionCard = sessionCards.first();
+    const taskId = await firstSessionCard.getAttribute('data-task-id');
+
+    // Navigate to task details
+    await page.goto(`http://localhost:3002/tasks/${taskId}`);
+
+    // Verify action buttons are present
+    const stopButton = page.locator('[data-testid="stop-session-btn"]');
+    const pauseButton = page.locator('[data-testid="pause-session-btn"]');
+    const resumeButton = page.locator('[data-testid="resume-session-btn"]');
+
+    await expect(stopButton.or(pauseButton).or(resumeButton)).toBeVisible();
   });
 
-  test.skip('Navigation maintains browser history - not yet implemented', async ({ page: _page }) => {
-    // Task details page navigation is not yet implemented
-    expect(true).toBe(true);
+  test('Navigation maintains browser history correctly', async ({ page }) => {
+    // Wait for page to load with data
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+
+    // Get the first session's task ID
+    const sessionCards = page.locator('[data-testid="task-card"]');
+    const firstSessionCard = sessionCards.first();
+    const taskId = await firstSessionCard.getAttribute('data-task-id');
+
+    // Click on task title to navigate to details
+    const taskTitle = firstSessionCard.locator('[data-testid="task-title-link"]');
+    await taskTitle.click();
+
+    // Verify we're on the task details page
+    await expect(page.locator('[data-testid="task-details"]')).toBeVisible();
+
+    // Use browser back navigation
+    await page.goBack();
+
+    // Verify we're back on the main page
+    await expect(page.locator('[data-testid="task-feed"]')).toBeVisible();
   });
 
   test('Content loads properly with draft tasks always visible', async ({ page }) => {
@@ -226,5 +276,22 @@ test.describe('Layout and Navigation Tests', () => {
     await expect(statusFilter.locator('option[value=""]')).toContainText('All Sessions');
     await expect(statusFilter.locator('option[value="running"]')).toContainText('Running');
     await expect(statusFilter.locator('option[value="completed"]')).toContainText('Completed');
+
+    // Apply filter and verify only matching sessions are displayed
+    await statusFilter.selectOption('running');
+    await page.waitForTimeout(300);
+
+    const statusLabels = await page.locator('[data-testid="task-card"] span[aria-label^="Status:"]').evaluateAll((elements) =>
+      elements.map((el) => el.getAttribute('aria-label') || '')
+    );
+
+    if (statusLabels.length > 0) {
+      for (const label of statusLabels) {
+        expect(label.toLowerCase()).toContain('running');
+      }
+    }
+
+    // Reset filter to show all sessions again
+    await statusFilter.selectOption('');
   });
 });
