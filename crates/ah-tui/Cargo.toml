@@ -37,6 +37,7 @@ tokio-test = "0.4"
 ah-test-scenarios = { path = "../ah-test-scenarios" }
 url = { workspace = true }
 tempfile = "3.0"
+tui-testing = { path = "../tui-testing" }
 expectrl = "0.3"
 vt100 = "0.15"
 insta = { version = "1.40", features = ["json"] }

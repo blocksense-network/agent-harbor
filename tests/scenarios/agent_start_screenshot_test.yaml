@@ -1,0 +1,32 @@
+name: agent_start_screenshot_test
+tags: ["cli", "tui", "local"]
+repo:
+  init: true
+  branch: "feature/screenshot-test"
+server:
+  mode: "none"
+timeline:
+  - think:
+      - [500, "Starting agent execution"]
+  - screenshot: "agent_started"
+  - agentToolUse:
+      toolName: "run_command"
+      args:
+        command: "echo 'Agent executing command'"
+        cwd: "."
+      progress:
+        - [300, "Executing echo command..."]
+      result: "Agent executing command"
+      status: "ok"
+  - screenshot: "command_executed"
+  - agentEdits:
+      path: "test_file.txt"
+      linesAdded: 2
+      linesRemoved: 0
+  - screenshot: "file_created"
+  - complete: true
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "file"
+      pattern: "test_file.txt"

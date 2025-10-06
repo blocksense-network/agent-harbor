@@ -17,6 +17,7 @@ def main():
                      help="Session file format to use (codex or claude)")
     runp.add_argument("--checkpoint-cmd", help="Command to execute after each agentToolUse and agentEdits event")
     runp.add_argument("--fast-mode", action="store_true", help="Fast mode: sort events by time and execute sequentially without timing delays")
+    runp.add_argument("--tui-testing-uri", help="ZeroMQ URI for TUI testing IPC (tcp://127.0.0.1:5555)")
 
     demop = sub.add_parser("demo", help="Run built-in demo scenario")
     demop.add_argument("--workspace", required=True)
@@ -25,6 +26,7 @@ def main():
                       help="Session file format to use (codex or claude)")
     demop.add_argument("--checkpoint-cmd", help="Command to execute after each agentToolUse and agentEdits event")
     demop.add_argument("--fast-mode", action="store_true", help="Fast mode: sort events by time and execute sequentially without timing delays")
+    demop.add_argument("--tui-testing-uri", help="ZeroMQ URI for TUI testing IPC (tcp://127.0.0.1:5555)")
 
     srv = sub.add_parser("server", help="Run mock OpenAI/Anthropic API server")
     srv.add_argument("--host", default="127.0.0.1")
@@ -37,7 +39,7 @@ def main():
     args = ap.parse_args()
 
     if args.cmd == "run":
-        path = run_scenario(args.scenario, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False))
+        path = run_scenario(args.scenario, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
         print(f"Session file written to: {path}")
     elif args.cmd == "demo":
         scen = demo_scenario(args.workspace)
@@ -45,7 +47,7 @@ def main():
         os.makedirs(args.workspace, exist_ok=True)
         with open(scen_path, "w", encoding="utf-8") as f:
             json.dump(scen, f, indent=2)
-        path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False))
+        path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
         print(f"Session file written to: {path}")
     elif args.cmd == "server":
         serve(args.host, args.port, args.playbook, codex_home=args.codex_home, format=args.format)

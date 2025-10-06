@@ -1148,7 +1148,7 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **[tests/tools/mock-agent/](../../tests/tools/mock-agent/)**: Provides mock agent and API server for testing
   - **[Local-Sandboxing-on-Linux.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md)**: Provides sandbox execution environment for agents
 
-**2.4.1 AH Agent Start In-Place Mode E2E Tests** (depends on 2.4)
+**2.4.1 AH Agent Start In-Place Mode E2E Tests** ✅ COMPLETED
 
 |- **Deliverables**:
 
@@ -1164,12 +1164,32 @@ The MVP implementation must coordinate across multiple specifications with prope
   - Share repository setup utilities from existing `ah task` E2E tests
   - Run scenarios in isolated temporary directories
 
-|- **Verification Results**:
+|- **Implementation Details**:
 
-  - [ ] Scenarios execute successfully in in-place mode
-  - [ ] File system side effects match scenario expectations
-  - [ ] Agent execution completes without workspace isolation issues
-  - [ ] Test repo cleanup works properly after scenario completion
+  - **TUI Testing Framework**: Created new `tui-testing` crate providing ZeroMQ-based IPC for screenshot capture during test execution
+  - **Mock Agent Integration**: Added `--tui-testing-uri` parameter to mock-agent with ZeroMQ REQ/REP client for synchronous screenshot requests
+  - **CLI Integration**: Enhanced `ah agent start` command with `--agent-flags` parameter to pass testing configuration to agents
+  - **E2E Test Suite**: Created comprehensive integration tests validating argument parsing, IPC communication, and scenario execution
+  - **Scenario Expansion**: Added new scenario with screenshot events and userCommand events demonstrating TUI testing workflow
+  - **Framework Architecture**:
+    - `TuiTestRunner`: Manages test execution and ZeroMQ REP server for screenshot requests
+    - `TuiTestClient`: Used by child processes to request screenshots synchronously
+    - JSON protocol for IPC communication with screenshot metadata support
+    - Graceful degradation when ZeroMQ is unavailable
+  - **Test Infrastructure**: Shared repository setup utilities from existing `ah task` integration tests, tests run in isolated temporary directories with proper cleanup
+
+- **Verification Results**:
+
+  - [x] Scenarios execute successfully in in-place mode
+  - [x] File system side effects match scenario expectations
+  - [x] Agent execution completes without workspace isolation issues
+  - [x] Test repo cleanup works properly after scenario completion
+
+- **Key Source Files**:
+
+  - `crates/ah-cli/src/agent/start.rs` - Agent start command implementation with argument parsing
+  - `crates/ah-cli/src/task.rs` - Integration tests for agent start E2E scenarios
+  - `crates/ah-cli/src/lib.rs` - CLI structure updates for agent start command
 
 **2.4.2 AH Agent Start FS Snapshots Mode E2E Tests** (depends on 2.4.1)
 

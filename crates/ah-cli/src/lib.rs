@@ -43,4 +43,6 @@ pub enum AgentCommands {
     },
     /// Run a command in a local sandbox
     Sandbox(sandbox::SandboxRunArgs),
+    /// Start an agent session
+    Start(agent::start::AgentStartArgs),
 }

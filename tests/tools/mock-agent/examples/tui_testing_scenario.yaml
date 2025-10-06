@@ -1,0 +1,39 @@
+name: tui_testing_scenario
+description: "Test scenario demonstrating TUI testing with screenshots and user commands"
+repo:
+  init: true
+timeline:
+  - think:
+      - [500, "I'll start by creating a simple Python script and taking a screenshot."]
+  - screenshot: "initial_workspace"
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "hello.py"
+        text: "print('Hello, World!')\nprint('TUI Testing Demo')\n"
+      result: "File created"
+      status: "ok"
+  - screenshot: "after_file_creation"
+  - assistant:
+      - [300, "Created hello.py successfully. Let me run it to show the output."]
+  - userCommand:
+      cmd: "python hello.py"
+      cwd: "."
+  - screenshot: "after_command_execution"
+  - assistant:
+      - [400, "The command executed successfully. Let me modify the file and take another screenshot."]
+  - agentToolUse:
+      toolName: "append_file"
+      args:
+        path: "hello.py"
+        text: "print('Modified by agent!')\n"
+      result: "File appended"
+      status: "ok"
+  - screenshot: "after_file_modification"
+  - assistant:
+      - [200, "Perfect! I've demonstrated the TUI testing workflow with multiple screenshots."]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "hello.py"

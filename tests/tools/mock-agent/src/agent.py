@@ -12,8 +12,106 @@ try:
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
+
+try:
+    import zmq
+    ZMQ_AVAILABLE = True
+except ImportError:
+    ZMQ_AVAILABLE = False
+
 from .session_io import RolloutRecorder, SessionLogger, ClaudeSessionRecorder, _now_iso_ms
 from .tools import call_tool, ToolError
+
+class TuiTestClient:
+    """ZeroMQ client for TUI testing IPC communication."""
+
+    def __init__(self, uri: str):
+        if not ZMQ_AVAILABLE:
+            raise ImportError("ZeroMQ not available. Install with: pip install pyzmq")
+        self.uri = uri
+        self.context = zmq.Context()
+        self.socket = self.context.socket(zmq.REQ)
+
+        # Set connection timeout - try to connect with a short timeout
+        self.socket.setsockopt(zmq.CONNECT_TIMEOUT, 2000)  # 2 second connection timeout
+        self.socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5 second receive timeout
+        self.socket.setsockopt(zmq.SNDTIMEO, 5000)  # 5 second send timeout
+
+        try:
+            self.socket.connect(uri)
+            # Test the connection by sending a ping
+            print(f"[tui-test] Testing connection to {uri}")
+            self.socket.send_string("ping")
+            print("[tui-test] Ping sent, waiting for response")
+
+            # Use poller with short timeout to test connection
+            poller = zmq.Poller()
+            poller.register(self.socket, zmq.POLLIN)
+
+            socks = dict(poller.poll(2000))  # 2 second timeout
+            if self.socket in socks and socks[self.socket] == zmq.POLLIN:
+                response_str = self.socket.recv_string()
+                print(f"[tui-test] Received response: {repr(response_str)}")
+                if response_str != "ok":
+                    raise ConnectionError(f"TUI testing server responded with error: {response_str}")
+                print("[tui-test] Connection test successful")
+            else:
+                raise ConnectionError(
+                    f"Cannot connect to TUI testing server at {uri}. "
+                    f"This usually means the --tui-testing-uri flag was specified outside of a tui-testing test case. "
+                    f"The TUI_TESTING_URI environment variable should only be set by tui-testing framework."
+                )
+        except zmq.ZMQError as e:
+            raise ConnectionError(f"Failed to connect to TUI testing server at {uri}: {e}") from e
+        except Exception as e:
+            raise ConnectionError(
+                f"Failed to connect to TUI testing server at {uri}. "
+                f"This usually means the --tui-testing-uri flag was specified outside of a tui-testing test case."
+            ) from e
+
+    def request_screenshot(self, label: str) -> bool:
+        """Request a screenshot capture with the given label."""
+        print(f"[tui-test] Requesting screenshot: {label}")
+        try:
+            # Send simple string message for compatibility
+            message = f"screenshot:{label}"
+            print(f"[tui-test] Sending message: {message}")
+            self.socket.send_string(message)
+            print(f"[tui-test] Message sent, waiting for response...")
+            response_str = self.socket.recv_string()
+            print(f"[tui-test] Received response: {response_str}")
+            return response_str == "ok"
+        except zmq.ZMQError as e:
+            if e.errno == zmq.EFSM:
+                # Socket is in wrong state, try to reset it
+                print(f"[tui-test] Screenshot request failed (socket state error), skipping: {e}")
+                _print_trace("tui-test", f"Screenshot request failed (socket state error), skipping: {e}")
+            else:
+                print(f"[tui-test] Screenshot request failed: {e}")
+                _print_trace("tui-test", f"Screenshot request failed: {e}")
+            return False
+        except Exception as e:
+            print(f"[tui-test] Screenshot request failed: {e}")
+            _print_trace("tui-test", f"Screenshot request failed: {e}")
+            return False
+
+    def ping(self) -> bool:
+        """Send a ping to check connectivity."""
+        try:
+            self.socket.send_string("ping")
+            response_str = self.socket.recv_string()
+            return response_str == "ok"
+        except Exception as e:
+            _print_trace("tui-test", f"Ping failed: {e}")
+            return False
+
+    def close(self):
+        """Close the ZeroMQ connection."""
+        try:
+            self.socket.close()
+            self.context.term()
+        except Exception:
+            pass
 
 def _print_trace(kind: str, msg: str) -> None:
     sys.stdout.write(f"[{kind}] {msg}\n")
@@ -333,19 +431,21 @@ def _execute_hooks(hooks_config: Dict[str, Any], event_name: str, hook_input: Di
                 except Exception as e:
                     _print_trace("hook", f"Hook execution failed: {command} - {e}")
 
-def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.expanduser("~/.codex"), format: str = "codex", checkpoint_cmd: str = None, fast_mode: bool = False) -> str:
+def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.expanduser("~/.codex"), format: str = "codex", checkpoint_cmd: str = None, fast_mode: bool = False, tui_testing_uri: str = None) -> str:
     os.makedirs(workspace, exist_ok=True)
     with open(scenario_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Parse YAML scenario file
-    if not YAML_AVAILABLE:
-        raise RuntimeError("YAML support requires PyYAML library. Install with: pip install PyYAML")
-
+    # Parse scenario file (YAML or JSON)
     try:
-        scenario = yaml.safe_load(content)
-    except yaml.YAMLError as e:
-        _print_trace("error", f"Failed to parse YAML file {scenario_path}: {e}")
+        if YAML_AVAILABLE:
+            scenario = yaml.safe_load(content)
+        else:
+            # Fall back to JSON parsing if YAML is not available
+            scenario = json.loads(content)
+    except (yaml.YAMLError if YAML_AVAILABLE else json.JSONDecodeError) as e:
+        error_type = "YAML" if YAML_AVAILABLE else "JSON"
+        _print_trace("error", f"Failed to parse {error_type} file {scenario_path}: {e}")
         raise
 
     # Initialize repository based on scenario.repo section
@@ -354,14 +454,33 @@ def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.e
     # Extract hooks configuration
     hooks_config = scenario.get("hooks", {})
 
+    # Initialize TUI testing client only if URI is explicitly provided (not from environment)
+    tui_client = None
+    print(f"[tui-test] tui_testing_uri parameter: {tui_testing_uri}")
+    if tui_testing_uri:
+        print(f"[tui-test] Initializing TUI test client with URI: {tui_testing_uri}")
+        try:
+            tui_client = TuiTestClient(tui_testing_uri)
+            _print_trace("tui-test", f"Connected to TUI testing server at {tui_testing_uri}")
+            print(f"[tui-test] TUI test client initialized successfully")
+        except Exception as e:
+            print(f"[tui-test] Failed to initialize TUI test client: {e}")
+            _print_trace("tui-test", f"Failed to connect to TUI testing server: {e}")
+            # If TUI testing is requested but server is not available, exit with error
+            raise RuntimeError(f"TUI testing server not available at {tui_testing_uri}: {e}")
+
     # Run the scenario
     result_path = None
     if fast_mode:
-        result_path = _run_scenario_fast_mode(scenario, workspace, codex_home, format, hooks_config, checkpoint_cmd, scenario_path)
+        result_path = _run_scenario_fast_mode(scenario, workspace, codex_home, format, hooks_config, checkpoint_cmd, scenario_path, tui_client)
     elif format == "claude":
-        result_path = _run_scenario_claude(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path)
+        result_path = _run_scenario_claude(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path, tui_client)
     else:
-        result_path = _run_scenario_codex(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path)
+        result_path = _run_scenario_codex(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path, tui_client)
+
+    # Clean up TUI client
+    if tui_client:
+        tui_client.close()
 
     # Check expectations if present
     expect = scenario.get("expect", {})
@@ -371,7 +490,7 @@ def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.e
     return result_path
 
 
-def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home: str, format: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None) -> str:
+def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home: str, format: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
     """Run scenario in fast mode: sort events by time and execute sequentially."""
     if format == "claude":
         recorder = ClaudeSessionRecorder(codex_home=codex_home, cwd=workspace)
@@ -568,6 +687,12 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
         elif event["type"] == "screenshot":
             label = event["data"]
             _print_trace("screenshot", f"[FAST] Capturing screenshot: {label}")
+            if tui_client:
+                success = tui_client.request_screenshot(label)
+                if success:
+                    _print_trace("screenshot", f"[FAST] Screenshot '{label}' captured successfully")
+                else:
+                    _print_trace("screenshot", f"[FAST] Failed to capture screenshot '{label}'")
         elif event["type"] == "assert":
             assertion = event["data"]
             if not _run_assertions(assertion, workspace):
@@ -625,7 +750,7 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
         logger.close()
         return recorder.rollout_path
 
-def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None) -> str:
+def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
     """Run scenario using Codex format."""
     recorder = RolloutRecorder(codex_home=codex_home, cwd=workspace, instructions=scenario.get("meta",{}).get("instructions"))
     logger = SessionLogger(codex_home=codex_home)
@@ -725,6 +850,12 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
         elif "screenshot" in step:
             label = step["screenshot"]
             _print_trace("screenshot", f"Capturing screenshot: {label}")
+            if tui_client:
+                success = tui_client.request_screenshot(label)
+                if success:
+                    _print_trace("screenshot", f"Screenshot '{label}' captured successfully")
+                else:
+                    _print_trace("screenshot", f"Failed to capture screenshot '{label}'")
             # In a real implementation, this would capture and store a screenshot
         elif "assert" in step:
             assertion = step["assert"]
@@ -789,7 +920,7 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
     return recorder.rollout_path
 
 
-def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None) -> str:
+def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
     """Run scenario using Claude format."""
     recorder = ClaudeSessionRecorder(codex_home=codex_home, cwd=workspace)
     
@@ -882,6 +1013,12 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
         elif "screenshot" in step:
             label = step["screenshot"]
             _print_trace("screenshot", f"Capturing screenshot: {label}")
+            if tui_client:
+                success = tui_client.request_screenshot(label)
+                if success:
+                    _print_trace("screenshot", f"Screenshot '{label}' captured successfully")
+                else:
+                    _print_trace("screenshot", f"Failed to capture screenshot '{label}'")
             # In a real implementation, this would capture and store a screenshot
         elif "assert" in step:
             assertion = step["assert"]

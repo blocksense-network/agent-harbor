@@ -67,6 +67,7 @@ agent-harbor/
 ├─ crates/                     # All Rust crates
 │  ├─ ah-cli/                  # Bin: `ah` (Clap subcommands; TUI glue)
 │  ├─ ah-tui/                  # TUI widgets/flows (Ratatui)
+│  ├─ tui-testing/             # TUI testing framework with ZeroMQ IPC
 │  ├─ ah-core/                 # Task/session lifecycle orchestration
 │  ├─ ah-mux-core/             # Low-level, AH-agnostic multiplexer trait + shared types
 │  ├─ ah-mux/                  # Monolith crate: AH adapter + all backends as feature-gated modules
@@ -131,7 +132,7 @@ The `apps/macos/AgentHarbor/` directory contains the main **AgentHarbor.app** - 
 
 ### Crate mapping (selected)
 
-- CLI/TUI: `ah-cli`, `ah-tui`, `ah-core`, `ah-config`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agent-executor`, `ah-schemas`.
+- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `ah-config`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agent-executor`, `ah-schemas`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.
 

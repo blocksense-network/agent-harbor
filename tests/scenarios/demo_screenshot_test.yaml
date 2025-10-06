@@ -1,0 +1,22 @@
+name: demo_screenshot_test
+tags: ["cli", "tui", "local"]
+timeline:
+  - think:
+      - [100, "Thinking about creating hello.py"]
+  - screenshot: "thinking"
+  - agentToolUse:
+      toolName: "run_command"
+      args:
+        command: "echo 'Creating hello.py'"
+        cwd: "."
+      progress:
+        - [50, "Running echo command..."]
+      result: "Creating hello.py"
+      status: "ok"
+  - screenshot: "command_done"
+  - agentEdits:
+      path: "hello.py"
+      linesAdded: 1
+      linesRemoved: 0
+  - screenshot: "file_created"
+  - complete: true

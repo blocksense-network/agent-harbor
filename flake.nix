@@ -265,6 +265,7 @@
         pkgs.python3Packages.pexpect
         pkgs.python3Packages.ptyprocess
         pkgs.python3Packages.pytest
+        pkgs.python3Packages.pyzmq
         pkgs.ruby
         pkgs.bundler
         pkgs.rubocop
@@ -387,6 +388,7 @@
           export PYTHONPATH="${pkgs.python3Packages.pexpect}/lib/python3.12/site-packages:$PYTHONPATH"
           export PYTHONPATH="${pkgs.python3Packages.ptyprocess}/lib/python3.12/site-packages:$PYTHONPATH"
           export PYTHONPATH="${pkgs.python3Packages.pytest}/lib/python3.12/site-packages:$PYTHONPATH"
+          export PYTHONPATH="${pkgs.python3Packages.pyzmq}/lib/python3.12/site-packages:$PYTHONPATH"
 
           # Playwright setup (use Nix-provided browsers, skip runtime downloads)
           export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"

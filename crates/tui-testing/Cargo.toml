@@ -1,0 +1,34 @@
+[package]
+name = "tui-testing"
+version = "0.1.0"
+edition = "2021"
+description = "TUI testing framework with IPC-based screenshot capture"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "tui-testing-screenshot"
+path = "src/bin.rs"
+
+[[bin]]
+name = "test-guest"
+path = "src/tools/test_guest.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full", "process", "net", "io-util"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+tmq = "0.5"
+async-trait = { workspace = true }
+tempfile = "3.0"
+expectrl = { version = "0.3", features = ["async"] }
+futures-lite = "1.13"
+futures = "0.3"
+vt100 = "0.15"
+insta = { version = "1.40", features = ["json"] }
+regex = "1.0"
+crossterm = "0.29"
+clap = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

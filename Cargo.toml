@@ -41,6 +41,7 @@ members = [
   "crates/ah-tui-multiplexer",
   "crates/ah-tui-test",
   "crates/ah-tui",
+  "crates/tui-testing",
   "crates/ah-macos-launcher",
   # CLI
   "crates/ah-cli",

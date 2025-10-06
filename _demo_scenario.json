@@ -1,0 +1,66 @@
+{
+  "name": "demo_scenario",
+  "repo": {
+    "init": true
+  },
+  "timeline": [
+    {
+      "think": [
+        [
+          500,
+          "Analyzing the user's request"
+        ],
+        [
+          300,
+          "I need to create a Python file"
+        ]
+      ]
+    },
+    {
+      "agentToolUse": {
+        "toolName": "write_file",
+        "args": {
+          "path": "hello.py",
+          "text": "print('Hello, World!')\n"
+        },
+        "result": "File created",
+        "status": "ok"
+      }
+    },
+    {
+      "assistant": [
+        [
+          200,
+          "Created hello.py. Run with: python hello.py"
+        ]
+      ]
+    },
+    {
+      "agentToolUse": {
+        "toolName": "read_file",
+        "args": {
+          "path": "hello.py"
+        },
+        "result": "File read successfully",
+        "status": "ok"
+      }
+    },
+    {
+      "assistant": [
+        [
+          300,
+          "Confirmed content of hello.py."
+        ]
+      ]
+    }
+  ],
+  "expect": {
+    "exitCode": 0,
+    "artifacts": [
+      {
+        "type": "taskFile",
+        "pattern": "hello.py"
+      }
+    ]
+  }
+}
