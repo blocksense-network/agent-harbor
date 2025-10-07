@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://blocksense.dev/agentfs/control/request.logical.json",
+  "title": "AgentFS Control Request - Logical Schema",
+  "description": "This logical schema defines the structure for AgentFS control plane requests. The wire format is SSZ (Simple Serialize) with a (version, length, ssz_bytes) prefix.",
+  "type": "object",
+  "required": ["op"],
+  "properties": {
+    "op": {
+      "type": "string",
+      "enum": [
+        "snapshot.create",
+        "snapshot.list",
+        "snapshot.native",
+        "snapshot.copy_active",
+        "branch.create",
+        "branch.bind",
+        "backstore.create_ramdisk",
+        "backstore.attach_hostfs",
+        "backstore.status",
+        "fd.open",
+        "path.op",
+        "interpose.set",
+        "interpose.get",
+        "policy.set",
+        "policy.get"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "op": { "const": "snapshot.create" } } },
+      "then": {
+        "properties": {
+          "name": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "snapshot.list" } } },
+      "then": {
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "branch.create" } } },
+      "then": {
+        "required": ["from"],
+        "properties": {
+          "from": { "$ref": "#/$defs/SnapshotId" },
+          "name": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "branch.bind" } } },
+      "then": {
+        "required": ["branch"],
+        "properties": {
+          "branch": { "$ref": "#/$defs/BranchId" },
+          "pid": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "snapshot.native" } } },
+      "then": {
+        "required": ["label"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "snapshot.copy_active" } } },
+      "then": {
+        "required": ["label"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "backstore.create_ramdisk" } } },
+      "then": {
+        "required": ["fs", "size_mb"],
+        "properties": {
+          "fs": {
+            "type": "string",
+            "enum": ["apfs", "zfs", "nilfs", "btrfs", "ext4", "refs", "ntfs"]
+          },
+          "size_mb": { "type": "integer", "minimum": 1 },
+          "opts": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "backstore.attach_hostfs" } } },
+      "then": {
+        "required": ["root"],
+        "properties": {
+          "root": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "backstore.status" } } },
+      "then": {
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "fd.open" } } },
+      "then": {
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "flags": { "type": "integer", "minimum": 0 },
+          "access": { "type": "integer", "minimum": 0 },
+          "share": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "path.op" } } },
+      "then": {
+        "required": ["op"],
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": ["rename", "unlink", "chmod", "chown", "utimens", "xattr_set", "xattr_remove"]
+          },
+          "args": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "interpose.set" } } },
+      "then": {
+        "required": ["forwarding"],
+        "properties": {
+          "forwarding": {
+            "type": "string",
+            "enum": ["eager_upperize", "disabled"]
+          },
+          "max_copy_bytes": { "type": "integer", "minimum": 0 },
+          "require_reflink": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "interpose.get" } } },
+      "then": {
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "policy.set" } } },
+      "then": {
+        "required": ["windows"],
+        "properties": {
+          "windows": {
+            "type": "object",
+            "properties": {
+              "open_redirect": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "policy.get" } } },
+      "then": {
+        "additionalProperties": false
+      }
+    }
+  ],
+  "$defs": {
+    "SnapshotId": {
+      "type": "string",
+      "minLength": 6
+    },
+    "BranchId": {
+      "type": "string",
+      "minLength": 6
+    }
+  }
+}

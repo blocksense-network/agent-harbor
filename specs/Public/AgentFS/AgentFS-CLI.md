@@ -39,7 +39,21 @@ ah agent fs backstore attach --root <PATH> --mount <MOUNT>
 
 ah agent fs policy set --windows-open-redirect=<on|off> --mount <MOUNT>
   Enable/disable Windows experimental open-redirect fast-path.
->>>>>>> f8514db (specs: Detail how AgentFS works as an overlay file system)
+
+ah agent fs backstore status --mount <MOUNT>
+  Query the current backstore configuration and capabilities.
+
+ah agent fs interpose set --forwarding=<eager_upperize|disabled> [--max-copy-bytes <BYTES>] [--require-reflink=<true|false>] --mount <MOUNT>
+  Configure interpose/FD-forwarding policy for the volume.
+
+ah agent fs interpose get --mount <MOUNT>
+  Query the current interpose/FD-forwarding configuration.
+
+ah agent fs policy get --mount <MOUNT>
+  Query the current policy settings for the volume.
+
+ah agent fs snapshot copy-active --label <LABEL> --mount <MOUNT>
+  Create a snapshot by copying active upper entries (fallback for non-native backstores).
 
 Notes:
 
@@ -52,7 +66,16 @@ Notes:
 - snapshot list: requests `FsCore::snapshot_list()`; outputs array of `{ id, name }`.
 - branch create: requests `FsCore::branch_create_from_snapshot(snapshot_id, name)`; outputs `{ id, name, parent }`.
 - branch bind: requests binding of the indicated PID (default: calling process) to the branch via `FsCore::bind_process_to_branch(branch_id)`; server associates the PID with the branch context.
-- branch exec: convenience flow: bind current process to branch → exec COMMAND; server resolves branch by the caller’s PID for subsequent filesystem ops.
+- branch exec: convenience flow: bind current process to branch → exec COMMAND; server resolves branch by the caller's PID for subsequent filesystem ops.
+- backstore create-ramdisk: requests `backstore.create_ramdisk(fs, size_mb, opts)`; outputs `{ mount, supports_native_snapshots }`.
+- backstore attach: requests `backstore.attach_hostfs(root)`; outputs `{ root }`.
+- backstore status: requests `backstore.status()`; outputs `{ kind, root_or_mount, supports_native_snapshots }`.
+- interpose set: requests `interpose.set(forwarding, max_copy_bytes?, require_reflink?)`; outputs success confirmation.
+- interpose get: requests `interpose.get()`; outputs `{ forwarding, max_copy_bytes, require_reflink }`.
+- policy set: requests `policy.set(windows: { open_redirect: bool })`; outputs success confirmation.
+- policy get: requests `policy.get()`; outputs `{ windows: { open_redirect: bool } }`.
+- snapshot native: requests `snapshot.native(label)`; outputs `{ id }` (if backstore supports native snapshots).
+- snapshot copy-active: requests `snapshot.copy_active(label)`; outputs `{ id }` (fallback for non-native backstores).
 
 ### Transport Details by Platform
 
@@ -70,36 +93,32 @@ Notes:
   - IOCTL_AGENTFS_BACKSTORE_ATTACH
   - IOCTL_AGENTFS_POLICY_SET
   - IOCTL_AGENTFS_FD_OPEN
-- Payloads: METHOD_BUFFERED; input/output are small JSON or packed structs (versioned). Example JSON payloads:
-  - Snapshot create (in): `{ "op":"snapshot.create", "name":"<NAME>" }`
-  - Snapshot create (out): `{ "id":"<ID>", "name":"<NAME>" }`
-  - Branch create (in): `{ "op":"branch.create", "from":"<SNAPSHOT_ID>", "name":"<NAME>" }`
-  - Branch bind (in): `{ "op":"branch.bind", "branch":"<BRANCH_ID>", "pid":<PID> }`
-- JSON schemas:
-  - Request: `specs/Public/Schemas/agentfs-control.request.schema.json`
-  - Response: `specs/Public/Schemas/agentfs-control.response.schema.json`
-- The adapter parses the JSON (or struct), calls the appropriate `FsCore` method, and fills the output buffer.
+- Payloads: METHOD_BUFFERED; input/output are small SSZ-encoded messages. Versioning is handled via a message prefix: `(version: u16, length: u32, ssz_bytes)`. Messages are encoded using SSZ (Simple Serialize) format for compact, secure binary serialization.
+- Logical Schemas (defining logical structure, SSZ is the wire format):
+  - Request: `specs/Public/Schemas/agentfs-control.request.logical.json`
+  - Response: `specs/Public/Schemas/agentfs-control.response.logical.json`
+- The adapter parses the SSZ-encoded request, calls the appropriate `FsCore` method, and fills the output buffer with SSZ-encoded response.
 
 #### Linux/macOS (FUSE)
 
 - Mechanism: libfuse `ioctl` on a special control file within the mount (common pattern; see libfuse ioctl example). The adapter exports `.agentfs/control` as a regular file that accepts ioctl.
 - Client flow:
   - Open `<MOUNT>/.agentfs/control`
-  - Call `ioctl(fd, AGENTFS_IOCTL_CMD, &buffer)` where `AGENTFS_IOCTL_CMD` is a private ioctl number; buffer is JSON or a compact struct.
+  - Call `ioctl(fd, AGENTFS_IOCTL_CMD, &buffer)` where `AGENTFS_IOCTL_CMD` is a private ioctl number; buffer contains SSZ-encoded request.
 - Supported operations mirror those on Windows:
-  - snapshot.create, snapshot.list, branch.create, branch.bind
+  - snapshot.create, snapshot.list, snapshot.native, snapshot.copy_active, branch.create, branch.bind, backstore.create_ramdisk, backstore.attach_hostfs, backstore.status, interpose.set, interpose.get, policy.set, policy.get
 - Return values: success indicated by 0; results are copies into the user buffer; errors mapped to `-errno`.
-- JSON schemas:
-  - Request: `specs/Public/Schemas/agentfs-control.request.schema.json`
-  - Response: `specs/Public/Schemas/agentfs-control.response.schema.json`
+- Logical Schemas (defining logical structure, SSZ is the wire format):
+  - Request: `specs/Public/Schemas/agentfs-control.request.logical.json`
+  - Response: `specs/Public/Schemas/agentfs-control.response.logical.json`
 
 #### macOS (FSKit)
 
-- Primary mechanism: XPC to the FS extension (recommended by FSKit); the extension exposes methods to handle `snapshot.create`, `snapshot.list`, `branch.create`, `branch.bind` and calls `FsCore`.
+- Primary mechanism: XPC to the FS extension (recommended by FSKit); the extension exposes methods to handle all control operations and calls `FsCore`.
 - Fallback: a control file under `<MOUNT>/.agentfs/control` that intercepts writes or ioctls (if supported) and executes commands (same as FUSE path). This path is useful for a single CLI that works with either FSKit or FUSE during development.
-- JSON schemas:
-  - Request: `specs/Public/Schemas/agentfs-control.request.schema.json`
-  - Response: `specs/Public/Schemas/agentfs-control.response.schema.json`
+- Logical Schemas (defining logical structure, SSZ is the wire format):
+  - Request: `specs/Public/Schemas/agentfs-control.request.logical.json`
+  - Response: `specs/Public/Schemas/agentfs-control.response.logical.json`
 
 ### Error Handling
 
@@ -127,11 +146,11 @@ Notes:
 - Only allow control from authenticated principals:
   - Windows: check caller token on DeviceIoControl (server side) and validate admin/user policy.
   - FUSE/FSKit: restrict `.agentfs/control` permissions (root/admin only) or enforce per‑user policy inside the adapter.
-- Validate payloads; limit name lengths; sanitize JSON.
+- Validate SSZ payloads against schemas; limit name lengths and enforce reasonable limits on all fields.
 
 ### Implementation Notes
 
-- The JSON control format keeps the ABI stable and human‑inspectable. For performance, a packed C struct can be used; version fields are recommended.
+- The SSZ control format provides compact, secure binary serialization while keeping the ABI stable and verifiable. Version prefixes are required for compatibility.
 - On Windows define IOCTL codes with `CTL_CODE(FILE_DEVICE_UNKNOWN | 0x8000, FUNCTION, METHOD_BUFFERED, FILE_ANY_ACCESS)`.
 - On FUSE, implement `ioctl` handler in the adapter, and parse commands only when the path is `.agentfs/control`.
 - On FSKit, expose an XPC interface from the extension target; the CLI uses a matching XPC client to send commands.

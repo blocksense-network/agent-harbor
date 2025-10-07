@@ -11,7 +11,7 @@ AgentFS exposes a small control plane to manage snapshots and branches on a moun
 - branch.create — create a writable branch from a snapshot (optional name)
 - branch.bind — bind the current (or specified) process to a branch view
 
-All ops carry a `version` field. Current value: `"1"`.
+Versioning is handled via a message prefix: `(version, length, ssz_bytes)`. Current version: `1`.
 
 ## New: Backstore lifecycle
 - `backstore.create_ramdisk { fs: "apfs|zfs|nilfs|btrfs|ext4|refs|ntfs", size_mb: u32, opts?: {...} } -> { mount, supports_native_snapshots }`
@@ -38,10 +38,10 @@ All ops carry a `version` field. Current value: `"1"`.
 
 ### Schemas
 
-- Request SSZ Schema: `specs/Public/Schemas/agentfs-control.request.schema.json`
-- Response SSZ Schema: `specs/Public/Schemas/agentfs-control.response.schema.json`
+- Request Logical Schema: `specs/Public/Schemas/agentfs-control.request.logical.json`
+- Response Logical Schema: `specs/Public/Schemas/agentfs-control.response.logical.json`
 
-Adapters and clients MUST validate messages against these schemas. Messages are encoded using SSZ (Simple Serialize) format for compact, secure binary serialization. The schemas define the logical structure; implementations MUST use SSZ-compatible types that remain semantically equivalent to the schema and include a version field.
+Adapters and clients MUST validate messages against these schemas. Messages are encoded using SSZ (Simple Serialize) format for compact, secure binary serialization. The schemas define the logical structure; implementations MUST use SSZ-compatible types that remain semantically equivalent to the schema. Versioning is handled via the message prefix, not a version field.
 
 ### Error Mapping
 
@@ -63,7 +63,7 @@ Adapters and clients MUST validate messages against these schemas. Messages are 
   - Input/Output buffers are small and copied via the FSD.
 - Client steps:
   1. `HANDLE h = CreateFileW(L"\\\\.\\X:", GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, ...)`.
-  2. Build request SSZ, e.g. encoded `{ "version":"1", "op":"snapshot.create", "name":"clean" }`.
+  2. Build request SSZ, e.g. encoded `{ "op":"snapshot.create", "name":"clean" }`.
   3. `DeviceIoControl(h, IOCTL_AGENTFS_SNAPSHOT_CREATE, inBuf, inLen, outBuf, outLen, &bytes, NULL)`.
 - Server behavior:
   - Parse SSZ request, call `FsCore::{snapshot_create|snapshot_list|branch_create_from_snapshot|bind_process_to_branch}`.
@@ -97,7 +97,7 @@ Adapters and clients MUST validate messages against these schemas. Messages are 
 
 ### Versioning
 
-- Requests include `version`. Servers MUST reject unsupported versions with an error.
+- Messages use a prefix format: `(version: u16, length: u32, ssz_bytes)`. Servers MUST reject unsupported versions with an error.
 - New ops or fields SHOULD be additive; when incompatible changes are required, bump `version`.
 
 ### Notes for Adapter Implementers

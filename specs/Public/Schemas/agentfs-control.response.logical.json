@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://blocksense.dev/agentfs/control/response.logical.json",
+  "title": "AgentFS Control Response - Logical Schema",
+  "description": "This logical schema defines the structure for AgentFS control plane responses. The wire format is SSZ (Simple Serialize) with a (version, length, ssz_bytes) prefix.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/Error" },
+    { "$ref": "#/$defs/SnapshotCreate" },
+    { "$ref": "#/$defs/SnapshotList" },
+    { "$ref": "#/$defs/SnapshotNative" },
+    { "$ref": "#/$defs/SnapshotCopyActive" },
+    { "$ref": "#/$defs/BranchCreate" },
+    { "$ref": "#/$defs/BranchBind" },
+    { "$ref": "#/$defs/BackstoreCreateRamdisk" },
+    { "$ref": "#/$defs/BackstoreAttachHostfs" },
+    { "$ref": "#/$defs/BackstoreStatus" },
+    { "$ref": "#/$defs/FdOpen" },
+    { "$ref": "#/$defs/PathOp" },
+    { "$ref": "#/$defs/InterposeSet" },
+    { "$ref": "#/$defs/InterposeGet" },
+    { "$ref": "#/$defs/PolicySet" },
+    { "$ref": "#/$defs/PolicyGet" }
+  ],
+  "$defs": {
+    "Error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": { "type": "string" },
+        "code": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "Snapshot": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "Branch": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "parent": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "SnapshotCreate": {
+      "type": "object",
+      "required": ["op", "snapshot"],
+      "properties": {
+        "op": { "const": "snapshot.create" },
+        "snapshot": { "$ref": "#/$defs/Snapshot" }
+      },
+      "additionalProperties": false
+    },
+    "SnapshotList": {
+      "type": "object",
+      "required": ["op", "snapshots"],
+      "properties": {
+        "op": { "const": "snapshot.list" },
+        "snapshots": { "type": "array", "items": { "$ref": "#/$defs/Snapshot" } }
+      },
+      "additionalProperties": false
+    },
+    "BranchCreate": {
+      "type": "object",
+      "required": ["op", "branch"],
+      "properties": {
+        "op": { "const": "branch.create" },
+        "branch": { "$ref": "#/$defs/Branch" }
+      },
+      "additionalProperties": false
+    },
+    "BranchBind": {
+      "type": "object",
+      "required": ["op", "branch", "pid"],
+      "properties": {
+        "op": { "const": "branch.bind" },
+        "branch": { "type": "string" },
+        "pid": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "SnapshotNative": {
+      "type": "object",
+      "required": ["op", "id"],
+      "properties": {
+        "op": { "const": "snapshot.native" },
+        "id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "SnapshotCopyActive": {
+      "type": "object",
+      "required": ["op", "id"],
+      "properties": {
+        "op": { "const": "snapshot.copy_active" },
+        "id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "BackstoreCreateRamdisk": {
+      "type": "object",
+      "required": ["op", "mount", "supports_native_snapshots"],
+      "properties": {
+        "op": { "const": "backstore.create_ramdisk" },
+        "mount": { "type": "string" },
+        "supports_native_snapshots": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "BackstoreAttachHostfs": {
+      "type": "object",
+      "required": ["op", "root"],
+      "properties": {
+        "op": { "const": "backstore.attach_hostfs" },
+        "root": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "BackstoreStatus": {
+      "type": "object",
+      "required": ["op", "kind", "root_or_mount", "supports_native_snapshots"],
+      "properties": {
+        "op": { "const": "backstore.status" },
+        "kind": { "type": "string", "enum": ["none", "hostfs", "ramdisk"] },
+        "root_or_mount": { "type": "string" },
+        "supports_native_snapshots": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "FdOpen": {
+      "type": "object",
+      "required": ["op"],
+      "oneOf": [
+        {
+          "properties": {
+            "op": { "const": "fd.open" },
+            "ok": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "fd.open" },
+            "err": {
+              "type": "object",
+              "properties": {
+                "FORWARDING_UNAVAILABLE": {
+                  "type": "object",
+                  "properties": {
+                    "reason": {
+                      "type": "string",
+                      "enum": ["no_reflink", "size_threshold", "policy"]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "PathOp": {
+      "type": "object",
+      "required": ["op", "ok"],
+      "properties": {
+        "op": { "const": "path.op" },
+        "ok": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "InterposeSet": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": { "const": "interpose.set" }
+      },
+      "additionalProperties": false
+    },
+    "InterposeGet": {
+      "type": "object",
+      "required": ["op", "forwarding", "max_copy_bytes", "require_reflink"],
+      "properties": {
+        "op": { "const": "interpose.get" },
+        "forwarding": {
+          "type": "string",
+          "enum": ["eager_upperize", "disabled"]
+        },
+        "max_copy_bytes": { "type": "integer", "minimum": 0 },
+        "require_reflink": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "PolicySet": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": { "const": "policy.set" }
+      },
+      "additionalProperties": false
+    },
+    "PolicyGet": {
+      "type": "object",
+      "required": ["op", "windows"],
+      "properties": {
+        "op": { "const": "policy.get" },
+        "windows": {
+          "type": "object",
+          "properties": {
+            "open_redirect": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
