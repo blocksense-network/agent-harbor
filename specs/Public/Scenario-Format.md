@@ -104,12 +104,23 @@ expect:
 - **timeline[]** (unified event sequence):
   - `llmResponse`: **NEW** - Groups multiple response elements into a single LLM API response. Contains sub-events that get coalesced based on the target LLM API style (OpenAI vs Anthropic).
     - `think`: Array of `[milliseconds, text]` pairs for agent thinking events. For OpenAI API style: thinking is processed internally but **NOT included in API responses** (matches OpenAI's behavior where thinking is never exposed). For Anthropic API style: thinking is exposed as separate "thinking" blocks in the response content array.
-    - `runCmd`: Execute terminal/shell commands. Fields: `cmd` (command string), `cwd` (optional working directory).
-    - `grep`: Search for patterns in files. Fields: `pattern`, `path`, `flags` (optional grep flags).
-    - `readFile`: Read file contents. Fields: `path`, `encoding` (optional, defaults to utf-8).
-    - `listDir`: List directory contents. Fields: `path`, `recursive` (optional boolean).
+    - `runCmd`: Execute terminal/shell commands. Fields: `cmd` (command string), `cwd` (optional working directory), `timeout` (optional milliseconds), `description` (optional description), `run_in_background` (optional boolean).
+    - `grep`: Search for patterns in files. Fields: `pattern`, `path`, `glob` (optional glob pattern), `output_mode` (optional: content/files_with_matches/count), `-B` (optional before context), `-A` (optional after context), `-C` (optional context), `-n` (optional line numbers), `-i` (optional case insensitive), `type` (optional file type), `head_limit` (optional result limit), `multiline` (optional multiline mode).
+    - `readFile`: Read file contents. Fields: `path`, `encoding` (optional, defaults to utf-8), `offset` (optional line offset), `limit` (optional line limit).
+    - `listDir`: List directory contents. Fields: `path`, `recursive` (optional boolean), `pattern` (optional glob pattern).
     - `find`: Find files by pattern. Fields: `path`, `name` (filename pattern), `type` (optional: file/dir).
     - `sed`: Stream editor operations. Fields: `expression`, `path`, `inplace` (optional boolean).
+    - `editFile`: Edit file with exact string replacements. Fields: `path`, `old_string`, `new_string`, `replace_all` (optional boolean).
+    - `writeFile`: Write content to file. Fields: `path`, `content`.
+    - `task`: Launch specialized agent for complex tasks. Fields: `description`, `prompt`, `subagent_type`.
+    - `webFetch`: Fetch content from URL with AI analysis. Fields: `url`, `prompt`.
+    - `webSearch`: Search the web for information. Fields: `query`, `allowed_domains` (optional array), `blocked_domains` (optional array).
+    - `todoWrite`: Manage structured task lists. Fields: `todos` (array of todo objects).
+    - `notebookEdit`: Edit Jupyter notebook cells. Fields: `notebook_path`, `cell_id` (optional), `new_source`, `cell_type` (optional), `edit_mode` (optional: replace/insert/delete).
+    - `exitPlanMode`: Exit plan mode with summary. Fields: `plan`.
+    - `bashOutput`: Retrieve output from background bash shell. Fields: `bash_id`, `filter` (optional regex).
+    - `killShell`: Kill running background bash shell. Fields: `shell_id`.
+    - `slashCommand`: Execute slash command. Fields: `command`.
     - `agentEdits`: File modification event with path and change metrics. Gets mapped to appropriate file editing tools for the target agent.
     - `assistant`: Array of `[milliseconds, text]` pairs for assistant responses
   - `advanceMs`: Advance logical time by specified milliseconds. Must be >= max time from concurrent events.

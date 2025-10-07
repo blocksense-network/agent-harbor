@@ -323,7 +323,7 @@ class MockAPIHandler(BaseHTTPRequestHandler):
             if event_type in ["complete", "merge", "advanceMs", "userInputs", "userCommands", "userEdits"]:
                 # Skip non-response-generating events (handled by test harness)
                 continue
-            elif event_type in ["think", "runCmd", "grep", "readFile", "listDir", "find", "sed", "agentEdits", "assistant"]:
+            elif event_type in ["think", "runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand", "agentEdits", "assistant"]:
                 # Individual response event
                 response_parts.append(current_event)
                 break
@@ -368,7 +368,7 @@ class MockAPIHandler(BaseHTTPRequestHandler):
                         assistant_text += text
                 else:
                     assistant_text += str(event_data)
-            elif event_type in ["runCmd", "grep", "readFile", "listDir", "find", "sed"]:
+            elif event_type in ["runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand"]:
                 # Tool use events - map to agent-specific tool calls
                 tool_call = self.server._map_tool_call(event_type, event_data if isinstance(event_data, dict) else {})
                 if tool_call:
@@ -452,6 +452,10 @@ class MockAPIHandler(BaseHTTPRequestHandler):
         # Extract API key for session management
         api_key = self.headers.get("authorization", "").replace("Bearer ", "") or self.headers.get("api-key", "default")
 
+        # Validate tool definitions in requests (for Claude and other agents that define tools upfront)
+        if body.get("tools") and self.server.tools_profile in ["claude"]:
+            self.server._validate_tool_definitions(body["tools"], body)
+
         # For Claude, save requests that define tools to capture tool definitions
         if self.server.tools_profile == "claude" and body.get("tools"):
             self.server._save_agent_request(body, "claude_tools_request", "Capturing Claude request with tools")
@@ -469,8 +473,8 @@ class MockAPIHandler(BaseHTTPRequestHandler):
                     # Create a synthetic tool call for validation
                     request_tool_calls.append({"id": tool_call_id, "function": {"name": "unknown_tool"}})
 
-        # Validate any tool calls found in the request (skip for Claude with tools)
-        if request_tool_calls and not (self.server.tools_profile == "claude" and body.get("tools")):
+        # Validate any tool calls found in the request
+        if request_tool_calls:
             self.server._validate_tools(request_tool_calls, body)
 
         user_text = self._infer_text_from_messages(messages)
@@ -612,10 +616,22 @@ class MockAPIServer(HTTPServer):
         self.valid_tools = {
             "codex": set(),  # TODO: Test with actual Codex CLI to verify these tools
             "claude": {
-                "run_terminal_cmd",  # Empirically verified: Claude uses this for terminal commands
-                "grep",              # Empirically verified: Search operations
-                "read_file",         # Empirically verified: File reading
-                "list_dir",          # Empirically verified: Directory listing
+                # Updated to match actual Claude 2.0.5 tool definitions
+                "Bash",              # Terminal command execution
+                "Grep",              # Advanced search tool
+                "Read",              # File reading
+                "Glob",              # File pattern matching
+                "Edit",              # File editing with string replacements
+                "Write",             # File writing
+                "Task",              # Launch specialized agents
+                "WebFetch",          # URL content fetching
+                "WebSearch",         # Web search functionality
+                "TodoWrite",         # Task management
+                "NotebookEdit",      # Jupyter notebook editing
+                "ExitPlanMode",      # Exit plan mode
+                "BashOutput",        # Background bash output retrieval
+                "KillShell",         # Kill background shells
+                "SlashCommand",      # Slash command execution
             },
             "gemini": set(),  # TODO: Verify with actual Gemini CLI
             "opencode": set(),  # TODO: Verify with actual OpenCode
@@ -632,11 +648,22 @@ class MockAPIServer(HTTPServer):
                         # Codex mappings (needs empirical verification)
                     },
                     "claude": {
-                        # Claude empirically verified tools
-                        "runCmd": {"name": "run_terminal_cmd", "direct": True, "args_map": {"cmd": "command", "cwd": "cwd"}},
-                        "grep": {"name": "grep", "direct": True, "args_map": {"pattern": "pattern", "path": "path", "flags": "flags"}},
-                        "readFile": {"name": "read_file", "direct": True, "args_map": {"path": "path", "encoding": "encoding"}},
-                        "listDir": {"name": "list_dir", "direct": True, "args_map": {"path": "path", "recursive": "recursive"}},
+                        # Claude empirically verified tools - updated to match Claude 2.0.5 actual tool definitions
+                        "runCmd": {"name": "Bash", "direct": True, "args_map": {"cmd": "command", "cwd": "cwd", "timeout": "timeout", "description": "description", "run_in_background": "run_in_background"}},
+                        "grep": {"name": "Grep", "direct": True, "args_map": {"pattern": "pattern", "path": "path", "glob": "glob", "output_mode": "output_mode", "-B": "-B", "-A": "-A", "-C": "-C", "-n": "-n", "-i": "-i", "type": "type", "head_limit": "head_limit", "multiline": "multiline"}},
+                        "readFile": {"name": "Read", "direct": True, "args_map": {"path": "file_path", "offset": "offset", "limit": "limit"}},
+                        "listDir": {"name": "Glob", "direct": True, "args_map": {"pattern": "pattern", "path": "path"}},
+                        "editFile": {"name": "Edit", "direct": True, "args_map": {"path": "file_path", "old_string": "old_string", "new_string": "new_string", "replace_all": "replace_all"}},
+                        "writeFile": {"name": "Write", "direct": True, "args_map": {"path": "file_path", "content": "content"}},
+                        "task": {"name": "Task", "direct": True, "args_map": {"description": "description", "prompt": "prompt", "subagent_type": "subagent_type"}},
+                        "webFetch": {"name": "WebFetch", "direct": True, "args_map": {"url": "url", "prompt": "prompt"}},
+                        "webSearch": {"name": "WebSearch", "direct": True, "args_map": {"query": "query", "allowed_domains": "allowed_domains", "blocked_domains": "blocked_domains"}},
+                        "todoWrite": {"name": "TodoWrite", "direct": True, "args_map": {"todos": "todos"}},
+                        "notebookEdit": {"name": "NotebookEdit", "direct": True, "args_map": {"notebook_path": "notebook_path", "cell_id": "cell_id", "new_source": "new_source", "cell_type": "cell_type", "edit_mode": "edit_mode"}},
+                        "exitPlanMode": {"name": "ExitPlanMode", "direct": True, "args_map": {"plan": "plan"}},
+                        "bashOutput": {"name": "BashOutput", "direct": True, "args_map": {"bash_id": "bash_id", "filter": "filter"}},
+                        "killShell": {"name": "KillShell", "direct": True, "args_map": {"shell_id": "shell_id"}},
+                        "slashCommand": {"name": "SlashCommand", "direct": True, "args_map": {"command": "command"}},
                     },
                     "gemini": {
                         # Gemini mappings (needs empirical verification)
@@ -654,6 +681,29 @@ class MockAPIServer(HTTPServer):
                         # Goose mappings (needs empirical verification)
                     },
                 }
+
+    def _validate_tool_definitions(self, tool_definitions, request_body=None):
+        """Validate that tool definitions match the current tools profile."""
+        if not tool_definitions:
+            return  # No tools to validate
+
+        profile_tools = self.valid_tools.get(self.tools_profile, set())
+
+        for tool_def in tool_definitions:
+            tool_name = tool_def.get("name")
+            if not tool_name:
+                continue
+
+            if tool_name not in profile_tools:
+                error_msg = f"Tool '{tool_name}' is not in the valid tools profile for {self.tools_profile}"
+                if hasattr(self, 'strict_tools_validation') and self.strict_tools_validation:
+                    raise ValueError(f"Strict tools validation failed: {error_msg}")
+                else:
+                    # In non-strict mode, just log the issue but continue
+                    print(f"WARNING: {error_msg}")
+                    if hasattr(self, '_save_agent_request'):
+                        self._save_agent_request(request_body, f"unknown_tool_{tool_name}",
+                                               f"Unknown tool definition: {tool_name}")
 
     def _validate_tools(self, tool_calls, request_body=None):
         """Validate that tool calls match the current tools profile."""
