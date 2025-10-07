@@ -197,7 +197,7 @@ def setup_working_directory(scenario_name, working_dir, agent_version):
     return repo_dir, user_home_dir
 
 
-def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, foreground=False):
+def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, foreground=False, tui=False):
     """Create process-compose YAML configuration."""
 
     project_root = find_project_root()
@@ -344,13 +344,14 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
                 "command": ah_command,
                 "working_dir": str(repo_dir),
                 "environment": [f"{k}={v}" for k, v in env_vars.items()],
-                **({} if foreground else {
-                    "depends_on": {
-                        "mock-server": {
-                            "condition": "process_healthy"
-                        }
+                "depends_on": {
+                    "mock-server": {
+                        "condition": "process_healthy"
                     }
-                })
+                },
+                "availability": {
+                    "exit_on_end": True
+                }
             }
         }
     }
@@ -410,6 +411,12 @@ Examples:
 
   # Dry run to see what would be executed
   %(prog)s --dry-run --prompt "Create a hello world program"
+
+  # Run in foreground mode (ah agent gets your TTY, auto-cleanup)
+  %(prog)s --foreground --agent-type claude --prompt "Create hello.py"
+
+  # Run with TUI for monitoring all processes
+  %(prog)s --tui --agent-type claude --prompt "Create hello.py"
 
   # Generate config only
   %(prog)s --scenario test_scenario --config-only > config.yaml
@@ -502,7 +509,13 @@ Examples:
     parser.add_argument(
         "-f", "--foreground",
         action="store_true",
-        help="Run the ah agent start process in foreground (disables TUI)"
+        help="Run the ah agent start process in foreground with automatic cleanup (uses process-compose run)"
+    )
+
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Enable process-compose TUI mode for interactive monitoring"
     )
 
     # TUI testing options
@@ -557,7 +570,7 @@ Examples:
     repo_dir, user_home_dir = setup_working_directory(scenario_name, working_dir, agent_version)
 
     # Create configuration
-    config = create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, args.foreground)
+    config = create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, args.foreground, args.tui)
 
     # Save config to file
     if args.config_file:
@@ -619,8 +632,11 @@ Examples:
 
         # Print process-compose command
         print("Process Compose Command:")
-        tui_flag = "" if args.foreground else " --tui=false"
-        print(f"  process-compose up --config {config_path}{tui_flag}")
+        if args.foreground:
+            print(f"  process-compose run ah-agent --config {config_path}")
+        else:
+            tui_flag = "" if args.tui else " --tui=false"
+            print(f"  process-compose up --config {config_path}{tui_flag}")
         print()
 
         print("Working directory setup:")
@@ -634,14 +650,24 @@ Examples:
         print(f"\nLaunching process-compose with config: {config_path}")
 
         try:
-            # Launch process-compose
-            cmd = [
-                "process-compose", "up",
-                "--config", str(config_path)
-            ]
-            if not args.foreground:
-                cmd.append("--tui=false")  # Disable TUI for headless operation when not in foreground mode
-            subprocess.run(cmd, check=True)
+            if args.foreground:
+                # Use process-compose run for foreground mode - attaches ah-agent to current TTY
+                cmd = [
+                    "process-compose", "run", "ah-agent",
+                    "--config", str(config_path)
+                ]
+                print(f"Running: {' '.join(cmd)}")
+                subprocess.run(cmd, check=True)
+            else:
+                # Use process-compose up for background/TUI mode
+                cmd = [
+                    "process-compose", "up",
+                    "--config", str(config_path)
+                ]
+                if not args.tui:
+                    cmd.append("--tui=false")  # Disable TUI for headless operation when not in TUI mode
+                print(f"Running: {' '.join(cmd)}")
+                subprocess.run(cmd, check=True)
         except KeyboardInterrupt:
             print("\nProcess interrupted by user")
         except subprocess.CalledProcessError as e:
