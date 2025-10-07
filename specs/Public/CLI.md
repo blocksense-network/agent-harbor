@@ -1144,6 +1144,8 @@ OPTIONS:
   --non-interactive                  Enable non-interactive mode (e.g., codex exec)
   --output <text|text-normalized|json|json-normalized>
                                      Output format: text (default), text-normalized, json, or json-normalized
+  --llm-api <URI>                    Custom LLM API URI for agent backend
+  --llm-api-key <KEY>                API key for custom LLM API
   --repo <PATH>                      Repository path (auto-detected if not provided)
   --working-copy <auto|cow-overlay|worktree|in-place>
                                      Working copy mode for isolation (default: auto)

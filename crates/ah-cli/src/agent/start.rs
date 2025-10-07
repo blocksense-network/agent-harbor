@@ -6,6 +6,27 @@ use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
 
+/// Supported agent types
+#[derive(Clone, Debug, PartialEq, ValueEnum)]
+pub enum AgentType {
+    /// Mock agent for testing
+    Mock,
+    /// OpenAI Codex CLI agent
+    Codex,
+    /// Anthropic Claude Code agent
+    Claude,
+    /// Google Gemini CLI agent
+    Gemini,
+    /// OpenCode agent
+    Opencode,
+    /// Qwen Code agent
+    Qwen,
+    /// Cursor CLI agent
+    CursorCli,
+    /// Goose agent
+    Goose,
+}
+
 /// Working copy mode for agent execution
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
 pub enum WorkingCopyMode {
@@ -36,7 +57,7 @@ pub enum OutputFormat {
 pub struct AgentStartArgs {
     /// Agent type to start
     #[arg(long, default_value = "mock")]
-    pub agent: String,
+    pub agent: AgentType,
 
     /// Enable non-interactive mode (e.g., codex exec)
     #[arg(long)]
@@ -45,6 +66,14 @@ pub struct AgentStartArgs {
     /// Output format: text, text-normalized, json, or json-normalized
     #[arg(long, default_value = "text")]
     pub output: OutputFormat,
+
+    /// Custom LLM API URI for agent backend
+    #[arg(long, value_name = "URI")]
+    pub llm_api: Option<String>,
+
+    /// API key for custom LLM API
+    #[arg(long, value_name = "KEY")]
+    pub llm_api_key: Option<String>,
 
     /// Working copy mode
     #[arg(long, default_value = "in-place")]
@@ -115,19 +144,49 @@ impl AgentStartArgs {
     /// Run the agent start command
     pub async fn run(self) -> anyhow::Result<()> {
         // For milestone 2.4.1, we support the "mock" agent for E2E testing
-        if self.agent == "mock" {
+        if matches!(self.agent, AgentType::Mock) {
             return self.run_mock_agent().await;
         }
 
         // For milestone 2.4.4, we support the "codex" agent in non-interactive mode
-        if self.agent == "codex" && self.non_interactive {
+        if matches!(self.agent, AgentType::Codex) && self.non_interactive {
             return self.run_codex_agent().await;
+        }
+
+        // For Claude Code agent
+        if matches!(self.agent, AgentType::Claude) {
+            return self.run_claude_agent().await;
+        }
+
+        // For Gemini CLI agent
+        if matches!(self.agent, AgentType::Gemini) {
+            return self.run_gemini_agent().await;
+        }
+
+        // For OpenCode agent
+        if matches!(self.agent, AgentType::Opencode) {
+            return self.run_opencode_agent().await;
+        }
+
+        // For Qwen Code agent
+        if matches!(self.agent, AgentType::Qwen) {
+            return self.run_qwen_agent().await;
+        }
+
+        // For Cursor CLI agent
+        if matches!(self.agent, AgentType::CursorCli) {
+            return self.run_cursor_cli_agent().await;
+        }
+
+        // For Goose agent
+        if matches!(self.agent, AgentType::Goose) {
+            return self.run_goose_agent().await;
         }
 
         // For other agents, this is still a placeholder that will be replaced
         // when milestone 2.4 is implemented.
         eprintln!(
-            "Agent start command is not yet implemented for agent '{}'.",
+            "Agent start command is not yet implemented for agent '{:?}'.",
             self.agent
         );
         eprintln!("This is a placeholder for milestone 2.4 implementation.");
@@ -135,9 +194,11 @@ impl AgentStartArgs {
 
         // Print the parsed arguments for debugging
         eprintln!("Parsed arguments:");
-        eprintln!("  agent: {}", self.agent);
+        eprintln!("  agent: {:?}", self.agent);
         eprintln!("  non_interactive: {}", self.non_interactive);
         eprintln!("  output: {:?}", self.output);
+        eprintln!("  llm_api: {:?}", self.llm_api);
+        eprintln!("  llm_api_key: {:?}", self.llm_api_key);
         eprintln!("  working_copy: {:?}", self.working_copy);
         eprintln!("  cwd: {:?}", self.cwd);
         eprintln!("  task_id: {:?}", self.task_id);
@@ -437,6 +498,13 @@ impl AgentStartArgs {
             cmd.env("CODEX_HOME", format!("{}/.codex", home));
         }
 
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            cmd.env("CODEX_API_BASE", llm_api);
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("CODEX_API_KEY", api_key);
+        }
+
         let json_flag = matches!(self.output, OutputFormat::Json | OutputFormat::JsonNormalized);
         eprintln!("Running codex command: codex exec{}", if json_flag { " --json" } else { "" });
 
@@ -449,6 +517,317 @@ impl AgentStartArgs {
         } else {
             eprintln!("Codex agent exited with status: {}", status);
             anyhow::bail!("Codex agent exited with status: {}", status);
+        }
+    }
+
+    /// Run the Claude Code agent
+    async fn run_claude_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting Claude Code agent...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the claude command
+        let mut cmd = Command::new("claude");
+
+        // For now, Claude Code doesn't have a non-interactive mode like Codex
+        // We just pass through any agent flags as arguments
+        for flag in &self.agent_flags {
+            cmd.arg(flag);
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for Claude Code
+        if let Ok(home) = std::env::var("HOME") {
+            // Claude Code uses standard home directory
+        }
+
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            cmd.env("ANTHROPIC_BASE_URL", llm_api);
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("ANTHROPIC_API_KEY", api_key);
+        }
+
+        eprintln!("Running claude command: claude {}", self.agent_flags.join(" "));
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("Claude Code agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("Claude Code agent exited with status: {}", status);
+            anyhow::bail!("Claude Code agent exited with status: {}", status);
+        }
+    }
+
+    /// Run the Gemini CLI agent
+    async fn run_gemini_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting Gemini CLI agent...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the gemini command
+        let mut cmd = Command::new("gemini");
+
+        // For now, Gemini CLI doesn't have a non-interactive mode like Codex
+        // We just pass through any agent flags as arguments
+        for flag in &self.agent_flags {
+            cmd.arg(flag);
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for Gemini CLI
+        if let Ok(home) = std::env::var("HOME") {
+            // Gemini CLI uses standard home directory
+        }
+
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            // Gemini CLI typically uses Google AI API, so we set the base URL
+            cmd.env("GOOGLE_AI_BASE_URL", llm_api);
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("GOOGLE_API_KEY", api_key);
+        }
+
+        eprintln!("Running gemini command: gemini {}", self.agent_flags.join(" "));
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("Gemini CLI agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("Gemini CLI agent exited with status: {}", status);
+            anyhow::bail!("Gemini CLI agent exited with status: {}", status);
+        }
+    }
+
+    /// Run the OpenCode agent
+    async fn run_opencode_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting OpenCode agent...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the opencode command
+        let mut cmd = Command::new("opencode");
+
+        // For now, OpenCode doesn't have a non-interactive mode like Codex
+        // We just pass through any agent flags as arguments
+        for flag in &self.agent_flags {
+            cmd.arg(flag);
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for OpenCode
+        if let Ok(home) = std::env::var("HOME") {
+            // OpenCode uses standard home directory
+        }
+
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            // OpenCode may use various providers, set generic environment variables
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("OPENCODE_API_KEY", api_key);
+            cmd.env("OPENCODE_API_BASE", llm_api);
+        }
+
+        eprintln!("Running opencode command: opencode {}", self.agent_flags.join(" "));
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("OpenCode agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("OpenCode agent exited with status: {}", status);
+            anyhow::bail!("OpenCode agent exited with status: {}", status);
+        }
+    }
+
+    /// Run the Qwen Code agent
+    async fn run_qwen_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting Qwen Code agent...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the qwen command
+        let mut cmd = Command::new("qwen");
+
+        // For now, Qwen Code doesn't have a non-interactive mode like Codex
+        // We just pass through any agent flags as arguments
+        for flag in &self.agent_flags {
+            cmd.arg(flag);
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for Qwen Code
+        if let Ok(home) = std::env::var("HOME") {
+            // Qwen Code uses standard home directory
+        }
+
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            // Qwen Code may use various providers, set generic environment variables
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("QWEN_API_KEY", api_key);
+            cmd.env("QWEN_API_BASE", llm_api);
+        }
+
+        eprintln!("Running qwen command: qwen {}", self.agent_flags.join(" "));
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("Qwen Code agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("Qwen Code agent exited with status: {}", status);
+            anyhow::bail!("Qwen Code agent exited with status: {}", status);
+        }
+    }
+
+    /// Run the Cursor CLI agent
+    async fn run_cursor_cli_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting Cursor CLI agent...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the cursor-cli command
+        let mut cmd = Command::new("cursor-cli");
+
+        // For now, Cursor CLI doesn't have a non-interactive mode like Codex
+        // We just pass through any agent flags as arguments
+        for flag in &self.agent_flags {
+            cmd.arg(flag);
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for Cursor CLI
+        if let Ok(home) = std::env::var("HOME") {
+            // Cursor CLI uses standard home directory
+        }
+
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            // Cursor CLI may use various providers, set generic environment variables
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("CURSOR_API_KEY", api_key);
+            cmd.env("CURSOR_API_BASE", llm_api);
+        }
+
+        eprintln!("Running cursor-cli command: cursor-cli {}", self.agent_flags.join(" "));
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("Cursor CLI agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("Cursor CLI agent exited with status: {}", status);
+            anyhow::bail!("Cursor CLI agent exited with status: {}", status);
+        }
+    }
+
+    /// Run the Goose agent
+    async fn run_goose_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting Goose agent...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the goose command
+        let mut cmd = Command::new("goose");
+
+        // For now, Goose doesn't have a non-interactive mode like Codex
+        // We just pass through any agent flags as arguments
+        for flag in &self.agent_flags {
+            cmd.arg(flag);
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for Goose
+        if let Ok(home) = std::env::var("HOME") {
+            // Goose uses standard home directory
+        }
+
+        // Set custom LLM API if provided
+        if let Some(llm_api) = &self.llm_api {
+            // Goose uses GOOSE_* environment variables for provider configuration
+            let api_key = self.llm_api_key.as_deref().unwrap_or("");
+            cmd.env("GOOSE_API_KEY", api_key);
+            cmd.env("GOOSE_API_BASE", llm_api);
+        }
+
+        eprintln!("Running goose command: goose {}", self.agent_flags.join(" "));
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("Goose agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("Goose agent exited with status: {}", status);
+            anyhow::bail!("Goose agent exited with status: {}", status);
         }
     }
 

@@ -2,11 +2,7 @@
   description = " Agent Harbor";
 
   inputs = {
-    # Pinned to specific commit for Playwright compatibility
-    # Playwright 1.52.0 expects chromium-1169, which is available in this commit
-    # but not in current nixpkgs-unstable. Can be updated when Playwright version
-    # is upgraded or when nixpkgs-unstable has compatible chromium version.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
     git-hooks.url = "github:cachix/git-hooks.nix";
     codex = {
@@ -31,6 +27,25 @@
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
     forAllSystems = nixpkgs.lib.genAttrs systems;
+
+    # AI coding agent packages (shared between packages and devShells)
+    aiCodingAgentsForSystem = system: let
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ rust-overlay.overlays.default ];
+        config.allowUnfree = true;
+      };
+    in [
+      pkgs.goose-cli
+      pkgs.claude-code
+      pkgs.gemini-cli
+      pkgs.opencode
+      pkgs.qwen-code
+      pkgs.cursor-cli
+      pkgs.windsurf
+      codex.packages.${system}.codex-rs
+    ];
+
   in {
     checks = forAllSystems (system: let
       pkgs = import nixpkgs { inherit system; };
@@ -163,15 +178,9 @@
           config.allowUnfree = true; # Allow unfree packages like claude-code
         };
         ah-script = pkgs.writeShellScriptBin "ah" ''
-          PATH=${pkgs.lib.makeBinPath [
-            pkgs.goose-cli
-            pkgs.claude-code
-            codex.packages.${system}.codex-rs
+          PATH=${pkgs.lib.makeBinPath ((aiCodingAgentsForSystem system) ++ [
             pkgs.asciinema
-            # not available in the currently pinned older nixpkgs:
-            # pkgs.gemini-cli # Gemini CLI
-            # pkgs.opencode # OpenCode AI coding assistant
-          ]}:$PATH
+          ])}:$PATH
           exec ruby ${./bin/agent-task} "$@"
         '';
         get-task = pkgs.writeShellScriptBin "get-task" ''
@@ -241,7 +250,7 @@
       };
 
       # Common packages for all systems
-      commonPackages = [
+      commonPackages = (aiCodingAgentsForSystem system) ++ [
         # Rust toolchain
         (pkgs.rust-bin.stable.latest.default.override {
           extensions = ["rustfmt" "clippy"];
@@ -298,13 +307,7 @@
         pkgs.netcat  # For port checking (nc command)
         pkgs.procps  # For process management (pgrep, kill, etc.)
         pkgs.process-compose  # Process orchestration for API testing
-        
-        # AI Coding Assistants (available in current nixpkgs)
-        pkgs.goose-cli # Goose AI coding assistant
-        pkgs.claude-code # Claude Code - agentic coding tool
-        # pkgs.gemini-cli # Gemini CLI - not available in older nixpkgs
-        codex.packages.${system}.codex-rs # OpenAI Codex CLI (local submodule)
-        # pkgs.opencode # OpenCode AI coding assistant - not available in older nixpkgs
+
         # Terminal recording and sharing
         pkgs.asciinema # Terminal session recorder
         pkgs.fzf

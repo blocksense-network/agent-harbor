@@ -5,6 +5,12 @@ import importlib.util
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from typing import Dict, Any
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
 try:
     from .session_io import RolloutRecorder, SessionLogger
 except ImportError:
@@ -34,6 +40,36 @@ class Playbook:
                 return r.get("response", {})
         return {"assistant": "Acknowledged. (no matching rule)", "tool_calls": []}
 
+
+class Scenario:
+    """
+    Timeline-based scenario for deterministic testing.
+    Format: YAML with timeline of events (think, agentToolUse, agentEdits, etc.)
+    """
+    def __init__(self, path: str):
+        if yaml is None:
+            raise ImportError("yaml module is required for scenario support")
+        with open(path, "r", encoding="utf-8") as f:
+            self.data = yaml.safe_load(f)
+        self.timeline = self.data.get("timeline", [])
+        self.current_event = 0
+
+    def get_next_event(self) -> Dict[str, Any]:
+        """Get the next event from the timeline."""
+        if self.current_event < len(self.timeline):
+            event = self.timeline[self.current_event]
+            self.current_event += 1
+            return event
+        return {}
+
+    def has_more_events(self) -> bool:
+        """Check if there are more events in the timeline."""
+        return self.current_event < len(self.timeline)
+
+    def reset(self):
+        """Reset to the beginning of the timeline."""
+        self.current_event = 0
+
 def _json_body(handler: BaseHTTPRequestHandler):
     length = int(handler.headers.get("Content-Length", "0"))
     raw = handler.rfile.read(length) if length > 0 else b"{}"
@@ -49,6 +85,14 @@ class MockAPIHandler(BaseHTTPRequestHandler):
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            self._send_json(200, {"status": "ok", "server": "MockAgentServer"})
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -80,10 +124,21 @@ class MockAPIHandler(BaseHTTPRequestHandler):
         return ""
 
     def _respond_with(self, user_text: str, provider: str):
-        pb: Playbook = self.server.playbook  # type: ignore
-        resp = pb.match(user_text)
-        assistant_text = resp.get("assistant", "")
-        tool_calls = resp.get("tool_calls", [])
+        if hasattr(self.server, 'playbook') and self.server.playbook:
+            pb: Playbook = self.server.playbook
+            resp = pb.match(user_text)
+            assistant_text = resp.get("assistant", "")
+            tool_calls = resp.get("tool_calls", [])
+        elif hasattr(self.server, 'scenario') and self.server.scenario:
+            # For scenarios, we return a simple response for now
+            # In a full implementation, this would follow the scenario timeline
+            resp = {"assistant": f"Mock response for: {user_text}", "tool_calls": []}
+            assistant_text = resp.get("assistant", "")
+            tool_calls = resp.get("tool_calls", [])
+        else:
+            resp = {"assistant": "No playbook or scenario loaded", "tool_calls": []}
+            assistant_text = resp.get("assistant", "")
+            tool_calls = resp.get("tool_calls", [])
 
         # Execute tools immediately for mock server
         executed_tools = []
@@ -198,14 +253,25 @@ class MockAPIHandler(BaseHTTPRequestHandler):
         self._send_json(200, obj)
 
 class MockAPIServer(HTTPServer):
-    def __init__(self, server_address, RequestHandlerClass, codex_home, playbook_path, workspace=None):
+    def __init__(self, server_address, RequestHandlerClass, codex_home, playbook_path=None, scenario_path=None, workspace=None):
         super().__init__(server_address, RequestHandlerClass)
-        self.playbook = Playbook(playbook_path)
+        self.codex_home = codex_home
+        self.playbook = None
+        self.scenario = None
+
+        if playbook_path:
+            self.playbook = Playbook(playbook_path)
+        elif scenario_path:
+            try:
+                self.scenario = Scenario(scenario_path)
+            except ImportError:
+                raise ImportError("Scenario support requires PyYAML. Install with: pip install pyyaml")
+
         self.recorder = RolloutRecorder(codex_home=codex_home, originator="mock-api-server")
         self.workspace = workspace
 
-def serve(host: str, port: int, playbook: str, codex_home: str, format: str = "codex", workspace: str = None):
-    httpd = MockAPIServer((host, port), MockAPIHandler, codex_home=codex_home, playbook_path=playbook, workspace=workspace)
+def serve(host: str, port: int, playbook: str = None, scenario: str = None, codex_home: str = None, format: str = "codex", workspace: str = None):
+    httpd = MockAPIServer((host, port), MockAPIHandler, codex_home=codex_home, playbook_path=playbook, scenario_path=scenario, workspace=workspace)
     print(f"Mock API server listening on http://{host}:{port}")
     try:
         httpd.serve_forever()
