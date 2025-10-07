@@ -1,3 +1,94 @@
+"""
+Mock LLM API Server Algorithm
+
+OVERVIEW:
+The mock server simulates OpenAI/Anthropic API endpoints for deterministic testing.
+It does NOT execute tools/processes itself - it only returns properly formatted API responses
+that suggest tool usage. Tool execution happens separately in the agent client.
+
+The server is started with a specific TOOLS PROFILE (command-line option --tools-profile) that defines
+the valid tool schemas for a particular coding agent (Codex, Claude, Gemini, etc.). This profile
+determines how scenario events like agentEdits and agentToolUse are mapped to specific tool call
+responses that are valid for that agent.
+
+In strict tools validation mode (command-line option --strict-tools-validation), the server
+immediately aborts if it encounters an unfamiliar tool definition, helping developers quickly
+identify missing tool profiles and mappings during development.
+
+KEY PRINCIPLES:
+1. Session Isolation: Each unique API key represents a separate client session
+2. Timeline-Based Responses: Scenarios define deterministic sequences of agent behavior
+3. Protocol Compliance: Responses follow exact OpenAI/Anthropic API schemas with proper coalescing
+4. Provider-Specific Thinking: OpenAI keeps thinking internal (not in responses), Anthropic can expose thinking blocks
+5. Client Tool Validation: Server validates tool definitions sent by clients in API requests
+6. No Tool Execution: Server only suggests tool calls and edits, never executes them
+7. llmResponse Grouping: Multiple response elements can be grouped into single API responses
+
+ALGORITHM:
+FOR each API request with api_key:
+    IF api_key not seen before:
+        Create new session with scenario timeline
+        Reset timeline to beginning
+
+    Get current session for api_key
+
+    // Skip events that don't generate API responses, advance to next response-generating event/group
+    WHILE there are more events AND current event is not response-generating:
+        CASE event.type:
+            "complete" -> Mark scenario as completed (handled by test harness)
+            "merge" -> Mark session for merging (handled by test harness)
+            "advanceMs" -> Advance logical time (handled by test harness)
+            "userInputs" -> Simulate user input (handled by test harness)
+            "userCommands" -> Execute user command (handled by test harness)
+            "userEdits" -> Apply user file edits (handled by test harness)
+        Advance to next event
+
+    IF no more events:
+        Return final assistant message
+
+    // Collect all response elements for this turn (supports both grouped and individual events)
+    response_parts = []
+    IF current_event.type == "llmResponse":
+        // Grouped response: collect all sub-events
+        response_parts.extend(current_event.sub_events)
+    ELSE IF current_event.type in ["think", "agentToolUse", "agentEdits", "assistant"]:
+        // Individual response: treat as single-element group (legacy support)
+        response_parts.append(current_event)
+
+    // Note: Tools validation is performed when the CLIENT makes API requests,
+    // not during scenario processing. The server validates that tool definitions
+    // sent by the coding agent in tool_calls match the current tools profile.
+
+    // Coalesce response parts based on LLM API style (OpenAI vs Anthropic)
+    // OpenAI: thinking -> internal (not in response), text + tool_calls -> assistant message
+    // Anthropic: thinking + text + tool_calls -> content blocks in single response
+    api_response = coalesce_response_parts(response_parts, llm_api_style)
+
+    Return api_response
+
+    Advance session timeline pointer past consumed event(s)
+
+COALESCING RULES:
+- OpenAI: Thinking content is kept internal and NOT included in API responses. Only text content and tool_calls appear in the assistant message. Thinking is processed but remains hidden from the agent client.
+- Anthropic: Thinking content can be exposed as separate "thinking" blocks in the response content array, alongside "text" blocks and "tool_use" blocks, all within a single API response.
+
+NOTE: The mock server skips over events that don't generate API responses.
+"llmResponse" groups, "think", "agentToolUse", "agentEdits", and "assistant" events produce API responses.
+Other events are processed for test harness coordination but don't return data to the agent client.
+
+SESSION MANAGEMENT:
+- API keys are arbitrary strings (any valid key works)
+- Sessions persist across multiple API calls with same key
+- Fresh API key = fresh scenario execution
+- Enables concurrent testing without server restarts
+
+RESPONSE FORMATS:
+- OpenAI: {"choices": [{"message": {"role": "assistant", "content": "text_content_only", "tool_calls": [...]}}]} - thinking is processed internally but NOT exposed in the response
+- Anthropic: {"content": [{"type": "thinking", "thinking": "thinking_content"}, {"type": "text", "text": "text_content"}, {"type": "tool_use", ...}]} - thinking is exposed as separate content blocks
+
+This design enables deterministic, replayable testing of agent workflows with realistic LLM response patterns.
+"""
+
 import json
 import os
 import uuid

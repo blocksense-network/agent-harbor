@@ -21,7 +21,7 @@ The testing infrastructure consists of several components working together:
 
 ### File Format
 
-- YAML only; UTF‑8; comments allowed.
+- UTF‑8 YAML; comments allowed.
 - Top-level keys are stable; unknown keys ignored (forward-compatible).
 
 ### Top-Level Schema (high level)
@@ -98,12 +98,15 @@ expect:
   - `env{}`: Extra environment variables for the process under test.
 - **server**:
   - `mode`: `none|mock|real` (tests typically use `none` or `mock`).
+  - `llmApiStyle`: `openai|anthropic` (determines response coalescing rules, defaults to `openai`).
+  - `coalesceThinkingWithToolUse`: `true|false` (only used for Anthropic, defaults to `true`).
   - Optional seed objects for mock server endpoints.
 - **timeline[]** (unified event sequence):
-  - `think`: Array of `[milliseconds, text]` pairs for agent thinking events
-  - `agentToolUse`: External tool/command execution with progress array, tool name, and final result
-  - `agentEdits`: File modification event with path and change metrics
-  - `assistant`: Array of `[milliseconds, text]` pairs for assistant responses
+  - `llmResponse`: **NEW** - Groups multiple response elements into a single LLM API response. Contains sub-events that get coalesced based on the target LLM API style (OpenAI vs Anthropic).
+    - `think`: Array of `[milliseconds, text]` pairs for agent thinking events. For OpenAI API style: thinking is processed internally but **NOT included in API responses** (matches OpenAI's behavior where thinking is never exposed). For Anthropic API style: thinking is exposed as separate "thinking" blocks in the response content array.
+    - `agentToolUse`: External tool/command execution with progress array, tool name, and final result
+    - `agentEdits`: File modification event with path and change metrics
+    - `assistant`: Array of `[milliseconds, text]` pairs for assistant responses
   - `advanceMs`: Advance logical time by specified milliseconds. Must be >= max time from concurrent events.
   - `screenshot`: Ask harness to capture vt100 buffer with a label.
   - `assert`: Structured assertions (see below).
@@ -116,6 +119,8 @@ expect:
     - `cwd`: Optional working directory relative to the scenario.
   - `complete`: Event indicating that the scenario task has completed successfully. This marks the session status as completed and triggers any completion logic.
   - `merge`: Event indicating that this scenario session should be merged into the session list upon completion. When present, the scenario session will be marked as completed but remain visible in session listings. When omitted, completed scenarios are not shown in session listings.
+
+  **Legacy support**: Individual `think`, `agentToolUse`, `agentEdits`, and `assistant` events at the top level are treated as single-element `llmResponse` groups for backward compatibility.
   
   Compatibility with existing scenarios (type‑based events):
   - Runners MUST also accept timeline of the form `{ "type": "advanceMs", "ms": 50 }`, `{ "type": "screenshot", "name": "..." }`, `{ "type": "userInputs", "inputs": [[100, "text"]] }`, `{ "type": "assertVm", ... }` as used in `test_scenarios/basic_navigation.yaml`.
@@ -158,8 +163,12 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 
 **Mock LLM API Server (External LLM Services):**
 - Simulates external LLM APIs (Anthropic, OpenAI, GitHub Copilot, etc.) that coding agents communicate with
-- Translates **`agentEdits`** events to tool use suggestions through the LLM API
-- Instructs the coding agent via mock LLM API responses to perform the `run_command` tool invocations
+- **Started with a specific tools profile** (server startup option) that defines valid tool schemas for the target coding agent (Codex, Claude, Gemini, etc.)
+- Groups **`llmResponse`** events into single API responses with appropriate coalescing based on `llmApiStyle`
+- **Validates client tool definitions** sent in API requests against the tools profile; in strict tools validation mode (server startup option --strict-tools-validation), aborts immediately on unknown tools to help identify missing mappings during development
+- For OpenAI: Thinking is processed internally but **NOT included in API responses** - only text content and tool calls appear in the assistant message (matches OpenAI's actual API behavior)
+- For Anthropic: Can include thinking blocks, text, and tool_use blocks in a single response when `coalesceThinkingWithToolUse` is enabled
+- Instructs the coding agent via mock LLM API responses to perform tool invocations
 
 **Test Executor:**
 - **`userInputs`** are carried out in all testing modes (TUI, WebUI, CLI)
@@ -169,18 +178,22 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 **Example Timeline:**
 ```yaml
 timeline:
-  - think:
-      - [500, "Thinking..."]      # 500ms
-      - [300, "More thinking..."] # 300ms, total: 800ms
-  - agentToolUse:
-      toolName: "run_command"
-      args:
-        command: "grep -n 'def' main.py"
-        cwd: "."
-      progress:
-        - [200, "Searching for function definitions..."]
-      result: "main.py:1:def main():"
-      status: "ok"  # 200ms total
+  # Single LLM response combining thinking + tool use (realistic)
+  - llmResponse:
+      - think:
+          - [500, "I need to examine the current code first"]      # 500ms
+          - [300, "Let me check what functions exist..."]          # 300ms, total: 800ms
+      - agentToolUse:
+          toolName: "run_command"
+          args:
+            command: "grep -n 'def' main.py"
+            cwd: "."
+          progress:
+            - [200, "Searching for function definitions..."]
+          result: "main.py:1:def main():"
+          status: "ok"  # 200ms total
+
+  # Test harness events (handled separately from API responses)
   - userInputs:
       - [200, "some input"]   # 200ms
       - [400, "more input"]   # 400ms, total: 600ms, concurrent with agent

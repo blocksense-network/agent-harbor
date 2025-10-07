@@ -6,7 +6,7 @@ This document describes how to use the `scripts/agent-test-run.py` script for ru
 
 The `scripts/agent-test-run.py` script provides a convenient way to run orchestrated integration tests that combine:
 
-- **Mock LLM API Server**: Simulates OpenAI/Anthropic/Google/etc. API responses
+- **Mock LLM API Server**: Simulates OpenAI/Anthropic API responses with realistic coalescing (thinking + tools + text in single responses)
 - **Agent Harbor CLI**: Runs agent start commands with various configurations
 - **TUI Testing Framework**: Optional screenshot and exit command automation
 - **Isolated Workspace**: Creates separate repo/ and user-home/ directories for each test run
@@ -26,9 +26,17 @@ One of the following must be specified:
 - `--scenario SCENARIO`: Use a YAML scenario file from `tests/tools/mock-agent/scenarios/`
 - `--playbook PLAYBOOK`: Use a JSON playbook file from `tests/tools/mock-agent/examples/`
 
+### Server Configuration
+
+The script supports configuration of the mock LLM API server behavior:
+
+- `--server-llm-api-style STYLE`: LLM API style - `openai` or `anthropic` (default: `openai`)
+- `--server-coalesce-thinking`: Enable coalescing thinking with tool use for Anthropic style (default: enabled)
+- `--server-tools-profile PROFILE`: Tools profile name (automatically set based on `--agent` type, can be overridden if needed)
+- `--strict-tools-validation`: Enable strict mode - abort on unknown tool definitions to identify missing mappings during development
+
 ### Optional Arguments
 
-#### Server Configuration
 - `--server-port PORT`: Port for mock LLM server (default: 18081)
 - `--tui-port PORT`: Port for TUI testing IPC (default: 5555)
 
@@ -120,6 +128,38 @@ python3 scripts/agent-test-run.py \
   --scenario bug_fix_scenario \
   --server-port 18082 \
   --tui-port 5556 \
+  --non-interactive
+```
+
+### Anthropic Style with Thinking Coalescing
+
+```bash
+# Run with Anthropic API style (exposes thinking blocks)
+python3 scripts/agent-test-run.py \
+  --scenario realistic_development_scenario \
+  --server-llm-api-style anthropic \
+  --non-interactive
+```
+
+### OpenAI Style (Thinking Internal Only)
+
+```bash
+# Run with OpenAI API style (thinking kept internal)
+python3 scripts/agent-test-run.py \
+  --scenario realistic_development_scenario \
+  --server-llm-api-style openai \
+  --non-interactive
+```
+
+### Strict Mode for Development
+
+```bash
+# Enable strict mode to catch missing tool mappings during development
+# Tools profile is automatically set based on --agent type
+python3 scripts/agent-test-run.py \
+  --scenario test_scenario \
+  --agent claude \
+  --strict-tools-validation \
   --non-interactive
 ```
 
@@ -302,11 +342,42 @@ python3 scripts/agent-test-run.py --help
 
 The script provides a clean separation between:
 
-1. **Configuration Generation**: Python script builds process-compose YAML
+1. **Configuration Generation**: Python script builds process-compose YAML with scenario configuration
 2. **Process Orchestration**: process-compose manages startup/shutdown dependencies
 3. **Workspace Isolation**: Creates isolated `repo/` and `user-home/` directories for each test run
-4. **API Configuration**: Supports both mock server integration and custom LLM API endpoints
-5. **Integration Testing**: Combines mock server + real CLI + optional TUI testing
+4. **Realistic LLM Simulation**: Supports `llmResponse` grouping for realistic API response patterns
+5. **API Style Coalescing**: Different response formats for OpenAI vs Anthropic API styles
+6. **Tools Profile Validation**: Validates and maps scenario tools to agent-specific schemas
+7. **Integration Testing**: Combines mock server + real CLI + optional TUI testing
+
+### Scenario Response Grouping
+
+The new `llmResponse` event allows grouping multiple response elements into single API responses:
+
+```yaml
+timeline:
+  - llmResponse:        # Single API response containing:
+      - think: [[500, "Analyzing..."]]     # Thinking content
+      - agentToolUse: {...}                # Tool suggestions
+      - assistant: [[200, "Done!"]]        # Final response
+```
+
+This creates **realistic LLM behavior** where thinking, tool use, and text can appear in a single API response, unlike the previous separate-query-per-event approach.
+
+### API Style Coalescing
+
+- **OpenAI Style**: Thinking content is processed internally but **NOT included in API responses**. Only text content and tool calls appear in the assistant message. This matches OpenAI's actual API behavior where thinking is never exposed.
+- **Anthropic Style**: Thinking content can be exposed as separate "thinking" blocks in the response content array, alongside "text" blocks and "tool_use" blocks, all within a single API response. This matches Anthropic's extended thinking feature.
+
+### Tools Profile Validation
+
+The server validates tool definitions sent by the coding agent client in API requests:
+
+- **Automatic Profile Selection**: The script automatically sets the tools profile based on the `--agent` type (e.g., `codex` for Codex, `claude` for Claude Code)
+- **Client Request Validation**: When the coding agent sends tool_calls in API requests, the server validates that these tools are known and match the current tools profile
+- **Tools Profile**: Defines valid tool schemas for each coding agent (Codex, Claude, Gemini, etc.)
+- **Strict Tools Validation**: When enabled (`--strict-tools-validation`), the server aborts immediately on unknown tool definitions sent by clients, helping developers quickly identify missing tool profiles and mappings during development
+- **Validation Timing**: Validation occurs during API request processing, not during scenario loading
 
 ### Workspace Structure
 
@@ -321,6 +392,7 @@ test-{scenario-name}/
 
 This approach ensures:
 - **Isolation**: Each test run has its own clean environment
-- **Reproducibility**: Consistent workspace setup across runs
+- **Realism**: LLM responses match actual API behavior with proper coalescing
 - **Flexibility**: Support for both scenario-driven repo setup and custom LLM APIs
+- **Reproducibility**: Consistent workspace setup across runs
 - **Reliability**: Proper cleanup and dependency management
