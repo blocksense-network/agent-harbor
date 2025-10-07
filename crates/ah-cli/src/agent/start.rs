@@ -15,6 +15,21 @@ pub enum WorkingCopyMode {
     Snapshots,
 }
 
+/// Output format for agent execution
+#[derive(Clone, Debug, PartialEq, ValueEnum)]
+pub enum OutputFormat {
+    /// Display agent output unmodified (default)
+    Text,
+    /// Display textual output with consistent structure regardless of agent type
+    #[clap(name = "text-normalized")]
+    TextNormalized,
+    /// Display JSON output if available (e.g., codex --json)
+    Json,
+    /// Map JSON to agent-harbor defined schema consistent across agent types
+    #[clap(name = "json-normalized")]
+    JsonNormalized,
+}
+
 
 /// Agent start command arguments
 #[derive(Args)]
@@ -29,7 +44,7 @@ pub struct AgentStartArgs {
 
     /// Output format: text, text-normalized, json, or json-normalized
     #[arg(long, default_value = "text")]
-    pub output: String,
+    pub output: OutputFormat,
 
     /// Working copy mode
     #[arg(long, default_value = "in-place")]
@@ -122,7 +137,7 @@ impl AgentStartArgs {
         eprintln!("Parsed arguments:");
         eprintln!("  agent: {}", self.agent);
         eprintln!("  non_interactive: {}", self.non_interactive);
-        eprintln!("  output: {}", self.output);
+        eprintln!("  output: {:?}", self.output);
         eprintln!("  working_copy: {:?}", self.working_copy);
         eprintln!("  cwd: {:?}", self.cwd);
         eprintln!("  task_id: {:?}", self.task_id);
@@ -401,19 +416,16 @@ impl AgentStartArgs {
         cmd.arg("exec");
 
         // Handle output format
-        match self.output.as_str() {
-            "json" => {
+        match self.output {
+            OutputFormat::Json => {
                 cmd.arg("--json");
             }
-            "text" | "text-normalized" => {
+            OutputFormat::Text | OutputFormat::TextNormalized => {
                 // No additional arguments needed for text output
             }
-            "json-normalized" => {
+            OutputFormat::JsonNormalized => {
                 // For now, treat as json - normalization logic would be implemented later
                 cmd.arg("--json");
-            }
-            _ => {
-                eprintln!("Warning: Unknown output format '{}', using text", self.output);
             }
         }
 
@@ -425,7 +437,8 @@ impl AgentStartArgs {
             cmd.env("CODEX_HOME", format!("{}/.codex", home));
         }
 
-        eprintln!("Running codex command: codex exec{}", if self.output == "json" { " --json" } else { "" });
+        let json_flag = matches!(self.output, OutputFormat::Json | OutputFormat::JsonNormalized);
+        eprintln!("Running codex command: codex exec{}", if json_flag { " --json" } else { "" });
 
         // Execute the command
         let status = cmd.status().await?;
