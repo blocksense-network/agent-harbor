@@ -576,6 +576,25 @@ crates/ah-cli/src/agent/mod.rs
 tests/tools/e2e_macos_fskit/**
 """, "\n", ",")
 
+# AgentFS specs-only include patterns as a multiline string
+REPOMIX_AGENTFS_SPECS_PATTERNS := replace("""
+specs/Public/AgentFS/**
+specs/Public/FS-Snapshots/FS-Snapshots-Overview.md
+specs/Public/Schemas/agentfs-control.request.schema.json
+specs/Public/Schemas/agentfs-control.response.schema.json
+""", "\n", ",")
+
+# Create repomix bundle of AgentFS-related specs only (no implementation code)
+repomix-agentfs-specs:
+    @echo "📦 Creating AgentFS specs repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-AgentFS-Specs.md \
+        --style markdown \
+        --header-text "AgentFS Specifications and Related Documentation" \
+        --include "{{REPOMIX_AGENTFS_SPECS_PATTERNS}}"
+
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
 repomix-agentfs:
     @echo "📦 Creating AgentFS repomix snapshot..."
