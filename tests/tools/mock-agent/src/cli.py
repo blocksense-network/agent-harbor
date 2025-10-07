@@ -9,11 +9,24 @@ try:
     from .server import serve
 except ImportError:
     # Fall back to absolute imports (when run as script)
-    import agent
-    import server
-    run_scenario = agent.run_scenario
-    demo_scenario = agent.demo_scenario
-    serve = server.serve
+    try:
+        import agent
+        import server
+        run_scenario = agent.run_scenario
+        demo_scenario = agent.demo_scenario
+        serve = server.serve
+    except ImportError:
+        # If absolute imports fail, try importing from parent directory
+        import sys
+        import os
+        parent_dir = os.path.dirname(os.path.dirname(__file__))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        import agent
+        import server
+        run_scenario = agent.run_scenario
+        demo_scenario = agent.demo_scenario
+        serve = server.serve
 
 def main():
     ap = argparse.ArgumentParser(prog="mockagent", description="Mock Coding Agent")
@@ -46,6 +59,12 @@ def main():
     srv.add_argument("--codex-home", default=os.path.expanduser("~/.codex"))
     srv.add_argument("--format", choices=["codex", "claude"], default="codex",
                     help="Session file format to use (codex or claude)")
+    srv.add_argument("--tools-profile", choices=["codex", "claude", "gemini", "opencode", "qwen", "cursor-cli", "goose"],
+                    default="codex", help="Tools profile for the target coding agent (default: codex)")
+    srv.add_argument("--strict-tools-validation", action="store_true",
+                    help="Abort on unknown tool definitions to help identify missing mappings")
+    srv.add_argument("--agent-version", default="unknown",
+                    help="Version of the coding agent being tested (for tracking tool definition changes)")
 
     args = ap.parse_args()
 
@@ -61,7 +80,7 @@ def main():
         path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
         print(f"Session file written to: {path}")
     elif args.cmd == "server":
-        serve(args.host, args.port, playbook=args.playbook, scenario=getattr(args, 'scenario', None), codex_home=args.codex_home, format=args.format)
+        serve(args.host, args.port, playbook=args.playbook, scenario=getattr(args, 'scenario', None), codex_home=args.codex_home, format=args.format, tools_profile=getattr(args, 'tools_profile', None), strict_tools_validation=getattr(args, 'strict_tools_validation', False), agent_version=getattr(args, 'agent_version', 'unknown'))
     else:
         ap.print_help()
         return 1

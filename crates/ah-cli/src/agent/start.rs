@@ -123,6 +123,10 @@ pub struct AgentStartArgs {
     #[arg(long)]
     pub overlay: Vec<PathBuf>,
 
+    /// Custom prompt text to pass to the agent (overrides task/session prompt)
+    #[arg(long, value_name = "TEXT")]
+    pub prompt: Option<String>,
+
     /// Additional flags to pass to the agent
     #[arg(long, value_name = "FLAG")]
     pub agent_flags: Vec<String>,
@@ -195,6 +199,7 @@ impl AgentStartArgs {
         // Print the parsed arguments for debugging
         eprintln!("Parsed arguments:");
         eprintln!("  agent: {:?}", self.agent);
+        eprintln!("  prompt: {:?}", self.prompt);
         eprintln!("  non_interactive: {}", self.non_interactive);
         eprintln!("  output: {:?}", self.output);
         eprintln!("  llm_api: {:?}", self.llm_api);
@@ -474,7 +479,13 @@ impl AgentStartArgs {
 
         // Build the codex command with exec
         let mut cmd = Command::new("codex");
-        cmd.arg("exec");
+
+        // Add the prompt as a positional argument if provided, otherwise use exec mode
+        if let Some(prompt) = &self.prompt {
+            cmd.arg(prompt);
+        } else {
+            cmd.arg("exec");
+        }
 
         // Handle output format
         match self.output {
@@ -536,6 +547,11 @@ impl AgentStartArgs {
         // Build the claude command
         let mut cmd = Command::new("claude");
 
+        // Add the prompt as a positional argument if provided
+        if let Some(prompt) = &self.prompt {
+            cmd.arg(prompt);
+        }
+
         // For now, Claude Code doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
         for flag in &self.agent_flags {
@@ -557,7 +573,14 @@ impl AgentStartArgs {
             cmd.env("ANTHROPIC_API_KEY", api_key);
         }
 
-        eprintln!("Running claude command: claude {}", self.agent_flags.join(" "));
+        let mut cmd_parts = vec!["claude".to_string()];
+        if let Some(prompt) = &self.prompt {
+            cmd_parts.push(prompt.clone());
+        }
+        for flag in &self.agent_flags {
+            cmd_parts.push(flag.clone());
+        }
+        eprintln!("Running claude command: {}", cmd_parts.join(" "));
 
         // Execute the command
         let status = cmd.status().await?;
@@ -587,6 +610,11 @@ impl AgentStartArgs {
         // Build the gemini command
         let mut cmd = Command::new("gemini");
 
+        // Add the prompt as a flag if provided
+        if let Some(prompt) = &self.prompt {
+            cmd.arg("--prompt").arg(prompt);
+        }
+
         // For now, Gemini CLI doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
         for flag in &self.agent_flags {
@@ -609,7 +637,15 @@ impl AgentStartArgs {
             cmd.env("GOOGLE_API_KEY", api_key);
         }
 
-        eprintln!("Running gemini command: gemini {}", self.agent_flags.join(" "));
+        let mut cmd_parts = vec!["gemini".to_string()];
+        if let Some(prompt) = &self.prompt {
+            cmd_parts.push("--prompt".to_string());
+            cmd_parts.push(prompt.clone());
+        }
+        for flag in &self.agent_flags {
+            cmd_parts.push(flag.clone());
+        }
+        eprintln!("Running gemini command: {}", cmd_parts.join(" "));
 
         // Execute the command
         let status = cmd.status().await?;
@@ -639,6 +675,11 @@ impl AgentStartArgs {
         // Build the opencode command
         let mut cmd = Command::new("opencode");
 
+        // Add the prompt as a flag if provided
+        if let Some(prompt) = &self.prompt {
+            cmd.arg("--prompt").arg(prompt);
+        }
+
         // For now, OpenCode doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
         for flag in &self.agent_flags {
@@ -661,7 +702,15 @@ impl AgentStartArgs {
             cmd.env("OPENCODE_API_BASE", llm_api);
         }
 
-        eprintln!("Running opencode command: opencode {}", self.agent_flags.join(" "));
+        let mut cmd_parts = vec!["opencode".to_string()];
+        if let Some(prompt) = &self.prompt {
+            cmd_parts.push("--prompt".to_string());
+            cmd_parts.push(prompt.clone());
+        }
+        for flag in &self.agent_flags {
+            cmd_parts.push(flag.clone());
+        }
+        eprintln!("Running opencode command: {}", cmd_parts.join(" "));
 
         // Execute the command
         let status = cmd.status().await?;
@@ -691,6 +740,11 @@ impl AgentStartArgs {
         // Build the qwen command
         let mut cmd = Command::new("qwen");
 
+        // Add the prompt as a flag if provided
+        if let Some(prompt) = &self.prompt {
+            cmd.arg("--prompt").arg(prompt);
+        }
+
         // For now, Qwen Code doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
         for flag in &self.agent_flags {
@@ -713,7 +767,15 @@ impl AgentStartArgs {
             cmd.env("QWEN_API_BASE", llm_api);
         }
 
-        eprintln!("Running qwen command: qwen {}", self.agent_flags.join(" "));
+        let mut cmd_parts = vec!["qwen".to_string()];
+        if let Some(prompt) = &self.prompt {
+            cmd_parts.push("--prompt".to_string());
+            cmd_parts.push(prompt.clone());
+        }
+        for flag in &self.agent_flags {
+            cmd_parts.push(flag.clone());
+        }
+        eprintln!("Running qwen command: {}", cmd_parts.join(" "));
 
         // Execute the command
         let status = cmd.status().await?;
@@ -743,6 +805,11 @@ impl AgentStartArgs {
         // Build the cursor-cli command
         let mut cmd = Command::new("cursor-cli");
 
+        // Add the prompt as a flag if provided
+        if let Some(prompt) = &self.prompt {
+            cmd.arg("--prompt").arg(prompt);
+        }
+
         // For now, Cursor CLI doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
         for flag in &self.agent_flags {
@@ -765,7 +832,15 @@ impl AgentStartArgs {
             cmd.env("CURSOR_API_BASE", llm_api);
         }
 
-        eprintln!("Running cursor-cli command: cursor-cli {}", self.agent_flags.join(" "));
+        let mut cmd_parts = vec!["cursor-cli".to_string()];
+        if let Some(prompt) = &self.prompt {
+            cmd_parts.push("--prompt".to_string());
+            cmd_parts.push(prompt.clone());
+        }
+        for flag in &self.agent_flags {
+            cmd_parts.push(flag.clone());
+        }
+        eprintln!("Running cursor-cli command: {}", cmd_parts.join(" "));
 
         // Execute the command
         let status = cmd.status().await?;
@@ -795,6 +870,11 @@ impl AgentStartArgs {
         // Build the goose command
         let mut cmd = Command::new("goose");
 
+        // Add the run subcommand and prompt flag if provided
+        if let Some(prompt) = &self.prompt {
+            cmd.arg("run").arg("-t").arg(prompt);
+        }
+
         // For now, Goose doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
         for flag in &self.agent_flags {
@@ -817,7 +897,16 @@ impl AgentStartArgs {
             cmd.env("GOOSE_API_BASE", llm_api);
         }
 
-        eprintln!("Running goose command: goose {}", self.agent_flags.join(" "));
+        let mut cmd_parts = vec!["goose".to_string()];
+        if let Some(prompt) = &self.prompt {
+            cmd_parts.push("run".to_string());
+            cmd_parts.push("-t".to_string());
+            cmd_parts.push(prompt.clone());
+        }
+        for flag in &self.agent_flags {
+            cmd_parts.push(flag.clone());
+        }
+        eprintln!("Running goose command: {}", cmd_parts.join(" "));
 
         // Execute the command
         let status = cmd.status().await?;

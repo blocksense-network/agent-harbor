@@ -245,6 +245,69 @@ curl -s http://127.0.0.1:18080/v1/messages \
   -d '{"model": "claude-3-sonnet", "messages": [{"role":"user","content":"Create hello.py"}], "max_tokens": 100}'
 ```
 
+### Server Command Line Options
+
+The mock API server supports several command-line options for advanced testing scenarios:
+
+```bash
+# Start server with request logging to a file
+python tests/tools/mock-agent/start_test_server.py \
+  --host 127.0.0.1 \
+  --port 18080 \
+  --scenario scenarios/realistic_development_scenario.yaml \
+  --tools-profile claude \
+  --request-log-template "session_{scenario}_{key}.log"
+
+# Log to stdout for debugging
+python tests/tools/mock-agent/start_test_server.py \
+  --request-log-template "stdout" \
+  --tools-profile codex
+
+# Use template with dynamic scenario and key replacement
+python tests/tools/mock-agent/start_test_server.py \
+  --request-log-template "logs/{scenario}/requests_{key}.jsonl"
+```
+
+#### Request Logging Options
+
+- **`--request-log-template TEMPLATE`**: Enable request logging with dynamic path templates
+  - **Template variables**:
+    - `{scenario}`: Replaced with the current scenario name (basename of scenario file)
+    - `{key}`: Replaced with the API key from the Authorization header
+  - **Special values**:
+    - `"stdout"`: Log all requests to standard output in JSON format
+    - Omitted: Disable request logging (default)
+  - **Log format**: Each request is logged as a JSON object containing:
+    - `timestamp`: ISO 8601 timestamp when request was received
+    - `method`: HTTP method (GET/POST)
+    - `path`: Request URL path
+    - `headers`: Complete request headers as key-value pairs
+    - `body`: Parsed JSON request body (for POST requests)
+
+#### Example Log Output
+
+When logging to stdout or a file, each request generates a JSON line like:
+
+```json
+{
+  "timestamp": "2025-10-07T23:16:32.123456",
+  "method": "POST",
+  "path": "/v1/chat/completions",
+  "headers": {
+    "content-type": "application/json",
+    "authorization": "Bearer mock-key-123",
+    "user-agent": "curl/8.7.1"
+  },
+  "body": {
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Create hello.py"}],
+    "tools": [{"type": "function", "function": {"name": "run_terminal_cmd", "parameters": {"command": "echo hello"}}}}
+  }
+}
+```
+
+### Server Features
+
 The server supports:
 
 - **OpenAI API** (`/v1/chat/completions`): Compatible with Codex CLI and other OpenAI-based tools
@@ -252,6 +315,7 @@ The server supports:
 - **Tool Execution**: Actually creates, modifies, and reads files in designated workspaces
 - **Session Recording**: Records all interactions in appropriate session file formats
 - **Deterministic Responses**: Uses playbook rules for predictable testing scenarios
+- **Request Logging**: Complete request/response logging for debugging and analysis
 
 ## Session Recording with Asciinema
 

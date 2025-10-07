@@ -104,8 +104,13 @@ expect:
 - **timeline[]** (unified event sequence):
   - `llmResponse`: **NEW** - Groups multiple response elements into a single LLM API response. Contains sub-events that get coalesced based on the target LLM API style (OpenAI vs Anthropic).
     - `think`: Array of `[milliseconds, text]` pairs for agent thinking events. For OpenAI API style: thinking is processed internally but **NOT included in API responses** (matches OpenAI's behavior where thinking is never exposed). For Anthropic API style: thinking is exposed as separate "thinking" blocks in the response content array.
-    - `agentToolUse`: External tool/command execution with progress array, tool name, and final result
-    - `agentEdits`: File modification event with path and change metrics
+    - `runCmd`: Execute terminal/shell commands. Fields: `cmd` (command string), `cwd` (optional working directory).
+    - `grep`: Search for patterns in files. Fields: `pattern`, `path`, `flags` (optional grep flags).
+    - `readFile`: Read file contents. Fields: `path`, `encoding` (optional, defaults to utf-8).
+    - `listDir`: List directory contents. Fields: `path`, `recursive` (optional boolean).
+    - `find`: Find files by pattern. Fields: `path`, `name` (filename pattern), `type` (optional: file/dir).
+    - `sed`: Stream editor operations. Fields: `expression`, `path`, `inplace` (optional boolean).
+    - `agentEdits`: File modification event with path and change metrics. Gets mapped to appropriate file editing tools for the target agent.
     - `assistant`: Array of `[milliseconds, text]` pairs for assistant responses
   - `advanceMs`: Advance logical time by specified milliseconds. Must be >= max time from concurrent events.
   - `screenshot`: Ask harness to capture vt100 buffer with a label.
@@ -119,6 +124,7 @@ expect:
     - `cwd`: Optional working directory relative to the scenario.
   - `complete`: Event indicating that the scenario task has completed successfully. This marks the session status as completed and triggers any completion logic.
   - `merge`: Event indicating that this scenario session should be merged into the session list upon completion. When present, the scenario session will be marked as completed but remain visible in session listings. When omitted, completed scenarios are not shown in session listings.
+
 
   **Legacy support**: Individual `think`, `agentToolUse`, `agentEdits`, and `assistant` events at the top level are treated as single-element `llmResponse` groups for backward compatibility.
   

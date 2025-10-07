@@ -14,11 +14,11 @@ import tempfile
 from pathlib import Path
 
 # Add the src directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+src_dir = os.path.join(os.path.dirname(__file__), 'src')
+sys.path.insert(0, src_dir)
 
-# Import cli module directly
-import cli
-cli_main = cli.main
+# Import server module directly
+import server
 
 
 def signal_handler(sig, frame):
@@ -36,6 +36,14 @@ def main():
     parser.add_argument("--format", choices=["codex", "claude"], default="codex",
                        help="Session file format (default: codex)")
     parser.add_argument("--session-dir", help="Directory for session files (default: temp dir)")
+    parser.add_argument("--tools-profile", choices=["codex", "claude", "gemini", "opencode", "qwen", "cursor-cli", "goose"],
+                       default="codex", help="Tools profile for the target coding agent (default: codex)")
+    parser.add_argument("--strict-tools-validation", action="store_true",
+                       help="Enable strict tools validation - abort on unknown tool definitions")
+    parser.add_argument("--agent-version", default="unknown",
+                       help="Version of the coding agent being tested (for tracking tool definition changes)")
+    parser.add_argument("--request-log-template",
+                       help="Template for request logging path (use {scenario} and {key} placeholders). Use 'stdout' for console output")
 
     args = parser.parse_args()
 
@@ -106,27 +114,25 @@ def main():
     print("\nPress Ctrl+C to stop the server")
     print("=" * 40)
 
-    # Prepare arguments for the CLI
-    cli_args = [
-        "server",
-        "--host", args.host,
-        "--port", str(args.port),
-        "--codex-home", session_dir,
-        "--format", args.format
-    ]
-
-    if playbook_path:
-        cli_args.extend(["--playbook", playbook_path])
-    if scenario_path:
-        cli_args.extend(["--scenario", scenario_path])
-
-    # Override sys.argv to pass arguments to the CLI
-    original_argv = sys.argv
+    # Call server.serve directly
     try:
-        sys.argv = ["mockagent"] + cli_args
-        return cli_main()
-    finally:
-        sys.argv = original_argv
+        server.serve(
+            host=args.host,
+            port=args.port,
+            playbook=playbook_path,
+            scenario=scenario_path,
+            codex_home=session_dir,
+            format=args.format,
+            workspace=None,
+            tools_profile=args.tools_profile,
+            strict_tools_validation=args.strict_tools_validation,
+            agent_version=args.agent_version,
+            request_log_template=args.request_log_template
+        )
+        return 0
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")
+        return 0
 
 
 if __name__ == "__main__":

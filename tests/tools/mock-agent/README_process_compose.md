@@ -35,6 +35,11 @@ The script supports configuration of the mock LLM API server behavior:
 - `--server-tools-profile PROFILE`: Tools profile name (automatically set based on `--agent` type, can be overridden if needed)
 - `--strict-tools-validation`: Enable strict mode - abort on unknown tool definitions to identify missing mappings during development
 
+**Note**: When using the mock server directly (not through agent-test-run.py), you can also specify these options:
+
+- `--tools-profile PROFILE`: Tools profile for the target coding agent (default: codex)
+- `--strict-tools-validation`: Enable strict tools validation
+
 ### Optional Arguments
 
 - `--server-port PORT`: Port for mock LLM server (default: 18081)

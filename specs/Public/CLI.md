@@ -1141,6 +1141,7 @@ OPTIONS:
   --task-id <ID>                     Task ID to execute (alternative to positional argument)
   --session-id <ID>                  Session ID to execute (alternative to positional argument)
   --agent <TYPE>[@VERSION]           Agent type and optional version to use
+  --prompt <TEXT>                    Custom prompt text to pass to the agent (overrides task/session prompt)
   --non-interactive                  Enable non-interactive mode (e.g., codex exec)
   --output <text|text-normalized|json|json-normalized>
                                      Output format: text (default), text-normalized, json, or json-normalized

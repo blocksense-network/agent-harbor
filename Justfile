@@ -341,8 +341,11 @@ webui-build-ssr:
     yarn workspace ah-webui-ssr-sidecar run build
 
 # Start WebUI with mock server for manual testing (cycles through 5 scenarios)
-webui-manual-test:
-    ./scripts/webui-manual-test.sh
+manual-test-webui:
+
+# Launch manual agent start script for testing agent integration
+manual-test-agent-start *args:
+    ./scripts/manual-test-agent-start.sh {{args}}
 
 # Run WebUI E2E tests in headed mode (visible browser)
 webui-test-headed:
