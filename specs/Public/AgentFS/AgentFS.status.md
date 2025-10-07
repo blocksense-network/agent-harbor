@@ -867,12 +867,82 @@ Notes:
 - [x] I/O script runs; skips gracefully with clear message if mount fails (extension not active)
 - [ ] Successful mount and full I/O on a machine with the extension registered/enabled
 
+**M20. Overlay LowerFS & Copy-Up Semantics** (5–8d)
+
+- **Deliverables**:
+  - Core: branch-aware **copy-up** API, **whiteouts**, **metadata overlay** entries; integrate `LowerFs` trait.
+  - Config: `FsConfig.lower`.
+  - Tests: U7–U9 (overlay read/copy-up/metadata-only) and I4 integration.
+  - Docs: Spec updates to AgentFS.md, Snapshots & Branching, Permissions.
+- Adapter tasks:
+  - **FUSE**: LowerFS passthrough (stat/readdir/readlink/open_ro), copy-up trigger on first mutation; optional **passthrough-fd** when available.
+  - **FSKit**: LowerFS proxy for read path; copy-up transition.
+  - **WinFsp**: Lower handle in FileContext for read path; copy-up transition.
+- **Success criteria**:
+  - Read of an unmodified large file within 10% of reading from the lower path directly (FUSE baseline).
+  - Write triggers copy-up; lower file remains unchanged; metadata initialized from lower.
+  - Whiteout hides lower entries; pjdfstests delete+rename cases pass under overlay mode.
+
+**M21. Host-FS Backstore on RAM Disk** (6–10d)
+
+- **Deliverables**:
+  - Config: `FsConfig.backstore = HostFs{root=/ramdisk/...}`; `prefer_native_snapshots`.
+  - Core: upper data streams use HostFs backstore via adapter (no semantic changes).
+  - Snapshot path: If backstore FS supports native snapshots → adapter calls them; else copy the **upper change set** only.
+  - Tests: Throughput comparison vs InMemory backstore (I/O size 4–1024KiB). Snapshot/branch creation under HostFs mode.
+- Adapter tasks:
+  - **Linux (FUSE)**: tmpfs or other RAM-fs for backstore; enable passthrough-fd on upper handles when supported.
+  - **macOS (FSKit)**: APFS RAM disk backstore; proxy I/O via native file handles.
+  - **Windows (WinFsp)**: backstore under a fast local volume; document supported drivers where applicable.
+- **Success criteria**:
+  - Sequential write throughput within 80–95% of direct writes to the backstore path (per platform).
+  - Snapshot of a typical small change set completes within a constant bound vs working set size (native snapshots used when available).
+
+**M22. Kernel-Backstore Proxy (KBP) for overlay** (5–8d)
+- **Deliverables**:
+  - Adapter support for **lower-RO handle** and **upper backstore handle** lifecycles.
+  - Core triggers for **copy-up** and **whiteouts** wired to adapters.
+  - Config: `FsConfig.backstore = HostFs{ root, prefer_native_snapshots }`.
+  - Tests: U7–U9, I4.
+- **Success criteria**:
+  - Read of unmodified large file within 10% of direct lower/backstore read.
+  - Copy-up preserves lower; metadata initialized from lower; whiteouts hide lower entries.
+
+**M23. Host-FS backstore snapshots** (6–10d)
+- **Deliverables**:
+  - Prefer host-FS native snapshots when supported; else copy the *upper change-set*.
+  - Snapshot create/list/restore work with HostFs backstore.
+- **Success criteria**:
+  - Snapshot time scales with *changed set* (or native snapshot constant time).
+
+**M24. Interpose (FD-forwarding) – Zero-overhead path** (8–12d)
+- **Deliverables**:
+  - **Eager upperization**: Core always creates upper entries for interposed opens (never returns lower handles).
+  - **Reflink/copy logic**: Use reflink when available, bounded copy when size ≤ threshold, decline forwarding otherwise.
+  - macOS shim (DYLD interpose + UNIX socket with `SCM_RIGHTS`).
+  - Windows shim (Detours-class hook + named pipe + `DuplicateHandle`).
+  - Control messages: `fd.open` (with `FORWARDING_UNAVAILABLE` error), `fd.dup`, `path.op`, `interpose.set/get`.
+  - Policy: allowlist per bundle/pid; secure handshake; `interpose.max_copy_bytes`, `interpose.require_reflink`.
+  - Tests: I5, T7, T8; mmap correctness; delete-on-close; share-mode parity; read-after-write visibility.
+- **Success criteria**:
+  - Target app I/O bypasses adapter with identical AgentFS semantics; no handle leaks; failure falls back to KBP.
+  - Read-after-write visibility: RO reader sees writes from other processes without reopening.
+  - Large file handling: Files above threshold fall back gracefully when no reflink available.
+
+**M25. Windows open-redirect (experimental)** (5–7d)
+- **Deliverables**:
+  - Return STATUS_REPARSE to backstore on eligible opens; blocked by policy by default.
+  - Document caveats for handle-based rename/delete.
+- **Success criteria**:
+  - Measured throughput near native; semantics caveats documented and tested.
+
 ### Risks & mitigations
 
 - Platform API variance (FSKit maturity; WinFsp nuances): feature‑gate and document exceptions; track upstream issues.
 - CI limitations for privileged mounts: use dedicated runners and containerized privileged lanes only where required; keep unit/component coverage high.
 - Performance regressions under spill: tune chunking, batching, and cache policy; benchmark thresholds enforced in CI with opt‑out for noisy environments.
 - FFI complexity: Use established patterns from Rust/Swift interop projects; extensive testing of memory management and error handling.
+- FSKit/WinFsp lack cross-FS handle splice → rely on KBP + shim for zero-overhead.
 
 ### Parallelization notes
 
@@ -880,6 +950,7 @@ Notes:
 - CLI (M10) can begin after control plane validators land; platform transport shims can be developed with mocks.
 - Performance/fault suites (M11) can evolve alongside adapters; stabilize criteria before M12.
 - FSKit development (M13–M17) can proceed in parallel with other adapters once core APIs are stable.
+- Backstore (M20–M22) and Interpose (M24) can proceed in parallel once core APIs are stable.
 
 ### References
 

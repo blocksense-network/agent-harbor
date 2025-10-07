@@ -7,6 +7,16 @@
 - Ensure performance characteristics (latency/throughput) meet targets under representative workloads.
 - Prove robustness under concurrency, failure injection, and resource pressure (memory spill, ENOSPC).
 
+### I/O path characterization
+**T1. Lower pass-through read:** Read a 1 GiB file never touched by upper; assert no upper node exists post-read; measure throughput.
+**T2. Copy-up metadata seeding:** Touch for write; assert upper mode/uid/gid/ACL/xattrs cloned from lower per policy.
+**T3. KBP cache-warm throughput:** Re-read same 1 GiB; expect ≥ 90% of host-FS direct read.
+**T4. Interpose zero-overhead:** Under shim, open→write→read→mmap large file; assert **no adapter read/write callbacks**; contents correct.
+**T5. Snapshot paths:** With ramdisk native snapshots, snapshot latency ≤ 300 ms for ≤5k active upper files; with copy-active fallback ≤ 2 s.
+**T6. Windows reparse (experimental):** When enabled, open returns NTFS handle; throughput near native; verify path-level ops still enforced via control plane and document forbidden sequences.
+**T7. Interpose RO first, then writer:** Open RO via interpose, then open RW via interpose and write. The RO reader must observe new data (reads/mmap) without reopening.
+**T8. Large file no-reflink:** Interpose open on big file where no reflink exists → `FORWARDING_UNAVAILABLE`; same app can still open via mount and read; later writer creates upper; subsequent interpose opens (on same path) now succeed (size no longer matters).
+
 ### Step-by-step test plans (normative)
 
 The following plans are the authoritative, step-by-step procedures. Sections below provide background and matrices.
@@ -59,6 +69,20 @@ The following plans are the authoritative, step-by-step procedures. Sections bel
 3. On `h2`, attempt `lock(..., Exclusive)` overlapping range; expect conflict error.
 4. For share modes (component test via adapter): open first handle with deny-write; attempt second open with write access; expect adapter to reject per share admission.
 
+#### U7. Overlay pass-through read (unit)
+1. Configure `FsConfig.lower.root` to a temp directory with file `/x` containing "L".
+2. In a fresh branch with no upper entries, `read("/x")` returns "L" without creating an upper entry.
+3. `stat("/x")` reflects lower metadata.
+
+#### U8. Copy-up on first write (unit)
+1. Same setup as U7. `write("/x", "U")` triggers `copy_up("/x")`.
+2. Subsequent `read("/x")` returns "U"; lower `/x` remains "L".
+3. Upper metadata initialized from lower, then mtime updated per write.
+
+#### U9. Metadata overlay without data copy (unit)
+1. Call `chmod("/x", 0600)` on an unmodified `/x` → creates metadata overlay only.
+2. `stat("/x")` reports `0600`, but `read("/x")` continues to pass through to lower until first data write.
+
 #### C1. C ABI round-trip (component)
 
 1. Build the C test harness linking to the core’s C ABI symbols.
@@ -94,6 +118,11 @@ Prerequisite: WinFsp installed; adapter built.
 3. Create ADS: `cmd /c echo meta > X:\a.txt:meta`; enumerate streams via adapter API or `GetStreamInfo`; expect `meta` present.
 4. Attempt delete-on-close: open `X:\t.txt`, mark for delete, close last handle; subsequent `dir` should not list `t.txt`.
 5. Use DeviceIoControl to send `snapshot.create/list` and `branch.create/bind`; verify behavior per IDs.
+
+#### I4. Adapter passthrough (integration)
+1. Mount with `FsConfig.lower.root`.
+2. Read large file without prior writes; verify throughput ≈ reading the same file from the lower path directly.
+3. Write; verify copy-up occurs and subsequent I/O hits backstore.
 
 #### I4. FSKit adapter basics (integration, macOS 15+)
 

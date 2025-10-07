@@ -70,6 +70,17 @@ Implement FSKit’s volume operations by delegating to `FsCore`. Concrete method
   - chmod/chown equivalents map to updating core’s mode/ownership fields.
   - utimens → `FsCore::set_times` with `FileTimes`.
 
+### FSVolume Read/Write Mapping (KBP behavior)
+- **Read**:
+  - If no upper entry, open **lower RO** handle and service reads; **do not** create upper node.
+  - If an upper entry exists, read via **upper backstore** handle.
+- **Write**:
+  - On first mutation, perform **copy-up**, open **upper RW** handle, then write.
+**Note:** FSKit does **not** support cross-FS handle splicing; data page-ins/page-outs still traverse this adapter.
+
+### Metadata initialization
+- On copy-up, initialize mode/uid/gid/ACL/xattrs from the **lower** entry per `copyup.*` policy; apply umask if configured.
+
 ### Case Sensitivity and Names
 
 - Default to case‑insensitive‑preserving; configure `FsConfig.case_sensitivity` accordingly.

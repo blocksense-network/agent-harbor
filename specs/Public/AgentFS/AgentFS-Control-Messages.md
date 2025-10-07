@@ -13,6 +13,29 @@ AgentFS exposes a small control plane to manage snapshots and branches on a moun
 
 All ops carry a `version` field. Current value: `"1"`.
 
+## New: Backstore lifecycle
+- `backstore.create_ramdisk { fs: "apfs|zfs|nilfs|btrfs|ext4|refs|ntfs", size_mb: u32, opts?: {...} } -> { mount, supports_native_snapshots }`
+- `backstore.attach_hostfs { root: Path } -> { root }`
+- `backstore.status -> { kind, root_or_mount, supports_native_snapshots }`
+
+## New: FD-forwarding / Interpose
+- `fd.open { path, flags, access, share } -> { ok, handle } | { err: FORWARDING_UNAVAILABLE, reason: "no_reflink|size_threshold|policy" }`
+  - On success: Unix returns handle via `SCM_RIGHTS` on the control socket; Windows duplicates via `DuplicateHandle`.
+  - On failure: Server declines FD-forwarding; shim falls back to KBP (mounted volume) for that process/file.
+- `path.op { op: "rename|unlink|chmod|..." , args... } -> { ok }`
+
+## New: Interpose policy configuration
+- `interpose.set { forwarding: "eager_upperize|disabled", max_copy_bytes: u64, require_reflink: bool }`
+- `interpose.get -> { forwarding, max_copy_bytes, require_reflink }`
+
+## New: Windows open-redirect policy (experimental)
+- `policy.set { windows: { open_redirect: bool } }`
+- `policy.get -> ...`
+
+## Snapshot on backstore
+- `snapshot.native { label } -> { id }` (if supported)
+- `snapshot.copy_active { label } -> { id }`
+
 ### Schemas
 
 - Request SSZ Schema: `specs/Public/Schemas/agentfs-control.request.schema.json`
@@ -26,6 +49,9 @@ Adapters and clients MUST validate messages against these schemas. Messages are 
 - Errors return an Error struct with `error: string` and optional `code: integer`:
   - Windows: adapter maps internal status to NTSTATUS and also returns an error SSZ in the output buffer when applicable.
   - FUSE/FSKit: adapter returns `-errno`; any SSZ body is optional, but recommended for diagnostics.
+
+### Message validation and errors
+- All messages are versioned; core returns `ERR_UNSUPPORTED` when capability absent.
 
 ### Transports by Platform
 

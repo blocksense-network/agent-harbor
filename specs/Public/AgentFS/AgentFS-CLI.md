@@ -16,11 +16,30 @@ This CLI is integrated as subcommands of the main `ah` CLI. It controls the runn
 
 ### Command Overview
 
-- ah agent fs snapshot create [--name <NAME>] --mount <MOUNT>
-- ah agent fs snapshot list --mount <MOUNT>
-- ah agent fs branch create --from <SNAPSHOT_ID> [--name <NAME>] --mount <MOUNT>
-- ah agent fs branch bind --branch <BRANCH_ID> --mount <MOUNT> [--pid <PID>]
-- ah agent fs branch exec --branch <BRANCH_ID> --mount <MOUNT> -- <COMMAND> [ARGS...]
+ah agent fs snapshot create [--name <NAME>] --mount <MOUNT>
+  Create a new snapshot of the current branch state.
+
+ah agent fs snapshot list --mount <MOUNT>
+  List all snapshots for the volume.
+
+ah agent fs branch create --from <SNAPSHOT_ID> [--name <NAME>] --mount <MOUNT>
+  Create a new writable branch from the specified snapshot.
+
+ah agent fs branch bind --branch <BRANCH_ID> --mount <MOUNT> [--pid <PID>]
+  Bind the current (or specified) process to a branch view.
+
+ah agent fs branch exec --branch <BRANCH_ID> --mount <MOUNT> -- <COMMAND> [ARGS...]
+  Execute a command in the context of the specified branch.
+
+ah agent fs backstore create-ramdisk --fs <FS> --size <MB> --mount <MOUNT>
+  Create a RAM disk with the specified filesystem and attach as backstore.
+
+ah agent fs backstore attach --root <PATH> --mount <MOUNT>
+  Attach an existing host directory as the backstore root.
+
+ah agent fs policy set --windows-open-redirect=<on|off> --mount <MOUNT>
+  Enable/disable Windows experimental open-redirect fast-path.
+>>>>>>> f8514db (specs: Detail how AgentFS works as an overlay file system)
 
 Notes:
 
@@ -47,6 +66,10 @@ Notes:
   - IOCTL_AGENTFS_BRANCH_CREATE
   - IOCTL_AGENTFS_BRANCH_BIND
   - IOCTL_AGENTFS_BRANCH_EXEC (optional; client can also do bind+CreateProcess)
+  - IOCTL_AGENTFS_BACKSTORE_CREATE
+  - IOCTL_AGENTFS_BACKSTORE_ATTACH
+  - IOCTL_AGENTFS_POLICY_SET
+  - IOCTL_AGENTFS_FD_OPEN
 - Payloads: METHOD_BUFFERED; input/output are small JSON or packed structs (versioned). Example JSON payloads:
   - Snapshot create (in): `{ "op":"snapshot.create", "name":"<NAME>" }`
   - Snapshot create (out): `{ "id":"<ID>", "name":"<NAME>" }`
@@ -87,17 +110,17 @@ Notes:
 
 - Create a snapshot with a name:
   - Windows: `ah agent fs snapshot create --mount X: --name clean`
-  - FUSE: `ah agent fs snapshot create --mount /mnt/ah --name clean`
+  - FUSE: `ah agent fs snapshot create --mount /mnt/aw --name clean`
 
 - List snapshots:
-  - `ah agent fs snapshot list --mount /mnt/ah`
+  - `ah agent fs snapshot list --mount /mnt/aw`
 
 - Create a branch from snapshot and bind current shell:
-  - `ah agent fs branch create --mount /mnt/ah --from 01HV... --name task-123 > branch.json`
-  - `ah agent fs branch bind --mount /mnt/ah --branch $(jq -r .id branch.json)`
+  - `ah agent fs branch create --mount /mnt/aw --from 01HV... --name task-123 > branch.json`
+  - `ah agent fs branch bind --mount /mnt/aw --branch $(jq -r .id branch.json)`
 
 - Run a command in a branch:
-  - `ah agent fs branch exec --mount /mnt/ah --branch 01HW... -- bash -lc "make test"`
+  - `ah agent fs branch exec --mount /mnt/aw --branch 01HW... -- bash -lc "make test"`
 
 ### Security Considerations
 
