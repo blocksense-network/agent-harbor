@@ -1,7 +1,7 @@
 //! Client API trait for AH TUI
 
-use async_trait::async_trait;
 use ah_rest_api_contract::*;
+use async_trait::async_trait;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

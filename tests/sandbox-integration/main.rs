@@ -114,7 +114,9 @@ fn test_ah_macos_launcher_denies_write_outside_tmp() {
             "--allow-exec", "/bin",
             "--allow-read", "/bin",
             "--",
-            "sh", "-c", script,
+            "sh",
+            "-c",
+            script,
         ])
         .status()
         .expect("failed to run ah-macos-launcher");
@@ -125,7 +127,10 @@ fn test_ah_macos_launcher_denies_write_outside_tmp() {
     if path.exists() {
         // Clean up if created erroneously to avoid polluting home dir
         let _ = std::fs::remove_file(&path);
-        panic!("Seatbelt did not block write outside /tmp; file was created: {:?}", path);
+        panic!(
+            "Seatbelt did not block write outside /tmp; file was created: {:?}",
+            path
+        );
     }
 }
 

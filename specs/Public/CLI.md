@@ -1141,6 +1141,9 @@ OPTIONS:
   --task-id <ID>                     Task ID to execute (alternative to positional argument)
   --session-id <ID>                  Session ID to execute (alternative to positional argument)
   --agent <TYPE>[@VERSION]           Agent type and optional version to use
+  --non-interactive                  Enable non-interactive mode (e.g., codex exec)
+  --output <text|text-normalized|json|json-normalized>
+                                     Output format: text (default), text-normalized, json, or json-normalized
   --repo <PATH>                      Repository path (auto-detected if not provided)
   --working-copy <auto|cow-overlay|worktree|in-place>
                                      Working copy mode for isolation (default: auto)
@@ -1194,6 +1197,12 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
 **Agent Execution:**
 
 6. **Agent Launch**: Executes the specified agent type with the task prompt:
+   - **Non-Interactive Mode**: When `--non-interactive` is specified, launches agent in non-interactive mode (e.g., `codex exec`)
+   - **Output Formatting**: Controls output format via `--output`:
+     - `text`: Display agent output unmodified (default)
+     - `text-normalized`: Display textual output with consistent structure regardless of agent type
+     - `json`: Display JSON output if available (e.g., `codex --json`)
+     - `json-normalized`: Map JSON to agent-harbor defined schema consistent across agent types
    - Local agents: Launches directly in the prepared sandbox environment
    - Cloud agents: May use browser automation when `--browser-automation true`
    - Session recording: Captures output with asciinema when `--record-output yes`

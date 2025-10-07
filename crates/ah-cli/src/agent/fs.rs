@@ -1,5 +1,7 @@
+use ah_fs_snapshots::{
+    provider_for, FsSnapshotProvider, ProviderCapabilities, SnapshotProviderKind,
+};
 use anyhow::{anyhow, Result};
-use ah_fs_snapshots::{provider_for, ProviderCapabilities, SnapshotProviderKind, FsSnapshotProvider};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -258,8 +260,8 @@ impl AgentFsCommands {
         // For ZFS testing, create ZFS provider directly (like the integration tests)
         #[cfg(feature = "zfs")]
         {
-            use ah_fs_snapshots_zfs::ZfsProvider;
             use ah_fs_snapshots::{FsSnapshotProvider, WorkingCopyMode};
+            use ah_fs_snapshots_zfs::ZfsProvider;
 
             let zfs_provider = ZfsProvider::new();
 
@@ -292,7 +294,7 @@ impl AgentFsCommands {
         let provider = ah_fs_snapshots::provider_for(&repo_path)?;
 
         // Create a minimal PreparedWorkspace for in-place mode
-        use ah_fs_snapshots::{PreparedWorkspace, WorkingCopyMode, SnapshotProviderKind};
+        use ah_fs_snapshots::{PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode};
         let workspace = PreparedWorkspace {
             exec_path: repo_path.clone(),
             working_copy: WorkingCopyMode::InPlace,

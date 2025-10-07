@@ -146,7 +146,8 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
     runner.read_and_parse().await?;
 
     // Navigate to the "New Task" section (should be the last item)
-    for _ in 0..2 { // Navigate down to reach the New Task section
+    for _ in 0..2 {
+        // Navigate down to reach the New Task section
         runner.send("\x1b[B").await?; // Down arrow
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }

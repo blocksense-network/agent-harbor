@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use ah_fs_snapshots::{FsSnapshotProvider, PreparedWorkspace, WorkingCopyMode};
+use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
 
@@ -134,7 +134,6 @@ pub async fn prepare_workspace_with_fallback(
         let capabilities = provider.detect_capabilities(workspace_path);
 
         if capabilities.score > 0 {
-
             // Try CoW overlay mode first if supported, otherwise try in-place mode
             let modes_to_try = if capabilities.supports_cow_overlay {
                 vec![WorkingCopyMode::CowOverlay]

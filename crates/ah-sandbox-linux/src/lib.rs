@@ -1,7 +1,7 @@
 //! Linux-specific sandbox implementation for Agents Workflow.
 
-use async_trait::async_trait;
 use ah_sandbox::{Result, SandboxConfig, SandboxProvider, SandboxResult};
+use async_trait::async_trait;
 use std::os::unix::process::CommandExt;
 use tokio::process::Command;
 

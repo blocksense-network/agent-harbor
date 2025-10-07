@@ -113,4 +113,3 @@ pub use expectrl::session;
 
 /// Re-export crossterm for input simulation
 pub use crossterm;
-

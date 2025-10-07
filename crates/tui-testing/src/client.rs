@@ -3,8 +3,8 @@
 use crate::protocol::{TestCommand, TestResponse};
 use anyhow::{Context, Result};
 use std::time::Duration;
+use tmq::{request, request_reply::RequestSender, AsZmqSocket, Context as TmqContext};
 use tokio::time;
-use tmq::{request, Context as TmqContext, request_reply::RequestSender, AsZmqSocket};
 
 /// Client for communicating with the TUI test runner from child processes
 pub struct TuiTestClient {
@@ -56,11 +56,22 @@ impl TuiTestClient {
         }
     }
 
+    /// Request to exit the tested program with the given exit code
+    pub async fn request_exit(&mut self, exit_code: i32) -> Result<()> {
+        let command = TestCommand::Exit(exit_code);
+        let response = self.send_command(command).await?;
+        match response {
+            TestResponse::Ok => Ok(()),
+            TestResponse::Error(msg) => Err(anyhow::anyhow!("Exit request failed: {}", msg)),
+        }
+    }
+
     /// Send a command and receive response
     async fn send_command(&mut self, command: TestCommand) -> Result<TestResponse> {
         // Convert command to simple string format
         let message = match command {
             TestCommand::Screenshot(label) => format!("screenshot:{}", label),
+            TestCommand::Exit(exit_code) => format!("exit:{}", exit_code),
             TestCommand::Ping => "ping".to_string(),
         };
 
@@ -70,12 +81,20 @@ impl TuiTestClient {
         let socket = self.socket.take().context("No socket available")?;
 
         // Send request and receive response with timeout using select
-        println!("TuiTestClient: Sending request and waiting for response with timeout {}ms", self.timeout.as_millis());
+        println!(
+            "TuiTestClient: Sending request and waiting for response with timeout {}ms",
+            self.timeout.as_millis()
+        );
 
         let send_future = async move {
-            let receiver = socket.send(tmq::Multipart::from(vec![message.as_bytes()])).await
+            let receiver = socket
+                .send(tmq::Multipart::from(vec![message.as_bytes()]))
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
-            receiver.recv().await.map_err(|e| anyhow::anyhow!("Failed to receive response: {}", e))
+            receiver
+                .recv()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to receive response: {}", e))
         };
 
         let timeout_future = time::sleep(self.timeout);
@@ -100,7 +119,11 @@ impl TuiTestClient {
         // Parse response
         let response_bytes = response_msg.iter().next().map(|m| m.as_ref()).unwrap_or(&[][..]);
         let response_str = String::from_utf8_lossy(response_bytes);
-        println!("TuiTestClient: Parsed response: '{}' ({} bytes)", response_str, response_bytes.len());
+        println!(
+            "TuiTestClient: Parsed response: '{}' ({} bytes)",
+            response_str,
+            response_bytes.len()
+        );
         let response = match response_str.as_ref() {
             "ok" => TestResponse::Ok,
             s if s.starts_with("error:") => TestResponse::Error(s[6..].to_string()),
@@ -117,4 +140,3 @@ impl Drop for TuiTestClient {
         // ZeroMQ handles cleanup automatically
     }
 }
-

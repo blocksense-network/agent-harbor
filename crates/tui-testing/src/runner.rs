@@ -1,16 +1,13 @@
 //! TUI Test Runner - manages child processes and handles screenshot requests
 
-use crate::protocol::{TestCommand, TestResponse};
+use crate::protocol::TestResponse;
 use anyhow::{Context, Result};
+use futures_lite::AsyncReadExt;
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::task;
 use tmq::{reply, Context as TmqContext};
-use futures::{SinkExt, StreamExt};
-use futures_lite::AsyncReadExt;
+use tokio::sync::Mutex;
 
 /// Builder for TuiTestRunner configuration, similar to tokio::process::Command
 #[derive(Debug)]
@@ -147,13 +144,16 @@ pub struct TuiTestRunner {
     screenshot_dir: PathBuf,
     vt100_parser: vt100::Parser,
     session: expectrl::session::Session,
+    exit_tx: tokio::sync::mpsc::UnboundedSender<i32>,
+    exit_rx: tokio::sync::mpsc::UnboundedReceiver<i32>,
 }
 
 impl TuiTestRunner {
     /// Spawn a TUI test runner from a builder configuration
     async fn spawn_from_builder(builder: TestedTerminalProgram) -> Result<Self> {
         // Determine screenshot directory
-        let screenshot_dir = builder.screenshot_dir
+        let screenshot_dir = builder
+            .screenshot_dir
             .unwrap_or_else(|| tempfile::tempdir().unwrap().path().to_path_buf());
 
         // Initialize vt100 parser with the specified screen size
@@ -162,13 +162,17 @@ impl TuiTestRunner {
         // Always start IPC server for screenshot capture
         let endpoint_str = "tcp://127.0.0.1:5555".to_string();
 
+        // Create exit signal channel
+        let (exit_tx, exit_rx) = tokio::sync::mpsc::unbounded_channel::<i32>();
+
         // Start IPC server task
         let screenshots = Arc::new(Mutex::new(HashMap::new()));
         let screenshots_clone = Arc::clone(&screenshots);
         let endpoint_clone = endpoint_str.clone();
+        let exit_tx_clone = exit_tx.clone();
         tokio::spawn(async move {
             println!("Starting IPC server on {}", endpoint_clone);
-            if let Err(e) = Self::start_ipc_server_task(endpoint_clone, screenshots_clone).await {
+            if let Err(e) = Self::start_ipc_server_task(endpoint_clone, screenshots_clone, exit_tx_clone).await {
                 eprintln!("IPC server error: {}", e);
             }
         });
@@ -213,11 +217,17 @@ impl TuiTestRunner {
             screenshot_dir,
             vt100_parser,
             session,
+            exit_tx,
+            exit_rx,
         })
     }
 
     /// Start the IPC server task
-    async fn start_ipc_server_task(endpoint: String, screenshots: Arc<Mutex<HashMap<String, String>>>) -> tmq::Result<()> {
+    async fn start_ipc_server_task(
+        endpoint: String,
+        screenshots: Arc<Mutex<HashMap<String, String>>>,
+        exit_tx: tokio::sync::mpsc::UnboundedSender<i32>,
+    ) -> tmq::Result<()> {
         println!("IPC server binding to {}", endpoint);
         let mut socket = reply(&TmqContext::new()).bind(&endpoint)?;
         println!("IPC server successfully bound to {}", endpoint);
@@ -231,7 +241,7 @@ impl TuiTestRunner {
 
             println!("IPC server received request: {}", request_str);
 
-            let response = Self::handle_request_static(request_bytes, &screenshots).await;
+            let response = Self::handle_request_static(request_bytes, &screenshots, &exit_tx).await;
             let response_str = match response {
                 TestResponse::Ok => "ok".to_string(),
                 TestResponse::Error(msg) => format!("error:{}", msg),
@@ -239,7 +249,8 @@ impl TuiTestRunner {
 
             println!("IPC server sending response: {}", response_str);
             // Send response
-            let response_socket = sender.send(tmq::Multipart::from(vec![response_str.as_bytes()])).await?;
+            let response_socket =
+                sender.send(tmq::Multipart::from(vec![response_str.as_bytes()])).await?;
             println!("IPC server response sent successfully");
             socket = response_socket;
         }
@@ -249,6 +260,7 @@ impl TuiTestRunner {
     async fn handle_request_static(
         request_bytes: &[u8],
         screenshots: &Arc<Mutex<HashMap<String, String>>>,
+        exit_tx: &tokio::sync::mpsc::UnboundedSender<i32>,
     ) -> TestResponse {
         let request_str = String::from_utf8_lossy(request_bytes);
         println!("IPC server received request: {}", request_str);
@@ -260,12 +272,81 @@ impl TuiTestRunner {
             screenshots_map.insert(label.clone(), format!("Screenshot captured: {}", label));
             println!("Screenshot captured successfully");
             TestResponse::Ok
+        } else if request_str.starts_with("exit:") {
+            let exit_code_str = &request_str[5..];
+            match exit_code_str.parse::<i32>() {
+                Ok(exit_code) => {
+                    println!("Received exit command with code: {}", exit_code);
+                    // Send the exit code to the test runner to terminate the child process
+                    if let Err(e) = exit_tx.send(exit_code) {
+                        println!("Failed to send exit signal: {}", e);
+                        return TestResponse::Error("Failed to send exit signal".to_string());
+                    }
+                    TestResponse::Ok
+                }
+                Err(_) => {
+                    println!("Invalid exit code: {}", exit_code_str);
+                    TestResponse::Error("Invalid exit code".to_string())
+                }
+            }
         } else if request_str == "ping" {
             println!("Received ping");
             TestResponse::Ok
         } else {
             println!("Unknown command: {}", request_str);
             TestResponse::Error("Unknown command".to_string())
+        }
+    }
+
+    /// Wait for the child process to complete or receive an exit signal
+    pub async fn wait_for_exit(mut self) -> Result<i32> {
+        loop {
+            tokio::select! {
+                // Check for exit signal from IPC
+                exit_code = self.exit_rx.recv() => {
+                    match exit_code {
+                        Some(code) => {
+                            println!("Received exit signal with code: {}", code);
+
+                            // Terminate the child process using OS-level APIs
+                            // Get the PID from the session and use OS-specific termination
+                            let pid = self.session.pid();
+                            #[cfg(unix)]
+                            {
+                                // Send SIGTERM for graceful termination on Unix systems
+                                let _ = nix::sys::signal::kill(
+                                    nix::unistd::Pid::from_raw(pid.as_raw() as i32),
+                                    nix::sys::signal::Signal::SIGTERM
+                                );
+                            }
+
+                            #[cfg(windows)]
+                            {
+                                // Use taskkill on Windows
+                                use std::process::Command;
+                                let _ = Command::new("taskkill")
+                                    .args(&["/PID", &format!("{}", pid.as_raw()), "/T", "/F"])
+                                    .status();
+                            }
+
+                            // Also send Ctrl+C through PTY as fallback
+                            let _ = self.session.send_control('c').await;
+
+                            // Wait a bit for the process to terminate gracefully
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            return Ok(code);
+                        }
+                        None => {
+                            // Channel closed, continue waiting for normal exit
+                        }
+                    }
+                }
+                // Check if the process has exited normally
+                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                    // Check if the session is still active
+                    // For now, just continue - we could add more sophisticated process monitoring
+                }
+            }
         }
     }
 

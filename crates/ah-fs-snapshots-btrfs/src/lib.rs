@@ -103,10 +103,7 @@ impl BtrfsProvider {
     /// Generate a unique identifier for Btrfs resources.
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         format!("ah_{}_{}", std::process::id(), timestamp)
     }
 
@@ -302,7 +299,10 @@ impl FsSnapshotProvider for BtrfsProvider {
         }
     }
 
-    fn list_snapshots(&self, directory: &Path) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
+    fn list_snapshots(
+        &self,
+        directory: &Path,
+    ) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
         use ah_fs_snapshots_traits::SnapshotInfo;
 
         // For Btrfs, look in the parent directory for snapshot-like directories
@@ -319,16 +319,20 @@ impl FsSnapshotProvider for BtrfsProvider {
                                 // Check if this looks like a snapshot directory
                                 if dir_name.contains("snapshot") || dir_name.starts_with("ah_") {
                                     // Try to parse timestamp from directory name
-                                    let created_at = self.parse_snapshot_timestamp(dir_name)
-                                        .unwrap_or_else(|| std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_secs());
+                                    let created_at = self
+                                        .parse_snapshot_timestamp(dir_name)
+                                        .unwrap_or_else(|| {
+                                            std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_secs()
+                                        });
 
                                     let snapshot_ref = ah_fs_snapshots_traits::SnapshotRef {
                                         id: path.to_string_lossy().to_string(),
                                         label: Some(dir_name.to_string()),
-                                        provider: ah_fs_snapshots_traits::SnapshotProviderKind::Btrfs,
+                                        provider:
+                                            ah_fs_snapshots_traits::SnapshotProviderKind::Btrfs,
                                         meta: std::collections::HashMap::new(),
                                     };
 

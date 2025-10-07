@@ -1,23 +1,22 @@
-//! Simple command-line client for requesting screenshots from TUI test runner
+//! Simple command-line client for sending commands to TUI test runner
 
 use clap::Parser;
 use std::time::Duration;
 use tmq::{request, Context as TmqContext};
-use futures::{SinkExt, StreamExt};
 
-/// Simple command-line client for requesting screenshots from TUI test runner
+/// Simple command-line client for sending commands to TUI test runner
 #[derive(Parser)]
-#[command(name = "tui-testing-screenshot")]
-#[command(about = "Request screenshots from TUI test runner via ZMQ")]
+#[command(name = "tui-testing-cmd")]
+#[command(about = "Send commands to TUI test runner via ZMQ")]
 struct Args {
     /// ZeroMQ URI of the test runner (e.g., tcp://127.0.0.1:5555)
     /// If not provided, will try to read from TUI_TESTING_URI environment variable
     #[arg(short, long)]
     uri: Option<String>,
 
-    /// Screenshot label to request
+    /// Command to send (screenshot:<label> or exit:<exit-code>)
     #[arg(short, long)]
-    label: String,
+    cmd: String,
 
     /// Timeout in seconds for the request
     #[arg(short, long, default_value = "5")]
@@ -29,19 +28,24 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // Get URI from command line or environment
-    let uri = args.uri.or_else(|| std::env::var("TUI_TESTING_URI").ok())
-        .ok_or_else(|| anyhow::anyhow!("URI not provided via --uri argument or TUI_TESTING_URI environment variable"))?;
+    let uri = args.uri.or_else(|| std::env::var("TUI_TESTING_URI").ok()).ok_or_else(|| {
+        anyhow::anyhow!(
+            "URI not provided via --uri argument or TUI_TESTING_URI environment variable"
+        )
+    })?;
 
     // Create tmq request socket
     let socket = request(&TmqContext::new())
         .connect(&uri)
         .map_err(|e| anyhow::anyhow!("Failed to connect to {}: {}", uri, e))?;
 
-    // Send screenshot request
-    let message = format!("screenshot:{}", args.label);
-    println!("Sending screenshot request: {}", message);
+    // Send command request
+    let message = args.cmd.clone();
+    println!("Sending command: {}", message);
 
-    let receiver = socket.send(tmq::Multipart::from(vec![message.as_bytes()])).await
+    let receiver = socket
+        .send(tmq::Multipart::from(vec![message.as_bytes()]))
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to send request: {}", e))?;
 
     // Receive response with timeout
@@ -52,11 +56,11 @@ async fn main() -> anyhow::Result<()> {
             let response = String::from_utf8_lossy(response_bytes);
             match response.as_ref() {
                 "ok" => {
-                    println!("✓ Screenshot '{}' captured successfully", args.label);
+                    println!("✓ Command '{}' executed successfully", args.cmd);
                     Ok(())
                 }
                 s if s.starts_with("error:") => {
-                    eprintln!("✗ Screenshot request failed: {}", &s[6..]);
+                    eprintln!("✗ Command '{}' failed: {}", args.cmd, &s[6..]);
                     std::process::exit(1);
                 }
                 _ => {

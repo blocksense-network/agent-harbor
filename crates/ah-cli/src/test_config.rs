@@ -75,9 +75,7 @@ pub fn get_zfs_test_mount_point() -> Result<std::path::PathBuf, anyhow::Error> {
         ));
     }
 
-    let mountpoint = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let mountpoint = String::from_utf8(output.stdout)?.trim().to_string();
 
     if mountpoint.is_empty() || mountpoint == "-" {
         return Err(anyhow::anyhow!(

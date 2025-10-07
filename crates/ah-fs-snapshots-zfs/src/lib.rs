@@ -2,8 +2,8 @@
 
 use ah_fs_snapshots_daemon::client::{DaemonClient, DaemonError};
 use ah_fs_snapshots_traits::{
-    FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotProviderKind,
-    SnapshotInfo, SnapshotRef, WorkingCopyMode,
+    FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotInfo,
+    SnapshotProviderKind, SnapshotRef, WorkingCopyMode,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -138,10 +138,7 @@ impl ZfsProvider {
     /// Generate a unique identifier for ZFS resources.
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         format!("ah_{}_{}", std::process::id(), timestamp)
     }
 
@@ -154,7 +151,9 @@ impl ZfsProvider {
             .output()?;
 
         if !output.status.success() {
-            return Err(ah_fs_snapshots_traits::Error::provider("Failed to list ZFS datasets"));
+            return Err(ah_fs_snapshots_traits::Error::provider(
+                "Failed to list ZFS datasets",
+            ));
         }
 
         let datasets = String::from_utf8(output.stdout)
@@ -183,7 +182,8 @@ impl ZfsProvider {
                     .trim()
                     .to_string();
 
-                if !mountpoint.is_empty() && mountpoint != "-" && path_str.starts_with(&mountpoint) {
+                if !mountpoint.is_empty() && mountpoint != "-" && path_str.starts_with(&mountpoint)
+                {
                     // Check if this is a better match (longer mountpoint path)
                     if let Some(ref current_best) = best_match {
                         if mountpoint.len() > current_best.len() {
@@ -196,18 +196,19 @@ impl ZfsProvider {
             }
         }
 
-        best_match.ok_or_else(|| ah_fs_snapshots_traits::Error::provider(format!(
-            "No ZFS dataset found for path: {}", path.display()
-        )))
+        best_match.ok_or_else(|| {
+            ah_fs_snapshots_traits::Error::provider(format!(
+                "No ZFS dataset found for path: {}",
+                path.display()
+            ))
+        })
     }
 
     /// Parse timestamp from snapshot name if it follows a pattern like "snapshot_1234567890"
     fn parse_snapshot_timestamp(&self, snapshot_name: &str) -> Option<u64> {
         // Try to extract timestamp from common patterns
         if snapshot_name.starts_with("snapshot_") {
-            snapshot_name.strip_prefix("snapshot_")?
-                .parse::<u64>()
-                .ok()
+            snapshot_name.strip_prefix("snapshot_")?.parse::<u64>().ok()
         } else if snapshot_name.chars().all(|c| c.is_ascii_digit()) {
             snapshot_name.parse::<u64>().ok()
         } else {
@@ -420,22 +421,28 @@ impl FsSnapshotProvider for ZfsProvider {
         }
     }
 
-    fn list_snapshots(&self, directory: &Path) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
+    fn list_snapshots(
+        &self,
+        directory: &Path,
+    ) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
         use ah_fs_snapshots_traits::SnapshotInfo;
 
         // Find the dataset for this directory
         let dataset = self.find_dataset_for_path(directory)?;
-        let snapshots = self.daemon_client.list_zfs_snapshots(&dataset)
-            .map_err(|e| ah_fs_snapshots_traits::Error::provider(format!("Failed to list ZFS snapshots: {}", e)))?;
+        let snapshots = self.daemon_client.list_zfs_snapshots(&dataset).map_err(|e| {
+            ah_fs_snapshots_traits::Error::provider(format!("Failed to list ZFS snapshots: {}", e))
+        })?;
 
         let mut result = Vec::new();
         for snap_name in snapshots {
             if let Some(snapshot_part) = snap_name.split('@').nth(1) {
-                let created_at = self.parse_snapshot_timestamp(snapshot_part)
-                    .unwrap_or_else(|| std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs());
+                let created_at =
+                    self.parse_snapshot_timestamp(snapshot_part).unwrap_or_else(|| {
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs()
+                    });
 
                 let snapshot_ref = SnapshotRef {
                     id: snap_name.clone(),

@@ -95,7 +95,10 @@ impl DaemonClient {
             Response::SuccessWithList(data) => {
                 let json_str = String::from_utf8_lossy(&data);
                 serde_json::from_str(&json_str).map_err(|e| {
-                    DaemonError::CommunicationError(format!("Failed to parse snapshot list JSON: {}", e))
+                    DaemonError::CommunicationError(format!(
+                        "Failed to parse snapshot list JSON: {}",
+                        e
+                    ))
                 })
             }
             Response::Error(msg) => Err(DaemonError::DaemonError(

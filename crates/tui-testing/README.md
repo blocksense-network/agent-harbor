@@ -162,15 +162,17 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 #### Connection
 - `connect(uri: &str) -> impl Future<Output = Result<Self>>` - Connect to test runner
 
-#### Screenshot Requests
+#### Screenshot and Control Requests
 - `request_screenshot(label: &str) -> impl Future<Output = Result<()>>` - Request a screenshot
+- `request_exit(exit_code: i32) -> impl Future<Output = Result<()>>` - Request program termination
 - `ping() -> impl Future<Output = Result<()>>` - Test connectivity
 
 ### CLI Tools
 
-#### tui-testing-screenshot
+#### tui-testing-cmd
 ```bash
-tui-testing-screenshot --uri <URI> --label <LABEL> [--timeout <SECONDS>]
+tui-testing-cmd --uri <URI> --cmd "screenshot:<LABEL>" [--timeout <SECONDS>]
+tui-testing-cmd --uri <URI> --cmd "exit:<EXIT_CODE>" [--timeout <SECONDS>]
 ```
 
 #### test-guest
@@ -296,14 +298,24 @@ async fn test_scenario_execution() -> anyhow::Result<()> {
 
 ## Command-Line Client
 
-The crate includes a simple command-line client `tui-testing-screenshot` for manually requesting screenshots from a running test server:
+The crate includes a command-line client `tui-testing-cmd` for sending commands to a running test server:
+
+### Supported Commands
+
+- **screenshot:<label>**: Request a screenshot capture with the specified label
+- **exit:<exit-code>**: Terminate the tested program and assume it has produced the specified exit code
+
+### Usage Examples
 
 ```bash
 # Request a screenshot
-tui-testing-screenshot --uri tcp://127.0.0.1:5555 --label "my_screenshot"
+tui-testing-cmd --uri tcp://127.0.0.1:5555 --cmd "screenshot:my_screenshot"
 
-# With custom timeout
-tui-testing-screenshot --uri tcp://127.0.0.1:5555 --label "help_screen" --timeout 10
+# Terminate the tested program with exit code 0
+tui-testing-cmd --uri tcp://127.0.0.1:5555 --cmd "exit:0"
+
+# Terminate with custom timeout
+tui-testing-cmd --uri tcp://127.0.0.1:5555 --cmd "screenshot:help_screen" --timeout 10
 ```
 
 This is useful for:
@@ -311,6 +323,7 @@ This is useful for:
 - Integration with scripts and CI/CD pipelines
 - Debugging TUI test setups
 - Testing with subprocess execution from other languages (Python, shell scripts, etc.)
+- Automating test completion and exit handling
 
 ## Advanced Features
 

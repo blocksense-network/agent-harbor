@@ -5441,6 +5441,7 @@ dependencies = [
  "futures",
  "futures-lite 1.13.0",
  "insta",
+ "nix 0.27.1",
  "regex",
  "tempfile",
  "thiserror 1.0.69",

@@ -214,10 +214,7 @@ impl GitProvider {
     /// Generate a unique identifier for resources.
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         format!("ah_git_{}_{}", std::process::id(), timestamp)
     }
 
@@ -566,7 +563,10 @@ impl FsSnapshotProvider for GitProvider {
         }
     }
 
-    fn list_snapshots(&self, _directory: &Path) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
+    fn list_snapshots(
+        &self,
+        _directory: &Path,
+    ) -> Result<Vec<ah_fs_snapshots_traits::SnapshotInfo>> {
         // Git provider doesn't store snapshots in a listable format like ZFS
         // Return empty list for now - Git snapshots are managed through git refs
         Ok(Vec::new())

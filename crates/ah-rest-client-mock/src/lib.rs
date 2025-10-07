@@ -1,8 +1,8 @@
 //! Mock REST client backed by scenarios
 
-use async_trait::async_trait;
 use ah_client_api::{ClientApi, ClientApiError, ClientApiResult};
 use ah_rest_api_contract::*;
+use async_trait::async_trait;
 
 pub struct MockClient {
     _scenario_name: String,

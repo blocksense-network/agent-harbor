@@ -1,5 +1,5 @@
-use anyhow::{bail, Context, Result};
 use ah_sandbox_macos::{apply_builder, SbplBuilder};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use libc::{chdir, chroot, execv};
 use std::ffi::CString;
@@ -93,11 +93,8 @@ fn main() -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!(format!("program not found in PATH: {}", prog_str)))?;
     prog_c = CString::new(path.to_string_lossy().into_owned())?;
 
-    let c_args: Vec<CString> = args
-        .command
-        .iter()
-        .map(|s| CString::new(s.as_str()).unwrap())
-        .collect();
+    let c_args: Vec<CString> =
+        args.command.iter().map(|s| CString::new(s.as_str()).unwrap()).collect();
     // Build argv pointer array
     let mut ptrs: Vec<*const i8> = c_args.iter().map(|c| c.as_ptr()).collect();
     ptrs.push(std::ptr::null());

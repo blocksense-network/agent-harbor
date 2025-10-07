@@ -43,16 +43,13 @@ impl KittyMultiplexer {
         // Add the actual command arguments
         cmd_args.extend_from_slice(args);
 
-        let output = Command::new("kitty")
-            .args(&cmd_args)
-            .output()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    MuxError::NotAvailable("kitty")
-                } else {
-                    MuxError::Io(e)
-                }
-            })?;
+        let output = Command::new("kitty").args(&cmd_args).output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                MuxError::NotAvailable("kitty")
+            } else {
+                MuxError::Io(e)
+            }
+        })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -849,7 +846,8 @@ mod tests {
                                     }
 
                                     // Verify we have the expected number of windows
-                                    let final_windows = kitty.list_windows_detailed().unwrap_or_default();
+                                    let final_windows =
+                                        kitty.list_windows_detailed().unwrap_or_default();
                                     assert!(final_windows.len() >= initial_count + 2,
                                            "Should have at least {} windows after creating 2 splits, got {}",
                                            initial_count + 2, final_windows.len());

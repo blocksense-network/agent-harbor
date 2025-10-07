@@ -13,9 +13,9 @@ pub use auth::*;
 pub use client::*;
 pub use error::*;
 
-use async_trait::async_trait;
 use ah_client_api::{ClientApi, ClientApiError, ClientApiResult};
 use ah_rest_api_contract::*;
+use async_trait::async_trait;
 
 #[async_trait]
 impl ClientApi for client::RestClient {

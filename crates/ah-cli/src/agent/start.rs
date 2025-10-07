@@ -1,10 +1,10 @@
 //! Agent start command implementation
 
+use crate::sandbox::{parse_bool_flag, prepare_workspace_with_fallback};
+use anyhow::Context;
 use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
-use anyhow::Context;
-use crate::sandbox::{prepare_workspace_with_fallback, parse_bool_flag};
 
 /// Working copy mode for agent execution
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
@@ -15,12 +15,21 @@ pub enum WorkingCopyMode {
     Snapshots,
 }
 
+
 /// Agent start command arguments
 #[derive(Args)]
 pub struct AgentStartArgs {
     /// Agent type to start
     #[arg(long, default_value = "mock")]
     pub agent: String,
+
+    /// Enable non-interactive mode (e.g., codex exec)
+    #[arg(long)]
+    pub non_interactive: bool,
+
+    /// Output format: text, text-normalized, json, or json-normalized
+    #[arg(long, default_value = "text")]
+    pub output: String,
 
     /// Working copy mode
     #[arg(long, default_value = "in-place")]
@@ -80,7 +89,10 @@ fn parse_bool(s: &str) -> Result<bool, String> {
     match s.to_lowercase().as_str() {
         "true" | "yes" | "1" | "y" => Ok(true),
         "false" | "no" | "0" | "n" => Ok(false),
-        _ => Err(format!("Invalid boolean value: {}. Use true/false, yes/no, 1/0, or y/n", s)),
+        _ => Err(format!(
+            "Invalid boolean value: {}. Use true/false, yes/no, 1/0, or y/n",
+            s
+        )),
     }
 }
 
@@ -92,15 +104,25 @@ impl AgentStartArgs {
             return self.run_mock_agent().await;
         }
 
+        // For milestone 2.4.4, we support the "codex" agent in non-interactive mode
+        if self.agent == "codex" && self.non_interactive {
+            return self.run_codex_agent().await;
+        }
+
         // For other agents, this is still a placeholder that will be replaced
         // when milestone 2.4 is implemented.
-        eprintln!("Agent start command is not yet implemented for agent '{}'.", self.agent);
+        eprintln!(
+            "Agent start command is not yet implemented for agent '{}'.",
+            self.agent
+        );
         eprintln!("This is a placeholder for milestone 2.4 implementation.");
         eprintln!("E2E tests in milestone 2.4.1 will validate this command once implemented.");
 
         // Print the parsed arguments for debugging
         eprintln!("Parsed arguments:");
         eprintln!("  agent: {}", self.agent);
+        eprintln!("  non_interactive: {}", self.non_interactive);
+        eprintln!("  output: {}", self.output);
         eprintln!("  working_copy: {:?}", self.working_copy);
         eprintln!("  cwd: {:?}", self.cwd);
         eprintln!("  task_id: {:?}", self.task_id);
@@ -175,9 +197,7 @@ impl AgentStartArgs {
             }
         } else {
             // Run in demo mode
-            cmd.arg("demo")
-                .arg("--workspace")
-                .arg(&cwd);
+            cmd.arg("demo").arg("--workspace").arg(&cwd);
             // Add any additional flags (like --tui-testing-uri)
             for flag in &self.agent_flags {
                 cmd.arg(flag);
@@ -191,7 +211,9 @@ impl AgentStartArgs {
         // Try to find the workspace root relative to the current executable
         let mut pythonpath_set = false;
         if let Ok(current_exe) = std::env::current_exe() {
-            if let Some(workspace_root) = current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+            if let Some(workspace_root) =
+                current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
+            {
                 let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
                 eprintln!("Setting PYTHONPATH to: {}", pythonpath);
                 cmd.env("PYTHONPATH", pythonpath);
@@ -202,7 +224,8 @@ impl AgentStartArgs {
         // Fallback: try CARGO_MANIFEST_DIR
         if !pythonpath_set {
             if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-                let workspace_root = std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
+                let workspace_root =
+                    std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
                 let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
                 eprintln!("Setting PYTHONPATH to (fallback): {}", pythonpath);
                 cmd.env("PYTHONPATH", pythonpath);
@@ -230,7 +253,10 @@ impl AgentStartArgs {
     }
 
     /// Run the mock agent inside a sandbox environment
-    async fn run_mock_agent_in_sandbox(&self, actual_cwd: std::path::PathBuf) -> anyhow::Result<()> {
+    async fn run_mock_agent_in_sandbox(
+        &self,
+        actual_cwd: std::path::PathBuf,
+    ) -> anyhow::Result<()> {
         #[cfg(target_os = "linux")]
         {
             use sandbox_core::{ProcessConfig, ProcessManager, Sandbox};
@@ -257,11 +283,14 @@ impl AgentStartArgs {
             )?;
 
             // Start the sandbox (sets up namespaces, cgroups, etc.)
-            sandbox.start().await
-                .context("Failed to start sandbox environment")?;
+            sandbox.start().await.context("Failed to start sandbox environment")?;
 
             // Configure the process to run the mock agent
-            let mut agent_cmd = vec!["python".to_string(), "-m".to_string(), "src.cli".to_string()];
+            let mut agent_cmd = vec![
+                "python".to_string(),
+                "-m".to_string(),
+                "src.cli".to_string(),
+            ];
 
             // Check if this is a scenario run or demo run
             let is_scenario_run = self.agent_flags.iter().any(|flag| flag == "--scenario");
@@ -294,12 +323,12 @@ impl AgentStartArgs {
             let process_manager = sandbox_core::ProcessManager::with_config(process_config);
 
             // Execute the agent in the sandbox
-            process_manager.exec_as_pid1()
+            process_manager
+                .exec_as_pid1()
                 .context("Failed to execute mock agent in sandbox")?;
 
             // Clean up the sandbox
-            sandbox.stop()
-                .context("Failed to clean up sandbox environment")?;
+            sandbox.stop().context("Failed to clean up sandbox environment")?;
 
             Ok(())
         }
@@ -317,7 +346,9 @@ impl AgentStartArgs {
 
         // Set PYTHONPATH to find the mock agent
         if let Ok(current_exe) = std::env::current_exe() {
-            if let Some(workspace_root) = current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+            if let Some(workspace_root) =
+                current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
+            {
                 let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
                 env.push(("PYTHONPATH".to_string(), pythonpath));
             }
@@ -326,7 +357,8 @@ impl AgentStartArgs {
         // Fallback: try CARGO_MANIFEST_DIR
         if env.is_empty() {
             if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-                let workspace_root = std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
+                let workspace_root =
+                    std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
                 let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
                 env.push(("PYTHONPATH".to_string(), pythonpath));
             }
@@ -350,6 +382,63 @@ impl AgentStartArgs {
 
         env
     }
+
+    /// Run the Codex agent in non-interactive mode
+    async fn run_codex_agent(&self) -> anyhow::Result<()> {
+        use tokio::process::Command;
+
+        eprintln!("Starting Codex agent in non-interactive mode...");
+
+        // Determine the working directory
+        let cwd = if let Some(cwd) = &self.cwd {
+            cwd.clone()
+        } else {
+            std::env::current_dir()?
+        };
+
+        // Build the codex command with exec
+        let mut cmd = Command::new("codex");
+        cmd.arg("exec");
+
+        // Handle output format
+        match self.output.as_str() {
+            "json" => {
+                cmd.arg("--json");
+            }
+            "text" | "text-normalized" => {
+                // No additional arguments needed for text output
+            }
+            "json-normalized" => {
+                // For now, treat as json - normalization logic would be implemented later
+                cmd.arg("--json");
+            }
+            _ => {
+                eprintln!("Warning: Unknown output format '{}', using text", self.output);
+            }
+        }
+
+        // Set working directory
+        cmd.current_dir(cwd);
+
+        // Set environment variables for Codex
+        if let Ok(home) = std::env::var("HOME") {
+            cmd.env("CODEX_HOME", format!("{}/.codex", home));
+        }
+
+        eprintln!("Running codex command: codex exec{}", if self.output == "json" { " --json" } else { "" });
+
+        // Execute the command
+        let status = cmd.status().await?;
+
+        if status.success() {
+            eprintln!("Codex agent completed successfully");
+            Ok(())
+        } else {
+            eprintln!("Codex agent exited with status: {}", status);
+            anyhow::bail!("Codex agent exited with status: {}", status);
+        }
+    }
+
 }
 
 #[cfg(test)]

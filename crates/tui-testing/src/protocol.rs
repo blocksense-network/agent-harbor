@@ -5,6 +5,8 @@
 pub enum TestCommand {
     /// Request a screenshot capture with the given label
     Screenshot(String),
+    /// Terminate the tested program with the given exit code
+    Exit(i32),
     /// Ping the test runner to check connectivity
     Ping,
 }

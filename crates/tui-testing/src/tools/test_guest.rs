@@ -48,10 +48,17 @@ async fn async_main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // Get URI from command line or environment
-    let uri = args.uri.or_else(|| std::env::var("TUI_TESTING_URI").ok())
-        .ok_or_else(|| anyhow::anyhow!("URI not provided via --uri argument or TUI_TESTING_URI environment variable"))?;
+    let uri = args.uri.or_else(|| std::env::var("TUI_TESTING_URI").ok()).ok_or_else(|| {
+        anyhow::anyhow!(
+            "URI not provided via --uri argument or TUI_TESTING_URI environment variable"
+        )
+    })?;
 
-    println!("Test guest started with URI: {} (from env: {})", uri, std::env::var("TUI_TESTING_URI").unwrap_or("not set".to_string()));
+    println!(
+        "Test guest started with URI: {} (from env: {})",
+        uri,
+        std::env::var("TUI_TESTING_URI").unwrap_or("not set".to_string())
+    );
 
     let labels: Vec<&str> = args.labels.split(',').map(|s| s.trim()).collect();
 
@@ -115,7 +122,10 @@ async fn async_main() -> anyhow::Result<()> {
 }
 
 async fn request_screenshot_client(uri: &str, label: &str) -> anyhow::Result<()> {
-    println!("Test-guest: CLIENT Connecting to {} for screenshot {}", uri, label);
+    println!(
+        "Test-guest: CLIENT Connecting to {} for screenshot {}",
+        uri, label
+    );
     match tui_testing::TuiTestClient::connect(uri).await {
         Ok(mut client) => {
             println!("Test-guest: Connected successfully, requesting screenshot");
@@ -125,7 +135,10 @@ async fn request_screenshot_client(uri: &str, label: &str) -> anyhow::Result<()>
                     Ok(())
                 }
                 Err(e) => {
-                    println!("Test-guest: Screenshot request failed: {} - continuing anyway", e);
+                    println!(
+                        "Test-guest: Screenshot request failed: {} - continuing anyway",
+                        e
+                    );
                     // Don't fail, just continue - this allows the test to work even if IPC fails
                     Ok(())
                 }

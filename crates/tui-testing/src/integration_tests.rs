@@ -59,29 +59,38 @@ fn test_cli_client_help() {
 
     // Test that the CLI client shows help correctly
     let output = Command::new("cargo")
-        .args(["run", "--bin", "tui-testing-screenshot", "--", "--help"])
+        .args(["run", "--bin", "tui-testing-cmd", "--", "--help"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to execute CLI client");
 
     // Check that the command succeeded and shows help
-    assert!(output.status.success(),
-            "CLI client help failed: {}",
-            String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "CLI client help failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("tui-testing-screenshot"),
-            "Help output should contain binary name");
-    assert!(stdout.contains("--uri"),
-            "Help output should contain --uri option");
-    assert!(stdout.contains("--label"),
-            "Help output should contain --label option");
+    assert!(
+        stdout.contains("tui-testing-cmd"),
+        "Help output should contain binary name"
+    );
+    assert!(
+        stdout.contains("--uri"),
+        "Help output should contain --uri option"
+    );
+    assert!(
+        stdout.contains("--cmd"),
+        "Help output should contain --cmd option"
+    );
 }
 
 #[tokio::test]
 async fn test_test_guest_integration() -> anyhow::Result<()> {
     // Build the path to the test-guest binary
-    let test_guest_path = "/Users/zahary/blocksense/agents-workflow/cli/target/debug/test-guest".to_string();
+    let test_guest_path =
+        "/Users/zahary/blocksense/agents-workflow/cli/target/debug/test-guest".to_string();
     println!("Using test_guest binary: {}", test_guest_path);
 
     // Spawn the test_guest program with the URI passed as argument

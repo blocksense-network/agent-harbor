@@ -4,8 +4,8 @@
 //! (ZFS, Btrfs, etc.) to enable time travel capabilities in the AH system.
 
 // Re-export all types from the traits crate
-use async_trait::async_trait;
 pub use ah_fs_snapshots_traits::*;
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
 /// Auto-detect and return the appropriate provider for a given path.

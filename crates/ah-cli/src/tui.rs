@@ -1,7 +1,7 @@
 //! TUI command handling for the CLI
 
-use anyhow::Result;
 use ah_rest_client::AuthConfig;
+use anyhow::Result;
 use clap::Args;
 use std::process;
 
