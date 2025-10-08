@@ -11,6 +11,18 @@ tests firsts:
 
 `ruby -Itest test/test_file.rb -n test_method_name`
 
+## Managing dependencies
+
+The development environment of this project is managed in a nix flake at the root of the repo.
+All development is expected to be done in a nix dev shell that can be entered with direnv.
+The `just` command runner is configured to automatically execute all commands in the Nix dev shell.
+Python packages are typically added to the Nix flake. The dev shell appends to PYTHONPATH, so always append python search paths. You should never reset the PYTHONPATH in user code.
+Node.js packages are managed with yarn in PnP mode. One exception is the Playwright package, for which we manage the browsers through the nix flake.
+Rust packages are managed with Cargo, while Rust itself is pinned in the nix flake.
+Feel free to add any additional software that is needed for the project goals by expanding the nix flake.
+After addign new dependencies, always make sure that you are adding a recent version. You can run `just outdated` to search for outdated packages.
+When you are facing issues with a dependency, make sure to study its implementation files that you can find in the local nix store, the local cargo cache, the local yarn cache, etc.
+
 ## Code quality guidelines
 
 - ALWAYS strive to achieve high code quality.
@@ -19,6 +31,7 @@ tests firsts:
 - ALWAYS write defensive code and make sure all potential errors are handled.
 - ALWAYS strive to write highly reusable code with routines that have high fan in and low fan out.
 - ALWAYS keep the code DRY.
+- ALWAYS research the problem domain and the tech stack being used to ensure you are following the best practices.
 - Aim for low coupling and high cohesion. Encapsulate and hide implementation details.
 - When creating executable, ALWAYS make sure the functionality can also be used as a library.
   To achieve this, avoid global variables, raise/return errors instead of terminating the program, and think whether the use case of the library requires more control over logging

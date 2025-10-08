@@ -116,6 +116,7 @@ This design enables deterministic, replayable testing of agent workflows with re
 
 import json
 import os
+import sys
 import uuid
 import importlib.util
 from datetime import datetime, UTC

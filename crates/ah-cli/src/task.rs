@@ -1761,7 +1761,15 @@ exit {}
             .env("SSH_ASKPASS", "echo")
             .env(
                 "PYTHONPATH",
-                &format!("{}/tests/tools/mock-agent/src", workspace_root.display()),
+                {
+                    let mock_agent_src_path = format!("{}/tests/tools/mock-agent/src", workspace_root.display());
+                    let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+                    if current_pythonpath.is_empty() {
+                        mock_agent_src_path
+                    } else {
+                        format!("{}:{}", mock_agent_src_path, current_pythonpath)
+                    }
+                },
             )
             .spawn()
             .await?;
@@ -1838,13 +1846,19 @@ exit {}
             .env("GIT_ASKPASS", "echo")
             .env("SSH_ASKPASS", "echo");
 
-        // Set PYTHONPATH to find the mock agent
+        // Set PYTHONPATH to find the mock agent (append to existing PYTHONPATH)
         let cargo_manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
             .unwrap_or_else(|_| "/Users/zahary/blocksense/agents-workflow/cli".to_string());
         let workspace_root =
             std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
-        let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
-        cmd.env("PYTHONPATH", pythonpath);
+        let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
+        let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+        let new_pythonpath = if current_pythonpath.is_empty() {
+            mock_agent_path
+        } else {
+            format!("{}:{}", mock_agent_path, current_pythonpath)
+        };
+        cmd.env("PYTHONPATH", new_pythonpath);
 
         // Set AH_HOME for database operations
         cmd.env("AH_HOME", ah_home_dir.path());

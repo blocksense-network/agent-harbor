@@ -288,16 +288,22 @@ impl AgentStartArgs {
         // Note: TUI_TESTING_URI should only be passed when explicitly requested
         // We don't automatically pass it from environment to avoid test interference
 
-        // Set PYTHONPATH to find the mock agent
+        // Set PYTHONPATH to find the mock agent (append to existing PYTHONPATH)
         // Try to find the workspace root relative to the current executable
         let mut pythonpath_set = false;
         if let Ok(current_exe) = std::env::current_exe() {
             if let Some(workspace_root) =
                 current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
             {
-                let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                eprintln!("Setting PYTHONPATH to: {}", pythonpath);
-                cmd.env("PYTHONPATH", pythonpath);
+                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
+                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+                let new_pythonpath = if current_pythonpath.is_empty() {
+                    mock_agent_path
+                } else {
+                    format!("{}:{}", mock_agent_path, current_pythonpath)
+                };
+                eprintln!("Setting PYTHONPATH to: {}", new_pythonpath);
+                cmd.env("PYTHONPATH", new_pythonpath);
                 pythonpath_set = true;
             }
         }
@@ -307,9 +313,15 @@ impl AgentStartArgs {
             if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
                 let workspace_root =
                     std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
-                let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                eprintln!("Setting PYTHONPATH to (fallback): {}", pythonpath);
-                cmd.env("PYTHONPATH", pythonpath);
+                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
+                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+                let new_pythonpath = if current_pythonpath.is_empty() {
+                    mock_agent_path
+                } else {
+                    format!("{}:{}", mock_agent_path, current_pythonpath)
+                };
+                eprintln!("Setting PYTHONPATH to (fallback): {}", new_pythonpath);
+                cmd.env("PYTHONPATH", new_pythonpath);
                 pythonpath_set = true;
             }
         }
