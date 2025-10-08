@@ -221,6 +221,34 @@ Single-line footer without borders showing context-sensitive shortcuts that chan
 - New task input supports multiline editing with Shift+Enter for line breaks
 - Default values for repository/branch/agent are the last ones used
 
+#### Task Creation Workflow
+
+When a user launches a task from the dashboard, the workflow depends on the backend mode:
+
+##### Local Mode (SQLite Database)
+When running in local mode with SQLite database:
+
+1. **Task Creation**: Dashboard collects repository, branch, agent, and task description from draft card
+2. **Local Command Execution**: Issues the equivalent of the `ah tast` command locally with collected parameters by directly leveraging the `ah-core` crate.
+3. **Multiplexer Integration**: Upon successful task creation, TUI creates new multiplexer window with split panes:
+   - **Left Pane**: Terminal/editor attached to workspace (may run shell or configured editor)
+   - **Right Pane**: Executes `ah agent start <task_id>` to launch the agent
+4. **Session Monitoring**: Task card in dashboard shows real-time updates via local state and SSE streams
+5. **Window Management**: Multiplexer provides windowing environment; TUI coordinates task creation and monitoring across windows
+
+##### Remote Mode (REST API)
+When running in remote mode with REST service:
+
+1. **Task Creation**: Dashboard collects repository, branch, agent, and task description from draft card
+2. **REST API Call**: Creates task via `POST /api/v1/tasks` with collected parameters
+3. **Multiplexer Integration**: Upon successful task creation, TUI may create local multiplexer windows or attach to remote sessions:
+   - For local execution: Creates split-pane windows as in local mode
+   - For remote execution: May attach to remote multiplexer sessions via SSH
+4. **Session Monitoring**: Task card in dashboard shows real-time updates via SSE streams from remote server
+5. **Window Management**: Multiplexer provides windowing environment; TUI coordinates task creation and monitoring across local/remote windows
+
+This dual-mode architecture enables the TUI to work seamlessly with both local SQLite-based workflows and remote REST service deployments, while providing a unified dashboard experience that leverages the existing `ah agent start` command infrastructure.
+
 ### Commands and Hotkeys
 
 #### Global Navigation

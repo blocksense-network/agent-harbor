@@ -4,30 +4,32 @@ This document tracks the implementation status of the [TUI-PRD.md](TUI-PRD.md) f
 
 Goal: deliver a production-ready terminal-based dashboard for creating, monitoring, and managing agent coding sessions with seamless multiplexer integration, keyboard-driven workflows, and REST service connectivity.
 
-**Current Status**: T3.3 kitty Support completed, Full multiplexer abstraction layer with tmux and kitty implementations ready
+**Current Status**: T3.3 kitty Support completed, Full multiplexer abstraction layer ready. Next: T3.4 Static Dashboard Rendering (Style Development)
 **Test Results**: 68 tests passing (18 comprehensive tmux multiplexer tests + 20 comprehensive kitty multiplexer tests + 15 TUI tests: layout rendering, MVVM integration, scenario execution, golden files with multi-line TUI visualization, CLI integration)
-**Last Updated**: September 29, 2025
+**Last Updated**: October 8, 2025
 
 Total estimated timeline: 12-16 weeks (broken into major phases with parallel development tracks)
 
-### PRD Compliance — Snapshot (as of 2025-10-02)
+### PRD Compliance — Snapshot (as of 2025-10-08)
 
 | PRD Requirement | Status | Notes |
 |---|---|---|
-| Dashboard with Project/Branch/Agent selectors + multiline task editor | ✅ Met | Implemented with MVVM and golden snapshots for 80x24 & 120x40; keyboard navigation verified. |
-| Contextual single-line footer shortcuts | ✅ Met | Footer shows dynamic hints (e.g., "↑↓ Navigate • Ctrl+C x2 Quit") and varies by focus. |
-| Keyboard-only operation & predictable focus | ✅ Met (baseline) | Navigation (Tab/Shift+Tab, arrows, Enter/Esc) covered by tests; add a11y checks later. |
-| Multiplexer abstraction layer | ✅ Met | `ah-mux-core` trait + `ah-mux` impls; tmux + kitty done. |
-| Auto-attach/launch in multiplexer with standard split layout | ✅ Met (tmux/kitty) / ⏳ Pending (zellij/screen) | AH-specific adapter creates editor/agent/log panes. |
-| Real-time session monitoring via SSE | ⏳ Pending | Infrastructure planned; needs end-to-end SSE tests. |
-| Remote mode (REST service, cross-host attach) | ⏳ Pending | Milestone drafted; needs automated verification. |
-| Inline validation & non-intrusive errors | ◻ Partial | Baseline error handling exists; expand coverage & snapshots. |
-| Status bar (backend, last op) | ◻ Partial | Add assertions/goldens for backend indicator & last action. |
-| Persistence (last selections, theme) | ⏳ Pending | Implement local-db-backed persistence & tests. |
-| Autocomplete in editor (/@ menus) | ⏳ Pending | Implement tui-textarea autocomplete & tests. |
-| Theming & accessibility (high-contrast) | ⏳ Pending | Themes described in PRD; add implementation & a11y tests. |
+| Dashboard with Project/Branch/Agent selectors + multiline task editor | ✅ Met (T2) | Implemented with MVVM and golden snapshots for 80x24 & 120x40; keyboard navigation verified. |
+| Contextual single-line footer shortcuts | ✅ Met (T2) | Footer shows dynamic hints (e.g., "↑↓ Navigate • Ctrl+C x2 Quit") and varies by focus. |
+| Keyboard-only operation & predictable focus | ✅ Met (T2) | Navigation (Tab/Shift+Tab, arrows, Enter/Esc) covered by tests; add a11y checks later. |
+| Multiplexer abstraction layer | ✅ Met (T3.1-T3.3) | `ah-mux-core` trait + `ah-mux` impls; tmux + kitty done, zellij/screen in T3.8. |
+| Auto-attach/launch in multiplexer with standard split layout | ⏳ Pending (T3.6) | AH-specific adapter creates editor/agent panes; needs task creation workflow integration. |
+| Real-time session monitoring via SSE | ⏳ Pending (T3.7) | Infrastructure planned; needs end-to-end SSE tests and activity display. |
+| Remote mode (REST service, cross-host attach) | ⏳ Pending (T3.7) | Milestone drafted; needs automated verification. |
+| Inline validation & non-intrusive errors | ⏳ Pending (T3.9) | Baseline error handling exists; expand coverage & snapshots. |
+| Status bar (backend, last op) | ⏳ Pending (T3.9) | Add assertions/goldens for backend indicator & last action. |
+| Persistence (last selections, theme) | ⏳ Pending (T3.10) | Implement local-db-backed persistence & tests. |
+| Autocomplete in editor (/@ menus) | ⏳ Pending (T4.2+) | Implement tui-textarea autocomplete & tests. |
+| Theming & accessibility (high-contrast) | ⏳ Pending (T4.3) | Themes described in PRD; add implementation & a11y tests. |
+| Task-centric dashboard UI | ⏳ Pending (T3.5) | Complete dashboard implementation with task cards and branding. |
+| Task creation → multiplexer launch workflow | ⏳ Pending (T3.6) | Integrate task creation with `ah agent start` in multiplexer panes. |
 
-**Interpretation:** Core layout, MVVM, input model, and multiplexer scaffolding are in place. Gaps to full PRD: SSE monitoring, full multi-mux coverage (zellij/screen), persistence, autocomplete, a11y/themes, and remote mode verification.
+**Interpretation:** Infrastructure foundation complete (MVVM, multiplexer abstraction, testing framework). Next priorities: T3.4 Static dashboard rendering (style development), then T3.5 Dashboard UI implementation and T3.6 Task creation workflow. Full PRD compliance requires completing T3.5-T3.10 core functionality before advanced features (autocomplete, theming).
 
 ### Milestone Completion & Outstanding Tasks
 
@@ -483,58 +485,250 @@ The TUI implementation provides these core capabilities:
 
 > All milestones below include **automated verification** (unit + integration + golden/snapshot tests). Test names are suggestions; feel free to adopt your naming convention.
 
-### T3.4 Zellij & GNU screen Support (Multi-Mux Parity)
+### T3.4 Static Dashboard Rendering (Style Development)
+**Deliverables**
+- Complete static rendering of the task-centric dashboard UI with Agent Harbor branding and header
+- Task feed showing sample chronological list of draft, active, and completed tasks with proper card layouts
+- Draft task creation card with static repository/branch/agent/model selector examples
+- Static footer showing context-sensitive shortcuts
+- Focus on visual design, spacing, colors, and typography to establish the dashboard aesthetic
+- No interactive functionality - purely static rendering for style iteration
+- Implementation in new Ratatui Rust program located in `PoC/tui-exploration`
+
+**Manual Tests**
+- Visual review of dashboard layout on different terminal sizes (80x24, 120x40)
+- Assessment of card spacing, padding, and visual hierarchy
+- Evaluation of color scheme and readability
+- Review of Agent Harbor branding integration
+- Terminal compatibility testing across different emulators
+- Font style symbol rendering verification (Unicode, Nerd Font, ASCII fallbacks)
+
+**Verification Criteria**
+- Dashboard renders cleanly without layout artifacts or overlapping elements
+- Visual design matches the aesthetic described in TUI-PRD.md
+- Text is readable and properly spaced
+- Branding elements display correctly with terminal image support detection
+- Layout adapts appropriately to different terminal widths
+- Color scheme provides good contrast and visual separation
+
+### T3.5 Task-Centric Dashboard Implementation
+**Deliverables**
+- Complete implementation of the task-centric dashboard UI with Agent Harbor branding and header in the ah-tui crate, based on the finalized styling of the tui-exploration program.
+- Task feed showing chronological list of draft, active, and completed tasks with proper card layouts
+- Draft task creation card always visible at the top with repository/branch/agent/model selectors
+- Keyboard navigation between all task cards with visual selection states
+- Context-sensitive footer showing current shortcuts and focus state
+- Integration with existing MVVM architecture and REST client for data loading
+
+**Automated Unit Tests for Model/ViewModel**
+- [ ] ****: Start with pure logic tests of state machine transitions and ViewModel derivations without any rendering ([TUI-Testing-Architecture.md](TUI-Testing-Architecture.md))
+
+**Automated integration tests**
+- `tui_dashboard_layout_golden`: Complete dashboard rendering with header, task feed, draft card, and footer
+- `tui_keyboard_navigation_arrows`: Arrow key navigation between all cards with selection state updates
+- `tui_draft_card_focus_enter`: Enter key transitions from task feed to draft card editing
+- `tui_footer_context_shortcuts`: Footer updates dynamically based on current focus and application state
+- `multiple_draft_cards_creation`: Multiple draft cards can be created and edited simultaneously with independent state management
+- `file_autocomplete_popup`: @filename auto-complete shows fuzzy-matched file list with arrow navigation and Enter selection
+- `model_picker_interactions`: Model multi-selector supports +/- controls for instance counts and fuzzy search across available models
+- `repo_and_branch_pickers_interactions`: Repository and branch selectors show fuzzy search with Tab navigation and proper validation
+- `tui_task_card_states_layout`: Completed/active/draft cards render with correct heights, padding, and visual separators
+- `tui_active_task_activity_display`: Active cards show 3 fixed-height rows with proper event scrolling and formatting
+- `tui_delivery_indicators_symbols`: Branch/PR/merged indicators display correct symbols based on font style config
+
+**Verification Criteria**
+- Dashboard renders correctly on 80x24 and 120x40 terminals with proper layout proportions
+- All keyboard navigation works as specified in TUI-PRD.md with visual selection feedback
+- Task cards display correct information and status indicators for each state type
+- Footer shows context-appropriate shortcuts that change with focus state
+- Graphic/ASCII Agent Harbor branding appears correctly with terminal image support detection
+- **Testing Strategy 1**: Dashboard correctly displays data loaded from Mock API Server
+- **Testing Strategy 2**: UI components render correctly with mock session data
+
+### T3.6 Task Creation and Multiplexer Launch
+**Deliverables**
+- Dual-mode task creation workflow supporting both local and remote backends:
+  - **Local Mode**: Dashboard translates input to `ah task create` command execution
+  - **Remote Mode**: Dashboard makes REST API calls to create tasks on remote server
+- Multiplexer window creation with split-pane layout (editor left, agent right) when launching tasks
+- Integration with `ah-tui-multiplexer` for standard AH layouts using existing tmux/kitty backends
+- Auto-attach behavior: TUI dashboard launches in multiplexer session, task windows created alongside
+- Error handling for multiplexer unavailability and command/API execution failures
+- Success feedback and session attachment after task launch
+
+**Automated Tests**
+- `tui_task_creation_local_workflow`: Complete local task creation flow from draft card → `ah task create` → multiplexer window creation
+- `tui_task_creation_remote_workflow`: Complete remote task creation flow from draft card → REST API → multiplexer window creation
+- `tui_multiplexer_split_layout`: Task launch creates proper split-pane layout with editor and agent panes
+- `tui_agent_start_command_execution`: Dashboard translates task parameters to correct `ah agent start` command invocation
+- `tui_multiplexer_auto_attach`: TUI dashboard launches and attaches to existing multiplexer session correctly
+- `tui_task_launch_error_handling`: Graceful handling of multiplexer unavailable or command/API execution failures
+- `tui_task_window_naming`: Task windows created with descriptive names and proper session identification
+- `tui_backend_mode_detection`: TUI correctly detects and operates in local vs remote mode
+
+**Verification Criteria**
+- Task creation from dashboard works in both local mode (`ah task create`) and remote mode (REST API)
+- Split-pane layout created correctly with editor pane (left) and agent pane (right)
+- Multiplexer session management works for both tmux and kitty backends
+- Error conditions handled gracefully with user feedback in TUI
+- Task windows properly named and identifiable in multiplexer session
+- TUI correctly adapts behavior based on backend mode (local SQLite vs remote REST)
+- **Testing Strategy 1**: Remote mode task creation validated against Mock API Server endpoints
+- **Testing Strategy 2**: Local mode task creation and multiplexer integration tested with Mock Agent execution
+
+### T3.7 Real-Time Session Monitoring (SSE)
+**Deliverables**
+- Live session status updates via SSE streams integrated into task cards
+- Active task cards show real-time streaming of agent activity (thoughts, tool usage, file edits)
+- SSE connection management with automatic reconnection and backoff logic
+- Event buffering during network interruptions to prevent data loss
+- Activity display with 3 fixed-height rows showing most recent events with proper scrolling
+- Status updates propagate across all task cards in the dashboard
+
+**Automated Tests**
+- `tui_sse_session_updates`: SSE events update task card status and activity display in real-time
+- `tui_activity_stream_display`: Active task cards show 3-line activity with proper event formatting and scrolling
+- `tui_sse_reconnection_backoff`: Network disconnections trigger proper reconnection with exponential backoff
+- `tui_sse_event_buffering`: Events during connection blips are applied when connection restored
+- `tui_sse_multiple_sessions`: Multiple active sessions update independently via SSE streams
+- `tui_activity_event_types`: All event types (thought, tool_start, tool_last_line, tool_complete, file_edit) display correctly
+
+**Verification Criteria**
+- SSE streams provide real-time updates to task cards without manual refresh
+- Activity display shows exactly 3 lines with proper event scrolling and formatting
+- Network interruptions handled gracefully with reconnection and event replay
+- Multiple concurrent sessions update independently via separate SSE streams
+- Event types display with correct formatting and visual distinction
+- **Testing Strategy 1**: SSE event streams and session updates validated against Mock API Server
+- **Testing Strategy 2**: Agent activity display and event formatting tested with Mock Agent execution
+
+### T3.8 Zellij & GNU screen Support (Multi-Mux Parity)
 **Deliverables**
 - `ah-mux` backends for **zellij** and **screen** implementing the low-level trait.
 - AH adapter support in `ah-tui-multiplexer` to create standard layouts (editor|agent|logs).
+- Integration testing with TUI task creation workflow for all multiplexer types.
 
 **Automated Tests**
 - `ah_mux__zellij__session_lifecycle_ok`: create/focus/list windows/panes; verify via CLI introspection.
 - `ah_mux__screen__pane_split_and_exec_ok`: split h/v, `run_command`, `send_text` parity checks.
 - `ah_tui_mux__ah_layout__zellij__goldens`: VT100/expectrl snapshots at layout stages.
 - `ah_tui_mux__ah_layout__screen__goldens`: snapshot strategic points (pre/post split; after commands).
+- `tui_task_creation_multiplexer_compatibility`: Task creation works with all multiplexer backends (tmux, kitty, zellij, screen).
 
 **Verification Criteria**
 - All trait methods pass against live binaries when available; CI gracefully skips when unavailable.
 - Golden snapshots stable across runs; error paths (missing binary/socket) return `NotAvailable`.
+- TUI task creation workflow functions correctly with all multiplexer implementations.
 
-### T3.5 Error/Status Bar Hardening
+### T3.9 Error/Status Bar Hardening
 **Deliverables**
 - Status line shows **backend (local or host)** and **last operation result**.
 - Inline validation under selectors (e.g., missing branch/agent) with non-blocking notifications.
+- Multiplexer status indication and connection state display.
 
 **Automated Tests**
 - `tui_statusbar_backend_indicator_renders`: golden with `local` vs `remote-host`.
 - `tui_inline_validation_messages_render`: drive model into invalid state; assert lines in buffer.
 - `tui_non_intrusive_notifications_expire`: fake time to verify ephemeral messages disappear.
+- `tui_multiplexer_status_display`: Status bar shows multiplexer type and connection state.
 
 **Verification Criteria**
-- Golden comparisons prove presence/format of backend & last-op text.
+- Golden comparisons prove presence/format of backend, last-op, and multiplexer status text.
 - Validation and ephemeral notifications covered with deterministic fake time.
+- Multiplexer status updates correctly with connection state changes.
 
-### T3.6 Persistence (Selections & Theme)
+### T3.10 Persistence (Selections & Theme)
 **Deliverables**
 - Persist last **project/branch/agent** selection and **theme** in config (per repo/user).
+- Draft task auto-save functionality with localStorage integration.
+- Configuration persistence for multiplexer preferences and TUI settings.
 
 **Automated Tests**
 - `persistence_writes_on_selection_change`: config file updated on interaction.
 - `persistence_restores_on_startup`: app loads persisted state (no network).
 - `theme_persistence_switches_theme`: golden before/after theme toggle.
+- `draft_autosave_restores_on_reload`: Draft tasks persist and restore across TUI sessions.
+- `multiplexer_prefs_persistence`: Multiplexer settings saved and restored correctly.
 
 **Verification Criteria**
-- No I/O flakes: use temp dirs; golden snapshots reflect theme change.
+- No I/O flakes: use temp dirs; golden snapshots reflect theme and selection changes.
+- Draft auto-save works with debounced saves and proper invalidation logic.
+- Multiplexer preferences persist across TUI sessions.
 
-### T4.1 Real-time Session Monitoring (SSE)
-**Deliverables**
-- Live updates of session cards; reconnect with backoff; buffered events during blips.
+## Testing Strategies for TUI Development
 
-**Automated Tests**
-- `sse_event_stream_drives_ui`: mock SSE pushes; TUI updates verified via goldens.
-- `sse_network_blip_reconnects`: inject disconnect; assert backoff & eventual recovery.
-- `sse_buffered_events_applied_post_reconnect`: ensure no data loss.
+The TUI implementation supports two complementary testing approaches for comprehensive validation:
 
-**Verification Criteria**
-- End-to-end with mock REST server; deterministic fake-time used for backoff schedule.
+### Strategy 1: Mock API Server Testing (WebUI Infrastructure)
+**Infrastructure**: Use the existing WebUI mock server that implements the complete [REST-Service.md](REST-Service.md) specification.
+
+**Key Files**:
+- `webui/mock-server/README.md` - Setup and usage instructions
+- `webui/mock-server/src/` - Mock server implementation
+- `specs/Public/WebUI.status.md` - WebUI testing infrastructure details
+- `specs/Public/Scenario-Format.md` - Shared test scenario format for deterministic testing
+
+**Setup**:
+```bash
+# Terminal 1: Start mock REST API server
+just webui-mock-server
+
+# Terminal 2: Run TUI with mock backend
+cargo run --bin ah-tui -- --remote-server http://localhost:3001
+```
+
+**Use Cases**:
+- Task creation and session management workflows
+- REST API integration and error handling
+- Session listing and status updates
+- Multi-tenant scenarios and authentication flows
+
+**Benefits**:
+- Complete REST API coverage with realistic data
+- Scenario-based testing for complex interactions
+- Shared infrastructure with WebUI development
+- Deterministic test scenarios with predefined outcomes
+
+### Strategy 2: Mock Agent Testing (MVP Infrastructure)
+**Infrastructure**: Use the mock-agent infrastructure for testing actual agent execution in multiplexer windows.
+
+**Key Files**:
+- `tests/tools/mock-agent/README.md` - Mock agent setup and capabilities
+- `tests/tools/mock-agent/src/` - Agent simulation implementation
+- `specs/Public/MVP.status.md` - MVP agent integration testing details
+- `tests/tools/mock-agent/scenarios/` - Predefined test scenarios
+- `crates/tui-testing/README.md` - TUI testing framework and scenario runners
+- `specs/Public/Scenario-Format.md` - Shared test scenario format for deterministic testing
+
+**Setup**:
+```bash
+# Use mock agent for task execution testing
+# Mock agent simulates Claude Code/Codex behavior with realistic session files
+# Integrated with ah agent start command for end-to-end validation
+```
+
+**Use Cases**:
+- Agent execution in multiplexer panes
+- Session recording and asciinema integration
+- Real-time activity streaming (thoughts, tool usage, file edits)
+- Multiplexer window management and split-pane layouts
+- Agent lifecycle management (start, pause, resume, stop)
+
+**Benefits**:
+- Realistic agent behavior simulation without external APIs
+- Actual multiplexer window creation and management
+- End-to-end task execution workflows
+- Session file generation and time travel testing
+
+### Combined Testing Approach
+For comprehensive TUI validation, **both testing strategies will be used**:
+
+1. **Mock API Server** for dashboard UI and session management - validates REST API integration, task creation workflows, and session monitoring
+2. **Mock Agent** for actual task execution and multiplexer integration - validates multiplexer window creation, `ah agent start` command execution, and real-time agent activity streaming
+
+**Test Case Definition**: Both strategies use the shared `tui-testing` crate and [Scenario-Format.md](Scenario-Format.md) for defining deterministic test scenarios with unified timeline events, user inputs, assertions, and screenshots. This ensures consistent testing across all TUI components and enables reuse of test scenarios between different testing approaches.
+
+This dual approach ensures the TUI works correctly both as a user interface (Strategy 1) and as a task execution coordinator (Strategy 2). All TUI milestones will include automated tests using both strategies where applicable.
 
 ## New Milestones — Inline Auto-Completion (Ratatui + forked textarea)
 

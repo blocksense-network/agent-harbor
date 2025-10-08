@@ -33,8 +33,8 @@ The architecture combines:
 
 2. MVVM Layering
 
-- Model: domain state and rules (no I/O, no Ratatui). Fully unit-testable
-- ViewModel: derived presentation state shaped for rendering (strings, selection flags). Fully unit-testable
+- Model: domain state and rules (no I/O, no Ratatui). Fully unit-testable by supplying the state machine with new events without involving any rendering
+- ViewModel: derived presentation state shaped for rendering (strings, selection flags). Fully unit-testable by testing state transitions and property derivations without UI rendering
 - View: pure Ratatui rendering from `&ViewModel`, used by both the app and tests via `TestBackend`
 
 3. Scenario-Driven Mocking

@@ -10,7 +10,7 @@ This architecture complements and reuses the testing foundations from the TUI wo
 
 - **AH CLI (`ah task`)**: Entry point under test. Behaviors and decision points follow the flow and rules in [CLI.md](CLI.md).
 - **Mock Agent**: Hidden agent kind launched via `--agent=mock` (test‑only); additional parameters forwarded with `--agent-flags "..."`. Capabilities and usage per [AGENTS.md](../../tests/tools/mock-agent/AGENTS.md).
-- **Scenario Files (Shared JSON)**: Drive inputs (flags, env, repo state), mock‑agent steps, snapshot labels, and expected artifacts. Shared across CLI E2E, TUI tests, WebUI tests, and mock API server (see [Scenario-Format.md](Scenario-Format.md)).
+- **Scenario Files (Shared YAML)**: Drive inputs (flags, env, repo state), mock‑agent steps, snapshot labels, and expected artifacts. Shared across CLI E2E, TUI tests, WebUI tests, and mock API server (see [Scenario-Format.md](Scenario-Format.md)).
 - **Terminal Capture Harness**: vt100 parser + insta golden snapshots reused from TUI tests to record human‑readable "terminal screenshots" at labeled moments.
 - **Test‑Executor with RPC (test‑only)**: The test entry point - a process that sets up the terminal capture harness, launches ah task with the mock agent, provides an RPC endpoint which the mock-agent uses to notify the text-executor when a certain event in the scenario is reached. Once an event of interest is reached, the executor can verify the state of the file system (or other expected side-effects from the session), it can take a snapshot of the UI and compare it with a golden reference snapshot, etc.
 The test executor knows how to handle different scenario regimes such as "mock remote server", "mock local agent", "mock LLM API server with real agent software", etc.
@@ -41,7 +41,7 @@ The test executor knows how to handle different scenario regimes such as "mock r
 
 3) Scenario Format (Shared)
 
-- Use a shared, file‑based scenario format (JSON) to orchestrate inputs and expected events across (see [Scenario-Format.md](Scenario-Format.md)):
+- Use a shared, file‑based scenario format (YAML) to orchestrate inputs and expected events across (see [Scenario-Format.md](Scenario-Format.md)):
   - Mock Agent (steps, pauses, outputs)
   - Mock API Server (REST mode)
   - TUI tests (existing) and CLI E2E (this document)
