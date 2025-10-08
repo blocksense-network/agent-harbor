@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
+use crate::{Backstore, LowerFs};
 use crate::{
     Attributes, BranchId, BranchInfo, ContentId, DirEntry, EventKind, EventSink, FileMode,
     FileTimes, FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode,
@@ -116,6 +117,8 @@ pub(crate) struct User {
 pub struct FsCore {
     config: FsConfig,
     storage: Arc<dyn StorageBackend>,
+    backstore: Option<Box<dyn Backstore>>,                      // Backstore for overlay operations
+    lower_fs: Option<Box<dyn LowerFs>>,                         // Lower filesystem provider for overlay
     nodes: Mutex<HashMap<NodeId, Node>>,
     pub(crate) snapshots: Mutex<HashMap<SnapshotId, Snapshot>>,
     pub(crate) branches: Mutex<HashMap<BranchId, Branch>>,
@@ -133,11 +136,39 @@ pub struct FsCore {
 
 impl FsCore {
     pub fn new(config: FsConfig) -> FsResult<Self> {
-        let storage: Arc<dyn StorageBackend> = Arc::new(crate::storage::InMemoryBackend::new());
+        // Initialize storage backend based on backstore configuration
+        let storage: Arc<dyn StorageBackend> = match &config.backstore {
+            crate::config::BackstoreMode::InMemory => {
+                Arc::new(crate::storage::InMemoryBackend::new())
+            }
+            crate::config::BackstoreMode::HostFs { root, .. } => {
+                Arc::new(crate::storage::HostFsBackend::new(root.clone())?)
+            }
+        };
+
+        // Initialize backstore for overlay operations
+        let backstore = if config.overlay.enabled {
+            Some(crate::storage::create_backstore(&config.backstore)?)
+        } else {
+            None
+        };
+
+        // Initialize lower filesystem if overlay is enabled
+        let lower_fs = if config.overlay.enabled {
+            if let Some(lower_root) = &config.overlay.lower_root {
+                Some(crate::overlay::create_lower_fs(lower_root)?)
+            } else {
+                return Err(FsError::InvalidArgument);
+            }
+        } else {
+            None
+        };
 
         let mut core = Self {
             config,
             storage,
+            backstore,
+            lower_fs,
             nodes: Mutex::new(HashMap::new()),
             snapshots: Mutex::new(HashMap::new()),
             branches: Mutex::new(HashMap::new()),
@@ -214,6 +245,36 @@ impl FsCore {
 
     fn current_process_id() -> u32 {
         std::process::id()
+    }
+
+    /// Check if overlay mode is enabled
+    fn is_overlay_enabled(&self) -> bool {
+        self.config.overlay.enabled
+    }
+
+    /// Check if a path has an upper entry in the current branch
+    pub fn has_upper_entry(&self, pid: &PID, path: &Path) -> FsResult<bool> {
+        if !self.is_overlay_enabled() {
+            return Ok(false);
+        }
+
+        // Try to resolve the path - if it succeeds, there's an upper entry
+        match self.resolve_path(pid, path) {
+            Ok(_) => Ok(true),
+            Err(FsError::NotFound) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Perform copy-up operation for a path
+    fn copy_up(&self, pid: &PID, path: &Path) -> FsResult<()> {
+        if !self.is_overlay_enabled() {
+            return Ok(());
+        }
+
+        // For now, copy-up is handled implicitly when operations create upper entries
+        // This method can be expanded later for explicit copy-up scenarios
+        Ok(())
     }
 
     /// Registers a process with the filesystem, establishing its security identity and process hierarchy.
@@ -347,6 +408,7 @@ impl FsCore {
     }
 
     /// Resolve a path to a node ID and parent information (read-only)
+    /// In overlay mode, this will fall back to lower filesystem if no upper entry exists
     fn resolve_path(&self, pid: &PID, path: &Path) -> FsResult<(NodeId, Option<(NodeId, String)>)> {
         let current_branch = self.branch_for_process(pid);
         let branches = self.branches.lock().unwrap();
@@ -721,8 +783,20 @@ impl FsCore {
 
     /// Get file attributes
     pub fn getattr(&self, pid: &PID, path: &Path) -> FsResult<Attributes> {
-        let (node_id, _) = self.resolve_path(pid, path)?;
-        self.get_node_attributes(node_id)
+        // First try to resolve in upper layer
+        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
+            return self.get_node_attributes(node_id);
+        }
+
+        // If overlay is enabled and no upper entry, check lower filesystem
+        if self.is_overlay_enabled() {
+            if let Some(lower_fs) = &self.lower_fs {
+                return lower_fs.stat(path);
+            }
+        }
+
+        // No entry found
+        Err(FsError::NotFound)
     }
 
     /// Get node attributes
@@ -775,6 +849,16 @@ impl FsCore {
         let branch = branches.get(&current_branch).ok_or(FsError::NotFound)?;
 
         let snapshot_id = SnapshotId::new();
+
+        // If we have a backstore that supports native snapshots, delegate to it
+        if let Some(backstore) = &self.backstore {
+            if backstore.supports_native_snapshots() {
+                let snapshot_name = name.map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
+                backstore.snapshot_native(&snapshot_name)?;
+            }
+        }
+
         let snapshot = Snapshot {
             id: snapshot_id,
             root_id: branch.root_id,
@@ -1034,37 +1118,61 @@ impl FsCore {
     }
 
     pub fn open(&self, pid: &PID, path: &Path, opts: &OpenOptions) -> FsResult<HandleId> {
-        let (node_id, _) = self.resolve_path(pid, path)?;
+        // First try to resolve in upper layer
+        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
+            // Permission check
+            if self.config.security.enforce_posix_permissions {
+                if let Some(user) = self.user_for_process(pid) {
+                    let nodes = self.nodes.lock().unwrap();
+                    let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+                    let allow = self.allowed_for_user(node, &user, opts.read, opts.write, false);
+                    if !allow {
+                        return Err(FsError::AccessDenied);
+                    }
+                }
+            }
 
-        // Permission check
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                let nodes = self.nodes.lock().unwrap();
-                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
-                let allow = self.allowed_for_user(node, &user, opts.read, opts.write, false);
-                if !allow {
-                    return Err(FsError::AccessDenied);
+            // Check share mode conflicts with existing handles
+            if self.share_mode_conflicts(node_id, opts) {
+                return Err(FsError::AccessDenied);
+            }
+
+            // Create handle
+            let handle_id = self.allocate_handle_id();
+            let handle = Handle {
+                id: handle_id,
+                node_id,
+                position: 0,
+                options: opts.clone(),
+                deleted: false,
+            };
+
+            self.handles.lock().unwrap().insert(handle_id, handle);
+            return Ok(handle_id);
+        }
+
+        // No upper entry, check if we can open from lower filesystem in overlay mode
+        if self.is_overlay_enabled() && opts.read && !opts.write && !opts.create {
+            if let Some(lower_fs) = &self.lower_fs {
+                // Check if lower file exists and is readable
+                if lower_fs.stat(path).is_ok() {
+                    // For interpose mode, we should provide direct access to lower files
+                    // without creating upper entries. However, the current architecture
+                    // doesn't support this, so we return Unsupported for now.
+                    if self.config.interpose.enabled {
+                        // TODO: Implement proper FD forwarding for interpose
+                        // For now, return Unsupported to indicate interpose isn't fully implemented
+                        return Err(FsError::Unsupported);
+                    } else {
+                        // Regular overlay mode - read through from lower
+                        // For now, return unsupported as we don't have direct lower handle support
+                        return Err(FsError::Unsupported);
+                    }
                 }
             }
         }
 
-        // Check share mode conflicts with existing handles
-        if self.share_mode_conflicts(node_id, opts) {
-            return Err(FsError::AccessDenied);
-        }
-
-        // Create handle
-        let handle_id = self.allocate_handle_id();
-        let handle = Handle {
-            id: handle_id,
-            node_id,
-            position: 0,
-            options: opts.clone(),
-            deleted: false,
-        };
-
-        self.handles.lock().unwrap().insert(handle_id, handle);
-        Ok(handle_id)
+        Err(FsError::NotFound)
     }
 
     /// Open by internal node id (adapter pathless open)
@@ -1486,76 +1594,182 @@ impl FsCore {
 
     // Optional readdir+ that includes attributes without extra getattr calls (libfuse pattern)
     pub fn readdir_plus(&self, pid: &PID, path: &Path) -> FsResult<Vec<(DirEntry, Attributes)>> {
-        let (node_id, _) = self.resolve_path(pid, path)?;
-        let nodes = self.nodes.lock().unwrap();
-        let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+        // Check if there's an upper directory
+        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
 
-        match &node.kind {
-            NodeKind::Directory { children } => {
-                if self.config.security.enforce_posix_permissions {
-                    if let Some(user) = self.user_for_process(pid) {
-                        if !self.allowed_for_user(node, &user, true, false, true) {
-                            return Err(FsError::AccessDenied);
+            match &node.kind {
+                NodeKind::Directory { children } => {
+                    if self.config.security.enforce_posix_permissions {
+                        if let Some(user) = self.user_for_process(pid) {
+                            if !self.allowed_for_user(node, &user, true, false, true) {
+                                return Err(FsError::AccessDenied);
+                            }
                         }
                     }
+
+                    // In overlay mode, merge upper and lower entries
+                    if self.is_overlay_enabled() {
+                        return self.readdir_plus_overlay(pid, path, children, &nodes);
+                    }
+
+                    // Non-overlay mode: just upper entries
+                    return self.readdir_plus_upper_only(children, &nodes);
                 }
-                // Collect and sort child names for stable ordering
-                let mut names: Vec<_> = children.keys().cloned().collect();
-                names.sort();
-
-                let mut entries = Vec::new();
-                for name in names {
-                    let child_id = children.get(&name).ok_or(FsError::NotFound)?;
-                    let child_node = nodes.get(child_id).ok_or(FsError::NotFound)?;
-                    let (is_dir, is_symlink, len) = match &child_node.kind {
-                        NodeKind::Directory { .. } => (true, false, 0),
-                        NodeKind::File { streams } => {
-                            // Size is the size of the unnamed stream
-                            let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
-                            (false, false, size)
-                        }
-                        NodeKind::Symlink { target } => (false, true, target.len() as u64),
-                    };
-
-                    let dir_entry = DirEntry {
-                        name: name,
-                        is_dir,
-                        is_symlink,
-                        len,
-                    };
-
-                    let perm_bits = child_node.mode & 0o777;
-                    let attributes = Attributes {
-                        len,
-                        times: child_node.times,
-                        uid: child_node.uid,
-                        gid: child_node.gid,
-                        is_dir,
-                        is_symlink,
-                        mode_user: FileMode {
-                            read: (perm_bits & 0o400) != 0,
-                            write: (perm_bits & 0o200) != 0,
-                            exec: (perm_bits & 0o100) != 0,
-                        },
-                        mode_group: FileMode {
-                            read: (perm_bits & 0o040) != 0,
-                            write: (perm_bits & 0o020) != 0,
-                            exec: (perm_bits & 0o010) != 0,
-                        },
-                        mode_other: FileMode {
-                            read: (perm_bits & 0o004) != 0,
-                            write: (perm_bits & 0o002) != 0,
-                            exec: (perm_bits & 0o001) != 0,
-                        },
-                    };
-
-                    entries.push((dir_entry, attributes));
-                }
-                Ok(entries)
+                NodeKind::File { .. } => return Err(FsError::NotADirectory),
+                NodeKind::Symlink { .. } => return Err(FsError::NotADirectory),
             }
-            NodeKind::File { .. } => Err(FsError::NotADirectory),
-            NodeKind::Symlink { .. } => Err(FsError::NotADirectory),
         }
+
+        // No upper entry, check lower filesystem in overlay mode
+        if self.is_overlay_enabled() {
+            if let Some(lower_fs) = &self.lower_fs {
+                let lower_entries = lower_fs.readdir(path)?;
+                let mut entries = Vec::new();
+                for entry in lower_entries {
+                    // Get attributes for each entry
+                    let entry_path = path.join(&entry.name);
+                    if let Ok(attrs) = lower_fs.stat(&entry_path) {
+                        entries.push((entry, attrs));
+                    }
+                }
+                return Ok(entries);
+            }
+        }
+
+        Err(FsError::NotFound)
+    }
+
+    fn readdir_plus_upper_only(&self, children: &HashMap<String, NodeId>, nodes: &std::collections::HashMap<NodeId, Node>) -> FsResult<Vec<(DirEntry, Attributes)>> {
+        // Collect and sort child names for stable ordering
+        let mut names: Vec<_> = children.keys().cloned().collect();
+        names.sort();
+
+        let mut entries = Vec::new();
+        for name in names {
+            let child_id = children.get(&name).ok_or(FsError::NotFound)?;
+            let child_node = nodes.get(child_id).ok_or(FsError::NotFound)?;
+            let (is_dir, is_symlink, len) = match &child_node.kind {
+                NodeKind::Directory { .. } => (true, false, 0),
+                NodeKind::File { streams } => {
+                    // Size is the size of the unnamed stream
+                    let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                    (false, false, size)
+                }
+                NodeKind::Symlink { target } => (false, true, target.len() as u64),
+            };
+
+            let dir_entry = DirEntry {
+                name: name,
+                is_dir,
+                is_symlink,
+                len,
+            };
+
+            let perm_bits = child_node.mode & 0o777;
+            let attributes = Attributes {
+                len,
+                times: child_node.times,
+                uid: child_node.uid,
+                gid: child_node.gid,
+                is_dir,
+                is_symlink,
+                mode_user: FileMode {
+                    read: (perm_bits & 0o400) != 0,
+                    write: (perm_bits & 0o200) != 0,
+                    exec: (perm_bits & 0o100) != 0,
+                },
+                mode_group: FileMode {
+                    read: (perm_bits & 0o040) != 0,
+                    write: (perm_bits & 0o020) != 0,
+                    exec: (perm_bits & 0o010) != 0,
+                },
+                mode_other: FileMode {
+                    read: (perm_bits & 0o004) != 0,
+                    write: (perm_bits & 0o002) != 0,
+                    exec: (perm_bits & 0o001) != 0,
+                },
+            };
+
+            entries.push((dir_entry, attributes));
+        }
+        Ok(entries)
+    }
+
+    fn readdir_plus_overlay(&self, pid: &PID, path: &Path, upper_children: &HashMap<String, NodeId>, nodes: &std::collections::HashMap<NodeId, Node>) -> FsResult<Vec<(DirEntry, Attributes)>> {
+        let mut entries = std::collections::HashMap::new();
+
+        // Add lower entries first (if any)
+        if let Some(lower_fs) = &self.lower_fs {
+            if let Ok(lower_dir_entries) = lower_fs.readdir(path) {
+                for entry in lower_dir_entries {
+                    // Get attributes for each entry
+                    let entry_path = path.join(&entry.name);
+                    if let Ok(attrs) = lower_fs.stat(&entry_path) {
+                        entries.insert(entry.name.clone(), (entry, attrs));
+                    }
+                }
+            }
+        }
+
+        // Add/override with upper entries
+        for (name, child_id) in upper_children {
+            if let Some(child_node) = nodes.get(child_id) {
+                let (is_dir, is_symlink, len) = match &child_node.kind {
+                    NodeKind::Directory { .. } => (true, false, 0),
+                    NodeKind::File { streams } => {
+                        // Size is the size of the unnamed stream
+                        let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                        (false, false, size)
+                    }
+                    NodeKind::Symlink { target } => (false, true, target.len() as u64),
+                };
+
+                // Check if this is a whiteout (deleted file)
+                // For now, we don't implement whiteouts in this simplified version
+                // TODO: Implement proper whiteout detection
+
+                let dir_entry = DirEntry {
+                    name: name.clone(),
+                    is_dir,
+                    is_symlink,
+                    len,
+                };
+
+                let perm_bits = child_node.mode & 0o777;
+                let attributes = Attributes {
+                    len,
+                    times: child_node.times,
+                    uid: child_node.uid,
+                    gid: child_node.gid,
+                    is_dir,
+                    is_symlink,
+                    mode_user: FileMode {
+                        read: (perm_bits & 0o400) != 0,
+                        write: (perm_bits & 0o200) != 0,
+                        exec: (perm_bits & 0o100) != 0,
+                    },
+                    mode_group: FileMode {
+                        read: (perm_bits & 0o040) != 0,
+                        write: (perm_bits & 0o020) != 0,
+                        exec: (perm_bits & 0o010) != 0,
+                    },
+                    mode_other: FileMode {
+                        read: (perm_bits & 0o004) != 0,
+                        write: (perm_bits & 0o002) != 0,
+                        exec: (perm_bits & 0o001) != 0,
+                    },
+                };
+
+                entries.insert(name.clone(), (dir_entry, attributes));
+            }
+        }
+
+        // Convert to sorted vector
+        let mut result: Vec<_> = entries.into_values().collect();
+        result.sort_by(|a, b| a.0.name.cmp(&b.0.name));
+        Ok(result)
     }
 
     /// Like readdir_plus, but returns raw name bytes for each entry for adapters that need exact bytes

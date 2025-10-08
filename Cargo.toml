@@ -80,12 +80,14 @@ thiserror = "1.0"
 
 # System interfaces
 nix = "0.30"
+libc = "0.2"
 
 # Async traits
 async-trait = "0.1"
 
 # Testing
 tempfile = "3.0"
+mockall = "0.13"
 
 # HTTP client for connectivity checks
 ureq = { version = "2.0", features = ["json"] }
@@ -105,6 +107,9 @@ url = "2.5"
 
 # Base64 encoding
 base64 = "0.22"
+
+# Hex encoding
+hex = "0.4"
 
 # SSE client
 eventsource-client = "0.13"

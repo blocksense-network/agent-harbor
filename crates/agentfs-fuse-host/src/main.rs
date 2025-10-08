@@ -146,6 +146,20 @@ mod tests {
                 "default_gid": 0,
                 "enable_windows_acl_compat": false,
                 "root_bypass_permissions": false
+            },
+            "backstore": {
+                "InMemory": null
+            },
+            "overlay": {
+                "enabled": false,
+                "lower_root": null,
+                "copyup_mode": "Lazy"
+            },
+            "interpose": {
+                "enabled": false,
+                "max_copy_bytes": 1048576,
+                "require_reflink": false,
+                "allow_windows_reparse": false
             }
         }"#;
         temp_file.write_all(config_json.as_bytes()).unwrap();

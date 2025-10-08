@@ -79,6 +79,9 @@ pub struct FsConfig {
     pub enable_ads: bool,
     pub track_events: bool,
     pub security: SecurityPolicy,
+    pub backstore: BackstoreMode,
+    pub overlay: OverlayConfig,
+    pub interpose: InterposeConfig,
 }
 
 impl Default for FsConfig {
@@ -92,6 +95,9 @@ impl Default for FsConfig {
             enable_ads: false,
             track_events: false,
             security: SecurityPolicy::default(),
+            backstore: BackstoreMode::default(),
+            overlay: OverlayConfig::default(),
+            interpose: InterposeConfig::default(),
         }
     }
 }
@@ -119,6 +125,86 @@ impl Default for SecurityPolicy {
             default_gid: 0,
             enable_windows_acl_compat: false,
             root_bypass_permissions: false,
+        }
+    }
+}
+
+/// Backstore configuration
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BackstoreMode {
+    /// Store upper layer data in memory (default)
+    InMemory,
+    /// Store upper layer data in a host filesystem directory
+    HostFs {
+        /// Root directory for upper layer storage
+        root: PathBuf,
+        /// Whether to prefer native filesystem snapshots
+        prefer_native_snapshots: bool,
+    },
+}
+
+impl Default for BackstoreMode {
+    fn default() -> Self {
+        Self::InMemory
+    }
+}
+
+/// Overlay configuration
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OverlayConfig {
+    /// Enable overlay mode (default: false)
+    pub enabled: bool,
+    /// Root path of the lower filesystem (required when enabled)
+    pub lower_root: Option<PathBuf>,
+    /// Copy-up policy for metadata-only changes
+    pub copyup_mode: CopyUpMode,
+}
+
+impl Default for OverlayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            lower_root: None,
+            copyup_mode: CopyUpMode::default(),
+        }
+    }
+}
+
+/// Copy-up mode for overlay operations
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum CopyUpMode {
+    /// Copy up on first data write only
+    Lazy,
+    /// Copy up immediately on any metadata change
+    Eager,
+}
+
+impl Default for CopyUpMode {
+    fn default() -> Self {
+        Self::Lazy
+    }
+}
+
+/// Interpose configuration for FD-forwarding mode
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InterposeConfig {
+    /// Enable interpose mode (default: false)
+    pub enabled: bool,
+    /// Maximum file size for bounded copy (bytes)
+    pub max_copy_bytes: u64,
+    /// Require reflink support for forwarding (default: false)
+    pub require_reflink: bool,
+    /// Allow experimental Windows reparse fast-path (default: false)
+    pub allow_windows_reparse: bool,
+}
+
+impl Default for InterposeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_copy_bytes: 64 * 1024 * 1024, // 64MB
+            require_reflink: false,
+            allow_windows_reparse: false,
         }
     }
 }

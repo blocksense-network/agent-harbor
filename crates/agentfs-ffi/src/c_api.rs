@@ -123,6 +123,9 @@ pub unsafe extern "C" fn af_fs_create(config_json: *const c_char, out_fs: *mut A
         enable_ads: false, // macOS uses xattrs instead of ADS
         track_events: true,
         security: agentfs_core::config::SecurityPolicy::default(),
+        backstore: agentfs_core::config::BackstoreMode::InMemory,
+        overlay: agentfs_core::config::OverlayConfig::default(),
+        interpose: agentfs_core::config::InterposeConfig::default(),
     };
 
     // Create FsCore instance

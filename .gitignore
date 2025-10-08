@@ -48,6 +48,12 @@ adapters/macos/xcode/libs/
 apps/macos/AgentHarbor/libs/
 apps/macos/AgentHarbor/build/
 
+# AgentsWorkflow app build artifacts
+apps/macos/AgentsWorkflow/libs/
+apps/macos/AgentsWorkflow/build/
+apps/macos/AgentsWorkflow/AgentsWorkflow.app/
+apps/macos/AgentsWorkflow/PlugIns/
+
 # Distribution packages
 *.pkg
 

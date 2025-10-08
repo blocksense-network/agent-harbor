@@ -309,3 +309,44 @@ pub struct FsStats {
     pub bytes_in_memory: u64,
     pub bytes_spilled: u64,
 }
+
+/// Lower filesystem provider trait for overlay mode
+/// This trait defines the interface to read from the underlying ("lower") filesystem
+/// when no upper entry exists in the overlay branch.
+#[cfg_attr(test, mockall::automock)]
+pub trait LowerFs: Send + Sync {
+    /// Get attributes for a path in the lower filesystem
+    fn stat(&self, abs_path: &std::path::Path) -> crate::error::FsResult<Attributes>;
+
+    /// Open a file for read-only access in the lower filesystem
+    fn open_ro(&self, abs_path: &std::path::Path) -> crate::error::FsResult<Box<dyn std::io::Read + Send>>;
+
+    /// List directory contents in the lower filesystem
+    fn readdir(&self, abs_dir: &std::path::Path) -> crate::error::FsResult<Vec<DirEntry>>;
+
+    /// Read symbolic link target in the lower filesystem
+    fn readlink(&self, abs_path: &std::path::Path) -> crate::error::FsResult<std::path::PathBuf>;
+
+    /// Get extended attribute from the lower filesystem
+    fn getxattr(&self, abs_path: &std::path::Path, name: &str) -> crate::error::FsResult<Vec<u8>>;
+
+    /// List extended attributes from the lower filesystem
+    fn listxattr(&self, abs_path: &std::path::Path) -> crate::error::FsResult<Vec<String>>;
+}
+
+/// Backstore trait for managing upper layer storage
+/// The backstore manages the storage location for copied-up files in overlay mode.
+#[cfg_attr(test, mockall::automock)]
+pub trait Backstore: Send + Sync {
+    /// Check if this backstore supports native snapshots (e.g., APFS, ZFS, Btrfs)
+    fn supports_native_snapshots(&self) -> bool;
+
+    /// Create a native snapshot of the backstore if supported
+    fn snapshot_native(&self, snapshot_name: &str) -> crate::error::FsResult<()>;
+
+    /// Create a reflink/clone of a file within the backstore
+    fn reflink(&self, from_path: &std::path::Path, to_path: &std::path::Path) -> crate::error::FsResult<()>;
+
+    /// Get the root path of this backstore
+    fn root_path(&self) -> std::path::PathBuf;
+}

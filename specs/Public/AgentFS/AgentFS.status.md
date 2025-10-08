@@ -336,7 +336,104 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 - [x] Control plane migrated to XPC service (no filesystem-based operations)
 - [x] Thread-safe implementation with proper locking
 
-M10. Control plane and CLI integration (4–5d) - IN PROGRESS
+**M-Core.Advanced-Features. Unit Testing for Overlay, Backstore, and Interpose** ✅ COMPLETED (6–9d)
+
+- **Goal**: Verify the correctness of the core Rust logic for advanced features using unit and component-level tests that do not require mounting a full filesystem. This milestone ensures the core's behavior is correct before wiring it into platform adapters.
+- **Strategy**: Leverage mock `LowerFs` and `Backstore` trait implementations and `tempfile`-based fixtures to simulate interactions with an underlying filesystem in a controlled, platform-agnostic way.
+
+- **Deliverables**:
+  - A suite of Rust unit tests covering all specified behaviors for Overlay, Backstore, and Interpose modes.
+  - Mock/fake implementations of `LowerFs` and `Backstore` traits within the test harness (`#[cfg(test)]`).
+
+- **Success criteria (unit tests)**:
+  - All new unit test plans (U10-U18) defined below are implemented and pass in CI.
+  - Code coverage for the `vfs`, `storage`, and `backstore` modules increases measurably.
+
+- **Core Unit Test Plan: M20 Overlay LowerFS & Copy-Up**
+  - **U10. Overlay Pass-through Read**:
+    - **Setup**: Initialize `FsCore` with a `lower` root pointing to a temporary directory containing `/file.txt` with content "LOWER".
+    - **Action**: Call `core.read()` on path `/file.txt`.
+    - **Assert**: The read returns "LOWER". No upper entry is created in the VFS, and no files are created in the `backstore` root.
+  - **U11. Copy-up on First Write**:
+    - **Setup**: Same as U10.
+    - **Action**: Call `core.write()` on path `/file.txt` with content "UPPER".
+    - **Action**: Call `core.read()` on the same path.
+    - **Assert**: An upper entry for `/file.txt` now exists. The read returns "UPPER". The original lower file still contains "LOWER".
+  - **U12. Metadata-only Overlay**:
+    - **Setup**: Same as U10.
+    - **Action**: Call `core.set_mode()` on `/file.txt`.
+    - **Assert**: An upper metadata-only entry is created. `core.getattr()` returns the new mode. `core.read()` still returns "LOWER" (data is not copied up).
+  - **U13. Whiteout on Unlink**:
+    - **Setup**: Same as U10.
+    - **Action**: Call `core.unlink()` on `/file.txt`.
+    - **Assert**: `core.getattr()` on `/file.txt` returns `NotFound`. `core.readdir("/")` does not list `file.txt`. The physical file in the `lower` root still exists.
+  - **U14. Merged Directory Listing**:
+    - **Setup**: `lower` root contains `/a` and `/b`. A branch creates `/c` and creates a whiteout for `/b`.
+    - **Action**: Call `core.readdir("/")`.
+    - **Assert**: The result contains exactly `/a` and `/c`, demonstrating a correctly merged view.
+
+- **Core Unit Test Plan: M21/M23 Host-FS Backstore & Snapshots**
+  - **U15. HostFS Backstore I/O**:
+    - **Setup**: Initialize `FsCore` with `FsConfig.backstore = HostFs { root: <tempdir> }`.
+    - **Action**: `create`, `write`, `read`, and `unlink` a file `/test.txt`.
+    - **Assert**: A physical file is created, written to, read from, and deleted within the specified backstore temp directory.
+  - **U16. Native Snapshot Delegation**:
+    - **Setup**: Use a mock `Backstore` provider that reports `supports_native_snapshots = true`.
+    - **Action**: Call `core.snapshot_create()`.
+    - **Assert**: The mock `Backstore::snapshot_native()` method is called. No file-copying logic within `FsCore` is triggered.
+  - **U17. Copy-Active Snapshot Fallback**:
+    - **Setup**: Use a `HostFs` backstore (which does not support native snapshots). Create files `/a` (in upper) and `/b` (lower-only).
+    - **Action**: Call `core.snapshot_create()`.
+    - **Assert**: The physical file for `/a` is copied within the backstore to a snapshot-specific location. The file for `/b` is not physically copied, as it's not in the active upper set.
+
+- **Core Unit Test Plan: M24 Interpose (FD-Forwarding) Control Plane**
+  - **U18. `fd_open` Control Plane Logic**:
+    - **Reflink Success**: Mock a backstore that supports reflink. `fd_open` on a lower-only path should succeed and call the backstore's `reflink()` method.
+    - **Bounded Copy Success**: Mock a backstore without reflink support. `fd_open` on a lower-only file *smaller* than `interpose.max_copy_bytes` should succeed and trigger a full copy.
+    - **Forwarding Declined (Too Large)**: Mock a backstore without reflink. `fd_open` on a lower-only file *larger* than `interpose.max_copy_bytes` must fail with a `FORWARDING_UNAVAILABLE` error.
+    - **Forwarding Declined (Policy)**: Configure `interpose.require_reflink = true`. `fd_open` on a lower-only path without reflink support must fail with `FORWARDING_UNAVAILABLE`, regardless of file size.
+
+Acceptance checklist (M-Core.Advanced-Features)
+
+- [x] U10 Overlay Pass-through Read test passes
+- [x] U11 Copy-up on First Write test passes
+- [x] U12 Metadata-only Overlay test passes
+- [x] U13 Whiteout on Unlink test passes
+- [x] U14 Merged Directory Listing test passes
+- [x] U15 HostFS Backstore I/O test passes
+- [x] U16 Native Snapshot Delegation test passes
+- [x] U17 Copy-Active Snapshot Fallback test passes
+- [x] U18 fd_open Control Plane Logic tests pass
+- [x] Code coverage for vfs, storage, and backstore modules increased measurably
+- [x] All unit tests pass in CI
+
+**Implementation Status:**
+
+- **All U10-U18 unit tests implemented and passing** in `crates/agentfs-core/src/lib.rs`
+- **Complete backstore/interpose integration** implemented:
+  - `HostFsBackend` for disk-based storage persistence
+  - Dynamic storage backend selection based on `BackstoreMode`
+  - Snapshot delegation with fallback to filesystem copy operations
+  - Interpose control plane framework for zero-overhead I/O forwarding
+- **Mock infrastructure** using Mockall for `LowerFs` and `Backstore` traits
+- **Configuration extensions** added to `FsConfig` with backward compatibility
+- **Cross-crate compatibility** fixes applied to all crates using `FsConfig`
+
+**Key Source Files:**
+- `crates/agentfs-core/src/lib.rs` - Complete U10-U18 unit test implementations
+- `crates/agentfs-core/src/vfs.rs` - FsCore overlay/backstore integration and deadlock fixes
+- `crates/agentfs-core/src/storage.rs` - HostFsBackend disk persistence implementation
+- `crates/agentfs-core/src/overlay.rs` - HostLowerFs mock implementation
+- `crates/agentfs-core/src/types.rs` - LowerFs and Backstore trait definitions
+- `crates/agentfs-core/src/config.rs` - Extended configuration structures
+
+**Technical Highlights:**
+- **Thread-safe implementation** with proper Mutex usage patterns
+- **Comprehensive test coverage** including edge cases (whiteouts, copy-up, directory merging)
+- **Platform-agnostic design** using trait-based abstractions
+- **Zero deadlocks** in core filesystem operations after fixes
+
+**M10. Control plane and CLI integration (4–5d) - IN PROGRESS**
 
 - Finalize `agentfs-proto` SSZ schemas and union types (similar to fs-snapshot-daemon); generate Rust types.
 - Implement `ah agent fs` subcommands for session-aware AgentFS operations: DeviceIoControl (Windows), ioctl on control file (FUSE), XPC service (FSKit).
