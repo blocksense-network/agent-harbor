@@ -437,23 +437,35 @@ impl AgentStartArgs {
     fn build_agent_env(&self) -> Vec<(String, String)> {
         let mut env = Vec::new();
 
-        // Set PYTHONPATH to find the mock agent
+        // Set PYTHONPATH to find the mock agent, appending to existing PYTHONPATH
         if let Ok(current_exe) = std::env::current_exe() {
             if let Some(workspace_root) =
                 current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
             {
-                let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                env.push(("PYTHONPATH".to_string(), pythonpath));
+                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
+                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+                let new_pythonpath = if current_pythonpath.is_empty() {
+                    mock_agent_path
+                } else {
+                    format!("{}:{}", mock_agent_path, current_pythonpath)
+                };
+                env.push(("PYTHONPATH".to_string(), new_pythonpath));
             }
         }
 
         // Fallback: try CARGO_MANIFEST_DIR
-        if env.is_empty() {
+        if !env.iter().any(|(k, _)| k == "PYTHONPATH") {
             if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
                 let workspace_root =
                     std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
-                let pythonpath = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                env.push(("PYTHONPATH".to_string(), pythonpath));
+                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
+                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+                let new_pythonpath = if current_pythonpath.is_empty() {
+                    mock_agent_path
+                } else {
+                    format!("{}:{}", mock_agent_path, current_pythonpath)
+                };
+                env.push(("PYTHONPATH".to_string(), new_pythonpath));
             }
         }
 
