@@ -1,0 +1,81 @@
+[package]
+name = "ah-rest-server"
+version = "0.1.0"
+edition = "2021"
+description = "Agent Harbor REST API server implementation"
+authors = ["Agent Harbor Team"]
+
+[dependencies]
+# Axum web framework
+axum = { version = "0.7", features = ["macros", "tokio", "http2", "matched-path"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "request-id", "util"] }
+hyper = "1.5"
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging and tracing
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Authentication
+jsonwebtoken = { version = "10.0", default-features = false, features = ["rust_crypto"] }
+base64 = { workspace = true }
+
+# Database
+ah-local-db = { path = "../ah-local-db" }
+rusqlite = { workspace = true }
+
+# API contracts
+ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+
+# Core functionality
+ah-core = { path = "../ah-core" }
+ah-repo = { path = "../ah-repo" }
+ah-fs-snapshots = { path = "../ah-fs-snapshots" }
+
+# OpenAPI
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "7.1", features = ["axum"] }
+
+# Rate limiting
+tower_governor = "0.4"
+
+# SSE streaming
+futures = { workspace = true }
+tokio-stream = "0.1"
+
+# URL handling
+url = { workspace = true }
+
+# UUID generation
+uuid = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+
+# Validation
+validator = { workspace = true }
+
+# Async traits
+async-trait = { workspace = true }
+
+# CLI parsing
+clap = { workspace = true }
+
+# HTTP client for internal calls
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+mockall = { workspace = true }

@@ -820,19 +820,99 @@ Parallel development enables faster progress while maintaining clean dependency 
   - [ ] All VCS types tested (Git, Hg, Fossil) with same test patterns as Ruby
   - [ ] All integration tests use custom `AH_HOME` for environment isolation from user configuration
 
-**T3.4 REST Service Implementation** (4 weeks)
+**T3.4 REST Service Implementation** (4 weeks) - **IN PROGRESS**
 
-- **Deliverables**:
+- **Current Status**: Basic server infrastructure implemented with stubbed endpoints
 
-  - Complete implementation of [REST-Service/](REST-Service/) specification
-  - REST API server with all endpoints: task creation, session management, logs, events
-  - SSE/WebSocket streaming for real-time session updates
-  - Authentication and authorization (API keys, JWT, RBAC)
-  - Database integration for session state persistence. Please note that the SQLx dependencies suggested in the ([REST Service Tech Stack](REST-Service/Tech-Stack.md)) should actually be integrated in the ah-local-db crate.
-  - Executor registration and heartbeat management
-  - Workspace provisioning and snapshot management integration
+- **Completed Components**:
 
-- **Testing Strategy**:
+  - ✅ Server infrastructure: Axum-based REST server with middleware stack (CORS, compression, request tracing)
+  - ✅ Basic endpoints: `/healthz`, `/readyz`, `/version`, `/api/v1/openapi.json`
+  - ✅ Authentication middleware: API key and JWT support (rustls-based crypto, no OpenSSL dependency)
+  - ✅ Handler structure: All required endpoints have placeholder implementations
+  - ✅ Error handling: Problem+JSON responses with proper HTTP status codes
+  - ✅ Configuration system: Server config with database path, CORS, auth settings
+  - ✅ State management: In-memory session store (placeholder for real persistence)
+  - ✅ Database integration: Basic rusqlite connection (no schema/migrations yet)
+
+- **Stubbed/Placeholder Components**:
+
+  - ⚠️ **Task creation endpoint** (`POST /api/v1/tasks`): Accepts requests but doesn't execute tasks
+  - ⚠️ **Session management** (`GET/PUT/DELETE /api/v1/sessions`): Returns mock session data, no real state
+  - ⚠️ **Session control** (`POST /api/v1/sessions/{id}/stop|pause|resume`): Returns success but no actual control
+  - ⚠️ **Logs endpoint** (`GET /api/v1/sessions/{id}/logs`): Returns empty log list
+  - ⚠️ **SSE streaming** (`GET /api/v1/sessions/{id}/events`): Simple heartbeat stream, no real events
+  - ⚠️ **Capability discovery** (`GET /api/v1/agents|runtimes|executors`): Returns hardcoded mock data
+  - ⚠️ **Project/workspace endpoints**: Return empty lists
+
+- **Outstanding Tasks**:
+
+  - **Database Schema & Persistence**:
+    - Implement proper database schema for sessions, tasks, logs
+    - Add database migrations and session state persistence
+    - Replace in-memory session store with persistent storage
+
+  - **Real Session Management**:
+    - Implement actual task execution and session lifecycle
+    - Connect to executor processes and manage their lifecycle
+    - Handle session state transitions (queued → running → completed/failed)
+    - Implement proper session cleanup and resource management
+
+  - **Real-time Streaming**:
+    - Implement actual SSE event streaming for session updates
+    - Stream real logs, status changes, and task progress
+    - Handle client disconnections and reconnection logic
+    - Add event filtering and pagination
+
+  - **Executor Integration**:
+    - Implement executor registration and heartbeat monitoring
+    - Add executor capability discovery and matching
+    - Handle executor failures and automatic recovery
+    - Implement load balancing across available executors
+
+  - **Workspace & Snapshot Integration**:
+    - Integrate with ah-fs-snapshots for workspace provisioning
+    - Implement snapshot creation/restoration for task isolation
+    - Add workspace cleanup and resource management
+    - Support multiple VCS types (Git, Hg, Fossil)
+
+  - **Authentication & Authorization**:
+    - Implement real JWT validation and claims processing
+    - Add RBAC (Role-Based Access Control) for multi-tenant support
+    - Implement proper API key management and rotation
+    - Add tenant/project isolation in database queries
+
+  - **Rate Limiting & Security**:
+    - Implement rate limiting middleware (currently stubbed)
+    - Add request validation and sanitization
+    - Implement proper CORS policy for production
+    - Add security headers and CSRF protection
+
+  - **OpenAPI & Documentation**:
+    - Generate real OpenAPI spec from handler annotations
+    - Add comprehensive request/response schemas
+    - Implement Swagger UI serving
+    - Add API documentation and examples
+
+  - **Observability & Monitoring**:
+    - Add comprehensive logging with structured fields
+    - Implement metrics collection (request counts, latencies, errors)
+    - Add health checks for database and executor connectivity
+    - Implement distributed tracing support
+
+  - **Integration Testing**:
+    - Create comprehensive API contract tests
+    - Add end-to-end tests with mock executors
+    - Implement authentication/authorization test suites
+    - Add SSE streaming reliability tests
+
+  - **Client Integration**:
+    - Integrate with ah-cli for task submission
+    - Integrate with ah-tui for real-time updates
+    - Add proper error handling and retry logic
+    - Implement client-side session management
+
+- **Testing Strategy** (Planned):
 
   - Comprehensive API contract tests against mock clients
   - End-to-end integration tests with mock executors
@@ -842,12 +922,12 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Multi-tenant isolation tests
   - Rate limiting and quota enforcement tests
 
-- **Verification**:
+- **Verification** (Target):
 
   - All REST endpoints match [REST-Service/](REST-Service/) specification
   - API contract tests pass against mock server (100% endpoint coverage)
   - SSE streaming works reliably under various network conditions
-  - Authentication flows work correctly (API key, JWT, OIDC)
+  - Authentication flows work correctly (API key, JWT)
   - RBAC permissions are properly enforced
   - Session state persistence survives server restarts
   - Executor heartbeat and health monitoring works

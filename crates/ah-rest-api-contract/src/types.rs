@@ -10,17 +10,47 @@ use validator::Validate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
+    #[serde(rename = "queued")]
     Queued,
+    #[serde(rename = "provisioning")]
     Provisioning,
+    #[serde(rename = "running")]
     Running,
+    #[serde(rename = "pausing")]
     Pausing,
+    #[serde(rename = "paused")]
     Paused,
+    #[serde(rename = "resuming")]
     Resuming,
+    #[serde(rename = "stopping")]
     Stopping,
+    #[serde(rename = "stopped")]
     Stopped,
+    #[serde(rename = "completed")]
     Completed,
+    #[serde(rename = "failed")]
     Failed,
+    #[serde(rename = "cancelled")]
     Cancelled,
+}
+
+impl std::fmt::Display for SessionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            SessionStatus::Queued => "queued",
+            SessionStatus::Provisioning => "provisioning",
+            SessionStatus::Running => "running",
+            SessionStatus::Pausing => "pausing",
+            SessionStatus::Paused => "paused",
+            SessionStatus::Resuming => "resuming",
+            SessionStatus::Stopping => "stopping",
+            SessionStatus::Stopped => "stopped",
+            SessionStatus::Completed => "completed",
+            SessionStatus::Failed => "failed",
+            SessionStatus::Cancelled => "cancelled",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 /// Repository mode for task creation

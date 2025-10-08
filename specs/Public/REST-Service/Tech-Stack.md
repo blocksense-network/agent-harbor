@@ -1,4 +1,8 @@
-# REST Service tech rimary stack
+# REST Service tech stack
+
+**TLS/SSL:** **rustls**
+
+* rustls is the most mature Rust-only SSL/TLS crate. It's a modern, low-level library that implements the TLS protocol entirely in Rust, emphasizing security, ease of use, and no unsafe code. It supports TLS 1.2 and 1.3, various cipher suites, and integrates well with async runtimes like Tokio via tokio-rustls.
 
 **HTTP framework:** **Axum** (on Tokio/Hyper/Tower)
 
@@ -18,7 +22,7 @@
 
 **Auth (JWT):** **jsonwebtoken**
 
-* Mature JWT encode/decode/validate with JWK support. ([Docs.rs][5])
+* Mature JWT encode/decode/validate with JWK support. Use with `rust_crypto` feature to use pure Rust crypto implementations instead of OpenSSL. ([Docs.rs][5])
 
 **Rate limiting:** **tower::limit::RateLimitLayer** (simple global) or **tower_governor** (IP/API-key aware)
 
@@ -28,13 +32,15 @@
 
 * Axum/Tower integrate with `tracing`; export spans/metrics via OpenTelemetry crates. (OTel docs recommend using `tracing` macros and bridging via opentelemetry exporters.) ([OpenTelemetry][7])
 
-**Database:** **SQLx**
+**Database:** **SQLx** (or **rusqlite** for simpler deployments)
 
-* Async, runtime-agnostic, compile-time checked queries; supports Pg/MySQL/SQLite; widely adopted and maintained. ([GitHub][8])
+* Async, runtime-agnostic, compile-time checked queries; supports Pg/MySQL/SQLite; widely adopted and maintained. For simpler deployments, rusqlite provides synchronous SQLite access. ([GitHub][8])
+
+**Note:** By selecting rustls-based features on crates (e.g., `jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }`, `reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }`), you can eliminate OpenSSL dependencies entirely and use pure-Rust TLS implementations.
 
 **HTTP client (for integration & E2E tests):** **reqwest**
 
-* De-facto async client; use in tests and any outbound calls. ([Docs.rs][9])
+* De-facto async client; use in tests and any outbound calls. Enable `rustls-tls` feature instead of default `native-tls` to use rustls instead of OpenSSL. ([Docs.rs][9])
 
 **Black-box HTTP mocking (tests):** **wiremock**
 
