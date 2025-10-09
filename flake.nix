@@ -317,6 +317,7 @@
 
         # Cargo tools
         pkgs.cargo-outdated
+        pkgs.cargo-nextest
       ];
 
       # Linux-specific packages

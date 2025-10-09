@@ -30,11 +30,11 @@ build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-over
 
 # Run Rust tests
 test-rust: build-rust-test-binaries
-    cargo test --workspace
+    cargo nextest run --workspace
 
 # Run Rust tests with verbose output
 test-rust-verbose: build-rust-test-binaries
-    cargo test --workspace --verbose
+    cargo nextest run --workspace --verbose
 
 # Snapshot Testing with Insta
 # ===========================
