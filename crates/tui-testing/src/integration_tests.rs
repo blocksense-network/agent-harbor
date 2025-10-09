@@ -89,8 +89,15 @@ fn test_cli_client_help() {
 #[tokio::test]
 async fn test_test_guest_integration() -> anyhow::Result<()> {
     // Build the path to the test-guest binary
-    let test_guest_path =
-        "/Users/zahary/blocksense/agents-workflow/cli/target/debug/test-guest".to_string();
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let test_guest_path = std::path::Path::new(manifest_dir)
+        .parent()
+        .unwrap() // crates
+        .parent()
+        .unwrap() // workspace root
+        .join("target/debug/test-guest")
+        .to_string_lossy()
+        .to_string();
     println!("Using test_guest binary: {}", test_guest_path);
 
     // Spawn the test_guest program with the URI passed as argument

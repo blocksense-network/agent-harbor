@@ -318,6 +318,7 @@
         # Cargo tools
         pkgs.cargo-outdated
         pkgs.cargo-nextest
+        pkgs.cargo-insta
       ];
 
       # Linux-specific packages
