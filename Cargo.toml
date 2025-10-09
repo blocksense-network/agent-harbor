@@ -54,6 +54,8 @@ members = [
   "tests/debugging-enforcement",
   "tests/container-enforcement",
   "tests/vm-enforcement",
+  # TUI exploration prototype
+  "PoC/tui-exploration",
 ]
 resolver = "2"
 

@@ -446,41 +446,6 @@ The TUI implementation provides these core capabilities:
   - Ready for integration with TUI task creation and launch functionality
   - Works alongside tmux implementation for multiplexer choice
 
-**T3.4 REST Service Implementation** (4 weeks)
-
-- **Deliverables**:
-
-  - Complete implementation of [REST-Service/](REST-Service/) specification
-  - REST API server with all endpoints: task creation, session management, logs, events
-  - SSE/WebSocket streaming for real-time session updates
-  - Authentication and authorization (API keys, JWT, RBAC)
-  - Database integration for session state persistence. Please note that the SQLx dependencies suggested in the ([REST Service Tech Stack](REST-Service/Tech-Stack.md)) should actually be integrated in the ah-local-db crate.
-  - Executor registration and heartbeat management
-  - Workspace provisioning and snapshot management integration
-
-- **Testing Strategy**:
-
-  - Comprehensive API contract tests against mock clients
-  - End-to-end integration tests with mock executors
-  - Authentication and authorization test suites
-  - SSE streaming reliability tests
-  - Database persistence and recovery tests
-  - Multi-tenant isolation tests
-  - Rate limiting and quota enforcement tests
-
-- **Verification**:
-
-  - All REST endpoints match [REST-Service/](REST-Service/) specification
-  - API contract tests pass against mock server (100% endpoint coverage)
-  - SSE streaming works reliably under various network conditions
-  - Authentication flows work correctly (API key, JWT, OIDC)
-  - RBAC permissions are properly enforced
-  - Session state persistence survives server restarts
-  - Executor heartbeat and health monitoring works
-  - Workspace provisioning integrates correctly with snapshot providers
-  - Multi-tenant data isolation is maintained
-  - Rate limiting and quotas are properly enforced
-
 ## New/Refined Milestones to Reach Full PRD
 
 > All milestones below include **automated verification** (unit + integration + golden/snapshot tests). Test names are suggestions; feel free to adopt your naming convention.
