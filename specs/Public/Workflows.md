@@ -39,9 +39,11 @@ Task descriptions may include lines beginning with `/` (e.g. `/front-end-task`).
 
 For a workflow command `/command`:
 
-1. **PATH Executables (with repo priority)**: Resolve `command` via the system `PATH` after temporarily prepending `.agents/workflows` (when it exists). Any executable found in `PATH` is valid. `.agents/workflows` takes precedence because it is placed first in the `PATH` for resolution.
-2. **Text File Fallback**: If no executable is found in `PATH`, look for a text file at `.agents/workflows/command.txt` and include its contents.
-3. **Error Handling**: If neither an executable nor a `.txt` fallback exists, report an error in diagnostics.
+1. **Repo Directory Scripts (with precedence)**: If no whitelisted executable is found in PATH, check for scripts in `.agents/workflows/` directory (when it exists). Scripts take precedence over text files.
+2. **Text File Fallback**: If no executable script is found in `.agents/workflows/`, look for a text file at `.agents/workflows/command.txt` and include its contents.
+3. **Configuration-based Whitelist**: Check if `command` is listed in the `extra_workflow_executables` configuration variable. If not listed, report an error.
+4. **PATH Verification**: If listed in the whitelist, verify that the executable exists in the system `PATH` and is executable. If not found in PATH, report an error.
+5. **Error Handling**: If the command is not whitelisted, not found in PATH, and no script/text file exists, report an error in diagnostics.
 
 ### Script Execution
 

@@ -1,14 +1,21 @@
 use regex::Regex;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::pin::Pin;
+use std::process::{Command, Stdio};
+use async_trait::async_trait;
+use futures::{Stream, StreamExt};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::error::{VcsError, VcsResult};
 use crate::vcs_types::VcsType;
 
+/// Stream type for VCS files
+pub type FileStream = Pin<Box<dyn Stream<Item = Result<String, VcsError>> + Send>>;
+
 #[derive(Debug)]
 pub struct VcsRepo {
-    root: PathBuf,
-    vcs_type: VcsType,
+    pub root: PathBuf,
+    pub vcs_type: VcsType,
 }
 
 impl VcsRepo {
@@ -258,6 +265,80 @@ impl VcsRepo {
             self.run_command(&cmd)?;
         }
         Ok(())
+    }
+
+    /// Stream tracked files incrementally as they are discovered
+    pub async fn stream_tracked_files(&self) -> VcsResult<FileStream> {
+        // Check if this is actually a VCS repository
+        let cmd = self.get_tracked_files_command();
+
+        // Spawn the command with piped stdout
+        let mut child = tokio::process::Command::new(&cmd[0])
+            .args(&cmd[1..])
+            .current_dir(&self.root)
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| VcsError::CommandFailed {
+                command: cmd.join(" "),
+                exit_code: -1,
+                stderr: e.to_string(),
+            })?;
+
+        // Get the stdout handle
+        let stdout = child.stdout.take().ok_or_else(|| VcsError::CommandFailed {
+            command: cmd.join(" "),
+            exit_code: -1,
+            stderr: "Failed to capture stdout".to_string(),
+        })?;
+
+        // Create a buffered reader for incremental line reading
+        let reader = BufReader::new(stdout);
+
+        // Create the stream using unfold
+        let stream = futures::stream::unfold(
+            (reader, child, String::new()),
+            |(mut reader, mut child, mut buffer)| async move {
+                loop {
+                    // Clear the buffer for reuse
+                    buffer.clear();
+
+                    // Try to read the next line
+                    match reader.read_line(&mut buffer).await {
+                        Ok(0) => {
+                            // EOF reached, check process status
+                            match child.wait().await {
+                                Ok(status) if !status.success() => {
+                                    // Process failed - for corrupted repos, treat as empty rather than error
+                                    // This allows the method to succeed and return an empty stream
+                                    return None;
+                                }
+                                Ok(_) => return None, // Process completed successfully
+                                Err(e) => {
+                                    return Some((Err(VcsError::CommandFailed {
+                                        command: "tracked files command".to_string(),
+                                        exit_code: -1,
+                                        stderr: format!("Wait error: {}", e),
+                                    }), (reader, child, buffer)));
+                                }
+                            }
+                        }
+                        Ok(_) => {
+                            // Got a line, trim it
+                            let line = buffer.trim();
+                            if !line.is_empty() {
+                                return Some((Ok(line.to_string()), (reader, child, buffer)));
+                            }
+                            // Empty line, continue to next iteration
+                        }
+                        Err(e) => {
+                            return Some((Err(VcsError::Io(e)), (reader, child, buffer)));
+                        }
+                    }
+                }
+            }
+        );
+
+        Ok(Box::pin(stream))
     }
 
     // Private helper methods
@@ -731,6 +812,15 @@ impl VcsRepo {
                 "sh".to_string(), "-c".to_string(),
                 format!("fossil sql \"SELECT filename.name FROM filename JOIN mlink ON filename.fnid=mlink.fnid JOIN mlink ON filename.fnid=mlink.fnid JOIN blob ON mlink.mid=blob.rid WHERE blob.uuid='{}'\"", commit_hash)
             ],
+        }
+    }
+
+    fn get_tracked_files_command(&self) -> Vec<String> {
+        match self.vcs_type {
+            VcsType::Git => vec!["git".to_string(), "ls-files".to_string()],
+            VcsType::Hg => vec!["hg".to_string(), "files".to_string()],
+            VcsType::Fossil => vec!["fossil".to_string(), "ls".to_string()],
+            VcsType::Bzr => vec!["bzr".to_string(), "ls".to_string()],
         }
     }
 

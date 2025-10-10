@@ -159,10 +159,7 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_basic_echo() -> anyhow::Result<()> {
     // Simple test that just verifies we can spawn a process
-    let runner = crate::TestedTerminalProgram::new("echo")
-        .arg("hello world")
-        .spawn()
-        .await?;
+    let runner = crate::TestedTerminalProgram::new("echo").arg("hello world").spawn().await?;
 
     // Just verify the runner was created successfully
     assert!(runner.endpoint_uri().starts_with("tcp://127.0.0.1:"));

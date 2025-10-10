@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::error::FsResult;
-use crate::{ContentId, FsError, Backstore};
 use crate::config::BackstoreMode;
+use crate::error::FsResult;
+use crate::{Backstore, ContentId, FsError};
 
 /// Storage backend trait for content-addressable storage with copy-on-write
 pub trait StorageBackend: Send + Sync {
@@ -217,7 +217,7 @@ impl StorageBackend for HostFsBackend {
     fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize> {
         let path = self.content_path(id);
         let mut file = std::fs::File::open(&path)?;
-        use std::io::{Seek, Read};
+        use std::io::{Read, Seek};
         file.seek(std::io::SeekFrom::Start(offset))?;
         let n = file.read(buf)?;
         Ok(n)
@@ -225,10 +225,7 @@ impl StorageBackend for HostFsBackend {
 
     fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize> {
         let path = self.content_path(id);
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(&path)?;
+        let mut file = std::fs::OpenOptions::new().write(true).create(true).open(&path)?;
         use std::io::{Seek, Write};
         file.seek(std::io::SeekFrom::Start(offset))?;
         let n = file.write(data)?;
@@ -344,9 +341,13 @@ impl Backstore for HostFsBackstore {
 pub fn create_backstore(config: &BackstoreMode) -> FsResult<Box<dyn Backstore>> {
     match config {
         BackstoreMode::InMemory => Ok(Box::new(InMemoryBackstore::new())),
-        BackstoreMode::HostFs { root, prefer_native_snapshots } => {
-            Ok(Box::new(HostFsBackstore::new(root.clone(), *prefer_native_snapshots)?))
-        }
+        BackstoreMode::HostFs {
+            root,
+            prefer_native_snapshots,
+        } => Ok(Box::new(HostFsBackstore::new(
+            root.clone(),
+            *prefer_native_snapshots,
+        )?)),
     }
 }
 

@@ -102,10 +102,7 @@ pub fn generate_unique_id() -> String {
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("ah_{}_{}_{}", std::process::id(), timestamp, counter)
 }

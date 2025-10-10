@@ -45,12 +45,7 @@ impl Server {
             .layer(PropagateRequestIdLayer::x_request_id())
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
-            .layer(
-                CorsLayer::new()
-                    .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any),
-            );
+            .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));
 
         // API routes
         let api_routes = Router::new()
@@ -58,39 +53,46 @@ impl Server {
             .route("/healthz", get(handlers::health::health_check))
             .route("/readyz", get(handlers::health::readiness_check))
             .route("/version", get(handlers::health::version))
-
             // Task management
             .route("/tasks", post(handlers::tasks::create_task))
-
             // Session management
             .route("/sessions", get(handlers::sessions::list_sessions))
             .route("/sessions/:id", get(handlers::sessions::get_session))
             .route("/sessions/:id", put(handlers::sessions::update_session))
             .route("/sessions/:id", delete(handlers::sessions::delete_session))
-
             // Session control
             .route("/sessions/:id/stop", post(handlers::sessions::stop_session))
-            .route("/sessions/:id/pause", post(handlers::sessions::pause_session))
-            .route("/sessions/:id/resume", post(handlers::sessions::resume_session))
-
+            .route(
+                "/sessions/:id/pause",
+                post(handlers::sessions::pause_session),
+            )
+            .route(
+                "/sessions/:id/resume",
+                post(handlers::sessions::resume_session),
+            )
             // Logs and events
-            .route("/sessions/:id/logs", get(handlers::sessions::get_session_logs))
-            .route("/sessions/:id/events", get(handlers::sessions::stream_session_events))
-            .route("/sessions/:id/info", get(handlers::sessions::get_session_info))
-
+            .route(
+                "/sessions/:id/logs",
+                get(handlers::sessions::get_session_logs),
+            )
+            .route(
+                "/sessions/:id/events",
+                get(handlers::sessions::stream_session_events),
+            )
+            .route(
+                "/sessions/:id/info",
+                get(handlers::sessions::get_session_info),
+            )
             // Capability discovery
             .route("/agents", get(handlers::capabilities::list_agents))
             .route("/runtimes", get(handlers::capabilities::list_runtimes))
             .route("/executors", get(handlers::capabilities::list_executors))
-
             // Projects and repositories
             .route("/projects", get(handlers::projects::list_projects))
             .route("/repos", get(handlers::projects::list_repositories))
-
             // Workspaces
             .route("/workspaces", get(handlers::workspaces::list_workspaces))
             .route("/workspaces/:id", get(handlers::workspaces::get_workspace))
-
             // Drafts
             .route("/drafts", get(handlers::drafts::list_drafts))
             .route("/drafts", post(handlers::drafts::create_draft))

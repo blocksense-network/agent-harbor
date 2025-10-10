@@ -97,7 +97,10 @@ async fn test_tui_initial_screen_golden() -> anyhow::Result<()> {
     let normalized_screen = normalize_screen_content(&screen_contents);
 
     // Use insta for golden file testing (platform-specific snapshots)
-    insta::assert_snapshot!(format!("initial_screen_{}", std::env::consts::OS), normalized_screen);
+    insta::assert_snapshot!(
+        format!("initial_screen_{}", std::env::consts::OS),
+        normalized_screen
+    );
 
     Ok(())
 }
@@ -138,7 +141,10 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 
     // Capture initial screen
     let initial_screen = normalize_screen_content(&runner.screen_contents());
-    insta::assert_snapshot!(format!("interaction_initial_{}", std::env::consts::OS), initial_screen);
+    insta::assert_snapshot!(
+        format!("interaction_initial_{}", std::env::consts::OS),
+        initial_screen
+    );
 
     // Navigate down through tasks
     runner.send("\x1b[B").await?; // Down arrow
@@ -155,7 +161,10 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 
     // Capture screen after navigation
     let navigation_screen = normalize_screen_content(&runner.screen_contents());
-    insta::assert_snapshot!(format!("interaction_navigation_{}", std::env::consts::OS), navigation_screen);
+    insta::assert_snapshot!(
+        format!("interaction_navigation_{}", std::env::consts::OS),
+        navigation_screen
+    );
 
     // Try to enter the description field and type something
     runner.send("\r").await?; // Enter (should focus description)
@@ -168,7 +177,10 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 
     // Capture screen with typed description
     let description_screen = normalize_screen_content(&runner.screen_contents());
-    insta::assert_snapshot!(format!("interaction_description_{}", std::env::consts::OS), description_screen);
+    insta::assert_snapshot!(
+        format!("interaction_description_{}", std::env::consts::OS),
+        description_screen
+    );
 
     // Exit the application
     runner.send_control('c').await?;

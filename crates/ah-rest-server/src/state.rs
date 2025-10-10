@@ -1,8 +1,8 @@
 //! Server state management
 
+use crate::config::ServerConfig;
 use ah_local_db::Database;
 use ah_rest_api_contract::*;
-use crate::config::ServerConfig;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

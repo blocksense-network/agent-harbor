@@ -6,8 +6,8 @@ use crate::ServerResult;
 use ah_rest_api_contract::*;
 use axum::{
     extract::{Path, Query, State},
-    Json,
     response::sse::{Event, KeepAlive, Sse},
+    Json,
 };
 use futures::stream::{self, Stream};
 use std::convert::Infallible;
@@ -159,18 +159,13 @@ pub async fn stream_session_events(
     let stream = stream::unfold(0, |count| async move {
         tokio::time::sleep(Duration::from_secs(30)).await;
         Some((
-            Ok(Event::default()
-                .event("heartbeat")
-                .data(format!("heartbeat-{}", count))),
+            Ok(Event::default().event("heartbeat").data(format!("heartbeat-{}", count))),
             count + 1,
         ))
     });
 
-    Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keep-alive"),
-    )
+    Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive"))
 }
 
 /// Get session info (fleet and endpoints)
@@ -186,7 +181,7 @@ pub async fn get_session_info(
             status: session.status,
             fleet: FleetInfo {
                 leader: "localhost".to_string(), // placeholder
-                followers: vec![], // placeholder
+                followers: vec![],               // placeholder
             },
             endpoints: SessionEndpoints {
                 events: format!("/api/v1/sessions/{}/events", session_id),

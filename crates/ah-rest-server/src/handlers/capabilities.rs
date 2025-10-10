@@ -44,16 +44,14 @@ pub async fn list_runtimes() -> ServerResult<Json<Vec<RuntimeCapability>>> {
 
 /// List available executors
 pub async fn list_executors() -> ServerResult<Json<Vec<Executor>>> {
-    let executors = vec![
-        Executor {
-            id: "local-linux".to_string(),
-            os: "linux".to_string(),
-            arch: "x86_64".to_string(),
-            snapshot_capabilities: vec!["git".to_string(), "zfs".to_string(), "btrfs".to_string()],
-            health: "healthy".to_string(),
-            overlay: None,
-        },
-    ];
+    let executors = vec![Executor {
+        id: "local-linux".to_string(),
+        os: "linux".to_string(),
+        arch: "x86_64".to_string(),
+        snapshot_capabilities: vec!["git".to_string(), "zfs".to_string(), "btrfs".to_string()],
+        health: "healthy".to_string(),
+        overlay: None,
+    }];
 
     Ok(Json(executors))
 }

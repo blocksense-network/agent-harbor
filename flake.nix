@@ -6,7 +6,7 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     git-hooks.url = "github:cachix/git-hooks.nix";
     codex = {
-      url = "git+file:./third-party/codex";
+      url = "git+file:./vendor/codex";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.rust-overlay.follows = "rust-overlay";
     };

@@ -15,7 +15,10 @@ impl<S: SessionStore> SessionService<S> {
     }
 
     /// Create a new session from task request
-    pub async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<CreateTaskResponse> {
+    pub async fn create_session(
+        &self,
+        request: &CreateTaskRequest,
+    ) -> anyhow::Result<CreateTaskResponse> {
         let session_id = self.store.create_session(request).await?;
 
         Ok(CreateTaskResponse {
@@ -39,7 +42,10 @@ impl<S: SessionStore> SessionService<S> {
     }
 
     /// List sessions with filtering
-    pub async fn list_sessions(&self, filters: &FilterQuery) -> anyhow::Result<SessionListResponse> {
+    pub async fn list_sessions(
+        &self,
+        filters: &FilterQuery,
+    ) -> anyhow::Result<SessionListResponse> {
         let sessions = self.store.list_sessions(filters).await?;
         let total = sessions.len() as u32;
 
@@ -51,7 +57,11 @@ impl<S: SessionStore> SessionService<S> {
     }
 
     /// Update session status
-    pub async fn update_session_status(&self, session_id: &str, status: SessionStatus) -> anyhow::Result<()> {
+    pub async fn update_session_status(
+        &self,
+        session_id: &str,
+        status: SessionStatus,
+    ) -> anyhow::Result<()> {
         if let Some(mut internal_session) = self.store.get_session(session_id).await? {
             internal_session.session.status = status;
             self.store.update_session(session_id, &internal_session).await?;
@@ -65,7 +75,11 @@ impl<S: SessionStore> SessionService<S> {
     }
 
     /// Add event to session
-    pub async fn add_session_event(&self, session_id: &str, event: SessionEvent) -> anyhow::Result<()> {
+    pub async fn add_session_event(
+        &self,
+        session_id: &str,
+        event: SessionEvent,
+    ) -> anyhow::Result<()> {
         self.store.add_session_event(session_id, event).await
     }
 
@@ -75,7 +89,11 @@ impl<S: SessionStore> SessionService<S> {
     }
 
     /// Get session logs
-    pub async fn get_session_logs(&self, session_id: &str, query: &LogQuery) -> anyhow::Result<SessionLogsResponse> {
+    pub async fn get_session_logs(
+        &self,
+        session_id: &str,
+        query: &LogQuery,
+    ) -> anyhow::Result<SessionLogsResponse> {
         let logs = self.store.get_session_logs(session_id, query).await?;
 
         Ok(SessionLogsResponse {

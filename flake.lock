@@ -17,11 +17,11 @@
         "rev": "4bdd846622b88dc3cefebff9f39ee1178bf4073f",
         "revCount": 1249,
         "type": "git",
-        "url": "file:./third-party/codex"
+        "url": "file:./vendor/codex"
       },
       "original": {
         "type": "git",
-        "url": "file:./third-party/codex"
+        "url": "file:./vendor/codex"
       }
     },
     "flake-compat": {

@@ -44,7 +44,7 @@ pub async fn create_task(
         agent: request.agent.clone(),
         runtime: request.runtime.clone(),
         workspace: ah_rest_api_contract::WorkspaceInfo {
-            snapshot_provider: "git".to_string(), // placeholder
+            snapshot_provider: "git".to_string(),     // placeholder
             mount_path: "/tmp/workspace".to_string(), // placeholder
             host: None,
             devcontainer_details: None,

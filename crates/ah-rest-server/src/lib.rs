@@ -14,6 +14,6 @@ pub mod server;
 pub mod services;
 pub mod state;
 
-pub use server::Server;
 pub use config::ServerConfig;
 pub use error::{ServerError, ServerResult};
+pub use server::Server;

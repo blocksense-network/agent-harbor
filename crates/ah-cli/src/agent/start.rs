@@ -51,7 +51,6 @@ pub enum OutputFormat {
     JsonNormalized,
 }
 
-
 /// Agent start command arguments
 #[derive(Args)]
 pub struct AgentStartArgs {
@@ -482,8 +481,14 @@ impl AgentStartArgs {
             cmd.env("CODEX_API_KEY", api_key);
         }
 
-        let json_flag = matches!(self.output, OutputFormat::Json | OutputFormat::JsonNormalized);
-        eprintln!("Running codex command: codex exec{}", if json_flag { " --json" } else { "" });
+        let json_flag = matches!(
+            self.output,
+            OutputFormat::Json | OutputFormat::JsonNormalized
+        );
+        eprintln!(
+            "Running codex command: codex exec{}",
+            if json_flag { " --json" } else { "" }
+        );
 
         // Execute the command
         let status = cmd.status().await?;
@@ -909,7 +914,6 @@ impl AgentStartArgs {
             anyhow::bail!("Goose agent exited with status: {}", status);
         }
     }
-
 }
 
 #[cfg(test)]

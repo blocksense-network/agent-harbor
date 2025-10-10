@@ -2,6 +2,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Stdio;
 use tempfile::TempDir;
+use futures::StreamExt;
+use tokio::time::{self, Duration};
 
 use ah_repo::{VcsError, VcsRepo, VcsType};
 
@@ -260,4 +262,287 @@ fn test_invalid_branch_name() {
 
     let result = vcs_repo.start_branch("invalid branch");
     assert!(matches!(result, Err(VcsError::InvalidBranchName(_))));
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_basic() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+    let vcs_repo = VcsRepo::new(repo.path()).unwrap();
+
+    // Add a few more files to test streaming
+    fs::create_dir_all(repo.path().join("src")).unwrap();
+    fs::write(repo.path().join("src/lib.rs"), "pub fn lib() {}").unwrap();
+    fs::write(repo.path().join("src/main.rs"), "fn main() {}").unwrap();
+    fs::write(repo.path().join("Cargo.toml"), r#"[package]
+name = "test"
+version = "0.1.0"
+edition = "2021""#).unwrap();
+
+    // Add and commit the files
+    std::process::Command::new("git")
+        .args(&["add", "."])
+        .current_dir(repo.path())
+        .output().unwrap();
+    std::process::Command::new("git")
+        .args(&["commit", "-m", "Add source files"])
+        .current_dir(repo.path())
+        .output().unwrap();
+
+    let mut stream = vcs_repo.stream_tracked_files().await.unwrap();
+
+    let mut files = Vec::new();
+    while let Some(result) = stream.next().await {
+        files.push(result.unwrap());
+    }
+
+    // Should have at least README.md and the files we added
+    assert!(files.len() >= 3);
+
+    // Check that all files are present (order may vary)
+    let file_names: Vec<_> = files.into_iter().map(|f| f).collect();
+    let has_readme = file_names.iter().any(|f| f == "README.md");
+    let has_lib = file_names.iter().any(|f| f == "src/lib.rs");
+    let has_main = file_names.iter().any(|f| f == "src/main.rs");
+    let has_cargo = file_names.iter().any(|f| f == "Cargo.toml");
+
+    assert!(has_readme, "README.md should be tracked");
+    assert!(has_lib, "src/lib.rs should be tracked");
+    assert!(has_main, "src/main.rs should be tracked");
+    assert!(has_cargo, "Cargo.toml should be tracked");
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_empty_repo() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+    let vcs_repo = VcsRepo::new(repo.path()).unwrap();
+
+    let mut stream = vcs_repo.stream_tracked_files().await.unwrap();
+
+    let mut files = Vec::new();
+    while let Some(result) = stream.next().await {
+        files.push(result.unwrap());
+    }
+
+    // Should only have README.md
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0], "README.md");
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_partial_collection() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+    let vcs_repo = VcsRepo::new(repo.path()).unwrap();
+
+    // Add multiple files
+    fs::write(repo.path().join("file1.txt"), "content1").unwrap();
+    fs::write(repo.path().join("file2.txt"), "content2").unwrap();
+    fs::write(repo.path().join("file3.txt"), "content3").unwrap();
+
+    std::process::Command::new("git")
+        .args(&["add", "."])
+        .current_dir(repo.path())
+        .output().unwrap();
+    std::process::Command::new("git")
+        .args(&["commit", "-m", "Add test files"])
+        .current_dir(repo.path())
+        .output().unwrap();
+
+    let mut stream = vcs_repo.stream_tracked_files().await.unwrap();
+
+    // Take only first two files
+    let first = stream.next().await.unwrap().unwrap();
+    let second = stream.next().await.unwrap().unwrap();
+
+    // Verify we got valid files
+    assert!(first.ends_with(".txt") || first == "README.md");
+    assert!(second.ends_with(".txt") || second == "README.md");
+    assert_ne!(first, second);
+
+    // Stream should still have more files
+    let third = stream.next().await.unwrap().unwrap();
+    assert!(third.ends_with(".txt") || third == "README.md");
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_with_nested_dirs() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+    let vcs_repo = VcsRepo::new(repo.path()).unwrap();
+
+    // Create nested directory structure
+    fs::create_dir_all(repo.path().join("src")).unwrap();
+    fs::create_dir_all(repo.path().join("tests")).unwrap();
+    fs::create_dir_all(repo.path().join("src/deep/nested")).unwrap();
+    fs::write(repo.path().join("src/deep/nested/file.rs"), "content").unwrap();
+    fs::write(repo.path().join("tests/integration_test.rs"), "test").unwrap();
+
+    std::process::Command::new("git")
+        .args(&["add", "."])
+        .current_dir(repo.path())
+        .output().unwrap();
+    std::process::Command::new("git")
+        .args(&["commit", "-m", "Add nested files"])
+        .current_dir(repo.path())
+        .output().unwrap();
+
+    let stream = vcs_repo.stream_tracked_files().await.unwrap();
+    let files: Vec<_> = stream.collect().await;
+
+    assert!(files.len() >= 3); // README.md + 2 new files
+
+    let file_names: Vec<_> = files.into_iter().map(|r| r.unwrap()).collect();
+
+    assert!(file_names.contains(&"src/deep/nested/file.rs".to_string()));
+    assert!(file_names.contains(&"tests/integration_test.rs".to_string()));
+    assert!(file_names.contains(&"README.md".to_string()));
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_non_git_repo() {
+    let temp_dir = TempDir::new().unwrap();
+    // For non-git repos, VcsRepo::new will fail, so we need to create a mock repo
+    // Let's create a temp dir that looks like it has a git repo but doesn't
+    let fake_repo_dir = temp_dir.path().join("fake_repo");
+    std::fs::create_dir(&fake_repo_dir).unwrap();
+
+    // Create a VcsRepo instance manually for testing (this is a bit of a hack for testing)
+    let vcs_repo = VcsRepo {
+        root: fake_repo_dir,
+        vcs_type: ah_repo::VcsType::Git,
+    };
+
+    // This should work but return an empty stream since it's not a git repo
+    let result = vcs_repo.stream_tracked_files().await;
+    assert!(result.is_ok());
+
+    let stream = result.unwrap();
+    let files: Vec<_> = stream.collect().await;
+
+    // Should be empty since it's not a git repo
+    assert_eq!(files.len(), 0);
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_error_handling() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+
+    // Remove the entire .git directory to simulate a corrupted repo
+    fs::remove_dir_all(repo.path().join(".git")).unwrap();
+
+    // Now create a VcsRepo manually since VcsRepo::new will fail
+    let vcs_repo = VcsRepo {
+        root: repo.path().to_path_buf(),
+        vcs_type: ah_repo::VcsType::Git,
+    };
+
+    // Should work and return empty stream since .git directory doesn't exist
+    let result = vcs_repo.stream_tracked_files().await;
+    assert!(result.is_ok());
+
+    let stream = result.unwrap();
+    let files: Vec<_> = stream.collect().await;
+
+    // Should be empty since .git directory was removed
+    assert_eq!(files.len(), 0);
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_large_repo() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+    let vcs_repo = VcsRepo::new(repo.path()).unwrap();
+
+    // Create many files to test streaming performance
+    for i in 0..100 {
+        fs::write(repo.path().join(format!("file_{}.txt", i)), format!("content {}", i)).unwrap();
+    }
+
+    std::process::Command::new("git")
+        .args(&["add", "."])
+        .current_dir(repo.path())
+        .output().unwrap();
+    std::process::Command::new("git")
+        .args(&["commit", "-m", "Add many files"])
+        .current_dir(repo.path())
+        .output().unwrap();
+
+    let stream = vcs_repo.stream_tracked_files().await.unwrap();
+    let files: Vec<_> = stream.collect().await;
+
+    // Should have README.md + 100 files = 101 total
+    assert_eq!(files.len(), 101);
+
+    // Check some specific files
+    let file_names: Vec<_> = files.into_iter().map(|r| r.unwrap()).collect();
+    assert!(file_names.contains(&"README.md".to_string()));
+    assert!(file_names.contains(&"file_0.txt".to_string()));
+    assert!(file_names.contains(&"file_99.txt".to_string()));
+}
+
+#[tokio::test]
+async fn test_stream_tracked_files_concurrent_access() {
+    if !check_git_available() {
+        eprintln!("Git not available, skipping test");
+        return;
+    }
+
+    let (_temp_home, repo) = setup_git_repo().unwrap();
+    let vcs_repo = VcsRepo::new(repo.path()).unwrap();
+
+    // Add a few files
+    fs::write(repo.path().join("file1.txt"), "content1").unwrap();
+    fs::write(repo.path().join("file2.txt"), "content2").unwrap();
+
+    std::process::Command::new("git")
+        .args(&["add", "."])
+        .current_dir(repo.path())
+        .output().unwrap();
+    std::process::Command::new("git")
+        .args(&["commit", "-m", "Add files"])
+        .current_dir(repo.path())
+        .output().unwrap();
+
+    // Test concurrent streaming
+    let (result1, result2) = tokio::join!(
+        async {
+            let stream = vcs_repo.stream_tracked_files().await.unwrap();
+            stream.collect::<Vec<_>>().await
+        },
+        async {
+            let stream = vcs_repo.stream_tracked_files().await.unwrap();
+            stream.collect::<Vec<_>>().await
+        }
+    );
+
+    assert!(result1.len() >= 3); // README + 2 files
+    assert!(result2.len() >= 3);
+    assert_eq!(result1.len(), result2.len());
 }

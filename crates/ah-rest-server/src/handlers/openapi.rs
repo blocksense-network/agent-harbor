@@ -20,7 +20,8 @@ pub async fn openapi_spec() -> ServerResult<Json<utoipa::openapi::OpenApi>> {
 pub async fn swagger_ui() -> Html<&'static str> {
     // This is a placeholder - in a real implementation, this would serve
     // the Swagger UI HTML page with the OpenAPI spec
-    Html(r#"<!DOCTYPE html>
+    Html(
+        r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Agent Harbor API Documentation</title>
@@ -29,5 +30,6 @@ pub async fn swagger_ui() -> Html<&'static str> {
     <h1>Agent Harbor API</h1>
     <p>OpenAPI documentation will be available here.</p>
 </body>
-</html>"#)
+</html>"#,
+    )
 }

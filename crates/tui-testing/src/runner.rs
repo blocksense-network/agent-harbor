@@ -172,7 +172,9 @@ impl TuiTestRunner {
         let exit_tx_clone = exit_tx.clone();
         tokio::spawn(async move {
             println!("Starting IPC server on {}", endpoint_clone);
-            if let Err(e) = Self::start_ipc_server_task(endpoint_clone, screenshots_clone, exit_tx_clone).await {
+            if let Err(e) =
+                Self::start_ipc_server_task(endpoint_clone, screenshots_clone, exit_tx_clone).await
+            {
                 eprintln!("IPC server error: {}", e);
             }
         });

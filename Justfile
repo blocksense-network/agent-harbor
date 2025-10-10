@@ -36,6 +36,25 @@ test-rust: build-rust-test-binaries
 test-rust-verbose: build-rust-test-binaries
     cargo nextest run --workspace --verbose
 
+# Build TUI exploration binary (legacy implementation)
+build-tui-exploration:
+    cargo build -p tui-exploration
+
+# Build TUI MVVM binary (new MVVM architecture)
+build-tui-mvvm:
+    cargo build -p tui-exploration --bin tui-mvvm
+
+# Run TUI exploration binary (legacy implementation)
+run-tui-exploration: build-tui-exploration
+    cargo run -p tui-exploration
+
+# Run TUI MVVM binary (new MVVM architecture)
+run-tui-mvvm: build-tui-mvvm
+    cargo run -p tui-exploration --bin tui-mvvm
+
+# Build both TUI binaries
+build-tui-both: build-tui-exploration build-tui-mvvm
+
 # Snapshot Testing with Insta
 # ===========================
 

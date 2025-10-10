@@ -9,12 +9,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
-use crate::{Backstore, LowerFs};
 use crate::{
     Attributes, BranchId, BranchInfo, ContentId, DirEntry, EventKind, EventSink, FileMode,
     FileTimes, FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode,
     SnapshotId, StreamSpec, SubscriptionId,
 };
+use crate::{Backstore, LowerFs};
 #[cfg(test)]
 use std::cell::RefCell;
 #[cfg(test)]
@@ -117,8 +117,8 @@ pub(crate) struct User {
 pub struct FsCore {
     config: FsConfig,
     storage: Arc<dyn StorageBackend>,
-    backstore: Option<Box<dyn Backstore>>,                      // Backstore for overlay operations
-    lower_fs: Option<Box<dyn LowerFs>>,                         // Lower filesystem provider for overlay
+    backstore: Option<Box<dyn Backstore>>, // Backstore for overlay operations
+    lower_fs: Option<Box<dyn LowerFs>>,    // Lower filesystem provider for overlay
     nodes: Mutex<HashMap<NodeId, Node>>,
     pub(crate) snapshots: Mutex<HashMap<SnapshotId, Snapshot>>,
     pub(crate) branches: Mutex<HashMap<BranchId, Branch>>,
@@ -853,7 +853,8 @@ impl FsCore {
         // If we have a backstore that supports native snapshots, delegate to it
         if let Some(backstore) = &self.backstore {
             if backstore.supports_native_snapshots() {
-                let snapshot_name = name.map(|s| s.to_string())
+                let snapshot_name = name
+                    .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
                 backstore.snapshot_native(&snapshot_name)?;
             }
@@ -1641,7 +1642,11 @@ impl FsCore {
         Err(FsError::NotFound)
     }
 
-    fn readdir_plus_upper_only(&self, children: &HashMap<String, NodeId>, nodes: &std::collections::HashMap<NodeId, Node>) -> FsResult<Vec<(DirEntry, Attributes)>> {
+    fn readdir_plus_upper_only(
+        &self,
+        children: &HashMap<String, NodeId>,
+        nodes: &std::collections::HashMap<NodeId, Node>,
+    ) -> FsResult<Vec<(DirEntry, Attributes)>> {
         // Collect and sort child names for stable ordering
         let mut names: Vec<_> = children.keys().cloned().collect();
         names.sort();
@@ -1697,7 +1702,13 @@ impl FsCore {
         Ok(entries)
     }
 
-    fn readdir_plus_overlay(&self, pid: &PID, path: &Path, upper_children: &HashMap<String, NodeId>, nodes: &std::collections::HashMap<NodeId, Node>) -> FsResult<Vec<(DirEntry, Attributes)>> {
+    fn readdir_plus_overlay(
+        &self,
+        pid: &PID,
+        path: &Path,
+        upper_children: &HashMap<String, NodeId>,
+        nodes: &std::collections::HashMap<NodeId, Node>,
+    ) -> FsResult<Vec<(DirEntry, Attributes)>> {
         let mut entries = std::collections::HashMap::new();
 
         // Add lower entries first (if any)

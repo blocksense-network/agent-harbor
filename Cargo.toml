@@ -6,6 +6,7 @@ members = [
   "crates/ah-gui-core",
   "crates/ah-local-db",
   "crates/ah-repo",
+  "crates/ah-workflows",
   "crates/ah-fs-snapshots",
   "crates/ah-fs-snapshots-traits",
   "crates/ah-fs-snapshots-zfs",
@@ -58,8 +59,10 @@ members = [
   "tests/debugging-enforcement",
   "tests/container-enforcement",
   "tests/vm-enforcement",
-  # TUI exploration prototype
-  "PoC/tui-exploration",
+]
+exclude = [
+  "vendor",
+  "PoC",
 ]
 resolver = "2"
 

@@ -125,7 +125,8 @@ impl ServerError {
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let problem = self.to_problem();
-        let status = StatusCode::from_u16(problem.status.unwrap_or(500)).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status = StatusCode::from_u16(problem.status.unwrap_or(500))
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, Json(problem)).into_response()
     }
 }

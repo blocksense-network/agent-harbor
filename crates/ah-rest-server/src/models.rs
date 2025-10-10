@@ -1,10 +1,10 @@
 //! Data models and business logic
 
 use ah_rest_api_contract::*;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use async_trait::async_trait;
 
 /// Internal session model with additional fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,12 +21,20 @@ pub struct InternalSession {
 pub trait SessionStore: Send + Sync {
     async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<String>;
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Option<InternalSession>>;
-    async fn update_session(&self, session_id: &str, session: &InternalSession) -> anyhow::Result<()>;
+    async fn update_session(
+        &self,
+        session_id: &str,
+        session: &InternalSession,
+    ) -> anyhow::Result<()>;
     async fn delete_session(&self, session_id: &str) -> anyhow::Result<()>;
     async fn list_sessions(&self, filters: &FilterQuery) -> anyhow::Result<Vec<Session>>;
     async fn add_session_event(&self, session_id: &str, event: SessionEvent) -> anyhow::Result<()>;
     async fn add_session_log(&self, session_id: &str, log: LogEntry) -> anyhow::Result<()>;
-    async fn get_session_logs(&self, session_id: &str, query: &LogQuery) -> anyhow::Result<Vec<LogEntry>>;
+    async fn get_session_logs(
+        &self,
+        session_id: &str,
+        query: &LogQuery,
+    ) -> anyhow::Result<Vec<LogEntry>>;
     async fn get_session_events(&self, session_id: &str) -> anyhow::Result<Vec<SessionEvent>>;
 }
 
@@ -61,7 +69,7 @@ impl SessionStore for InMemorySessionStore {
             agent: request.agent.clone(),
             runtime: request.runtime.clone(),
             workspace: WorkspaceInfo {
-                snapshot_provider: "git".to_string(), // placeholder
+                snapshot_provider: "git".to_string(),     // placeholder
                 mount_path: "/tmp/workspace".to_string(), // placeholder
                 host: None,
                 devcontainer_details: None,
@@ -100,7 +108,11 @@ impl SessionStore for InMemorySessionStore {
         Ok(sessions.get(session_id).cloned())
     }
 
-    async fn update_session(&self, session_id: &str, session: &InternalSession) -> anyhow::Result<()> {
+    async fn update_session(
+        &self,
+        session_id: &str,
+        session: &InternalSession,
+    ) -> anyhow::Result<()> {
         let mut sessions = self.sessions.write().await;
         sessions.insert(session_id.to_string(), session.clone());
         Ok(())
@@ -162,7 +174,11 @@ impl SessionStore for InMemorySessionStore {
         Ok(())
     }
 
-    async fn get_session_logs(&self, session_id: &str, _query: &LogQuery) -> anyhow::Result<Vec<LogEntry>> {
+    async fn get_session_logs(
+        &self,
+        session_id: &str,
+        _query: &LogQuery,
+    ) -> anyhow::Result<Vec<LogEntry>> {
         let sessions = self.sessions.read().await;
         if let Some(session) = sessions.get(session_id) {
             Ok(session.logs.clone())

@@ -38,14 +38,30 @@ impl LowerFs for HostLowerFs {
         let file_type = metadata.file_type();
         let len = metadata.len();
         let times = crate::FileTimes {
-            atime: metadata.accessed().unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64,
-            mtime: metadata.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64,
-            ctime: metadata.created().unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64,
-            birthtime: metadata.created().unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64,
+            atime: metadata
+                .accessed()
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            mtime: metadata
+                .modified()
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            ctime: metadata
+                .created()
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            birthtime: metadata
+                .created()
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
         };
 
         Ok(Attributes {

@@ -48,7 +48,9 @@ impl AuthConfig {
                 Err(ServerError::Auth("Invalid API key".to_string()))
             }
         } else {
-            Err(ServerError::Auth("API key authentication not configured".to_string()))
+            Err(ServerError::Auth(
+                "API key authentication not configured".to_string(),
+            ))
         }
     }
 
@@ -63,7 +65,9 @@ impl AuthConfig {
 
             Ok(token_data.claims)
         } else {
-            Err(ServerError::Auth("JWT authentication not configured".to_string()))
+            Err(ServerError::Auth(
+                "JWT authentication not configured".to_string(),
+            ))
         }
     }
 
@@ -85,8 +89,8 @@ impl AuthConfig {
 /// JWT claims
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,      // Subject (user ID)
-    pub exp: usize,       // Expiration time
+    pub sub: String, // Subject (user ID)
+    pub exp: usize,  // Expiration time
     pub tenant_id: Option<String>,
     pub project_id: Option<String>,
     pub roles: Vec<String>,
@@ -100,16 +104,17 @@ pub async fn auth_middleware(
 ) -> Result<Response, StatusCode> {
     // Skip authentication for health checks and OpenAPI docs
     let path = req.uri().path();
-    if path == "/healthz" || path == "/readyz" || path == "/version"
-        || path.starts_with("/docs/") || path == "/openapi.json" {
+    if path == "/healthz"
+        || path == "/readyz"
+        || path == "/version"
+        || path.starts_with("/docs/")
+        || path == "/openapi.json"
+    {
         return Ok(next.run(req).await);
     }
 
     // Extract authorization header
-    let auth_header = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok());
+    let auth_header = req.headers().get(header::AUTHORIZATION).and_then(|h| h.to_str().ok());
 
     let auth_result = match auth_header {
         Some(auth) if auth.starts_with("ApiKey ") => {
@@ -122,7 +127,9 @@ pub async fn auth_middleware(
         }
         _ => {
             if auth_config.requires_auth() {
-                Err(ServerError::Auth("Missing or invalid authorization header".to_string()))
+                Err(ServerError::Auth(
+                    "Missing or invalid authorization header".to_string(),
+                ))
             } else {
                 Ok(())
             }

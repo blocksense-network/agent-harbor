@@ -1,12 +1,7 @@
 //! Custom middleware
 
 use crate::config::RateLimitConfig;
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;

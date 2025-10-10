@@ -23,10 +23,10 @@ pub use vfs::{FsCore, PID};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{BackstoreMode, CopyUpMode, InterposeConfig, OverlayConfig};
     use mockall::predicate::*;
     use std::cell::RefCell;
     use std::sync::{Arc, Mutex};
-    use crate::config::{BackstoreMode, CopyUpMode, InterposeConfig, OverlayConfig};
 
     #[test]
     fn test_chown_updates_uid_gid_and_ctime() {

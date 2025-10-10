@@ -5,7 +5,9 @@
 //! This is a direct port of the Ruby AgentTasks class functionality.
 
 use ah_repo::{VcsRepo, VcsResult};
+use ah_workflows::{WorkflowProcessor, WorkflowConfig, WorkflowResult, WorkflowError};
 use chrono::{DateTime, Datelike, Timelike, Utc};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -239,6 +241,70 @@ impl AgentTasks {
         self.repo.setup_autopush(target_remote, target_branch)?;
 
         Ok(())
+    }
+
+    /// Get the processed task content with workflows expanded and environment variables.
+    ///
+    /// This method reads the current task file, splits it into initial and follow-up tasks,
+    /// processes any workflow commands and environment directives, and returns the
+    /// processed content along with environment variables.
+    ///
+    /// # Returns
+    /// A tuple of (processed_text, environment_variables, diagnostics)
+    ///
+    /// # Errors
+    /// Returns an error if not on a task branch or if file operations fail.
+    pub async fn agent_prompt_with_env(&self) -> Result<(String, HashMap<String, String>, Vec<String>), WorkflowError> {
+        let task_file_path = self.agent_task_file_in_current_branch()
+            .map_err(|e| WorkflowError::ExecutionFailed(format!("Failed to get task file: {}", e)))?;
+
+        let task_content = fs::read_to_string(&task_file_path)
+            .map_err(|e| WorkflowError::ExecutionFailed(format!("Failed to read task file: {}", e)))?;
+
+        let tasks = task_content.split("\n--- FOLLOW UP TASK ---\n")
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+
+        let mut message = String::new();
+        let mut env = HashMap::new();
+
+        for (index, task_text) in tasks.iter().enumerate() {
+            let config = WorkflowConfig::default();
+            let processor = WorkflowProcessor::for_repo(config, self.repo.root())
+                .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default()));
+
+            let result = processor.process_workflows(task_text).await?;
+
+            // Merge environment variables
+            for (key, value) in result.environment {
+                env.insert(key, value);
+            }
+
+            // Build the processed message
+            if tasks.len() == 1 {
+                message = result.processed_text;
+            } else {
+                let prefix = if index == 0 {
+                    "You were given the following task:\n"
+                } else if index == tasks.len() - 1 {
+                    "Your current task is:\n"
+                } else {
+                    "You were given a follow-up task:\n"
+                };
+                message.push_str(&format!("{}{}\n", prefix, result.processed_text));
+            }
+        }
+
+        // Add offline appendix if no internet
+        if !self.online() {
+            message.push_str("\n\n# Appendix (Lack of internet access)\n\n");
+            message.push_str("Please note that during development, certain commands will fail because\n");
+            message.push_str("certain commands will fail because there is no internet access. This is\n");
+            message.push_str("expected behavior. Commands that require internet access will need to be\n");
+            message.push_str("run in a different environment or at a different time.\n");
+        }
+
+        Ok((message, env, vec![])) // TODO: Collect diagnostics from workflow processing
     }
 
     /// Get the VCS repository instance.

@@ -319,7 +319,10 @@ pub trait LowerFs: Send + Sync {
     fn stat(&self, abs_path: &std::path::Path) -> crate::error::FsResult<Attributes>;
 
     /// Open a file for read-only access in the lower filesystem
-    fn open_ro(&self, abs_path: &std::path::Path) -> crate::error::FsResult<Box<dyn std::io::Read + Send>>;
+    fn open_ro(
+        &self,
+        abs_path: &std::path::Path,
+    ) -> crate::error::FsResult<Box<dyn std::io::Read + Send>>;
 
     /// List directory contents in the lower filesystem
     fn readdir(&self, abs_dir: &std::path::Path) -> crate::error::FsResult<Vec<DirEntry>>;
@@ -345,7 +348,11 @@ pub trait Backstore: Send + Sync {
     fn snapshot_native(&self, snapshot_name: &str) -> crate::error::FsResult<()>;
 
     /// Create a reflink/clone of a file within the backstore
-    fn reflink(&self, from_path: &std::path::Path, to_path: &std::path::Path) -> crate::error::FsResult<()>;
+    fn reflink(
+        &self,
+        from_path: &std::path::Path,
+        to_path: &std::path::Path,
+    ) -> crate::error::FsResult<()>;
 
     /// Get the root path of this backstore
     fn root_path(&self) -> std::path::PathBuf;

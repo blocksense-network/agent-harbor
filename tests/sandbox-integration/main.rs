@@ -110,9 +110,12 @@ fn test_ah_macos_launcher_denies_write_outside_tmp() {
 
     let status = Command::new(&launcher_path)
         .args([
-            "--allow-write", "/tmp",
-            "--allow-exec", "/bin",
-            "--allow-read", "/bin",
+            "--allow-write",
+            "/tmp",
+            "--allow-exec",
+            "/bin",
+            "--allow-read",
+            "/bin",
             "--",
             "sh",
             "-c",
