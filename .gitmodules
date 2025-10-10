@@ -1,3 +1,6 @@
 [submodule "third_party/codex"]
 	path = third-party/codex
 	url = https://github.com/blocksense-network/codex
+[submodule "crates/ah-tui/third-party/tui-textarea"]
+	path = crates/ah-tui/third-party/tui-textarea
+	url = git@github.com:blocksense-network/tui-textarea.git

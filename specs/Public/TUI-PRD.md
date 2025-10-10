@@ -4,12 +4,28 @@
 
 The TUI provides a terminal-first dashboard for launching and monitoring agent tasks, integrated with terminal multiplexers (tmux, zellij, screen). It auto-attaches to the active multiplexer session and assumes all active tasks are already visible as multiplexer windows.
 
-The TUI is built with **Ratatui**, a Rust library for building terminal user interfaces. See specs/Research/TUI for helpful information for developing with Ratatui.
+The TUI is built with **Ratatui**, a Rust library for building terminal user interfaces, along with specialized ecosystem crates:
+
+- **ratatui**: Core TUI framework for rendering and layout
+- **tui-textarea**: Advanced multi-line text editing with cursor management
+- **tui-input**: Single-line input handling for modals and forms
+- **crossterm**: Cross-platform terminal manipulation and event handling
+
+See specs/Research/TUI for helpful information for developing with Ratatui.
 
 Backends:
 
 - REST: Connect to a remote REST service and mirror the WebUI experience for task creation, with windows created locally (or remotely via SSH) for launched tasks.
 - Local: Operate in the current directory/repo using the SQLite state database for discovery and status.
+
+## Terminal State Management
+
+The TUI properly manages terminal state to ensure clean restoration:
+
+- **Keyboard Enhancement Flags**: Uses Crossterm's keyboard enhancement flags for improved input handling
+- **State Tracking**: Tracks raw mode, alternate screen, and keyboard flags for proper cleanup
+- **Panic Safety**: Implements panic hooks and signal handlers to restore terminal state on crashes
+- **Graceful Exit**: Ensures terminal returns to normal state regardless of exit method (ESC, Ctrl+C, panic). All calls to process:exit calls must be wrapped in a helper that performs the necessary state restoration.
 
 ### Auto-Attach and Window Model
 
@@ -24,9 +40,11 @@ Backends:
 
 The dashboard screen has the following elements:
 
-- **Header**: Agent Harbor branding
+- **Header**: Agent Harbor branding with settings access
   - Displays image logo when terminal supports modern image protocols (e.g., Kitty, iTerm2)
   - Falls back to ASCII art logo for terminals without image support
+  - **Settings Button**: Located in upper-right corner, accessible via Up arrow from the top draft card
+  - Settings dialog provides configuration options (number of activity lines in active cards, theme selection, etc.)
 
 - **Tasks**: Chronological list of recent tasks (completed/merged, active, draft) displayed as bordered cards, with draft tasks always visible at the top, sorted newest first.
   - Uses 1 character of padding between screen edges and cards for clean visual spacing.
@@ -74,15 +92,17 @@ Repository • Branch • Agent • Timestamp
 ##### Active Cards (5 lines)
 ```
 ● Task title • Action buttons
-Repository • Branch • Agent • Timestamp
+Repository • Branch • Agent • Timestamp • Pause Button • Delete Button
 [Activity Row 1 - fixed height]
 [Activity Row 2 - fixed height]
 [Activity Row 3 - fixed height]
 ```
 
+**Pause/Delete Buttons Placement**: In the right-most position of the task metadata line. Reachable by pressing the right arrow key when an active task is focused.
+
 ##### Draft Cards (Variable height)
 
-Variable height cards with text area and controls (keyboard navigable, Enter to submit):
+Variable height cards with auto-expandable text area and controls (keyboard navigable, Enter to submit):
 
 - Shows placeholder text when empty: "Describe what you want the agent to do..."
 - Always-visible text area for task description with expandable height
@@ -113,6 +133,25 @@ Variable height cards with text area and controls (keyboard navigable, Enter to 
   - "Agent(s)" is plural if multiple agents are selected
   - Enter key launches the task (calls Go button action)
   - Shift+Enter creates a new line in the text area
+
+#### Model Multi-Selector Modal
+
+The model selection dialog provides advanced agent configuration:
+
+- **Multi-Select Interface**: Select multiple AI models for a single task
+- **Instance Counts**: Configure instance counts for each selected model
+- **Visual Layout**:
+  - At the top of the dialog, there is the same tui-input box as in the repository and branch selection dialogs
+  - Separator line (as in the other dialogs)
+  - The selection menu is enhanced with right-aligned counts (x1, x2, etc)
+  - The count editing buttons (described below) are visible in the status bar while the menu is opened
+  - When text is typed into the input box, the models are filtered normally. If there are models that don't match the filder, but have non-zero counts, they are displayed below the models that match the filter after a line separator with a label "Already Selected".
+  - The separator is automatically jumped over when the user navigates with the arrow keys.
+- **Keyboard Controls**:
+  - `↑↓`: Navigate between sections and items
+  - `+/-` or `Left/Right`: Adjust instance counts
+  - `Enter`: Close the dialog with the current model and count selections. If enter is pressed while the focus is within the selection menu and the currently selected model has count zero, assume that the user wants count = 1 for this particular model. Other counts stay as they are.
+  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counds made while the dialog was opened remain in place.
 
 ##### Activity Display for Active Tasks
 
@@ -176,7 +215,7 @@ After new "thought" event (scrolls up, oldest row disappears):
 ```
 
 **Implementation Requirements:**
-- Maximum 3 rows displayed at all times
+- The number of activity rows is fixed through the configuration variable `tui.active-sessions-activity-rows` (defaults to 3)
 - Fixed row height (no dynamic height based on content)
 - Smooth scroll-up animation when new events arrive (except last_line)
 - Text truncation with ellipsis if content exceeds row width
@@ -261,6 +300,19 @@ This dual-mode architecture enables the TUI to work seamlessly with both local S
   - When on draft card: Focus the textarea for editing
   - When on session card: Navigate to task details page
 
+#### Advanced Keyboard Navigation
+
+**Button Navigation in Draft Cards:**
+- `Tab` or `Right`: Repository → Branch → Model → Go → (wrap to Repository)
+- `Shift+Tab` or `Left`: Go → Model → Branch → Repository → (wrap to Go)
+- `Esc` on buttons: Return focus to text area (don't exit application)
+
+**Text Area Focus:**
+- `Enter`: Launch task (same as Go button)
+- `Shift+Enter`: Insert new line
+- `Tab`: Move to next button
+- `Esc`: Remove current focus. If none was focused, exit the application
+
 #### Draft Task Editing
 - **Tab/Shift+Tab**: Cycle between buttons (Repository, Branch, Models, Go) when not in textarea
 - **Enter**: Activate focused button or select item in modal (when in textarea: launch task)
@@ -328,6 +380,106 @@ The TUI follows Charm (Bubble Tea/Lip Gloss) design principles with multiple the
 - **Buttons**: Background color changes on focus, bold text
 - **Modals**: Shadow effects, centered positioning, fuzzy search interface
 - **Status indicators**: Color-coded icons (✓ completed, ● active, 📝 draft)
+
+#### Modal Dialog Styling
+
+Modal dialogs use a clean, minimal design:
+
+- **Single Border**: Outer rounded border provides sufficient visual containment
+- **Separator Lines**: Horizontal separator lines divide content sections instead of nested rectangles
+- **Contextual Instructions**: Clear labels and instructions for user actions
+- **Consistent Theming**: Follows Charm-inspired design with proper color usage
+- **Shadows**: The dialog drops shadow over the underlying content
+
+#### Input Handling Libraries
+
+The TUI uses specialized Ratatui ecosystem crates for enhanced input handling:
+
+- **tui-textarea**: Multi-line text editing with advanced features
+- **tui-input**: Single-line input for modals
+
+#### Text Area Shortcuts
+
+All inputs should have appropriate placeholder text.
+Text inputs should support a combination of CUA, macOS and Emacs key bindings.
+The user can override any of the default key bindings through configuration variables listed below.
+All such variables are in under the "[tui.keymap]" section.
+
+## Configuration Variable Mapping
+
+| Category | Operation | Config Variable | Key Bindings |
+|----------|-----------|-----------------|--------------|
+| **Cursor Movement** | Move to beginning of line | `move-to-beginning-of-line` | C-a (Emacs), Home (CUA/PC), Cmd+Left (macOS) |
+| | Move to end of line | `move-to-end-of-line` | C-e (Emacs), End (CUA/PC), Cmd+Right (macOS) |
+| | Move forward one character | `move-forward-one-character` | C-f (Emacs) |
+| | Move backward one character | `move-backward-one-character` | C-b (Emacs) |
+| | Move to next line | `move-to-next-line` | C-n (Emacs) |
+| | Move to previous line | `move-to-previous-line` | C-p (Emacs) |
+| | Move forward one word | `move-forward-one-word` | M-f (Emacs), Ctrl+Right (CUA/PC), Opt+Right (macOS) |
+| | Move backward one word | `move-backward-one-word` | M-b (Emacs), Ctrl+Left (CUA/PC), Opt+Left (macOS) |
+| | Move to beginning of sentence | `move-to-beginning-of-sentence` | M-a (Emacs) |
+| | Move to end of sentence | `move-to-end-of-sentence` | M-e (Emacs) |
+| | Scroll down one screen | `scroll-down-one-screen` | C-v (Emacs), PgDn (CUA/PC), Fn+Down (macOS) |
+| | Scroll up one screen | `scroll-up-one-screen` | M-v (Emacs), PgUp (CUA/PC), Fn+Up (macOS) |
+| | Recenter screen on cursor | `recenter-screen-on-cursor` | C-l (Emacs) |
+| | Move to beginning of document | `move-to-beginning-of-document` | Ctrl+Home (CUA/PC), Cmd+Up (macOS) |
+| | Move to end of document | `move-to-end-of-document` | Ctrl+End (CUA/PC), Cmd+Down (macOS) |
+| | Move to beginning of paragraph | `move-to-beginning-of-paragraph` | Opt+Up (macOS) |
+| | Move to end of paragraph | `move-to-end-of-paragraph` | Opt+Down (macOS) |
+| | Go to line number | `go-to-line-number` | Ctrl+G (CUA/PC in some), Cmd+L (macOS in some), M-g g (Emacs) |
+| | Move to matching parenthesis | `move-to-matching-parenthesis` | C-M-f (Emacs forward), C-M-b (Emacs backward) |
+| **Editing and Deletion** | Delete character forward | `delete-character-forward` | C-d (Emacs), Delete (CUA/PC and macOS; Fn+Delete on macOS laptops) |
+| | Delete character backward | `delete-character-backward` | DEL or C-h (Emacs), Backspace (CUA/PC and macOS) |
+| | Delete word forward | `delete-word-forward` | M-d (Emacs), Ctrl+Delete (CUA/PC), Opt+Delete (macOS; Opt+Fn+Delete on laptops) |
+| | Delete word backward | `delete-word-backward` | M-DEL (Emacs), Ctrl+Backspace (CUA/PC), Opt+Backspace (macOS) |
+| | Kill (cut) to end of line | `delete-to-end-of-line` | C-k (Emacs), Ctrl+K (macOS in some text fields) |
+| | Kill region (cut selected text) | `cut` | C-w (Emacs), Ctrl+X (CUA/PC), Cmd+X (macOS) |
+| | Copy region to kill ring (copy selected text) | `copy` | M-w (Emacs), Ctrl+C (CUA/PC), Cmd+C (macOS) |
+| | Yank (paste) from kill ring | `paste` | C-y (Emacs), Ctrl+V (CUA/PC), Cmd+V (macOS) |
+| | Cycle through kill ring (after yank) | `cycle-through-clipboard` | M-y (Emacs) |
+| | Transpose characters | `transpose-characters` | C-t (Emacs) |
+| | Transpose words | `transpose-words` | M-t (Emacs) |
+| | Undo | `undo` | C-_ or C-/ (Emacs), Ctrl+Z (CUA/PC), Cmd+Z (macOS) |
+| | Redo | `redo` | C-? (Emacs), Ctrl+Y (CUA/PC), Cmd+Shift+Z (macOS) |
+| | Open (insert) new line | `open-new-line` | C-o (Emacs), Enter (CUA/PC and macOS) |
+| | Indent or complete | `indent-or-complete` | TAB (Emacs) |
+| | Delete to beginning of line | `delete-to-beginning-of-line` | Cmd+Backspace (macOS) |
+| **Text Transformation** | Uppercase word | `uppercase-word` | M-u (Emacs) |
+| | Lowercase word | `lowercase-word` | M-l (Emacs) |
+| | Capitalize word | `capitalize-word` | M-c (Emacs) |
+| | Fill/justify paragraph | `justify-paragraph` | M-q (Emacs) |
+| | Join lines | `join-lines` | M-^ (Emacs) |
+| **Formatting (Markdown Style)** | Bold | `bold` | Ctrl+B (CUA/PC), Cmd+B (macOS) |
+| | Italic | `italic` | Ctrl+I (CUA/PC), Cmd+I (macOS) |
+| | Underline | `underline` | Ctrl+U (CUA/PC), Cmd+U (macOS) |
+| | Insert hyperlink | `insert-hyperlink` | Ctrl+K (CUA/PC), Cmd+K (macOS) |
+| **Code Editing** | Toggle comment | `toggle-comment` | M-; (Emacs), Ctrl+/ (CUA/PC), Cmd+/ (macOS) |
+| | Duplicate line/selection | `duplicate-line-selection` | Ctrl+D (CUA/PC in some), Cmd+Shift+D (macOS in some) |
+| | Move line up | `move-line-up` | Alt+Up (CUA/PC), Opt+Up (macOS) |
+| | Move line down | `move-line-down` | Alt+Down (CUA/PC), Opt+Down (macOS) |
+| | Indent region | `indent-region` | C-M-\ (Emacs), Ctrl+] (CUA/PC), Cmd+] (macOS) |
+| | Dedent region | `dedent-region` | Ctrl+[ (CUA/PC), Cmd+[ (macOS) |
+| **Search and Replace** | Incremental search forward | `incremental-search-forward` | C-s (Emacs), Ctrl+F (CUA/PC), Cmd+F (macOS) |
+| | Incremental search backward | `incremental-search-backward` | C-r (Emacs) |
+| | Query replace | `find-and-replace` | M-% (Emacs), Ctrl+H (CUA/PC in some apps) |
+| | Query replace with regex | `find-and-replace-with-regex` | C-M-% (Emacs) |
+| | Find next | `find-next` | Cmd+G (macOS) |
+| | Find previous | `find-previous` | Cmd+Shift+G (macOS) |
+| **Mark and Region** | Set mark (start selection) | `set-mark` | C-SPC or C-@ (Emacs) |
+| | Select all (mark whole text area) | `select-all` | C-x h (Emacs), Ctrl+A (CUA/PC), Cmd+A (macOS) |
+| | Extend selection | no config variable | Shift+movement key (CUA/PC and macOS)
+
+Note: In the table, "C-" means Control, "M-" means Meta (often Alt/Option), and combinations like "C-M-" use both. Please note that the Meta key should be the Option key on macOS and the Alt key otherwise. This can be overriden with the configuration option `tui.keymap.meta-key`.
+
+#### Card List Keyboard Shortcuts
+
+While the focus is on a task card, the user can press Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs) to delete the task.
+
+Draft and active cards are deleted without leaving a trace. Deleting an active cards aborts any running agents.
+
+The delete operation is mapped to archiving the card for completed/merged task. Archied tasks are removed from listings and search resutls by default.
+
+Both Ctrl+N (CUA/PC), Cmd+N (macOS) create a new draft task card.
 
 ### Accessibility
 

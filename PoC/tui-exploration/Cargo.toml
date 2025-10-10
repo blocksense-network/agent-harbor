@@ -5,11 +5,15 @@ edition = "2021"
 
 [dependencies]
 ratatui = "0.29"
-crossterm = "0.27"
+crossterm = "0.29"
 anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
 image = { version = "0.25", default-features = false, features = ["png"] }
+tui-textarea = "0.7"
+tui-input = "0.10"
+crossbeam-channel = "0.5"
+ctrlc = "3.4"
 
 [dependencies.ratatui-image]
 version = "8"
