@@ -4,3 +4,6 @@
 [submodule "crates/ah-tui/third-party/tui-textarea"]
 	path = crates/ah-tui/third-party/tui-textarea
 	url = git@github.com:blocksense-network/tui-textarea.git
+[submodule "PoC/tui-exploration/third-party/tui-textarea"]
+	path = PoC/tui-exploration/third-party/tui-textarea
+	url = https://github.com/blocksense-network/tui-textarea.git

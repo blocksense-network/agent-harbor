@@ -10,10 +10,13 @@ anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
 image = { version = "0.25", default-features = false, features = ["png"] }
-tui-textarea = { version = "*", features = ["search"] }
+tui-textarea = { path = "third-party/tui-textarea", features = ["search"] }
 tui-input = "0.10"
 crossbeam-channel = "0.5"
 ctrlc = "3.4"
+nucleo = "0.5"
+unicode-segmentation = "1.11"
+once_cell = "1.19"
 
 [dependencies.ratatui-image]
 version = "8"

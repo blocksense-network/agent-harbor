@@ -204,6 +204,10 @@ Clicking on any task card navigates to a task-specific details page (route-linke
           - **Multi-line Editor**: Auto-expanding text area with syntax highlighting
             - **Code Blocks**: Syntax highlighting for code snippets
             - **Auto-complete**: Intelligent suggestions for file paths, function names, APIs
+              - Escape hides the menu until another character is entered in the composer
+              - Popover uses rounded borders consistent with task cards
+              - Popover background inherits the application theme and supports user customization
+              - Caret movement re-evaluates completions using only the text from the trigger character (`@` or `/`) to the caret on the same line. If no trigger is found, no fuzzy matches exist, or the only match equals the typed token, the menu stays hidden
           - **File Integration**: Seamless file referencing and inclusion
             - **File Path Completion**: Type `@` to trigger file path autocomplete
             - **File Preview Popup**: Hover over file references to see content

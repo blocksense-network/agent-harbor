@@ -1,27 +1,37 @@
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap},
     Frame, Terminal,
 };
-use std::io;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::time::{Duration, Instant};
-use std::thread;
-use rand::seq::SliceRandom;
+mod autocomplete;
+use crossbeam_channel as chan;
+use crossterm::{
+    event::{
+        Event, KeyCode, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+        PushKeyboardEnhancementFlags,
+    },
+    queue,
+};
+use ctrlc;
 use image::{DynamicImage, GenericImageView, ImageReader, Rgba, RgbaImage};
+use rand::seq::SliceRandom;
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
-use tui_textarea::{TextArea, Input as TextAreaInput};
-use tui_input::Input;
-use crossterm::{queue, event::{Event, KeyCode, KeyEvent, KeyModifiers, PushKeyboardEnhancementFlags, PopKeyboardEnhancementFlags, KeyboardEnhancementFlags}};
-use crossbeam_channel as chan;
+use std::cell::Cell;
+use std::fs::OpenOptions;
+use std::io;
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use ctrlc;
+use std::thread;
+use std::time::{Duration, Instant};
+use tui_input::{Input, InputRequest};
+use tui_textarea::TextArea;
+
+use crate::autocomplete::InlineAutocomplete;
 
 // Comprehensive Command enum for all TUI keyboard shortcuts
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -705,11 +715,7 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command, search_mo
 
 // Logging function for debugging key events
 fn log_key_event(key: &crossterm::event::KeyEvent, context: &str) {
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("key_log.txt")
-    {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("key_log.txt") {
         let _ = writeln!(
             file,
             "[{}] Key: {:?}, Code: {:?}, Modifiers: {:?}, Ctrl: {}, Alt: {}, Shift: {}",
@@ -723,8 +729,15 @@ fn log_key_event(key: &crossterm::event::KeyEvent, context: &str) {
         );
 
         // Special logging for arrow keys
-        if matches!(key.code, KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down) {
-            let _ = writeln!(file, "  ARROW KEY DETECTED: code={:?}, modifiers={:?}", key.code, key.modifiers);
+        if matches!(
+            key.code,
+            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
+        ) {
+            let _ = writeln!(
+                file,
+                "  ARROW KEY DETECTED: code={:?}, modifiers={:?}",
+                key.code, key.modifiers
+            );
         }
     }
 }
@@ -806,6 +819,83 @@ enum SearchMode {
     IncrementalBackward,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SettingsField {
+    ActivityLines,
+    AutocompleteBorder,
+    AutocompleteBackground,
+}
+
+#[derive(Debug, Clone)]
+struct SettingsForm {
+    activity_lines_input: Input,
+    autocomplete_border_input: Input,
+    autocomplete_bg_input: Input,
+    focused_field: SettingsField,
+}
+
+impl SettingsForm {
+    fn new(activity_lines: usize, border_enabled: bool, background: Color) -> Self {
+        Self {
+            activity_lines_input: input_from_string(&activity_lines.to_string()),
+            autocomplete_border_input: input_from_string(if border_enabled { "on" } else { "off" }),
+            autocomplete_bg_input: input_from_string(&color_to_hex(background)),
+            focused_field: SettingsField::ActivityLines,
+        }
+    }
+
+    fn focus_next(&mut self) {
+        self.focused_field = match self.focused_field {
+            SettingsField::ActivityLines => SettingsField::AutocompleteBorder,
+            SettingsField::AutocompleteBorder => SettingsField::AutocompleteBackground,
+            SettingsField::AutocompleteBackground => SettingsField::ActivityLines,
+        };
+    }
+
+    fn focus_prev(&mut self) {
+        self.focused_field = match self.focused_field {
+            SettingsField::ActivityLines => SettingsField::AutocompleteBackground,
+            SettingsField::AutocompleteBorder => SettingsField::ActivityLines,
+            SettingsField::AutocompleteBackground => SettingsField::AutocompleteBorder,
+        };
+    }
+
+    fn focused_input_mut(&mut self) -> &mut Input {
+        match self.focused_field {
+            SettingsField::ActivityLines => &mut self.activity_lines_input,
+            SettingsField::AutocompleteBorder => &mut self.autocomplete_border_input,
+            SettingsField::AutocompleteBackground => &mut self.autocomplete_bg_input,
+        }
+    }
+}
+
+fn input_from_string(value: &str) -> Input {
+    let mut input = Input::default();
+    for ch in value.chars() {
+        input.handle(InputRequest::InsertChar(ch));
+    }
+    input
+}
+
+fn color_to_hex(color: Color) -> String {
+    match color {
+        Color::Rgb(r, g, b) => format!("#{:02X}{:02X}{:02X}", r, g, b),
+        _ => "#000000".to_string(),
+    }
+}
+
+fn parse_hex_color(value: &str) -> Option<Color> {
+    let trimmed = value.trim();
+    let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(Color::Rgb(r, g, b))
+}
+
 #[derive(Debug, Clone)]
 struct ModelSelectionModal {
     available_models: Vec<String>,
@@ -878,7 +968,12 @@ impl Theme {
     }
 
     /// Create a card block with a right-aligned button in the title area
-    fn card_block_with_button(&self, title: &str, button_text: &str, button_focused: bool) -> Block {
+    fn card_block_with_button(
+        &self,
+        title: &str,
+        button_text: &str,
+        button_focused: bool,
+    ) -> Block {
         let button_style = if button_focused {
             Style::default().fg(self.bg).bg(self.error).add_modifier(Modifier::BOLD)
         } else {
@@ -914,6 +1009,16 @@ impl Theme {
         Style::default().bg(self.primary).fg(Color::Black)
     }
 
+    /// Style for muted text
+    fn muted_style(&self) -> Style {
+        Style::default().fg(self.muted)
+    }
+
+    /// Style for neutral text
+    fn text_style(&self) -> Style {
+        Style::default().fg(self.text)
+    }
+
     /// Style for success elements
     fn success_style(&self) -> Style {
         Style::default().fg(self.success)
@@ -930,7 +1035,7 @@ impl Theme {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct AppState {
     selected_card: usize,
     focus_element: FocusElement,
@@ -944,6 +1049,11 @@ struct AppState {
     selected_models: Vec<SelectedModel>, // Multiple models with instance counts
     activity_timer: Instant,
     activity_lines_count: usize, // Configurable number of activity lines (1-3)
+    autocomplete: InlineAutocomplete,
+    last_textarea_area: Cell<Option<Rect>>,
+    show_autocomplete_border: bool,
+    autocomplete_background: Color,
+    settings_form: SettingsForm,
 }
 
 impl TaskCard {
@@ -988,7 +1098,9 @@ impl TaskCard {
         } else if self.agents.len() == 1 {
             format!("{} (x{})", self.agents[0].name, self.agents[0].count)
         } else {
-            let agent_strings: Vec<String> = self.agents.iter()
+            let agent_strings: Vec<String> = self
+                .agents
+                .iter()
                 .map(|agent| format!("{} (x{})", agent.name, agent.count))
                 .collect();
             agent_strings.join(", ")
@@ -1018,7 +1130,9 @@ impl TaskCard {
                 let line = &tool_exec.output_lines[tool_exec.current_line_index];
                 // Update the last activity line (in-place update for last_line behavior)
                 if let Some(last_activity) = self.activity.last_mut() {
-                    if last_activity.starts_with("Tool usage: ") && !last_activity.contains("completed") {
+                    if last_activity.starts_with("Tool usage: ")
+                        && !last_activity.contains("completed")
+                    {
                         *last_activity = format!("Tool usage: {}: {}", tool_exec.name, line);
                     }
                 }
@@ -1026,9 +1140,16 @@ impl TaskCard {
             } else if !tool_exec.is_complete {
                 // Mark as complete and add completion message
                 tool_exec.is_complete = true;
-                let status = if tool_exec.success { "completed successfully" } else { "failed" };
+                let status = if tool_exec.success {
+                    "completed successfully"
+                } else {
+                    "failed"
+                };
                 if let Some(last_activity) = self.activity.last_mut() {
-                    if last_activity.starts_with("Tool usage: ") && !last_activity.contains("completed") && !last_activity.contains("failed") {
+                    if last_activity.starts_with("Tool usage: ")
+                        && !last_activity.contains("completed")
+                        && !last_activity.contains("failed")
+                    {
                         *last_activity = format!("Tool usage: {}: {}", tool_exec.name, status);
                     }
                 }
@@ -1045,7 +1166,10 @@ impl TaskCard {
 
     fn add_file_edit(&mut self, file_path: &str, lines_added: usize, lines_removed: usize) {
         if let TaskState::Active = self.state {
-            self.add_activity(format!("File edits: {} (+{} -{})", file_path, lines_added, lines_removed));
+            self.add_activity(format!(
+                "File edits: {} (+{} -{})",
+                file_path, lines_added, lines_removed
+            ));
         }
     }
 
@@ -1100,7 +1224,15 @@ impl TaskCard {
         }
     }
 
-    fn render(&self, frame: &mut Frame, area: Rect, app_state: &AppState, theme: &Theme, is_selected: bool, card_index: usize) {
+    fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        app_state: &AppState,
+        theme: &Theme,
+        is_selected: bool,
+        card_index: usize,
+    ) {
         match self.state {
             TaskState::Draft => {
                 // Draft cards have outer border with "New Task" title
@@ -1139,7 +1271,9 @@ impl TaskCard {
 
                 // Apply selection highlighting
                 let final_card_block = if is_selected {
-                    card_block.border_style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))
+                    card_block.border_style(
+                        Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     card_block
                 };
@@ -1148,7 +1282,13 @@ impl TaskCard {
                 frame.render_widget(final_card_block, area);
 
                 let is_stop_focused = matches!(app_state.focus_element, FocusElement::StopButton(idx) if idx == card_index);
-                self.render_active_card(frame, inner_area, theme, is_stop_focused, app_state.activity_lines_count);
+                self.render_active_card(
+                    frame,
+                    inner_area,
+                    theme,
+                    is_stop_focused,
+                    app_state.activity_lines_count,
+                );
             }
             TaskState::Completed => {
                 let display_title = if self.title.len() > 40 {
@@ -1161,7 +1301,9 @@ impl TaskCard {
 
                 // Apply selection highlighting
                 let final_card_block = if is_selected {
-                    card_block.border_style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))
+                    card_block.border_style(
+                        Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     card_block
                 };
@@ -1177,23 +1319,22 @@ impl TaskCard {
     fn render_completed_card(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
         // Parse delivery indicators and apply proper colors
         let delivery_spans = if let Some(indicators) = &self.delivery_indicators {
-            indicators.split_whitespace()
-                .flat_map(|indicator| {
-                    match indicator {
-                        "⎇" => vec![
-                            Span::styled("⎇", Style::default().fg(Color::Cyan)),
-                            Span::raw(" ")
-                        ],
-                        "⇄" => vec![
-                            Span::styled("⇄", Style::default().fg(Color::Yellow)),
-                            Span::raw(" ")
-                        ],
-                        "✓" => vec![
-                            Span::styled("✓", Style::default().fg(Color::Green)),
-                            Span::raw(" ")
-                        ],
-                        _ => vec![Span::raw(indicator), Span::raw(" ")],
-                    }
+            indicators
+                .split_whitespace()
+                .flat_map(|indicator| match indicator {
+                    "⎇" => vec![
+                        Span::styled("⎇", Style::default().fg(Color::Cyan)),
+                        Span::raw(" "),
+                    ],
+                    "⇄" => vec![
+                        Span::styled("⇄", Style::default().fg(Color::Yellow)),
+                        Span::raw(" "),
+                    ],
+                    "✓" => vec![
+                        Span::styled("✓", Style::default().fg(Color::Green)),
+                        Span::raw(" "),
+                    ],
+                    _ => vec![Span::raw(indicator), Span::raw(" ")],
                 })
                 .collect::<Vec<_>>()
         } else {
@@ -1201,10 +1342,7 @@ impl TaskCard {
         };
 
         let mut title_spans = vec![
-            Span::styled(
-                "✓ ",
-                theme.success_style().add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("✓ ", theme.success_style().add_modifier(Modifier::BOLD)),
             Span::styled(&self.title, Style::default().fg(theme.text)),
             Span::raw(" • "),
         ];
@@ -1223,13 +1361,19 @@ impl TaskCard {
             Span::styled(&self.timestamp, Style::default().fg(theme.muted)),
         ]);
 
-        let paragraph = Paragraph::new(vec![title_line, metadata_line])
-            .wrap(Wrap { trim: true });
+        let paragraph = Paragraph::new(vec![title_line, metadata_line]).wrap(Wrap { trim: true });
 
         frame.render_widget(paragraph, area);
     }
 
-    fn render_active_card(&self, frame: &mut Frame, area: Rect, theme: &Theme, is_stop_focused: bool, activity_lines_count: usize) {
+    fn render_active_card(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        theme: &Theme,
+        is_stop_focused: bool,
+        activity_lines_count: usize,
+    ) {
         // First line: metadata on left, Stop button on right
         let agents_text = self.format_agents();
         let metadata_part = vec![
@@ -1247,7 +1391,10 @@ impl TaskCard {
         ];
 
         // Calculate how much space we need for the right-aligned Stop button
-        let metadata_text = format!("● {} • {} • {} • {}", self.repository, self.branch, agents_text, self.timestamp);
+        let metadata_text = format!(
+            "● {} • {} • {} • {}",
+            self.repository, self.branch, agents_text, self.timestamp
+        );
         let stop_button_text = " Stop ";
         let total_width = area.width as usize;
 
@@ -1272,41 +1419,66 @@ impl TaskCard {
         let title_line = Line::from(line_spans);
 
         let activity_vec = self.get_recent_activity(activity_lines_count);
-        let activity_lines: Vec<Line> = activity_vec.into_iter().enumerate().map(|(i, activity)| {
-            if activity.trim().is_empty() {
-                // Empty activity - show a subtle placeholder
-                Line::from(vec![
-                    Span::styled("  ", Style::default().fg(theme.muted)),
-                    Span::styled("─", Style::default().fg(theme.border)),
-                ])
-            } else {
-                let (prefix, content, color) = if activity.starts_with("Thoughts:") {
-                    ("💭", activity.strip_prefix("Thoughts:").unwrap_or(&activity).trim().to_string(), theme.muted)
-                } else if activity.starts_with("Tool usage:") {
-                    let tool_content = activity.strip_prefix("Tool usage:").unwrap_or(&activity).trim();
-                    let icon_color = if tool_content.contains("completed successfully") {
-                        theme.success
-                    } else if tool_content.contains("failed") {
-                        theme.error
-                    } else {
-                        theme.primary
-                    };
-                    ("🔧", tool_content.to_string(), icon_color)
-                } else if activity.starts_with("  ") {
-                    ("  ", activity.strip_prefix("  ").unwrap_or(&activity).to_string(), theme.muted)
-                } else if activity.starts_with("File edits:") {
-                    ("📝", activity.strip_prefix("File edits:").unwrap_or(&activity).trim().to_string(), theme.warning)
+        let activity_lines: Vec<Line> = activity_vec
+            .into_iter()
+            .enumerate()
+            .map(|(_, activity)| {
+                if activity.trim().is_empty() {
+                    // Empty activity - show a subtle placeholder
+                    Line::from(vec![
+                        Span::styled("  ", Style::default().fg(theme.muted)),
+                        Span::styled("─", Style::default().fg(theme.border)),
+                    ])
                 } else {
-                    ("  ", activity, theme.text)
-                };
+                    let (prefix, content, color) = if activity.starts_with("Thoughts:") {
+                        (
+                            "💭",
+                            activity
+                                .strip_prefix("Thoughts:")
+                                .unwrap_or(&activity)
+                                .trim()
+                                .to_string(),
+                            theme.muted,
+                        )
+                    } else if activity.starts_with("Tool usage:") {
+                        let tool_content =
+                            activity.strip_prefix("Tool usage:").unwrap_or(&activity).trim();
+                        let icon_color = if tool_content.contains("completed successfully") {
+                            theme.success
+                        } else if tool_content.contains("failed") {
+                            theme.error
+                        } else {
+                            theme.primary
+                        };
+                        ("🔧", tool_content.to_string(), icon_color)
+                    } else if activity.starts_with("  ") {
+                        (
+                            "  ",
+                            activity.strip_prefix("  ").unwrap_or(&activity).to_string(),
+                            theme.muted,
+                        )
+                    } else if activity.starts_with("File edits:") {
+                        (
+                            "📝",
+                            activity
+                                .strip_prefix("File edits:")
+                                .unwrap_or(&activity)
+                                .trim()
+                                .to_string(),
+                            theme.warning,
+                        )
+                    } else {
+                        ("  ", activity, theme.text)
+                    };
 
-                Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(color)),
-                    Span::raw(" "),
-                    Span::styled(content, Style::default().fg(theme.text)),
-                ])
-            }
-        }).collect();
+                    Line::from(vec![
+                        Span::styled(prefix, Style::default().fg(color)),
+                        Span::raw(" "),
+                        Span::styled(content, Style::default().fg(theme.text)),
+                    ])
+                }
+            })
+            .collect();
 
         // Build all_lines dynamically based on activity_lines_count
         let mut all_lines = vec![title_line, Line::from("")]; // Title + empty separator line
@@ -1317,19 +1489,36 @@ impl TaskCard {
         // Render each line individually with left padding
         for (i, line) in all_lines.iter().enumerate() {
             if i < area.height as usize {
-                let line_area = Rect::new(area.x + ACTIVE_TASK_LEFT_PADDING as u16, area.y + i as u16, area.width.saturating_sub(ACTIVE_TASK_LEFT_PADDING as u16), 1);
+                let line_area = Rect::new(
+                    area.x + ACTIVE_TASK_LEFT_PADDING as u16,
+                    area.y + i as u16,
+                    area.width.saturating_sub(ACTIVE_TASK_LEFT_PADDING as u16),
+                    1,
+                );
                 let para = Paragraph::new(line.clone());
                 frame.render_widget(para, line_area);
             }
         }
     }
 
-    fn render_draft_card(&self, frame: &mut Frame, area: Rect, app_state: &AppState, theme: &Theme) {
+    fn render_draft_card(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        app_state: &AppState,
+        theme: &Theme,
+    ) {
         // Draft cards render directly without outer border like ah-tui
         self.render_draft_card_content(frame, area, app_state, theme);
     }
 
-    fn render_draft_card_content(&self, frame: &mut Frame, area: Rect, app_state: &AppState, theme: &Theme) {
+    fn render_draft_card_content(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        app_state: &AppState,
+        theme: &Theme,
+    ) {
         let content_height = area.height as usize;
 
         // Split the available area between textarea and buttons
@@ -1341,7 +1530,9 @@ impl TaskCard {
         let textarea_area = Rect {
             x: area.x + TEXTAREA_LEFT_PADDING as u16,
             y: area.y + TEXTAREA_TOP_PADDING as u16,
-            width: area.width.saturating_sub((TEXTAREA_LEFT_PADDING + TEXTAREA_RIGHT_PADDING) as u16),
+            width: area
+                .width
+                .saturating_sub((TEXTAREA_LEFT_PADDING + TEXTAREA_RIGHT_PADDING) as u16),
             height: (textarea_height - TEXTAREA_TOP_PADDING - TEXTAREA_BOTTOM_PADDING) as u16,
         };
 
@@ -1396,6 +1587,7 @@ impl TaskCard {
 
         // Render the textarea
         frame.render_widget(&app_state.task_description, textarea_area);
+        app_state.last_textarea_area.set(Some(textarea_area));
 
         // Render separator line
         if (textarea_height + separator_height) < content_height {
@@ -1425,7 +1617,10 @@ impl TaskCard {
         let models_button_text = if app_state.selected_models.is_empty() {
             "🤖 Models".to_string()
         } else if app_state.selected_models.len() == 1 {
-            format!("🤖 {} (x{})", app_state.selected_models[0].name, app_state.selected_models[0].count)
+            format!(
+                "🤖 {} (x{})",
+                app_state.selected_models[0].name, app_state.selected_models[0].count
+            )
         } else {
             format!("🤖 {} models", app_state.selected_models.len())
         };
@@ -1477,10 +1672,7 @@ impl TaskCard {
         } else {
             Span::styled(
                 format!(" {} ", go_button_text),
-                Style::default()
-                    .fg(theme.accent)
-                    .bg(theme.surface)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD),
             )
         };
 
@@ -1499,7 +1691,14 @@ impl TaskCard {
     }
 }
 
-fn render_header(frame: &mut Frame, area: Rect, theme: &Theme, focus_element: &FocusElement, _image_picker: Option<&Picker>, logo_protocol: Option<&mut StatefulProtocol>) {
+fn render_header(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    focus_element: &FocusElement,
+    _image_picker: Option<&Picker>,
+    logo_protocol: Option<&mut StatefulProtocol>,
+) {
     // Create padded content area within the header
     let content_area = if area.width >= 6 && area.height >= 4 {
         // Add padding: 1 line top/bottom, 2 columns left/right
@@ -1535,7 +1734,7 @@ fn render_header(frame: &mut Frame, area: Rect, theme: &Theme, focus_element: &F
         let button_width = button_text.len() as u16 + 2; // +2 for padding
         let button_area = Rect {
             x: area.width - button_width - 2, // 2 units from right edge
-            y: area.y + 1, // Just below top padding
+            y: area.y + 1,                    // Just below top padding
             width: button_width,
             height: 1,
         };
@@ -1543,7 +1742,10 @@ fn render_header(frame: &mut Frame, area: Rect, theme: &Theme, focus_element: &F
         let button_style = if matches!(focus_element, FocusElement::SettingsButton) {
             Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme.primary).bg(theme.surface).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme.primary)
+                .bg(theme.surface)
+                .add_modifier(Modifier::BOLD)
         };
 
         let button_line = Line::from(vec![
@@ -1592,7 +1794,7 @@ fn render_header(frame: &mut Frame, area: Rect, theme: &Theme, focus_element: &F
 fn render_settings_dialog(frame: &mut Frame, app_state: &AppState, area: Rect, theme: &Theme) {
     // Calculate dialog dimensions
     let dialog_width = 50.min(area.width - 4);
-    let dialog_height = 12.min(area.height - 4);
+    let dialog_height = 14.min(area.height - 4);
 
     let dialog_area = Rect {
         x: (area.width - dialog_width) / 2,
@@ -1636,74 +1838,146 @@ fn render_settings_dialog(frame: &mut Frame, app_state: &AppState, area: Rect, t
 
         if title_len + 4 >= line_width {
             // If title is too long, just show a regular line
-            Line::from(Span::styled("─".repeat(line_width), Style::default().fg(theme.border)))
+            Line::from(Span::styled(
+                "─".repeat(line_width),
+                Style::default().fg(theme.border),
+            ))
         } else {
             let left_len = (line_width - title_len) / 2;
             let right_len = line_width - title_len - left_len;
 
             Line::from(vec![
                 Span::styled("─".repeat(left_len), Style::default().fg(theme.border)),
-                Span::styled(title_with_spaces, Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    title_with_spaces,
+                    Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("─".repeat(right_len), Style::default().fg(theme.border)),
             ])
         }
     };
 
     // Content
-    let content_lines = vec![
-        Line::from(""), // Empty line
-        create_section_line("Activity Lines"),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("1", if app_state.activity_lines_count == 1 {
-                Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
-            }),
-            Span::raw(" - Show 1 activity line"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("2", if app_state.activity_lines_count == 2 {
-                Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
-            }),
-            Span::raw(" - Show 2 activity lines"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("3", if app_state.activity_lines_count == 3 {
-                Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
-            }),
-            Span::raw(" - Show 3 activity lines"),
-        ]),
-        Line::from(""),
-        create_section_line("Controls"),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("1/2/3", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-            Span::raw(" - Change activity lines"),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Esc/Enter", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
-            Span::raw(" - Close settings"),
-        ]),
-    ];
+    let form = &app_state.settings_form;
+    let mut row: usize = 0;
 
-    // Render content lines
-    for (i, line) in content_lines.iter().enumerate() {
-        if i < inner_area.height as usize {
-            let line_area = Rect::new(inner_area.x, inner_area.y + i as u16, inner_area.width, 1);
-            let para = Paragraph::new(line.clone());
-            frame.render_widget(para, line_area);
-        }
+    render_settings_line(frame, inner_area, &mut row, Line::from(""));
+    render_settings_line(
+        frame,
+        inner_area,
+        &mut row,
+        create_section_line("Activity Lines"),
+    );
+    render_settings_field(
+        frame,
+        inner_area,
+        &mut row,
+        "Activity lines (1-3)",
+        SettingsField::ActivityLines,
+        form,
+        theme,
+    );
+    render_settings_line(frame, inner_area, &mut row, Line::from(""));
+    render_settings_line(
+        frame,
+        inner_area,
+        &mut row,
+        create_section_line("Autocomplete"),
+    );
+    render_settings_field(
+        frame,
+        inner_area,
+        &mut row,
+        "Autocomplete border (on/off)",
+        SettingsField::AutocompleteBorder,
+        form,
+        theme,
+    );
+    render_settings_field(
+        frame,
+        inner_area,
+        &mut row,
+        "Autocomplete background (#RRGGBB)",
+        SettingsField::AutocompleteBackground,
+        form,
+        theme,
+    );
+    render_settings_line(frame, inner_area, &mut row, Line::from(""));
+    render_settings_line(frame, inner_area, &mut row, create_section_line("Controls"));
+    render_settings_line(
+        frame,
+        inner_area,
+        &mut row,
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Tab", theme.warning_style()),
+            Span::raw(" next field  •  "),
+            Span::styled("Shift+Tab", theme.warning_style()),
+            Span::raw(" previous"),
+        ]),
+    );
+    render_settings_line(
+        frame,
+        inner_area,
+        &mut row,
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Enter", theme.success_style()),
+            Span::raw(" apply changes  •  "),
+            Span::styled("Esc", theme.error_style()),
+            Span::raw(" close"),
+        ]),
+    );
+}
+
+fn render_settings_line(frame: &mut Frame, area: Rect, row: &mut usize, line: Line) {
+    if *row >= area.height as usize {
+        return;
     }
+    let line_area = Rect::new(area.x, area.y + *row as u16, area.width, 1);
+    frame.render_widget(Paragraph::new(line), line_area);
+    *row += 1;
+}
+
+fn render_settings_field(
+    frame: &mut Frame,
+    area: Rect,
+    row: &mut usize,
+    label: &str,
+    field: SettingsField,
+    form: &SettingsForm,
+    theme: &Theme,
+) {
+    if *row >= area.height as usize {
+        return;
+    }
+    let line_area = Rect::new(area.x, area.y + *row as u16, area.width, 1);
+    let input = match field {
+        SettingsField::ActivityLines => &form.activity_lines_input,
+        SettingsField::AutocompleteBorder => &form.autocomplete_border_input,
+        SettingsField::AutocompleteBackground => &form.autocomplete_bg_input,
+    };
+    let label_text = format!("{}: ", label);
+    let label_span = Span::styled(label_text.clone(), theme.text_style());
+    let value_style = if form.focused_field == field {
+        theme.focused_style()
+    } else {
+        theme.text_style()
+    };
+    let value_span = Span::styled(input.value().to_string(), value_style);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![label_span, value_span])),
+        line_area,
+    );
+
+    if form.focused_field == field {
+        let cursor_offset = label_text.chars().count() as u16 + input.visual_cursor() as u16;
+        let cursor_x =
+            (line_area.x + cursor_offset).min(line_area.x + line_area.width.saturating_sub(1));
+        frame.set_cursor_position(Position::new(cursor_x, line_area.y));
+    }
+
+    *row += 1;
 }
 
 fn render_footer(frame: &mut Frame, area: Rect, focus_element: &FocusElement, theme: &Theme) {
@@ -1732,14 +2006,16 @@ fn render_footer(frame: &mut Frame, area: Rect, focus_element: &FocusElement, th
             Span::styled("Tab", Style::default().fg(theme.primary)),
             Span::raw(" Next Field"),
         ],
-        FocusElement::RepositoryButton | FocusElement::BranchButton | FocusElement::ModelButton => vec![
-            Span::styled("↑↓", theme.warning_style()),
-            Span::raw(" Navigate • "),
-            Span::styled("Enter", theme.success_style()),
-            Span::raw(" Select • "),
-            Span::styled("Esc", Style::default().fg(theme.muted)),
-            Span::raw(" Back"),
-        ],
+        FocusElement::RepositoryButton | FocusElement::BranchButton | FocusElement::ModelButton => {
+            vec![
+                Span::styled("↑↓", theme.warning_style()),
+                Span::raw(" Navigate • "),
+                Span::styled("Enter", theme.success_style()),
+                Span::raw(" Select • "),
+                Span::styled("Esc", Style::default().fg(theme.muted)),
+                Span::raw(" Back"),
+            ]
+        }
         FocusElement::GoButton => vec![
             Span::styled("Enter", theme.success_style()),
             Span::raw(" Launch Task • "),
@@ -1838,8 +2114,7 @@ fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rect, t
         Span::styled(input_value, Style::default().fg(theme.text))
     };
 
-    let input_paragraph = Paragraph::new(Line::from(display_value))
-        .wrap(Wrap { trim: true });
+    let input_paragraph = Paragraph::new(Line::from(display_value)).wrap(Wrap { trim: true });
     frame.render_widget(input_paragraph, input_area);
 
     // Show cursor
@@ -1847,15 +2122,18 @@ fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rect, t
         let visual_cursor = modal.input.visual_cursor();
         let cursor_x = input_area.x as u16 + visual_cursor as u16;
         let cursor_y = input_area.y as u16;
-        if cursor_x < input_area.x as u16 + input_area.width as u16 && cursor_y < input_area.y as u16 + input_area.height as u16 {
+        if cursor_x < input_area.x as u16 + input_area.width as u16
+            && cursor_y < input_area.y as u16 + input_area.height as u16
+        {
             frame.set_cursor_position(ratatui::layout::Position::new(cursor_x, cursor_y));
         }
     }
 
     // Render separator line
-    let separator_line = Line::from(vec![
-        Span::styled("─".repeat(separator_area.width as usize), Style::default().fg(theme.border))
-    ]);
+    let separator_line = Line::from(vec![Span::styled(
+        "─".repeat(separator_area.width as usize),
+        Style::default().fg(theme.border),
+    )]);
     frame.render_widget(Paragraph::new(separator_line), separator_area);
 
     // Filter options based on input
@@ -1863,29 +2141,40 @@ fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rect, t
     let filtered_options: Vec<&String> = if query.is_empty() {
         modal.options.iter().take(10).collect()
     } else {
-        modal.options.iter()
+        modal
+            .options
+            .iter()
             .filter(|opt| opt.to_lowercase().contains(&query.to_lowercase()))
             .take(10)
             .collect()
     };
 
     // Display filtered results directly in results area
-    let result_lines: Vec<Line> = filtered_options.iter().enumerate().map(|(i, opt)| {
-        let style = if i == modal.selected_index {
-            theme.selected_style()
-        } else {
-            Style::default().fg(theme.text)
-        };
-        Line::from(opt.as_str()).style(style)
-    }).collect();
+    let result_lines: Vec<Line> = filtered_options
+        .iter()
+        .enumerate()
+        .map(|(i, opt)| {
+            let style = if i == modal.selected_index {
+                theme.selected_style()
+            } else {
+                Style::default().fg(theme.text)
+            };
+            Line::from(opt.as_str()).style(style)
+        })
+        .collect();
 
     frame.render_widget(
         Paragraph::new(result_lines).wrap(Wrap { trim: true }),
-        results_area
+        results_area,
     );
 }
 
-fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, area: Rect, theme: &Theme) {
+fn render_model_selection_modal(
+    frame: &mut Frame,
+    modal: &ModelSelectionModal,
+    area: Rect,
+    theme: &Theme,
+) {
     // Calculate modal dimensions
     let modal_width = 70.min(area.width - 4);
     let modal_height = 18.min(area.height - 4);
@@ -1908,7 +2197,8 @@ fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, 
     // Main modal
     let title_line = Line::from(vec![
         Span::raw("").fg(theme.primary),
-        Span::raw(" Select Models ").style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        Span::raw(" Select Models ")
+            .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
         Span::raw("").fg(theme.primary),
     ]);
 
@@ -1930,8 +2220,8 @@ fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, 
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2 + modal.selected_models.len() as u16), // Selected models section
-            Constraint::Length(1), // Separator
-            Constraint::Min(1),    // Available models section
+            Constraint::Length(1),                                      // Separator
+            Constraint::Min(1),                                         // Available models section
         ])
         .split(inner_area);
 
@@ -1940,9 +2230,10 @@ fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, 
     let available_area = vertical_chunks[2];
 
     // Render selected models
-    let mut selected_lines = vec![Line::from(vec![
-        Span::styled("Selected Models:", Style::default().fg(theme.text).add_modifier(Modifier::BOLD))
-    ])];
+    let mut selected_lines = vec![Line::from(vec![Span::styled(
+        "Selected Models:",
+        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+    )])];
 
     for (i, model) in modal.selected_models.iter().enumerate() {
         let style = if modal.editing_count && i == modal.editing_index {
@@ -1961,26 +2252,29 @@ fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, 
     }
 
     if modal.selected_models.is_empty() {
-        selected_lines.push(Line::from(vec![
-            Span::styled("  (none selected)", Style::default().fg(theme.muted))
-        ]));
+        selected_lines.push(Line::from(vec![Span::styled(
+            "  (none selected)",
+            Style::default().fg(theme.muted),
+        )]));
     }
 
     frame.render_widget(
         Paragraph::new(selected_lines).wrap(Wrap { trim: true }),
-        selected_area
+        selected_area,
     );
 
     // Render separator
-    let separator_line = Line::from(vec![
-        Span::styled("─".repeat(separator_area.width as usize), Style::default().fg(theme.border))
-    ]);
+    let separator_line = Line::from(vec![Span::styled(
+        "─".repeat(separator_area.width as usize),
+        Style::default().fg(theme.border),
+    )]);
     frame.render_widget(Paragraph::new(separator_line), separator_area);
 
     // Render available models
-    let mut available_lines = vec![Line::from(vec![
-        Span::styled("Available Models (↑↓ to navigate, Enter to add):", Style::default().fg(theme.text).add_modifier(Modifier::BOLD))
-    ])];
+    let mut available_lines = vec![Line::from(vec![Span::styled(
+        "Available Models (↑↓ to navigate, Enter to add):",
+        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+    )])];
 
     for (i, model_name) in modal.available_models.iter().enumerate() {
         let is_selected = i == modal.selected_index && !modal.editing_count;
@@ -1998,7 +2292,7 @@ fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, 
 
     frame.render_widget(
         Paragraph::new(available_lines).wrap(Wrap { trim: true }),
-        available_area
+        available_area,
     );
 }
 
@@ -2008,7 +2302,10 @@ fn create_sample_tasks() -> Vec<TaskCard> {
             title: "".to_string(), // Will be filled by user input
             repository: "agent-harbor".to_string(),
             branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "claude-3-5-sonnet".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "claude-3-5-sonnet".to_string(),
+                count: 1,
+            }],
             timestamp: "now".to_string(),
             state: TaskState::Draft,
             activity: vec![], // Empty for draft
@@ -2019,7 +2316,10 @@ fn create_sample_tasks() -> Vec<TaskCard> {
             title: "Implement payment processing".to_string(),
             repository: "ecommerce-platform".to_string(),
             branch: "feature/payments".to_string(),
-            agents: vec![SelectedModel { name: "claude-3-5-sonnet".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "claude-3-5-sonnet".to_string(),
+                count: 1,
+            }],
             timestamp: "5 min ago".to_string(),
             state: TaskState::Active,
             activity: vec![
@@ -2034,7 +2334,10 @@ fn create_sample_tasks() -> Vec<TaskCard> {
             title: "Optimize database queries for user dashboard performance".to_string(),
             repository: "analytics-platform".to_string(),
             branch: "perf/dashboard-queries".to_string(),
-            agents: vec![SelectedModel { name: "gpt-4".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "gpt-4".to_string(),
+                count: 1,
+            }],
             timestamp: "25 min ago".to_string(),
             state: TaskState::Active,
             activity: vec![
@@ -2049,7 +2352,10 @@ fn create_sample_tasks() -> Vec<TaskCard> {
             title: "Add user authentication and session management".to_string(),
             repository: "web-app".to_string(),
             branch: "feature/user-auth".to_string(),
-            agents: vec![SelectedModel { name: "claude-3-5-sonnet".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "claude-3-5-sonnet".to_string(),
+                count: 1,
+            }],
             timestamp: "2 hours ago".to_string(),
             state: TaskState::Completed,
             activity: vec![],
@@ -2060,7 +2366,10 @@ fn create_sample_tasks() -> Vec<TaskCard> {
             title: "Implement payment processing with Stripe integration".to_string(),
             repository: "ecommerce-platform".to_string(),
             branch: "feature/stripe-payment".to_string(),
-            agents: vec![SelectedModel { name: "gpt-4".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "gpt-4".to_string(),
+                count: 1,
+            }],
             timestamp: "4 hours ago".to_string(),
             state: TaskState::Completed,
             activity: vec![],
@@ -2071,7 +2380,10 @@ fn create_sample_tasks() -> Vec<TaskCard> {
             title: "Add comprehensive error logging and monitoring".to_string(),
             repository: "backend-api".to_string(),
             branch: "feature/error-monitoring".to_string(),
-            agents: vec![SelectedModel { name: "claude-3-5-sonnet".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "claude-3-5-sonnet".to_string(),
+                count: 1,
+            }],
             timestamp: "6 hours ago".to_string(),
             state: TaskState::Completed,
             activity: vec![],
@@ -2089,7 +2401,8 @@ impl AppState {
         textarea.set_placeholder_style(Style::default().fg(Color::DarkGray));
         // Make cursor invisible in placeholder mode by using same style as placeholder
 
-        Self {
+        let default_theme = Theme::default();
+        let mut state = Self {
             selected_card: 0,
             focus_element: FocusElement::TaskDescription,
             modal_state: ModalState::None,
@@ -2099,12 +2412,100 @@ impl AppState {
             task_description: textarea,
             selected_repository: "agent-harbor".to_string(),
             selected_branch: "main".to_string(),
-            selected_models: vec![SelectedModel { name: "claude-3-5-sonnet".to_string(), count: 1 }],
+            selected_models: vec![SelectedModel {
+                name: "claude-3-5-sonnet".to_string(),
+                count: 1,
+            }],
             activity_timer: Instant::now(),
             activity_lines_count: 3, // Default to 3 activity lines
+            autocomplete: InlineAutocomplete::new(),
+            last_textarea_area: Cell::new(None),
+            show_autocomplete_border: true,
+            autocomplete_background: default_theme.surface,
+            settings_form: SettingsForm::new(3, true, default_theme.surface),
+        };
+        state.set_autocomplete_border(true);
+        state.set_autocomplete_background(default_theme.surface);
+        state
+    }
+
+    fn refresh_autocomplete(&mut self, input_changed: bool) {
+        if input_changed {
+            self.autocomplete.notify_text_input();
+        }
+        self.autocomplete.after_textarea_change(&self.task_description);
+    }
+
+    fn poll_autocomplete(&mut self) {
+        self.autocomplete.poll_results();
+    }
+
+    fn autocomplete_on_tick(&mut self) {
+        self.autocomplete.on_tick();
+    }
+
+    fn set_autocomplete_border(&mut self, enabled: bool) {
+        self.show_autocomplete_border = enabled;
+        self.autocomplete.set_show_border(enabled);
+        if matches!(self.modal_state, ModalState::Settings) {
+            let focused = self.settings_form.focused_field;
+            self.settings_form = SettingsForm::new(
+                self.activity_lines_count,
+                self.show_autocomplete_border,
+                self.autocomplete_background,
+            );
+            self.settings_form.focused_field = focused;
         }
     }
 
+    fn set_autocomplete_background(&mut self, color: Color) {
+        self.autocomplete_background = color;
+        if matches!(self.modal_state, ModalState::Settings) {
+            let focused = self.settings_form.focused_field;
+            self.settings_form = SettingsForm::new(
+                self.activity_lines_count,
+                self.show_autocomplete_border,
+                self.autocomplete_background,
+            );
+            self.settings_form.focused_field = focused;
+        }
+    }
+
+    fn apply_settings_form(&mut self) {
+        let focused = self.settings_form.focused_field;
+
+        let activity_lines = self
+            .settings_form
+            .activity_lines_input
+            .value()
+            .trim()
+            .parse::<usize>()
+            .map(|v| v.clamp(1, 3))
+            .unwrap_or(self.activity_lines_count);
+        self.activity_lines_count = activity_lines;
+
+        let border_input =
+            self.settings_form.autocomplete_border_input.value().trim().to_lowercase();
+        let border_enabled = match border_input.as_str() {
+            "on" | "true" | "yes" | "1" => true,
+            "off" | "false" | "no" | "0" => false,
+            _ => self.show_autocomplete_border,
+        };
+        self.set_autocomplete_border(border_enabled);
+
+        if let Some(color) =
+            parse_hex_color(self.settings_form.autocomplete_bg_input.value().trim())
+        {
+            self.set_autocomplete_background(color);
+        }
+
+        self.settings_form = SettingsForm::new(
+            self.activity_lines_count,
+            self.show_autocomplete_border,
+            self.autocomplete_background,
+        );
+        self.settings_form.focused_field = focused;
+    }
 
     fn handle_key(&mut self, key: crossterm::event::KeyEvent, tasks: &mut Vec<TaskCard>) -> bool {
         // Log all key events
@@ -2115,20 +2516,27 @@ impl AppState {
             ModalState::RepositorySearch | ModalState::BranchSearch | ModalState::ModelSearch => {
                 self.handle_modal_key(key)
             }
-            ModalState::ModelSelection => {
-                self.handle_model_selection_key(key)
-            }
-            ModalState::Settings => {
-                self.handle_settings_key(key)
-            }
+            ModalState::ModelSelection => self.handle_model_selection_key(key),
+            ModalState::Settings => self.handle_settings_key(key),
         }
     }
 
-    fn handle_main_key(&mut self, key: crossterm::event::KeyEvent, tasks: &mut Vec<TaskCard>) -> bool {
+    fn handle_main_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        tasks: &mut Vec<TaskCard>,
+    ) -> bool {
         use crossterm::event::{KeyCode, KeyModifiers};
 
         let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
         let ctrl_pressed = key.modifiers.contains(KeyModifiers::CONTROL);
+
+        if matches!(self.focus_element, FocusElement::TaskDescription)
+            && self.autocomplete.handle_key_event(&key, &mut self.task_description)
+        {
+            self.refresh_autocomplete(true);
+            return false;
+        }
 
         // Handle activity lines count changes (Ctrl+1, Ctrl+2, Ctrl+3)
         if ctrl_pressed {
@@ -2153,10 +2561,10 @@ impl AppState {
             KeyCode::Esc => {
                 // If focus is on any button in the draft card, move focus back to textarea
                 match self.focus_element {
-                    FocusElement::RepositoryButton |
-                    FocusElement::BranchButton |
-                    FocusElement::ModelButton |
-                    FocusElement::GoButton => {
+                    FocusElement::RepositoryButton
+                    | FocusElement::BranchButton
+                    | FocusElement::ModelButton
+                    | FocusElement::GoButton => {
                         self.focus_element = FocusElement::TaskDescription;
                         return false; // Don't exit
                     }
@@ -2176,7 +2584,8 @@ impl AppState {
                             self.selected_card = idx - 1;
                             self.focus_element = FocusElement::TaskCard(self.selected_card);
                             // If moving to draft card (index 0), automatically focus description
-                            if self.selected_card == 0 && matches!(tasks[0].state, TaskState::Draft) {
+                            if self.selected_card == 0 && matches!(tasks[0].state, TaskState::Draft)
+                            {
                                 self.focus_element = FocusElement::TaskDescription;
                             }
                         } else if idx == 0 {
@@ -2203,7 +2612,8 @@ impl AppState {
                             self.selected_card = idx + 1;
                             self.focus_element = FocusElement::TaskCard(self.selected_card);
                             // If moving to draft card (index 0), automatically focus description
-                            if self.selected_card == 0 && matches!(tasks[0].state, TaskState::Draft) {
+                            if self.selected_card == 0 && matches!(tasks[0].state, TaskState::Draft)
+                            {
                                 self.focus_element = FocusElement::TaskDescription;
                             }
                         }
@@ -2222,14 +2632,22 @@ impl AppState {
                         if shift_pressed {
                             // Shift+Enter: Insert newline using command system
                             execute_command(&mut self.task_description, Command::OpenNewLine, &mut self.search_mode);
+                            self.refresh_autocomplete(true);
                         } else {
                             // Regular Enter: Launch task
-                            let lines: Vec<String> = self.task_description.lines().into_iter().map(|s| s.to_string()).collect();
+                            let lines: Vec<String> = self
+                                .task_description
+                                .lines()
+                                .into_iter()
+                                .map(|s| s.to_string())
+                                .collect();
                             let description = lines.join("\n");
                             if !description.trim().is_empty() {
                                 tasks[0].title = description;
                                 tasks[0].state = TaskState::Active;
-                                tasks[0].activity.push("Thoughts: Starting task execution".to_string());
+                                tasks[0]
+                                    .activity
+                                    .push("Thoughts: Starting task execution".to_string());
                                 self.focus_element = FocusElement::TaskCard(0);
                             }
                         }
@@ -2242,6 +2660,11 @@ impl AppState {
                     FocusElement::SettingsButton => {
                         // Open settings dialog
                         self.modal_state = ModalState::Settings;
+                        self.settings_form = SettingsForm::new(
+                            self.activity_lines_count,
+                            self.show_autocomplete_border,
+                            self.autocomplete_background,
+                        );
                     }
                     FocusElement::RepositoryButton => {
                         self.open_repository_modal();
@@ -2278,7 +2701,7 @@ impl AppState {
                         // Move to Stop button for this card
                         self.focus_element = FocusElement::StopButton(idx);
                     }
-                    FocusElement::StopButton(idx) => {
+                    FocusElement::StopButton(_idx) => {
                         // Stay on stop button for now
                     }
                     FocusElement::TaskDescription => {
@@ -2313,11 +2736,12 @@ impl AppState {
                     }
                     _ => {
                         // For other elements, treat Right as Tab
+                        #[allow(unreachable_patterns)]
                         match self.focus_element {
                             FocusElement::TaskCard(idx) => {
                                 self.focus_element = FocusElement::StopButton(idx);
                             }
-                            FocusElement::StopButton(idx) => {
+                            FocusElement::StopButton(_) => {
                                 // Stay on stop button
                             }
                             FocusElement::RepositoryButton => {
@@ -2331,6 +2755,9 @@ impl AppState {
                             }
                             FocusElement::GoButton => {
                                 self.focus_element = FocusElement::TaskDescription;
+                            }
+                            FocusElement::SettingsButton => {
+                                // Settings button does not participate in this cycle
                             }
                             _ => {}
                         }
@@ -2348,15 +2775,13 @@ impl AppState {
                     }
                     _ => {
                         // For other elements, treat Left as reverse Tab
+                        #[allow(unreachable_patterns)]
                         match self.focus_element {
-                            FocusElement::TaskCard(idx) => {
+                            FocusElement::TaskCard(_) => {
                                 // Stay on card
                             }
-                            FocusElement::StopButton(idx) => {
+                            FocusElement::StopButton(_) => {
                                 // Stay on stop button
-                            }
-                            FocusElement::TaskDescription => {
-                                self.focus_element = FocusElement::GoButton;
                             }
                             FocusElement::RepositoryButton => {
                                 // Can't go left from first button, stay
@@ -2372,7 +2797,6 @@ impl AppState {
                             }
                             FocusElement::SettingsButton => {
                                 // Settings button is not part of tab cycling within cards
-                                // Stay on settings button
                             }
                             _ => {}
                         }
@@ -2558,10 +2982,15 @@ impl AppState {
                         if modal.selected_index < modal.available_models.len() {
                             let model_name = modal.available_models[modal.selected_index].clone();
                             // Check if already selected
-                            if let Some(existing) = modal.selected_models.iter_mut().find(|m| m.name == model_name) {
+                            if let Some(existing) =
+                                modal.selected_models.iter_mut().find(|m| m.name == model_name)
+                            {
                                 existing.count += 1;
                             } else {
-                                modal.selected_models.push(SelectedModel { name: model_name, count: 1 });
+                                modal.selected_models.push(SelectedModel {
+                                    name: model_name,
+                                    count: 1,
+                                });
                             }
                         }
                     }
@@ -2570,7 +2999,8 @@ impl AppState {
                     // Toggle between editing count mode and navigation mode
                     modal.editing_count = !modal.editing_count;
                     if modal.editing_count && !modal.selected_models.is_empty() {
-                        modal.editing_index = modal.editing_index.min(modal.selected_models.len() - 1);
+                        modal.editing_index =
+                            modal.editing_index.min(modal.selected_models.len() - 1);
                     }
                 }
                 KeyCode::Up => {
@@ -2590,12 +3020,14 @@ impl AppState {
                     if modal.editing_count {
                         // Navigate selected models
                         if modal.editing_index < modal.selected_models.len().saturating_sub(1) {
-                            modal.editing_index = (modal.editing_index + 1).min(modal.selected_models.len() - 1);
+                            modal.editing_index =
+                                (modal.editing_index + 1).min(modal.selected_models.len() - 1);
                         }
                     } else {
                         // Navigate available models
                         if modal.selected_index < modal.available_models.len().saturating_sub(1) {
-                            modal.selected_index = (modal.selected_index + 1).min(modal.available_models.len() - 1);
+                            modal.selected_index =
+                                (modal.selected_index + 1).min(modal.available_models.len() - 1);
                         }
                     }
                 }
@@ -2607,7 +3039,9 @@ impl AppState {
                         } else {
                             // Remove model if count reaches 0
                             modal.selected_models.remove(modal.editing_index);
-                            if modal.editing_index >= modal.selected_models.len() && modal.editing_index > 0 {
+                            if modal.editing_index >= modal.selected_models.len()
+                                && modal.editing_index > 0
+                            {
                                 modal.editing_index -= 1;
                             }
                             modal.editing_count = !modal.selected_models.is_empty();
@@ -2630,19 +3064,37 @@ impl AppState {
         use crossterm::event::KeyCode;
 
         match key.code {
-            KeyCode::Esc | KeyCode::Enter => {
+            KeyCode::Esc => {
                 self.modal_state = ModalState::None;
             }
-            KeyCode::Char('1') => {
-                self.activity_lines_count = 1;
+            KeyCode::Enter => {
+                self.apply_settings_form();
             }
-            KeyCode::Char('2') => {
-                self.activity_lines_count = 2;
+            KeyCode::Tab => {
+                self.settings_form.focus_next();
             }
-            KeyCode::Char('3') => {
-                self.activity_lines_count = 3;
+            KeyCode::BackTab => {
+                self.settings_form.focus_prev();
             }
-            _ => {}
+            KeyCode::Up => {
+                self.settings_form.focus_prev();
+            }
+            KeyCode::Down => {
+                self.settings_form.focus_next();
+            }
+            _ => {
+                let input = self.settings_form.focused_input_mut();
+                let _ = match key.code {
+                    KeyCode::Char(c) => input.handle(InputRequest::InsertChar(c)),
+                    KeyCode::Backspace => input.handle(InputRequest::DeletePrevChar),
+                    KeyCode::Delete => input.handle(InputRequest::DeleteNextChar),
+                    KeyCode::Left => input.handle(InputRequest::GoToPrevChar),
+                    KeyCode::Right => input.handle(InputRequest::GoToNextChar),
+                    KeyCode::Home => input.handle(InputRequest::GoToStart),
+                    KeyCode::End => input.handle(InputRequest::GoToEnd),
+                    _ => None,
+                };
+            }
         }
         false
     }
@@ -2677,7 +3129,8 @@ impl AppState {
                 }
                 KeyCode::Down => {
                     if modal.selected_index < modal.options.len().saturating_sub(1) {
-                        modal.selected_index = (modal.selected_index + 1).min(modal.options.len() - 1);
+                        modal.selected_index =
+                            (modal.selected_index + 1).min(modal.options.len() - 1);
                     }
                 }
                 _ => {
@@ -2809,67 +3262,69 @@ impl AppState {
             for task in tasks.iter_mut() {
                 if let TaskState::Active = task.state {
                     if task.current_tool_execution.is_none() {
-                    // Choose activity type
-                    let activity_type = rand::random::<u8>() % 4;
+                        // Choose activity type
+                        let activity_type = rand::random::<u8>() % 4;
 
-                    match activity_type {
-                        0 => {
-                            // Start thinking
-                            let thoughts = vec![
-                                "Analyzing codebase structure and dependencies",
-                                "Considering edge cases and error handling",
-                                "Planning the implementation strategy",
-                                "Reviewing existing patterns and conventions",
-                                "Evaluating performance implications",
-                                "Checking for potential security issues",
-                                "Assessing test coverage requirements",
-                            ];
-                            if let Some(thought) = thoughts.choose(&mut rand::thread_rng()) {
-                                task.add_thought(thought);
+                        match activity_type {
+                            0 => {
+                                // Start thinking
+                                let thoughts = vec![
+                                    "Analyzing codebase structure and dependencies",
+                                    "Considering edge cases and error handling",
+                                    "Planning the implementation strategy",
+                                    "Reviewing existing patterns and conventions",
+                                    "Evaluating performance implications",
+                                    "Checking for potential security issues",
+                                    "Assessing test coverage requirements",
+                                ];
+                                if let Some(thought) = thoughts.choose(&mut rand::thread_rng()) {
+                                    task.add_thought(thought);
+                                }
+                            }
+                            1 => {
+                                // Start file edit
+                                let files = vec![
+                                    ("src/auth.rs", 5, 3),
+                                    ("src/api.rs", 12, 7),
+                                    ("src/models.rs", 8, 2),
+                                    ("tests/auth_test.rs", 15, 4),
+                                    ("src/lib.rs", 3, 1),
+                                    ("src/config.rs", 6, 8),
+                                    ("src/utils.rs", 9, 5),
+                                ];
+                                if let Some((file, added, removed)) =
+                                    files.choose(&mut rand::thread_rng())
+                                {
+                                    task.add_file_edit(file, *added, *removed);
+                                }
+                            }
+                            2 => {
+                                // Start tool execution
+                                let tools = vec![
+                                    ("cargo build", ""),
+                                    ("cargo check", ""),
+                                    ("cargo test", ""),
+                                    ("read_file", "src/main.rs"),
+                                    ("grep", "TODO|FIXME"),
+                                ];
+                                if let Some((tool, args)) = tools.choose(&mut rand::thread_rng()) {
+                                    task.start_tool_execution(tool, args);
+                                }
+                            }
+                            _ => {
+                                // Another thought
+                                let thoughts = vec![
+                                    "Optimizing database queries for better performance",
+                                    "Implementing proper error handling and logging",
+                                    "Adding comprehensive input validation",
+                                    "Creating unit tests for new functionality",
+                                    "Updating documentation and comments",
+                                ];
+                                if let Some(thought) = thoughts.choose(&mut rand::thread_rng()) {
+                                    task.add_thought(thought);
+                                }
                             }
                         }
-                        1 => {
-                            // Start file edit
-                            let files = vec![
-                                ("src/auth.rs", 5, 3),
-                                ("src/api.rs", 12, 7),
-                                ("src/models.rs", 8, 2),
-                                ("tests/auth_test.rs", 15, 4),
-                                ("src/lib.rs", 3, 1),
-                                ("src/config.rs", 6, 8),
-                                ("src/utils.rs", 9, 5),
-                            ];
-                            if let Some((file, added, removed)) = files.choose(&mut rand::thread_rng()) {
-                                task.add_file_edit(file, *added, *removed);
-                            }
-                        }
-                        2 => {
-                            // Start tool execution
-                            let tools = vec![
-                                ("cargo build", ""),
-                                ("cargo check", ""),
-                                ("cargo test", ""),
-                                ("read_file", "src/main.rs"),
-                                ("grep", "TODO|FIXME"),
-                            ];
-                            if let Some((tool, args)) = tools.choose(&mut rand::thread_rng()) {
-                                task.start_tool_execution(tool, args);
-                            }
-                        }
-                        _ => {
-                            // Another thought
-                            let thoughts = vec![
-                                "Optimizing database queries for better performance",
-                                "Implementing proper error handling and logging",
-                                "Adding comprehensive input validation",
-                                "Creating unit tests for new functionality",
-                                "Updating documentation and comments",
-                            ];
-                            if let Some(thought) = thoughts.choose(&mut rand::thread_rng()) {
-                                task.add_thought(thought);
-                            }
-                        }
-                    }
                     }
                 }
             }
@@ -2883,29 +3338,28 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
     run_app_internal(&Arc::new(AtomicBool::new(true)), true)
 }
 
-fn run_app_internal(running: &Arc<AtomicBool>, enable_raw_mode: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn run_app_internal(
+    running: &Arc<AtomicBool>,
+    enable_raw_mode: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Log run_app start
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("key_log.txt")
-    {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("key_log.txt") {
         let _ = writeln!(file, "=== run_app started ===");
     }
     // Setup terminal with state tracking
     setup_terminal(enable_raw_mode)?;
     let mut stdout = io::stdout();
-    queue!(stdout,
+    queue!(
+        stdout,
         PushKeyboardEnhancementFlags(
             KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-            | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
         )
     )?;
     KB_FLAGS_PUSHED.store(true, Ordering::SeqCst);
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-
 
     let theme = Theme::default();
 
@@ -2921,14 +3375,12 @@ fn run_app_internal(running: &Arc<AtomicBool>, enable_raw_mode: bool) -> Result<
     let (tx_tick, rx_tick) = chan::unbounded::<()>();
 
     // Event reader thread (blocks, near-zero latency)
-    thread::spawn(move || {
-        loop {
-            match crossterm::event::read() {
-                Ok(ev) => {
-                    let _ = tx_ev.send(ev);
-                }
-                Err(_) => break,
+    thread::spawn(move || loop {
+        match crossterm::event::read() {
+            Ok(ev) => {
+                let _ = tx_ev.send(ev);
             }
+            Err(_) => break,
         }
     });
 
@@ -2959,8 +3411,11 @@ fn run_app_internal(running: &Arc<AtomicBool>, enable_raw_mode: bool) -> Result<
             // Simulate activity for active tasks
             app_state.simulate_activity(&mut tasks);
 
+            app_state.poll_autocomplete();
+
             terminal.draw(|frame| {
                 let size = frame.area();
+                app_state.last_textarea_area.set(None);
 
                 // Background fill with theme color
                 let bg = Paragraph::new("").style(Style::default().bg(theme.bg));
@@ -3034,6 +3489,17 @@ fn run_app_internal(running: &Arc<AtomicBool>, enable_raw_mode: bool) -> Result<
                 if matches!(app_state.modal_state, ModalState::Settings) {
                     render_settings_dialog(frame, &app_state, size, &theme);
                 }
+                if let Some(area) = app_state.last_textarea_area.get() {
+                    app_state
+                        .autocomplete
+                        .render(
+                            frame,
+                            area,
+                            &app_state.task_description,
+                            &theme,
+                            app_state.autocomplete_background,
+                        );
+                }
             })?;
 
             // Event-driven main loop
@@ -3056,6 +3522,8 @@ fn run_app_internal(running: &Arc<AtomicBool>, enable_raw_mode: bool) -> Result<
                 recv(rx_tick) -> _ => {
                     // Periodic tick - could be used for animations, but currently just continue
                     // This keeps the app responsive even when no input events occur
+                    app_state.autocomplete_on_tick();
+                    app_state.poll_autocomplete();
                 }
             }
         }
@@ -3084,7 +3552,11 @@ fn precompose_on_background(image: DynamicImage, bg_color: Color) -> DynamicImag
 }
 
 /// Pad the image width so it fills complete terminal cells, avoiding partially transparent columns.
-fn pad_to_cell_width(image: DynamicImage, bg_color: Color, cell_width: Option<u16>) -> DynamicImage {
+fn pad_to_cell_width(
+    image: DynamicImage,
+    bg_color: Color,
+    cell_width: Option<u16>,
+) -> DynamicImage {
     let cell_width = match cell_width {
         Some(width) if width > 0 => width as u32,
         _ => return image,
@@ -3195,7 +3667,6 @@ fn generate_ascii_logo() -> Vec<Line<'static>> {
     ]
 }
 
-
 // Global flag to ensure cleanup only happens once
 static CLEANUP_DONE: AtomicBool = AtomicBool::new(false);
 
@@ -3262,10 +3733,15 @@ fn parse_args() -> Args {
     let enable_raw_mode = !args.contains(&"--no-raw-mode".to_string());
 
     if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-        println!("Usage: {} [OPTIONS]", args.get(0).unwrap_or(&"tui-exploration".to_string()));
+        println!(
+            "Usage: {} [OPTIONS]",
+            args.get(0).unwrap_or(&"tui-exploration".to_string())
+        );
         println!();
         println!("Options:");
-        println!("  --no-raw-mode    Disable raw mode (useful for debugging, disables keyboard input)");
+        println!(
+            "  --no-raw-mode    Disable raw mode (useful for debugging, disables keyboard input)"
+        );
         println!("  --help, -h       Show this help message");
         std::process::exit(0);
     }
@@ -3278,11 +3754,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Simple test logging
     println!("Main function reached");
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("key_log.txt")
-    {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("key_log.txt") {
         let _ = writeln!(file, "=== Application started ===");
         println!("Log file created");
     } else {
@@ -3297,7 +3769,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cleanup_terminal();
         r.store(false, Ordering::SeqCst);
         // Don't exit here - let the main thread handle it
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Install panic hook for cleanup on panic
     let default_panic = std::panic::take_hook();
@@ -3308,9 +3781,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     // Run the app with panic-safe cleanup
-    let result = std::panic::catch_unwind(|| {
-        run_app_internal(&running, args.enable_raw_mode)
-    });
+    let result = std::panic::catch_unwind(|| run_app_internal(&running, args.enable_raw_mode));
 
     // Ensure cleanup happens (in case catch_unwind didn't catch something)
     cleanup_terminal();
