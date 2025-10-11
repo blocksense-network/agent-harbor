@@ -23,6 +23,676 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use ctrlc;
 
+// Comprehensive Command enum for all TUI keyboard shortcuts
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Command {
+    // Cursor Movement
+    MoveToBeginningOfLine,
+    MoveToEndOfLine,
+    MoveForwardOneCharacter,
+    MoveBackwardOneCharacter,
+    MoveToNextLine,
+    MoveToPreviousLine,
+    MoveForwardOneWord,
+    MoveBackwardOneWord,
+    MoveToBeginningOfSentence,
+    MoveToEndOfSentence,
+    ScrollDownOneScreen,
+    ScrollUpOneScreen,
+    RecenterScreenOnCursor,
+    MoveToBeginningOfDocument,
+    MoveToEndOfDocument,
+    MoveToBeginningOfParagraph,
+    MoveToEndOfParagraph,
+    GoToLineNumber,
+    MoveToMatchingParenthesis,
+
+    // Editing and Deletion
+    DeleteCharacterForward,
+    DeleteCharacterBackward,
+    DeleteWordForward,
+    DeleteWordBackward,
+    DeleteToEndOfLine,
+    Cut,
+    Copy,
+    Paste,
+    CycleThroughClipboard,
+    TransposeCharacters,
+    TransposeWords,
+    Undo,
+    Redo,
+    OpenNewLine,
+    IndentOrComplete,
+    DeleteToBeginningOfLine,
+
+    // Text Transformation
+    UppercaseWord,
+    LowercaseWord,
+    CapitalizeWord,
+    FillParagraph,
+    JoinLines,
+
+    // Formatting (Markdown Style)
+    Bold,
+    Italic,
+    Underline,
+    InsertHyperlink,
+
+    // Code Editing
+    ToggleComment,
+    DuplicateLineSelection,
+    MoveLineUp,
+    MoveLineDown,
+    IndentRegion,
+    DedentRegion,
+
+    // Search and Replace
+    IncrementalSearchForward,
+    IncrementalSearchBackward,
+    FindAndReplace,
+    FindAndReplaceWithRegex,
+    FindNext,
+    FindPrevious,
+
+    // Mark and Region
+    SetMark,
+    SelectAll,
+    ExtendSelection,
+}
+
+// Keymap function to translate KeyEvent to Command
+fn key_to_command(key: &crossterm::event::KeyEvent) -> Option<Command> {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+
+    match key.code {
+        // Cursor Movement
+        KeyCode::Home if !ctrl => Some(Command::MoveToBeginningOfLine),
+        KeyCode::End if !ctrl => Some(Command::MoveToEndOfLine),
+        KeyCode::Left if !ctrl && !alt => Some(Command::MoveBackwardOneCharacter),
+        KeyCode::Right if !ctrl && !alt => Some(Command::MoveForwardOneCharacter),
+        KeyCode::Up if !ctrl => Some(Command::MoveToPreviousLine),
+        KeyCode::Down if !ctrl => Some(Command::MoveToNextLine),
+        KeyCode::Left if ctrl => Some(Command::MoveBackwardOneWord),
+        KeyCode::Right if ctrl => Some(Command::MoveForwardOneWord),
+        KeyCode::Char('a') if ctrl => Some(Command::MoveToBeginningOfLine),
+        KeyCode::Char('e') if ctrl => Some(Command::MoveToEndOfLine),
+        KeyCode::Char('f') if ctrl => Some(Command::MoveForwardOneCharacter),
+        KeyCode::Char('b') if ctrl => Some(Command::MoveBackwardOneCharacter),
+        KeyCode::Char('n') if ctrl => Some(Command::MoveToNextLine),
+        KeyCode::Char('p') if ctrl => Some(Command::MoveToPreviousLine),
+        KeyCode::Char('f') if alt => Some(Command::MoveForwardOneWord),
+        KeyCode::Char('b') if alt => Some(Command::MoveBackwardOneWord),
+        KeyCode::Char('a') if alt => Some(Command::MoveToBeginningOfSentence),
+        KeyCode::Char('e') if alt => Some(Command::MoveToEndOfSentence),
+        KeyCode::Char('v') if ctrl => Some(Command::ScrollDownOneScreen),
+        KeyCode::Char('v') if alt => Some(Command::ScrollUpOneScreen),
+        KeyCode::Char('l') if ctrl => Some(Command::RecenterScreenOnCursor),
+        KeyCode::Home if ctrl => Some(Command::MoveToBeginningOfDocument),
+        KeyCode::End if ctrl => Some(Command::MoveToEndOfDocument),
+        KeyCode::Up if alt => Some(Command::MoveToBeginningOfParagraph),
+        KeyCode::Down if alt => Some(Command::MoveToEndOfParagraph),
+        KeyCode::Char('g') if alt && ctrl => Some(Command::GoToLineNumber),
+        KeyCode::Char('f') if alt && ctrl => Some(Command::MoveToMatchingParenthesis),
+
+        // Editing and Deletion
+        KeyCode::Delete if !ctrl && !alt => Some(Command::DeleteCharacterForward),
+        KeyCode::Backspace if !ctrl && !alt => Some(Command::DeleteCharacterBackward),
+        KeyCode::Delete if ctrl => Some(Command::DeleteWordForward),
+        KeyCode::Delete if alt => Some(Command::DeleteWordForward),
+        KeyCode::Backspace if ctrl => Some(Command::DeleteWordBackward),
+        KeyCode::Backspace if alt => Some(Command::DeleteWordBackward),
+        KeyCode::Char('k') if ctrl => Some(Command::DeleteToEndOfLine),
+        KeyCode::Char('w') if ctrl => Some(Command::Cut),
+        KeyCode::Char('c') if ctrl => Some(Command::Copy),
+        KeyCode::Char('v') if ctrl => Some(Command::Paste),
+        KeyCode::Char('y') if alt => Some(Command::CycleThroughClipboard),
+        KeyCode::Char('t') if ctrl => Some(Command::TransposeCharacters),
+        KeyCode::Char('t') if alt => Some(Command::TransposeWords),
+        KeyCode::Char('z') if ctrl => Some(Command::Undo),
+        KeyCode::Char('y') if ctrl && shift => Some(Command::Redo),
+        KeyCode::Char('o') if ctrl => Some(Command::OpenNewLine),
+        KeyCode::Tab => Some(Command::IndentOrComplete),
+        KeyCode::Backspace if ctrl && alt => Some(Command::DeleteToBeginningOfLine),
+        KeyCode::Char('h') if ctrl => Some(Command::DeleteCharacterBackward), // Terminal control code
+
+        // Text Transformation
+        KeyCode::Char('u') if alt => Some(Command::UppercaseWord),
+        KeyCode::Char('l') if alt => Some(Command::LowercaseWord),
+        KeyCode::Char('c') if alt => Some(Command::CapitalizeWord),
+        KeyCode::Char('q') if alt => Some(Command::FillParagraph),
+        KeyCode::Char('^') if alt => Some(Command::JoinLines),
+
+        // Formatting (Markdown Style)
+        KeyCode::Char('b') if ctrl => Some(Command::Bold),
+        KeyCode::Char('i') if ctrl => Some(Command::Italic),
+        KeyCode::Char('u') if ctrl => Some(Command::Underline),
+        KeyCode::Char('k') if ctrl => Some(Command::InsertHyperlink),
+
+        // Code Editing
+        KeyCode::Char(';') if alt => Some(Command::ToggleComment),
+        KeyCode::Char('d') if ctrl => Some(Command::DuplicateLineSelection),
+        KeyCode::Up if alt && shift => Some(Command::MoveLineUp),
+        KeyCode::Down if alt && shift => Some(Command::MoveLineDown),
+        KeyCode::Char(']') if ctrl => Some(Command::IndentRegion),
+        KeyCode::Char('[') if ctrl => Some(Command::DedentRegion),
+
+        // Search and Replace
+        KeyCode::Char('s') if ctrl => Some(Command::IncrementalSearchForward),
+        KeyCode::Char('r') if ctrl => Some(Command::IncrementalSearchBackward),
+        KeyCode::Char('h') if ctrl => Some(Command::FindAndReplace),
+        KeyCode::Char('%') if alt && ctrl => Some(Command::FindAndReplaceWithRegex),
+        KeyCode::Char('g') if ctrl => Some(Command::FindNext),
+        KeyCode::Char('g') if ctrl && shift => Some(Command::FindPrevious),
+
+        // Mark and Region
+        KeyCode::Char(' ') if ctrl => Some(Command::SetMark),
+        KeyCode::Char('a') if ctrl => Some(Command::SelectAll),
+        KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down if shift => Some(Command::ExtendSelection),
+
+        _ => None,
+    }
+}
+
+// Execute a command on the TextArea
+fn execute_command(textarea: &mut TextArea<'static>, command: Command) {
+    use tui_textarea::{CursorMove, Scrolling};
+
+    match command {
+        // Cursor Movement
+        Command::MoveToBeginningOfLine => {
+            textarea.move_cursor(CursorMove::Head);
+        }
+        Command::MoveToEndOfLine => {
+            textarea.move_cursor(CursorMove::End);
+        }
+        Command::MoveForwardOneCharacter => {
+            textarea.move_cursor(CursorMove::Forward);
+        }
+        Command::MoveBackwardOneCharacter => {
+            textarea.move_cursor(CursorMove::Back);
+        }
+        Command::MoveToNextLine => {
+            textarea.move_cursor(CursorMove::Down);
+        }
+        Command::MoveToPreviousLine => {
+            textarea.move_cursor(CursorMove::Up);
+        }
+        Command::MoveForwardOneWord => {
+            textarea.move_cursor(CursorMove::WordForward);
+        }
+        Command::MoveBackwardOneWord => {
+            textarea.move_cursor(CursorMove::WordBack);
+        }
+        Command::MoveToBeginningOfSentence => {
+            // Implementation needed: scan backwards for sentence boundary
+            // For now, just move to beginning of line
+            textarea.move_cursor(CursorMove::Head);
+        }
+        Command::MoveToEndOfSentence => {
+            // Implementation needed: scan forwards for sentence boundary
+            // For now, just move to end of line
+            textarea.move_cursor(CursorMove::End);
+        }
+        Command::ScrollDownOneScreen => {
+            textarea.scroll(Scrolling::PageDown);
+        }
+        Command::ScrollUpOneScreen => {
+            textarea.scroll(Scrolling::PageUp);
+        }
+        Command::RecenterScreenOnCursor => {
+            // Implementation needed: calculate center position
+            // For now, just scroll to cursor
+            textarea.move_cursor(CursorMove::InViewport);
+        }
+        Command::MoveToBeginningOfDocument => {
+            textarea.move_cursor(CursorMove::Top);
+        }
+        Command::MoveToEndOfDocument => {
+            textarea.move_cursor(CursorMove::Bottom);
+        }
+        Command::MoveToBeginningOfParagraph => {
+            textarea.move_cursor(CursorMove::ParagraphBack);
+        }
+        Command::MoveToEndOfParagraph => {
+            textarea.move_cursor(CursorMove::ParagraphForward);
+        }
+        Command::GoToLineNumber => {
+            // Implementation needed: prompt for line number
+            // For now, do nothing
+        }
+        Command::MoveToMatchingParenthesis => {
+            // Implementation needed: find matching bracket
+            // For now, do nothing
+        }
+
+        // Editing and Deletion
+        Command::DeleteCharacterForward => {
+            textarea.delete_next_char();
+        }
+        Command::DeleteCharacterBackward => {
+            textarea.delete_char();
+        }
+        Command::DeleteWordForward => {
+            textarea.delete_next_word();
+        }
+        Command::DeleteWordBackward => {
+            textarea.delete_word();
+        }
+        Command::DeleteToEndOfLine => {
+            textarea.delete_line_by_end();
+        }
+        Command::Cut => {
+            textarea.cut();
+        }
+        Command::Copy => {
+            textarea.copy();
+        }
+        Command::Paste => {
+            textarea.paste();
+        }
+        Command::CycleThroughClipboard => {
+            // Implementation needed: cycle through yank ring
+            // For now, just paste
+            textarea.paste();
+        }
+        Command::TransposeCharacters => {
+            // Transpose the character before cursor with the character at cursor
+            let cursor = textarea.cursor();
+            let lines = textarea.lines();
+
+            if let Some(line) = lines.get(cursor.0) {
+                let line_chars: Vec<char> = line.chars().collect();
+
+                // Need at least 2 characters: one before cursor and one at/after cursor
+                if cursor.1 > 0 && cursor.1 <= line_chars.len() {
+                    let before_idx = cursor.1 - 1;
+                    let at_idx = cursor.1;
+
+                    if at_idx < line_chars.len() {
+                        // Swap characters: delete both and reinsert in reverse order
+                        textarea.move_cursor(CursorMove::Back); // Move to before_idx
+                        let char_before = line_chars[before_idx];
+                        let char_at = line_chars[at_idx];
+
+                        // Delete both characters
+                        textarea.delete_next_char(); // Delete char_before
+                        textarea.delete_next_char(); // Delete char_at
+
+                        // Reinsert in reverse order
+                        textarea.insert_char(char_at);
+                        textarea.insert_char(char_before);
+
+                        // Move cursor back to after the transposed characters
+                        textarea.move_cursor(CursorMove::Back);
+                    }
+                }
+            }
+        }
+        Command::TransposeWords => {
+            // Implementation needed: transpose words around cursor
+            // This is complex - need to find word boundaries and swap words
+            // For now, do nothing
+        }
+        Command::Undo => {
+            textarea.undo();
+        }
+        Command::Redo => {
+            textarea.redo();
+        }
+        Command::OpenNewLine => {
+            textarea.insert_newline();
+        }
+        Command::IndentOrComplete => {
+            // For now, just insert tab (indent)
+            textarea.insert_tab();
+        }
+        Command::DeleteToBeginningOfLine => {
+            textarea.delete_line_by_head();
+        }
+
+        // Text Transformation
+        Command::UppercaseWord => {
+            // Get current cursor position
+            let cursor = textarea.cursor();
+            let lines = textarea.lines();
+
+            if let Some(line) = lines.get(cursor.0) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let mut start = cursor.1;
+                let mut end = cursor.1;
+
+                // Find word boundaries
+                while start > 0 && line_chars[start - 1].is_alphanumeric() {
+                    start -= 1;
+                }
+                while end < line_chars.len() && line_chars[end].is_alphanumeric() {
+                    end += 1;
+                }
+
+                if start < end {
+                    let word = &line[start..end];
+                    let uppercased = word.to_uppercase();
+
+                    // Replace the word
+                    for _ in start..end {
+                        textarea.delete_next_char();
+                    }
+                    for _ in 0..start {
+                        textarea.move_cursor(CursorMove::Back);
+                    }
+                    for ch in uppercased.chars() {
+                        textarea.insert_char(ch);
+                    }
+                }
+            }
+        }
+        Command::LowercaseWord => {
+            // Get current cursor position
+            let cursor = textarea.cursor();
+            let lines = textarea.lines();
+
+            if let Some(line) = lines.get(cursor.0) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let mut start = cursor.1;
+                let mut end = cursor.1;
+
+                // Find word boundaries
+                while start > 0 && line_chars[start - 1].is_alphanumeric() {
+                    start -= 1;
+                }
+                while end < line_chars.len() && line_chars[end].is_alphanumeric() {
+                    end += 1;
+                }
+
+                if start < end {
+                    let word = &line[start..end];
+                    let lowercased = word.to_lowercase();
+
+                    // Replace the word
+                    for _ in start..end {
+                        textarea.delete_next_char();
+                    }
+                    for _ in 0..start {
+                        textarea.move_cursor(CursorMove::Back);
+                    }
+                    for ch in lowercased.chars() {
+                        textarea.insert_char(ch);
+                    }
+                }
+            }
+        }
+        Command::CapitalizeWord => {
+            // Get current cursor position
+            let cursor = textarea.cursor();
+            let lines = textarea.lines();
+
+            if let Some(line) = lines.get(cursor.0) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let mut start = cursor.1;
+                let mut end = cursor.1;
+
+                // Find word boundaries
+                while start > 0 && line_chars[start - 1].is_alphanumeric() {
+                    start -= 1;
+                }
+                while end < line_chars.len() && line_chars[end].is_alphanumeric() {
+                    end += 1;
+                }
+
+                if start < end {
+                    let word = &line[start..end];
+                    let mut chars = word.chars();
+                    let capitalized = if let Some(first) = chars.next() {
+                        first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                    } else {
+                        String::new()
+                    };
+
+                    // Replace the word
+                    for _ in start..end {
+                        textarea.delete_next_char();
+                    }
+                    for _ in 0..start {
+                        textarea.move_cursor(CursorMove::Back);
+                    }
+                    for ch in capitalized.chars() {
+                        textarea.insert_char(ch);
+                    }
+                }
+            }
+        }
+        Command::FillParagraph => {
+            // Implementation needed: reformat paragraph
+            // For now, do nothing
+        }
+        Command::JoinLines => {
+            // Join current line with next line
+            textarea.delete_newline();
+        }
+
+        // Formatting (Markdown Style)
+        Command::Bold => {
+            // Check if there's a selection
+            let selection_range = textarea.selection_range();
+            if selection_range.is_some() {
+                // Wrap selection in **
+                textarea.insert_str("**");
+                // Move cursor to end of selection and add closing **
+                // This is tricky - for now just insert at cursor
+                textarea.insert_str("****");
+                textarea.move_cursor(CursorMove::Back);
+                textarea.move_cursor(CursorMove::Back);
+            } else {
+                // No selection - insert ** and position cursor between them
+                textarea.insert_str("****");
+                textarea.move_cursor(CursorMove::Back);
+                textarea.move_cursor(CursorMove::Back);
+            }
+        }
+        Command::Italic => {
+            // Check if there's a selection
+            let selection_range = textarea.selection_range();
+            if selection_range.is_some() {
+                // Wrap selection in *
+                textarea.insert_str("*");
+                // Move to end and add closing *
+                textarea.insert_str("**");
+                textarea.move_cursor(CursorMove::Back);
+            } else {
+                // No selection - insert ** and position cursor between them
+                textarea.insert_str("**");
+                textarea.move_cursor(CursorMove::Back);
+            }
+        }
+        Command::Underline => {
+            // Check if there's a selection
+            let selection_range = textarea.selection_range();
+            if selection_range.is_some() {
+                // Wrap selection in __
+                textarea.insert_str("__");
+                // Move to end and add closing __
+                textarea.insert_str("____");
+                textarea.move_cursor(CursorMove::Back);
+                textarea.move_cursor(CursorMove::Back);
+            } else {
+                // No selection - insert ____ and position cursor between them
+                textarea.insert_str("____");
+                textarea.move_cursor(CursorMove::Back);
+                textarea.move_cursor(CursorMove::Back);
+            }
+        }
+        Command::InsertHyperlink => {
+            // Insert [text](url) and position cursor appropriately
+            textarea.insert_str("[](url)");
+            textarea.move_cursor(CursorMove::Back);
+            textarea.move_cursor(CursorMove::Back);
+            textarea.move_cursor(CursorMove::Back);
+            textarea.move_cursor(CursorMove::Back);
+            textarea.move_cursor(CursorMove::Back);
+        }
+
+        // Code Editing
+        Command::ToggleComment => {
+            // Toggle comment on current line - use # for comments
+            let cursor = textarea.cursor();
+            if let Some(line) = textarea.lines().get(cursor.0).cloned() {
+                textarea.move_cursor(CursorMove::Head);
+
+                if line.trim_start().starts_with("# ") {
+                    // Uncomment: remove "# " from start of line
+                    while let Some(current_line) = textarea.lines().get(textarea.cursor().0) {
+                        if current_line.starts_with("# ") {
+                            textarea.delete_next_char();
+                            textarea.delete_next_char();
+                            break;
+                        } else if current_line.starts_with('#') {
+                            textarea.delete_next_char();
+                            break;
+                        } else if current_line.starts_with(' ') || current_line.starts_with('\t') {
+                            textarea.delete_next_char();
+                        } else {
+                            break;
+                        }
+                    }
+                } else if line.trim_start().starts_with('#') {
+                    // Uncomment: remove # from start of line
+                    while let Some(current_line) = textarea.lines().get(textarea.cursor().0) {
+                        if current_line.starts_with('#') {
+                            textarea.delete_next_char();
+                            break;
+                        } else if current_line.starts_with(' ') || current_line.starts_with('\t') {
+                            textarea.delete_next_char();
+                        } else {
+                            break;
+                        }
+                    }
+                } else {
+                    // Comment: insert "# " at beginning of line content
+                    // Skip leading whitespace
+                    while let Some(current_line) = textarea.lines().get(textarea.cursor().0) {
+                        if current_line.starts_with(' ') || current_line.starts_with('\t') {
+                            textarea.move_cursor(CursorMove::Forward);
+                        } else {
+                            break;
+                        }
+                    }
+                    textarea.insert_str("# ");
+                }
+
+                // Restore cursor position within the line
+                textarea.move_cursor(CursorMove::Jump(cursor.0 as u16, cursor.1.max(2) as u16));
+            }
+        }
+        Command::DuplicateLineSelection => {
+            // Duplicate current line or selection
+            let selection_range = textarea.selection_range();
+            if selection_range.is_some() {
+                // Duplicate selection
+                textarea.copy();
+                textarea.insert_newline();
+                textarea.paste();
+            } else {
+                // Duplicate current line
+                let cursor = textarea.cursor();
+                textarea.move_cursor(CursorMove::Head);
+                textarea.start_selection();
+                textarea.move_cursor(CursorMove::End);
+                textarea.copy();
+                textarea.cancel_selection();
+                textarea.move_cursor(CursorMove::End);
+                textarea.insert_newline();
+                textarea.paste();
+                // Restore cursor to original line
+                textarea.move_cursor(CursorMove::Jump(cursor.0 as u16, cursor.1 as u16));
+            }
+        }
+        Command::MoveLineUp => {
+            // Implementation needed: move line up
+            // This is complex - requires manipulating multiple lines
+        }
+        Command::MoveLineDown => {
+            // Implementation needed: move line down
+            // This is complex - requires manipulating multiple lines
+        }
+        Command::IndentRegion => {
+            // Indent current line or selected lines
+            let selection_range = textarea.selection_range();
+            if selection_range.is_some() {
+                // TODO: Indent all selected lines
+                textarea.insert_tab();
+            } else {
+                // Indent current line
+                let cursor = textarea.cursor();
+                textarea.move_cursor(CursorMove::Head);
+                textarea.insert_tab();
+                // Adjust cursor position
+                textarea.move_cursor(CursorMove::Jump(cursor.0 as u16, (cursor.1 + 4) as u16)); // Assume tab = 4 spaces
+            }
+        }
+        Command::DedentRegion => {
+            // Dedent current line or selected lines
+            let cursor = textarea.cursor();
+            textarea.move_cursor(CursorMove::Head);
+
+            // Remove up to 4 spaces or 1 tab from start of line
+            for _ in 0..4 {
+                if let Some(line) = textarea.lines().get(textarea.cursor().0) {
+                    if line.starts_with('\t') {
+                        textarea.delete_next_char();
+                        break;
+                    } else if line.starts_with(' ') {
+                        textarea.delete_next_char();
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            // Restore cursor position, adjusting for removed indentation
+            let new_cursor_col = if cursor.1 >= 4 { cursor.1 - 4 } else { 0 };
+            textarea.move_cursor(CursorMove::Jump(cursor.0 as u16, new_cursor_col as u16));
+        }
+
+        // Search and Replace
+        Command::IncrementalSearchForward => {
+            // Implementation needed: start incremental search
+        }
+        Command::IncrementalSearchBackward => {
+            // Implementation needed: start incremental search backward
+        }
+        Command::FindAndReplace => {
+            // Implementation needed: open find/replace dialog
+        }
+        Command::FindAndReplaceWithRegex => {
+            // Implementation needed: open regex find/replace dialog
+        }
+        Command::FindNext => {
+            // Implementation needed: find next occurrence
+            // TODO: Implement search functionality
+        }
+        Command::FindPrevious => {
+            // Implementation needed: find previous occurrence
+            // TODO: Implement search functionality
+        }
+
+        // Mark and Region
+        Command::SetMark => {
+            textarea.start_selection();
+        }
+        Command::SelectAll => {
+            textarea.select_all();
+        }
+        Command::ExtendSelection => {
+            // This should be handled by the keymap logic for shift+arrows
+            // For now, do nothing special
+        }
+    }
+}
+
 // Logging function for debugging key events
 fn log_key_event(key: &crossterm::event::KeyEvent, context: &str) {
     if let Ok(mut file) = OpenOptions::new()
@@ -1531,14 +2201,8 @@ impl AppState {
                 match self.focus_element {
                     FocusElement::TaskDescription => {
                         if shift_pressed {
-                            // Shift+Enter: Let tui-textarea handle it (creates newline)
-                            let input = tui_textarea::Input {
-                                key: tui_textarea::Key::Enter,
-                                ctrl: false,
-                                alt: false,
-                                shift: true,
-                            };
-                            self.task_description.input(input);
+                            // Shift+Enter: Insert newline using command system
+                            execute_command(&mut self.task_description, Command::OpenNewLine);
                         } else {
                             // Regular Enter: Launch task
                             let lines: Vec<String> = self.task_description.lines().into_iter().map(|s| s.to_string()).collect();
@@ -1622,14 +2286,10 @@ impl AppState {
             KeyCode::Right => {
                 match self.focus_element {
                     FocusElement::TaskDescription => {
-                        // When task description is focused, let textarea handle Right arrow
-                        let textarea_input = tui_textarea::Input {
-                            key: tui_textarea::Key::Right,
-                            ctrl: key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL),
-                            alt: key.modifiers.contains(crossterm::event::KeyModifiers::ALT),
-                            shift: key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT),
-                        };
-                        self.task_description.input(textarea_input);
+                        // When task description is focused, handle Right arrow via command system
+                        if let Some(command) = key_to_command(&key) {
+                            execute_command(&mut self.task_description, command);
+                        }
                         return false;
                     }
                     _ => {
@@ -1661,14 +2321,10 @@ impl AppState {
             KeyCode::Left => {
                 match self.focus_element {
                     FocusElement::TaskDescription => {
-                        // When task description is focused, let textarea handle Left arrow
-                        let textarea_input = tui_textarea::Input {
-                            key: tui_textarea::Key::Left,
-                            ctrl: key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL),
-                            alt: key.modifiers.contains(crossterm::event::KeyModifiers::ALT),
-                            shift: key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT),
-                        };
-                        self.task_description.input(textarea_input);
+                        // When task description is focused, handle Left arrow via command system
+                        if let Some(command) = key_to_command(&key) {
+                            execute_command(&mut self.task_description, command);
+                        }
                         return false;
                     }
                     _ => {
@@ -1728,72 +2384,31 @@ impl AppState {
                     _ => {}
                 }
             }
-            // Handle text input for description - let TextArea handle it
-            _ if matches!(self.focus_element, FocusElement::TaskDescription) && !matches!(key.code, crossterm::event::KeyCode::Enter) => {
-                use tui_textarea::{Key, CursorMove};
-
+            // Handle text input for description using new command system
+            _ if matches!(self.focus_element, FocusElement::TaskDescription) => {
                 // Log the key event for debugging
                 log_key_event(&key, "TEXTAREA");
 
-                // Check for CUA shortcuts first
-                let ctrl = key.modifiers.intersects(crossterm::event::KeyModifiers::CONTROL);
-                let alt = key.modifiers.intersects(crossterm::event::KeyModifiers::ALT);
-                if ctrl || alt {
-                    match key.code {
-                        // Delete word backward: Ctrl+Backspace (CUA), Alt+Backspace (Emacs), Ctrl+H (terminal control code)
-                        crossterm::event::KeyCode::Backspace | crossterm::event::KeyCode::Char('h') => {
-                            self.task_description.delete_word();
-                            return false;
-                        }
-                        // Delete word forward: Ctrl+Delete (CUA), Alt+Delete (Emacs), Alt+D (Emacs)
-                        crossterm::event::KeyCode::Delete => {
-                            self.task_description.delete_next_word();
-                            return false;
-                        }
-                        // Move word backward: Ctrl+Left (CUA), Alt+Left, Alt+B (Emacs)
-                        crossterm::event::KeyCode::Left => {
-                            self.task_description.move_cursor(CursorMove::WordBack);
-                            return false;
-                        }
-                        // Move word forward: Ctrl+Right (CUA), Alt+Right, Alt+F (Emacs)
-                        crossterm::event::KeyCode::Right => {
-                            self.task_description.move_cursor(CursorMove::WordForward);
-                            return false;
-                        }
-                        // Additional Emacs bindings
-                        crossterm::event::KeyCode::Char('b') if alt => {
-                            self.task_description.move_cursor(CursorMove::WordBack);
-                            return false;
-                        }
-                        crossterm::event::KeyCode::Char('f') if alt => {
-                            self.task_description.move_cursor(CursorMove::WordForward);
-                            return false;
-                        }
-                        crossterm::event::KeyCode::Char('d') if alt => {
-                            self.task_description.delete_next_word();
-                            return false;
-                        }
-                        crossterm::event::KeyCode::Char('w') if ctrl => {
-                            self.task_description.delete_word();
-                            return false;
-                        }
-                        _ => {}
-                    }
+                // First, check if this is a command
+                if let Some(command) = key_to_command(&key) {
+                    execute_command(&mut self.task_description, command);
+                    return false;
                 }
 
-                // Fall back to default tui-textarea handling
+                // If not a command, handle as regular text input using input_without_shortcuts
                 let textarea_key = match key.code {
-                    crossterm::event::KeyCode::Char(c) => Key::Char(c),
-                    crossterm::event::KeyCode::Backspace => Key::Backspace,
-                    crossterm::event::KeyCode::Left => Key::Left,
-                    crossterm::event::KeyCode::Right => Key::Right,
-                    crossterm::event::KeyCode::Up => Key::Up,
-                    crossterm::event::KeyCode::Down => Key::Down,
-                    crossterm::event::KeyCode::Tab => Key::Tab,
-                    crossterm::event::KeyCode::Delete => Key::Delete,
-                    crossterm::event::KeyCode::Home => Key::Home,
-                    crossterm::event::KeyCode::End => Key::End,
-                    _ => Key::Null,
+                    crossterm::event::KeyCode::Char(c) => tui_textarea::Key::Char(c),
+                    crossterm::event::KeyCode::Backspace => tui_textarea::Key::Backspace,
+                    crossterm::event::KeyCode::Enter => tui_textarea::Key::Enter,
+                    crossterm::event::KeyCode::Left => tui_textarea::Key::Left,
+                    crossterm::event::KeyCode::Right => tui_textarea::Key::Right,
+                    crossterm::event::KeyCode::Up => tui_textarea::Key::Up,
+                    crossterm::event::KeyCode::Down => tui_textarea::Key::Down,
+                    crossterm::event::KeyCode::Tab => tui_textarea::Key::Tab,
+                    crossterm::event::KeyCode::Delete => tui_textarea::Key::Delete,
+                    crossterm::event::KeyCode::Home => tui_textarea::Key::Home,
+                    crossterm::event::KeyCode::End => tui_textarea::Key::End,
+                    _ => tui_textarea::Key::Null,
                 };
 
                 let textarea_input = tui_textarea::Input {
@@ -1803,7 +2418,7 @@ impl AppState {
                     shift: key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT),
                 };
 
-                self.task_description.input(textarea_input);
+                self.task_description.input_without_shortcuts(textarea_input);
             }
             _ => {}
         }
