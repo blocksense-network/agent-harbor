@@ -191,7 +191,6 @@ fn key_to_command(key: &crossterm::event::KeyEvent) -> Option<Command> {
         // Mark and Region
         KeyCode::Char(' ') if ctrl => Some(Command::SetMark),
         KeyCode::Char('a') if ctrl => Some(Command::SelectAll),
-        KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down if shift => Some(Command::ExtendSelection),
 
         _ => None,
     }
@@ -659,24 +658,28 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command) {
 
         // Search and Replace
         Command::IncrementalSearchForward => {
-            // Implementation needed: start incremental search
+            // Implementation needed: enter incremental search mode
+            // Search functionality requires tui-textarea search API which may not be available in current version
         }
         Command::IncrementalSearchBackward => {
-            // Implementation needed: start incremental search backward
+            // Implementation needed: enter incremental search backward mode
+            // Search functionality requires tui-textarea search API which may not be available in current version
         }
         Command::FindAndReplace => {
             // Implementation needed: open find/replace dialog
+            // Would need modal dialog implementation
         }
         Command::FindAndReplaceWithRegex => {
             // Implementation needed: open regex find/replace dialog
+            // Would need modal dialog implementation
         }
         Command::FindNext => {
             // Implementation needed: find next occurrence
-            // TODO: Implement search functionality
+            // Requires search pattern state and tui-textarea search API
         }
         Command::FindPrevious => {
             // Implementation needed: find previous occurrence
-            // TODO: Implement search functionality
+            // Requires search pattern state and tui-textarea search API
         }
 
         // Mark and Region
@@ -687,8 +690,8 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command) {
             textarea.select_all();
         }
         Command::ExtendSelection => {
-            // This should be handled by the keymap logic for shift+arrows
-            // For now, do nothing special
+            // This command is handled specially in the key event processing
+            // The keymap detects shift+arrow but we handle it in the main event loop
         }
     }
 }
@@ -787,6 +790,13 @@ enum ModalState {
     ModelSearch,
     ModelSelection,
     Settings,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum SearchMode {
+    None,
+    IncrementalForward,
+    IncrementalBackward,
 }
 
 #[derive(Debug, Clone)]
@@ -918,6 +928,7 @@ struct AppState {
     selected_card: usize,
     focus_element: FocusElement,
     modal_state: ModalState,
+    search_mode: SearchMode,
     fuzzy_modal: Option<FuzzySearchModal>,
     model_selection_modal: Option<ModelSelectionModal>,
     task_description: TextArea<'static>,
@@ -2075,6 +2086,7 @@ impl AppState {
             selected_card: 0,
             focus_element: FocusElement::TaskDescription,
             modal_state: ModalState::None,
+            search_mode: SearchMode::None,
             fuzzy_modal: None,
             model_selection_modal: None,
             task_description: textarea,
@@ -2388,6 +2400,46 @@ impl AppState {
             _ if matches!(self.focus_element, FocusElement::TaskDescription) => {
                 // Log the key event for debugging
                 log_key_event(&key, "TEXTAREA");
+
+                // Special handling for shift+arrow keys to extend selection
+                let shift_pressed = key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT);
+                if shift_pressed {
+                    match key.code {
+                        crossterm::event::KeyCode::Left => {
+                            // Start selection if not already active, then move left
+                            if self.task_description.selection_range().is_none() {
+                                self.task_description.start_selection();
+                            }
+                            self.task_description.move_cursor(tui_textarea::CursorMove::Back);
+                            return false;
+                        }
+                        crossterm::event::KeyCode::Right => {
+                            // Start selection if not already active, then move right
+                            if self.task_description.selection_range().is_none() {
+                                self.task_description.start_selection();
+                            }
+                            self.task_description.move_cursor(tui_textarea::CursorMove::Forward);
+                            return false;
+                        }
+                        crossterm::event::KeyCode::Up => {
+                            // Start selection if not already active, then move up
+                            if self.task_description.selection_range().is_none() {
+                                self.task_description.start_selection();
+                            }
+                            self.task_description.move_cursor(tui_textarea::CursorMove::Up);
+                            return false;
+                        }
+                        crossterm::event::KeyCode::Down => {
+                            // Start selection if not already active, then move down
+                            if self.task_description.selection_range().is_none() {
+                                self.task_description.start_selection();
+                            }
+                            self.task_description.move_cursor(tui_textarea::CursorMove::Down);
+                            return false;
+                        }
+                        _ => {}
+                    }
+                }
 
                 // First, check if this is a command
                 if let Some(command) = key_to_command(&key) {
