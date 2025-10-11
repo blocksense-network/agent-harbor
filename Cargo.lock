@@ -6291,6 +6291,7 @@ checksum = "0a5318dd619ed73c52a9417ad19046724effc1287fb75cdcc4eca1d6ac1acbae"
 dependencies = [
  "crossterm 0.28.1",
  "ratatui 0.29.0",
+ "regex",
  "unicode-width 0.2.0",
 ]
 

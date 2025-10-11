@@ -197,7 +197,7 @@ fn key_to_command(key: &crossterm::event::KeyEvent) -> Option<Command> {
 }
 
 // Execute a command on the TextArea
-fn execute_command(textarea: &mut TextArea<'static>, command: Command) {
+fn execute_command(textarea: &mut TextArea<'static>, command: Command, search_mode: &mut SearchMode) {
     use tui_textarea::{CursorMove, Scrolling};
 
     match command {
@@ -658,12 +658,15 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command) {
 
         // Search and Replace
         Command::IncrementalSearchForward => {
-            // Implementation needed: enter incremental search mode
-            // Search functionality requires tui-textarea search API which may not be available in current version
+            // Enter incremental search forward mode
+            // We'll collect keystrokes in the main event loop
+            *search_mode = SearchMode::IncrementalForward;
+            let _ = textarea.set_search_pattern("".to_string());
         }
         Command::IncrementalSearchBackward => {
-            // Implementation needed: enter incremental search backward mode
-            // Search functionality requires tui-textarea search API which may not be available in current version
+            // Enter incremental search backward mode
+            *search_mode = SearchMode::IncrementalBackward;
+            let _ = textarea.set_search_pattern("".to_string());
         }
         Command::FindAndReplace => {
             // Implementation needed: open find/replace dialog
@@ -674,12 +677,16 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command) {
             // Would need modal dialog implementation
         }
         Command::FindNext => {
-            // Implementation needed: find next occurrence
-            // Requires search pattern state and tui-textarea search API
+            // Find next occurrence of current search pattern
+            if let Some(_pattern) = textarea.search_pattern() {
+                textarea.search_forward(false);
+            }
         }
         Command::FindPrevious => {
-            // Implementation needed: find previous occurrence
-            // Requires search pattern state and tui-textarea search API
+            // Find previous occurrence of current search pattern
+            if let Some(_pattern) = textarea.search_pattern() {
+                textarea.search_back(false);
+            }
         }
 
         // Mark and Region
@@ -2214,7 +2221,7 @@ impl AppState {
                     FocusElement::TaskDescription => {
                         if shift_pressed {
                             // Shift+Enter: Insert newline using command system
-                            execute_command(&mut self.task_description, Command::OpenNewLine);
+                            execute_command(&mut self.task_description, Command::OpenNewLine, &mut self.search_mode);
                         } else {
                             // Regular Enter: Launch task
                             let lines: Vec<String> = self.task_description.lines().into_iter().map(|s| s.to_string()).collect();
@@ -2300,7 +2307,7 @@ impl AppState {
                     FocusElement::TaskDescription => {
                         // When task description is focused, handle Right arrow via command system
                         if let Some(command) = key_to_command(&key) {
-                            execute_command(&mut self.task_description, command);
+                            execute_command(&mut self.task_description, command, &mut self.search_mode);
                         }
                         return false;
                     }
@@ -2335,7 +2342,7 @@ impl AppState {
                     FocusElement::TaskDescription => {
                         // When task description is focused, handle Left arrow via command system
                         if let Some(command) = key_to_command(&key) {
-                            execute_command(&mut self.task_description, command);
+                            execute_command(&mut self.task_description, command, &mut self.search_mode);
                         }
                         return false;
                     }
@@ -2401,6 +2408,58 @@ impl AppState {
                 // Log the key event for debugging
                 log_key_event(&key, "TEXTAREA");
 
+                // Handle incremental search mode
+                if !matches!(self.search_mode, SearchMode::None) {
+                    match key.code {
+                        KeyCode::Esc => {
+                            // Exit search mode
+                            self.search_mode = SearchMode::None;
+                            return false;
+                        }
+                        KeyCode::Enter => {
+                            // Find next/previous depending on search mode
+                            match self.search_mode {
+                                SearchMode::IncrementalForward => {
+                                    if let Some(_pattern) = self.task_description.search_pattern() {
+                                        self.task_description.search_forward(false);
+                                    }
+                                }
+                                SearchMode::IncrementalBackward => {
+                                    if let Some(_pattern) = self.task_description.search_pattern() {
+                                        self.task_description.search_back(false);
+                                    }
+                                }
+                                SearchMode::None => {}
+                            }
+                            return false;
+                        }
+                        KeyCode::Char(c) if c.is_alphanumeric() || c.is_whitespace() || "!@#$%^&*()_+-=[]{}|;:,.<>?".contains(c) => {
+                            // Add character to search pattern
+                            let new_pattern = format!("{}", c); // For simplicity, start fresh each time
+                            let _ = self.task_description.set_search_pattern(new_pattern);
+
+                            // Auto-search as we type
+                            match self.search_mode {
+                                SearchMode::IncrementalForward => {
+                                    self.task_description.search_forward(false);
+                                }
+                                SearchMode::IncrementalBackward => {
+                                    self.task_description.search_back(false);
+                                }
+                                SearchMode::None => {}
+                            }
+                            return false;
+                        }
+                        KeyCode::Backspace => {
+                            // Could remove last character from search pattern
+                            // For now, just clear it
+                            let _ = self.task_description.set_search_pattern("".to_string());
+                            return false;
+                        }
+                        _ => {}
+                    }
+                }
+
                 // Special handling for shift+arrow keys to extend selection
                 let shift_pressed = key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT);
                 if shift_pressed {
@@ -2443,7 +2502,7 @@ impl AppState {
 
                 // First, check if this is a command
                 if let Some(command) = key_to_command(&key) {
-                    execute_command(&mut self.task_description, command);
+                    execute_command(&mut self.task_description, command, &mut self.search_mode);
                     return false;
                 }
 
