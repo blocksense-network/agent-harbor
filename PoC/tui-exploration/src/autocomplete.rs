@@ -427,10 +427,7 @@ impl InlineAutocomplete {
             let query = self.vm.query.trim();
             let only_exact = self.vm.results.len() == 1
                 && !query.is_empty()
-                && self.vm.results[0]
-                    .item
-                    .label
-                    .eq_ignore_ascii_case(query);
+                && self.vm.results[0].item.label.eq_ignore_ascii_case(query);
 
             if self.vm.results.is_empty() || only_exact {
                 self.vm.results.clear();

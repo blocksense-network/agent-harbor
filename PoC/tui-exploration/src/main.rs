@@ -110,6 +110,12 @@ enum Command {
     ExtendSelection,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct CommandEffect {
+    text_changed: bool,
+    caret_moved: bool,
+}
+
 // Keymap function to translate KeyEvent to Command
 fn key_to_command(key: &crossterm::event::KeyEvent) -> Option<Command> {
     use crossterm::event::{KeyCode, KeyModifiers};
@@ -207,8 +213,15 @@ fn key_to_command(key: &crossterm::event::KeyEvent) -> Option<Command> {
 }
 
 // Execute a command on the TextArea
-fn execute_command(textarea: &mut TextArea<'static>, command: Command, search_mode: &mut SearchMode) {
+fn execute_command(
+    textarea: &mut TextArea<'static>,
+    command: Command,
+    search_mode: &mut SearchMode,
+) -> CommandEffect {
     use tui_textarea::{CursorMove, Scrolling};
+
+    let before_lines: Vec<String> = textarea.lines().iter().cloned().collect();
+    let before_cursor = textarea.cursor();
 
     match command {
         // Cursor Movement
@@ -639,7 +652,8 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command, search_mo
                 textarea.move_cursor(CursorMove::Head);
                 textarea.insert_tab();
                 // Adjust cursor position
-                textarea.move_cursor(CursorMove::Jump(cursor.0 as u16, (cursor.1 + 4) as u16)); // Assume tab = 4 spaces
+                textarea.move_cursor(CursorMove::Jump(cursor.0 as u16, (cursor.1 + 4) as u16));
+                // Assume tab = 4 spaces
             }
         }
         Command::DedentRegion => {
@@ -710,6 +724,12 @@ fn execute_command(textarea: &mut TextArea<'static>, command: Command, search_mo
             // This command is handled specially in the key event processing
             // The keymap detects shift+arrow but we handle it in the main event loop
         }
+    }
+
+    let after_lines = textarea.lines();
+    CommandEffect {
+        text_changed: after_lines != before_lines.as_slice(),
+        caret_moved: textarea.cursor() != before_cursor,
     }
 }
 
@@ -2436,6 +2456,14 @@ impl AppState {
         self.autocomplete.after_textarea_change(&self.task_description);
     }
 
+    fn apply_command_effect(&mut self, effect: CommandEffect) {
+        if effect.text_changed {
+            self.refresh_autocomplete(true);
+        } else if effect.caret_moved {
+            self.refresh_autocomplete(false);
+        }
+    }
+
     fn poll_autocomplete(&mut self) {
         self.autocomplete.poll_results();
     }
@@ -2631,8 +2659,12 @@ impl AppState {
                     FocusElement::TaskDescription => {
                         if shift_pressed {
                             // Shift+Enter: Insert newline using command system
-                            execute_command(&mut self.task_description, Command::OpenNewLine, &mut self.search_mode);
-                            self.refresh_autocomplete(true);
+                            let effect = execute_command(
+                                &mut self.task_description,
+                                Command::OpenNewLine,
+                                &mut self.search_mode,
+                            );
+                            self.apply_command_effect(effect);
                         } else {
                             // Regular Enter: Launch task
                             let lines: Vec<String> = self
@@ -2730,7 +2762,12 @@ impl AppState {
                     FocusElement::TaskDescription => {
                         // When task description is focused, handle Right arrow via command system
                         if let Some(command) = key_to_command(&key) {
-                            execute_command(&mut self.task_description, command, &mut self.search_mode);
+                            let effect = execute_command(
+                                &mut self.task_description,
+                                command,
+                                &mut self.search_mode,
+                            );
+                            self.apply_command_effect(effect);
                         }
                         return false;
                     }
@@ -2769,7 +2806,12 @@ impl AppState {
                     FocusElement::TaskDescription => {
                         // When task description is focused, handle Left arrow via command system
                         if let Some(command) = key_to_command(&key) {
-                            execute_command(&mut self.task_description, command, &mut self.search_mode);
+                            let effect = execute_command(
+                                &mut self.task_description,
+                                command,
+                                &mut self.search_mode,
+                            );
+                            self.apply_command_effect(effect);
                         }
                         return false;
                     }
@@ -2857,7 +2899,11 @@ impl AppState {
                             }
                             return false;
                         }
-                        KeyCode::Char(c) if c.is_alphanumeric() || c.is_whitespace() || "!@#$%^&*()_+-=[]{}|;:,.<>?".contains(c) => {
+                        KeyCode::Char(c)
+                            if c.is_alphanumeric()
+                                || c.is_whitespace()
+                                || "!@#$%^&*()_+-=[]{}|;:,.<>?".contains(c) =>
+                        {
                             // Add character to search pattern
                             let new_pattern = format!("{}", c); // For simplicity, start fresh each time
                             let _ = self.task_description.set_search_pattern(new_pattern);
@@ -2894,6 +2940,7 @@ impl AppState {
                                 self.task_description.start_selection();
                             }
                             self.task_description.move_cursor(tui_textarea::CursorMove::Back);
+                            self.refresh_autocomplete(false);
                             return false;
                         }
                         crossterm::event::KeyCode::Right => {
@@ -2902,6 +2949,7 @@ impl AppState {
                                 self.task_description.start_selection();
                             }
                             self.task_description.move_cursor(tui_textarea::CursorMove::Forward);
+                            self.refresh_autocomplete(false);
                             return false;
                         }
                         crossterm::event::KeyCode::Up => {
@@ -2910,6 +2958,7 @@ impl AppState {
                                 self.task_description.start_selection();
                             }
                             self.task_description.move_cursor(tui_textarea::CursorMove::Up);
+                            self.refresh_autocomplete(false);
                             return false;
                         }
                         crossterm::event::KeyCode::Down => {
@@ -2918,6 +2967,7 @@ impl AppState {
                                 self.task_description.start_selection();
                             }
                             self.task_description.move_cursor(tui_textarea::CursorMove::Down);
+                            self.refresh_autocomplete(false);
                             return false;
                         }
                         _ => {}
@@ -2926,7 +2976,9 @@ impl AppState {
 
                 // First, check if this is a command
                 if let Some(command) = key_to_command(&key) {
-                    execute_command(&mut self.task_description, command, &mut self.search_mode);
+                    let effect =
+                        execute_command(&mut self.task_description, command, &mut self.search_mode);
+                    self.apply_command_effect(effect);
                     return false;
                 }
 
@@ -2954,6 +3006,14 @@ impl AppState {
                 };
 
                 self.task_description.input_without_shortcuts(textarea_input);
+                let text_changed = matches!(
+                    textarea_key,
+                    tui_textarea::Key::Char(_)
+                        | tui_textarea::Key::Backspace
+                        | tui_textarea::Key::Delete
+                        | tui_textarea::Key::Enter
+                );
+                self.refresh_autocomplete(text_changed);
             }
             _ => {}
         }
