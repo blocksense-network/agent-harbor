@@ -771,14 +771,14 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Deliverables**:
 
   - Codex agent detection and validation
-  - Direct asciinema recording integration for session capture
+  - Direct `ah agent record` integration for session capture
   - Task execution orchestration with agent process management
   - Session file format compatibility ([Codex-Session-File-Format.md](../Research/Codex-Session-File-Format.md))
   - Mock agent fallback for testing environments
 
 - **Verification**:
   - [ ] Codex CLI availability detected correctly
-  - [ ] Asciinema recording captures agent execution directly
+  - [ ] `ah agent record` recording captures agent execution directly
   - [ ] Session files written in correct JSONL format
   - [ ] Task execution manages agent processes with proper cleanup
   - [ ] Session resumption works for interrupted Codex sessions
@@ -1141,14 +1141,14 @@ The MVP implementation must coordinate across multiple specifications with prope
 - Deliverables:
 
   - Codex agent wrapper with rollout file parsing (JSONL format from [Codex-Session-File-Format.md](../../Research/Codex-Session-File-Format.md))
-  - Integrated asciinema recording in task execution flow
+  - Integrated `ah agent record` integration in task execution flow
   - Session timeline creation with SessionMoments for Codex
   - Basic session resumption via `--resume` flag for Codex
   - Codex rollout file parsing and trimming for time travel
 
 - Verification:
   - Codex rollout files parsed correctly from session directories
-  - Asciinema recording integrated into task execution
+  - `ar agent record` recording integrated into task execution
   - Session recordings captured and stored in SQLite for Codex
   - Rollout path detection and session ID mapping works
   - Codex resumes from interrupted sessions correctly
@@ -1177,14 +1177,14 @@ The MVP implementation must coordinate across multiple specifications with prope
 - Deliverables:
 
   - Claude Code agent wrapper with hook-based session recording (PostToolUse events)
-  - Integrated asciinema recording in task execution flow
+  - Integrated `ah agent record` integration in task execution flow
   - Session timeline creation with SessionMoments for Claude Code
   - Basic session resumption via `--resume` flag for Claude Code
   - Claude transcript parsing and trimming for time travel
 
 - Verification:
   - Claude Code hooks emit SessionMoments at tool boundaries
-  - Asciinema recording integrated into task execution
+  - `ah agent record` recording integrated into task execution
   - Session recordings captured and stored in SQLite for Claude Code
   - Transcript path detection and session ID mapping works
   - Claude Code resumes from interrupted sessions correctly
@@ -1217,7 +1217,7 @@ The MVP implementation must coordinate across multiple specifications with prope
   - Mock agent infrastructure is already implemented and functional ([tests/tools/mock-agent/](../../tests/tools/mock-agent/))
   - Supports both Codex and Claude Code agent formats with session file generation
   - Includes API server for testing IDE integrations with deterministic responses
-  - Provides asciinema recording capabilities for session demonstrations
+  - Provides `ah agent record` recording capabilities for session demonstrations
   - Extensive test suite validates CLI functionality, file operations, and session recording
   
 |- **Cross-Spec Dependencies**:
@@ -1362,6 +1362,72 @@ The MVP implementation must coordinate across multiple specifications with prope
   - [x] E2E test validates complete integration of FS snapshots + sandbox + agent execution
   - [x] Shared verification helpers ensure consistent validation across test scenarios
 
+**2.5 AH Agent Record Command Implementation** (depends on 2.4.3, immediate next milestone)
+
+- **Deliverables**:
+
+  - Complete `ah agent record` command implementation in `ah-cli` crate with PTY byte capture, vt100 parsing, and live Ratatui viewer
+  - Brotli-compressed `.ahr` file format with timestamped PTY output blocks following [ah-agent-record.md](../../specs/Public/ah-agent-record.md) specification
+  - Live Ratatui TUI viewer rendering directly from vt100 model with instruction overlay support
+  - IPC socket server for external instruction injection (Unix domain socket default)
+  - `ah agent replay` command for post-session export and interleaved report generation
+  - Integration with mock agent for deterministic testing scenarios
+  - TUI testing framework integration for comprehensive E2E verification
+
+- **Implementation Details**:
+
+  - **PTY Management**: Use `portable-pty` crate to spawn target command under PTY, capture raw bytes, and forward input transparently
+  - **vt100 Parser Integration**: Stream PTY bytes through `vt100` crate parser for faithful terminal state tracking, handling `\r` carriage returns and line overwrites
+  - **Recording Format**: Implement `.ahr` file format with Brotli-compressed blocks containing timestamped records (DATA, RESIZE, INPUT, MARK) as specified in ah-agent-record.md
+  - **Live Viewer**: Ratatui-based TUI that renders directly from vt100 model, supports scroll/paging, instruction overlays, and real-time annotation injection
+  - **IPC Server**: Unix domain socket server for instruction injection using length-prefixed SSZ marshaling with tagged unions
+  - **Export Functionality**: Post-run replay that computes final line layout and interleaves with instruction events for reporting
+  - **Mock Agent Recording**: Record existing mock-agent sessions through `ah agent record` for deterministic testing without modifying the mock-agent
+  - **TUI Testing**: Integrate with existing `tui-testing` crate for screenshot capture and UI regression testing during agent execution
+
+- **Testing Strategy** (Two-Phase Approach):
+
+  - **Phase 1: Recording Verification**: Create initial test scenarios using [Scenario-Format.md](../../specs/Public/Scenario-Format.md) to run mock-agent sessions through `ah agent record`. Verify that produced snapshot interleaving files match golden snapshots for deterministic output validation.
+  - **Phase 2: UI Instruction Injection**: Later tests focus on driving the TUI interface for injecting instructions, validating overlay and annotation functionality through automated UI testing.
+
+- **Key Source Files**:
+
+  - `crates/ah-cli/src/agent/record.rs` - Main `ah agent record` command implementation with PTY management and recording logic
+  - `crates/ah-cli/src/agent/replay.rs` - `ah agent replay` command for export and interleaved report generation
+  - `crates/ah-recorder/` - New crate for core recording functionality (PTY capture, vt100 parsing, .ahr file format)
+  - `crates/ah-recorder/src/format.rs` - .ahr file format implementation with Brotli compression and record serialization
+  - `crates/ah-recorder/src/viewer.rs` - Ratatui viewer implementation rendering from vt100 model
+  - `crates/ah-recorder/src/ipc.rs` - IPC server for instruction injection with SSZ marshaling
+  - `crates/ah-cli/src/agent/mod.rs` - Updated to include record/replay subcommands
+  - `tests/integration/recording/` - Test scenarios using Scenario-Format.md for mock-agent session recording
+  - `tests/tools/mock-agent/` - Enhanced mock agent integration for recording scenarios
+  - `crates/tui-testing/` - Integration with TUI testing framework for UI and instruction injection testing
+
+- **Verification Results**:
+
+  - [ ] `ah agent record` command launches target process under PTY with live Ratatui viewer
+  - [ ] PTY byte capture works correctly with transparent input forwarding
+  - [ ] vt100 parser handles terminal state faithfully including `\r` line overwrites
+  - [ ] `.ahr` files created with proper Brotli-compressed blocks and timestamped records
+  - [ ] Live viewer renders terminal output in real-time with scroll and navigation support
+  - [ ] IPC server accepts instruction injections and overlays them in the viewer
+  - [ ] `ah agent replay` exports final interleaved reports with lines and instructions
+  - [ ] Mock agent session recording produces deterministic `.ahr` files and interleaving reports
+  - [ ] Golden snapshot testing validates interleaving report format matches expected output
+  - [ ] TUI testing framework captures screenshots during agent execution for regression testing
+  - [ ] Instruction injection UI testing validates overlay and annotation functionality
+  - [ ] Crash safety: truncated final blocks are detectable and replay handles them gracefully
+  - [ ] Performance targets met: <30ms frame-to-frame latency, sub-1ms write path per buffer
+  - [ ] Cross-platform compatibility: Linux/macOS/Windows PTY support via portable-pty
+
+- **Cross-Spec Dependencies**:
+
+  - **[ah-agent-record.md](../../specs/Public/ah-agent-record.md)**: Complete specification for recording format, CLI interface, and runtime architecture
+  - **[Using-SSZ.md](../../specs/Research/Using-SSZ.md)**: IPC protocol specification for instruction injection
+  - **[Scenario-Format.md](../../specs/Public/Scenario-Format.md)**: Test scenario definitions for comprehensive E2E testing
+  - **[tests/tools/mock-agent/](../../tests/tools/mock-agent/)**: Mock agent infrastructure for deterministic testing
+  - **[crates/tui-testing/](../../crates/tui-testing/)**: TUI testing framework for screenshot capture and UI verification
+
 **2.4.4 AH Agent Start Codex Integration E2E Tests** (depends on 2.4.3)
 
 - **Deliverables**:
@@ -1389,7 +1455,7 @@ The MVP implementation must coordinate across multiple specifications with prope
 |- **Deliverables**:
 
   - Session recording validation for both mock agent and real Codex CLI
-  - Asciinema recording integration with `ah agent record` command
+  - `ah agent record` recording integration with `ah agent record` command
   - Session file generation in appropriate formats (Codex/Claude)
   - Session timeline creation for time travel functionality
   - Recording verification across all workspace modes (in-place, snapshots, sandbox)
@@ -1399,12 +1465,12 @@ The MVP implementation must coordinate across multiple specifications with prope
   - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
   - Validate session recordings are created correctly during agent execution
   - Test both mock agent recordings and real Codex CLI recordings
-  - Verify asciinema format and playback capability
+  - Verify `ah agent record` format and playback capability
   - Ensure session files match expected formats for time travel integration
 
 |- **Verification Results**:
 
-  - [ ] Mock agent session recording works correctly with asciinema
+  - [ ] Mock agent session recording works correctly with a `agent record`
   - [ ] Session files generated in proper Codex/Claude formats
   - [ ] Session timeline data captured for time travel functionality
   - [ ] Real Codex CLI session recording matches mock agent behavior

@@ -30,7 +30,7 @@ Testability strategy from day one:
 
 ### Concepts and Terminology
 
-- **SessionRecording**: A terminal I/O session timeline (e.g., asciinema v2). Visually faithful to what the user saw; does not encode TUI semantics.
+- **SessionRecording**: A terminal I/O session timeline (see ah-agent-record.md). Precise recreation of what the user saw; does not encode TUI semantics, such as the state of specific controls, etc.
 - **SessionMoment**: A labeled point in the session recording timeline (auto or manual). Used for navigation.
 - **FsSnapshot**: A SessionMoment that has an associated filesystem snapshot reference (snapshot created near‑synchronously with the moment).
 - **SessionFrame**: A visual state at a specific timestamp; the player can seek and render the SessionFrame.
@@ -39,7 +39,7 @@ Testability strategy from day one:
 
 ### Architecture Overview
 
-- **Recorder**: Captures terminal output as an asciinema session recording (preferred) or ttyrec; emits SessionMoments at logical boundaries (e.g., per-command). The initial prototype will use a recorder based on Claude Code hooks.
+- **Recorder**: Captures terminal output using ah-agent-record (see ah-agent-record.md); emits SessionMoments at logical boundaries (e.g., per-command). The initial prototype will use a recorder based on Claude Code and Codex CLI hooks.
 - **FsSnapshot Manager**: Creates and tracks filesystem snapshots; maintains mapping {moment → snapshotId}.
 - **Snapshot Provider Abstraction**: Chooses provider per host (ZFS → Btrfs → AgentFS → Git). AgentFS provides cow‑overlay (path‑stable CoW) isolation on macOS/Windows. See Provider Matrix below.
 - **SessionTimeline Service (REST)**: Lists FsSnapshots/SessionMoments, seeks, and creates SessionBranches; streams session recording events via SSE.
@@ -48,7 +48,7 @@ Testability strategy from day one:
 
 ### SessionRecording and SessionTimeline Model
 
-- **Format**: asciinema v2 JSON with events [time, type, data]; optional input events for richer analysis. Idle compression is configurable.
+- **Format**: ah-agent-record .ahr format (see ah-agent-record.md).
 - **SessionMoments**: Auto moments at tool boundaries via agent‑provided hooks (e.g., Claude Code hooks) and runtime milestones (provisioned, tests passed). Manual moments via UI/CLI.
 - **Random Access**: Web player supports `startAt` and moments; for power users/offline analysis we may store a parallel ttyrec to enable IPBT usage.
 - **Alternate Screen Semantics**: Full-screen TUIs (vim, less, nano) switch to the alternate screen; scrollback of earlier output is not available while paused on the alternate screen. Navigation uses session timeline seek rather than scrollback.
@@ -234,7 +234,7 @@ See the `ah agent fs` [commands](./CLI.md).
 
 ### WebUI UX
 
-- **Player Panel**: Embed `<asciinema-player>` with SessionMoments and a scrubber. Time cursor shows nearest FsSnapshot and label.
+- **Player Panel**: Embed session recording player with SessionMoments and a scrubber. Time cursor shows nearest FsSnapshot and label.
 - **Pause & Intervene**: On pause, surface “Inspect snapshot” and “SessionBranch from here”.
 - **Inspect Snapshot**: Mounts read‑only view; open a lightweight file browser and offer “Open IDE at this point”.
 - **SessionBranch From Here**: Dialog to enter an injected message and name; creates a new session (SessionBranch); link both sessions for side‑by‑side comparison.

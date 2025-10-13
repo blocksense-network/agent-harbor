@@ -674,7 +674,7 @@ cargo run --bin ah-tui -- --remote-server http://localhost:3001
 
 **Use Cases**:
 - Agent execution in multiplexer panes
-- Session recording and asciinema integration
+- Session recording and `ah agent record` integration
 - Real-time activity streaming (thoughts, tool usage, file edits)
 - Multiplexer window management and split-pane layouts
 - Agent lifecycle management (start, pause, resume, stop)

@@ -485,7 +485,7 @@ When agents are spawned, the execution follows this detailed process:
 1. **SQLite Recording**: Agent spawn details are immediately recorded in the local SQLite database with session metadata
 2. **Thin Wrapper Process**: Local agents are executed via `ah agent record` command that:
    - Wraps the agent process with session recording
-   - Uses asciinema to capture terminal output and timing
+   - Uses ah-agent-record to capture terminal output and timing
    - Monitors process lifecycle and detects completion
    - Records all console interactions and outputs
 3. **Completion Detection**: The wrapper detects when agent work is complete through:
@@ -1218,7 +1218,7 @@ OPTIONS:
   --allow-vms <yes|no>               Permit nested virtualization (default: no)
   --env <KEY=VALUE>...               Additional environment variables for agent
   --timeout <DURATION>               Maximum execution time before auto-termination
-  --record-output <yes|no>           Record agent output with asciinema (default: yes)
+  --record-output <yes|no>           Record agent output with ah agent record (default: yes)
   --output-dir <PATH>                Directory for recordings and artifacts
   --follow                           Monitor execution and emit notifications on completion
 
@@ -1266,7 +1266,7 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
      - `json-normalized`: Map JSON to agent-harbor defined schema consistent across agent types
    - Local agents: Launches directly in the prepared sandbox environment
    - Cloud agents: May use browser automation when `--browser-automation true`
-   - Session recording: Captures output with asciinema when `--record-output yes`
+   - Session recording: Captures output with `ah agent record` when `--record-output yes`
 
 7. **Monitoring and Completion**: Tracks agent execution and handles completion:
    - Real-time event streaming for TUI integration
@@ -1492,12 +1492,12 @@ Execution model:
 ```
 ah agent record [OPTIONS] [--] <AGENT_COMMAND> [ARGS...]
 
-DESCRIPTION: Thin wrapper process that records agent execution with asciinema
+DESCRIPTION: Thin wrapper process that records agent execution with ah agent record
              and monitors completion for both local and cloud agents.
 
 OPTIONS:
   --task-id <ID>             Task ID for recording association
-  --output-dir <PATH>        Directory for asciinema recordings
+  --output-dir <PATH>        Directory for ah agent record recordings
 
 ARGUMENTS:
   AGENT_COMMAND              Agent command to execute and record

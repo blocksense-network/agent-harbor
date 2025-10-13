@@ -29,6 +29,7 @@ agent-harbor/
 │  └─ agentfs/
 ├─ tests/                      # Cross-crate integration & acceptance tests
 │  ├─ integration/
+│  │  └─ recording/              # `ah agent record` integration tests with Scenario-Format.md
 │  ├─ acceptance/
 │  └─ fixtures/
 ├─ examples/                   # Small runnable examples per subsystem
@@ -96,7 +97,11 @@ agent-harbor/
 │  ├─ sandbox-net/             # Loopback/slirp/veth; nftables glue
 │  ├─ sandbox-proto/           # Helper⇄supervisor protocol types
 │  ├─ sbx-helper/              # Bin: PID 1 inside sandbox; composes sandbox-* crates
-│  ├─ ah-agent-runner/         # Bin/lib: `ah agent record` (asciinema integration)
+│  ├─ ah-recorder/             # Bin/lib: `ah agent record` implementation
+│  │  ├─ src/format.rs         # .ahr file format with Brotli compression and record serialization
+│  │  ├─ src/viewer.rs         # Ratatui viewer rendering from vt100 model
+│  │  ├─ src/ipc.rs            # IPC server for instruction injection with SSZ marshaling
+│  │  └─ src/lib.rs            # Core recording functionality (PTY capture, vt100 parsing)
 │  └─ platform-helpers/        # Per-OS helpers (paths, perms, names)
 ├─ legacy/                     # Temporary home for the Ruby implementation
 │  └─ ruby/
