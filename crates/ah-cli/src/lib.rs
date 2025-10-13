@@ -52,4 +52,6 @@ pub enum AgentCommands {
     Sandbox(sandbox::SandboxRunArgs),
     /// Start an agent session
     Start(agent::start::AgentStartArgs),
+    /// Record an agent session with PTY capture
+    Record(agent::record::RecordArgs),
 }

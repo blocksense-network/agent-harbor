@@ -57,6 +57,10 @@ agentfs-proto = { path = "../agentfs-proto" }
 ethereum_ssz = "0.8"
 ethereum_ssz_derive = "0.8"
 
+# Agent recording dependencies
+ah-recorder = { path = "../ah-recorder" }
+crossterm = { workspace = true }
+
 # Platform-specific dependencies
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "ioctl"] }

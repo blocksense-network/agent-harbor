@@ -124,10 +124,11 @@ Each segment is a concatenation of simple fixed/length-prefixed records. **Absol
 
 ```
 // Record type tags
-const u8 REC_DATA   = 0; // PTY output bytes
-const u8 REC_RESIZE = 1; // terminal resize
-const u8 REC_INPUT  = 2; // (optional) input keystrokes, if enabled
-const u8 REC_MARK   = 3; // internal markers (rare)
+const u8 REC_DATA     = 0; // PTY output bytes
+const u8 REC_RESIZE   = 1; // terminal resize
+const u8 REC_INPUT    = 2; // (optional) input keystrokes, if enabled
+const u8 REC_MARK     = 3; // internal markers (rare)
+const u8 REC_SNAPSHOT = 4; // filesystem snapshot notification
 
 // Common prefix for all records
 struct RecHeader {
@@ -163,6 +164,16 @@ struct RecMark {
   RecHeader h;          // tag=REC_MARK
   u32 code;             // semantic sub-type
   u32 val;              // optional value
+}
+
+// REC_SNAPSHOT - Filesystem snapshot notification
+// Written when `ah agent fs snapshot` notifies the recorder of a new snapshot
+struct RecSnapshot {
+  RecHeader h;          // tag=REC_SNAPSHOT
+  u64 snapshot_id;      // ID of the snapshot created
+  u64 anchor_byte;      // PTY byte offset at snapshot time
+  u16 label_len;        // length of optional label string
+  u8  label[label_len]; // UTF-8 label (if label_len > 0)
 }
 ```
 
@@ -228,24 +239,41 @@ Static session facts useful for offline tools:
 
 ## 7. Snapshot IPC
 
+The recorder provides an IPC interface for receiving snapshot notifications from external commands, primarily `ah agent fs snapshot`. When a filesystem snapshot is taken during recording, the snapshot command notifies the recorder, which writes a `REC_SNAPSHOT` record to the `.ahr` file and a corresponding entry to the `.snapshots.jsonl` sidecar.
+
 * **Transport:**
 
   * Unix: default **Unix domain socket** at `<out-dir>/ipc.sock`.
   * Windows: TCP `127.0.0.1:<ephemeral>` (logged in meta), or named pipe (later).
-* **Protocol:**: Length-prefixed SSZ with tagged unions.
+* **Protocol:** Length-prefixed SSZ with tagged unions.
+
+**Integration with `ah agent fs snapshot`:**
+
+When `ah agent fs snapshot` creates a filesystem snapshot during a recorded session, it:
+1. Detects the active recording session (via environment variable or session metadata)
+2. Connects to the recorder's IPC socket
+3. Sends a `Snapshot` notification with the snapshot ID and optional label
+4. Receives confirmation with the anchor byte offset
+
+The recorder then:
+1. Records the current PTY byte offset
+2. Writes a `REC_SNAPSHOT` record to the `.ahr` file
+3. Appends an entry to the `.snapshots.jsonl` sidecar
+4. Returns the anchor information to the caller
 
 **Request**
 
 * `Snapshot`
-  - `label`: string (usually empty)
+  - `snapshot_id`: uint64 - ID of the filesystem snapshot that was created
+  - `label`: string (optional) - human-readable label for this snapshot
 
 **Response**
 
 * `SnapshotStatus`
   - `success`: bool
-  - `id`: uint64
-  - `anchor_byte`: uint64
-  - `ts_ns`: uint64
+  - `id`: uint64 - snapshot ID (echoed from request)
+  - `anchor_byte`: uint64 - PTY byte offset at snapshot time
+  - `ts_ns`: uint64 - timestamp when snapshot was recorded
 
 This is a tagged union, with the `success` field acting as a discriminator. In case of failures, `success = false`, `err = "string"`.
 

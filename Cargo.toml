@@ -47,6 +47,8 @@ members = [
   "crates/ah-tui",
   "crates/tui-testing",
   "crates/ah-macos-launcher",
+  # Recording and replay
+  "crates/ah-recorder",
   # Integration tests
   "tests/sandbox-integration",
   "tests/cgroup-enforcement",

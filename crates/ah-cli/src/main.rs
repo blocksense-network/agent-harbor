@@ -12,6 +12,7 @@ async fn main() -> Result<()> {
             AgentCommands::Fs { subcommand: cmd } => cmd.run().await,
             AgentCommands::Sandbox(args) => args.run().await,
             AgentCommands::Start(args) => args.run().await,
+            AgentCommands::Record(args) => ah_cli::agent::record::execute(args).await,
         },
         Commands::Tui(args) => args.run().await,
     }
