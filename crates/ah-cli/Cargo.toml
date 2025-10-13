@@ -29,6 +29,8 @@ tracing-subscriber = { workspace = true }
 ah-core = { path = "../ah-core" }
 ah-repo = { path = "../ah-repo" }
 ah-local-db = { path = "../ah-local-db" }
+config-core = { path = "../config-core" }
+ah-config-types = { path = "../ah-config-types" }
 ah-fs-snapshots = { path = "../ah-fs-snapshots", features = [
   "zfs",
   "btrfs",

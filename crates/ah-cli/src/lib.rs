@@ -1,6 +1,7 @@
 //! Agents Workflow CLI library
 
 pub mod agent;
+pub mod config;
 pub mod sandbox;
 pub mod task;
 pub mod test_config;
@@ -21,6 +22,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Configuration management commands
+    Config {
+        #[command(subcommand)]
+        subcommand: config::ConfigCommands,
+    },
     /// Task management commands
     Task {
         #[command(subcommand)]

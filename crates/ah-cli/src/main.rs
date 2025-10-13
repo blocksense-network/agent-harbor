@@ -6,6 +6,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Config { subcommand } => subcommand.run().await,
         Commands::Task { subcommand } => subcommand.run().await,
         Commands::Agent { subcommand } => match subcommand {
             AgentCommands::Fs { subcommand: cmd } => cmd.run().await,

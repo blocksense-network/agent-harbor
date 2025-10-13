@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/ah-cli",
+  "crates/ah-config-types",
   "crates/ah-core",
   "crates/ah-local-db",
   "crates/ah-repo",
@@ -14,6 +16,7 @@ members = [
   "crates/ah-sandbox-linux",
   "crates/ah-sandbox-macos",
   "crates/ah-fs-snapshots-daemon",
+  "crates/config-core",
   # Sandbox crates
   "crates/sandbox-core",
   "crates/sandbox-fs",
@@ -44,8 +47,6 @@ members = [
   "crates/ah-tui",
   "crates/tui-testing",
   "crates/ah-macos-launcher",
-  # CLI
-  "crates/ah-cli",
   # Integration tests
   "tests/sandbox-integration",
   "tests/cgroup-enforcement",
@@ -66,6 +67,7 @@ tokio = { version = "1.47", features = ["full"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
 
 # CLI parsing
 clap = { version = "4.5", features = ["derive"] }

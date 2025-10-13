@@ -1,0 +1,10 @@
+[package]
+name = "ah-config-types"
+version = "0.1.0"
+edition = "2021"
+description = "Distributed, strongly-typed configuration structs for Agents Workflow modules"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde.workspace = true
+schemars = { version = "0.8", features = ["preserve_order"] }

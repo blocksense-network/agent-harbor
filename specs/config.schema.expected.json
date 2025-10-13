@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "description": "The root configuration schema",
+  "properties": {
+    "browser-automation": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "browser-profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "chatgpt-username": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "codex-workspace": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "editor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "enforced": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "fleet": {
+      "default": [],
+      "items": {
+        "properties": {
+          "member": {
+            "default": [],
+            "items": {
+              "properties": {
+                "profile": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "log-level": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "remote-server": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "repo": {
+      "description": "Minimal repo section for schema generation",
+      "properties": {
+        "init": {
+          "default": {
+            "devcontainer": false,
+            "devenv": null,
+            "direnv": false,
+            "task-runner": null,
+            "vcs": null
+          },
+          "properties": {
+            "devcontainer": {
+              "default": false,
+              "type": "boolean"
+            },
+            "devenv": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "direnv": {
+              "default": false,
+              "type": "boolean"
+            },
+            "task-runner": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vcs": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "supported-agents": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "enum": [
+                    "all"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "list": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "list"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "sandbox": {
+      "default": [],
+      "items": {
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "server": {
+      "default": [],
+      "items": {
+        "description": "Minimal server types for schema generation",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "service-base-url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "terminal-multiplexer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tui-font": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tui-font-style": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ui": {
+      "description": "Minimal UI enum for schema generation",
+      "enum": [
+        "tui",
+        "webui"
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ui-default": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "title": "SchemaRoot",
+  "type": "object"
+}

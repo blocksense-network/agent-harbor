@@ -71,7 +71,8 @@ agent-harbor/
 │  ├─ ah-core/                 # Task/session lifecycle orchestration
 │  ├─ ah-mux-core/             # Low-level, AH-agnostic multiplexer trait + shared types
 │  ├─ ah-mux/                  # Monolith crate: AH adapter + all backends as feature-gated modules
-│  ├─ ah-config/               # Layered config + flag mapping
+│  ├─ config-core/             # Generic config engine (schema/validation/merging)
+│  ├─ ah-config-types/         # Distributed strongly-typed config structs
 │  ├─ ah-state/                # Local state (SQLite models, migrations)
 │  ├─ ah-repo/                 # VCS operations (Git/Hg/Bzr/Fossil)
 │  ├─ ah-rest-api-contract/    # Schema types, input validation, etc (shared between mock servers and production server)
@@ -132,7 +133,7 @@ The `apps/macos/AgentHarbor/` directory contains the main **AgentHarbor.app** - 
 
 ### Crate mapping (selected)
 
-- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `ah-config`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agent-executor`, `ah-schemas`.
+- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agent-executor`, `ah-schemas`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.
 
