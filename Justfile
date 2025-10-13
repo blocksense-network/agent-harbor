@@ -26,7 +26,7 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries
 
 # Run Rust tests
 test-rust: build-rust-test-binaries
@@ -262,6 +262,13 @@ build-debugging-test-binaries:
 
 # Build all test binaries needed for debugging enforcement tests
 build-debugging-tests: build-sbx-helper build-debugging-test-binaries
+
+# Build TUI test binaries
+build-tui-test-binaries:
+    cargo build -p tui-testing --bin test-guest
+
+# Build all TUI test binaries needed for TUI testing
+build-tui-tests: build-tui-test-binaries
 
 # Run cgroup tests with E2E enforcement verification
 test-cgroups:
