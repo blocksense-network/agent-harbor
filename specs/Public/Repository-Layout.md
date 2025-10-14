@@ -33,11 +33,39 @@ agent-harbor/
 │  ├─ acceptance/
 │  └─ fixtures/
 ├─ examples/                   # Small runnable examples per subsystem
+├─ electron-app/               # Electron GUI application (cross-platform)
+│  ├─ package.json             # Node.js dependencies and scripts
+│  ├─ electron-builder.yml     # Packaging configuration for all platforms
+│  ├─ src/
+│  │  ├─ main/                 # Electron main process (Node.js)
+│  │  │  ├─ index.ts           # Main process entry point
+│  │  │  ├─ window-manager.ts  # Window lifecycle management
+│  │  │  ├─ webui-manager.ts   # WebUI process management (spawns via ELECTRON_RUN_AS_NODE)
+│  │  │  ├─ tray-manager.ts    # System tray integration
+│  │  │  ├─ notification-manager.ts # Native notifications
+│  │  │  ├─ protocol-handler.ts # agent-harbor:// URL scheme
+│  │  │  ├─ shortcut-manager.ts # Global keyboard shortcuts
+│  │  │  ├─ browser-automation/ # Browser automation subsystem
+│  │  │  │  ├─ profile-manager.ts   # Agent browser profile management
+│  │  │  │  ├─ playwright-manager.ts # Playwright integration
+│  │  │  │  ├─ codex-automation.ts  # Codex browser automation
+│  │  │  │  └─ selectors.ts         # UI selectors for automation
+│  │  │  └─ ipc-handlers.ts    # IPC API for renderer processes
+│  │  └─ renderer/             # Electron renderer process (optional, WebUI handles most UI)
+│  │     └─ preload.ts         # Preload script for secure IPC
+│  ├─ assets/                  # Application icons and resources
+│  │  ├─ icon.png / icon.icns / icon.ico
+│  │  ├─ tray-icon-Template.png    # macOS menu bar icon
+│  │  └─ tray-icon.png             # Windows/Linux tray icon
+│  └─ resources/               # Bundled resources (packed by electron-builder)
+│     ├─ webui/                # WebUI server files (runs via ELECTRON_RUN_AS_NODE=1)
+│     │  └─ server.js          # SolidStart server entry point (built from webui/app/)
+│     └─ cli/                  # Bundled CLI tools (from Rust workspace)
 ├─ apps/                       # Platform-specific application bundles
 │  └─ macos/
-│     └─ AgentHarbor/              # Main macOS application (AgentHarbor.app)
-│        ├─ AgentHarbor.xcodeproj/ # Xcode project for main app
-│        ├─ AgentHarbor/           # Main app source (SwiftUI/AppKit)
+│     └─ AgentHarbor/              # Native macOS app for system extension hosting
+│        ├─ AgentHarbor.xcodeproj/ # Xcode project for native host app
+│        ├─ AgentHarbor/           # Host app source (SwiftUI/AppKit)
 │        │  ├─ AppDelegate.swift
 │        │  ├─ MainMenu.xib
 │        │  └─ Info.plist
@@ -102,6 +130,8 @@ agent-harbor/
 │  │  ├─ src/viewer.rs         # Ratatui viewer rendering from vt100 model
 │  │  ├─ src/ipc.rs            # IPC server for instruction injection with SSZ marshaling
 │  │  └─ src/lib.rs            # Core recording functionality (PTY capture, vt100 parsing)
+  ├─ ah-gui-core/             # Lib: Shared GUI logic (native Node.js addon via N-API)
+│  ├─ ah-gui-webui-manager/    # Lib: WebUI process lifecycle management (native addon)
 │  └─ platform-helpers/        # Per-OS helpers (paths, perms, names)
 ├─ legacy/                     # Temporary home for the Ruby implementation
 │  └─ ruby/
@@ -114,15 +144,41 @@ agent-harbor/
 └─ (root scripts preserved; see below)
 ```
 
-### macOS Host Application Architecture
+### Electron GUI Application Architecture
 
-The `apps/macos/AgentHarbor/` directory contains the main **AgentHarbor.app** - the primary macOS application for the entire Agents Workflow project. This app serves as a container for multiple system extensions and provides the main user interface for all AH functionality on macOS. This design follows Apple's system extension architecture where privileged components (like filesystem extensions) must be embedded within a host application for proper registration and lifecycle management.
+The `electron-app/` directory contains the **Agent Harbor GUI** - a cross-platform Electron application that provides the primary graphical interface for Agent Harbor on macOS, Windows, and Linux. This GUI embeds the WebUI, manages browser automation for cloud agents, and provides native OS integrations.
 
-#### Host App Responsibilities
-- **Extension Hosting**: Contains and manages multiple system extensions (currently AgentFSKitExtension)
-- **User Interface**: Provides minimal UI for extension management and status monitoring
-- **Extension Registration**: Handles PlugInKit registration for embedded extensions
+#### GUI Responsibilities
+- **WebUI Process Management**: Launches and monitors the `ah webui` process
+  - **Key Optimization**: WebUI server runs via Electron's bundled Node.js using `ELECTRON_RUN_AS_NODE=1`
+  - Eliminates need for separate Node.js installation (~50-80MB saved)
+- **Browser Automation**: Provides Playwright-based automation for cloud agents (Codex, Claude, etc.)
+- **Native OS Integration**: System tray, notifications, global shortcuts, URL scheme handling
+- **CLI Bundling**: Packages complete AH CLI toolchain for unified installation
+
+#### Key Architecture Decisions
+- **Electron + TypeScript**: Cross-platform GUI framework with Node.js main process
+- **Bundled Chromium**: Provides consistent browser automation environment via Playwright
+- **Rust Native Addons**: Process management and core logic via N-API/neon-bindings
+- **WebUI Embedding**: BrowserWindow loads WebUI from `http://localhost:PORT`
+- **Node.js Runtime Reuse**: WebUI server executes via `ELECTRON_RUN_AS_NODE=1` environment variable
+  - See [Using-Electron-As-NodeJS.md](../../specs/Research/Electron-Packaging/Using-Electron-As-NodeJS.md) for implementation details
+
+### macOS System Extension Host Application Architecture
+
+The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host application** required by Apple for system extension registration. This is distinct from the Electron GUI and serves a specific macOS-only purpose.
+
+#### Host App Responsibilities (macOS-specific)
+- **Extension Hosting**: Contains and manages system extensions (AgentFSKitExtension)
+- **Extension Registration**: Handles PlugInKit registration with macOS System Extensions framework
 - **Lifecycle Management**: Manages extension loading, unloading, and system approval workflows
+- **Minimal UI**: Provides basic UI for extension status monitoring and approval
+
+#### Relationship to Electron GUI
+- **Separate Applications**: Host app and Electron GUI are independent macOS applications
+- **Distinct Purposes**: Host app for system extensions only; Electron GUI for main user interface
+- **Optional IPC**: Electron GUI can communicate with system extension via IPC when needed
+- **Distribution**: Can be bundled together or distributed separately
 
 #### Extension Architecture
 - **AgentFSKitExtension**: FSKit-based filesystem extension for user-space AgentFS implementation
@@ -139,8 +195,22 @@ The `apps/macos/AgentHarbor/` directory contains the main **AgentHarbor.app** - 
 ### Crate mapping (selected)
 
 - CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agent-executor`, `ah-schemas`.
+- GUI (Electron native addons): `ah-gui-core`, `ah-gui-webui-manager`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.
+
+### Electron GUI structure
+
+- `electron-app/` — Cross-platform Electron GUI application
+  - `src/main/` — Main process (Node.js): window management, WebUI process lifecycle, browser automation, native OS integrations
+  - `src/renderer/` — Renderer process: preload scripts for secure IPC
+  - `assets/` — Application icons and tray icons
+  - `resources/webui/` — WebUI server files (executed via `ELECTRON_RUN_AS_NODE=1`)
+    - **Key Optimization**: Reuses Electron's bundled Node.js runtime
+    - Eliminates need for separate Node.js installation (~50-80MB saved)
+  - `resources/cli/` — Bundled CLI binaries from Rust workspace
+  - `package.json` — Node.js dependencies (Electron, Playwright, electron-builder)
+  - `electron-builder.yml` — Packaging configuration for .pkg, MSI, .deb, .rpm, AppImage
 
 ### WebUI structure
 

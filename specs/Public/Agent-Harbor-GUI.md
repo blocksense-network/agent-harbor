@@ -1,8 +1,8 @@
-# Agent Workflow GUI Specification
+# Agent Harbor GUI Specification
 
 ## Overview
 
-The Agent Workflow GUI (AH GUI) is a cross-platform Electron application that provides a native desktop wrapper around the `ah webui` process. It adds desktop-specific features like system tray integration, custom URL scheme handling, and native notifications while delegating all workflow functionality to the underlying WebUI.
+The Agent Harbor GUI (AH GUI) is a cross-platform Electron application that provides a native desktop wrapper around the `ah webui` process. It adds desktop-specific features like system tray integration, custom URL scheme handling, and native notifications while delegating all workflow functionality to the underlying WebUI.
 
 ## Core Responsibilities
 

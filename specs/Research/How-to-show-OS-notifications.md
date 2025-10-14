@@ -1,6 +1,6 @@
 # Implementing Cross-Platform Native Notifications in Rust with Full Feature Support
 
-This updated guide addresses the limitation of `notify-rust` not supporting actions (e.g., interactive buttons like "View Details") on macOS, while providing them on Linux and Windows. To meet all requirements from the Agent Workflow GUI specification— including native task completion notifications with titles, bodies, icons, actions, timeouts, sounds, priorities/hints, and badges where applicable—we'll use a hybrid approach:
+This updated guide addresses the limitation of `notify-rust` not supporting actions (e.g., interactive buttons like "View Details") on macOS, while providing them on Linux and Windows. To meet all requirements from the Agent Harbor GUI specification— including native task completion notifications with titles, bodies, icons, actions, timeouts, sounds, priorities/hints, and badges where applicable—we'll use a hybrid approach:
 
 - **Base Library: notify-rust** (v4.11.7 as of September 2025): Well-maintained (active GitHub, 10M+ downloads, regular updates), handles cross-platform basics and actions on Linux/Windows. Uses backends like zbus (Linux), mac-notification-sys (macOS; limited features), and winrt-notification (Windows).
 - **macOS Supplement: objc2-user-notifications** (v0.3.1): For full macOS support, including actions, badges, and custom categories. This crate is part of the well-maintained objc2 ecosystem (frequent releases, 17M+ downloads for objc2).

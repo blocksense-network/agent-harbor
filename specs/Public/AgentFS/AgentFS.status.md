@@ -440,7 +440,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - Success criteria (CLI tests):
   - `ah agent fs init-session`, `snapshots <SESSION_ID>`, and `branch create/bind/exec` behave as specified across platforms.
   - SSZ union type validation enforced; informative errors on invalid payloads.
-  - Session-aware operations integrate with the broader agent workflow system.
+  - Session-aware operations integrate with the broader Agent Harbor system.
 
 **Current Progress:**
 
@@ -451,7 +451,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - ✅ All control plane consumers updated to use SSZ union types (transport, FUSE adapter, FSKit adapter)
 - ✅ **Control plane migrated from filesystem-based operations to XPC service** (FSKit adapter)
 - ⏳ Session-aware operation implementations (stubs created, need integration with session management)
-- ⏳ Integration with broader agent workflow system
+- ⏳ Integration with broader Agent Harbor system
 
 Acceptance checklist (M10)
 
@@ -473,7 +473,7 @@ M10.4. AgentFS CLI Control Plane Operations (3–4d)
   - `ah agent fs branch bind <BRANCH_ID>` binds current process to branch view
   - `ah agent fs branch exec <BRANCH_ID> -- <COMMAND>` executes commands in branch context
   - Cross-platform support: DeviceIoControl (Windows), ioctl on control file (FUSE), XPC service (FSKit)
-  - Session-aware operations integrate with broader agent workflow system
+  - Session-aware operations integrate with broader Agent Harbor system
   - Comprehensive CLI tests covering all subcommands and error conditions
 
 Acceptance checklist (M10.4)
