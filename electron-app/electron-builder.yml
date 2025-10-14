@@ -1,0 +1,124 @@
+appId: com.agentharbor.gui
+productName: Agent Harbor
+copyright: Copyright © 2025 Agent Harbor Team
+directories:
+  output: release/${version}
+  buildResources: assets
+
+files:
+  - dist-electron
+  - resources/**/*
+  - "!node_modules"
+  - "!src"
+  - "!*.md"
+
+# macOS configuration
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - universal
+    - target: pkg
+      arch:
+        - universal
+  icon: assets/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Code signing configuration (uses environment variables)
+  # Set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID for notarization
+
+dmg:
+  title: Agent Harbor ${version}
+  icon: assets/icon.icns
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+pkg:
+  installLocation: /Applications
+  allowAnywhere: false
+  allowCurrentUserHome: false
+  allowRootDirectory: false
+
+# Windows configuration  
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: msi
+      arch:
+        - x64
+  icon: assets/icon.ico
+  # Code signing via environment variables:
+  # Set WIN_CSC_LINK (path to .pfx) and WIN_CSC_KEY_PASSWORD
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  license: ../LICENSE
+  runAfterFinish: true
+
+msi:
+  oneClick: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+
+# Linux configuration
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+    - target: rpm
+      arch:
+        - x64
+  icon: assets/icon.png
+  category: Development
+  maintainer: Agent Harbor Team
+  vendor: Agent Harbor
+
+appImage:
+  license: ../LICENSE
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxtst6
+    - xdg-utils
+
+rpm:
+  depends:
+    - gtk3
+    - libnotify
+    - nss
+    - libXtst
+    - xdg-utils
+
+# Protocol handler registration
+protocols:
+  name: agent-harbor
+  schemes:
+    - agent-harbor
+
+# Publish configuration (for auto-updater)
+publish:
+  provider: github
+  owner: blocksense
+  repo: agent-harbor

@@ -1,0 +1,32 @@
+{
+  "name": "@agent-harbor/gui-core",
+  "version": "0.1.0",
+  "description": "Native addon for Agent Harbor GUI",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "ah-gui-core",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4"
+  },
+  "engines": {
+    "node": ">= 18"
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "ah-gui-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Agent Harbor Team"]
+description = "Core native addon for Agent Harbor GUI"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# N-API bindings for Node.js native addons
+napi = "2.16"
+napi-derive = "2.16"
+
+[build-dependencies]
+napi-build = "2.1"

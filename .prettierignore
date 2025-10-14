@@ -1,5 +1,14 @@
-# Ignore specs directory to preserve code block alignment
-specs/**/*.md
+# Build outputs
+dist
+dist-electron
+dist-renderer
+release
 
-# Add other problematic markdown files here as needed
-# docs/with-code-blocks.md
+# Dependencies
+node_modules
+
+# Generated files
+*.d.ts
+
+# Config files (keep original formatting)
+*.json
