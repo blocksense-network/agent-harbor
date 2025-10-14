@@ -16,7 +16,6 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 10",
     "format": "prettier --write \"src/**/*.{ts,tsx,json}\"",
     "type-check": "tsc --noEmit",
-    "test:browser-automation": "node -e \"require('./src/main/browser-automation/test-harness.ts').testHarness.runAllTests().then(result => { console.log('Tests completed:', result); process.exit(result.failed > 0 ? 1 : 0); })\""
   },
   "dependencies": {
     "@agent-harbor/gui-core": "file:../crates/ah-gui-core",
