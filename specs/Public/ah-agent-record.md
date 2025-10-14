@@ -245,7 +245,7 @@ The recorder provides an IPC interface for receiving snapshot notifications from
 
   * Unix: default **Unix domain socket** at `<out-dir>/ipc.sock`.
   * Windows: TCP `127.0.0.1:<ephemeral>` (logged in meta), or named pipe (later).
-* **Protocol:** Length-prefixed SSZ with tagged unions.
+* **Protocol:** Little endian length-prefixed raw binary SSZ with tagged unions.
 
 **Integration with `ah agent fs snapshot`:**
 

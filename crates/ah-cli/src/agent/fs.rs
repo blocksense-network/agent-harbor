@@ -279,6 +279,11 @@ impl AgentFsCommands {
                 // Create the snapshot
                 let snapshot_ref = zfs_provider.snapshot_now(&workspace, Some("checkpoint"))?;
 
+                // Check if we're running under `ah agent record` and should notify the recorder
+                if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
+                    Self::notify_recorder(&ipc_socket, snapshot_ref.id.parse::<u64>().unwrap_or(0), snapshot_ref.label.clone().unwrap_or_default()).await?;
+                }
+
                 // Output the snapshot information in a format that the mock agent can parse
                 println!("Snapshot created: {}", snapshot_ref.id);
                 println!("Provider: {:?}", snapshot_ref.provider);
@@ -305,6 +310,11 @@ impl AgentFsCommands {
         // Create the snapshot
         let snapshot_ref = provider.snapshot_now(&workspace, Some("checkpoint"))?;
 
+        // Check if we're running under `ah agent record` and should notify the recorder
+        if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
+            Self::notify_recorder(&ipc_socket, snapshot_ref.id.parse::<u64>().unwrap_or(0), snapshot_ref.label.clone().unwrap_or_default()).await?;
+        }
+
         // Output the snapshot information in a format that the mock agent can parse
         println!("Snapshot created: {}", snapshot_ref.id);
         println!("Provider: {:?}", snapshot_ref.provider);
@@ -313,6 +323,38 @@ impl AgentFsCommands {
         }
 
         Ok(())
+    }
+
+    /// Notify the recorder about a new snapshot via IPC
+    async fn notify_recorder(socket_path: &str, snapshot_id: u64, label: String) -> Result<()> {
+        use ah_recorder::IpcClient;
+        use std::path::PathBuf;
+
+        let client = IpcClient::new(PathBuf::from(socket_path));
+
+        match client.notify_snapshot(snapshot_id, label.clone()).await {
+            Ok(response) => {
+                if response.is_success() {
+                    tracing::debug!(
+                        "Notified recorder of snapshot {} at byte offset {}",
+                        snapshot_id,
+                        response.anchor_byte().unwrap_or(0)
+                    );
+                } else if let Some(error_msg) = response.error_message() {
+                    tracing::warn!(
+                        "Recorder returned error for snapshot {}: {}",
+                        snapshot_id,
+                        error_msg
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => {
+                tracing::warn!("Failed to notify recorder: {}", e);
+                // Don't fail the snapshot operation if IPC notification fails
+                Ok(())
+            }
+        }
     }
 
     async fn list_snapshots(opts: SnapshotsOptions) -> Result<()> {
