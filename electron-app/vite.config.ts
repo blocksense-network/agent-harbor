@@ -1,6 +1,6 @@
 /**
  * Vite configuration for Electron app
- * 
+ *
  * This configuration sets up the Electron plugin for hot-reload development
  * and builds both main and renderer processes.
  */
@@ -8,7 +8,7 @@
 import { defineConfig } from 'vite';
 import electron from 'vite-plugin-electron/simple';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     electron({
       main: {
@@ -18,7 +18,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron'],
+              external: ['electron', '@agent-harbor/gui-core'],
             },
           },
         },
@@ -41,11 +41,11 @@ export default defineConfig({
       renderer: {},
     }),
   ],
-  // Base configuration for renderer process (when we add a renderer UI)
-  build: {
-    outDir: 'dist-renderer',
-  },
+  // Only configure build for development/preview, disable for production build
+  build: command === 'serve' ? {
+    // Allow normal development builds
+  } : undefined,
   server: {
     port: 5173,
   },
-});
+}));

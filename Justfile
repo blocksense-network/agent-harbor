@@ -470,6 +470,46 @@ webui-check:
     just webui-build-mock
     just webui-test
 
+# Electron GUI Development Targets
+# ================================
+
+# Install dependencies for Electron GUI
+electron-install:
+    yarn workspace agent-harbor-gui install
+
+# Build the native addon for Electron GUI
+electron-build-native-addon:
+    cd crates/ah-gui-core && npm run build
+
+# Run Electron GUI in development mode (with hot reload)
+electron-dev:
+    yarn workspace agent-harbor-gui run dev
+
+# Build Electron GUI for production
+electron-build:
+    yarn workspace agent-harbor-gui run build
+
+# Build Electron GUI for development (no native addon)
+electron-build-dev:
+    yarn workspace agent-harbor-gui run build:dev
+
+# Lint Electron GUI code
+electron-lint:
+    yarn workspace agent-harbor-gui run lint
+
+# Format Electron GUI code
+electron-format:
+    yarn workspace agent-harbor-gui run format
+
+# Type check Electron GUI code
+electron-type-check:
+    yarn workspace agent-harbor-gui run type-check
+
+# Run all Electron GUI checks (lint, type-check)
+electron-check:
+    just electron-lint
+    just electron-type-check
+
 # macOS / Xcode Targets
 # ====================
 

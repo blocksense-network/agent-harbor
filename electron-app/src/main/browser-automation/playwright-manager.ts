@@ -1,126 +1,227 @@
-/**
- * Playwright Manager
- * 
- * Manages Playwright browser instances and persistent contexts for agent automation.
- * Uses Electron's bundled Chromium for consistent automation across platforms.
- * 
- * See: specs/Public/Browser-Automation/README.md
- */
-
-import { chromium, Browser, BrowserContext, LaunchOptions } from 'playwright';
-import path from 'node:path';
+import { Browser, BrowserContext, chromium } from 'playwright';
 import { app } from 'electron';
+import { join } from 'path';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'fs';
 
-interface BrowserProfile {
+export interface BrowserProfile {
+  id: string;
   name: string;
-  userDataDir: string;
-  loginExpectations?: {
+  loginExpectations: {
     origins: string[];
     username?: string;
   };
+  createdAt: Date;
+  lastUsedAt?: Date;
 }
 
-/**
- * Manages browser automation via Playwright
- */
+export interface BrowserContextOptions {
+  profileId?: string;
+  headless?: boolean;
+  userAgent?: string;
+}
+
 export class PlaywrightManager {
   private browser: Browser | null = null;
   private contexts: Map<string, BrowserContext> = new Map();
+  private profilesDir: string;
 
-  /**
-   * Launch a Playwright browser instance
-   * 
-   * @param headless - Whether to run in headless mode (default: true)
-   */
-  async launchBrowser(headless: boolean = true): Promise<Browser> {
+  constructor() {
+    // Set up profiles directory in user data
+    this.profilesDir = join(app.getPath('userData'), 'browser-profiles');
+    this.ensureProfilesDir();
+  }
+
+  private ensureProfilesDir(): void {
+    if (!existsSync(this.profilesDir)) {
+      mkdirSync(this.profilesDir, { recursive: true });
+    }
+  }
+
+  async initialize(): Promise<void> {
     if (this.browser) {
-      return this.browser;
+      return; // Already initialized
     }
 
-    const launchOptions: LaunchOptions = {
-      headless,
-      // Use Electron's Chromium for consistent automation
-      // Note: This may require additional configuration depending on Playwright version
-      // For now, use the default Chromium channel
-      channel: 'chromium',
-    };
-
-    this.browser = await chromium.launch(launchOptions);
-    return this.browser;
+    try {
+      // Launch browser using Electron's Chromium
+      // Note: In production, you might want to specify the executable path
+      this.browser = await chromium.launch({
+        headless: true, // Start headless by default
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+        ],
+      });
+    } catch (error) {
+      console.error('Failed to launch Playwright browser:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Create or retrieve a persistent browser context for a profile
-   * 
-   * @param profile - Browser profile configuration
-   * @param headless - Whether to run in headless mode
-   */
-  async getOrCreateContext(
-    profile: BrowserProfile,
-    headless: boolean = true
-  ): Promise<BrowserContext> {
-    const existingContext = this.contexts.get(profile.name);
-    if (existingContext) {
-      return existingContext;
+  async createContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
+    if (!this.browser) {
+      await this.initialize();
     }
 
-    // Launch persistent context with profile's user data directory
-    const context = await chromium.launchPersistentContext(profile.userDataDir, {
-      headless,
-      viewport: { width: 1280, height: 720 },
-      // Additional options for automation stability
-      ignoreHTTPSErrors: true,
-    });
+    if (!this.browser) {
+      throw new Error('Browser not initialized');
+    }
 
-    this.contexts.set(profile.name, context);
-    return context;
+    const contextId = `context_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+      // Determine user data directory for persistent context
+      let userDataDir: string | undefined;
+      if (options.profileId) {
+        userDataDir = join(this.profilesDir, options.profileId);
+        // Ensure profile directory exists
+        if (!existsSync(userDataDir)) {
+          mkdirSync(userDataDir, { recursive: true });
+        }
+      }
+
+      const context = await this.browser.newContext({
+        userAgent: options.userAgent,
+        viewport: { width: 1280, height: 720 },
+        // Use persistent context if profile specified
+        ...(userDataDir && {
+          storageState: join(userDataDir, 'storage.json'),
+          // For persistent contexts, we need to use newPersistentContext instead
+        }),
+      });
+
+      this.contexts.set(contextId, context);
+      return context;
+    } catch (error) {
+      console.error('Failed to create browser context:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Get the user data directory for agent browser profiles
-   */
-  getProfilesDir(): string {
-    return path.join(app.getPath('userData'), 'browser-profiles');
-  }
-
-  /**
-   * Close a specific browser context
-   */
-  async closeContext(profileName: string): Promise<void> {
-    const context = this.contexts.get(profileName);
+  async closeContext(contextId: string): Promise<void> {
+    const context = this.contexts.get(contextId);
     if (context) {
       await context.close();
-      this.contexts.delete(profileName);
+      this.contexts.delete(contextId);
     }
   }
 
-  /**
-   * Close all browser contexts and the browser instance
-   */
-  async closeAll(): Promise<void> {
+  getContext(contextId: string): BrowserContext | undefined {
+    return this.contexts.get(contextId);
+  }
+
+  async listProfiles(): Promise<BrowserProfile[]> {
+    const profiles: BrowserProfile[] = [];
+
+    try {
+      const entries = readdirSync(this.profilesDir);
+
+      for (const entry of entries) {
+        const profilePath = join(this.profilesDir, entry);
+        const stat = statSync(profilePath);
+
+        if (stat.isDirectory()) {
+          const metadataPath = join(profilePath, 'metadata.json');
+
+          if (existsSync(metadataPath)) {
+            try {
+              const metadata = require(metadataPath) as BrowserProfile;
+              profiles.push(metadata);
+            } catch (error) {
+              console.warn(`Failed to read profile metadata for ${entry}:`, error);
+            }
+          } else {
+            // Create basic profile metadata for directories without metadata
+            profiles.push({
+              id: entry,
+              name: entry,
+              loginExpectations: { origins: [] },
+              createdAt: stat.birthtime,
+              lastUsedAt: stat.mtime,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to list profiles:', error);
+    }
+
+    return profiles;
+  }
+
+  async createProfile(name: string, origins: string[] = []): Promise<BrowserProfile> {
+    const profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const profilePath = join(this.profilesDir, profileId);
+
+    if (!existsSync(profilePath)) {
+      mkdirSync(profilePath, { recursive: true });
+    }
+
+    const profile: BrowserProfile = {
+      id: profileId,
+      name,
+      loginExpectations: { origins },
+      createdAt: new Date(),
+    };
+
+    // Save metadata
+    const metadataPath = join(profilePath, 'metadata.json');
+    require('fs').writeFileSync(metadataPath, JSON.stringify(profile, null, 2));
+
+    return profile;
+  }
+
+  async deleteProfile(profileId: string): Promise<boolean> {
+    const profilePath = join(this.profilesDir, profileId);
+
+    if (existsSync(profilePath)) {
+      try {
+        require('fs').rmSync(profilePath, { recursive: true, force: true });
+        return true;
+      } catch (error) {
+        console.error(`Failed to delete profile ${profileId}:`, error);
+        return false;
+      }
+    }
+
+    return false;
+  }
+
+  async shutdown(): Promise<void> {
     // Close all contexts
-    for (const [_name, context] of this.contexts) {
-      await context.close();
+    for (const [contextId, context] of this.contexts) {
+      try {
+        await context.close();
+      } catch (error) {
+        console.warn(`Failed to close context ${contextId}:`, error);
+      }
     }
     this.contexts.clear();
 
     // Close browser
     if (this.browser) {
-      await this.browser.close();
+      try {
+        await this.browser.close();
+      } catch (error) {
+        console.warn('Failed to close browser:', error);
+      }
       this.browser = null;
     }
   }
-}
 
-// Singleton instance
-let playwrightManager: PlaywrightManager | null = null;
-
-/**
- * Get the singleton Playwright manager instance
- */
-export function getPlaywrightManager(): PlaywrightManager {
-  if (!playwrightManager) {
-    playwrightManager = new PlaywrightManager();
+  isInitialized(): boolean {
+    return this.browser !== null;
   }
-  return playwrightManager;
+
+  getBrowser(): Browser | null {
+    return this.browser;
+  }
 }
+
+// Export singleton instance
+export const playwrightManager = new PlaywrightManager();

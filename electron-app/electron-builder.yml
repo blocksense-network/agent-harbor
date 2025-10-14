@@ -8,6 +8,7 @@ directories:
 files:
   - dist-electron
   - resources/**/*
+  - node_modules/@agent-harbor/gui-core/**/*
   - "!node_modules"
   - "!src"
   - "!*.md"
@@ -22,7 +23,6 @@ mac:
     - target: pkg
       arch:
         - universal
-  icon: assets/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -32,7 +32,6 @@ mac:
 
 dmg:
   title: Agent Harbor ${version}
-  icon: assets/icon.icns
   contents:
     - x: 130
       y: 220
@@ -47,7 +46,7 @@ pkg:
   allowCurrentUserHome: false
   allowRootDirectory: false
 
-# Windows configuration  
+# Windows configuration
 win:
   target:
     - target: nsis

@@ -1,45 +1,74 @@
-/**
- * Preload script for secure IPC communication
- * 
- * This script runs in a privileged context and exposes a limited API
- * to the renderer process via contextBridge. This maintains security
- * by preventing direct Node.js access from the renderer.
- * 
- * See: https://www.electronjs.org/docs/latest/tutorial/context-isolation
- */
-
 import { contextBridge, ipcRenderer } from 'electron';
 
-/**
- * API exposed to the renderer process
- * Available in renderer as: window.electronAPI
- */
-const electronAPI = {
-  /**
-   * Get application version
-   */
-  getVersion: (): Promise<string> => {
-    return ipcRenderer.invoke('get-version');
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electronAPI', {
+  // App information
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getPlatform: () => ipcRenderer.invoke('get-platform'),
+
+  // Window controls
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+
+  // IPC communication channel (for future WebUI integration)
+  send: (channel: string, data: any) => {
+    // Whitelist of allowed channels
+    const validChannels = [
+      'webui-status-request',
+      'webui-health-check',
+      'notification-trigger',
+      'browser-automation-request',
+    ];
+
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel, data);
+    }
   },
 
-  /**
-   * Placeholder for future IPC methods
-   * These will be implemented as part of later milestones:
-   * - WebUI process status queries
-   * - Notification triggers
-   * - Browser automation controls
-   */
-};
+  receive: (channel: string, func: (...args: any[]) => void) => {
+    // Whitelist of allowed channels
+    const validChannels = [
+      'webui-status-update',
+      'webui-health-update',
+      'notification-response',
+      'browser-automation-response',
+    ];
 
-// Expose the API to the renderer process
-contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+    if (validChannels.includes(channel)) {
+      // Deliberately strip event as it includes `sender`
+      ipcRenderer.on(channel, (_event, ...args) => func(...args));
+    }
+  },
 
-/**
- * Type definitions for the exposed API
- * This should be copied to a .d.ts file for TypeScript support in renderer
- */
+  // Remove all listeners for a channel
+  removeAllListeners: (channel: string) => {
+    const validChannels = [
+      'webui-status-update',
+      'webui-health-update',
+      'notification-response',
+      'browser-automation-response',
+    ];
+
+    if (validChannels.includes(channel)) {
+      ipcRenderer.removeAllListeners(channel);
+    }
+  },
+});
+
+// Type definitions for the exposed API (for TypeScript consumers)
 declare global {
   interface Window {
-    electronAPI: typeof electronAPI;
+    electronAPI: {
+      getAppVersion: () => Promise<string>;
+      getPlatform: () => Promise<string>;
+      minimizeWindow: () => Promise<void>;
+      maximizeWindow: () => Promise<void>;
+      closeWindow: () => Promise<void>;
+      send: (channel: string, data: any) => void;
+      receive: (channel: string, func: (...args: any[]) => void) => void;
+      removeAllListeners: (channel: string) => void;
+    };
   }
 }

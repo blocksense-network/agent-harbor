@@ -3,6 +3,7 @@ members = [
   "crates/ah-cli",
   "crates/ah-config-types",
   "crates/ah-core",
+  "crates/ah-gui-core",
   "crates/ah-local-db",
   "crates/ah-repo",
   "crates/ah-fs-snapshots",
