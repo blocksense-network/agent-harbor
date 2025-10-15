@@ -5,15 +5,34 @@
 
 use ah_recorder::{
     now_ns, AhrWriter, PtyRecorder, PtyRecorderConfig, RecordingSession,
-    WriterConfig,
+    WriterConfig, TerminalViewer, ViewerConfig, ViewerEventLoop,
 };
+use ah_recorder::viewer::GutterPosition;
 use tracing::error;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::signal;
+use tokio::{signal, spawn};
 use tracing::{debug, info};
+
+/// Position of the snapshot indicator gutter
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
+pub enum CliGutterPosition {
+    #[default]
+    Right,
+    Left,
+    None,
+}
+
+/// Convert CLI gutter position to viewer gutter position
+fn cli_gutter_to_viewer_gutter(cli_pos: &CliGutterPosition) -> GutterPosition {
+    match cli_pos {
+        CliGutterPosition::Left => GutterPosition::Left,
+        CliGutterPosition::Right => GutterPosition::Right,
+        CliGutterPosition::None => GutterPosition::None,
+    }
+}
 
 /// Record an agent session with PTY capture
 #[derive(Parser, Debug)]
@@ -45,6 +64,10 @@ pub struct RecordArgs {
     /// Disable live viewer (headless mode)
     #[arg(long)]
     pub headless: bool,
+
+    /// Position of the snapshot indicator gutter column
+    #[arg(long, default_value = "right", value_enum)]
+    pub gutter: CliGutterPosition,
 }
 
 /// Extract branch points from a recorded session
@@ -159,6 +182,35 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
     let recorder_handle = recorder.start_capture();
     let mut session = RecordingSession::new(recorder_handle, rx, writer, &pty_config);
 
+    // Set up viewer if not in headless mode
+    let viewer_handle = if !args.headless {
+        info!("Setting up live viewer");
+
+        // Create viewer configuration
+        let viewer_config = ViewerConfig {
+            cols,
+            rows,
+            scrollback: 1_000_000, // Match the terminal state scrollback
+            gutter: cli_gutter_to_viewer_gutter(&args.gutter),
+        };
+
+        // Create terminal viewer with shared parser from recording session
+        let viewer = TerminalViewer::new(session.terminal(), viewer_config);
+
+        // Create event loop for the viewer
+        let mut event_loop = ViewerEventLoop::new(viewer, Vec::new()) // Start with empty snapshots, will be updated dynamically
+            .context("Failed to create viewer event loop")?;
+
+        // Spawn viewer in background thread
+        Some(tokio::spawn(async move {
+            if let Err(e) = event_loop.run().await {
+                error!("Viewer event loop failed: {}", e);
+            }
+        }))
+    } else {
+        None
+    };
+
     // Set up signal handling for graceful shutdown
     let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
         .context("Failed to set up signal handler")?;
@@ -254,6 +306,14 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
     // Finalize recording
     info!("Finalizing recording");
     session.finalize().await.context("Failed to finalize recording")?;
+
+    // Clean up viewer if it was running
+    if let Some(viewer_handle) = viewer_handle {
+        info!("Waiting for viewer to shut down");
+        if let Err(e) = viewer_handle.await {
+            error!("Viewer task failed: {}", e);
+        }
+    }
 
     // Clean up IPC temp directory
     drop(ipc_temp_dir);

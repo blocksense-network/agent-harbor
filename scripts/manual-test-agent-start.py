@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Manual Agent Start Script
+Manual Agent Start/Record Script
 
-This script launches mock LLM servers and ah agent start commands using process-compose
+This script launches mock LLM servers and ah agent start/record commands using process-compose
 for manual testing and integration verification.
 
 This script provides a convenient way to run integration tests between
-the mock LLM API server and the Agent Harbor CLI agent start command.
+the mock LLM API server and the Agent Harbor CLI agent start/record commands.
 """
 
 import argparse
@@ -91,14 +91,14 @@ def get_agent_version(agent_type):
 def _create_claude_config(user_home_dir, repo_dir, claude_version):
     """Create Claude Code configuration file to avoid startup screens."""
     import json
-    from datetime import datetime, UTC
+    from datetime import datetime, timezone
 
     # Create the .claude directory
     claude_dir = user_home_dir / ".claude"
     claude_dir.mkdir(exist_ok=True)
 
     # Get current time once for all timestamp fields
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     # Base configuration from the example file
     config = {
@@ -257,12 +257,18 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
     # Build server command as string (process-compose requires this)
     server_command = " ".join(f"'{arg}'" if "'" not in arg and " " in arg else f'"{arg}"' if " " in arg else arg for arg in server_cmd)
 
-    # Build ah agent start command
+    # Build ah agent command (start or record)
     ah_cmd = [
         str(project_root / "target" / "debug" / "ah"),
-        "agent", "start",
-        "--agent", args.agent_type,
+        "agent",
     ]
+
+    if args.record:
+        ah_cmd.extend(["record", "--out-file", str(user_home_dir / "session.ahr")])
+    else:
+        ah_cmd.append("start")
+
+    ah_cmd.extend(["--agent", args.agent_type])
 
     if args.non_interactive:
         ah_cmd.append("--non-interactive")
@@ -381,7 +387,7 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Launch mock LLM server and ah agent start with process-compose",
+        description="Launch mock LLM server and ah agent start/record with process-compose",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -408,6 +414,9 @@ Examples:
 
   # With TUI testing
   %(prog)s --non-interactive --enable-tui-testing
+
+  # Record a session instead of just starting agent
+  %(prog)s --record --agent-type claude --prompt "Create hello.py"
 
   # Dry run to see what would be executed
   %(prog)s --dry-run --prompt "Create a hello world program"
@@ -476,6 +485,12 @@ Examples:
         choices=["mock", "codex", "claude", "gemini", "opencode", "qwen", "cursor-cli", "goose"],
         default="codex",
         help="Agent type to start: mock (testing), codex (OpenAI), claude (Anthropic), gemini (Google), opencode, qwen, cursor-cli, goose (default: codex)"
+    )
+
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="Use 'ah agent record' instead of 'ah agent start' to record the session"
     )
 
     parser.add_argument(

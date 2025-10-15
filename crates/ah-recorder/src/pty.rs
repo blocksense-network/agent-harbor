@@ -212,6 +212,16 @@ pub struct TerminalState {
 }
 
 impl TerminalState {
+    /// Get a reference to the vt100 parser
+    pub fn parser(&self) -> &vt100::Parser {
+        &self.parser
+    }
+
+    /// Get a mutable reference to the vt100 parser
+    pub fn parser_mut(&mut self) -> &mut vt100::Parser {
+        &mut self.parser
+    }
+
     /// Create a new terminal state with the given size
     pub fn new(rows: u16, cols: u16) -> Self {
         Self {
@@ -258,11 +268,6 @@ impl TerminalState {
         drop(old_parser);
 
         debug!(rows = rows, cols = cols, "Resized terminal state");
-    }
-
-    /// Get the parser for rendering
-    pub fn parser(&self) -> &vt100::Parser {
-        &self.parser
     }
 
     /// Get the last write byte offset for a given row

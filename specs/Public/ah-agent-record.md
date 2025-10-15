@@ -54,6 +54,7 @@ Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
 * `--brotli-q <0..11>`: Brotli level (default: 4 for fast/compact balance).
 * `--cols <n> --rows <n>`: Initial terminal size; resizes are tracked live. By default, preserve the size of the current terminal.
 * `--ipc <auto|uds|tcp:host:port>`: Instruction injection server transport.
+* `--gutter <left|right|none>`: Position of the snapshot indicator gutter column (default: right).
 
 ### `replay`
 
@@ -223,6 +224,8 @@ Static session facts useful for offline tools:
 * Maintains for each absolute row index a `last_write_byte` value.
 * **Row-change tracking:** After each REC_DATA application, we compute a small **damage band** around the cursor/scroll area and re-hash only those rows; any row hash change updates its `last_write_byte` to `data.start_byte_off + data.len`.
 * **Terminal viewport preservation:** The viewer renders the recorded terminal content within a bordered frame that preserves the original terminal dimensions. If the current terminal is larger than the recorded session, the viewport appears as a bordered rectangle of the original size, centered or positioned appropriately. If the current terminal is smaller, the viewport is truncated with scrolling controls.
+* **Gutter system:** The viewer supports an optional gutter column (`agent.record.gutter: <left|right|none>`) that displays snapshot indicators. Snapshot markers appear in the gutter at positions corresponding to when snapshots were taken during recording. If a snapshot was taken between two lines of output, the marker appears on the same level as the second line.
+* **Dynamic UI injection:** When snapshots are created during recording, the viewer can dynamically inject instruction UI elements. Clicking on a gutter marker inserts the instruction overlay between the relevant lines of the original program output. The gutter indicator remains visible next to the inserted UI.
 * **Overlay/annotations:**
 
   * Click (or key) maps to a vt100 row; we fetch that row's `last_write_byte`.
@@ -234,6 +237,7 @@ Static session facts useful for offline tools:
 
 * Scroll: PgUp/PgDn / Mouse
 * Insert instruction: `i` or mouse click → overlay → submit
+* Gutter interaction: Click on gutter snapshot markers to insert instruction UI between program output lines
 * Incremental search with `/`
 * Support all standard short-cuts from `less` and `more`
 * Navigate nearest instruction: `[`/`]` (prev/next by anchor)

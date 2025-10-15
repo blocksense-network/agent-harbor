@@ -372,7 +372,11 @@ manual-test-webui:
 
 # Launch manual agent start script for testing agent integration
 manual-test-agent-start *args:
-    ./scripts/manual-test-agent-start.sh {{args}}
+    ./scripts/manual-test-agent-start.py {{args}}
+
+# Launch manual agent record script for testing recording functionality
+manual-test-ah-agent-record *args:
+    ./scripts/manual-test-agent-start.py --record {{args}}
 
 # Run WebUI E2E tests in headed mode (visible browser)
 webui-test-headed:

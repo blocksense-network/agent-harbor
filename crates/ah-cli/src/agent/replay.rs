@@ -5,11 +5,22 @@
 // the original timing.
 
 use ah_recorder::{replay_ahr_file, ReplayResult, TerminalViewer, ViewerConfig, ViewerEventLoop};
+use ah_recorder::viewer::GutterPosition;
+use crate::agent::record::CliGutterPosition;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use vt100::Parser as Vt100Parser;
+
+/// Convert CLI gutter position to viewer gutter position
+fn cli_gutter_to_viewer_gutter(cli_pos: &CliGutterPosition) -> GutterPosition {
+    match cli_pos {
+        CliGutterPosition::Left => GutterPosition::Left,
+        CliGutterPosition::Right => GutterPosition::Right,
+        CliGutterPosition::None => GutterPosition::None,
+    }
+}
 
 /// Replay a recorded agent session
 #[derive(Parser, Debug)]
@@ -33,6 +44,10 @@ pub struct ReplayArgs {
     /// Print metadata and stats instead of rendering output
     #[arg(long)]
     pub print_meta: bool,
+
+    /// Position of the snapshot indicator gutter column
+    #[arg(long, default_value = "right", value_enum)]
+    pub gutter: CliGutterPosition,
 }
 
 /// Execute the replay command
@@ -49,7 +64,7 @@ pub async fn execute(args: ReplayArgs) -> Result<()> {
         print_metadata(&ahr_path).await?;
     } else if args.viewer {
         // Interactive viewer mode: load recording into live viewer
-        run_viewer_mode(&ahr_path).await?;
+        run_viewer_mode(&ahr_path, &args.gutter).await?;
     } else if args.fast {
         // Fast-forward replay: immediately show final state
         fast_replay(&ahr_path, args.no_colors).await?;
@@ -104,28 +119,28 @@ async fn fast_replay(ahr_path: &PathBuf, no_colors: bool) -> Result<()> {
 }
 
 /// Run the viewer in interactive mode for testing
-async fn run_viewer_mode(ahr_path: &PathBuf) -> Result<()> {
+async fn run_viewer_mode(ahr_path: &PathBuf, gutter: &CliGutterPosition) -> Result<()> {
     // First replay the recording to get the final terminal state
     let replay_result = replay_ahr_file(ahr_path)
         .context("Failed to replay recording for viewer")?;
 
-    // Create a vt100 parser with the final state by simulating the data
-    // For testing, we'll create a parser and feed it enough data to show the final state
-    let parser = Arc::new(Mutex::new(Vt100Parser::new(
+    // Create a terminal state with the final state by simulating the data
+    // For testing, we'll create a terminal state and feed it enough data to show the final state
+    use ah_recorder::pty::TerminalState;
+    let terminal_state = Arc::new(Mutex::new(TerminalState::new(
         replay_result.initial_rows,
         replay_result.initial_cols,
-        1000
     )));
 
-    // Simulate feeding the final content to the parser
+    // Simulate feeding the final content to the terminal state
     // This is a simplified approach - in practice, we'd replay the actual PTY data
     {
-        let mut p = parser.lock().unwrap();
+        let mut ts = terminal_state.lock().unwrap();
         // For each line in the replay result, simulate writing it
         for line in &replay_result.lines {
             // Write the line content followed by newline
             let data = format!("{}\n", line.text);
-            p.process(data.as_bytes());
+            ts.parser_mut().process(data.as_bytes());
         }
     }
 
@@ -134,10 +149,11 @@ async fn run_viewer_mode(ahr_path: &PathBuf) -> Result<()> {
         cols: replay_result.initial_cols as u16,
         rows: replay_result.initial_rows as u16,
         scrollback: 1000,
+        gutter: cli_gutter_to_viewer_gutter(gutter),
     };
 
     // Create terminal viewer
-    let viewer = TerminalViewer::new(parser, config);
+    let viewer = TerminalViewer::new(terminal_state, config);
 
     // Create event loop for the viewer
     let mut event_loop = ViewerEventLoop::new(viewer, replay_result.snapshots)

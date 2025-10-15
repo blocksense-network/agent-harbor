@@ -31,6 +31,14 @@ pub struct RowMetadata {
     pub content_hash: u64,
 }
 
+/// Position of the snapshot indicator gutter
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GutterPosition {
+    Left,
+    Right,
+    None,
+}
+
 /// Viewer configuration
 #[derive(Debug, Clone)]
 pub struct ViewerConfig {
@@ -39,12 +47,14 @@ pub struct ViewerConfig {
     pub rows: u16,
     /// Scrollback buffer size (lines)
     pub scrollback: usize,
+    /// Position of the snapshot indicator gutter
+    pub gutter: GutterPosition,
 }
 
 /// Viewer state for the terminal display
 pub struct TerminalViewer {
-    /// vt100 parser containing the current terminal state
-    parser: Arc<Mutex<Parser>>,
+    /// Terminal state containing vt100 parser and metadata
+    terminal_state: Arc<Mutex<crate::pty::TerminalState>>,
     /// Metadata for each row (last write byte, content hash)
     row_metadata: Arc<Mutex<HashMap<usize, RowMetadata>>>,
     /// Current scroll position (0 = bottom of screen)
@@ -86,10 +96,10 @@ pub struct SearchState {
 }
 
 impl TerminalViewer {
-    /// Create a new viewer with the given vt100 parser and configuration
-    pub fn new(parser: Arc<Mutex<Parser>>, config: ViewerConfig) -> Self {
+    /// Create a new viewer with the given terminal state and configuration
+    pub fn new(terminal_state: Arc<Mutex<crate::pty::TerminalState>>, config: ViewerConfig) -> Self {
         let mut viewer = Self {
-            parser,
+            terminal_state,
             row_metadata: Arc::new(Mutex::new(HashMap::new())),
             scroll_offset: 0,
             total_rows: 0,
@@ -108,8 +118,8 @@ impl TerminalViewer {
     ///
     /// This computes damage bands and updates last_write_byte for changed rows.
     pub fn update_row_metadata(&mut self) {
-        let parser = self.parser.lock().unwrap();
-        let screen = parser.screen();
+        let terminal_state = self.terminal_state.lock().unwrap();
+        let screen = terminal_state.parser().screen();
 
         // Get screen contents and split into lines
         let contents = screen.contents();
@@ -262,18 +272,47 @@ impl TerminalViewer {
 
     /// Handle a mouse click at the given position
     pub fn handle_mouse_click(&mut self, col: u16, row: u16, snapshots: &[Snapshot]) {
+        // Calculate viewport layout to determine if click is in gutter
+        let gutter_width = match self.config.gutter {
+            GutterPosition::None => 0,
+            _ => 3,
+        };
+
+        let recorded_cols = self.config.cols as usize;
+        let available_width: usize = 80; // Approximate terminal width, could be passed as parameter
+        let viewport_cols = recorded_cols.min(available_width.saturating_sub(gutter_width).saturating_sub(2));
+
+        // Calculate gutter position
+        let total_width = viewport_cols as u16 + 2 + gutter_width as u16;
+        let x_offset = (80u16.saturating_sub(total_width)) / 2; // Approximate centering
+
+        let is_in_gutter = match self.config.gutter {
+            GutterPosition::Left => col >= x_offset && col < x_offset + gutter_width as u16,
+            GutterPosition::Right => col >= x_offset + viewport_cols as u16 + 2 && col < x_offset + viewport_cols as u16 + 2 + gutter_width as u16,
+            GutterPosition::None => false,
+        };
+
         // Convert screen coordinates to row index
         let visible_start = self.scroll_offset;
         let clicked_row = visible_start + row as usize;
 
         if clicked_row < self.total_rows {
-            // Find nearest snapshot to this row
-            if let Some(snapshot) = self.find_nearest_snapshot(clicked_row, snapshots) {
-                // TODO: Show snapshot info overlay or navigate to it
-                tracing::debug!("Clicked near snapshot: {}", snapshot.id);
+            if is_in_gutter {
+                // Gutter click - find snapshot for this row and insert instruction UI
+                if let Some(snapshot) = self.find_nearest_snapshot(clicked_row, snapshots) {
+                    tracing::debug!("Clicked gutter snapshot marker: {}", snapshot.id);
+                    // Insert instruction overlay at the snapshot location
+                    self.start_instruction_overlay(clicked_row, None); // TODO: Pre-fill with existing instruction if available
+                }
             } else {
-                // Start instruction overlay at this row
-                self.start_instruction_overlay(clicked_row, None);
+                // Terminal content click - find nearest snapshot or start instruction overlay
+                if let Some(snapshot) = self.find_nearest_snapshot(clicked_row, snapshots) {
+                    // TODO: Show snapshot info overlay or navigate to it
+                    tracing::debug!("Clicked near snapshot: {}", snapshot.id);
+                } else {
+                    // Start instruction overlay at this row
+                    self.start_instruction_overlay(clicked_row, None);
+                }
             }
         }
     }
@@ -295,7 +334,7 @@ impl TerminalViewer {
         let status_area = chunks[1];
 
         // Render terminal content
-        self.render_terminal_content(frame, terminal_area);
+        self.render_terminal_content(frame, terminal_area, snapshots);
 
         // Render instruction overlay if active
         if let Some(ref overlay) = self.instruction_overlay {
@@ -312,9 +351,9 @@ impl TerminalViewer {
     }
 
     /// Render the main terminal content
-    fn render_terminal_content(&self, frame: &mut Frame, area: Rect) {
-        let parser = self.parser.lock().unwrap();
-        let screen = parser.screen();
+    fn render_terminal_content(&self, frame: &mut Frame, area: Rect, snapshots: &[Snapshot]) {
+        let terminal_state = self.terminal_state.lock().unwrap();
+        let screen = terminal_state.parser().screen();
 
         // Get screen contents and split into lines
         let contents = screen.contents();
@@ -324,22 +363,70 @@ impl TerminalViewer {
         let recorded_cols = self.config.cols as usize;
         let recorded_rows = self.config.rows as usize;
 
+        // Calculate gutter width if enabled
+        let gutter_width = match self.config.gutter {
+            GutterPosition::None => 0,
+            _ => 3, // 1 for marker + 2 for padding/borders
+        };
+
         // Calculate the viewport size, constrained by available area
-        let viewport_cols = recorded_cols.min(area.width.saturating_sub(2) as usize); // -2 for borders
+        let available_width = area.width.saturating_sub(gutter_width);
+        let viewport_cols = recorded_cols.min(available_width.saturating_sub(2) as usize); // -2 for borders
         let viewport_rows = recorded_rows.min(area.height.saturating_sub(1) as usize); // -1 for status bar
 
         // Center the viewport in the available area
-        let viewport_width = viewport_cols as u16 + 2; // +2 for borders
+        let total_width = viewport_cols as u16 + 2 + gutter_width as u16; // terminal + borders + gutter
         let viewport_height = viewport_rows as u16;
-        let x_offset = (area.width.saturating_sub(viewport_width)) / 2;
+        let x_offset = (area.width.saturating_sub(total_width)) / 2;
         let y_offset = (area.height.saturating_sub(viewport_height + 1)) / 2; // +1 for status bar
 
-        let viewport_area = Rect {
-            x: area.x + x_offset,
-            y: area.y + y_offset,
-            width: viewport_width,
-            height: viewport_height,
+        // Split area based on gutter position
+        let (gutter_area, terminal_area) = match self.config.gutter {
+            GutterPosition::Left => {
+                let gutter_rect = Rect {
+                    x: area.x + x_offset,
+                    y: area.y + y_offset,
+                    width: gutter_width as u16,
+                    height: viewport_height,
+                };
+                let terminal_rect = Rect {
+                    x: area.x + x_offset + gutter_width as u16,
+                    y: area.y + y_offset,
+                    width: viewport_cols as u16 + 2, // +2 for borders
+                    height: viewport_height,
+                };
+                (Some(gutter_rect), terminal_rect)
+            }
+            GutterPosition::Right => {
+                let terminal_rect = Rect {
+                    x: area.x + x_offset,
+                    y: area.y + y_offset,
+                    width: viewport_cols as u16 + 2, // +2 for borders
+                    height: viewport_height,
+                };
+                let gutter_rect = Rect {
+                    x: area.x + x_offset + viewport_cols as u16 + 2,
+                    y: area.y + y_offset,
+                    width: gutter_width as u16,
+                    height: viewport_height,
+                };
+                (Some(gutter_rect), terminal_rect)
+            }
+            GutterPosition::None => {
+                let terminal_rect = Rect {
+                    x: area.x + x_offset,
+                    y: area.y + y_offset,
+                    width: viewport_cols as u16 + 2, // +2 for borders
+                    height: viewport_height,
+                };
+                (None, terminal_rect)
+            }
         };
+
+        // Render gutter if enabled
+        if let Some(gutter_rect) = gutter_area {
+            self.render_gutter(frame, gutter_rect, snapshots, viewport_rows);
+        }
 
         // Collect visible rows (accounting for scroll)
         let mut lines = Vec::new();
@@ -360,7 +447,40 @@ impl TerminalViewer {
             .block(Block::default().borders(Borders::ALL).title(format!("Terminal ({}x{})", recorded_cols, recorded_rows)))
             .wrap(Wrap { trim: false });
 
-        frame.render_widget(terminal_widget, viewport_area);
+        frame.render_widget(terminal_widget, terminal_area);
+    }
+
+    /// Render the gutter with snapshot markers
+    fn render_gutter(&self, frame: &mut Frame, area: Rect, snapshots: &[Snapshot], visible_rows: usize) {
+        let mut lines = Vec::new();
+        let start_row = self.scroll_offset;
+
+        for i in 0..visible_rows {
+            let row_idx = start_row + i;
+
+            // Check if this row has any snapshots
+            let has_snapshot = snapshots.iter().any(|snapshot| {
+                // Find the nearest snapshot to this row based on anchor_byte proximity to row's last_write_byte
+                if let Some(row_last_write) = self.row_metadata.lock().unwrap().get(&(row_idx as usize)).map(|meta| meta.last_write_byte) {
+                    // Consider it a match if the snapshot is within a reasonable range of this row
+                    (snapshot.anchor_byte as i64 - row_last_write as i64).abs() < 1000 // Within 1000 bytes
+                } else {
+                    false
+                }
+            });
+
+            if has_snapshot {
+                lines.push(Line::from(" • ").style(Style::default().fg(Color::Yellow)));
+            } else {
+                lines.push(Line::from("   "));
+            }
+        }
+
+        let gutter_widget = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::LEFT).title("Snapshots"))
+            .wrap(Wrap { trim: false });
+
+        frame.render_widget(gutter_widget, area);
     }
 
     /// Render instruction overlay
