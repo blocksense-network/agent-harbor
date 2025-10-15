@@ -409,6 +409,30 @@ impl Record {
         }
     }
 
+    /// Parse a record from raw bytes, returning the record and bytes consumed
+    pub fn parse_from_bytes(data: &[u8]) -> io::Result<(Self, usize)> {
+        let mut cursor = std::io::Cursor::new(data);
+        let start_pos = cursor.position() as usize;
+
+        let header = RecHeader::read_from(&mut cursor)?;
+        let record = match header.tag {
+            REC_DATA => Record::Data(RecData::read_from(&mut cursor, header)?),
+            REC_RESIZE => Record::Resize(RecResize::read_from(&mut cursor, header)?),
+            REC_INPUT => Record::Input(RecInput::read_from(&mut cursor, header)?),
+            REC_MARK => Record::Mark(RecMark::read_from(&mut cursor, header)?),
+            REC_SNAPSHOT => Record::Snapshot(RecSnapshot::read_from(&mut cursor, header)?),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Unknown record tag: {}", header.tag),
+                ))
+            }
+        };
+
+        let consumed = cursor.position() as usize - start_pos;
+        Ok((record, consumed))
+    }
+
     /// Read a record from a reader (requires reading the header first)
     pub fn read_from<R: Read>(mut r: R) -> io::Result<Self> {
         let header = RecHeader::read_from(&mut r)?;

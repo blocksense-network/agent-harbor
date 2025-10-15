@@ -5,11 +5,13 @@
 
 use ah_recorder::{
     now_ns, AhrWriter, PtyRecorder, PtyRecorderConfig, RecordingSession,
-    WriterConfig, create_shared_writer,
+    WriterConfig,
 };
+use tracing::error;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::signal;
 use tracing::{debug, info};
 
@@ -43,6 +45,26 @@ pub struct RecordArgs {
     /// Disable live viewer (headless mode)
     #[arg(long)]
     pub headless: bool,
+}
+
+/// Extract branch points from a recorded session
+#[derive(Parser, Debug)]
+pub struct BranchPointsArgs {
+    /// Path to the .ahr recording file or session ID
+    #[arg(value_name = "SESSION")]
+    pub session: String,
+
+    /// Output format: json, md, or csv
+    #[arg(short, long, default_value = "json")]
+    pub format: String,
+
+    /// Include terminal lines in output (default: true)
+    #[arg(long)]
+    pub include_lines: Option<bool>,
+
+    /// Include snapshot metadata in output (default: true)
+    #[arg(long)]
+    pub include_snapshots: Option<bool>,
 }
 
 /// Execute the record command
@@ -97,10 +119,35 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
     let writer = AhrWriter::create(&out_file, writer_config)
         .context("Failed to create AHR writer")?;
 
-    // Create snapshots writer
-    let snapshots_path = out_file.with_extension("snapshots.jsonl");
-    let snapshots_writer = create_shared_writer(&snapshots_path)
-        .context("Failed to create snapshots writer")?;
+    // Set up IPC server for snapshot notifications
+    use ah_recorder::ipc::{IpcServer, IpcServerConfig};
+    use std::env;
+    use tempfile::tempdir;
+
+    // Create temporary directory for IPC socket
+    let ipc_temp_dir = tempdir().context("Failed to create temp directory for IPC")?;
+    let socket_path = ipc_temp_dir.path().join("recorder.sock");
+
+    let ipc_config = IpcServerConfig {
+        socket_path: socket_path.clone(),
+    };
+
+    // Set environment variable so external commands know how to connect
+    env::set_var("AH_RECORDER_IPC_SOCKET", socket_path.to_string_lossy().to_string());
+
+    // Create shared byte offset counter for IPC
+    let current_byte_offset = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    // Start IPC server
+    let (ipc_server, mut ipc_rx) = IpcServer::start(ipc_config, current_byte_offset.clone())
+        .await
+        .context("Failed to start IPC server")?;
+
+    info!("IPC server started, socket: {:?}", socket_path);
+    eprintln!("DEBUG: AH_RECORDER_IPC_SOCKET set to: {:?}", env::var("AH_RECORDER_IPC_SOCKET"));
+
+    // Give IPC server time to start accepting connections
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Spawn command in PTY
     let (recorder, rx) = PtyRecorder::spawn(&args.command, &args.args, pty_config.clone())
@@ -143,6 +190,51 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
                 }
             }
 
+            // Process IPC commands (snapshot notifications)
+            ipc_cmd = ipc_rx.recv() => {
+                match ipc_cmd {
+                    Some(ah_recorder::ipc::IpcCommand::Snapshot { snapshot_id, label, response_tx }) => {
+                        eprintln!("DEBUG: Processing IPC snapshot notification: id={}, label={}", snapshot_id, label);
+                        info!(snapshot_id, label = ?label, "Processing snapshot notification");
+
+                        // Get current byte offset from the session
+                        let current_offset = session.current_byte_offset();
+
+                        // Update the shared byte offset counter for IPC
+                        current_byte_offset.store(current_offset, std::sync::atomic::Ordering::SeqCst);
+
+                        // Write snapshot record to AHR file
+                        let snapshot_record = ah_recorder::format::RecSnapshot {
+                            header: ah_recorder::format::RecHeader {
+                                tag: ah_recorder::format::REC_SNAPSHOT,
+                                pad: [0; 3],
+                                ts_ns: ah_recorder::now_ns(),
+                            },
+                            anchor_byte: current_offset,
+                            snapshot_id,
+                            label: label.clone(),
+                        };
+                        session.append_record(ah_recorder::Record::Snapshot(snapshot_record))
+                            .context("Failed to write snapshot record to AHR")?;
+
+                        // Send response with anchor byte
+                        eprintln!("DEBUG: Sending IPC response: snapshot_id={}, anchor_byte={}", snapshot_id, current_offset);
+                        let _ = response_tx.send(ah_recorder::ipc::Response::Success((
+                            snapshot_id,
+                            current_offset,
+                            ah_recorder::now_ns(),
+                        )));
+                    }
+                    Some(ah_recorder::ipc::IpcCommand::Shutdown) => {
+                        info!("Received IPC shutdown command");
+                        break;
+                    }
+                    None => {
+                        debug!("IPC command channel closed");
+                    }
+                }
+            }
+
             // Handle signals
             _ = sigint.recv() => {
                 info!("Received SIGINT, shutting down");
@@ -155,25 +247,136 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
         }
     }
 
+    // Shutdown IPC server
+    info!("Shutting down IPC server");
+    ipc_server.shutdown().await;
+
     // Finalize recording
     info!("Finalizing recording");
     session.finalize().await.context("Failed to finalize recording")?;
 
-    // Finalize snapshots
-    let writer = std::sync::Arc::try_unwrap(snapshots_writer)
-        .map_err(|_| anyhow::anyhow!("Snapshots writer still has references"))?
-        .into_inner()
-        .unwrap();
-    writer.finalize().context("Failed to finalize snapshots")?;
+    // Clean up IPC temp directory
+    drop(ipc_temp_dir);
 
-    info!(
-        ahr_file = ?out_file,
-        snapshots_file = ?snapshots_path,
-        "Recording complete"
-    );
+    info!(ahr_file = ?out_file, "Recording complete");
 
     if !exited {
         anyhow::bail!("Process did not exit cleanly");
+    }
+
+    Ok(())
+}
+
+/// Execute the branch-points command
+pub async fn execute_branch_points(args: BranchPointsArgs) -> Result<()> {
+    info!(
+        session = %args.session,
+        format = %args.format,
+        "Extracting branch points from recording"
+    );
+
+    // For now, assume the session argument is a path to an .ahr file
+    let ahr_path = std::path::PathBuf::from(&args.session);
+
+    if !ahr_path.exists() {
+        anyhow::bail!("Recording file not found: {}", args.session);
+    }
+
+    // Create branch points from the recording
+    let branch_points = ah_recorder::create_branch_points(&ahr_path, None)
+        .context("Failed to create branch points from recording")?;
+
+    // Debug: print information about the results
+    eprintln!("DEBUG: AHR file: {:?}", ahr_path);
+    eprintln!("DEBUG: Found {} branch points", branch_points.items.len());
+
+    // Output in the requested format
+    match args.format.as_str() {
+        "json" => output_json(&branch_points)?,
+        "md" => output_markdown(&branch_points)?,
+        "csv" => output_csv(&branch_points)?,
+        _ => {
+            anyhow::bail!("Unsupported output format: {}", args.format);
+        }
+    }
+
+    Ok(())
+}
+
+/// Output branch points in JSON format
+fn output_json(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
+    use serde_json::json;
+
+    let items: Vec<serde_json::Value> = branch_points.items.iter().map(|item| {
+        match item {
+            ah_recorder::InterleavedItem::Line(line) => {
+                json!({
+                    "kind": "line",
+                    "index": line.index,
+                    "text": line.text,
+                    "last_write_byte": line.last_write_byte
+                })
+            }
+            ah_recorder::InterleavedItem::Snapshot(snapshot) => {
+                json!({
+                    "kind": "snapshot",
+                    "id": snapshot.id,
+                    "ts_ns": snapshot.ts_ns,
+                    "label": snapshot.label,
+                    "anchor_byte": snapshot.anchor_byte
+                })
+            }
+        }
+    }).collect();
+
+    let output = json!({
+        "total_bytes": branch_points.total_bytes,
+        "items": items
+    });
+
+    println!("{}", serde_json::to_string_pretty(&output)?);
+    Ok(())
+}
+
+/// Output branch points in Markdown format
+fn output_markdown(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
+    println!("# Branch Points");
+    println!("Total bytes processed: {}", branch_points.total_bytes);
+    println!();
+
+    for item in &branch_points.items {
+        match item {
+            ah_recorder::InterleavedItem::Line(line) => {
+                println!("**Line {}** (byte {}): {}", line.index, line.last_write_byte, line.text);
+            }
+            ah_recorder::InterleavedItem::Snapshot(snapshot) => {
+                let label = snapshot.label.as_deref().unwrap_or("unnamed");
+                println!("📸 **Snapshot {}** (byte {}): {}", snapshot.id, snapshot.anchor_byte, label);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Output branch points in CSV format
+fn output_csv(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
+    // CSV header
+    println!("kind,index_or_id,position,text_or_label");
+
+    for item in &branch_points.items {
+        match item {
+            ah_recorder::InterleavedItem::Line(line) => {
+                // Escape quotes in text
+                let escaped_text = line.text.replace("\"", "\"\"");
+                println!("line,{},{},\"{}\"", line.index, line.last_write_byte, escaped_text);
+            }
+            ah_recorder::InterleavedItem::Snapshot(snapshot) => {
+                let label = snapshot.label.as_deref().unwrap_or("");
+                let escaped_label = label.replace("\"", "\"\"");
+                println!("snapshot,{},{},\"{}\"", snapshot.id, snapshot.anchor_byte, escaped_label);
+            }
+        }
     }
 
     Ok(())

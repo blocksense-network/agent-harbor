@@ -1,0 +1,46 @@
+name: recorder_error_handling
+description: "Test error handling in recording and IPC communication"
+repo:
+  init: true
+timeline:
+  - think:
+      - [200, "Testing error handling and recovery in the recording system."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "valid.txt"
+        text: "This operation should succeed."
+      result: "File created"
+      status: "ok"
+  - assistant:
+      - [100, "First successful operation."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "another.txt"
+        text: "This should also work even if IPC has issues."
+      result: "File created"
+      status: "ok"
+  - assistant:
+      - [100, "Second operation - IPC issues should not block file operations."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "recovery.txt"
+        text: "System should recover gracefully from any transient errors."
+      result: "File created"
+      status: "ok"
+  - assistant:
+      - [150, "Final operation verifies system resilience. The recording should continue even if individual IPC notifications fail."]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "valid.txt"
+    - type: "taskFile"
+      pattern: "another.txt"
+    - type: "taskFile"
+      pattern: "recovery.txt"
+  error_tolerance:
+    ipc_failures: "non_blocking"
+    recording_continuity: "maintained"

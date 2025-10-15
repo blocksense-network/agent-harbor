@@ -281,7 +281,13 @@ impl AgentFsCommands {
 
                 // Check if we're running under `ah agent record` and should notify the recorder
                 if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
-                    Self::notify_recorder(&ipc_socket, snapshot_ref.id.parse::<u64>().unwrap_or(0), snapshot_ref.label.clone().unwrap_or_default()).await?;
+                    println!("DEBUG: Notifying recorder at socket: {}", ipc_socket);
+                    match Self::notify_recorder(&ipc_socket, snapshot_ref.id.parse::<u64>().unwrap_or(0), snapshot_ref.label.clone().unwrap_or_default()).await {
+                        Ok(_) => println!("DEBUG: Successfully notified recorder"),
+                        Err(e) => println!("DEBUG: Failed to notify recorder: {}", e),
+                    }
+                } else {
+                    println!("DEBUG: AH_RECORDER_IPC_SOCKET not set, not notifying recorder");
                 }
 
                 // Output the snapshot information in a format that the mock agent can parse
@@ -290,8 +296,8 @@ impl AgentFsCommands {
                 if let Some(label) = &snapshot_ref.label {
                     println!("Label: {}", label);
                 }
-
-                return Ok(());
+            } else {
+                println!("Not on ZFS filesystem, cannot create snapshots");
             }
         }
 

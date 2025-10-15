@@ -1,0 +1,289 @@
+{
+  "items": [
+    {
+      "index": 0,
+      "kind": "line",
+      "last_write_byte": 36,
+      "text": "[repo] Initializing git repository"
+    },
+    {
+      "index": 1,
+      "kind": "line",
+      "last_write_byte": 67,
+      "text": "[repo] Created initial commit"
+    },
+    {
+      "index": 2,
+      "kind": "line",
+      "last_write_byte": 111,
+      "text": "[tui-test] tui_testing_uri parameter: None"
+    },
+    {
+      "index": 3,
+      "kind": "line",
+      "last_write_byte": 233,
+      "text": "[thinking] [500ms] I will create a Python file and"
+    },
+    {
+      "index": 4,
+      "kind": "line",
+      "last_write_byte": 233,
+      "text": " verify that filesystem snapshots are being captur"
+    },
+    {
+      "index": 5,
+      "kind": "line",
+      "last_write_byte": 233,
+      "text": "ed during recording."
+    },
+    {
+      "index": 6,
+      "kind": "line",
+      "last_write_byte": 403,
+      "text": "[tool] write_file({'path': 'main.py', 'text': 'def"
+    },
+    {
+      "index": 7,
+      "kind": "line",
+      "last_write_byte": 403,
+      "text": " greet(name):\\n    return f\"Hello, {name}!\"\\n\\nif "
+    },
+    {
+      "index": 8,
+      "kind": "line",
+      "last_write_byte": 403,
+      "text": "__name__ == \"__main__\":\\n    print(greet(\"World\"))"
+    },
+    {
+      "index": 9,
+      "kind": "line",
+      "last_write_byte": 403,
+      "text": "\\n'}) -> executing"
+    },
+    {
+      "index": 10,
+      "kind": "line",
+      "last_write_byte": 518,
+      "text": "[tool] write_file -> result mismatch. Expected: Fi"
+    },
+    {
+      "index": 11,
+      "kind": "line",
+      "last_write_byte": 518,
+      "text": "le created successfully, Got: {'path': 'main.py', "
+    },
+    {
+      "index": 12,
+      "kind": "line",
+      "last_write_byte": 518,
+      "text": "'bytes': 100}"
+    },
+    {
+      "index": 14,
+      "kind": "line",
+      "last_write_byte": 654,
+      "text": "olders/7x/vkgqhwz90f5fm8rf6blm_n940000gn/T/nix-she"
+    },
+    {
+      "anchor_byte": 654,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510656810358000
+    },
+    {
+      "anchor_byte": 654,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510657011194000
+    },
+    {
+      "index": 20,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+    },
+    {
+      "index": 21,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "ion_ah_5199_1760510656724391000_0"
+    },
+    {
+      "index": 22,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "Provider: Zfs"
+    },
+    {
+      "index": 23,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "Label: checkpoint"
+    },
+    {
+      "index": 24,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+    },
+    {
+      "index": 25,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "ion_ah_5199_1760510656946512000_1"
+    },
+    {
+      "index": 26,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "Provider: Zfs"
+    },
+    {
+      "index": 27,
+      "kind": "line",
+      "last_write_byte": 1081,
+      "text": "Label: checkpoint"
+    },
+    {
+      "index": 28,
+      "kind": "line",
+      "last_write_byte": 1145,
+      "text": "[checkpoint] Executed checkpoint command: ah agent"
+    },
+    {
+      "index": 29,
+      "kind": "line",
+      "last_write_byte": 1145,
+      "text": " fs snapshot"
+    },
+    {
+      "index": 30,
+      "kind": "line",
+      "last_write_byte": 1240,
+      "text": "[assistant] [300ms] Created main.py. A filesystem "
+    },
+    {
+      "index": 31,
+      "kind": "line",
+      "last_write_byte": 1240,
+      "text": "snapshot should have been captured via IPC."
+    },
+    {
+      "index": 32,
+      "kind": "line",
+      "last_write_byte": 1522,
+      "text": "[tool] write_file({'path': 'test_main.py', 'text':"
+    },
+    {
+      "index": 33,
+      "kind": "line",
+      "last_write_byte": 1522,
+      "text": " 'import main\\n\\ndef test_greet():\\n    assert mai"
+    },
+    {
+      "index": 34,
+      "kind": "line",
+      "last_write_byte": 1522,
+      "text": "n.greet(\"Alice\") == \"Hello, Alice!\"\\n    assert ma"
+    },
+    {
+      "index": 35,
+      "kind": "line",
+      "last_write_byte": 1522,
+      "text": "in.greet(\"Bob\") == \"Hello, Bob!\"\\n    print(\"All t"
+    },
+    {
+      "index": 36,
+      "kind": "line",
+      "last_write_byte": 1522,
+      "text": "ests passed!\")\\n\\nif __name__ == \"__main__\":\\n    "
+    },
+    {
+      "index": 37,
+      "kind": "line",
+      "last_write_byte": 1522,
+      "text": "test_greet()\\n'}) -> executing"
+    },
+    {
+      "index": 38,
+      "kind": "line",
+      "last_write_byte": 1634,
+      "text": "[tool] write_file -> result mismatch. Expected: Te"
+    },
+    {
+      "index": 39,
+      "kind": "line",
+      "last_write_byte": 1634,
+      "text": "st file created, Got: {'path': 'test_main.py', 'by"
+    },
+    {
+      "index": 40,
+      "kind": "line",
+      "last_write_byte": 1634,
+      "text": "tes': 203}"
+    },
+    {
+      "index": 42,
+      "kind": "line",
+      "last_write_byte": 1770,
+      "text": "olders/7x/vkgqhwz90f5fm8rf6blm_n940000gn/T/nix-she"
+    },
+    {
+      "anchor_byte": 1770,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510657553551000
+    },
+    {
+      "anchor_byte": 1770,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510657754932000
+    },
+    {
+      "index": 48,
+      "kind": "line",
+      "last_write_byte": 2261,
+      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+    },
+    {
+      "index": 49,
+      "kind": "line",
+      "last_write_byte": 2261,
+      "text": "ion_ah_6435_1760510657476631000_0"
+    },
+    {
+      "anchor_byte": 2715,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510658396647000
+    },
+    {
+      "anchor_byte": 2715,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510658604419000
+    },
+    {
+      "anchor_byte": 3669,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510659121081000
+    },
+    {
+      "anchor_byte": 3669,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760510659327097000
+    }
+  ],
+  "total_bytes": 4636
+}

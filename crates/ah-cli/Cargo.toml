@@ -60,6 +60,7 @@ ethereum_ssz_derive = "0.8"
 # Agent recording dependencies
 ah-recorder = { path = "../ah-recorder" }
 crossterm = { workspace = true }
+tempfile = { workspace = true }
 
 # Platform-specific dependencies
 [target.'cfg(unix)'.dependencies]

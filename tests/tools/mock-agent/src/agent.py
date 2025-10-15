@@ -125,6 +125,13 @@ def _execute_checkpoint_cmd(checkpoint_cmd: str, workspace: str) -> None:
     if not checkpoint_cmd:
         return
 
+    # Debug: check if AH_RECORDER_IPC_SOCKET is set
+    ipc_socket = os.environ.get('AH_RECORDER_IPC_SOCKET')
+    if ipc_socket:
+        _print_trace("checkpoint", f"AH_RECORDER_IPC_SOCKET is set: {ipc_socket}")
+    else:
+        _print_trace("checkpoint", "AH_RECORDER_IPC_SOCKET is NOT set")
+
     try:
         # Execute the checkpoint command in the workspace directory
         process = subprocess.Popen(
@@ -923,7 +930,7 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
 def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
     """Run scenario using Claude format."""
     recorder = ClaudeSessionRecorder(codex_home=codex_home, cwd=workspace)
-    
+
     # Record initial user message if present in meta
     instructions = scenario.get("meta", {}).get("instructions")
     if instructions:
@@ -941,7 +948,7 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
             tool_use = step["agentToolUse"]
             tool_name = tool_use["toolName"]
             tool_args = tool_use.get("args", {})
-            
+
             # Record tool use
             tool_call_id = recorder.record_assistant_tool_use(tool_name, tool_args)
             _print_trace("tool", f"{tool_name}({tool_args}) -> executing")
@@ -988,7 +995,7 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
                     "tool_response": {"success": False, "error": str(e)}
                 }
                 _execute_hooks(hooks_config, "PostToolUse", hook_input, workspace)
-                
+
                 # Execute checkpoint command for failed tools too
                 _execute_checkpoint_cmd(checkpoint_cmd, workspace)
         elif "agentEdits" in step:
@@ -1075,10 +1082,10 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
                 _print_trace("user_command", f"Command timeout: {cmd}")
             except Exception as e:
                 _print_trace("user_command", f"Command failed: {cmd} - {e}")
-            
+
         else:
             _print_trace("warn", f"Unknown step: {step}")
-            
+
     recorder.flush()
     recorder.close()
     return recorder.session_path
@@ -1088,7 +1095,7 @@ def _create_tool_result_data(tool_name: str, result: Any, args: Dict[str, Any]) 
     """Create appropriate tool result data based on tool type."""
     if tool_name == "write_file":
         return {
-            "type": "text", 
+            "type": "text",
             "file": {
                 "filePath": args.get("path", "unknown"),
                 "content": args.get("text", ""),

@@ -304,6 +304,16 @@ impl RecordingSession {
         }
     }
 
+    /// Get the current global byte offset from the AHR writer
+    pub fn current_byte_offset(&self) -> u64 {
+        self.writer.lock().unwrap().global_byte_off()
+    }
+
+    /// Append a record to the AHR writer
+    pub fn append_record(&self, record: Record) -> Result<()> {
+        self.writer.lock().unwrap().append_record(record)
+    }
+
     /// Process PTY events and write to .ahr file
     ///
     /// This should be called in a loop until it returns None (child exited).

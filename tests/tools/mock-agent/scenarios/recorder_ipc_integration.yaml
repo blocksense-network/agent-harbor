@@ -1,0 +1,74 @@
+name: recorder_ipc_integration
+description: "E2E test for ah agent record IPC integration with ah agent fs snapshot"
+repo:
+  init: true
+timeline:
+  - think:
+      - [500, "I will create a Python file and verify that filesystem snapshots are being captured during recording."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "main.py"
+        text: |
+          def greet(name):
+              return f"Hello, {name}!"
+
+          if __name__ == "__main__":
+              print(greet("World"))
+      result: "File created successfully"
+      status: "ok"
+  - assistant:
+      - [300, "Created main.py. A filesystem snapshot should have been captured via IPC."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "test_main.py"
+        text: |
+          import main
+
+          def test_greet():
+              assert main.greet("Alice") == "Hello, Alice!"
+              assert main.greet("Bob") == "Hello, Bob!"
+              print("All tests passed!")
+
+          if __name__ == "__main__":
+              test_greet()
+      result: "Test file created"
+      status: "ok"
+  - assistant:
+      - [400, "Created test_main.py. Another snapshot should have been captured."]
+  - agentToolUse:
+      toolName: "append_file"
+      args:
+        path: "main.py"
+        text: |
+
+          def farewell(name):
+              return f"Goodbye, {name}!"
+      result: "Function appended"
+      status: "ok"
+  - assistant:
+      - [300, "Added farewell function to main.py. A third snapshot should be in the recording."]
+  - agentToolUse:
+      toolName: "replace_in_file"
+      args:
+        path: "main.py"
+        old_str: 'print(greet("World"))'
+        new_str: |
+          print(greet("World"))
+              print(farewell("World"))
+      result: "Code updated"
+      status: "ok"
+  - assistant:
+      - [500, "Updated main.py to call both greeting and farewell. Final snapshot captured. The recording should contain all four snapshots with proper IPC anchoring."]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "main.py"
+    - type: "taskFile"
+      pattern: "test_main.py"
+  snapshots:
+    count: 4
+    providers: ["zfs", "btrfs", "git"]
+    anchoring: "ipc_verified"

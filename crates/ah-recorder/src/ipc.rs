@@ -160,6 +160,7 @@ impl IpcServer {
 
         // Spawn accept loop
         tokio::spawn(async move {
+            eprintln!("DEBUG: IPC server accept loop started");
             loop {
                 if shutdown.load(Ordering::Relaxed) {
                     break;
@@ -167,6 +168,7 @@ impl IpcServer {
 
                 match listener.accept().await {
                     Ok((stream, _addr)) => {
+                        eprintln!("DEBUG: IPC server accepted connection");
                         let tx = command_tx.clone();
                         tokio::spawn(async move {
                             if let Err(e) = handle_connection(stream, tx).await {
@@ -226,6 +228,7 @@ async fn handle_connection(
         Request::Snapshot((snapshot_id, label_bytes)) => {
             let label = String::from_utf8_lossy(&label_bytes).to_string();
             debug!("Received snapshot notification: id={}, label={:?}", snapshot_id, label);
+            eprintln!("DEBUG: IPC server received snapshot notification: id={}, label={:?}", snapshot_id, label);
 
             // Send command to recorder and wait for response
             let (response_tx, response_rx) = tokio::sync::oneshot::channel();

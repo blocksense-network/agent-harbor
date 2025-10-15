@@ -39,6 +39,7 @@ def main():
     runp.add_argument("--format", choices=["codex", "claude"], default="codex",
                      help="Session file format to use (codex or claude)")
     runp.add_argument("--checkpoint-cmd", help="Command to execute after each agentToolUse and agentEdits event")
+    runp.add_argument("--with-snapshots", action="store_true", help="Create filesystem snapshots after each tool use (implies --checkpoint-cmd 'ah agent fs snapshot')")
     runp.add_argument("--fast-mode", action="store_true", help="Fast mode: sort events by time and execute sequentially without timing delays")
     runp.add_argument("--tui-testing-uri", help="ZeroMQ URI for TUI testing IPC (tcp://127.0.0.1:5555)")
 
@@ -48,6 +49,7 @@ def main():
     demop.add_argument("--format", choices=["codex", "claude"], default="codex",
                       help="Session file format to use (codex or claude)")
     demop.add_argument("--checkpoint-cmd", help="Command to execute after each agentToolUse and agentEdits event")
+    demop.add_argument("--with-snapshots", action="store_true", help="Create filesystem snapshots after each tool use (implies --checkpoint-cmd 'ah agent fs snapshot')")
     demop.add_argument("--fast-mode", action="store_true", help="Fast mode: sort events by time and execute sequentially without timing delays")
     demop.add_argument("--tui-testing-uri", help="ZeroMQ URI for TUI testing IPC (tcp://127.0.0.1:5555)")
 
@@ -68,8 +70,13 @@ def main():
 
     args = ap.parse_args()
 
+    # Handle --with-snapshots parameter by setting checkpoint_cmd
+    checkpoint_cmd = getattr(args, 'checkpoint_cmd', None)
+    if getattr(args, 'with_snapshots', False):
+        checkpoint_cmd = 'ah agent fs snapshot'
+
     if args.cmd == "run":
-        path = run_scenario(args.scenario, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
+        path = run_scenario(args.scenario, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=checkpoint_cmd, fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
         print(f"Session file written to: {path}")
     elif args.cmd == "demo":
         scen = demo_scenario(args.workspace)
@@ -77,7 +84,7 @@ def main():
         os.makedirs(args.workspace, exist_ok=True)
         with open(scen_path, "w", encoding="utf-8") as f:
             json.dump(scen, f, indent=2)
-        path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=getattr(args, 'checkpoint_cmd', None), fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
+        path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=checkpoint_cmd, fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
         print(f"Session file written to: {path}")
     elif args.cmd == "server":
         serve(args.host, args.port, playbook=args.playbook, scenario=getattr(args, 'scenario', None), codex_home=args.codex_home, format=args.format, tools_profile=getattr(args, 'tools_profile', None), strict_tools_validation=getattr(args, 'strict_tools_validation', False), agent_version=getattr(args, 'agent_version', 'unknown'))

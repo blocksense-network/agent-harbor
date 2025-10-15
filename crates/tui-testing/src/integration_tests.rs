@@ -111,7 +111,6 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
         return Ok(());
     }
 
->>>>>>> bf92552 (fix(rust-testing): Address potential false failures of the Rust test suite)
     println!("Using test_guest binary: {}", test_guest_path);
 
     // Use a dynamic port to avoid conflicts with background processes

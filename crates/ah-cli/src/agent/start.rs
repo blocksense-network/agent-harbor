@@ -127,9 +127,9 @@ pub struct AgentStartArgs {
     #[arg(long, value_name = "TEXT")]
     pub prompt: Option<String>,
 
-    /// Additional flags to pass to the agent
-    #[arg(long, value_name = "FLAG")]
-    pub agent_flags: Vec<String>,
+    /// Additional flags to pass to the agent (space-separated)
+    #[arg(long, value_name = "FLAGS")]
+    pub agent_flags: Option<String>,
 }
 
 /// Parse boolean values from command line (true/false, yes/no, 1/0, y/n)
@@ -267,20 +267,25 @@ impl AgentStartArgs {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
 
+        // Parse agent flags
+        let agent_flags: Vec<&str> = self.agent_flags.as_ref()
+            .map(|s| s.split_whitespace().collect())
+            .unwrap_or_default();
+
         // Check if this is a scenario run or demo run
-        let is_scenario_run = self.agent_flags.iter().any(|flag| flag == "--scenario");
+        let is_scenario_run = agent_flags.iter().any(|flag| flag.contains("--scenario"));
 
         if is_scenario_run {
             cmd.arg("run");
             // Add all the agent flags
-            for flag in &self.agent_flags {
+            for flag in &agent_flags {
                 cmd.arg(flag);
             }
         } else {
             // Run in demo mode
             cmd.arg("demo").arg("--workspace").arg(&cwd);
             // Add any additional flags (like --tui-testing-uri)
-            for flag in &self.agent_flags {
+            for flag in &agent_flags {
                 cmd.arg(flag);
             }
         }
@@ -288,47 +293,8 @@ impl AgentStartArgs {
         // Note: TUI_TESTING_URI should only be passed when explicitly requested
         // We don't automatically pass it from environment to avoid test interference
 
-        // Set PYTHONPATH to find the mock agent (append to existing PYTHONPATH)
-        // Try to find the workspace root relative to the current executable
-        let mut pythonpath_set = false;
-        if let Ok(current_exe) = std::env::current_exe() {
-            if let Some(workspace_root) =
-                current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
-            {
-                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
-                let new_pythonpath = if current_pythonpath.is_empty() {
-                    mock_agent_path
-                } else {
-                    format!("{}:{}", mock_agent_path, current_pythonpath)
-                };
-                eprintln!("Setting PYTHONPATH to: {}", new_pythonpath);
-                cmd.env("PYTHONPATH", new_pythonpath);
-                pythonpath_set = true;
-            }
-        }
-
-        // Fallback: try CARGO_MANIFEST_DIR
-        if !pythonpath_set {
-            if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-                let workspace_root =
-                    std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
-                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
-                let new_pythonpath = if current_pythonpath.is_empty() {
-                    mock_agent_path
-                } else {
-                    format!("{}:{}", mock_agent_path, current_pythonpath)
-                };
-                eprintln!("Setting PYTHONPATH to (fallback): {}", new_pythonpath);
-                cmd.env("PYTHONPATH", new_pythonpath);
-                pythonpath_set = true;
-            }
-        }
-
-        if !pythonpath_set {
-            eprintln!("Warning: Could not determine PYTHONPATH for mock agent");
-        }
+        // Note: PYTHONPATH and PATH are set by test helper functions, not in production code
+        // to avoid assuming we're running within the workspace
 
         // Always pass the TUI_TESTING_URI environment variable to the mock agent
         if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
@@ -385,13 +351,18 @@ impl AgentStartArgs {
                 "src.cli".to_string(),
             ];
 
+            // Parse agent flags
+            let agent_flags: Vec<String> = self.agent_flags.as_ref()
+                .map(|s| s.split_whitespace().map(|s| s.to_string()).collect())
+                .unwrap_or_default();
+
             // Check if this is a scenario run or demo run
-            let is_scenario_run = self.agent_flags.iter().any(|flag| flag == "--scenario");
+            let is_scenario_run = agent_flags.iter().any(|flag| flag.contains("--scenario"));
 
             if is_scenario_run {
                 agent_cmd.push("run".to_string());
                 // Add all the agent flags
-                for flag in &self.agent_flags {
+                for flag in &agent_flags {
                     agent_cmd.push(flag.clone());
                 }
             } else {
@@ -400,7 +371,7 @@ impl AgentStartArgs {
                 agent_cmd.push("--workspace".to_string());
                 agent_cmd.push(actual_cwd.to_string_lossy().to_string());
                 // Add any additional flags (like --tui-testing-uri)
-                for flag in &self.agent_flags {
+                for flag in &agent_flags {
                     agent_cmd.push(flag.clone());
                 }
             }
@@ -437,37 +408,8 @@ impl AgentStartArgs {
     fn build_agent_env(&self) -> Vec<(String, String)> {
         let mut env = Vec::new();
 
-        // Set PYTHONPATH to find the mock agent, appending to existing PYTHONPATH
-        if let Ok(current_exe) = std::env::current_exe() {
-            if let Some(workspace_root) =
-                current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
-            {
-                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
-                let new_pythonpath = if current_pythonpath.is_empty() {
-                    mock_agent_path
-                } else {
-                    format!("{}:{}", mock_agent_path, current_pythonpath)
-                };
-                env.push(("PYTHONPATH".to_string(), new_pythonpath));
-            }
-        }
-
-        // Fallback: try CARGO_MANIFEST_DIR
-        if !env.iter().any(|(k, _)| k == "PYTHONPATH") {
-            if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-                let workspace_root =
-                    std::path::Path::new(&cargo_manifest_dir).parent().unwrap().parent().unwrap();
-                let mock_agent_path = format!("{}/tests/tools/mock-agent", workspace_root.display());
-                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
-                let new_pythonpath = if current_pythonpath.is_empty() {
-                    mock_agent_path
-                } else {
-                    format!("{}:{}", mock_agent_path, current_pythonpath)
-                };
-                env.push(("PYTHONPATH".to_string(), new_pythonpath));
-            }
-        }
+        // Note: PYTHONPATH and PATH are set by test helper functions, not in production code
+        // to avoid assuming we're running within the workspace
 
         // Always pass the TUI_TESTING_URI environment variable to the mock agent
         if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
@@ -578,8 +520,10 @@ impl AgentStartArgs {
 
         // For now, Claude Code doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
-        for flag in &self.agent_flags {
-            cmd.arg(flag);
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd.arg(flag);
+            }
         }
 
         // Set working directory
@@ -601,8 +545,10 @@ impl AgentStartArgs {
         if let Some(prompt) = &self.prompt {
             cmd_parts.push(prompt.clone());
         }
-        for flag in &self.agent_flags {
-            cmd_parts.push(flag.clone());
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd_parts.push(flag.to_string());
+            }
         }
         eprintln!("Running claude command: {}", cmd_parts.join(" "));
 
@@ -641,8 +587,10 @@ impl AgentStartArgs {
 
         // For now, Gemini CLI doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
-        for flag in &self.agent_flags {
-            cmd.arg(flag);
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd.arg(flag);
+            }
         }
 
         // Set working directory
@@ -666,8 +614,10 @@ impl AgentStartArgs {
             cmd_parts.push("--prompt".to_string());
             cmd_parts.push(prompt.clone());
         }
-        for flag in &self.agent_flags {
-            cmd_parts.push(flag.clone());
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd_parts.push(flag.to_string());
+            }
         }
         eprintln!("Running gemini command: {}", cmd_parts.join(" "));
 
@@ -706,8 +656,10 @@ impl AgentStartArgs {
 
         // For now, OpenCode doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
-        for flag in &self.agent_flags {
-            cmd.arg(flag);
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd.arg(flag);
+            }
         }
 
         // Set working directory
@@ -731,8 +683,10 @@ impl AgentStartArgs {
             cmd_parts.push("--prompt".to_string());
             cmd_parts.push(prompt.clone());
         }
-        for flag in &self.agent_flags {
-            cmd_parts.push(flag.clone());
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd_parts.push(flag.to_string());
+            }
         }
         eprintln!("Running opencode command: {}", cmd_parts.join(" "));
 
@@ -771,8 +725,10 @@ impl AgentStartArgs {
 
         // For now, Qwen Code doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
-        for flag in &self.agent_flags {
-            cmd.arg(flag);
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd.arg(flag);
+            }
         }
 
         // Set working directory
@@ -796,8 +752,10 @@ impl AgentStartArgs {
             cmd_parts.push("--prompt".to_string());
             cmd_parts.push(prompt.clone());
         }
-        for flag in &self.agent_flags {
-            cmd_parts.push(flag.clone());
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd_parts.push(flag.to_string());
+            }
         }
         eprintln!("Running qwen command: {}", cmd_parts.join(" "));
 
@@ -836,8 +794,10 @@ impl AgentStartArgs {
 
         // For now, Cursor CLI doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
-        for flag in &self.agent_flags {
-            cmd.arg(flag);
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd.arg(flag);
+            }
         }
 
         // Set working directory
@@ -861,8 +821,10 @@ impl AgentStartArgs {
             cmd_parts.push("--prompt".to_string());
             cmd_parts.push(prompt.clone());
         }
-        for flag in &self.agent_flags {
-            cmd_parts.push(flag.clone());
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd_parts.push(flag.to_string());
+            }
         }
         eprintln!("Running cursor-cli command: {}", cmd_parts.join(" "));
 
@@ -901,8 +863,10 @@ impl AgentStartArgs {
 
         // For now, Goose doesn't have a non-interactive mode like Codex
         // We just pass through any agent flags as arguments
-        for flag in &self.agent_flags {
-            cmd.arg(flag);
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd.arg(flag);
+            }
         }
 
         // Set working directory
@@ -927,8 +891,10 @@ impl AgentStartArgs {
             cmd_parts.push("-t".to_string());
             cmd_parts.push(prompt.clone());
         }
-        for flag in &self.agent_flags {
-            cmd_parts.push(flag.clone());
+        if let Some(flags_str) = &self.agent_flags {
+            for flag in flags_str.split_whitespace() {
+                cmd_parts.push(flag.to_string());
+            }
         }
         eprintln!("Running goose command: {}", cmd_parts.join(" "));
 

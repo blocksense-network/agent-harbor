@@ -1,0 +1,66 @@
+name: snapshot_anchoring_precision
+description: "Test byte-level anchoring precision for filesystem snapshots in recordings"
+repo:
+  init: true
+timeline:
+  - think:
+      - [100, "Testing precise snapshot anchoring with multiple operations."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "config.json"
+        text: |
+          {
+            "version": "1.0.0",
+            "name": "test-app"
+          }
+      result: "Config created"
+      status: "ok"
+  - assistant:
+      - [50, "First checkpoint - initial config."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "app.py"
+        text: |
+          import json
+
+          def load_config():
+              with open('config.json') as f:
+                  return json.load(f)
+      result: "App created"
+      status: "ok"
+  - assistant:
+      - [50, "Second checkpoint - app loader."]
+  - agentToolUse:
+      toolName: "append_file"
+      args:
+        path: "config.json"
+        text: |
+          ,
+            "port": 8080
+      result: "Port added"
+      status: "ok"
+  - assistant:
+      - [50, "Third checkpoint - configuration updated."]
+  - agentToolUse:
+      toolName: "replace_in_file"
+      args:
+        path: "config.json"
+        old_str: '"version": "1.0.0"'
+        new_str: '"version": "1.1.0"'
+      result: "Version bumped"
+      status: "ok"
+  - assistant:
+      - [50, "Fourth checkpoint - version updated. Each snapshot should be anchored to precise byte offsets in the PTY stream."]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "config.json"
+    - type: "taskFile"
+      pattern: "app.py"
+  snapshots:
+    count: 4
+    anchor_validation: "byte_offset_monotonic"
+    anchor_spacing_ms: ">= 50"

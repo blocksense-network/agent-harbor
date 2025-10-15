@@ -14,7 +14,7 @@
 
 ## 1. Overview
 
-`ah agent record` launches a target command under a PTY, streams bytes into a `vt100` parser for faithful live display, writes a compact **append-only compressed file** of timestamped output, and appends a sidecar **JSONL instructions log**. The TUI viewer (Ratatui) renders **directly from the in-memory vt100 model** and overlays annotations; it does **not** tail storage. A post-run exporter replays the recording to compute the **final set of lines** and interleaves them with instructions for reporting and downstream Agent Time‑Travel flows.
+`ah agent record` launches a target command under a PTY, streams bytes into a `vt100` parser for faithful live display, writes a compact **append-only compressed file** of timestamped output. The TUI viewer (Ratatui) renders **directly from the in-memory vt100 model** and overlays annotations; it does **not** tail storage. A post-run exporter replays the recording to compute the **final set of terminal output lines** and interleaves them with moments snapshots were taken for reporting and downstream Agent Time‑Travel flows.
 
 **Why this shape**
 
@@ -38,6 +38,7 @@
 ```
 Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
        ah agent replay [--session <session-id|file.ahr>] [--fast] [--no-colors] [--print-meta]
+       ah agent branch-points [--session <session-id|file.ahr>]
 ```
 
 ### `record`
@@ -48,7 +49,8 @@ Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
 
 **Key options**
 
-* `--out-file <dir>`: Optional compressed output file (no records will be stored in the local database).
+* `--out-file <file>`: Optional compressed output file (no records will be stored in the local database).
+* `--out-branch-points <file>`: Optional JSON file with the session branch points (the output produced by the `branch-points` command).
 * `--brotli-q <0..11>`: Brotli level (default: 4 for fast/compact balance).
 * `--cols <n> --rows <n>`: Initial terminal size; resizes are tracked live. By default, preserve the size of the current terminal.
 * `--ipc <auto|uds|tcp:host:port>`: Instruction injection server transport.
@@ -57,17 +59,21 @@ Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
 
 * Replays the `.ahr` file, simulating the passage of time as it originally happened during the recording. 
 
-### `--fast`
+#### `--fast`
 
 * Replay the complete `.ahr` file immediately, producing the file state of all lines. Print the final state to the current terminal.
 
-### `--no-colors`
+#### `--no-colors`
 
 Don't emit ANSI color codes when replaying or emitting the final state.
 
-### `--print-meta`
+#### `--print-meta`
 
 * Prints metadata and basic stats; does not render.
+
+### `branch-points`
+
+* Prints to stdout the final set of terminal output lines in the recorded session, interleaved with the snapshot labels.
 
 ---
 
@@ -78,11 +84,8 @@ Don't emit ANSI color codes when replaying or emitting the final state.
                                ┌──────┴───────────────────────┐
 [PTY bytes] ─▶ [vt100 parser] ─┤  Ratatui viewer (live only)  ├─► user clicks/keys
                                └──────┬───────────────────────┘
-                                       │ overlays
-                    [Instruction server (UDS/TCP)]
-                                       │
-                                       ▼
-                         append to .instructions.jsonl (and mirror in-memory)
+                                      │ overlays
+                    [Snapshot notifications server (UDS/TCP)]
 ```
 
 * **Write to local database.** Storage consists of one compressed recording blob.
@@ -239,7 +242,7 @@ Static session facts useful for offline tools:
 
 ## 7. Snapshot IPC
 
-The recorder provides an IPC interface for receiving snapshot notifications from external commands, primarily `ah agent fs snapshot`. When a filesystem snapshot is taken during recording, the snapshot command notifies the recorder, which writes a `REC_SNAPSHOT` record to the `.ahr` file and a corresponding entry to the `.snapshots.jsonl` sidecar.
+The recorder provides an IPC interface for receiving snapshot notifications from external commands, primarily `ah agent fs snapshot`. When a filesystem snapshot is taken during recording, the snapshot command notifies the recorder, which writes a `REC_SNAPSHOT` record to the `.ahr` file.
 
 * **Transport:**
 
@@ -258,8 +261,7 @@ When `ah agent fs snapshot` creates a filesystem snapshot during a recorded sess
 The recorder then:
 1. Records the current PTY byte offset
 2. Writes a `REC_SNAPSHOT` record to the `.ahr` file
-3. Appends an entry to the `.snapshots.jsonl` sidecar
-4. Returns the anchor information to the caller
+3. Returns the anchor information to the caller
 
 **Request**
 
@@ -370,6 +372,7 @@ end
 * `ah agent record` with live viewer, IPC for instructions, `.ahr` writer, `.instructions.jsonl` appends
 * `ah agent replay` producing md/json/csv interleaved report
 * `ah agent replay --print-meta` showing meta and quick stats
+* `ah agent branch-points` exports the session interleaved outputlines with possible branch points (snapshots)
 
 ---
 

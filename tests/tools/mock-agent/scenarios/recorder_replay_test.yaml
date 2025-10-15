@@ -1,0 +1,49 @@
+name: recorder_replay_test
+description: "E2E test for ah agent record and ah agent replay integration"
+repo:
+  init: true
+timeline:
+  - think:
+      - [300, "I'll create a simple calculator module."]
+  - agentToolUse:
+      toolName: "write_file"
+      args:
+        path: "calculator.py"
+        text: |
+          def add(a, b):
+              return a + b
+
+          def subtract(a, b):
+              return a - b
+      result: "Created calculator.py"
+      status: "ok"
+  - assistant:
+      - [200, "Created basic calculator functions."]
+  - agentToolUse:
+      toolName: "append_file"
+      args:
+        path: "calculator.py"
+        text: |
+
+          def multiply(a, b):
+              return a * b
+
+          def divide(a, b):
+              if b == 0:
+                  raise ValueError("Cannot divide by zero")
+              return a / b
+      result: "Added multiply and divide"
+      status: "ok"
+  - assistant:
+      - [250, "Extended calculator with multiply and divide. The recording should capture this sequence of operations."]
+expect:
+  exitCode: 0
+  artifacts:
+    - type: "taskFile"
+      pattern: "calculator.py"
+  recording:
+    format: "ahr"
+    blocks_min: 1
+    contains_data_records: true
+    contains_snapshot_records: true
+    replay_matches: true
