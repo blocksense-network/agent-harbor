@@ -10,6 +10,7 @@ pub mod format;
 pub mod ipc;
 pub mod pty;
 pub mod snapshots;
+pub mod viewer;
 pub mod writer;
 
 // Re-export key types for convenience
@@ -17,6 +18,7 @@ pub use format::{AhrBlockHeader, Record, RecData, RecResize, RecSnapshot, REC_DA
 pub use ipc::{IpcClient, IpcCommand, IpcServer, IpcServerConfig, Request as IpcRequest, Response as IpcResponse};
 pub use pty::{PtyEvent, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalState};
 pub use snapshots::{Snapshot, SnapshotsReader, SnapshotsWriter, SharedSnapshotsWriter, create_shared_writer};
+pub use viewer::{TerminalViewer, ViewerConfig, ViewerEventLoop, InstructionOverlay, SearchState};
 pub use writer::{AhrWriter, WriterConfig, now_ns};
 
 pub mod reader;

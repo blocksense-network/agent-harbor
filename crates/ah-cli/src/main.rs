@@ -13,6 +13,7 @@ async fn main() -> Result<()> {
             AgentCommands::Sandbox(args) => args.run().await,
             AgentCommands::Start(args) => args.run().await,
             AgentCommands::Record(args) => ah_cli::agent::record::execute(args).await,
+            AgentCommands::Replay(args) => ah_cli::agent::replay::execute(args).await,
             AgentCommands::BranchPoints(args) => ah_cli::agent::record::execute_branch_points(args).await,
         },
         Commands::Tui(args) => args.run().await,

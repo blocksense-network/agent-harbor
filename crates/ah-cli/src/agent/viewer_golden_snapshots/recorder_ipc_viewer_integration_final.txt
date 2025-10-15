@@ -1,0 +1,5 @@
+┌Terminal──────────────────────────────────────────────────────────────────────┐
+│[repo] Initializing git repository                                            │
+│                                  [repo] Created initial commit               │
+│             [tui-test] tui_testing_uri parameter: None                       │
+│     [thinking] [500ms] I

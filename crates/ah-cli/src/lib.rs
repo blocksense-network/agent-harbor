@@ -54,6 +54,8 @@ pub enum AgentCommands {
     Start(agent::start::AgentStartArgs),
     /// Record an agent session with PTY capture
     Record(agent::record::RecordArgs),
+    /// Replay a recorded agent session
+    Replay(agent::replay::ReplayArgs),
     /// Extract branch points from a recorded session
     BranchPoints(agent::record::BranchPointsArgs),
 }

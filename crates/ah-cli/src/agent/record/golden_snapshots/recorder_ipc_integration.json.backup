@@ -89,14 +89,14 @@
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536785069113000
+      "ts_ns": 1760536627581331000
     },
     {
       "anchor_byte": 654,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536785263463000
+      "ts_ns": 1760536627773045000
     },
     {
       "index": 20,
@@ -108,7 +108,7 @@
       "index": 21,
       "kind": "line",
       "last_write_byte": 1083,
-      "text": "ion_ah_72883_1760536785012011000_0"
+      "text": "ion_ah_78741_1760536627502238000_0"
     },
     {
       "index": 22,
@@ -132,7 +132,7 @@
       "index": 25,
       "kind": "line",
       "last_write_byte": 1083,
-      "text": "ion_ah_72883_1760536785202730000_1"
+      "text": "ion_ah_78741_1760536627722116000_1"
     },
     {
       "index": 26,
@@ -235,54 +235,54 @@
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536785765934000
+      "ts_ns": 1760536628281004000
     },
     {
       "anchor_byte": 1772,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536785967223000
+      "ts_ns": 1760536628492081000
     },
     {
       "index": 48,
       "kind": "line",
-      "last_write_byte": 2201,
+      "last_write_byte": 2265,
       "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
     },
     {
       "index": 49,
       "kind": "line",
-      "last_write_byte": 2201,
-      "text": "ion_ah_74213_1760536785715982000_0"
+      "last_write_byte": 2265,
+      "text": "ion_ah_80065_1760536628226594000_0"
     },
     {
       "anchor_byte": 2719,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536786569331000
+      "ts_ns": 1760536629076086000
     },
     {
       "anchor_byte": 2719,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536786768439000
+      "ts_ns": 1760536629280645000
     },
     {
       "anchor_byte": 3675,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536787280316000
+      "ts_ns": 1760536629791016000
     },
     {
       "anchor_byte": 3675,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760536787464040000
+      "ts_ns": 1760536629977612000
     }
   ],
   "total_bytes": 4644

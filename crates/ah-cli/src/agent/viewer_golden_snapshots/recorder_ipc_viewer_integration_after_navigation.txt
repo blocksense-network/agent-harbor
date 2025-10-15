@@ -1,0 +1,4 @@
+┌Terminal──────────────────────────────────────────────────────────────────────┐
+│[repo] Initializing git repository                                            │
+│                                  [repo] Created initial commit               │
+│

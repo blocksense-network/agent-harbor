@@ -222,11 +222,12 @@ Static session facts useful for offline tools:
 * Reads **directly** from a `vt100::Parser` kept current by the PTY reader.
 * Maintains for each absolute row index a `last_write_byte` value.
 * **Row-change tracking:** After each REC_DATA application, we compute a small **damage band** around the cursor/scroll area and re-hash only those rows; any row hash change updates its `last_write_byte` to `data.start_byte_off + data.len`.
+* **Terminal viewport preservation:** The viewer renders the recorded terminal content within a bordered frame that preserves the original terminal dimensions. If the current terminal is larger than the recorded session, the viewport appears as a bordered rectangle of the original size, centered or positioned appropriately. If the current terminal is smaller, the viewport is truncated with scrolling controls.
 * **Overlay/annotations:**
 
   * Click (or key) maps to a vt100 row; we fetch that row's `last_write_byte`.
   * Nearest snapshot is `argmin |event.anchor_byte - row.last_write_byte|` (tie-break by newest `ts_ns`).
-  * The standard new draft task UI is inserted after the clicked line and before the ones that follow. The following lines are dimmed to signify that they won't be taken into consideration once the session is branched from the snapshot moment.
+  * The standard new draft task UI is inserted after the clicked line and before the ones that follow. The following lines are dimmed to signify that they won't be taken into consideration once the session is branched from the snapshot moment. Additional UI elements expand the viewer's layout while preserving the original terminal viewport.
 * **No storage tailing:** The viewer never reads `.ahr` during a live session.
 
 **Key interactions**

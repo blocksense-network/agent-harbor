@@ -175,6 +175,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-testing",
+ "vt100",
  "winapi",
 ]
 
