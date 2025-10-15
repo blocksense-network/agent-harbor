@@ -107,7 +107,6 @@ test-results/
 # Yarn PnP dependencies (replaces node_modules)
 .yarn/
 .pnp.*
-.yarnrc.yml
 
 # Legacy npm files (should not exist but ignore if present)
 node_modules/
