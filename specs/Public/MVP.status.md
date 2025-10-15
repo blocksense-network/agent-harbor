@@ -1379,6 +1379,7 @@ The MVP implementation must coordinate across multiple specifications with prope
     - `export_session(home_dir: path)` → create compressed session archive from agent's home directory
     - `import_session(session_archive: file_path, home_dir: path)` → populate home directory from session archive
     - `parse_output(raw_bytes: stream[byte]): stream[event]` → normalize agent output into API events (thinking, tool_use, log, etc.)
+  - Version-aware behavior: Each agent implementation must detect the installed agent version and adjust its behavior (command flags, configuration options, output parsing) accordingly when there are differences between versions
   - Support all agent types from [3rd-Party-Agent-Description-Template.md](../../specs/Public/3rd-Party-Agents/3rd-Party-Agent-Description-Template.md)
   - Environment isolation: HOME variable points to custom workspace directory (typically `/.agents/home/<agent-type>`, within VCS repo if added to ignore file)
   - Credential management: Secure copying of agent configs between system home and workspace home
@@ -1390,11 +1391,13 @@ The MVP implementation must coordinate across multiple specifications with prope
 - **Implementation Details**:
 
   - **Trait Design**: `AgentExecutor` trait defines common interface, each agent type implements concrete behavior
+  - **Version Detection**: Each agent implementation must include version detection logic (e.g., `agent --version` or parsing installed package metadata) to determine the exact version of the agent software
+  - **Version-Aware Behavior**: Based on detected version, implementations must adjust command flags, configuration options, environment variables, and output parsing to match version-specific behavior changes
   - **Credential Handling**: Platform-aware credential copying (Linux/macOS/Windows keyrings, config files)
   - **Session Archives**: Use tar + compression for cross-platform session file storage
-  - **Output Parsing**: Agent-specific parsers convert raw output to normalized events (thinking traces, tool calls, file edits)
+  - **Output Parsing**: Agent-specific parsers convert raw output to normalized events (thinking traces, tool calls, file edits), with version-specific parsing rules
   - **Process Management**: Async process spawning with proper signal handling and cleanup
-  - **Error Handling**: Comprehensive error types for credential access, process failures, parsing errors
+  - **Error Handling**: Comprehensive error types for credential access, process failures, parsing errors, and version compatibility issues
   - **Testing**: Integration tests executed with the help of the mock LLM API server from [tests/tools/mock-agent/](../../tests/tools/mock-agent/). The developed code base in this folder provides an example of Claude Code HOME directory setup that skips onboarding screens.
 
 - **Key Source Files**:
@@ -1413,11 +1416,11 @@ The MVP implementation must coordinate across multiple specifications with prope
 - **Implementation Status**:
 
   - [ ] Create `ah-agents` monolith crate skeleton with trait definitions
-  - [ ] Implement Claude Code agent backend (primary MVP focus)
-  - [ ] Implement Codex CLI agent backend (primary MVP focus)
+  - [ ] Implement Claude Code agent backend (primary MVP focus) with version detection
+  - [ ] Implement Codex CLI agent backend (primary MVP focus) with version detection
   - [ ] Add session archive export/import functionality
   - [ ] Implement cross-platform credential copying
-  - [ ] Create output parsers for Claude/Codex output normalization
+  - [ ] Create version-aware output parsers for Claude/Codex output normalization
   - [ ] Add comprehensive integration tests using mock LLM API server
   - [ ] Create optional facade subcrates for individual agents
 
@@ -1427,6 +1430,8 @@ The MVP implementation must coordinate across multiple specifications with prope
   - [ ] `cargo test --workspace` passes for ah-agents crate
   - [ ] Claude Code agent launches with custom HOME directory (skipping onboarding via mock-agent setup)
   - [ ] Codex CLI agent launches with custom HOME directory (skipping onboarding via mock-agent setup)
+  - [ ] Version detection works correctly for installed agent versions
+  - [ ] Version-aware behavior adapts command flags and parsing based on detected versions
   - [ ] Credential copying works across platforms (Linux/macOS/Windows)
   - [ ] Session archives export/import correctly preserve agent state
   - [ ] Output parsing produces normalized API events when using mock LLM API server
@@ -1437,10 +1442,12 @@ The MVP implementation must coordinate across multiple specifications with prope
 - **Outstanding Tasks**:
 
   - Design `AgentExecutor` trait covering all 5 core operations
+  - Implement version detection for each agent type (e.g., `agent --version` parsing, package metadata)
+  - Implement version-aware behavior adaptation for command flags, config options, and output parsing
   - Implement credential discovery for each agent type (paths, environment variables, keychains)
   - Select session archive format with compression and metadata
-  - Build output parsers for each agent's specific format
-  - Add proper error handling and recovery for failed operations
+  - Build version-aware output parsers for each agent's specific format
+  - Add proper error handling and recovery for failed operations and version compatibility issues
   - Implement testing infrastructure with mock agent binaries
   - Create documentation and examples for each agent integration
 

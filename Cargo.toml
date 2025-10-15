@@ -64,10 +64,7 @@ members = [
   "tests/container-enforcement",
   "tests/vm-enforcement",
 ]
-exclude = [
-  "vendor",
-  "PoC",
-]
+exclude = ["vendor", "PoC"]
 resolver = "2"
 
 [workspace.dependencies]
