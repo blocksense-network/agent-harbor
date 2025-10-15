@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 10",
     "format": "prettier --write \"src/**/*.{ts,tsx,json}\"",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@agent-harbor/gui-core": "file:../crates/ah-gui-core",
