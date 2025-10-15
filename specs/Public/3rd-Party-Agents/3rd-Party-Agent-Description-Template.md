@@ -36,10 +36,10 @@ We'll aim to collect the following information for all agent types supported by 
 How do we start or resume the agent with a specific task prompt? Include canonical invocations for:
 
 - Direct prompt on the CLI
-- Reading prompt from a file/stdin
-- Resuming a session (if supported)
-- Non‑interactive/print modes (for automation)
-- Selecting model/agent/profile
+- Are there options that control whether interactive or non-interactive mode will be launched?
+- Are there options controlling whether human-readable or machine-readable output will be produced (e.g. json)?
+- Are the options related to resuming previous sessions?
+- Are there options specifying which model will be used?
 
 Provide 1–3 concrete examples for this tool using code blocks.
 
@@ -48,6 +48,10 @@ Provide 1–3 concrete examples for this tool using code blocks.
 Does the agent support custom hooks or commands to be executed during its work (e.g., before/after each file modification or tool use)? Detail how this is configured.
 
 Please note that by custom hooks, we are not referring just to MCP tools, but specifically to the ability to configure certain commands to be executed after every agent step, so we can implement our [Agent Time Travel feature](../Agent-Time-Travel.md).
+
+### How to skip the initial onboarding screens on first launch of the agent?
+
+Detail the specific configuration, environment variables, or file setup needed to bypass initial setup screens, license agreements, or authentication prompts that would interfere with automated testing and integration.
 
 ### Checkpointing (point-in-time restore of chat + filesystem)
 
@@ -84,9 +88,9 @@ When the on‑disk session format is undocumented or incomplete, perform careful
 - Attempt a surgical trim to an earlier step; relaunch the tool to validate behavior. Keep backups and record tool version.
 - Maintain per‑version notes in this repository, as formats may change across releases. Prefer stable, additive edits that the tool tolerates.
 
-### How is the use of MCP servers configured?
+### How to run the agent with a set of MCP servers?
 
-What are the precise command-line options, environment variables (if available), and configuration files that control this? Note project‑scoped vs global config.
+Provide the exact command-line options, configuration files, or environment variables needed to configure MCP servers for the agent, including examples of stdio-based and URL-based MCP server connections. Note project‑scoped vs global config.
 
 ### Credentials
 

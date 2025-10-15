@@ -1366,6 +1366,111 @@ The MVP implementation must coordinate across multiple specifications with prope
 
 *Full agent recording implementation with live viewer, IPC integration, and replay functionality completed. Core recording functionality enables time-travel debugging and agent instruction workflows.*
 
+**2.6 Agent Abstraction Layer** (depends on 2.5, parallel with 2.2.2.5) - **PLANNED**
+
+- **Deliverables**:
+
+  - Create `ah-agents` monolith crate following [Subcrates-Pattern.md](../../specs/Public/Subcrates-Pattern.md) with `AgentExecutor` trait for common agent operations
+  - Implement feature-gated agent backends: `claude`, `codex`, `gemini`, `opencode`, `qwen`, `cursor-cli`, `goose` (initial MVP focus on local CLI agents)
+  - Create optional facade subcrates: `ah-agent-claude`, `ah-agent-codex`, etc. for users needing only specific agents
+  - Core trait operations:
+    - `launch(prompt: string, home_dir: path, interactive: bool, json_output: bool, api_server: string, mcp_servers: string[])` → spawn agent process with configured environment
+    - `copy_credentials(src_home: path, dst_home: path)` → securely copy agent credentials between directories
+    - `export_session(home_dir: path)` → create compressed session archive from agent's home directory
+    - `import_session(session_archive: file_path, home_dir: path)` → populate home directory from session archive
+    - `parse_output(raw_bytes: stream[byte]): stream[event]` → normalize agent output into API events (thinking, tool_use, log, etc.)
+  - Support all agent types from [3rd-Party-Agent-Description-Template.md](../../specs/Public/3rd-Party-Agents/3rd-Party-Agent-Description-Template.md)
+  - Environment isolation: HOME variable points to custom workspace directory (typically `/.agents/home/<agent-type>`, within VCS repo if added to ignore file)
+  - Credential management: Secure copying of agent configs between system home and workspace home
+  - Session persistence: Compressed archives containing agent state, configs, and session files
+  - Output normalization: Parse agent-specific output formats into standardized API events matching [REST-Service/API.md](../../specs/Public/REST-Service/API.md) event types
+
+- **Reference Implementation**: Follow [Subcrates-Pattern.md](../../specs/Public/Subcrates-Pattern.md) structure with monolith + facades approach
+
+- **Implementation Details**:
+
+  - **Trait Design**: `AgentExecutor` trait defines common interface, each agent type implements concrete behavior
+  - **Credential Handling**: Platform-aware credential copying (Linux/macOS/Windows keyrings, config files)
+  - **Session Archives**: Use tar + compression for cross-platform session file storage
+  - **Output Parsing**: Agent-specific parsers convert raw output to normalized events (thinking traces, tool calls, file edits)
+  - **Process Management**: Async process spawning with proper signal handling and cleanup
+  - **Error Handling**: Comprehensive error types for credential access, process failures, parsing errors
+  - **Testing**: Integration tests executed with the help of the mock LLM API server from [tests/tools/mock-agent/](../../tests/tools/mock-agent/). The developed code base in this folder provides an example of Claude Code HOME directory setup that skips onboarding screens.
+
+- **Key Source Files**:
+
+  - `crates/ah-agents/src/lib.rs` - Core `AgentExecutor` trait and provider selection logic
+  - `crates/ah-agents/src/traits.rs` - `AgentExecutor` trait definition and common types
+  - `crates/ah-agents/src/claude.rs` - Claude Code agent implementation (#[cfg(feature = "claude")])
+  - `crates/ah-agents/src/codex.rs` - OpenAI Codex CLI agent implementation (#[cfg(feature = "codex")])
+  - `crates/ah-agents/src/gemini.rs` - Google Gemini CLI agent implementation (#[cfg(feature = "gemini")])
+  - `crates/ah-agents/src/session.rs` - Session archive creation/import functionality
+  - `crates/ah-agents/src/credentials.rs` - Cross-platform credential management
+  - `crates/ah-agents/src/parser.rs` - Output normalization and event parsing
+  - `crates/ah-agent-claude/src/lib.rs` - Optional facade crate for Claude-only usage
+  - `crates/ah-agent-codex/src/lib.rs` - Optional facade crate for Codex-only usage
+
+- **Implementation Status**:
+
+  - [ ] Create `ah-agents` monolith crate skeleton with trait definitions
+  - [ ] Implement Claude Code agent backend (primary MVP focus)
+  - [ ] Implement Codex CLI agent backend (primary MVP focus)
+  - [ ] Add session archive export/import functionality
+  - [ ] Implement cross-platform credential copying
+  - [ ] Create output parsers for Claude/Codex output normalization
+  - [ ] Add comprehensive integration tests using mock LLM API server
+  - [ ] Create optional facade subcrates for individual agents
+
+- **Verification Results**:
+
+  - [ ] `cargo check --workspace` succeeds with all agent features
+  - [ ] `cargo test --workspace` passes for ah-agents crate
+  - [ ] Claude Code agent launches with custom HOME directory (skipping onboarding via mock-agent setup)
+  - [ ] Codex CLI agent launches with custom HOME directory (skipping onboarding via mock-agent setup)
+  - [ ] Credential copying works across platforms (Linux/macOS/Windows)
+  - [ ] Session archives export/import correctly preserve agent state
+  - [ ] Output parsing produces normalized API events when using mock LLM API server
+  - [ ] All facade subcrates compile and work independently
+  - [ ] Integration tests pass with real agent binaries using mock LLM API server
+  - [ ] Performance benchmarks meet targets (<500ms launch time, <100ms credential copy)
+
+- **Outstanding Tasks**:
+
+  - Design `AgentExecutor` trait covering all 5 core operations
+  - Implement credential discovery for each agent type (paths, environment variables, keychains)
+  - Select session archive format with compression and metadata
+  - Build output parsers for each agent's specific format
+  - Add proper error handling and recovery for failed operations
+  - Implement testing infrastructure with mock agent binaries
+  - Create documentation and examples for each agent integration
+
+- **Cross-Spec Dependencies**:
+
+  - **[Subcrates-Pattern.md](../../specs/Public/Subcrates-Pattern.md)**: Defines the monolith + facades approach for agent abstraction
+  - **[3rd-Party-Agents/](../../specs/Public/3rd-Party-Agents/)**: Documents each agent's specific requirements and behaviors
+  - **[REST-Service/API.md](../../specs/Public/REST-Service/API.md)**: Defines the normalized event format for output parsing
+  - **[CLI.md](../../specs/Public/CLI.md)**: `ah agent start` command will use this abstraction layer
+  - **[Repository-Layout.md](../../specs/Public/Repository-Layout.md)**: `ah-agents` crate placement in workspace
+
+**2.7 AH Agent Start Command Refactor** (depends on 2.6, parallel with 2.2.2.5) - **PLANNED**
+
+- **Deliverables**:
+
+  - Refactor `ah agent start` command to use new `ah-agents` abstraction layer
+  - Replace hardcoded per-agent methods with unified `AgentExecutor` trait calls
+  - Add session management integration with automatic session file export/import
+  - Enable normalized output parsing for all supported agent types
+  - Add credential management workflow with automatic workspace HOME setup
+
+- **Verification Results**:
+
+  - [ ] `ah agent start --agent claude` uses abstraction layer instead of hardcoded logic
+  - [ ] `ah agent start --agent codex` uses abstraction layer instead of hardcoded logic
+  - [ ] Session files are automatically exported after agent execution
+  - [ ] Credentials are properly copied to workspace HOME directory
+  - [ ] Agent output is parsed into normalized API events
+  - [ ] All existing `ah agent start` test scenarios continue to pass
+
 - **Deliverables**:
 
   - Complete `ah agent record` command implementation in `ah-cli` crate with PTY byte capture, vt100 parsing, and live Ratatui viewer

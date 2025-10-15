@@ -194,7 +194,7 @@ The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host 
 
 ### Crate mapping (selected)
 
-- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agent-executor`, `ah-schemas`.
+- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agents`, `ah-agent-claude`, `ah-agent-codex`, `ah-schemas`.
 - GUI (Electron native addons): `ah-gui-core`, `ah-gui-webui-manager`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.

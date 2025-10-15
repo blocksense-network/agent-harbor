@@ -478,6 +478,15 @@ repomix-specs:
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix specs/ -o {{REPOMIX_OUT_DIR}}/Agent-Harbor-Specs.md --style markdown --header-text "Agents Workflow Specifications"
 
+# Create repomix bundle of all Third-Party-Agents files
+repomix-agent-questions:
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        specs/Public/3rd-Party-Agents/ \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Questions.md \
+        --style markdown \
+        --header-text "Third-Party Agent Integration Questions and Research"
+
 # Install Playwright browsers for E2E tests
 webui-install-browsers:
     yarn workspace ah-webui-e2e-tests run install-browsers
