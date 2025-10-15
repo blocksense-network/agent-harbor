@@ -5,6 +5,10 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
     git-hooks.url = "github:cachix/git-hooks.nix";
+    nix-ai-tools = {
+      url = "github:numtide/nix-ai-tools";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     codex = {
       url = "git+file:./vendor/codex";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,6 +26,7 @@
     nixpkgs,
     rust-overlay,
     git-hooks,
+    nix-ai-tools,
     codex,
     sosumi-docs-downloader,
   }: let
@@ -44,6 +49,10 @@
       pkgs.cursor-cli
       pkgs.windsurf
       codex.packages.${system}.codex-rs
+      nix-ai-tools.packages.${system}.copilot-cli
+      nix-ai-tools.packages.${system}.crush
+      nix-ai-tools.packages.${system}.groq-code-cli
+      nix-ai-tools.packages.${system}.amp
     ];
 
   in {

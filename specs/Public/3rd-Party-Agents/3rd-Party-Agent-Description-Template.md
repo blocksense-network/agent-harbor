@@ -5,8 +5,8 @@ We'll aim to collect the following information for all agent types supported by 
 * Codex CLI
 * Claude Code
 * Cursor CLI
-* Gemeni CLI
-* Cursor VS Code Extensin
+* Gemini CLI
+* Cursor VS Code Extension
 * GitHub Copilot CLI
 * GitHub Copilot VS Code Extension
 * OpenCode
@@ -19,7 +19,8 @@ We'll aim to collect the following information for all agent types supported by 
 * Roo Code
 * Qwen Code
 * OpenHands
-* SourceGraph Cody
+* Amp
+* Groq Code CLI
 
 # <Agent Tool> — Integration Notes
 
