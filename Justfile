@@ -308,9 +308,13 @@ webui-install:
     just mock-server-install
     yarn workspace ah-webui-e2e-tests install
 
-# Build WebUI application
+# Build WebUI application (SSR mode - default for development/testing)
 webui-build:
     yarn workspace ah-webui-ssr-sidecar run build
+
+# Build WebUI application in static mode for Electron embedding
+webui-build-static:
+    WEBUI_BUILD_MODE=static yarn workspace ah-webui-ssr-sidecar run build
 
 # Build mock server
 webui-build-mock:
@@ -509,19 +513,36 @@ webui-check:
 electron-install:
     yarn workspace agent-harbor-gui install
 
-# Build the native addon for Electron GUI
+# Build WebUI in static mode and copy to Electron resources
+electron-build-webui:
+    @echo "Building WebUI in static mode for Electron..."
+    @echo "Note: Using WEBUI_BUILD_MODE=static to build pure CSR (no SSR/hydration)"
+    WEBUI_BUILD_MODE=static yarn workspace ah-webui-ssr-sidecar run build:client
+    @echo "Copying WebUI client bundle to Electron resources..."
+    rm -rf electron-app/resources/webui-static
+    mkdir -p electron-app/resources/webui-static
+    cp -r webui/app/.vinxi/build/client/_build electron-app/resources/webui-static/
+    @echo "Generating index.html with correct asset hashes..."
+    ./scripts/generate-electron-index.sh
+    @echo "WebUI client bundle ready for Electron"
+
+# Build native addon for Electron
 electron-build-native-addon:
-    cd crates/ah-gui-core && npm run build
+    @echo "Building native addon..."
+    cd crates/ah-gui-core && npm install && npm run build
+    @echo "Copying native addon to node_modules..."
+    cp crates/ah-gui-core/*.node node_modules/@agent-harbor/gui-core/ 2>/dev/null || true
+    @echo "Native addon ready"
 
 # Run Electron GUI in development mode (with hot reload)
-electron-dev:
+electron-dev: electron-build-native-addon
     yarn workspace agent-harbor-gui run dev
 
-# Build Electron GUI for production
-electron-build:
+# Build Electron GUI for production (includes WebUI static build and native addon)
+electron-build: electron-build-webui electron-build-native-addon
     yarn workspace agent-harbor-gui run build
 
-# Build Electron GUI for development (no native addon)
+# Build Electron GUI for development (no native addon, no WebUI build)
 electron-build-dev:
     yarn workspace agent-harbor-gui run build:dev
 
@@ -536,6 +557,20 @@ electron-format:
 # Type check Electron GUI code
 electron-type-check:
     yarn workspace agent-harbor-gui run type-check
+
+# Test Electron GUI with Playwright
+electron-test: electron-build-webui electron-build-native-addon
+    @echo "Building Electron app for testing..."
+    yarn workspace agent-harbor-gui run build:dev
+    @echo "Running Playwright tests..."
+    yarn workspace agent-harbor-gui run test
+
+# Test Electron GUI with Playwright (headed mode for debugging)
+electron-test-headed: electron-build-webui electron-build-native-addon
+    @echo "Building Electron app for testing..."
+    yarn workspace agent-harbor-gui run build:dev
+    @echo "Running Playwright tests in headed mode..."
+    yarn workspace agent-harbor-gui run test:headed
 
 # Run all Electron GUI checks (lint, type-check)
 electron-check:

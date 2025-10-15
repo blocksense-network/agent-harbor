@@ -369,8 +369,8 @@
 
       # Platform-specific shell hook additions
       exportLinuxEnvVars = if isLinux then ''
-        export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-linux/chrome"
-        export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-linux/chrome"
+        export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1181/chrome-linux/chrome"
+        export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1181/chrome-linux/chrome"
         export PUPPETEER_EXECUTABLE_PATH="${pkgs.chromium}/bin/chromium"
       '' else "";
 
@@ -378,8 +378,8 @@
         # Clean up environment variables that might point to wrong tools
         unset DEVELOPER_DIR
         unset SDKROOT
-        export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
-        export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1169/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+        export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1181/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+        export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1181/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
         export PUPPETEER_EXECUTABLE_PATH="${pkgs.google-chrome}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
       '' else "";
 

@@ -16,7 +16,7 @@ processes:
       failure_threshold: 5
 
   api-tests:
-    command: "cd webui/e2e-tests && BASE_URL=http://localhost:3001 npx playwright test tests/api-contract.spec.ts --project=api-tests --timeout=10000"
+    command: "cd webui/e2e-tests && BASE_URL=http://localhost:3001 yarn playwright test tests/api-contract.spec.ts --project=api-tests --timeout=10000"
     depends_on:
       mock-server:
         condition: process_healthy

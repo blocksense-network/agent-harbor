@@ -2,7 +2,7 @@ import { cache, createAsync, type RouteDefinition } from "@solidjs/router";
 import { Show } from "solid-js";
 import { Title, Meta } from "@solidjs/meta";
 import { TaskFeed } from "../components/sessions/TaskFeed.js";
-import { getSessions, getDrafts } from "../lib/server-data.js";
+import { getSessions, getDrafts } from "~/lib/server-data.js";
 
 // Simple logger that respects quiet mode for testing
 const logger = {

@@ -10,12 +10,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && npm run build:native-addon && electron-builder",
-    "build:dev": "tsc && vite build",
+    "build:dev": "tsc",
     "build:native-addon": "cd ../crates/ah-gui-core && npm run build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 10",
     "format": "prettier --write \"src/**/*.{ts,tsx,json}\"",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
   },
   "dependencies": {
     "@agent-harbor/gui-core": "file:../crates/ah-gui-core",
@@ -23,17 +26,19 @@
     "playwright": "^1.49.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@types/node": "^22.10.2",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
     "electron": "33.4.11",
     "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.11",
     "eslint": "9.37.0",
     "prettier": "3.6.2",
     "typescript": "5.9.3",
     "vite": "^6.0.3",
     "vite-plugin-electron": "^0.28.8",
-    "vite-plugin-electron-renderer": "^0.14.5"
+    "vite-plugin-electron-renderer": "^0.14.6"
   },
   "engines": {
     "node": ">=18.0.0",

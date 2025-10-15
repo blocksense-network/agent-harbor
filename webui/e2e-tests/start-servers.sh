@@ -71,8 +71,14 @@ echo "Directory created."
 # Export test run directory for reporters to access
 export TEST_RUN_DIR="$TEST_RUN_DIR"
 
-# Set Playwright browsers path to use local browsers directory
-export PLAYWRIGHT_BROWSERS_PATH="$(pwd)/browsers"
+# Playwright browsers: Use Nix-provided browsers if available, otherwise fall back to local
+# The Nix flake sets PLAYWRIGHT_BROWSERS_PATH and PLAYWRIGHT_CHROMIUM_EXECUTABLE
+# If these are not set (e.g., running outside Nix shell), use local browsers
+if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+  export PLAYWRIGHT_BROWSERS_PATH="$(pwd)/browsers"
+  echo "⚠️  Warning: PLAYWRIGHT_BROWSERS_PATH not set - using local browsers"
+  echo "   For reproducible tests, run inside Nix dev shell (direnv allow)"
+fi
 
 echo "🧪 Running tests... (server logs captured to $TEST_RUN_DIR)"
 echo "   📄 View server logs: cat $TEST_RUN_DIR/*.log"
