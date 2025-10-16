@@ -3040,7 +3040,7 @@ __metadata:
     electron-store: "npm:^10.0.0"
     eslint: "npm:9.37.0"
     playwright: "npm:^1.49.0"
-    prettier: "npm:^3.4.2"
+    prettier: "npm:3.6.2"
     typescript: "npm:5.9.3"
     vite: "npm:^6.0.3"
     vite-plugin-electron: "npm:^0.28.8"
@@ -3076,7 +3076,7 @@ __metadata:
     "@types/node": "npm:^24.6.2"
     eslint: "npm:9.37.0"
     playwright: "npm:1.52.0"
-    prettier: "npm:^3.6.2"
+    prettier: "npm:3.6.2"
     typescript: "npm:5.9.3"
     yaml: "npm:^2.4.5"
   languageName: unknown
@@ -3095,7 +3095,7 @@ __metadata:
     express: "npm:^5.1.0"
     helmet: "npm:^8.1.0"
     morgan: "npm:^1.10.1"
-    prettier: "npm:^3.3.3"
+    prettier: "npm:3.6.2"
     tsx: "npm:^4.19.1"
     typescript: "npm:5.9.3"
     yaml: "npm:^2.4.5"
@@ -3127,7 +3127,7 @@ __metadata:
     eslint-plugin-tailwindcss: "npm:^4.0.0-beta.0"
     jsdom: "npm:^27.0.0"
     knip: "npm:^5.64.1"
-    prettier: "npm:^3.3.3"
+    prettier: "npm:3.6.2"
     solid-js: "npm:^1.9.5"
     tailwindcss: "npm:^4.0.7"
     tom-select: "npm:^2.4.3"
@@ -9617,7 +9617,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prettier@npm:^3.3.3, prettier@npm:^3.4.2, prettier@npm:^3.6.2":
+"prettier@npm:3.6.2":
   version: 3.6.2
   resolution: "prettier@npm:3.6.2"
   bin:
@@ -10530,7 +10530,7 @@ __metadata:
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-prettier: "npm:^5.5.4"
     knip: "npm:^5.64.1"
-    prettier: "npm:^3.6.2"
+    prettier: "npm:3.6.2"
     prettier-plugin-tailwindcss: "npm:^0.6.14"
     type-coverage: "npm:^2.29.7"
     typescript: "npm:5.9.3"
@@ -12482,6 +12482,7 @@ __metadata:
   dependencies:
     eslint: "npm:9.37.0"
     knip: "npm:^5.64.1"
+    prettier: "npm:3.6.2"
     solid-js: "npm:^1.9.9"
     typescript: "npm:5.9.3"
     vite: "npm:^7.1.9"
