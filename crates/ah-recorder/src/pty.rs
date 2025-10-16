@@ -24,6 +24,8 @@ pub struct PtyRecorderConfig {
     pub read_buffer_size: usize,
     /// Whether to capture input (not implemented in MVP)
     pub capture_input: bool,
+    /// Environment variables to set for the spawned process
+    pub env_vars: Vec<(String, String)>,
 }
 
 impl Default for PtyRecorderConfig {
@@ -33,6 +35,7 @@ impl Default for PtyRecorderConfig {
             rows: 24,
             read_buffer_size: 8192,
             capture_input: false,
+            env_vars: Vec::new(),
         }
     }
 }
@@ -90,6 +93,11 @@ impl PtyRecorder {
         // Build command
         let mut cmd_builder = CommandBuilder::new(cmd);
         cmd_builder.args(args);
+
+        // Set environment variables
+        for (key, value) in &config.env_vars {
+            cmd_builder.env(key, value);
+        }
 
         // Spawn child process
         let child = pair

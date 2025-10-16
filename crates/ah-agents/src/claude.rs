@@ -5,7 +5,6 @@ use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::{debug, info};
 
@@ -186,9 +185,9 @@ impl AgentExecutor for ClaudeAgent {
         Self::parse_version(&version_output)
     }
 
-    async fn launch(&self, config: AgentLaunchConfig) -> AgentResult<Child> {
+    async fn prepare_launch(&self, config: AgentLaunchConfig) -> AgentResult<tokio::process::Command> {
         info!(
-            "Launching Claude Code with prompt: {:?}",
+            "Preparing Claude Code launch with prompt: {:?}",
             config.prompt.chars().take(50).collect::<String>()
         );
 
@@ -214,7 +213,7 @@ impl AgentExecutor for ClaudeAgent {
             }
         }
 
-        let mut cmd = Command::new(&self.binary_path);
+        let mut cmd = tokio::process::Command::new(&self.binary_path);
 
         // Set custom HOME directory
         cmd.env("HOME", &config.home_dir);
@@ -227,12 +226,18 @@ impl AgentExecutor for ClaudeAgent {
             cmd.env("ANTHROPIC_BASE_URL", api_server);
         }
 
+        // Add API key if specified
+        if let Some(api_key) = &config.api_key {
+            cmd.env("ANTHROPIC_API_KEY", api_key);
+        }
+
         // Add additional environment variables
         for (key, value) in &config.env_vars {
             cmd.env(key, value);
         }
 
-        // Configure stdio
+        // Configure stdio for piped I/O
+        use std::process::Stdio;
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -242,7 +247,12 @@ impl AgentExecutor for ClaudeAgent {
             cmd.arg(&config.prompt);
         }
 
-        // Spawn the process
+        debug!("Claude Code command prepared successfully");
+        Ok(cmd)
+    }
+
+    async fn launch(&self, config: AgentLaunchConfig) -> AgentResult<Child> {
+        let mut cmd = self.prepare_launch(config).await?;
         let child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 AgentError::AgentNotFound(self.binary_path.clone())

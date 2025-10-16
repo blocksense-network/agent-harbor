@@ -31,6 +31,7 @@ ah-repo = { path = "../ah-repo" }
 ah-local-db = { path = "../ah-local-db" }
 config-core = { path = "../config-core" }
 ah-config-types = { path = "../ah-config-types" }
+ah-agents = { path = "../ah-agents" }
 ah-fs-snapshots = { path = "../ah-fs-snapshots", features = [
   "zfs",
   "btrfs",
@@ -62,6 +63,7 @@ ah-recorder = { path = "../ah-recorder" }
 vt100 = "0.15"
 crossterm = { workspace = true }
 tempfile = { workspace = true }
+dirs = "5.0"
 
 # Platform-specific dependencies
 [target.'cfg(unix)'.dependencies]

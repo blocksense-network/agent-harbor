@@ -1366,7 +1366,7 @@ The MVP implementation must coordinate across multiple specifications with prope
 
 *Full agent recording implementation with live viewer, IPC integration, and replay functionality completed. Core recording functionality enables time-travel debugging and agent instruction workflows.*
 
-**2.6 Agent Abstraction Layer** COMPLETED (depends on 2.5, parallel with 2.2.2.5)
+**2.6 Agent Abstraction Layer** (depends on 2.5, parallel with 2.2.2.5) - **PLANNED**
 
 - **Deliverables**:
 
@@ -1459,7 +1459,7 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **[CLI.md](../../specs/Public/CLI.md)**: `ah agent start` command will use this abstraction layer
   - **[Repository-Layout.md](../../specs/Public/Repository-Layout.md)**: `ah-agents` crate placement in workspace
 
-**2.7 AH Agent Start Command Refactor** COMPLETED (depends on 2.6, parallel with 2.2.2.5)
+**2.7 AH Agent Start Command Refactor** (depends on 2.6, parallel with 2.2.2.5) - **PLANNED**
 
 - **Deliverables**:
 
@@ -1469,36 +1469,14 @@ The MVP implementation must coordinate across multiple specifications with prope
   - Enable normalized output parsing for all supported agent types
   - Add credential management workflow with automatic workspace HOME setup
 
-- **Implementation Details**:
-
-  - **Abstraction Layer Integration**: Refactored `ah agent start` command to use `ah-agents` crate instead of hardcoded per-agent logic
-  - **Unified Agent Interface**: Replaced separate Claude/Codex implementations with polymorphic `AgentExecutor` trait objects
-  - **Process Replacement**: Added `exec()` method to `AgentExecutor` trait for process replacement, enabling `ah agent start` to replace current process with agent
-  - **AgentLaunchConfig**: Added comprehensive configuration struct supporting API key specification, environment variables, and home directory isolation
-  - **Credential Management**: Integrated automatic credential copying between system and workspace HOME directories
-  - **Session Management**: Added session export/import functionality using the abstraction layer
-  - **API Key Support**: Added `api_key` field to `AgentLaunchConfig` to support custom API server configurations
-  - **Environment Variable Handling**: Proper environment variable propagation through launch configuration
-  - **Home Directory Isolation**: Automatic creation and population of isolated HOME directories for agent execution
-
-- **Key Source Files**:
-
-  - `crates/ah-cli/src/agent/start.rs` - Refactored to use `ah-agents` abstraction layer with polymorphic agent execution
-  - `crates/ah-agents/src/traits.rs` - Added `exec()` method and `api_key` field to `AgentLaunchConfig`
-  - `crates/ah-agents/src/claude.rs` - Updated Claude agent to support API key configuration
-  - `crates/ah-agents/src/codex.rs` - Updated Codex agent to support API key configuration
-  - `crates/ah-cli/Cargo.toml` - Added `ah-agents` dependency
-
 - **Verification Results**:
 
-  - [x] `ah agent start --agent claude` uses `ah-agents` abstraction layer instead of hardcoded logic
-  - [x] `ah agent start --agent codex` uses `ah-agents` abstraction layer instead of hardcoded logic
-  - [x] Process replacement works correctly via `exec()` method for both agents
-  - [x] API key configuration properly passed to agent launch configurations
-  - [x] Environment variables correctly propagated through launch pipeline
-  - [x] Credential copying works between system and workspace HOME directories
-  - [x] Session export/import functionality integrated with agent lifecycle
-  - [x] All existing `ah agent start` test scenarios continue to pass with new abstraction layer
+  - [ ] `ah agent start --agent claude` uses abstraction layer instead of hardcoded logic
+  - [ ] `ah agent start --agent codex` uses abstraction layer instead of hardcoded logic
+  - [ ] Session files are automatically exported after agent execution
+  - [ ] Credentials are properly copied to workspace HOME directory
+  - [ ] Agent output is parsed into normalized API events
+  - [ ] All existing `ah agent start` test scenarios continue to pass
 
 - **Deliverables**:
 

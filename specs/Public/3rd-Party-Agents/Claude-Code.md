@@ -46,36 +46,74 @@ Claude Code can be started with a specific task prompt in several ways:
 
 To bypass Claude Code's initial onboarding and authentication prompts (essential for automated testing and programmatic integration), you need to set up a minimal configuration in the agent's HOME directory:
 
-1. **Create `.claude.json` file** in HOME directory with basic user configuration:
+1. **Create `.claude.json` file** in HOME directory with comprehensive configuration to skip onboarding:
    ```json
    {
-     "installMethod": "test",
+     "numStartups": 2,
+     "installMethod": "unknown",
      "autoUpdates": false,
+     "customApiKeyResponses": {
+       "approved": ["sk-your-api-key"],
+       "rejected": []
+     },
+     "promptQueueUseCount": 3,
+     "cachedStatsigGates": {
+       "tengu_disable_bypass_permissions_mode": false,
+       "tengu_use_file_checkpoints": false
+     },
      "firstStartTime": "2025-09-23T00:00:00.000Z",
-     "userID": "test-user-id",
-     "projects": {}
+     "userID": "",
+     "projects": {
+       "/path/to/project": {
+         "allowedTools": [],
+         "history": [{
+           "display": "print the current time",
+           "pastedContents": {}
+         }],
+         "mcpContextUris": [],
+         "mcpServers": {},
+         "enabledMcpjsonServers": [],
+         "disabledMcpjsonServers": [],
+         "hasTrustDialogAccepted": true,
+         "projectOnboardingSeenCount": 0,
+         "hasClaudeMdExternalIncludesApproved": true,
+         "hasClaudeMdExternalIncludesWarningShown": true,
+         "hasCompletedProjectOnboarding": true,
+         "lastTotalWebSearchRequests": 0,
+         "lastCost": 0,
+         "lastAPIDuration": 15,
+         "lastToolDuration": 0,
+         "lastDuration": 13312,
+         "lastLinesAdded": 0,
+         "lastLinesRemoved": 0,
+         "lastTotalInputTokens": 0,
+         "lastTotalOutputTokens": 0,
+         "lastTotalCacheCreationInputTokens": 0,
+         "lastTotalCacheReadInputTokens": 0,
+         "lastSessionId": "9fdef27f-462a-4c46-ae37-7623a8b1d951"
+       }
+     },
+     "sonnet45MigrationComplete": true,
+     "changelogLastFetched": 1727040000000,
+     "shiftEnterKeyBindingInstalled": true,
+     "hasCompletedOnboarding": true,
+     "lastOnboardingVersion": "1.0.98",
+     "hasOpusPlanDefault": false,
+     "lastReleaseNotesSeen": "1.0.98",
+     "hasIdeOnboardingBeenShown": {
+       "cursor": true
+     },
+     "isQualifiedForDataSharing": false
    }
    ```
 
-2. **Create `.claude/settings.json` file** for session-specific settings:
-   ```json
-   {
-     "hooks": {}
-   }
-   ```
-
-3. **Set environment variables** to provide API credentials and skip interactive prompts:
+2. **Set environment variables** to provide API credentials and skip interactive prompts:
    ```bash
    export ANTHROPIC_API_KEY="your-api-key"
-   # Use --dangerously-skip-permissions to bypass permission prompts
-   claude --dangerously-skip-permissions "Your prompt here"
-   ```
+   export ANTHROPIC_BASE_URL="http://127.0.0.1:18080"  # For custom API server
+   export HOME="/path/to/custom/home"  # For isolated testing
 
-4. **For custom HOME directory** (useful for isolated testing):
-   ```bash
-   # Set up config files in custom HOME
-   export HOME=/path/to/custom/home
-   # Create .claude.json and .claude/settings.json as above
+   # Launch Claude Code
    claude --dangerously-skip-permissions "Your prompt here"
    ```
 
@@ -301,11 +339,11 @@ Your custom server should implement Anthropic's Messages API:
 
 ### Testing with Mock Servers
 
-The agent-harbor project includes a mock API server that can be used for testing Claude Code integrations:
+Custom mock servers can be used for testing Claude Code integrations:
 
 ```bash
-# Start the mock server
-python tests/tools/mock-agent/start_test_server.py --host 127.0.0.1 --port 18080
+# Start your mock server (example)
+# python mock_server.py --host 127.0.0.1 --port 18080
 
 # In another terminal, set environment and run Claude Code
 export ANTHROPIC_BASE_URL="http://127.0.0.1:18080"

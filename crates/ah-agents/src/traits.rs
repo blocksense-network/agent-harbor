@@ -22,6 +22,9 @@ pub struct AgentLaunchConfig {
     /// Optional custom API server URL for LLM requests
     pub api_server: Option<String>,
 
+    /// Optional API key for authentication with the LLM service
+    pub api_key: Option<String>,
+
     /// List of MCP (Model Context Protocol) servers to configure
     pub mcp_servers: Vec<String>,
 
@@ -138,10 +141,36 @@ pub trait AgentExecutor: Send + Sync {
     /// Detect the installed version of this agent
     async fn detect_version(&self) -> AgentResult<AgentVersion>;
 
+    /// Prepare an agent launch by setting up the environment and returning a configured Command
+    ///
+    /// This method sets up the temporary HOME directory, copies credentials if needed,
+    /// and configures all environment variables and command arguments, but does not spawn the process.
+    /// The returned Command can then be used with `ah agent record` for session recording.
+    ///
+    /// Returns a configured Command ready to be spawned
+    async fn prepare_launch(&self, config: AgentLaunchConfig) -> AgentResult<tokio::process::Command>;
+
     /// Launch the agent with the given configuration
     ///
     /// Returns a process handle that can be monitored for output
-    async fn launch(&self, config: AgentLaunchConfig) -> AgentResult<Child>;
+    async fn launch(&self, config: AgentLaunchConfig) -> AgentResult<Child> {
+        let mut cmd = self.prepare_launch(config).await?;
+        let child = cmd.spawn().map_err(AgentError::ProcessSpawnFailed)?;
+        Ok(child)
+    }
+
+    /// Execute the agent by replacing the current process with the agent
+    ///
+    /// This replaces the current process image with the agent process using execve.
+    /// Unlike launch(), this does not return and the current process is replaced.
+    async fn exec(&self, config: AgentLaunchConfig) -> AgentResult<()> {
+        let mut cmd = self.prepare_launch(config).await?;
+        // Convert tokio command to std command and exec
+        use std::os::unix::process::CommandExt;
+        let err = cmd.as_std_mut().exec();
+        // This should never return on success, but if it does, it's an error
+        Err(AgentError::ProcessSpawnFailed(err))
+    }
 
     /// Copy credentials from source HOME to destination HOME
     ///
@@ -195,6 +224,7 @@ impl AgentLaunchConfig {
             interactive: false,
             json_output: false,
             api_server: None,
+            api_key: None,
             mcp_servers: Vec::new(),
             env_vars: Vec::new(),
             working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
@@ -214,6 +244,11 @@ impl AgentLaunchConfig {
 
     pub fn api_server(mut self, url: impl Into<String>) -> Self {
         self.api_server = Some(url.into());
+        self
+    }
+
+    pub fn api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = Some(key.into());
         self
     }
 

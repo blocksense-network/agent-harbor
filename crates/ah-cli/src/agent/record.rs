@@ -45,6 +45,11 @@ pub struct RecordArgs {
     #[arg(trailing_var_arg = true)]
     pub args: Vec<String>,
 
+    /// Environment variable to set (can be specified multiple times)
+    /// Format: KEY=VALUE
+    #[arg(long = "env", value_name = "KEY=VALUE")]
+    pub env_vars: Vec<String>,
+
     /// Output file path for .ahr recording (default: auto-generated)
     #[arg(short, long)]
     pub out_file: Option<PathBuf>,
@@ -130,10 +135,22 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
         "Output configuration"
     );
 
+    // Parse environment variables
+    let env_vars = args.env_vars.iter()
+        .map(|env_var| {
+            let parts: Vec<&str> = env_var.splitn(2, '=').collect();
+            if parts.len() != 2 {
+                anyhow::bail!("Invalid environment variable format: {}. Expected KEY=VALUE", env_var);
+            }
+            Ok((parts[0].to_string(), parts[1].to_string()))
+        })
+        .collect::<Result<Vec<(String, String)>>>()?;
+
     // Create PTY recorder configuration
     let pty_config = PtyRecorderConfig {
         cols,
         rows,
+        env_vars,
         ..Default::default()
     };
 

@@ -76,6 +76,22 @@ id = "test-user-integration"
         .expect("Failed to write config.toml");
 }
 
+/// Set up environment variables needed for testing
+fn setup_test_env(cmd: &mut std::process::Command) {
+    // Forward environment variables needed for testing
+    if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
+        cmd.env("TUI_TESTING_URI", tui_testing_uri);
+    }
+    if let Ok(ah_home) = std::env::var("AH_HOME") {
+        cmd.env("AH_HOME", ah_home);
+    }
+    // Set git environment variables for consistent behavior
+    cmd.env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "echo")
+        .env("SSH_ASKPASS", "echo");
+}
+
 #[cfg(feature = "claude")]
 #[tokio::test]
 async fn test_claude_with_mock_server() {
@@ -119,6 +135,9 @@ async fn test_claude_with_mock_server() {
         .current_dir(&workspace)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+
+    // Set up environment variables needed for testing
+    setup_test_env(&mut cmd);
 
     let mut child = tokio::process::Command::from(cmd)
         .spawn()
@@ -236,6 +255,9 @@ async fn test_codex_with_mock_server() {
         .current_dir(&workspace)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+
+    // Set up environment variables needed for testing
+    setup_test_env(&mut cmd);
 
     let mut child = tokio::process::Command::from(cmd)
         .spawn()
