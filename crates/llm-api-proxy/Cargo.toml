@@ -1,0 +1,48 @@
+[package]
+name = "llm-api-proxy"
+version = "0.1.0"
+edition = "2021"
+description = "LLM API proxy library for Agent Harbor WebUI with API translation, routing, metrics, and scenario playback"
+authors = ["Agent Harbor Team"]
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# Core async and HTTP
+tokio = { version = "1.0", features = ["full"] }
+axum = "0.8"
+reqwest = { version = "0.12", features = ["json", "stream", "multipart", "native-tls", "charset", "gzip"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "request-id"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# LLM API clients
+async-openai = "0.29"
+anthropic-ai-sdk = "0.2"
+
+# Configuration
+config = "0.15"
+
+# Additional utilities
+futures = "0.3"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+regex = "1.10"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+tempfile = "3.0"
