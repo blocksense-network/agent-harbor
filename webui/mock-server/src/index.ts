@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { sessionsRouter } from './routes/sessions.js';
 import { agentsRouter } from './routes/agents.js';
 import { runtimesRouter } from './routes/runtimes.js';
@@ -11,6 +13,10 @@ import { tasksRouter } from './routes/tasks.js';
 import repositoriesRouter from './routes/repositories.js';
 import draftsRouter from './routes/drafts.js';
 import { ScenarioRunner } from './scenario-runner.js';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Redirect output to file if SERVER_LOG_FILE is set
 if (process.env.SERVER_LOG_FILE) {
@@ -95,6 +101,21 @@ if (scenarioFiles.length > 0) {
   logger.log(`Loaded ${scenarioFiles.length} scenario(s): ${scenarioFiles.join(', ')}`);
 }
 
+// Static file serving for CSR build (for Electron integration)
+// Serve static files from ../app/dist/client/ if it exists
+const staticDir = path.join(__dirname, '../../app/dist/client');
+if (fs.existsSync(staticDir)) {
+  logger.log(`Serving static files from ${staticDir}`);
+
+  // Serve static assets
+  app.use(express.static(staticDir));
+
+  // SPA fallback: serve index.html for all non-API routes
+  // This must come AFTER API routes to avoid intercepting them
+} else {
+  logger.log('Static files directory not found - API-only mode');
+}
+
 // API routes
 app.use('/api/v1/sessions', sessionsRouter);
 app.use('/api/v1/agents', agentsRouter);
@@ -104,15 +125,50 @@ app.use('/api/v1/tasks', tasksRouter);
 app.use('/api/v1/repositories', repositoriesRouter);
 app.use('/api/v1/drafts', draftsRouter);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    type: 'https://docs.example.com/errors/not-found',
-    title: 'Not Found',
-    status: 404,
-    detail: `Route ${req.originalUrl} not found`,
+// SPA fallback: serve index.html for all non-API routes
+// This enables client-side routing to work properly
+if (fs.existsSync(staticDir)) {
+  // Use middleware instead of route for Express 5 compatibility
+  app.use((req, res, next) => {
+    // Only handle GET requests
+    if (req.method !== 'GET') {
+      return next();
+    }
+
+    // Don't serve index.html for API routes
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+
+    // Don't serve index.html for static assets
+    if (req.path.includes('.')) {
+      return next();
+    }
+
+    // Serve index.html for all other GET requests (SPA routing)
+    res.sendFile(path.join(staticDir, 'index.html'));
   });
-});
+
+  // 404 handler for API routes and missing assets
+  app.use((req, res) => {
+    res.status(404).json({
+      type: 'https://docs.example.com/errors/not-found',
+      title: 'Not Found',
+      status: 404,
+      detail: `Route ${req.originalUrl} not found`,
+    });
+  });
+} else {
+  // 404 handler for API-only mode
+  app.use((req, res) => {
+    res.status(404).json({
+      type: 'https://docs.example.com/errors/not-found',
+      title: 'Not Found',
+      status: 404,
+      detail: `Route ${req.originalUrl} not found`,
+    });
+  });
+}
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {

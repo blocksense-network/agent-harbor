@@ -62,7 +62,7 @@ function createMainWindow(): void {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: join(__dirname, '../renderer/preload.js'),
+      preload: join(__dirname, 'renderer/preload.mjs'),
     },
     show: false, // Don't show until ready-to-show
   });
@@ -72,18 +72,28 @@ function createMainWindow(): void {
     mainWindow.maximize();
   }
 
-  // Load the app - for now, just show a placeholder
-  // TODO: Load WebUI from localhost when ready
-  mainWindow.loadURL(`data:text/html,
-    <html>
-      <head><title>${APP_NAME}</title></head>
-      <body style="font-family: system-ui; padding: 40px; text-align: center;">
-        <h1>🚢 ${APP_NAME}</h1>
-        <p>Electron GUI is initializing...</p>
-        <p><em>This will soon embed the WebUI interface</em></p>
-      </body>
-    </html>
-  `);
+  // Load the WebUI from localhost
+  // In development: loads from mock server (localhost:3001)
+  // In production: will load from `ah webui` subprocess (M0.4)
+  const webuiUrl = process.env.WEBUI_URL || 'http://localhost:3001';
+
+  mainWindow.loadURL(webuiUrl).catch((err) => {
+    console.error('Failed to load WebUI:', err);
+    // Show error page if WebUI fails to load
+    if (mainWindow) {
+      mainWindow.loadURL(`data:text/html,
+        <html>
+          <head><title>${APP_NAME} - Error</title></head>
+          <body style="font-family: system-ui; padding: 40px; text-align: center;">
+            <h1>🚢 ${APP_NAME}</h1>
+            <p style="color: red;">Failed to load WebUI from ${webuiUrl}</p>
+            <p><em>Make sure the WebUI server is running</em></p>
+            <pre style="text-align: left; background: #f5f5f5; padding: 10px;">${err}</pre>
+          </body>
+        </html>
+      `);
+    }
+  });
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {

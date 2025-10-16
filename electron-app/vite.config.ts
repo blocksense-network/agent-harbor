@@ -7,10 +7,44 @@
 
 import { defineConfig } from 'vite';
 import electron from 'vite-plugin-electron/simple';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Resolve Electron executable path using Node's module resolver (PnP-aware)
+ * This is more robust than scanning .yarn/unplugged directories.
+ */
+function resolveElectronCli(): string | undefined {
+  // Preferred: exact path to Electron's CLI entry
+  try {
+    return require.resolve('electron/cli.js');
+  } catch {}
+
+  // Fallback for Node >= 20: import.meta.resolve returns a file URL
+  try {
+    // @ts-ignore - Node 20+
+    const url = import.meta.resolve('electron/cli.js');
+    return fileURLToPath(url);
+  } catch {}
+
+  // Last resort: the 'electron' package exports the binary path as a string
+  try {
+    const binPath = require('electron') as unknown as string;
+    return binPath;
+  } catch {}
+
+  return undefined;
+}
+
+const electronPath = resolveElectronCli();
 
 export default defineConfig(({ command }) => ({
   plugins: [
     electron({
+      // vite-plugin-electron will spawn this executable
+      ...(electronPath ? { electronPath } : {}),
       main: {
         // Main process entry point
         entry: 'src/main/index.ts',
@@ -37,8 +71,8 @@ export default defineConfig(({ command }) => ({
           },
         },
       },
-      // Automatically restart Electron when main process files change
-      renderer: {},
+      // No renderer build needed - WebUI is loaded from mock server / ah webui
+      // renderer: {},
     }),
   ],
   // Only configure build for development/preview, disable for production build

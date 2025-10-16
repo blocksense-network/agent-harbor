@@ -1,5 +1,5 @@
-import { onMount, onCleanup, createEffect, For } from "solid-js";
-import TomSelect from "tom-select";
+import { onMount, onCleanup, createEffect, For } from 'solid-js';
+import TomSelect from 'tom-select';
 
 interface TomSelectProps<T = string> {
   items: T[];
@@ -20,8 +20,8 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   const normalize = (value: string) =>
     value
       .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[^a-z0-9]/g, "");
+      .normalize('NFKD')
+      .replace(/[^a-z0-9]/g, '');
 
   const isFuzzyMatch = (text: string, query: string) => {
     if (!query.length) return true;
@@ -38,29 +38,29 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   };
 
   onMount(() => {
-    if (!selectRef || typeof window === "undefined") return;
+    if (!selectRef || typeof window === 'undefined') return;
 
     // Initialize TOM Select with proper positioning and styling
     tomSelectInstance = new TomSelect(selectRef, {
       create: false,
       maxItems: 1,
-      placeholder: props.placeholder || "Select...",
-      searchField: props.getSearchTokens ? ["text", "searchTokens"] : ["text"],
+      placeholder: props.placeholder || 'Select...',
+      searchField: props.getSearchTokens ? ['text', 'searchTokens'] : ['text'],
       maxOptions: 100,
       score: (search: { query: string }) => {
-        const query = normalize(search?.query ?? "");
+        const query = normalize(search?.query ?? '');
         if (!query.length) {
           return () => 1;
         }
         return (option: Record<string, unknown>) => {
-          const rawText = option["text"];
-          const textValue = typeof rawText === "string" ? rawText : "";
+          const rawText = option['text'];
+          const textValue = typeof rawText === 'string' ? rawText : '';
           const normalizedText = normalize(textValue);
           if (normalizedText.includes(query)) {
             return query.length / (normalizedText.length + 1);
           }
-          const rawTokens = option["searchTokens"];
-          const tokenValue = typeof rawTokens === "string" ? rawTokens : "";
+          const rawTokens = option['searchTokens'];
+          const tokenValue = typeof rawTokens === 'string' ? rawTokens : '';
           const extraTokens = normalize(tokenValue);
           if (extraTokens.includes(query)) {
             return 0.8;
@@ -78,12 +78,11 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
 
     // Workaround: prevent dropdown translucency overlapping footer in dark mode
     if (tomSelectInstance.dropdown) {
-      tomSelectInstance.dropdown.style.backgroundColor = "#ffffff";
-      tomSelectInstance.dropdown.style.border = "1px solid #cccccc";
-      tomSelectInstance.dropdown.style.borderRadius = "4px";
-      tomSelectInstance.dropdown.style.boxShadow =
-        "0 2px 8px rgba(0, 0, 0, 0.1)";
-      tomSelectInstance.dropdown.style.zIndex = "9999";
+      tomSelectInstance.dropdown.style.backgroundColor = '#ffffff';
+      tomSelectInstance.dropdown.style.border = '1px solid #cccccc';
+      tomSelectInstance.dropdown.style.borderRadius = '4px';
+      tomSelectInstance.dropdown.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+      tomSelectInstance.dropdown.style.zIndex = '9999';
     }
 
     // Set initial value if provided
@@ -94,7 +93,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
 
   // Update options when items change
   createEffect(() => {
-    if (tomSelectInstance && typeof window !== "undefined") {
+    if (tomSelectInstance && typeof window !== 'undefined') {
       tomSelectInstance!.clearOptions();
 
       props.items.forEach((item) => {
@@ -105,7 +104,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
           value: props.getKey(item),
           text: displayText,
           normalizedText,
-          searchTokens: tokens.map((token) => token.toLowerCase()).join(" "),
+          searchTokens: tokens.map((token) => token.toLowerCase()).join(' '),
         });
       });
 
@@ -115,10 +114,8 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
 
   // Update selected value when it changes
   createEffect(() => {
-    if (tomSelectInstance && typeof window !== "undefined") {
-      const newValue = props.selectedItem
-        ? props.getKey(props.selectedItem)
-        : "";
+    if (tomSelectInstance && typeof window !== 'undefined') {
+      const newValue = props.selectedItem ? props.getKey(props.selectedItem) : '';
       if (tomSelectInstance!.getValue() !== newValue) {
         tomSelectInstance!.setValue(newValue, true);
       }
@@ -131,19 +128,10 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
 
   return (
     <div class={props.class} data-testid={props.testId}>
-      <select
-        ref={selectRef}
-        id={props.id}
-        class="tom-select-input"
-        aria-label={props.placeholder}
-      >
-        <option value="">{props.placeholder || "Select..."}</option>
+      <select ref={selectRef} id={props.id} class="tom-select-input" aria-label={props.placeholder}>
+        <option value="">{props.placeholder || 'Select...'}</option>
         <For each={props.items}>
-          {(item) => (
-            <option value={props.getKey(item)}>
-              {props.getDisplayText(item)}
-            </option>
-          )}
+          {(item) => <option value={props.getKey(item)}>{props.getDisplayText(item)}</option>}
         </For>
       </select>
     </div>

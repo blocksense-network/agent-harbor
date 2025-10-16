@@ -1,41 +1,39 @@
-import { Component, createSignal, onMount, Show } from "solid-js";
+import { Component, createSignal, onMount, Show } from 'solid-js';
 
-export type FooterContext = "task-feed" | "draft-task" | "modal" | "default";
+export type FooterContext = 'task-feed' | 'draft-task' | 'modal' | 'default';
 
 export interface KeyboardShortcutsFooterProps {
   onNewTask?: () => void;
   agentCount?: number;
   focusState?: {
-    focusedElement: "draft-textarea" | "session-card" | "none";
+    focusedElement: 'draft-textarea' | 'session-card' | 'none';
     focusedDraftId?: string;
     focusedSessionId?: string;
     focusedDraftAgentCount?: number;
   };
 }
 
-export const KeyboardShortcutsFooter: Component<
-  KeyboardShortcutsFooterProps
-> = (props) => {
+export const KeyboardShortcutsFooter: Component<KeyboardShortcutsFooterProps> = (props) => {
   const [isMac, setIsMac] = createSignal(false);
 
   // Detect platform for keyboard shortcut display
   onMount(() => {
-    if (typeof window !== "undefined") {
-      setIsMac(navigator.platform.toUpperCase().indexOf("MAC") >= 0);
+    if (typeof window !== 'undefined') {
+      setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
     }
   });
 
   // Determine context based on focus state
   const getContext = (): FooterContext => {
-    if (!props.focusState) return "default";
+    if (!props.focusState) return 'default';
 
     switch (props.focusState.focusedElement) {
-      case "draft-textarea":
-        return "draft-task";
-      case "session-card":
-        return "task-feed";
+      case 'draft-textarea':
+        return 'draft-task';
+      case 'session-card':
+        return 'task-feed';
       default:
-        return "default";
+        return 'default';
     }
   };
 
@@ -44,18 +42,18 @@ export const KeyboardShortcutsFooter: Component<
     const context = getContext();
 
     switch (context) {
-      case "draft-task": {
+      case 'draft-task': {
         const agentCount = props.agentCount || 0;
-        return agentCount > 1 ? "Launch Agents" : "Launch Agent";
+        return agentCount > 1 ? 'Launch Agents' : 'Launch Agent';
       }
-      case "task-feed":
-        return "Review Session Details";
+      case 'task-feed':
+        return 'Review Session Details';
       default:
-        return "Go";
+        return 'Go';
     }
   };
 
-  const modKey = () => (isMac() ? "Cmd" : "Ctrl");
+  const modKey = () => (isMac() ? 'Cmd' : 'Ctrl');
 
   return (
     <footer
@@ -86,12 +84,8 @@ export const KeyboardShortcutsFooter: Component<
       </div>
 
       {/* Context-sensitive shortcuts on the right */}
-      <div
-        class="flex items-center gap-2"
-        role="toolbar"
-        aria-label="Keyboard shortcuts"
-      >
-        <Show when={getContext() === "task-feed"}>
+      <div class="flex items-center gap-2" role="toolbar" aria-label="Keyboard shortcuts">
+        <Show when={getContext() === 'task-feed'}>
           {/* Informational shortcuts (non-clickable but styled like buttons) */}
           <div
             class={`
@@ -115,7 +109,7 @@ export const KeyboardShortcutsFooter: Component<
           </div>
         </Show>
 
-        <Show when={getContext() === "draft-task"}>
+        <Show when={getContext() === 'draft-task'}>
           {/* Informational shortcuts for draft context */}
           <div
             class={`
@@ -149,7 +143,7 @@ export const KeyboardShortcutsFooter: Component<
           </div>
         </Show>
 
-        <Show when={getContext() === "default"}>
+        <Show when={getContext() === 'default'}>
           {/* Default context shortcuts */}
           <div
             class={`

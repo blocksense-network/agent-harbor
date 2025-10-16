@@ -1,6 +1,6 @@
-import { Component, createEffect, createSignal } from "solid-js";
+import { Component, createEffect, createSignal } from 'solid-js';
 
-export type SaveStatusType = "unsaved" | "saving" | "saved" | "error";
+export type SaveStatusType = 'unsaved' | 'saving' | 'saved' | 'error';
 
 interface SaveStatusProps {
   status: SaveStatusType;
@@ -9,8 +9,7 @@ interface SaveStatusProps {
 
 export const SaveStatus: Component<SaveStatusProps> = (props) => {
   // Use internal signal to ensure reactivity
-  const [currentStatus, setCurrentStatus] =
-    createSignal<SaveStatusType>("saved");
+  const [currentStatus, setCurrentStatus] = createSignal<SaveStatusType>('saved');
 
   // Update internal signal when prop changes
   createEffect(() => {
@@ -19,33 +18,33 @@ export const SaveStatus: Component<SaveStatusProps> = (props) => {
 
   const getStatusConfig = (status: SaveStatusType) => {
     switch (status) {
-      case "unsaved":
+      case 'unsaved':
         return {
-          text: "Unsaved",
-          icon: "○",
-          color: "text-gray-500",
-          bgColor: "bg-gray-50",
+          text: 'Unsaved',
+          icon: '○',
+          color: 'text-gray-500',
+          bgColor: 'bg-gray-50',
         };
-      case "saving":
+      case 'saving':
         return {
-          text: "Saving...",
-          icon: "⟳",
-          color: "text-orange-600",
-          bgColor: "bg-orange-50",
+          text: 'Saving...',
+          icon: '⟳',
+          color: 'text-orange-600',
+          bgColor: 'bg-orange-50',
         };
-      case "saved":
+      case 'saved':
         return {
-          text: "Saved",
-          icon: "✓",
-          color: "text-green-600",
-          bgColor: "bg-green-50",
+          text: 'Saved',
+          icon: '✓',
+          color: 'text-green-600',
+          bgColor: 'bg-green-50',
         };
-      case "error":
+      case 'error':
         return {
-          text: "Save failed",
-          icon: "✗",
-          color: "text-red-600",
-          bgColor: "bg-red-50",
+          text: 'Save failed',
+          icon: '✗',
+          color: 'text-red-600',
+          bgColor: 'bg-red-50',
         };
     }
   };
@@ -59,7 +58,7 @@ export const SaveStatus: Component<SaveStatusProps> = (props) => {
         transition-colors
         ${config().color}
         ${config().bgColor}
-        ${props.class || ""}
+        ${props.class || ''}
       `}
       role="status"
       aria-live="polite"

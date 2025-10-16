@@ -1,14 +1,14 @@
 // API client for the Agent Harbor REST service
 
 export interface Repository {
-  mode: "git" | "upload" | "none";
+  mode: 'git' | 'upload' | 'none';
   url?: string;
   branch?: string;
   commit?: string;
 }
 
 export interface Runtime {
-  type: "devcontainer" | "local" | "disabled";
+  type: 'devcontainer' | 'local' | 'disabled';
   devcontainerPath?: string;
   resources?: {
     cpu?: number;
@@ -23,7 +23,7 @@ export interface Agent {
 }
 
 export interface Delivery {
-  mode: "pr" | "branch" | "patch";
+  mode: 'pr' | 'branch' | 'patch';
   targetBranch?: string;
 }
 
@@ -57,17 +57,17 @@ export interface Session {
   tenantId?: string;
   projectId?: string;
   status:
-    | "queued"
-    | "provisioning"
-    | "running"
-    | "pausing"
-    | "paused"
-    | "resuming"
-    | "stopping"
-    | "stopped"
-    | "completed"
-    | "failed"
-    | "cancelled";
+    | 'queued'
+    | 'provisioning'
+    | 'running'
+    | 'pausing'
+    | 'paused'
+    | 'resuming'
+    | 'stopping'
+    | 'stopped'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
   createdAt: string;
   prompt: string;
   repo: Repository;
@@ -129,7 +129,7 @@ export interface RepositoryItem {
 export interface DraftCreate {
   prompt: string;
   repo: {
-    mode: "git" | "upload" | "none";
+    mode: 'git' | 'upload' | 'none';
     url?: string;
     branch?: string;
   };
@@ -139,10 +139,10 @@ export interface DraftCreate {
     instances: number;
   }>;
   runtime: {
-    type: "devcontainer" | "local" | "disabled";
+    type: 'devcontainer' | 'local' | 'disabled';
   };
   delivery: {
-    mode: "pr" | "branch" | "patch";
+    mode: 'pr' | 'branch' | 'patch';
   };
 }
 
@@ -154,9 +154,7 @@ export interface DraftTask extends DraftCreate {
 }
 
 // Updates to draft tasks (excludes server-managed fields)
-export type DraftUpdate = Partial<
-  Omit<DraftTask, "id" | "createdAt" | "updatedAt">
->;
+export type DraftUpdate = Partial<Omit<DraftTask, 'id' | 'createdAt' | 'updatedAt'>>;
 
 export interface RepositoriesListResponse {
   items: RepositoryItem[];
@@ -178,14 +176,14 @@ export type SessionEvent =
   | FileEditEvent;
 
 export interface StatusEvent {
-  type: "status";
+  type: 'status';
   sessionId: string;
   status: string;
   ts: string;
 }
 
 export interface LogEvent {
-  type: "log";
+  type: 'log';
   sessionId: string;
   level: string;
   message: string;
@@ -193,7 +191,7 @@ export interface LogEvent {
 }
 
 export interface ProgressEvent {
-  type: "progress";
+  type: 'progress';
   sessionId: string;
   progress: number;
   stage: string;
@@ -201,14 +199,14 @@ export interface ProgressEvent {
 }
 
 export interface ThinkingEvent {
-  type: "thinking";
+  type: 'thinking';
   sessionId: string;
   thought: string;
   ts: string;
 }
 
 export interface ToolExecutionEvent {
-  type: "tool_execution";
+  type: 'tool_execution';
   sessionId: string;
   tool_name: string;
   tool_args: Record<string, unknown>;
@@ -219,7 +217,7 @@ export interface ToolExecutionEvent {
 }
 
 export interface FileEditEvent {
-  type: "file_edit";
+  type: 'file_edit';
   sessionId: string;
   file_path: string;
   lines_added?: number;
@@ -242,20 +240,17 @@ export interface ApiError {
 // The SSR server proxies all /api/v1/* requests to the access point daemon
 // Client uses relative URLs; SSR uses absolute localhost URLs
 const API_BASE =
-  typeof window !== "undefined"
-    ? "/api/v1" // Browser: use proxy
-    : "http://localhost:3002/api/v1"; // SSR: call SSR server's proxy
+  typeof window !== 'undefined'
+    ? '/api/v1' // Browser: use proxy
+    : 'http://localhost:3002/api/v1'; // SSR: call SSR server's proxy
 
 class ApiClient {
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {},
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
 
     const response = await fetch(url, {
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         ...options.headers,
       },
       ...options,
@@ -263,8 +258,8 @@ class ApiClient {
 
     if (!response.ok) {
       const errorData: ApiError = await response.json().catch(() => ({
-        type: "unknown",
-        title: "Network Error",
+        type: 'unknown',
+        title: 'Network Error',
         status: response.status,
         detail: response.statusText,
       }));
@@ -276,8 +271,8 @@ class ApiClient {
 
   // Task operations
   async createTask(data: CreateTaskRequest): Promise<CreateTaskResponse> {
-    return this.request("/tasks", {
-      method: "POST",
+    return this.request('/tasks', {
+      method: 'POST',
       body: JSON.stringify(data),
     });
   }
@@ -290,13 +285,13 @@ class ApiClient {
     perPage?: number;
   }): Promise<SessionsListResponse> {
     const searchParams = new URLSearchParams();
-    if (params?.status) searchParams.set("status", params.status);
-    if (params?.projectId) searchParams.set("projectId", params.projectId);
-    if (params?.page) searchParams.set("page", params.page.toString());
-    if (params?.perPage) searchParams.set("perPage", params.perPage.toString());
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.projectId) searchParams.set('projectId', params.projectId);
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.perPage) searchParams.set('perPage', params.perPage.toString());
 
     const query = searchParams.toString();
-    return this.request(`/sessions${query ? `?${query}` : ""}`);
+    return this.request(`/sessions${query ? `?${query}` : ''}`);
   }
 
   async getSession(id: string): Promise<Session> {
@@ -305,38 +300,35 @@ class ApiClient {
 
   async stopSession(id: string): Promise<{ status: string }> {
     return this.request(`/sessions/${id}/stop`, {
-      method: "POST",
+      method: 'POST',
     });
   }
 
   async cancelSession(id: string): Promise<void> {
     await this.request(`/sessions/${id}`, {
-      method: "DELETE",
+      method: 'DELETE',
     });
   }
 
   async pauseSession(id: string): Promise<{ status: string }> {
     return this.request(`/sessions/${id}/pause`, {
-      method: "POST",
+      method: 'POST',
     });
   }
 
   async resumeSession(id: string): Promise<{ status: string }> {
     return this.request(`/sessions/${id}/resume`, {
-      method: "POST",
+      method: 'POST',
     });
   }
 
   async getSessionLogs(id: string, tail?: number): Promise<LogsResponse> {
-    const params = tail ? `?tail=${tail}` : "";
+    const params = tail ? `?tail=${tail}` : '';
     return this.request(`/sessions/${id}/logs${params}`);
   }
 
   // SSE event streaming
-  subscribeToSessionEvents(
-    id: string,
-    onEvent: SessionEventHandler,
-  ): EventSource {
+  subscribeToSessionEvents(id: string, onEvent: SessionEventHandler): EventSource {
     const eventSource = new EventSource(`${API_BASE}/sessions/${id}/events`);
 
     // Handle all event types sent by the server
@@ -346,27 +338,27 @@ class ApiClient {
         // Add type field based on SSE event type for discriminated union
         const data: SessionEvent = {
           ...parsedData,
-          type: event.type as SessionEvent["type"],
+          type: event.type as SessionEvent['type'],
         };
         onEvent(data);
       } catch (error) {
-        console.error("Failed to parse SSE event:", error);
+        console.error('Failed to parse SSE event:', error);
       }
     };
 
     // Listen for specific event types
-    eventSource.addEventListener("status", handleEvent);
-    eventSource.addEventListener("thinking", handleEvent);
-    eventSource.addEventListener("tool_execution", handleEvent);
-    eventSource.addEventListener("file_edit", handleEvent);
-    eventSource.addEventListener("progress", handleEvent);
-    eventSource.addEventListener("log", handleEvent);
+    eventSource.addEventListener('status', handleEvent);
+    eventSource.addEventListener('thinking', handleEvent);
+    eventSource.addEventListener('tool_execution', handleEvent);
+    eventSource.addEventListener('file_edit', handleEvent);
+    eventSource.addEventListener('progress', handleEvent);
+    eventSource.addEventListener('log', handleEvent);
 
     // Fallback for generic messages
     eventSource.onmessage = handleEvent;
 
     eventSource.onerror = (error) => {
-      console.error("SSE connection error:", error);
+      console.error('SSE connection error:', error);
     };
 
     return eventSource;
@@ -374,11 +366,11 @@ class ApiClient {
 
   // Metadata operations
   async listAgents(): Promise<{ items: AgentType[] }> {
-    return this.request("/agents");
+    return this.request('/agents');
   }
 
   async listRuntimes(): Promise<{ items: RuntimeType[] }> {
-    return this.request("/runtimes");
+    return this.request('/runtimes');
   }
 
   async listRepositories(params?: {
@@ -386,11 +378,11 @@ class ApiClient {
     perPage?: number;
   }): Promise<RepositoriesListResponse> {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set("page", params.page.toString());
-    if (params?.perPage) searchParams.set("perPage", params.perPage.toString());
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.perPage) searchParams.set('perPage', params.perPage.toString());
 
     const query = searchParams.toString();
-    return this.request(`/repositories${query ? `?${query}` : ""}`);
+    return this.request(`/repositories${query ? `?${query}` : ''}`);
   }
 
   async getRepository(id: string): Promise<RepositoryItem> {
@@ -399,26 +391,26 @@ class ApiClient {
 
   // Draft operations
   async listDrafts(): Promise<{ items: DraftTask[] }> {
-    return this.request("/drafts");
+    return this.request('/drafts');
   }
 
   async createDraft(draft: DraftCreate): Promise<DraftTask> {
-    return this.request("/drafts", {
-      method: "POST",
+    return this.request('/drafts', {
+      method: 'POST',
       body: JSON.stringify(draft),
     });
   }
 
   async updateDraft(id: string, updates: DraftUpdate): Promise<DraftTask> {
     return this.request(`/drafts/${id}`, {
-      method: "PUT",
+      method: 'PUT',
       body: JSON.stringify(updates),
     });
   }
 
   async deleteDraft(id: string): Promise<void> {
     await this.request(`/drafts/${id}`, {
-      method: "DELETE",
+      method: 'DELETE',
     });
   }
 }

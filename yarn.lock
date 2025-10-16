@@ -21,8 +21,8 @@ __metadata:
 
 "@agent-harbor/gui-core@file:../crates/ah-gui-core::locator=agent-harbor-gui%40workspace%3Aelectron-app":
   version: 0.1.0
-  resolution: "@agent-harbor/gui-core@file:../crates/ah-gui-core#../crates/ah-gui-core::hash=ac74d1&locator=agent-harbor-gui%40workspace%3Aelectron-app"
-  checksum: 10c0/f9bf68e25342eff278ec92025669057ed12d35bdab5925a202c2a2329bebdab0e827724d1a12783c49f386d3c91229c3c519bd30d1ac68679b07e662bb0eb8fc
+  resolution: "@agent-harbor/gui-core@file:../crates/ah-gui-core#../crates/ah-gui-core::hash=00688f&locator=agent-harbor-gui%40workspace%3Aelectron-app"
+  checksum: 10c0/97dfddc402592681069c73b569f4a02415663bf20afebe1f82e4f18130337277e9fea42081f0d2e93b6b0957a38b1db421bb8c86ba1884a5b5a741eaa711b0d7
   languageName: node
   linkType: hard
 
@@ -3240,6 +3240,9 @@ __metadata:
     vite: "npm:^6.0.3"
     vite-plugin-electron: "npm:^0.28.8"
     vite-plugin-electron-renderer: "npm:^0.14.6"
+  dependenciesMeta:
+    electron:
+      unplugged: true
   languageName: unknown
   linkType: soft
 

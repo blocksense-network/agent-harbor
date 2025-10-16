@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from 'vitest';
 
 /**
  * SSR Rendering Validation
@@ -16,8 +16,8 @@ import { describe, it, expect } from "vitest";
  * which conflicts with the automated testing approach. Instead, SSR
  * rendering is verified by the E2E tests in webui/e2e-tests/.
  */
-describe("SSR Rendering", () => {
-  it.skip("SSR rendering validated by E2E tests", () => {
+describe('SSR Rendering', () => {
+  it.skip('SSR rendering validated by E2E tests', () => {
     // SSR rendering is validated by:
     // 1. start-servers.sh orchestrates mock + SSR servers
     // 2. Playwright tests verify rendered HTML

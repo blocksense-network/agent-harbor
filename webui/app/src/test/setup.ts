@@ -1,5 +1,5 @@
-import { beforeAll } from "vitest";
-import "@testing-library/jest-dom";
+import { beforeAll } from 'vitest';
+import '@testing-library/jest-dom';
 
 // Setup for SolidJS testing
 beforeAll(() => {

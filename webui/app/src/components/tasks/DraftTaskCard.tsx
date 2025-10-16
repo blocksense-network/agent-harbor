@@ -1,14 +1,14 @@
-import { Component, createSignal, createEffect, onMount } from "solid-js";
+import { Component, createSignal, createEffect, onMount } from 'solid-js';
 import {
   apiClient,
   type DraftTask,
   type DraftUpdate,
   type CreateTaskRequest,
-} from "../../lib/api.js";
-import { TomSelectComponent } from "../common/TomSelect.js";
-import { ModelMultiSelect } from "../common/ModelMultiSelect.js";
-import { SaveStatus, type SaveStatusType } from "../common/SaveStatus.js";
-import { useFocus } from "../../contexts/FocusContext.js";
+} from '../../lib/api.js';
+import { TomSelectComponent } from '../common/TomSelect.js';
+import { ModelMultiSelect } from '../common/ModelMultiSelect.js';
+import { SaveStatus, type SaveStatusType } from '../common/SaveStatus.js';
+import { useFocus } from '../../contexts/FocusContext.js';
 
 interface Repository {
   id: string;
@@ -39,22 +39,17 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   const [modelSelections, setModelSelections] = createSignal<
     Array<{ model: string; instances: number }>
   >([]);
-  const [autoSaveTimeoutId, setAutoSaveTimeoutId] =
-    createSignal<ReturnType<typeof setTimeout>>();
-  const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>("saved");
+  const [autoSaveTimeoutId, setAutoSaveTimeoutId] = createSignal<ReturnType<typeof setTimeout>>();
+  const [saveStatus, setSaveStatus] = createSignal<SaveStatusType>('saved');
   let textareaRef: HTMLTextAreaElement | undefined;
   const { setDraftFocus, updateDraftAgentCount } = useFocus();
 
   // Convert draft data to local signals for easier handling
-  const [localPrompt, setLocalPrompt] = createSignal(props.draft.prompt || "");
-  const [lastSavedPrompt, setLastSavedPrompt] = createSignal(
-    props.draft.prompt || "",
-  );
+  const [localPrompt, setLocalPrompt] = createSignal(props.draft.prompt || '');
+  const [lastSavedPrompt, setLastSavedPrompt] = createSignal(props.draft.prompt || '');
 
   // Track save requests to prevent race conditions and text truncation
-  const [currentSaveRequestId, setCurrentSaveRequestId] = createSignal<
-    number | null
-  >(null);
+  const [currentSaveRequestId, setCurrentSaveRequestId] = createSignal<number | null>(null);
 
   let nextSaveRequestId = 1;
 
@@ -71,7 +66,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     const requestId = nextSaveRequestId++;
     setCurrentSaveRequestId(requestId);
 
-    setSaveStatus("unsaved");
+    setSaveStatus('unsaved');
 
     // Clear any existing timeout
     const id = autoSaveTimeoutId();
@@ -83,7 +78,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
         return; // Silently skip invalidated requests
       }
 
-      setSaveStatus("saving");
+      setSaveStatus('saving');
 
       try {
         await props.onUpdate({ prompt: currentPrompt });
@@ -98,13 +93,13 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
         // Update status to saved only if this is still the current request
         if (currentSaveRequestId() === requestId) {
-          setSaveStatus("saved");
+          setSaveStatus('saved');
         }
       } catch {
         // API failed but still update local state optimistically
         setLastSavedPrompt(currentPrompt);
         if (currentSaveRequestId() === requestId) {
-          setSaveStatus("saved"); // Show as saved since local state is updated
+          setSaveStatus('saved'); // Show as saved since local state is updated
         }
       }
 
@@ -116,7 +111,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
   // Focus management for keyboard navigation
   createEffect(() => {
-    if (props.isSelected && textareaRef && typeof window !== "undefined") {
+    if (props.isSelected && textareaRef && typeof window !== 'undefined') {
       // Prevent interrupting user typing by checking current focus
       if (document.activeElement !== textareaRef) {
         textareaRef.focus();
@@ -139,11 +134,10 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   const selectedRepo = (): Repository | null =>
     props.draft.repo
       ? {
-          id: props.draft.repo.url || "unknown",
+          id: props.draft.repo.url || 'unknown',
           name: props.draft.repo.url
-            ? props.draft.repo.url.split("/").pop()?.replace(".git", "") ||
-              "unknown"
-            : "unknown",
+            ? props.draft.repo.url.split('/').pop()?.replace('.git', '') || 'unknown'
+            : 'unknown',
           ...(props.draft.repo.url !== undefined && {
             url: props.draft.repo.url,
           }),
@@ -155,8 +149,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
   const setSelectedRepo = (repo: Repository | null) => {
     if (repo) {
-      const repoUpdate: DraftUpdate["repo"] = {
-        mode: "git" as const,
+      const repoUpdate: DraftUpdate['repo'] = {
+        mode: 'git' as const,
         ...(repo.url !== undefined && { url: repo.url }),
         ...(repo.branch !== undefined && { branch: repo.branch }),
       };
@@ -164,11 +158,11 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     }
   };
 
-  const selectedBranch = () => props.draft.repo?.branch || "";
+  const selectedBranch = () => props.draft.repo?.branch || '';
   const setSelectedBranch = (branch: string | null) => {
-    const repoUpdate: DraftUpdate["repo"] = {
-      mode: props.draft.repo?.mode || "git",
-      branch: branch || "",
+    const repoUpdate: DraftUpdate['repo'] = {
+      mode: props.draft.repo?.mode || 'git',
+      branch: branch || '',
       ...(props.draft.repo?.url !== undefined && { url: props.draft.repo.url }),
     };
     props.onUpdate({ repo: repoUpdate });
@@ -177,41 +171,36 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   // Mock data - in real app, this would come from API
   const [repositories] = createSignal<Repository[]>([
     {
-      id: "1",
-      name: "agent-harbor-webui",
-      url: "https://github.com/example/agent-harbor-webui.git",
-      keywords: ["webui", "ahwebui", "awwebui", "agentharborwebui"],
+      id: '1',
+      name: 'agent-harbor-webui',
+      url: 'https://github.com/example/agent-harbor-webui.git',
+      keywords: ['webui', 'ahwebui', 'awwebui', 'agentharborwebui'],
     },
     {
-      id: "2",
-      name: "agent-harbor-core",
-      url: "https://github.com/example/agent-harbor-core.git",
-      keywords: ["core", "ahcore", "awcore", "agentharborcore"],
+      id: '2',
+      name: 'agent-harbor-core',
+      url: 'https://github.com/example/agent-harbor-core.git',
+      keywords: ['core', 'ahcore', 'awcore', 'agentharborcore'],
     },
     {
-      id: "3",
-      name: "agent-harbor-cli",
-      url: "https://github.com/example/agent-harbor-cli.git",
-      keywords: ["cli", "ahcli", "awcli", "agentharborcli"],
+      id: '3',
+      name: 'agent-harbor-cli',
+      url: 'https://github.com/example/agent-harbor-cli.git',
+      keywords: ['cli', 'ahcli', 'awcli', 'agentharborcli'],
     },
   ]);
 
   const [availableModels] = createSignal<string[]>([
-    "Claude 3.5 Sonnet",
-    "Claude 3 Haiku",
-    "GPT-4",
-    "GPT-3.5 Turbo",
+    'Claude 3.5 Sonnet',
+    'Claude 3 Haiku',
+    'GPT-4',
+    'GPT-3.5 Turbo',
   ]);
 
-  const computeAgentCount = (
-    selections?: Array<{ model: string; instances: number }>,
-  ) => {
+  const computeAgentCount = (selections?: Array<{ model: string; instances: number }>) => {
     const source = selections ?? modelSelections();
     if (source.length > 0) {
-      return source.reduce(
-        (total, selection) => total + selection.instances,
-        0,
-      );
+      return source.reduce((total, selection) => total + selection.instances, 0);
     }
 
     const draftAgents = props.draft.agents ?? [];
@@ -226,29 +215,22 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   };
 
   const canSubmit = () => {
-    return (
-      prompt().trim() &&
-      selectedRepo() &&
-      selectedBranch() &&
-      computeAgentCount() > 0
-    );
+    return prompt().trim() && selectedRepo() && selectedBranch() && computeAgentCount() > 0;
   };
 
   const handleRemove = () => {
     props.onRemove();
   };
 
-  const handleModelSelectionChange = (
-    selections: Array<{ model: string; instances: number }>,
-  ) => {
+  const handleModelSelectionChange = (selections: Array<{ model: string; instances: number }>) => {
     setModelSelections(selections);
     updateDraftAgentCount(props.draft.id, computeAgentCount(selections));
     // Convert model selections to agent format
     const agents = selections.map((sel) => {
-      const [type, ...versionParts] = sel.model.toLowerCase().split(" ");
+      const [type, ...versionParts] = sel.model.toLowerCase().split(' ');
       return {
-        type: type || "unknown",
-        version: versionParts.join("-") || "latest",
+        type: type || 'unknown',
+        version: versionParts.join('-') || 'latest',
         instances: sel.instances,
       };
     });
@@ -263,23 +245,23 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       // Use the first selected agent for the task creation
       const primaryAgent = props.draft.agents?.[0];
       if (!primaryAgent) {
-        throw new Error("No agent selected");
+        throw new Error('No agent selected');
       }
 
       const selectedRepoData = selectedRepo();
       if (!selectedRepoData?.url) {
-        throw new Error("No repository selected");
+        throw new Error('No repository selected');
       }
 
       const taskData: CreateTaskRequest = {
         prompt: prompt(),
         repo: {
-          mode: "git" as const,
+          mode: 'git' as const,
           url: selectedRepoData.url,
           branch: selectedBranch(),
         },
         runtime: {
-          type: "devcontainer" as const, // Default runtime
+          type: 'devcontainer' as const, // Default runtime
         },
         agent: {
           type: primaryAgent.type,
@@ -292,7 +274,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
       // The draft will be removed by the parent component
     } catch (error) {
-      console.error("Failed to create task:", error);
+      console.error('Failed to create task:', error);
       // TODO: Show error message
     } finally {
       setIsSubmitting(false);
@@ -301,7 +283,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Enter key launches task (if valid)
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       if (canSubmit()) {
         e.preventDefault();
         handleSubmit();
@@ -317,14 +299,11 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       const initialSelections = props.draft.agents.map((agent) => ({
         model: `${
           agent.type.charAt(0).toUpperCase() + agent.type.slice(1)
-        } ${agent.version.replace(/-/g, " ")}`,
+        } ${agent.version.replace(/-/g, ' ')}`,
         instances: (agent as { instances?: number }).instances || 1,
       }));
       setModelSelections(initialSelections);
-      updateDraftAgentCount(
-        props.draft.id,
-        computeAgentCount(initialSelections),
-      );
+      updateDraftAgentCount(props.draft.id, computeAgentCount(initialSelections));
     }
   });
 
@@ -337,7 +316,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     const selections = agents.map((agent) => ({
       model: `${
         agent.type.charAt(0).toUpperCase() + agent.type.slice(1)
-      } ${agent.version.replace(/-/g, " ")}`,
+      } ${agent.version.replace(/-/g, ' ')}`,
       instances: (agent as { instances?: number }).instances || 1,
     }));
 
@@ -354,8 +333,8 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       data-testid="draft-task-card"
       class="relative rounded-lg p-4"
       classList={{
-        "bg-blue-50 border-2 border-blue-500": props.isSelected,
-        "bg-white border border-slate-200": !props.isSelected,
+        'bg-blue-50 border-2 border-blue-500': props.isSelected,
+        'bg-white border border-slate-200': !props.isSelected,
       }}
     >
       {/* Close button - upper right corner */}
@@ -419,7 +398,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             getDisplayText={(repo: Repository) => repo.name}
             getKey={(repo: Repository) => repo.id}
             getSearchTokens={(repo: Repository) => {
-              const base = repo.name.replace(/[^a-z0-9]/gi, "");
+              const base = repo.name.replace(/[^a-z0-9]/gi, '');
               return [base, ...(repo.keywords ?? [])];
             }}
             placeholder="Repository"
@@ -434,12 +413,12 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
           </label>
           <TomSelectComponent
             id="branch-select"
-            items={["main", "develop", "feature/new-ui", "hotfix/bug-fix"]}
+            items={['main', 'develop', 'feature/new-ui', 'hotfix/bug-fix']}
             selectedItem={selectedBranch()}
             onSelect={setSelectedBranch}
             getDisplayText={(branch) => branch}
             getKey={(branch) => branch}
-            getSearchTokens={(branch) => [branch.replace(/[^a-z0-9]/gi, "")]}
+            getSearchTokens={(branch) => [branch.replace(/[^a-z0-9]/gi, '')]}
             placeholder="Branch"
             class="w-32"
             testId="branch-selector"
@@ -470,15 +449,15 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
               transition-colors
             `}
             classList={{
-              "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer":
+              'bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer':
                 Boolean(canSubmit() && !isSubmitting()),
-              "bg-slate-300 text-slate-500 cursor-not-allowed": Boolean(
-                !canSubmit() || isSubmitting(),
+              'bg-slate-300 text-slate-500 cursor-not-allowed': Boolean(
+                !canSubmit() || isSubmitting()
               ),
             }}
             aria-label="Create task"
           >
-            {isSubmitting() ? "..." : "Go"}
+            {isSubmitting() ? '...' : 'Go'}
           </button>
         </div>
       </div>

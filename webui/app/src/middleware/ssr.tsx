@@ -1,6 +1,6 @@
 // Client-side rendering with server-side HTML shell
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Minimal Express response interface for our middleware needs
 interface ExpressResponse {
@@ -13,17 +13,13 @@ interface ExpressResponse {
 // Simple logger that respects quiet mode for testing
 const logger = {
   log: (...args: unknown[]) => {
-    const isQuietMode =
-      process.env["QUIET_MODE"] === "true" ||
-      process.env["NODE_ENV"] === "test";
+    const isQuietMode = process.env['QUIET_MODE'] === 'true' || process.env['NODE_ENV'] === 'test';
     if (!isQuietMode) {
       console.log(...args);
     }
   },
   warn: (...args: unknown[]) => {
-    const isQuietMode =
-      process.env["QUIET_MODE"] === "true" ||
-      process.env["NODE_ENV"] === "test";
+    const isQuietMode = process.env['QUIET_MODE'] === 'true' || process.env['NODE_ENV'] === 'test';
     if (!isQuietMode) {
       console.warn(...args);
     }
@@ -35,60 +31,53 @@ const logger = {
 
 // Function to find the correct CSS and JS filenames
 const getAssetFilenames = (): { css: string; js: string } => {
-  const publicDir = path.resolve("./dist/public");
+  const publicDir = path.resolve('./dist/public');
 
   try {
     const files = fs.readdirSync(publicDir);
-    const cssFile = files.find((f) => f.endsWith(".css"));
-    const jsFile = files.find((f) => f.endsWith(".js"));
+    const cssFile = files.find((f) => f.endsWith('.css'));
+    const jsFile = files.find((f) => f.endsWith('.js'));
 
     return {
-      css: cssFile || "client.css",
-      js: jsFile || "client.js",
+      css: cssFile || 'client.css',
+      js: jsFile || 'client.js',
     };
   } catch (error) {
-    logger.warn(
-      "Could not read public directory, using default filenames:",
-      error,
-    );
+    logger.warn('Could not read public directory, using default filenames:', error);
     // Hardcode the known filenames for now
     return {
-      css: "client-CwxY70Iu.css",
-      js: "client.js",
+      css: 'client-CwxY70Iu.css',
+      js: 'client.js',
     };
   }
 };
 
-export const ssrMiddleware = async (
-  req: unknown,
-  res: unknown,
-  next: unknown,
-) => {
+export const ssrMiddleware = async (req: unknown, res: unknown, next: unknown) => {
   const request = req as { url: string };
   const response = res as ExpressResponse;
   const nextFn = next as (error?: unknown) => void;
 
-  logger.log("SSR middleware called for:", request.url);
+  logger.log('SSR middleware called for:', request.url);
   try {
     // Skip SSR for API routes and static assets
-    if (request.url.startsWith("/api") || request.url.includes(".")) {
-      logger.log("Skipping SSR for:", request.url);
+    if (request.url.startsWith('/api') || request.url.includes('.')) {
+      logger.log('Skipping SSR for:', request.url);
       return nextFn();
     }
 
     // Only serve HTML for known application routes, otherwise let Express handle 404
-    const knownRoutes = ["/"];
+    const knownRoutes = ['/'];
     const isKnownRoute = knownRoutes.some((route) => {
-      if (route === "/") return request.url === "/";
+      if (route === '/') return request.url === '/';
       return false;
     });
 
     if (!isKnownRoute) {
       // For API requests, return JSON error; for others, let Express handle
-      if (request.url?.startsWith("/api")) {
+      if (request.url?.startsWith('/api')) {
         response.status(404).json({
-          type: "https://docs.example.com/errors/not-found",
-          title: "Not Found",
+          type: 'https://docs.example.com/errors/not-found',
+          title: 'Not Found',
           status: 404,
           detail: `The requested resource '${request.url}' was not found`,
         });
@@ -159,9 +148,9 @@ export const ssrMiddleware = async (
 </body>
 </html>`;
 
-    response.status(200).set("Content-Type", "text/html").send(html);
+    response.status(200).set('Content-Type', 'text/html').send(html);
   } catch (error) {
-    logger.error("SSR Error:", error);
+    logger.error('SSR Error:', error);
     nextFn(error);
   }
 };

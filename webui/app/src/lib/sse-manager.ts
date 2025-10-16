@@ -5,7 +5,7 @@
  * are interested in the same session's events.
  */
 
-import { apiClient, SessionEvent } from "./api.js";
+import { apiClient, SessionEvent } from './api.js';
 
 type EventCallback = (event: SessionEvent) => void;
 
@@ -27,29 +27,21 @@ const activeConnections = new Map<string, SubscriptionInfo>();
  * @param callback - Function to call when events arrive
  * @returns Unsubscribe function
  */
-export function subscribeToSession(
-  sessionId: string,
-  callback: EventCallback,
-): () => void {
+export function subscribeToSession(sessionId: string, callback: EventCallback): () => void {
   console.log(`[SSEManager] Subscribe request for session ${sessionId}`);
 
   let subscription = activeConnections.get(sessionId);
 
   if (!subscription) {
     // No existing connection - create new one
-    console.log(
-      `[SSEManager] Creating NEW EventSource for session ${sessionId}`,
-    );
-    const eventSource = apiClient.subscribeToSessionEvents(
-      sessionId,
-      (event) => {
-        // Notify all callbacks interested in this session
-        const sub = activeConnections.get(sessionId);
-        if (sub) {
-          sub.callbacks.forEach((cb) => cb(event));
-        }
-      },
-    );
+    console.log(`[SSEManager] Creating NEW EventSource for session ${sessionId}`);
+    const eventSource = apiClient.subscribeToSessionEvents(sessionId, (event) => {
+      // Notify all callbacks interested in this session
+      const sub = activeConnections.get(sessionId);
+      if (sub) {
+        sub.callbacks.forEach((cb) => cb(event));
+      }
+    });
 
     subscription = {
       eventSource,
@@ -58,15 +50,13 @@ export function subscribeToSession(
 
     activeConnections.set(sessionId, subscription);
   } else {
-    console.log(
-      `[SSEManager] Reusing existing EventSource for session ${sessionId}`,
-    );
+    console.log(`[SSEManager] Reusing existing EventSource for session ${sessionId}`);
   }
 
   // Add this callback to the set
   subscription.callbacks.add(callback);
   console.log(
-    `[SSEManager] Session ${sessionId} now has ${subscription.callbacks.size} subscribers`,
+    `[SSEManager] Session ${sessionId} now has ${subscription.callbacks.size} subscribers`
   );
 
   // Return unsubscribe function
@@ -75,14 +65,12 @@ export function subscribeToSession(
     const sub = activeConnections.get(sessionId);
     if (sub) {
       sub.callbacks.delete(callback);
-      console.log(
-        `[SSEManager] Session ${sessionId} now has ${sub.callbacks.size} subscribers`,
-      );
+      console.log(`[SSEManager] Session ${sessionId} now has ${sub.callbacks.size} subscribers`);
 
       // If no more callbacks, close the EventSource
       if (sub.callbacks.size === 0) {
         console.log(
-          `[SSEManager] No more subscribers for session ${sessionId} - closing EventSource`,
+          `[SSEManager] No more subscribers for session ${sessionId} - closing EventSource`
         );
         sub.eventSource.close();
         activeConnections.delete(sessionId);

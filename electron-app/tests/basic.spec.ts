@@ -2,9 +2,28 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import { ElectronApplication, Page } from 'playwright';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'node:module';
+import { spawn, ChildProcess } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const require = createRequire(import.meta.url);
+
+let mockServer: ChildProcess | null = null;
+
+/**
+ * Resolve Electron executable using Node's module resolver (PnP-aware)
+ * This matches the approach used in vite.config.ts
+ */
+function resolveElectronExecutable(): string | undefined {
+  try {
+    // Electron package exports the binary path as a string
+    const binPath = require('electron') as unknown as string;
+    return binPath;
+  } catch {
+    return undefined;
+  }
+}
 
 let electronApp: ElectronApplication;
 let page: Page;
@@ -12,17 +31,56 @@ const errors: string[] = [];
 const warnings: string[] = [];
 
 test.beforeAll(async () => {
+  console.log('Starting mock server...');
+  // Start mock server
+  const mockServerPath = join(__dirname, '../../webui/mock-server');
+  mockServer = spawn('yarn', ['node', 'dist/index.js'], {
+    cwd: mockServerPath,
+    stdio: 'inherit',
+    env: { ...process.env, QUIET_MODE: 'true' },
+  });
+
+  // Wait for mock server to be ready
+  console.log('Waiting for mock server...');
+  const maxRetries = 30;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch('http://localhost:3001/health');
+      if (response.ok) {
+        console.log('Mock server is ready!');
+        break;
+      }
+    } catch (e) {
+      // Server not ready yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    if (i === maxRetries - 1) {
+      throw new Error('Mock server failed to start after 3 seconds');
+    }
+  }
+
+  const electronExecutable = resolveElectronExecutable();
+
+  console.log('Launching Electron...');
+  console.log('  Executable:', electronExecutable);
+
   // Launch Electron app
+  // Native addon is copied to dist-electron/node_modules by copy-native-addon.sh script
+  // This allows Electron to find it without needing PnP resolution
   electronApp = await electron.launch({
+    executablePath: electronExecutable,
     args: [join(__dirname, '../dist-electron/index.js')],
+    timeout: 30000,
     env: {
       ...process.env,
       NODE_ENV: 'test',
     },
   });
 
+  console.log('Electron launched, waiting for first window...');
   // Wait for the first window
   page = await electronApp.firstWindow();
+  console.log('Got first window!');
 
   // Set up error listeners BEFORE the page loads
   page.on('pageerror', (error) => {
@@ -46,6 +104,12 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await electronApp.close();
+
+  // Stop mock server
+  if (mockServer) {
+    mockServer.kill();
+    mockServer = null;
+  }
 });
 
 test('should launch electron app', async () => {

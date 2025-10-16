@@ -2,6 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
+// Expose Agent Harbor configuration
+contextBridge.exposeInMainWorld('agentHarborConfig', {
+  isElectron: true,
+  apiBaseUrl: process.env.WEBUI_URL || 'http://localhost:3001',
+  platform: process.platform,
+});
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // App information
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

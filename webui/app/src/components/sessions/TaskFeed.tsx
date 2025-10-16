@@ -1,21 +1,13 @@
-import {
-  Component,
-  createSignal,
-  createEffect,
-  createMemo,
-  For,
-  Show,
-  onMount,
-} from "solid-js";
-import { useNavigate } from "@solidjs/router";
-import { apiClient, type Session, type DraftTask } from "../../lib/api.js";
-import { type SessionsResponse } from "../../lib/server-data.js";
-import { SessionCard } from "./SessionCard.js";
-import { DraftTaskCard } from "../tasks/DraftTaskCard.js";
-import { useSession } from "../../contexts/SessionContext.js";
-import { useDrafts } from "../../contexts/DraftContext.js";
-import { useFocus } from "../../contexts/FocusContext.js";
-import { useToast } from "../../contexts/ToastContext.js";
+import { Component, createSignal, createEffect, createMemo, For, Show, onMount } from 'solid-js';
+import { useNavigate } from '@solidjs/router';
+import { apiClient, type Session, type DraftTask } from '../../lib/api.js';
+import { type SessionsResponse } from '../../lib/server-data.js';
+import { SessionCard } from './SessionCard.js';
+import { DraftTaskCard } from '../tasks/DraftTaskCard.js';
+import { useSession } from '../../contexts/SessionContext.js';
+import { useDrafts } from '../../contexts/DraftContext.js';
+import { useFocus } from '../../contexts/FocusContext.js';
+import { useToast } from '../../contexts/ToastContext.js';
 
 interface TaskFeedProps {
   draftTasks?: DraftTask[]; // Will be defined later
@@ -25,7 +17,7 @@ interface TaskFeedProps {
   initialDrafts?: DraftTask[]; // Drafts fetched during SSR
 }
 
-type StatusFilter = Session["status"] | "";
+type StatusFilter = Session['status'] | '';
 
 export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const navigate = useNavigate();
@@ -33,39 +25,36 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const draftOps = useDrafts(); // Get CRUD operations from context
   const { setSessionFocus, clearFocus } = useFocus();
   const { addToast, addToastWithActions } = useToast();
-  const [keyboardSelectedIndex, setKeyboardSelectedIndex] =
-    createSignal<number>(-1);
+  const [keyboardSelectedIndex, setKeyboardSelectedIndex] = createSignal<number>(-1);
 
   // Debug keyboard selection changes
   createEffect(() => {
     const index = keyboardSelectedIndex();
     if (!import.meta.env.PROD) {
-      console.debug("[TaskFeed] keyboardSelectedIndex changed to:", index);
+      console.debug('[TaskFeed] keyboardSelectedIndex changed to:', index);
     }
   });
   const [refreshTrigger, setRefreshTrigger] = createSignal(0); // For auto-refresh every 30s
-  const [statusFilter, setStatusFilter] = createSignal<StatusFilter>("");
+  const [statusFilter, setStatusFilter] = createSignal<StatusFilter>('');
   const statusOptions: Array<{ value: StatusFilter; label: string }> = [
-    { value: "", label: "All Sessions" },
-    { value: "running", label: "Running" },
-    { value: "queued", label: "Queued" },
-    { value: "provisioning", label: "Provisioning" },
-    { value: "paused", label: "Paused" },
-    { value: "pausing", label: "Pausing" },
-    { value: "resuming", label: "Resuming" },
-    { value: "stopping", label: "Stopping" },
-    { value: "stopped", label: "Stopped" },
-    { value: "completed", label: "Completed" },
-    { value: "failed", label: "Failed" },
-    { value: "cancelled", label: "Cancelled" },
+    { value: '', label: 'All Sessions' },
+    { value: 'running', label: 'Running' },
+    { value: 'queued', label: 'Queued' },
+    { value: 'provisioning', label: 'Provisioning' },
+    { value: 'paused', label: 'Paused' },
+    { value: 'pausing', label: 'Pausing' },
+    { value: 'resuming', label: 'Resuming' },
+    { value: 'stopping', label: 'Stopping' },
+    { value: 'stopped', label: 'Stopped' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'failed', label: 'Failed' },
+    { value: 'cancelled', label: 'Cancelled' },
   ];
 
   // Progressive enhancement: Drafts rendered from props during SSR
   // Context provides CRUD operations, not the list itself
   // PRD REQUIREMENT: "An empty task card is always visible" - ensure at least one draft
-  const [clientDrafts, setClientDrafts] = createSignal<DraftTask[]>(
-    props.initialDrafts || [],
-  );
+  const [clientDrafts, setClientDrafts] = createSignal<DraftTask[]>(props.initialDrafts || []);
   const [draftsRefreshTrigger, setDraftsRefreshTrigger] = createSignal(0);
 
   // Live region for announcing dynamic updates to screen readers
@@ -73,21 +62,21 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
   // Refetch drafts from API (client-side only)
   const refetchDrafts = async () => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
 
     try {
       const data = await apiClient.listDrafts();
       setClientDrafts(data.items || []);
     } catch (error) {
-      console.error("Failed to fetch drafts:", error);
-      addToast("error", "Failed to load draft tasks. Please refresh the page.");
+      console.error('Failed to fetch drafts:', error);
+      addToast('error', 'Failed to load draft tasks. Please refresh the page.');
     }
   };
 
   // Watch for draft changes and refetch
   createEffect(() => {
     draftsRefreshTrigger(); // Track changes
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       refetchDrafts();
     }
   });
@@ -106,12 +95,12 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       // Return a default empty draft if none exist
       return [
         {
-          id: "local-draft-new",
-          prompt: "",
-          repo: { mode: "git", url: "", branch: "main" },
+          id: 'local-draft-new',
+          prompt: '',
+          repo: { mode: 'git', url: '', branch: 'main' },
           agents: [],
-          runtime: { type: "devcontainer" },
-          delivery: { mode: "pr" },
+          runtime: { type: 'devcontainer' },
+          delivery: { mode: 'pr' },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -127,7 +116,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     props.initialSessions || {
       items: [],
       pagination: { page: 1, perPage: 50, total: 0, totalPages: 0 },
-    },
+    }
   );
 
   // Simple accessor that works synchronously during SSR
@@ -137,8 +126,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     return {
       ...data,
       items: [...data.items].sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ),
     };
   };
@@ -155,15 +143,15 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
   // Refetch function for client-side updates (refreshing)
   const refetch = async () => {
-    if (typeof window === "undefined") return; // SSR guard
+    if (typeof window === 'undefined') return; // SSR guard
 
     try {
       const params = { perPage: 50 };
       const data = await apiClient.listSessions(params);
       setClientSessions(data);
     } catch (error) {
-      console.error("Failed to refresh sessions:", error);
-      addToast("error", "Failed to refresh session list. Please try again.");
+      console.error('Failed to refresh sessions:', error);
+      addToast('error', 'Failed to refresh session list. Please try again.');
     }
   };
 
@@ -171,7 +159,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   createEffect(() => {
     // Watch refreshTrigger to trigger refetch
     refreshTrigger(); // Track refreshTrigger changes
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       refetch();
     }
   });
@@ -187,7 +175,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   // Handle keyboard navigation (drafts first, then sessions)
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!import.meta.env.PROD) {
-      console.log("[TaskFeed] Keyboard event:", e.key);
+      console.log('[TaskFeed] Keyboard event:', e.key);
     }
     const sessions = filteredSessions();
     const draftsList = drafts();
@@ -195,12 +183,12 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
     if (!import.meta.env.PROD) {
       console.log(
-        "[TaskFeed] Total items:",
+        '[TaskFeed] Total items:',
         totalItems,
-        "drafts:",
+        'drafts:',
         draftsList.length,
-        "sessions:",
-        sessions.length,
+        'sessions:',
+        sessions.length
       );
     }
 
@@ -208,36 +196,28 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
     const currentIndex = keyboardSelectedIndex();
     if (!import.meta.env.PROD) {
-      console.log("[TaskFeed] Current index:", currentIndex);
+      console.log('[TaskFeed] Current index:', currentIndex);
     }
 
     switch (e.key) {
-      case "ArrowDown": {
+      case 'ArrowDown': {
         e.preventDefault();
         const nextIndex = currentIndex < totalItems - 1 ? currentIndex + 1 : 0;
         if (!import.meta.env.PROD) {
-          console.log(
-            "[TaskFeed] Setting keyboardSelectedIndex to:",
-            nextIndex,
-          );
+          console.log('[TaskFeed] Setting keyboardSelectedIndex to:', nextIndex);
         }
         setKeyboardSelectedIndex(nextIndex);
 
         // Add a debug attribute to the keyboard navigation element for testing
-        const keyboardNavEl = document.querySelector(
-          '[aria-label="Task list navigation"]',
-        );
+        const keyboardNavEl = document.querySelector('[aria-label="Task list navigation"]');
         if (keyboardNavEl) {
-          keyboardNavEl.setAttribute(
-            "data-keyboard-index",
-            nextIndex.toString(),
-          );
+          keyboardNavEl.setAttribute('data-keyboard-index', nextIndex.toString());
         }
 
         // Update selected session ID and focus state
         // Drafts are first (0 to draftsList.length - 1), sessions follow
         if (nextIndex < draftsList.length) {
-          setSelectedSessionId(""); // Clear selection when on draft
+          setSelectedSessionId(''); // Clear selection when on draft
           clearFocus(); // Clear focus when moving to draft (draft will set its own focus)
         } else {
           const sessionIndex = nextIndex - draftsList.length;
@@ -253,32 +233,24 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
         break;
       }
 
-      case "ArrowUp": {
+      case 'ArrowUp': {
         e.preventDefault();
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : totalItems - 1;
         if (!import.meta.env.PROD) {
-          console.log(
-            "[TaskFeed] Setting keyboardSelectedIndex to:",
-            prevIndex,
-          );
+          console.log('[TaskFeed] Setting keyboardSelectedIndex to:', prevIndex);
         }
         setKeyboardSelectedIndex(prevIndex);
 
         // Add a debug attribute to the keyboard navigation element for testing
-        const keyboardNavEl = document.querySelector(
-          '[aria-label="Task list navigation"]',
-        );
+        const keyboardNavEl = document.querySelector('[aria-label="Task list navigation"]');
         if (keyboardNavEl) {
-          keyboardNavEl.setAttribute(
-            "data-keyboard-index",
-            prevIndex.toString(),
-          );
+          keyboardNavEl.setAttribute('data-keyboard-index', prevIndex.toString());
         }
 
         // Update selected session ID and focus state
         // Drafts are first (0 to draftsList.length - 1), sessions follow
         if (prevIndex < draftsList.length) {
-          setSelectedSessionId(""); // Clear selection when on draft
+          setSelectedSessionId(''); // Clear selection when on draft
           clearFocus(); // Clear focus when moving to draft (draft will set its own focus)
         } else {
           const sessionIndex = prevIndex - draftsList.length;
@@ -294,7 +266,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
         break;
       }
 
-      case "Enter":
+      case 'Enter':
         e.preventDefault();
         // Drafts are first, sessions follow
         if (currentIndex >= draftsList.length && currentIndex < totalItems) {
@@ -311,31 +283,27 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
   // Scroll the selected card into view
   const scrollCardIntoView = (index: number) => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
 
     const draftsList = drafts();
     let cardElement: Element | null = null;
 
     if (index < draftsList.length) {
       // Draft card (first in list)
-      const draftCards = document.querySelectorAll(
-        '[data-testid="draft-task-card"]',
-      );
+      const draftCards = document.querySelectorAll('[data-testid="draft-task-card"]');
       cardElement = draftCards[index] || null;
     } else {
       // Session card (after drafts)
       const sessionIndex = index - draftsList.length;
-      const sessionCards = document.querySelectorAll(
-        '[data-testid="task-card"]',
-      );
+      const sessionCards = document.querySelectorAll('[data-testid="task-card"]');
       cardElement = sessionCards[sessionIndex] || null;
     }
 
     if (cardElement) {
       cardElement.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "nearest",
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
       });
     }
   };
@@ -347,18 +315,18 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     }, 30000);
 
     // Listen for draft creation events (client-side only)
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       const handleDraftCreated = () => {
         if (!import.meta.env.PROD) {
-          console.log("[TaskFeed] Draft created, refetching...");
+          console.log('[TaskFeed] Draft created, refetching...');
         }
         setDraftsRefreshTrigger((prev) => prev + 1);
       };
-      window.addEventListener("draft-created", handleDraftCreated);
+      window.addEventListener('draft-created', handleDraftCreated);
 
       return () => {
         clearInterval(interval);
-        window.removeEventListener("draft-created", handleDraftCreated);
+        window.removeEventListener('draft-created', handleDraftCreated);
       };
     } else {
       return () => clearInterval(interval);
@@ -370,27 +338,27 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
       await apiClient.stopSession(sessionId);
       setRefreshTrigger((prev) => prev + 1); // Refresh the list
     } catch (error) {
-      console.error("Failed to stop session:", error);
-      addToast("error", "Failed to stop session. Please try again.");
+      console.error('Failed to stop session:', error);
+      addToast('error', 'Failed to stop session. Please try again.');
     }
   };
 
   const handleCancelSession = async (sessionId: string) => {
     // Show confirmation toast instead of blocking confirm dialog
-    addToastWithActions("warning", "Cancel session?", [
+    addToastWithActions('warning', 'Cancel session?', [
       {
-        label: "Cancel Session",
+        label: 'Cancel Session',
         onClick: async () => {
           try {
             await apiClient.cancelSession(sessionId);
             setRefreshTrigger((prev) => prev + 1); // Refresh the list
-            addToast("success", "Session cancelled successfully");
+            addToast('success', 'Session cancelled successfully');
           } catch (error) {
-            console.error("Failed to cancel session:", error);
-            addToast("error", "Failed to cancel session. Please try again.");
+            console.error('Failed to cancel session:', error);
+            addToast('error', 'Failed to cancel session. Please try again.');
           }
         },
-        variant: "danger",
+        variant: 'danger',
       },
     ]);
   };
@@ -431,15 +399,8 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
         >
           <h2 class="text-lg font-semibold text-gray-900">Task Feed</h2>
 
-          <div
-            class="flex items-center gap-3"
-            role="group"
-            aria-label="Task filters"
-          >
-            <label
-              for="status-filter"
-              class="text-sm font-medium text-gray-700"
-            >
+          <div class="flex items-center gap-3" role="group" aria-label="Task filters">
+            <label for="status-filter" class="text-sm font-medium text-gray-700">
               Status
             </label>
             <select
@@ -458,9 +419,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
               }}
             >
               <For each={statusOptions}>
-                {(option) => (
-                  <option value={option.value}>{option.label}</option>
-                )}
+                {(option) => <option value={option.value}>{option.label}</option>}
               </For>
             </select>
           </div>
@@ -492,18 +451,15 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                             console.log(
                               `[TaskFeed] Draft ${draft.id} isSelected:`,
                               keyboardSelectedIndex() === globalIndex,
-                              "keyboardIndex:",
+                              'keyboardIndex:',
                               keyboardSelectedIndex(),
-                              "globalIndex:",
-                              globalIndex,
+                              'globalIndex:',
+                              globalIndex
                             );
                           }
                         }}
                         onUpdate={async (updates) => {
-                          const success = await draftOps.updateDraft(
-                            draft.id,
-                            updates,
-                          );
+                          const success = await draftOps.updateDraft(draft.id, updates);
                           if (success) {
                             // Update local draft list optimistically
                             setClientDrafts((prev) =>
@@ -518,14 +474,13 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                                               ...d.repo,
                                               ...updates.repo,
                                               mode: (updates.repo.mode ||
-                                                d.repo
-                                                  .mode) as DraftTask["repo"]["mode"],
+                                                d.repo.mode) as DraftTask['repo']['mode'],
                                             }
                                           : d.repo,
                                       } as DraftTask)
-                                    : d,
+                                    : d
                                 )
-                                .map((d) => d as DraftTask),
+                                .map((d) => d as DraftTask)
                             );
                           }
                         }}
@@ -533,9 +488,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                           const success = await draftOps.removeDraft(draft.id);
                           if (success) {
                             // Update local draft list
-                            setClientDrafts((prev) =>
-                              prev.filter((d) => d.id !== draft.id),
-                            );
+                            setClientDrafts((prev) => prev.filter((d) => d.id !== draft.id));
                           }
                         }}
                         onTaskCreated={async (taskId) => {
@@ -544,9 +497,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                           // Remove the draft after creating the task
                           const success = await draftOps.removeDraft(draft.id);
                           if (success) {
-                            setClientDrafts((prev) =>
-                              prev.filter((d) => d.id !== draft.id),
-                            );
+                            setClientDrafts((prev) => prev.filter((d) => d.id !== draft.id));
                           }
                           props.onDraftTaskCreated?.(taskId);
                         }}
@@ -560,7 +511,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
 
           {/* Session tasks - render below drafts, sorted newest first */}
           <Show when={filteredSessions().length > 0}>
-            <div class={drafts().length > 0 ? "mt-6" : ""}>
+            <div class={drafts().length > 0 ? 'mt-6' : ''}>
               <ul role="listbox" class="space-y-3">
                 <For each={filteredSessions()}>
                   {(session, index) => {
@@ -580,9 +531,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                             selectedSessionId() === session.id ||
                             keyboardSelectedIndex() === globalIndex
                           }
-                          onClick={() =>
-                            handleSessionSelect(session.id, globalIndex)
-                          }
+                          onClick={() => handleSessionSelect(session.id, globalIndex)}
                           onStop={() => handleStopSession(session.id)}
                           onCancel={() => handleCancelSession(session.id)}
                         />
@@ -593,69 +542,44 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
               </ul>
 
               {/* ARIA live region for keyboard navigation announcements */}
-              <div
-                role="status"
-                aria-live="polite"
-                aria-atomic="true"
-                class="sr-only"
-              >
+              <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">
                 {(() => {
                   const idx = keyboardSelectedIndex();
                   const draftCount = drafts().length;
                   if (idx >= 0 && idx < draftCount) {
-                    return `Selected draft: ${drafts()[idx]?.prompt || "New task"}`;
+                    return `Selected draft: ${drafts()[idx]?.prompt || 'New task'}`;
                   } else if (idx >= draftCount) {
                     const session = filteredSessions()[idx - draftCount];
                     if (session) {
                       return `Selected task: ${session.prompt}`;
                     }
                   }
-                  return "";
+                  return '';
                 })()}
               </div>
 
               {/* ARIA live region for dynamic content updates */}
-              <div
-                role="status"
-                aria-live="polite"
-                aria-atomic="false"
-                class="sr-only"
-              >
-                {liveAnnouncements().join(". ")}
+              <div role="status" aria-live="polite" aria-atomic="false" class="sr-only">
+                {liveAnnouncements().join('. ')}
               </div>
 
               <Show when={sessionsData()?.pagination.totalPages > 1}>
-                <div
-                  class="mt-4 text-center text-sm text-gray-500"
-                  role="status"
-                >
-                  Showing {filteredSessions().length} of{" "}
-                  {sessionsData()?.pagination.total} sessions
+                <div class="mt-4 text-center text-sm text-gray-500" role="status">
+                  Showing {filteredSessions().length} of {sessionsData()?.pagination.total} sessions
                 </div>
               </Show>
             </div>
           </Show>
 
           {/* Filtered empty state */}
-          <Show
-            when={
-              sessionsData()?.items.length > 0 &&
-              filteredSessions().length === 0
-            }
-          >
-            <div
-              class="py-8 text-center text-sm text-gray-500"
-              role="status"
-              aria-live="polite"
-            >
+          <Show when={sessionsData()?.items.length > 0 && filteredSessions().length === 0}>
+            <div class="py-8 text-center text-sm text-gray-500" role="status" aria-live="polite">
               No sessions match the selected filter.
             </div>
           </Show>
 
           {/* Empty state when no sessions and no drafts */}
-          <Show
-            when={sessionsData()?.items.length === 0 && drafts().length === 0}
-          >
+          <Show when={sessionsData()?.items.length === 0 && drafts().length === 0}>
             <div class="py-8 text-center" role="status" aria-live="polite">
               <svg
                 class="mx-auto h-12 w-12 text-gray-400"
@@ -672,9 +596,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                 />
               </svg>
               <h3 class="mt-2 text-sm font-medium text-gray-900">No tasks</h3>
-              <p class="mt-1 text-sm text-gray-500">
-                Get started by creating a new task.
-              </p>
+              <p class="mt-1 text-sm text-gray-500">Get started by creating a new task.</p>
             </div>
           </Show>
         </div>

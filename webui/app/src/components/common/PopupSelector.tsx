@@ -1,11 +1,4 @@
-import {
-  createSignal,
-  createEffect,
-  onMount,
-  onCleanup,
-  For,
-  Show,
-} from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, For, Show } from 'solid-js';
 
 interface PopupSelectorProps<T> {
   items: T[];
@@ -20,7 +13,7 @@ interface PopupSelectorProps<T> {
 
 export function PopupSelector<T>(props: PopupSelectorProps<T>) {
   const [isOpen, setIsOpen] = createSignal(false);
-  const [searchTerm, setSearchTerm] = createSignal("");
+  const [searchTerm, setSearchTerm] = createSignal('');
   const [selectedIndex, setSelectedIndex] = createSignal(0);
 
   let buttonRef: HTMLButtonElement | undefined;
@@ -32,9 +25,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
     const term = searchTerm().toLowerCase();
     if (!term) return props.items;
 
-    return props.items.filter((item) =>
-      props.getDisplayText(item).toLowerCase().includes(term),
-    );
+    return props.items.filter((item) => props.getDisplayText(item).toLowerCase().includes(term));
   };
 
   // Handle keyboard navigation
@@ -42,17 +33,15 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
     if (!isOpen()) return;
 
     switch (e.key) {
-      case "ArrowDown":
+      case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          Math.min(prev + 1, filteredItems().length - 1),
-        );
+        setSelectedIndex((prev) => Math.min(prev + 1, filteredItems().length - 1));
         break;
-      case "ArrowUp":
+      case 'ArrowUp':
         e.preventDefault();
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
         break;
-      case "Enter": {
+      case 'Enter': {
         e.preventDefault();
         const items = filteredItems();
         const selectedItem = items[selectedIndex()];
@@ -61,7 +50,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
         }
         break;
       }
-      case "Escape":
+      case 'Escape':
         e.preventDefault();
         setIsOpen(false);
         buttonRef?.focus();
@@ -72,7 +61,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
   const handleSelect = (item: T) => {
     props.onSelect(item);
     setIsOpen(false);
-    setSearchTerm("");
+    setSearchTerm('');
     setSelectedIndex(0);
     buttonRef?.focus();
   };
@@ -80,7 +69,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
   const handleButtonClick = () => {
     setIsOpen(!isOpen());
     if (!isOpen()) {
-      setSearchTerm("");
+      setSearchTerm('');
       setSelectedIndex(0);
       // Focus input when opening
       setTimeout(() => inputRef?.focus(), 0);
@@ -90,24 +79,19 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
   // Close popup when clicking outside
   const handleClickOutside = (e: MouseEvent) => {
     const path = e.composedPath();
-    if (
-      buttonRef &&
-      listRef &&
-      !path.includes(buttonRef) &&
-      !path.includes(listRef)
-    ) {
+    if (buttonRef && listRef && !path.includes(buttonRef) && !path.includes(listRef)) {
       setIsOpen(false);
     }
   };
 
   onMount(() => {
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("click", handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('click', handleClickOutside);
   });
 
   onCleanup(() => {
-    document.removeEventListener("keydown", handleKeyDown);
-    document.removeEventListener("click", handleClickOutside);
+    document.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('click', handleClickOutside);
   });
 
   // Reset selected index when filtered items change
@@ -124,11 +108,11 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
         class={`
           flex items-center space-x-1 rounded-md border px-3 py-1 text-sm
           transition-colors
-          ${props.class || ""}
+          ${props.class || ''}
         `}
         classList={{
-          "border-blue-300 bg-blue-50 text-blue-700": !!props.selectedItem,
-          "border-gray-300 text-gray-700 hover:bg-gray-50": !props.selectedItem,
+          'border-blue-300 bg-blue-50 text-blue-700': !!props.selectedItem,
+          'border-gray-300 text-gray-700 hover:bg-gray-50': !props.selectedItem,
         }}
         aria-haspopup="listbox"
         aria-expanded={isOpen()}
@@ -138,9 +122,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
           <span>{props.icon}</span>
         </Show>
         <span>
-          {props.selectedItem
-            ? props.getDisplayText(props.selectedItem)
-            : props.placeholder}
+          {props.selectedItem ? props.getDisplayText(props.selectedItem) : props.placeholder}
         </span>
         <span class="ml-1">▼</span>
       </button>
@@ -179,7 +161,7 @@ export function PopupSelector<T>(props: PopupSelectorProps<T>) {
                     hover:bg-gray-100
                   `}
                   classList={{
-                    "bg-blue-50 text-blue-700": index() === selectedIndex(),
+                    'bg-blue-50 text-blue-700': index() === selectedIndex(),
                   }}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setSelectedIndex(index())}

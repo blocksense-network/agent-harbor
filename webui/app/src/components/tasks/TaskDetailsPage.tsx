@@ -7,10 +7,10 @@ import {
   For,
   onMount,
   onCleanup,
-} from "solid-js";
-import { useParams, useNavigate } from "@solidjs/router";
-import { useBreadcrumbs } from "../../contexts/BreadcrumbContext.js";
-import { apiClient } from "../../lib/api.js";
+} from 'solid-js';
+import { useParams, useNavigate } from '@solidjs/router';
+import { useBreadcrumbs } from '../../contexts/BreadcrumbContext.js';
+import { apiClient } from '../../lib/api.js';
 
 interface TaskDetailsPageProps {
   taskId?: string;
@@ -18,20 +18,20 @@ interface TaskDetailsPageProps {
 
 // Static mock data for milestone 4.6.1 - lexicographically sorted
 const mockModifiedFiles = [
-  { path: "Cargo.toml", status: "modified", linesAdded: 2, linesRemoved: 1 },
+  { path: 'Cargo.toml', status: 'modified', linesAdded: 2, linesRemoved: 1 },
   {
-    path: "src/config.rs",
-    status: "modified",
+    path: 'src/config.rs',
+    status: 'modified',
     linesAdded: 8,
     linesRemoved: 12,
   },
-  { path: "src/error.rs", status: "deleted", linesAdded: 0, linesRemoved: 25 },
-  { path: "src/lib.rs", status: "modified", linesAdded: 9, linesRemoved: 2 },
-  { path: "src/main.rs", status: "modified", linesAdded: 6, linesRemoved: 2 },
-  { path: "src/utils.rs", status: "modified", linesAdded: 7, linesRemoved: 2 },
+  { path: 'src/error.rs', status: 'deleted', linesAdded: 0, linesRemoved: 25 },
+  { path: 'src/lib.rs', status: 'modified', linesAdded: 9, linesRemoved: 2 },
+  { path: 'src/main.rs', status: 'modified', linesAdded: 6, linesRemoved: 2 },
+  { path: 'src/utils.rs', status: 'modified', linesAdded: 7, linesRemoved: 2 },
   {
-    path: "tests/integration_test.rs",
-    status: "added",
+    path: 'tests/integration_test.rs',
+    status: 'added',
     linesAdded: 67,
     linesRemoved: 0,
   },
@@ -39,44 +39,42 @@ const mockModifiedFiles = [
 
 const mockAgentEvents = [
   {
-    timestamp: "10:23:15",
-    type: "thinking",
-    content:
-      "Analyzing the codebase structure and understanding the project requirements",
+    timestamp: '10:23:15',
+    type: 'thinking',
+    content: 'Analyzing the codebase structure and understanding the project requirements',
   },
   {
-    timestamp: "10:23:45",
-    type: "tool",
-    content: "Running cargo check to validate current code",
-    lastLine: "Finished dev [unoptimized + debuginfo] target(s) in 2.34s",
+    timestamp: '10:23:45',
+    type: 'tool',
+    content: 'Running cargo check to validate current code',
+    lastLine: 'Finished dev [unoptimized + debuginfo] target(s) in 2.34s',
   },
   {
-    timestamp: "10:24:12",
-    type: "file_edit",
-    content: "Modified src/main.rs (+5 -2)",
+    timestamp: '10:24:12',
+    type: 'file_edit',
+    content: 'Modified src/main.rs (+5 -2)',
   },
   {
-    timestamp: "10:24:30",
-    type: "thinking",
-    content:
-      "Considering how to implement the new feature based on the existing patterns",
+    timestamp: '10:24:30',
+    type: 'thinking',
+    content: 'Considering how to implement the new feature based on the existing patterns',
   },
   {
-    timestamp: "10:25:01",
-    type: "tool",
-    content: "Running tests to ensure no regressions",
-    lastLine: "running 5 tests\n...\n5 passed, 0 failed",
+    timestamp: '10:25:01',
+    type: 'tool',
+    content: 'Running tests to ensure no regressions',
+    lastLine: 'running 5 tests\n...\n5 passed, 0 failed',
   },
   {
-    timestamp: "10:25:15",
-    type: "file_edit",
-    content: "Modified src/lib.rs (+12 -0)",
+    timestamp: '10:25:15',
+    type: 'file_edit',
+    content: 'Modified src/lib.rs (+12 -0)',
   },
   {
-    timestamp: "10:25:45",
-    type: "tool",
-    content: "Formatting code with rustfmt",
-    lastLine: "Format successful",
+    timestamp: '10:25:45',
+    type: 'tool',
+    content: 'Formatting code with rustfmt',
+    lastLine: 'Format successful',
   },
 ];
 
@@ -221,13 +219,13 @@ const utilsRsDiffContent = `@@ -23,7 +23,8 @@ pub fn validate_agent_name(name: &
 // Function to get appropriate diff content for each file
 const getDiffContentForFile = (filePath: string) => {
   switch (filePath) {
-    case "src/main.rs":
+    case 'src/main.rs':
       return mockDiffContent;
-    case "src/lib.rs":
+    case 'src/lib.rs':
       return libRsDiffContent;
-    case "src/utils.rs":
+    case 'src/utils.rs':
       return utilsRsDiffContent;
-    case "src/error.rs":
+    case 'src/error.rs':
       return errorRsDiffContent;
     default:
       return mockDiffContent; // fallback
@@ -236,88 +234,77 @@ const getDiffContentForFile = (filePath: string) => {
 
 // Simple syntax highlighter for Rust code
 const highlightSyntax = (code: string) => {
-  if (!code || code.trim() === "") {
-    return <span>{code || "\u00A0"}</span>;
+  if (!code || code.trim() === '') {
+    return <span>{code || '\u00A0'}</span>;
   }
 
   // Keywords to highlight
   const keywords = [
-    "fn",
-    "let",
-    "mut",
-    "if",
-    "else",
-    "for",
-    "while",
-    "loop",
-    "match",
-    "return",
-    "struct",
-    "enum",
-    "impl",
-    "trait",
-    "use",
-    "mod",
-    "pub",
-    "crate",
-    "super",
-    "Self",
-    "self",
-    "true",
-    "false",
-    "Some",
-    "None",
-    "Ok",
-    "Err",
-    "Result",
-    "Box",
-    "Vec",
-    "HashMap",
-    "String",
-    "println",
-    "eprintln",
-    "format",
-    "std",
-    "collections",
-    "io",
-    "error",
-    "process",
-    "env",
-    "args",
-    "collect",
-    "exit",
-    "path",
-    "Path",
-    "exists",
-    "fs",
-    "read_to_string",
-    "dyn",
-    "Error",
-    "into",
-    "as",
-    "ref",
+    'fn',
+    'let',
+    'mut',
+    'if',
+    'else',
+    'for',
+    'while',
+    'loop',
+    'match',
+    'return',
+    'struct',
+    'enum',
+    'impl',
+    'trait',
+    'use',
+    'mod',
+    'pub',
+    'crate',
+    'super',
+    'Self',
+    'self',
+    'true',
+    'false',
+    'Some',
+    'None',
+    'Ok',
+    'Err',
+    'Result',
+    'Box',
+    'Vec',
+    'HashMap',
+    'String',
+    'println',
+    'eprintln',
+    'format',
+    'std',
+    'collections',
+    'io',
+    'error',
+    'process',
+    'env',
+    'args',
+    'collect',
+    'exit',
+    'path',
+    'Path',
+    'exists',
+    'fs',
+    'read_to_string',
+    'dyn',
+    'Error',
+    'into',
+    'as',
+    'ref',
   ];
 
-  const types = [
-    "i32",
-    "u32",
-    "i64",
-    "u64",
-    "usize",
-    "isize",
-    "f32",
-    "f64",
-    "bool",
-    "char",
-  ];
+  const types = ['i32', 'u32', 'i64', 'u64', 'usize', 'isize', 'f32', 'f64', 'bool', 'char'];
 
   // Split code into tokens while preserving whitespace and indentation
   const tokens = code
     .split(/(\s+|[{}();,.=<>!+\-*/&|?:[\]]|\w+|"[^"]*"|'[^']*'|\/\/.*)/g)
-    .filter((t) => t !== undefined && t !== "");
+    .filter((t) => t !== undefined && t !== '');
 
   return (
-    <span style={{ "white-space": "pre", "tab-size": "4" }}>
+    <span style={{ 'white-space': 'pre', 'tab-size': '4' }}>
       <For each={tokens}>
         {(token, _index) => {
           if (keywords.includes(token)) {
@@ -328,7 +315,7 @@ const highlightSyntax = (code: string) => {
             return <span class="text-green-600">{token}</span>;
           } else if (token.startsWith("'") && token.endsWith("'")) {
             return <span class="text-green-600">{token}</span>;
-          } else if (token.startsWith("//")) {
+          } else if (token.startsWith('//')) {
             return <span class="italic text-gray-500">{token}</span>;
           } else if (/^[{}();,.=<>!+\-*/&|?:[\]]+$/.test(token)) {
             return <span class="text-blue-500">{token}</span>;
@@ -344,9 +331,9 @@ const highlightSyntax = (code: string) => {
 // Component to render syntax-highlighted diff
 const DiffViewer: Component<{ content: string }> = (props) => {
   const parseDiff = (diffContent: string) => {
-    const lines = diffContent.split("\n");
+    const lines = diffContent.split('\n');
     const result: Array<{
-      type: "context" | "addition" | "deletion" | "hunk";
+      type: 'context' | 'addition' | 'deletion' | 'hunk';
       content: string;
       lineNumber?: number;
     }> = [];
@@ -355,34 +342,34 @@ const DiffViewer: Component<{ content: string }> = (props) => {
     let rightLineNumber = 0;
 
     for (const line of lines) {
-      if (line.startsWith("@@")) {
+      if (line.startsWith('@@')) {
         // Hunk header
-        result.push({ type: "hunk", content: line });
-      } else if (line.startsWith("+")) {
+        result.push({ type: 'hunk', content: line });
+      } else if (line.startsWith('+')) {
         rightLineNumber++;
         result.push({
-          type: "addition",
+          type: 'addition',
           content: line.substring(1),
           lineNumber: rightLineNumber,
         });
-      } else if (line.startsWith("-")) {
+      } else if (line.startsWith('-')) {
         leftLineNumber++;
         result.push({
-          type: "deletion",
+          type: 'deletion',
           content: line.substring(1),
           lineNumber: leftLineNumber,
         });
-      } else if (line.startsWith(" ")) {
+      } else if (line.startsWith(' ')) {
         leftLineNumber++;
         rightLineNumber++;
         result.push({
-          type: "context",
+          type: 'context',
           content: line.substring(1),
           lineNumber: rightLineNumber,
         });
       } else {
         // Empty or other lines
-        result.push({ type: "context", content: line });
+        result.push({ type: 'context', content: line });
       }
     }
 
@@ -396,22 +383,22 @@ const DiffViewer: Component<{ content: string }> = (props) => {
       <For each={lines()}>
         {(line, _index) => {
           const lineClasses = {
-            hunk: "bg-gray-100 text-gray-700 px-2 py-1 text-xs border-l-4 border-blue-400",
-            addition: "bg-green-50 text-green-800 border-l-4 border-green-400",
-            deletion: "bg-red-50 text-red-800 border-l-4 border-red-400",
-            context: "bg-gray-50 text-gray-700 border-l-4 border-gray-300",
+            hunk: 'bg-gray-100 text-gray-700 px-2 py-1 text-xs border-l-4 border-blue-400',
+            addition: 'bg-green-50 text-green-800 border-l-4 border-green-400',
+            deletion: 'bg-red-50 text-red-800 border-l-4 border-red-400',
+            context: 'bg-gray-50 text-gray-700 border-l-4 border-gray-300',
           };
 
           return (
             <div class={`flex ${lineClasses[line.type]}`}>
               <div class="w-12 text-right pr-2 text-gray-500 select-none">
-                {line.lineNumber || ""}
+                {line.lineNumber || ''}
               </div>
               <div class="flex-1 pl-2">
-                {line.type === "hunk" ? (
+                {line.type === 'hunk' ? (
                   <span class="font-bold">{line.content}</span>
                 ) : (
-                  highlightSyntax(line.content || "\u00A0")
+                  highlightSyntax(line.content || '\u00A0')
                 )}
               </div>
             </div>
@@ -426,11 +413,11 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
   const params = useParams();
   const navigate = useNavigate();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const taskId = () => props.taskId || params["id"];
+  const taskId = () => props.taskId || params['id'];
 
   // Search and filter state
-  const [searchQuery, setSearchQuery] = createSignal("");
-  const [statusFilter, setStatusFilter] = createSignal<string>("all");
+  const [searchQuery, setSearchQuery] = createSignal('');
+  const [statusFilter, setStatusFilter] = createSignal<string>('all');
 
   // Load task details from API
   const [taskData] = createResource(taskId, async (id) => {
@@ -439,7 +426,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
       const result = await apiClient.getSession(id);
       return result;
     } catch (error) {
-      console.error("Failed to load task details:", error);
+      console.error('Failed to load task details:', error);
       return null;
     }
   });
@@ -454,8 +441,8 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
     if (currentTaskId && currentTask) {
       setBreadcrumbs([
         {
-          label: "workspace",
-          onClick: () => navigate("/"),
+          label: 'workspace',
+          onClick: () => navigate('/'),
         },
         {
           label: `session-${currentTaskId}`,
@@ -475,20 +462,16 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
   });
 
   const handleFileClick = (filePath: string) => {
-    const anchorId = filePath.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+    const anchorId = filePath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
     const element = document.getElementById(anchorId);
     if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  const handleNavigateToFile = (
-    direction: "prev" | "next",
-    currentIndex: number,
-  ) => {
+  const handleNavigateToFile = (direction: 'prev' | 'next', currentIndex: number) => {
     const filteredFiles = () => filteredModifiedFiles();
-    const targetIndex =
-      direction === "prev" ? currentIndex - 1 : currentIndex + 1;
+    const targetIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
     if (targetIndex >= 0 && targetIndex < filteredFiles().length) {
       const targetFile = filteredFiles()[targetIndex];
       if (targetFile) {
@@ -501,66 +484,69 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
   const filteredModifiedFiles = () => {
     return mockModifiedFiles.filter((file) => {
       const matchesSearch =
-        searchQuery() === "" ||
-        file.path.toLowerCase().includes(searchQuery().toLowerCase());
-      const matchesStatus =
-        statusFilter() === "all" || file.status === statusFilter();
+        searchQuery() === '' || file.path.toLowerCase().includes(searchQuery().toLowerCase());
+      const matchesStatus = statusFilter() === 'all' || file.status === statusFilter();
       return matchesSearch && matchesStatus;
     });
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "added":
+      case 'added':
         return {
-          bg: "bg-green-100",
-          text: "text-green-800",
-          border: "border-green-200",
-          icon: "●",
+          bg: 'bg-green-100',
+          text: 'text-green-800',
+          border: 'border-green-200',
+          icon: '●',
+          label: 'Added',
         };
-      case "modified":
+      case 'modified':
         return {
-          bg: "bg-blue-100",
-          text: "text-blue-800",
-          border: "border-blue-200",
-          icon: "○",
+          bg: 'bg-blue-100',
+          text: 'text-blue-800',
+          border: 'border-blue-200',
+          icon: '○',
+          label: 'Modified',
         };
-      case "deleted":
+      case 'deleted':
         return {
-          bg: "bg-red-100",
-          text: "text-red-800",
-          border: "border-red-200",
-          icon: "✕",
+          bg: 'bg-red-100',
+          text: 'text-red-800',
+          border: 'border-red-200',
+          icon: '✕',
+          label: 'Deleted',
         };
-      case "renamed":
+      case 'renamed':
         return {
-          bg: "bg-yellow-100",
-          text: "text-yellow-800",
-          border: "border-yellow-200",
-          icon: "→",
+          bg: 'bg-yellow-100',
+          text: 'text-yellow-800',
+          border: 'border-yellow-200',
+          icon: '→',
+          label: 'Renamed',
         };
       default:
         return {
-          bg: "bg-gray-100",
-          text: "text-gray-800",
-          border: "border-gray-200",
-          icon: "?",
+          bg: 'bg-gray-100',
+          text: 'text-gray-800',
+          border: 'border-gray-200',
+          icon: '?',
+          label: 'Unknown',
         };
     }
   };
 
   onMount(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         event.preventDefault();
-        navigate("/");
+        navigate('/');
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
+    window.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => window.removeEventListener('keydown', handleKeyDown));
   });
 
   return (
@@ -569,9 +555,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
       fallback={
         <div class="flex min-h-screen items-center justify-center bg-gray-50">
           <div class="text-center">
-            <h2 class="mb-2 text-xl font-semibold text-gray-900">
-              Task not found
-            </h2>
+            <h2 class="mb-2 text-xl font-semibold text-gray-900">Task not found</h2>
             <p class="text-gray-600">The requested task could not be loaded.</p>
           </div>
         </div>
@@ -584,9 +568,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
           <div class="w-3/10 flex flex-col border-r border-gray-200 bg-white">
             {/* Modified Files Panel (top 40% of left panel) */}
             <div class="h-2/5 border-b border-gray-200 p-4">
-              <h3 class="mb-3 text-sm font-semibold text-gray-900">
-                Modified Files
-              </h3>
+              <h3 class="mb-3 text-sm font-semibold text-gray-900">Modified Files</h3>
 
               {/* Search and Filter Controls */}
               <div class="mb-3 space-y-2">
@@ -600,41 +582,41 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                 <div class="flex space-x-1">
                   <button
                     class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === "all"
-                        ? "bg-blue-100 text-blue-800 border border-blue-200"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      statusFilter() === 'all'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
-                    onClick={() => setStatusFilter("all")}
+                    onClick={() => setStatusFilter('all')}
                   >
                     All
                   </button>
                   <button
                     class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === "modified"
-                        ? "bg-blue-100 text-blue-800 border border-blue-200"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      statusFilter() === 'modified'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
-                    onClick={() => setStatusFilter("modified")}
+                    onClick={() => setStatusFilter('modified')}
                   >
                     Modified
                   </button>
                   <button
                     class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === "added"
-                        ? "bg-blue-100 text-blue-800 border border-blue-200"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      statusFilter() === 'added'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
-                    onClick={() => setStatusFilter("added")}
+                    onClick={() => setStatusFilter('added')}
                   >
                     Added
                   </button>
                   <button
                     class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === "deleted"
-                        ? "bg-blue-100 text-blue-800 border border-blue-200"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      statusFilter() === 'deleted'
+                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
-                    onClick={() => setStatusFilter("deleted")}
+                    onClick={() => setStatusFilter('deleted')}
                   >
                     Deleted
                   </button>
@@ -656,10 +638,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                           >
                             {badge.icon}
                           </span>
-                          <span
-                            class="text-sm text-gray-900 truncate"
-                            title={file.path}
-                          >
+                          <span class="text-sm text-gray-900 truncate" title={file.path}>
                             {file.path}
                           </span>
                         </div>
@@ -680,9 +659,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
             {/* Agent Activity Panel (middle 60% of left panel) */}
             <div class="h-3/5 p-4 flex flex-col">
-              <h3 class="mb-3 text-sm font-semibold text-gray-900">
-                Agent Activity
-              </h3>
+              <h3 class="mb-3 text-sm font-semibold text-gray-900">Agent Activity</h3>
               <div class="flex-1 space-y-2 overflow-y-auto">
                 <For each={mockAgentEvents}>
                   {(event) => (
@@ -691,13 +668,13 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                         {event.timestamp}
                       </span>
                       <div class="flex-1 min-w-0">
-                        {event.type === "thinking" && (
+                        {event.type === 'thinking' && (
                           <div class="text-sm text-gray-700">
                             <span class="font-medium">💭 </span>
                             {event.content}
                           </div>
                         )}
-                        {event.type === "tool" && (
+                        {event.type === 'tool' && (
                           <div class="text-sm text-gray-700">
                             <span class="font-medium">🔧 </span>
                             {event.content}
@@ -708,7 +685,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                             )}
                           </div>
                         )}
-                        {event.type === "file_edit" && (
+                        {event.type === 'file_edit' && (
                           <div class="text-sm text-gray-700">
                             <span class="font-medium">📝 </span>
                             {event.content}
@@ -791,14 +768,9 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
             <div class="h-full overflow-y-auto">
               <For each={filteredModifiedFiles()}>
                 {(file, index) => {
-                  const anchorId = file.path
-                    .replace(/[^a-zA-Z0-9]/g, "-")
-                    .toLowerCase();
+                  const anchorId = file.path.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
                   return (
-                    <div
-                      id={anchorId}
-                      class="border-b border-gray-200 last:border-b-0"
-                    >
+                    <div id={anchorId} class="border-b border-gray-200 last:border-b-0">
                       {/* File Header */}
                       <div class="sticky top-0 bg-white border-b border-gray-300 p-4 z-10">
                         <div class="flex items-center justify-between">
@@ -827,20 +799,14 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                             <button
                               class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                               disabled={index() === 0}
-                              onClick={() =>
-                                handleNavigateToFile("prev", index())
-                              }
+                              onClick={() => handleNavigateToFile('prev', index())}
                             >
                               Previous
                             </button>
                             <button
                               class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={
-                                index() === mockModifiedFiles.length - 1
-                              }
-                              onClick={() =>
-                                handleNavigateToFile("next", index())
-                              }
+                              disabled={index() === mockModifiedFiles.length - 1}
+                              onClick={() => handleNavigateToFile('next', index())}
                             >
                               Next
                             </button>
@@ -851,9 +817,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                       {/* Diff Content */}
                       <div class="p-4">
                         <div class="bg-white border border-gray-200 rounded-lg overflow-x-auto">
-                          <DiffViewer
-                            content={getDiffContentForFile(file.path)}
-                          />
+                          <DiffViewer content={getDiffContentForFile(file.path)} />
                         </div>
                       </div>
                     </div>

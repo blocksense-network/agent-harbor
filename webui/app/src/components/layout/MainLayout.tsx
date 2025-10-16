@@ -1,10 +1,10 @@
-import { Component, JSX, onMount, onCleanup, For } from "solid-js";
-import { useLocation, A } from "@solidjs/router";
-import agentHarborLogo from "../../assets/agent-harbor-logo.svg";
-import { Footer } from "./Footer";
-import { useDrafts } from "../../contexts/DraftContext.js";
-import { useFocus } from "../../contexts/FocusContext.js";
-import { useBreadcrumbs } from "../../contexts/BreadcrumbContext.js";
+import { Component, JSX, onMount, onCleanup, For } from 'solid-js';
+import { useLocation, A } from '@solidjs/router';
+import agentHarborLogo from '../../assets/agent-harbor-logo.svg';
+import { Footer } from './Footer';
+import { useDrafts } from '../../contexts/DraftContext.js';
+import { useFocus } from '../../contexts/FocusContext.js';
+import { useBreadcrumbs } from '../../contexts/BreadcrumbContext.js';
 
 interface MainLayoutProps {
   children?: JSX.Element;
@@ -22,18 +22,18 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
 
   const handleNewDraft = async () => {
     if (!import.meta.env.PROD) {
-      console.log("[MainLayout] New Task button clicked");
+      console.log('[MainLayout] New Task button clicked');
     }
     // Create a new empty draft
     const created = await draftOps.createDraft({
-      prompt: "",
-      repo: { mode: "git", url: "", branch: "main" },
+      prompt: '',
+      repo: { mode: 'git', url: '', branch: 'main' },
       agents: [],
-      runtime: { type: "devcontainer" },
-      delivery: { mode: "pr" },
+      runtime: { type: 'devcontainer' },
+      delivery: { mode: 'pr' },
     });
     if (!import.meta.env.PROD) {
-      console.log("[MainLayout] Draft creation result:", created);
+      console.log('[MainLayout] Draft creation result:', created);
     }
   };
 
@@ -43,7 +43,7 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
         return;
       }
 
-      if (event.key.toLowerCase() !== "n") {
+      if (event.key.toLowerCase() !== 'n') {
         return;
       }
 
@@ -51,9 +51,7 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
       if (target && target instanceof window.HTMLElement) {
         const tagName = target.tagName?.toLowerCase();
         const isEditable =
-          tagName === "input" ||
-          tagName === "textarea" ||
-          target.isContentEditable;
+          tagName === 'input' || tagName === 'textarea' || target.isContentEditable;
         if (isEditable) {
           return;
         }
@@ -63,8 +61,8 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
       void handleNewDraft();
     };
 
-    window.addEventListener("keydown", handleShortcut);
-    onCleanup(() => window.removeEventListener("keydown", handleShortcut));
+    window.addEventListener('keydown', handleShortcut);
+    onCleanup(() => window.removeEventListener('keydown', handleShortcut));
   });
 
   return (
@@ -120,9 +118,7 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
                           {crumb.label}
                         </button>
                       ) : (
-                        <span class="text-gray-700 font-medium">
-                          {crumb.label}
-                        </span>
+                        <span class="text-gray-700 font-medium">{crumb.label}</span>
                       )}
                     </>
                   )}
@@ -140,13 +136,10 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
                 focus-visible:ring-offset-2
               `}
               classList={{
-                "bg-slate-100 text-slate-900": isActive("/settings"),
-                "text-slate-600 hover:text-slate-900 hover:bg-slate-100":
-                  !isActive("/settings"),
+                'bg-slate-100 text-slate-900': isActive('/settings'),
+                'text-slate-600 hover:text-slate-900 hover:bg-slate-100': !isActive('/settings'),
               }}
-              aria-current={
-                location.pathname === "/settings" ? "page" : undefined
-              }
+              aria-current={location.pathname === '/settings' ? 'page' : undefined}
             >
               <span aria-hidden="true">⚙️</span> Settings
             </A>

@@ -1,11 +1,5 @@
-import {
-  createContext,
-  useContext,
-  Component,
-  JSX,
-  createSignal,
-} from "solid-js";
-import { apiClient, DraftTask, DraftCreate, DraftUpdate } from "../lib/api";
+import { createContext, useContext, Component, JSX, createSignal } from 'solid-js';
+import { apiClient, DraftTask, DraftCreate, DraftUpdate } from '../lib/api';
 
 // DraftContext provides CRUD operations for drafts
 // Draft data itself comes from route-level fetching via props (progressive enhancement)
@@ -36,31 +30,28 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
     try {
       setError(null);
       if (!import.meta.env.PROD) {
-        console.log("[DraftContext] Creating draft...", draft);
+        console.log('[DraftContext] Creating draft...', draft);
       }
       const fullDraft = await apiClient.createDraft(draft);
       if (!import.meta.env.PROD) {
-        console.log("[DraftContext] Draft created:", fullDraft);
+        console.log('[DraftContext] Draft created:', fullDraft);
       }
 
       props.onDraftChanged?.(); // Notify that drafts changed
 
       // Dispatch custom event for components to listen to
-      if (typeof window !== "undefined") {
+      if (typeof window !== 'undefined') {
         if (!import.meta.env.PROD) {
-          console.log("[DraftContext] Dispatching draft-created event");
+          console.log('[DraftContext] Dispatching draft-created event');
         }
-        window.dispatchEvent(
-          new CustomEvent("draft-created", { detail: fullDraft }),
-        );
+        window.dispatchEvent(new CustomEvent('draft-created', { detail: fullDraft }));
       }
 
       return fullDraft;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to create draft";
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create draft';
       setError(errorMessage);
-      console.error("Failed to create draft:", err);
+      console.error('Failed to create draft:', err);
       return null;
     }
   };
@@ -72,26 +63,21 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
       props.onDraftChanged?.(); // Notify that drafts changed
       return true;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to delete draft";
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete draft';
       setError(errorMessage);
-      console.error("Failed to delete draft:", err);
+      console.error('Failed to delete draft:', err);
       return false;
     }
   };
 
-  const updateDraft = async (
-    id: string,
-    updates: Partial<DraftUpdate>,
-  ): Promise<boolean> => {
+  const updateDraft = async (id: string, updates: Partial<DraftUpdate>): Promise<boolean> => {
     try {
       setError(null);
       await apiClient.updateDraft(id, updates);
       props.onDraftChanged?.(); // Notify that drafts changed
       return true;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to update draft";
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update draft';
       setError(errorMessage);
       console.error(`Failed to update draft:`, err);
       return false;
@@ -106,17 +92,13 @@ export const DraftProvider: Component<DraftProviderProps> = (props) => {
     ...(props.onDraftChanged && { onDraftChanged: props.onDraftChanged }),
   };
 
-  return (
-    <DraftContext.Provider value={value}>
-      {props.children}
-    </DraftContext.Provider>
-  );
+  return <DraftContext.Provider value={value}>{props.children}</DraftContext.Provider>;
 };
 
 export const useDrafts = () => {
   const context = useContext(DraftContext);
   if (!context) {
-    throw new Error("useDrafts must be used within a DraftProvider");
+    throw new Error('useDrafts must be used within a DraftProvider');
   }
   return context;
 };

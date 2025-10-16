@@ -1,16 +1,5 @@
-import {
-  createContext,
-  createSignal,
-  useContext,
-  Component,
-  JSX,
-} from "solid-js";
-import {
-  Toast,
-  ToastType,
-  ToastAction,
-  ToastContainer,
-} from "../components/common/Toast.js";
+import { createContext, createSignal, useContext, Component, JSX } from 'solid-js';
+import { Toast, ToastType, ToastAction, ToastContainer } from '../components/common/Toast.js';
 
 interface ToastContextValue {
   toasts: () => Toast[];
@@ -19,7 +8,7 @@ interface ToastContextValue {
     type: ToastType,
     message: string,
     actions?: ToastAction[],
-    duration?: number,
+    duration?: number
   ) => void;
   removeToast: (id: string) => void;
 }
@@ -29,7 +18,7 @@ const ToastContext = createContext<ToastContextValue>();
 export const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {
-    throw new Error("useToast must be used within a ToastProvider");
+    throw new Error('useToast must be used within a ToastProvider');
   }
   return context;
 };
@@ -56,7 +45,7 @@ export const ToastProvider: Component<ToastProviderProps> = (props) => {
     type: ToastType,
     message: string,
     actions?: ToastAction[],
-    duration?: number,
+    duration?: number
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
     const toast: Toast = {

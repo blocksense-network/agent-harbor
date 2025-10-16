@@ -1,12 +1,5 @@
-import {
-  Component,
-  For,
-  createEffect,
-  createSignal,
-  onCleanup,
-  onMount,
-} from "solid-js";
-import TomSelect from "tom-select";
+import { Component, For, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import TomSelect from 'tom-select';
 
 interface ModelSelection {
   model: string;
@@ -25,13 +18,12 @@ interface ModelMultiSelectProps {
 const MIN_SELECTED_INSTANCES = 1;
 const MAX_INSTANCES = 10;
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 type CountsMap = Record<string, number>;
 
-type ModelAction = "increase" | "decrease";
-type BadgeAction = ModelAction | "remove";
+type ModelAction = 'increase' | 'decrease';
+type BadgeAction = ModelAction | 'remove';
 
 interface OptionTemplateData {
   value: string;
@@ -41,7 +33,7 @@ interface OptionTemplateData {
 
 const modelKey = (value: string) => encodeURIComponent(value.toLowerCase());
 
-declare module "tom-select" {
+declare module 'tom-select' {
   interface TomSelectOption {
     count?: number;
   }
@@ -51,7 +43,7 @@ declare module "tom-select" {
      * Clears cached render output to force Tom Select to use latest option data.
      * https://tom-select.js.org/docs/#methods-clearcache
      */
-    clearCache(template?: "item" | "option"): void;
+    clearCache(template?: 'item' | 'option'): void;
   }
 }
 
@@ -62,16 +54,14 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   let controlClickHandler: ((event: MouseEvent) => void) | undefined;
   let dropdownPointerDownHandler: ((event: MouseEvent) => void) | undefined;
   let controlPointerDownHandler: ((event: MouseEvent) => void) | undefined;
-  let externalSyncKey = "";
-  let lastNotifiedKey = "";
+  let externalSyncKey = '';
+  let lastNotifiedKey = '';
 
   const [counts, setCounts] = createSignal<CountsMap>({});
 
   const models = () => props.availableModels ?? [];
   const containerClass = () =>
-    props.class && props.class.trim().length > 0
-      ? `relative ${props.class}`
-      : "relative";
+    props.class && props.class.trim().length > 0 ? `relative ${props.class}` : 'relative';
 
   const updateTomSelectOption = (model: string, count: number) => {
     if (!tomSelect) {
@@ -81,24 +71,22 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     const existing = tomSelect.options[model];
     const payload = {
       value: model,
-      text: existing?.["text"] ?? model,
+      text: existing?.['text'] ?? model,
       label: (existing as { label?: string })?.label ?? model,
       count,
     };
 
-    logDebug("updateOption", model, payload);
+    logDebug('updateOption', model, payload);
     tomSelect.updateOption(model, payload);
     if (tomSelect.options[model]) {
       Object.assign(tomSelect.options[model], payload);
     }
-    if (typeof tomSelect.clearCache === "function") {
+    if (typeof tomSelect.clearCache === 'function') {
       tomSelect.clearCache();
     }
   };
 
-  const buildCountsMap = (
-    selections: ModelSelection[] | undefined,
-  ): CountsMap => {
+  const buildCountsMap = (selections: ModelSelection[] | undefined): CountsMap => {
     const base: CountsMap = {};
     for (const model of models()) {
       base[model] = 0;
@@ -107,11 +95,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     if (selections) {
       for (const selection of selections) {
         if (selection.model in base) {
-          base[selection.model] = clamp(
-            selection.instances,
-            MIN_SELECTED_INSTANCES,
-            MAX_INSTANCES,
-          );
+          base[selection.model] = clamp(selection.instances, MIN_SELECTED_INSTANCES, MAX_INSTANCES);
         }
       }
     }
@@ -139,7 +123,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
   const commitCounts = (
     nextCounts: CountsMap,
-    options: { notifyParent?: boolean; manageSelection?: boolean } = {},
+    options: { notifyParent?: boolean; manageSelection?: boolean } = {}
   ) => {
     externalSyncKey = JSON.stringify(nextCounts);
     setCounts(nextCounts);
@@ -151,9 +135,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       }
 
       if (options.manageSelection !== false) {
-        const selectedValues = models().filter(
-          (model) => (nextCounts[model] ?? 0) > 0,
-        );
+        const selectedValues = models().filter((model) => (nextCounts[model] ?? 0) > 0);
 
         for (const value of [...tomSelect.items]) {
           if (!selectedValues.includes(value)) {
@@ -170,7 +152,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
       tomSelect.refreshItems();
       tomSelect.refreshOptions();
-      logDebug("refreshUI", {
+      logDebug('refreshUI', {
         items: [...tomSelect.items],
         dropdownItems: Object.keys(nextCounts),
       });
@@ -188,7 +170,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       min?: number;
       notifyParent?: boolean;
       manageSelection?: boolean;
-    } = {},
+    } = {}
   ) => {
     const current = counts();
     const min = options.min ?? 0;
@@ -212,7 +194,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       return;
     }
 
-    const button = target.closest<HTMLButtonElement>("[data-model-action]");
+    const button = target.closest<HTMLButtonElement>('[data-model-action]');
 
     if (!button) {
       return;
@@ -221,8 +203,8 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     event.preventDefault();
     event.stopPropagation();
 
-    const value = button.getAttribute("data-value");
-    const actionAttr = button.getAttribute("data-model-action");
+    const value = button.getAttribute('data-value');
+    const actionAttr = button.getAttribute('data-model-action');
 
     if (!value || !actionAttr) {
       return;
@@ -230,19 +212,19 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
     const action = actionAttr as ModelAction;
     const currentCount = counts()[value] ?? 0;
-    if (action === "increase") {
+    if (action === 'increase') {
       const next = Math.min(currentCount + 1, MAX_INSTANCES);
       applyCountChange(value, next, {
         notifyParent: false,
       });
-      logDebug("dropdown increase", value, { currentCount, next });
+      logDebug('dropdown increase', value, { currentCount, next });
       tomSelect.open(); // keep dropdown visible when adjusting counts in-place
-    } else if (action === "decrease") {
+    } else if (action === 'decrease') {
       const next = Math.max(currentCount - 1, 0);
       applyCountChange(value, next, {
         notifyParent: false,
       });
-      logDebug("dropdown decrease", value, { currentCount, next });
+      logDebug('dropdown decrease', value, { currentCount, next });
       tomSelect.open(); // re-open in case Tom Select processed the click as a selection
     }
   };
@@ -257,7 +239,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       return;
     }
 
-    const button = target.closest<HTMLButtonElement>("[data-badge-action]");
+    const button = target.closest<HTMLButtonElement>('[data-badge-action]');
 
     if (!button) {
       return;
@@ -266,8 +248,8 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     event.preventDefault();
     event.stopPropagation();
 
-    const value = button.getAttribute("data-value");
-    const actionAttr = button.getAttribute("data-badge-action");
+    const value = button.getAttribute('data-value');
+    const actionAttr = button.getAttribute('data-badge-action');
 
     if (!value || !actionAttr) {
       return;
@@ -275,31 +257,31 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
     const action = actionAttr as BadgeAction;
     const currentCount = counts()[value] ?? MIN_SELECTED_INSTANCES;
-    if (action === "increase") {
+    if (action === 'increase') {
       const next = Math.min(currentCount + 1, MAX_INSTANCES);
       applyCountChange(value, next, {
         min: MIN_SELECTED_INSTANCES,
         notifyParent: true,
       });
-      logDebug("badge increase", value, { currentCount, next });
+      logDebug('badge increase', value, { currentCount, next });
       return;
     }
 
-    if (action === "decrease") {
+    if (action === 'decrease') {
       const next = Math.max(currentCount - 1, MIN_SELECTED_INSTANCES);
       applyCountChange(value, next, {
         min: MIN_SELECTED_INSTANCES,
         notifyParent: true,
       });
-      logDebug("badge decrease", value, { currentCount, next });
+      logDebug('badge decrease', value, { currentCount, next });
       return;
     }
 
-    if (action === "remove") {
+    if (action === 'remove') {
       applyCountChange(value, 0, {
         notifyParent: true,
       });
-      logDebug("badge remove", value);
+      logDebug('badge remove', value);
     }
   };
 
@@ -310,9 +292,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       return;
     }
 
-    const interactiveElement = target.closest(
-      "[data-model-action], [data-badge-action]",
-    );
+    const interactiveElement = target.closest('[data-model-action], [data-badge-action]');
 
     if (interactiveElement) {
       event.preventDefault();
@@ -331,19 +311,16 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
         count: initialCounts[model] ?? 0,
       })),
       items: models().filter((model) => (initialCounts[model] ?? 0) > 0),
-      placeholder: props.placeholder ?? "Models",
-      valueField: "value",
-      labelField: "label",
-      searchField: ["label"],
+      placeholder: props.placeholder ?? 'Models',
+      valueField: 'value',
+      labelField: 'label',
+      searchField: ['label'],
       maxItems: null,
       closeAfterSelect: false,
       render: {
-        option: (
-          data: OptionTemplateData,
-          escape: (value: string) => string,
-        ) => {
+        option: (data: OptionTemplateData, escape: (value: string) => string) => {
           const count = counts()[data.value] ?? 0;
-          const decreaseDisabled = count <= 0 ? "disabled" : "";
+          const decreaseDisabled = count <= 0 ? 'disabled' : '';
           const key = modelKey(data.value);
           return `
             <div class="flex items-center justify-between gap-3">
@@ -420,30 +397,14 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     dropdownPointerDownHandler = preventTomSelectSelection;
     controlPointerDownHandler = preventTomSelectSelection;
 
-    tomSelect.dropdown_content?.addEventListener("click", dropdownClickHandler);
-    tomSelect.control?.addEventListener("click", controlClickHandler);
-    tomSelect.dropdown_content?.addEventListener(
-      "pointerdown",
-      dropdownPointerDownHandler,
-      true,
-    );
-    tomSelect.dropdown_content?.addEventListener(
-      "mousedown",
-      dropdownPointerDownHandler,
-      true,
-    );
-    tomSelect.control?.addEventListener(
-      "pointerdown",
-      controlPointerDownHandler,
-      true,
-    );
-    tomSelect.control?.addEventListener(
-      "mousedown",
-      controlPointerDownHandler,
-      true,
-    );
+    tomSelect.dropdown_content?.addEventListener('click', dropdownClickHandler);
+    tomSelect.control?.addEventListener('click', controlClickHandler);
+    tomSelect.dropdown_content?.addEventListener('pointerdown', dropdownPointerDownHandler, true);
+    tomSelect.dropdown_content?.addEventListener('mousedown', dropdownPointerDownHandler, true);
+    tomSelect.control?.addEventListener('pointerdown', controlPointerDownHandler, true);
+    tomSelect.control?.addEventListener('mousedown', controlPointerDownHandler, true);
 
-    tomSelect["on"]("item_add", (value: string) => {
+    tomSelect['on']('item_add', (value: string) => {
       const current = counts()[value] ?? 0;
       const next = current > 0 ? current : MIN_SELECTED_INSTANCES;
       applyCountChange(value, next, {
@@ -452,21 +413,21 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       });
     });
 
-    tomSelect["on"]("item_remove", (value: string) => {
+    tomSelect['on']('item_remove', (value: string) => {
       applyCountChange(value, 0, {
         manageSelection: false,
       });
     });
 
     if (selectRef) {
-      selectRef.removeAttribute("hidden");
-      selectRef.classList.remove("ts-hidden-accessible");
-      selectRef.style.display = "block";
-      selectRef.style.position = "absolute";
-      selectRef.style.opacity = "0.01";
-      selectRef.style.pointerEvents = "none";
-      selectRef.style.height = "1px";
-      selectRef.style.width = "1px";
+      selectRef.removeAttribute('hidden');
+      selectRef.classList.remove('ts-hidden-accessible');
+      selectRef.style.display = 'block';
+      selectRef.style.position = 'absolute';
+      selectRef.style.opacity = '0.01';
+      selectRef.style.pointerEvents = 'none';
+      selectRef.style.height = '1px';
+      selectRef.style.width = '1px';
     }
 
     commitCounts(initialCounts, { notifyParent: false });
@@ -476,40 +437,24 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     if (tomSelect) {
       if (dropdownClickHandler) {
         const dropdownEl = tomSelect.dropdown_content;
-        dropdownEl?.removeEventListener("click", dropdownClickHandler);
+        dropdownEl?.removeEventListener('click', dropdownClickHandler);
       }
 
       if (controlClickHandler) {
         const controlEl = tomSelect.control;
-        controlEl?.removeEventListener("click", controlClickHandler);
+        controlEl?.removeEventListener('click', controlClickHandler);
       }
 
       if (dropdownPointerDownHandler) {
         const dropdownEl = tomSelect.dropdown_content;
-        dropdownEl?.removeEventListener(
-          "pointerdown",
-          dropdownPointerDownHandler,
-          true,
-        );
-        dropdownEl?.removeEventListener(
-          "mousedown",
-          dropdownPointerDownHandler,
-          true,
-        );
+        dropdownEl?.removeEventListener('pointerdown', dropdownPointerDownHandler, true);
+        dropdownEl?.removeEventListener('mousedown', dropdownPointerDownHandler, true);
       }
 
       if (controlPointerDownHandler) {
         const controlEl = tomSelect.control;
-        controlEl?.removeEventListener(
-          "pointerdown",
-          controlPointerDownHandler,
-          true,
-        );
-        controlEl?.removeEventListener(
-          "mousedown",
-          controlPointerDownHandler,
-          true,
-        );
+        controlEl?.removeEventListener('pointerdown', controlPointerDownHandler, true);
+        controlEl?.removeEventListener('mousedown', controlPointerDownHandler, true);
       }
 
       tomSelect.destroy();
@@ -533,13 +478,10 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   return (
     <div data-testid={props.testId} class={containerClass()}>
       <select ref={selectRef} multiple class="tom-select-input">
-        <For each={models()}>
-          {(model) => <option value={model}>{model}</option>}
-        </For>
+        <For each={models()}>{(model) => <option value={model}>{model}</option>}</For>
       </select>
     </div>
   );
 };
 
-const logDebug = (...args: unknown[]) =>
-  console.debug("[ModelMultiSelect]", ...args);
+const logDebug = (...args: unknown[]) => console.debug('[ModelMultiSelect]', ...args);

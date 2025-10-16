@@ -1,13 +1,11 @@
-import { Component, ErrorBoundary as SolidErrorBoundary, JSX } from "solid-js";
+import { Component, ErrorBoundary as SolidErrorBoundary, JSX } from 'solid-js';
 
 interface ErrorBoundaryProps {
   children: JSX.Element;
   fallback?: (error: unknown, reset: () => void) => JSX.Element;
 }
 
-const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (
-  props,
-) => (
+const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (props) => (
   <div class="flex min-h-screen items-center justify-center bg-gray-50">
     <div class="w-full max-w-md rounded-lg bg-white p-6 text-center shadow-lg">
       <div
@@ -20,12 +18,8 @@ const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (
           ⚠️
         </span>
       </div>
-      <h1 class="mb-2 text-xl font-semibold text-gray-900">
-        Something went wrong
-      </h1>
-      <p class="mb-6 text-gray-600">
-        An unexpected error occurred. Try again or refresh the page.
-      </p>
+      <h1 class="mb-2 text-xl font-semibold text-gray-900">Something went wrong</h1>
+      <p class="mb-6 text-gray-600">An unexpected error occurred. Try again or refresh the page.</p>
       <div class="flex flex-col gap-3">
         <button
           onClick={() => props.reset()}
@@ -39,7 +33,7 @@ const DefaultErrorFallback: Component<{ error: unknown; reset: () => void }> = (
         </button>
         <button
           onClick={() => {
-            if (typeof window !== "undefined") {
+            if (typeof window !== 'undefined') {
               window.location.reload();
             }
           }}
@@ -64,9 +58,5 @@ export const ErrorBoundary: Component<ErrorBoundaryProps> = (props) => {
     return <DefaultErrorFallback error={error} reset={reset} />;
   };
 
-  return (
-    <SolidErrorBoundary fallback={fallback}>
-      {props.children}
-    </SolidErrorBoundary>
-  );
+  return <SolidErrorBoundary fallback={fallback}>{props.children}</SolidErrorBoundary>;
 };

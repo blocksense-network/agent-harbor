@@ -535,7 +535,12 @@ electron-build-native-addon:
     @echo "Native addon ready"
 
 # Run Electron GUI in development mode (with hot reload)
+# Note: This expects a WebUI server running on localhost:3001
+# Use 'just electron-manual-test' for a full automated setup
 electron-dev: electron-build-native-addon
+    @echo "⚠️  Make sure a WebUI server is running on http://localhost:3001"
+    @echo "   You can start one with: cd webui/mock-server && yarn dev"
+    @echo ""
     yarn workspace agent-harbor-gui run dev
 
 # Build Electron GUI for production (includes WebUI static build and native addon)
@@ -576,6 +581,31 @@ electron-test-headed: electron-build-webui electron-build-native-addon
 electron-check:
     just electron-lint
     just electron-type-check
+
+# Build WebUI in CSR mode (static build for Electron/subprocess architecture)
+webui-build-csr:
+    @echo "Building WebUI in CSR mode..."
+    cd webui/app && ./scripts/build-csr.sh
+
+# Manual test: Build CSR, start mock server, launch Electron
+manual-test-electron:
+    @echo "🔨 Building CSR static files..."
+    just webui-build-csr
+    @echo "🏗️  Building mock server..."
+    cd webui/mock-server && yarn build
+    @echo "🔨 Building Electron app..."
+    cd electron-app && yarn build:dev
+    @echo "🚀 Starting mock server and Electron..."
+    @echo "   Mock server: http://localhost:3001"
+    @echo "   Press Ctrl+C to stop"
+    @echo ""
+    @# Start mock server in background, then launch Electron directly
+    @# Use 'yarn node' to enable Yarn PnP module resolution for mock server
+    @# Launch Electron via helper script that resolves binary path through PnP
+    @trap 'kill %1' EXIT; \
+      cd webui/mock-server && yarn node dist/index.js & \
+      sleep 2 && \
+      cd electron-app && yarn node scripts/launch-electron.mjs dist-electron/index.js
 
 # macOS / Xcode Targets
 # ====================

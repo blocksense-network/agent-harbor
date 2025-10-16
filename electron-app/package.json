@@ -10,12 +10,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && npm run build:native-addon && electron-builder",
-    "build:dev": "tsc",
+    "build:dev": "vite build || true && npm run copy:native-addon",
     "build:native-addon": "cd ../crates/ah-gui-core && npm run build",
+    "copy:native-addon": "bash scripts/copy-native-addon.sh",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 10",
     "format": "prettier --write \"src/**/*.{ts,tsx,json}\"",
     "type-check": "tsc --noEmit",
+    "pretest": "npm run build:dev",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug"
@@ -43,5 +45,10 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
+  },
+  "dependenciesMeta": {
+    "electron": {
+      "unplugged": true
+    }
   }
 }

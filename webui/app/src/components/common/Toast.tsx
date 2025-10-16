@@ -1,11 +1,11 @@
-import { Component, createSignal, onMount, onCleanup, For } from "solid-js";
+import { Component, createSignal, onMount, onCleanup, For } from 'solid-js';
 
-export type ToastType = "success" | "error" | "info" | "warning";
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 export interface ToastAction {
   label: string;
   onClick: () => void;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: 'primary' | 'secondary' | 'danger';
 }
 
 export interface Toast {
@@ -35,17 +35,16 @@ const ToastItem: Component<ToastItemProps> = (props) => {
   });
 
   const getToastStyles = (type: ToastType) => {
-    const baseStyles =
-      "flex items-center p-4 mb-4 text-sm rounded-lg transition-all duration-300";
+    const baseStyles = 'flex items-center p-4 mb-4 text-sm rounded-lg transition-all duration-300';
 
     switch (type) {
-      case "success":
+      case 'success':
         return `${baseStyles} bg-green-100 text-green-800 border border-green-200`;
-      case "error":
+      case 'error':
         return `${baseStyles} bg-red-100 text-red-800 border border-red-200`;
-      case "warning":
+      case 'warning':
         return `${baseStyles} bg-yellow-100 text-yellow-800 border border-yellow-200`;
-      case "info":
+      case 'info':
       default:
         return `${baseStyles} bg-blue-100 text-blue-800 border border-blue-200`;
     }
@@ -53,15 +52,15 @@ const ToastItem: Component<ToastItemProps> = (props) => {
 
   const getIcon = (type: ToastType) => {
     switch (type) {
-      case "success":
-        return "✓";
-      case "error":
-        return "✕";
-      case "warning":
-        return "⚠";
-      case "info":
+      case 'success':
+        return '✓';
+      case 'error':
+        return '✕';
+      case 'warning':
+        return '⚠';
+      case 'info':
       default:
-        return "ℹ";
+        return 'ℹ';
     }
   };
 
@@ -70,11 +69,7 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       data-toast
       class={`
         ${getToastStyles(props.toast.type)}
-        ${
-          isVisible()
-            ? "translate-x-0 opacity-100"
-            : "translate-x-full opacity-0"
-        }
+        ${isVisible() ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
       `}
       role="alert"
       aria-live="assertive"
@@ -88,13 +83,13 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       <div class="ml-3 flex items-center space-x-2">
         <For each={props.toast.actions}>
           {(action) => {
-            const variant = action.variant ?? "primary";
+            const variant = action.variant ?? 'primary';
             const baseClasses =
-              "rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2";
+              'rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2';
             const variantClasses: Record<typeof variant, string> = {
-              danger: "bg-red-600 text-white hover:bg-red-700",
-              secondary: "bg-gray-600 text-white hover:bg-gray-700",
-              primary: "bg-blue-600 text-white hover:bg-blue-700",
+              danger: 'bg-red-600 text-white hover:bg-red-700',
+              secondary: 'bg-gray-600 text-white hover:bg-gray-700',
+              primary: 'bg-blue-600 text-white hover:bg-blue-700',
             };
 
             return (
@@ -139,11 +134,7 @@ interface ToastContainerProps {
 
 export const ToastContainer: Component<ToastContainerProps> = (props) => {
   return (
-    <div
-      class="fixed top-4 right-4 z-50 max-w-sm"
-      role="region"
-      aria-label="Notifications"
-    >
+    <div class="fixed top-4 right-4 z-50 max-w-sm" role="region" aria-label="Notifications">
       <For each={props.toasts}>
         {(toast) => <ToastItem toast={toast} onRemove={props.onRemove} />}
       </For>

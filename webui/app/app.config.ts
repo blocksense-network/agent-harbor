@@ -20,18 +20,40 @@ if (process.env['QUIET_MODE'] === 'true') {
 // In development: mock server simulates the API
 const API_TARGET = process.env['API_SERVER_URL'] || 'http://localhost:3001';
 
+// Build mode: 'server' (SSR) or 'client' (CSR static build for Electron)
+const BUILD_MODE = process.env['WEBUI_BUILD_MODE'] || 'server';
+const isStaticBuild = BUILD_MODE === 'client';
+
 export default defineConfig({
-  ssr: true, // Enable SSR (default, but explicit for clarity)
-  server: {
-    preset: "node", // Use Node.js adapter for custom server needs
-    // Proxy-based architecture: SSR server acts as single entry point
-    // All /api/v1/* requests are forwarded to the access point daemon
-    // This enables SSR server to implement user access policies in the future
-  },
+  ssr: !isStaticBuild, // SSR mode for server builds, CSR for static builds
+  ...(isStaticBuild ? {
+    // For CSR builds, disable prerendering
+    server: {
+      preset: "static",
+      prerender: {
+        routes: [], // Don't prerender any routes for CSR
+      },
+    },
+  } : {
+    // For SSR builds, use Node.js adapter
+    server: {
+      preset: "node",
+      // Proxy-based architecture: SSR server acts as single entry point
+      // All /api/v1/* requests are forwarded to the access point daemon
+      // This enables SSR server to implement user access policies in the future
+    },
+  }),
   vite: {
+    // Define environment variables available at build time
+    define: {
+      'import.meta.env.VITE_STATIC_BUILD': JSON.stringify(isStaticBuild ? 'true' : 'false'),
+    },
     plugins: [
       tailwindcss() as any,
-      checker({ typescript: true, eslint: { lintCommand: 'eslint src --ext .ts,.tsx' } }) as any
+      // Disable checker for CSR builds (faster builds, linting happens separately)
+      ...(isStaticBuild ? [] : [
+        checker({ typescript: true, eslint: { lintCommand: 'eslint src --ext .ts,.tsx' } }) as any
+      ]),
     ],
     server: {
       proxy: {

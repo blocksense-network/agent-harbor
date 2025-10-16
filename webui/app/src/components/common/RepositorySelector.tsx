@@ -1,13 +1,5 @@
-import {
-  Component,
-  createResource,
-  Show,
-  For,
-  onMount,
-  onCleanup,
-  createEffect,
-} from "solid-js";
-import TomSelect from "tom-select";
+import { Component, createResource, Show, For, onMount, onCleanup, createEffect } from 'solid-js';
+import TomSelect from 'tom-select';
 
 interface Repository {
   id: string;
@@ -30,9 +22,7 @@ interface RepositorySelectorProps {
   placeholder?: string;
 }
 
-export const RepositorySelector: Component<RepositorySelectorProps> = (
-  props,
-) => {
+export const RepositorySelector: Component<RepositorySelectorProps> = (props) => {
   let selectEl!: HTMLSelectElement;
   let ts: TomSelect | undefined;
 
@@ -40,14 +30,14 @@ export const RepositorySelector: Component<RepositorySelectorProps> = (
     // In a real implementation, this would fetch from the API
     // For now, return mock data
     const mockRepos: Repository[] = [
-      { id: "1", name: "user/repo1", branch: "main", lastCommit: "abc123" },
-      { id: "2", name: "user/repo2", branch: "develop", lastCommit: "def456" },
-      { id: "3", name: "org/project1", branch: "main", lastCommit: "ghi789" },
+      { id: '1', name: 'user/repo1', branch: 'main', lastCommit: 'abc123' },
+      { id: '2', name: 'user/repo2', branch: 'develop', lastCommit: 'def456' },
+      { id: '3', name: 'org/project1', branch: 'main', lastCommit: 'ghi789' },
       {
-        id: "4",
-        name: "org/project2",
-        branch: "feature-branch",
-        lastCommit: "jkl012",
+        id: '4',
+        name: 'org/project2',
+        branch: 'feature-branch',
+        lastCommit: 'jkl012',
       },
     ];
     return mockRepos;
@@ -57,10 +47,10 @@ export const RepositorySelector: Component<RepositorySelectorProps> = (
     if (!selectEl) return;
 
     ts = new TomSelect(selectEl, {
-      valueField: "name",
-      labelField: "name",
-      searchField: ["name"],
-      placeholder: props.placeholder || "Select repository...",
+      valueField: 'name',
+      labelField: 'name',
+      searchField: ['name'],
+      placeholder: props.placeholder || 'Select repository...',
       maxOptions: 100,
       closeAfterSelect: true,
       render: {
@@ -85,7 +75,7 @@ export const RepositorySelector: Component<RepositorySelectorProps> = (
     }
 
     // Listen for changes
-    ts["on"]("change", (value: string) => {
+    ts['on']('change', (value: string) => {
       props.onChange(value);
     });
   });
@@ -106,14 +96,12 @@ export const RepositorySelector: Component<RepositorySelectorProps> = (
       ref={selectEl}
       class={props.class}
       classList={{
-        "cursor-not-allowed bg-gray-100": !!props.disabled,
+        'cursor-not-allowed bg-gray-100': !!props.disabled,
       }}
       disabled={props.disabled}
     >
       <Show when={repositories()}>
-        <For each={repositories()}>
-          {(repo) => <option value={repo.name}>{repo.name}</option>}
-        </For>
+        <For each={repositories()}>{(repo) => <option value={repo.name}>{repo.name}</option>}</For>
       </Show>
     </select>
   );

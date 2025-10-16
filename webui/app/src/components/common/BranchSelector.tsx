@@ -1,13 +1,5 @@
-import {
-  Component,
-  createResource,
-  Show,
-  For,
-  onMount,
-  onCleanup,
-  createEffect,
-} from "solid-js";
-import TomSelect from "tom-select";
+import { Component, createResource, Show, For, onMount, onCleanup, createEffect } from 'solid-js';
+import TomSelect from 'tom-select';
 
 interface BranchSelectorProps {
   repository: string; // Repository name like "user/repo"
@@ -38,26 +30,26 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
     async (_repo) => {
       // Mock branches for demo - replace with actual API call
       const mockBranches: Branch[] = [
-        { name: "main", isDefault: true },
-        { name: "develop" },
-        { name: "feature/new-ui" },
-        { name: "feature/api-improvements" },
-        { name: "bugfix/login-issue" },
-        { name: "hotfix/security-patch" },
+        { name: 'main', isDefault: true },
+        { name: 'develop' },
+        { name: 'feature/new-ui' },
+        { name: 'feature/api-improvements' },
+        { name: 'bugfix/login-issue' },
+        { name: 'hotfix/security-patch' },
       ];
 
       return mockBranches;
-    },
+    }
   );
 
   onMount(() => {
     if (!selectEl) return;
 
     ts = new TomSelect(selectEl, {
-      valueField: "name",
-      labelField: "name",
-      searchField: ["name"],
-      placeholder: "Select branch...",
+      valueField: 'name',
+      labelField: 'name',
+      searchField: ['name'],
+      placeholder: 'Select branch...',
       maxOptions: 50,
       closeAfterSelect: true,
       render: {
@@ -65,7 +57,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
           return `
             <div class="flex items-center justify-between">
               <span>${escape(data.name)}</span>
-              ${data.isDefault ? '<span class="text-xs text-gray-500 bg-gray-200 px-1 rounded">default</span>' : ""}
+              ${data.isDefault ? '<span class="text-xs text-gray-500 bg-gray-200 px-1 rounded">default</span>' : ''}
             </div>
           `;
         },
@@ -73,7 +65,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
           return `
             <div class="flex items-center justify-between">
               <span>${escape(data.name)}</span>
-              ${data.isDefault ? '<span class="text-xs text-gray-500 bg-gray-200 px-1 rounded">default</span>' : ""}
+              ${data.isDefault ? '<span class="text-xs text-gray-500 bg-gray-200 px-1 rounded">default</span>' : ''}
             </div>
           `;
         },
@@ -86,7 +78,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
     }
 
     // Listen for changes
-    ts["on"]("change", (value: string) => {
+    ts['on']('change', (value: string) => {
       props.onChange(value);
     });
   });
@@ -107,7 +99,7 @@ export const BranchSelector: Component<BranchSelectorProps> = (props) => {
       ref={selectEl}
       class={props.class}
       classList={{
-        "cursor-not-allowed bg-gray-100": !!props.disabled,
+        'cursor-not-allowed bg-gray-100': !!props.disabled,
       }}
       disabled={props.disabled}
     >
