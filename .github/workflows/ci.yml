@@ -16,149 +16,149 @@ name: CI
 
 on:
   push:
-    branches: [ main, linux-sandbox ]
+    branches: [main, linux-sandbox]
   pull_request:
-    branches: [ main, linux-sandbox ]
+    branches: [main, linux-sandbox]
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt, clippy
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-    - name: Cache Cargo dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-    - name: Check code formatting
-      run: just fmt-rust
+      - name: Check code formatting
+        run: just fmt-rust
 
-    - name: Check code with clippy
-      run: just lint-rust
+      - name: Check code with clippy
+        run: just lint-rust
 
-    - name: Check compilation
-      run: just check
+      - name: Check compilation
+        run: just check
 
-    - name: Build cgroup enforcement test binaries
-      run: just build-cgroup-tests
+      - name: Build cgroup enforcement test binaries
+        run: just build-cgroup-tests
 
-    - name: Run tests
-      run: just test-rust-verbose
+      - name: Run tests
+        run: just test-rust-verbose
 
-    - name: Build sandbox helper binary
-      run: just build-sbx-helper-release
+      - name: Build sandbox helper binary
+        run: just build-sbx-helper-release
 
   legacy-tests:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Ruby
-      uses: ruby/setup-ruby@v1
-      with:
-        ruby-version: '3.2'
+      - name: Install Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
 
-    - name: Install dependencies
-      run: |
-        gem install bundler
-        cd legacy/ruby && bundle install
+      - name: Install dependencies
+        run: |
+          gem install bundler
+          cd legacy/ruby && bundle install
 
-    - name: Run legacy tests
-      run: |
-        just legacy-test
+      - name: Run legacy tests
+        run: |
+          just legacy-test
 
   webui:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
-    # TODO: We are using Yarn PnP, so this should be updated
-    - name: Cache Node.js dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.npm
-          webui/*/node_modules
-        key: ${{ runner.os }}-node-${{ hashFiles('webui/*/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node-
+      # TODO: We are using Yarn PnP, so this should be updated
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            webui/*/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('webui/*/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-    - name: Install dependencies
-      run: just webui-install
+      - name: Install dependencies
+        run: just webui-install
 
-    - name: Lint WebUI code
-      run: just webui-lint
+      - name: Lint WebUI code
+        run: just webui-lint
 
-    - name: Type check WebUI code
-      run: just webui-type-check
+      - name: Type check WebUI code
+        run: just webui-type-check
 
-    - name: Build WebUI app
-      run: just webui-build
+      - name: Build WebUI app
+        run: just webui-build
 
-    - name: Build mock server
-      run: just webui-build-mock
+      - name: Build mock server
+        run: just webui-build-mock
 
-    - name: Install Playwright browsers
-      run: just webui-install-browsers
+      - name: Install Playwright browsers
+        run: just webui-install-browsers
 
-    - name: Run Playwright tests
-      run: just webui-test
-      env:
-        BASE_URL: http://localhost:3000
+      - name: Run Playwright tests
+        run: just webui-test
+        env:
+          BASE_URL: http://localhost:3000
 
   macos:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt, clippy
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-    - name: Cache Cargo dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-    - name: Check code formatting
-      run: just fmt-rust
+      - name: Check code formatting
+        run: just fmt-rust
 
-    - name: Check code with clippy
-      run: just lint-rust
+      - name: Check code with clippy
+        run: just lint-rust
 
-    - name: Check compilation
-      run: just check
+      - name: Check compilation
+        run: just check
 
-    - name: Build AgentFS Rust libraries
-      run: just build-agentfs-rust-libs
+      - name: Build AgentFS Rust libraries
+        run: just build-agentfs-rust-libs
 
-    - name: Build and validate AgentHarbor macOS app
-      run: just test-agent-harbor
+      - name: Build and validate AgentHarbor macOS app
+        run: just test-agent-harbor
