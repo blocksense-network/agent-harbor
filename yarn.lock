@@ -3038,7 +3038,7 @@ __metadata:
     electron: "npm:33.4.11"
     electron-builder: "npm:^25.1.8"
     electron-store: "npm:^10.0.0"
-    eslint: "npm:^9.17.0"
+    eslint: "npm:9.37.0"
     playwright: "npm:^1.49.0"
     prettier: "npm:^3.4.2"
     typescript: "npm:^5.7.2"
@@ -3074,7 +3074,7 @@ __metadata:
     "@axe-core/playwright": "npm:^4.10.2"
     "@playwright/test": "npm:1.52.0"
     "@types/node": "npm:^24.6.2"
-    eslint: "npm:^9.36.0"
+    eslint: "npm:9.37.0"
     playwright: "npm:1.52.0"
     prettier: "npm:^3.6.2"
     typescript: "npm:^5.9.2"
@@ -3091,7 +3091,7 @@ __metadata:
     "@types/morgan": "npm:^1.9.9"
     "@types/node": "npm:^24.6.2"
     cors: "npm:^2.8.5"
-    eslint: "npm:^9.15.0"
+    eslint: "npm:9.37.0"
     express: "npm:^5.1.0"
     helmet: "npm:^8.1.0"
     morgan: "npm:^1.10.1"
@@ -3118,7 +3118,7 @@ __metadata:
     "@typescript-eslint/eslint-plugin": "npm:^8.15.0"
     "@typescript-eslint/parser": "npm:^8.15.0"
     cheerio: "npm:^1.1.2"
-    eslint: "npm:^9.15.0"
+    eslint: "npm:9.37.0"
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-better-tailwindcss: "npm:^3.7.9"
     eslint-plugin-jsx-a11y: "npm:^6.10.2"
@@ -5665,7 +5665,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint@npm:^9.15.0, eslint@npm:^9.17.0, eslint@npm:^9.36.0, eslint@npm:^9.37.0":
+"eslint@npm:9.37.0":
   version: 9.37.0
   resolution: "eslint@npm:9.37.0"
   dependencies:
@@ -10526,7 +10526,7 @@ __metadata:
     "@eslint/js": "npm:^9.36.0"
     "@typescript-eslint/eslint-plugin": "npm:^8.44.0"
     "@typescript-eslint/parser": "npm:^8.44.0"
-    eslint: "npm:^9.36.0"
+    eslint: "npm:9.37.0"
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-prettier: "npm:^5.5.4"
     knip: "npm:^5.64.1"
@@ -12480,7 +12480,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "webui-workspace@workspace:."
   dependencies:
-    eslint: "npm:^9.37.0"
+    eslint: "npm:9.37.0"
     knip: "npm:^5.64.1"
     solid-js: "npm:^1.9.9"
     typescript: "npm:^5.9.3"
