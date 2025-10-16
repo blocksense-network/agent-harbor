@@ -44,6 +44,45 @@ Codex CLI can be started with a specific task prompt in several ways:
    codex --sandbox workspace-write "Modify these files safely"
    ```
 
+### How to skip the initial onboarding screens on first launch of the agent?
+
+To bypass Codex CLI's initial setup and authentication prompts for automated testing and programmatic integration:
+
+1. **Create `.config/codex/config.toml` file** in HOME directory:
+   ```toml
+   [user]
+   id = "test-user-id"
+
+   [api]
+   # API configuration will be overridden by environment variables
+   ```
+
+2. **Set environment variables** for API access:
+   ```bash
+   export OPENAI_API_KEY="your-api-key"
+   export OPENAI_BASE_URL="https://api.openai.com/v1"  # or custom server
+   ```
+
+3. **For custom HOME directory** (useful for isolated testing):
+   ```bash
+   export HOME=/path/to/custom/home
+   # Create .config/codex/config.toml as above
+   codex exec "Your prompt here"
+   ```
+
+4. **Use non-interactive mode** to avoid any prompts:
+   ```bash
+   codex exec "Your prompt here"
+   ```
+
+**Key commands for automation:**
+- `codex exec`: Non-interactive execution mode
+- `--skip-git-repo-check`: Skip git repository verification (required for temporary workspaces)
+- `--yes` or `-y`: Auto-confirm prompts (if supported by the version)
+- `--sandbox`: Control file operation permissions
+
+**Note:** Codex CLI is generally designed for programmatic use and has minimal onboarding requirements compared to interactive agents. The `--skip-git-repo-check` flag is essential when working with temporary directories or non-git workspaces.
+
 ### Checkpointing (point-in-time restore of chat + filesystem)
 
 There is no evidence of an official checkpointing feature in the Codex CLI that restores both chat and filesystem to a specific moment. Some materials reference applying diffs, but this is not equivalent to AH’s checkpointing requirement.

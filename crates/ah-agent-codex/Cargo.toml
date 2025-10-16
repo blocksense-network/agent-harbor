@@ -1,0 +1,17 @@
+[package]
+name = "ah-agent-codex"
+version = "0.1.0"
+edition = "2021"
+description = "Codex CLI agent facade for Agent Harbor"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Re-export the monolith with codex feature enabled
+ah-agents = { path = "../ah-agents", features = ["codex"] }
+
+# Re-export common dependencies
+async-trait = "0.1"
+
+[dependencies.tokio]
+workspace = true
+features = ["process", "io-util"]

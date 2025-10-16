@@ -6,7 +6,7 @@ timeline:
   - think:
       - [200, "Testing error handling and recovery in the recording system."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "valid.txt"
         text: "This operation should succeed."
@@ -15,7 +15,7 @@ timeline:
   - assistant:
       - [100, "First successful operation."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "another.txt"
         text: "This should also work even if IPC has issues."
@@ -24,7 +24,7 @@ timeline:
   - assistant:
       - [100, "Second operation - IPC issues should not block file operations."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "recovery.txt"
         text: "System should recover gracefully from any transient errors."

@@ -31,7 +31,7 @@ timeline:
 
   # Agent reads the current code
   - agentToolUse:
-      toolName: "read_file"
+      toolName: "readFile"
       args:
         path: "calculator.py"
       result: "File read successfully"
@@ -44,7 +44,7 @@ timeline:
 
   # Agent implements the fix
   - agentToolUse:
-      toolName: "run_command"
+      toolName: "runCmd"
       args:
         command: "cd /workspace && python -c \"import calculator; print('Testing current divide function...'); calculator.divide(10, 2); print('10/2 =', calculator.divide(10, 2))\""
         cwd: "."
@@ -58,7 +58,7 @@ timeline:
 
   # Agent tests division by zero and encounters the error
   - agentToolUse:
-      toolName: "run_command"
+      toolName: "runCmd"
       args:
         command: "cd /workspace && python -c \"import calculator; calculator.divide(10, 0)\" 2>&1 || echo 'Division by zero caused an error'"
         cwd: "."
@@ -82,7 +82,7 @@ timeline:
 
   # Agent implements the fix
   - agentToolUse:
-      toolName: "run_command"
+      toolName: "runCmd"
       args:
         command: |
           cd /workspace && python -c "
@@ -113,7 +113,7 @@ timeline:
 
   # Agent tests the fix
   - agentToolUse:
-      toolName: "run_command"
+      toolName: "runCmd"
       args:
         command: "cd /workspace && python -c \"import calculator; print('Testing normal division:'); print('10/2 =', calculator.divide(10, 2)); print('Testing division by zero:'); calculator.divide(10, 0)\" 2>&1 || echo 'Error caught successfully'"
         cwd: "."
@@ -122,7 +122,7 @@ timeline:
 
   # Agent reads the updated file to verify the changes
   - agentToolUse:
-      toolName: "read_file"
+      toolName: "readFile"
       args:
         path: "calculator.py"
       result: "File read successfully"
@@ -130,7 +130,7 @@ timeline:
 
   # Agent runs comprehensive tests
   - agentToolUse:
-      toolName: "run_command"
+      toolName: "runCmd"
       args:
         command: |
           cd /workspace && python -c "
@@ -160,7 +160,7 @@ timeline:
 
   # Agent creates a proper test file
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "test_calculator.py"
         text: |
@@ -201,7 +201,7 @@ timeline:
 
   # Agent runs the test suite
   - agentToolUse:
-      toolName: "run_command"
+      toolName: "runCmd"
       args:
         command: "cd /workspace && python test_calculator.py"
         cwd: "."

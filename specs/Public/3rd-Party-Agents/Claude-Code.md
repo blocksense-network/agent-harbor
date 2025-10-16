@@ -42,6 +42,50 @@ Claude Code can be started with a specific task prompt in several ways:
    claude --model sonnet "Refactor this legacy code"
    ```
 
+### How to skip the initial onboarding screens on first launch of the agent?
+
+To bypass Claude Code's initial onboarding and authentication prompts (essential for automated testing and programmatic integration), you need to set up a minimal configuration in the agent's HOME directory:
+
+1. **Create `.claude.json` file** in HOME directory with basic user configuration:
+   ```json
+   {
+     "installMethod": "test",
+     "autoUpdates": false,
+     "firstStartTime": "2025-09-23T00:00:00.000Z",
+     "userID": "test-user-id",
+     "projects": {}
+   }
+   ```
+
+2. **Create `.claude/settings.json` file** for session-specific settings:
+   ```json
+   {
+     "hooks": {}
+   }
+   ```
+
+3. **Set environment variables** to provide API credentials and skip interactive prompts:
+   ```bash
+   export ANTHROPIC_API_KEY="your-api-key"
+   # Use --dangerously-skip-permissions to bypass permission prompts
+   claude --dangerously-skip-permissions "Your prompt here"
+   ```
+
+4. **For custom HOME directory** (useful for isolated testing):
+   ```bash
+   # Set up config files in custom HOME
+   export HOME=/path/to/custom/home
+   # Create .claude.json and .claude/settings.json as above
+   claude --dangerously-skip-permissions "Your prompt here"
+   ```
+
+**Key flags for automation:**
+- `--dangerously-skip-permissions`: Bypass file operation permission prompts
+- `--print`: Non-interactive output mode (prints results without TUI)
+- `--yes`: Automatically confirm prompts (when supported)
+
+**Note:** The `--dangerously-skip-permissions` flag should only be used in controlled testing environments, as it allows Claude to execute file operations without user confirmation.
+
 ### Checkpointing (point-in-time restore of chat + filesystem)
 
 Claude Code does not provide an official checkpointing mechanism that restores both chat and filesystem state to a specific moment in time. There is no built‑in facility to create file‑system snapshots or to roll back workspace changes via a checkpoint identifier.

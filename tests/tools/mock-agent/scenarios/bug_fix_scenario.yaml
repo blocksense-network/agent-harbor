@@ -5,7 +5,7 @@ timeline:
   - think:
       - [500, "Processing request for bug_fix_scenario"]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "test.txt"
         text: "Test content for bug_fix_scenario"

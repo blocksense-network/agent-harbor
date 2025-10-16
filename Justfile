@@ -30,7 +30,7 @@ build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-over
 
 # Run Rust tests
 test-rust: build-rust-test-binaries
-    cargo nextest run --workspace
+    cargo nextest run --workspace --final-status-level skip
 
 # Run Rust tests with verbose output
 test-rust-verbose: build-rust-test-binaries

@@ -6,7 +6,7 @@ timeline:
   - think:
       - [500, "I will create a Python file and verify that filesystem snapshots are being captured during recording."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "main.py"
         text: |
@@ -20,7 +20,7 @@ timeline:
   - assistant:
       - [300, "Created main.py. A filesystem snapshot should have been captured via IPC."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "test_main.py"
         text: |
@@ -38,7 +38,7 @@ timeline:
   - assistant:
       - [400, "Created test_main.py. Another snapshot should have been captured."]
   - agentToolUse:
-      toolName: "append_file"
+      toolName: "appendFile"
       args:
         path: "main.py"
         text: |
@@ -50,7 +50,7 @@ timeline:
   - assistant:
       - [300, "Added farewell function to main.py. A third snapshot should be in the recording."]
   - agentToolUse:
-      toolName: "replace_in_file"
+      toolName: "replaceInFile"
       args:
         path: "main.py"
         old_str: 'print(greet("World"))'

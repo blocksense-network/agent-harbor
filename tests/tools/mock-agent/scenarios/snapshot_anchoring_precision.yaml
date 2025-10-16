@@ -6,7 +6,7 @@ timeline:
   - think:
       - [100, "Testing precise snapshot anchoring with multiple operations."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "config.json"
         text: |
@@ -19,7 +19,7 @@ timeline:
   - assistant:
       - [50, "First checkpoint - initial config."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "app.py"
         text: |
@@ -33,7 +33,7 @@ timeline:
   - assistant:
       - [50, "Second checkpoint - app loader."]
   - agentToolUse:
-      toolName: "append_file"
+      toolName: "appendFile"
       args:
         path: "config.json"
         text: |
@@ -44,7 +44,7 @@ timeline:
   - assistant:
       - [50, "Third checkpoint - configuration updated."]
   - agentToolUse:
-      toolName: "replace_in_file"
+      toolName: "replaceInFile"
       args:
         path: "config.json"
         old_str: '"version": "1.0.0"'

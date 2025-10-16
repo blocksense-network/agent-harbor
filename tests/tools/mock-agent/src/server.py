@@ -615,7 +615,14 @@ class MockAPIServer(HTTPServer):
         """Load the tools profile for the specified agent type."""
         # Tool profiles empirically determined through testing
         self.valid_tools = {
-            "codex": set(),  # TODO: Test with actual Codex CLI to verify these tools
+            "codex": {
+                # Codex tool names (empirical verification needed)
+                "write_file",
+                "read_file",
+                "run_command",
+                "append_file",
+                "replace_in_file",
+            },
             "claude": {
                 # Updated to match actual Claude 2.0.5 tool definitions
                 "Bash",              # Terminal command execution
@@ -646,16 +653,32 @@ class MockAPIServer(HTTPServer):
         # Mappings are determined through empirical testing with strict-tools-validation
         self.tools_mapping = {
                     "codex": {
-                        # Codex mappings (needs empirical verification)
+                        # Codex mappings (needs empirical verification with actual Codex CLI)
+                        # Canonical tool names from Scenario Format
+                        "writeFile": {"name": "write_file", "direct": True, "args_map": {"path": "path", "content": "text"}},
+                        "readFile": {"name": "read_file", "direct": True, "args_map": {"path": "path"}},
+                        "runCmd": {"name": "run_command", "direct": True, "args_map": {"cmd": "command", "cwd": "cwd"}},
+                        "appendFile": {"name": "append_file", "direct": True, "args_map": {"path": "path", "content": "text"}},
+                        "replaceInFile": {"name": "replace_in_file", "direct": True, "args_map": {"path": "path", "old_string": "old", "new_string": "new"}},
+
+                        # Backward compatibility for old playbook tool names (snake_case)
+                        "write_file": {"name": "write_file", "direct": True, "args_map": {"path": "path", "text": "text"}},
+                        "read_file": {"name": "read_file", "direct": True, "args_map": {"path": "path"}},
+                        "run_command": {"name": "run_command", "direct": True, "args_map": {"command": "command", "cwd": "cwd"}},
+                        "append_file": {"name": "append_file", "direct": True, "args_map": {"path": "path", "text": "text"}},
+                        "replace_in_file": {"name": "replace_in_file", "direct": True, "args_map": {"path": "path", "old": "old", "new": "new"}},
                     },
                     "claude": {
                         # Claude empirically verified tools - updated to match Claude 2.0.5 actual tool definitions
+                        # Canonical tool names from Scenario Format
                         "runCmd": {"name": "Bash", "direct": True, "args_map": {"cmd": "command", "cwd": "cwd", "timeout": "timeout", "description": "description", "run_in_background": "run_in_background"}},
                         "grep": {"name": "Grep", "direct": True, "args_map": {"pattern": "pattern", "path": "path", "glob": "glob", "output_mode": "output_mode", "-B": "-B", "-A": "-A", "-C": "-C", "-n": "-n", "-i": "-i", "type": "type", "head_limit": "head_limit", "multiline": "multiline"}},
                         "readFile": {"name": "Read", "direct": True, "args_map": {"path": "file_path", "offset": "offset", "limit": "limit"}},
-                        "listDir": {"name": "Glob", "direct": True, "args_map": {"pattern": "pattern", "path": "path"}},
-                        "editFile": {"name": "Edit", "direct": True, "args_map": {"path": "file_path", "old_string": "old_string", "new_string": "new_string", "replace_all": "replace_all"}},
                         "writeFile": {"name": "Write", "direct": True, "args_map": {"path": "file_path", "content": "content"}},
+                        "editFile": {"name": "Edit", "direct": True, "args_map": {"path": "file_path", "old_string": "old_string", "new_string": "new_string", "replace_all": "replace_all"}},
+                        "appendFile": {"name": "Edit", "direct": True, "args_map": {"path": "file_path"}},  # Note: Claude doesn't have native append
+                        "replaceInFile": {"name": "Edit", "direct": True, "args_map": {"path": "file_path", "old_string": "old_string", "new_string": "new_string"}},
+                        "listDir": {"name": "Glob", "direct": True, "args_map": {"pattern": "pattern", "path": "path"}},
                         "task": {"name": "Task", "direct": True, "args_map": {"description": "description", "prompt": "prompt", "subagent_type": "subagent_type"}},
                         "webFetch": {"name": "WebFetch", "direct": True, "args_map": {"url": "url", "prompt": "prompt"}},
                         "webSearch": {"name": "WebSearch", "direct": True, "args_map": {"query": "query", "allowed_domains": "allowed_domains", "blocked_domains": "blocked_domains"}},
@@ -665,6 +688,13 @@ class MockAPIServer(HTTPServer):
                         "bashOutput": {"name": "BashOutput", "direct": True, "args_map": {"bash_id": "bash_id", "filter": "filter"}},
                         "killShell": {"name": "KillShell", "direct": True, "args_map": {"shell_id": "shell_id"}},
                         "slashCommand": {"name": "SlashCommand", "direct": True, "args_map": {"command": "command"}},
+
+                        # Backward compatibility mappings for old playbook tool names (snake_case)
+                        "write_file": {"name": "Write", "direct": True, "args_map": {"path": "file_path", "text": "content"}},
+                        "read_file": {"name": "Read", "direct": True, "args_map": {"path": "file_path"}},
+                        "append_file": {"name": "Edit", "direct": True, "args_map": {"path": "file_path"}},
+                        "replace_in_file": {"name": "Edit", "direct": True, "args_map": {"path": "file_path", "old_string": "old", "new_string": "new"}},
+                        "run_command": {"name": "Bash", "direct": True, "args_map": {"command": "command", "cwd": "cwd"}},
                     },
                     "gemini": {
                         # Gemini mappings (needs empirical verification)

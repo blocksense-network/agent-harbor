@@ -6,7 +6,7 @@ timeline:
   - think:
       - [300, "I'll create a simple calculator module."]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: "writeFile"
       args:
         path: "calculator.py"
         text: |
@@ -20,7 +20,7 @@ timeline:
   - assistant:
       - [200, "Created basic calculator functions."]
   - agentToolUse:
-      toolName: "append_file"
+      toolName: "appendFile"
       args:
         path: "calculator.py"
         text: |
