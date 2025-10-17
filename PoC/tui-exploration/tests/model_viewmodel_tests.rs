@@ -41,11 +41,7 @@ mod viewmodel_tests {
         // Start with focus on draft task (initial state)
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
 
-        // Enter draft editing mode (simulate clicking on draft or pressing Enter)
-        vm.focus_element = FocusElement::TaskDescription;
-        assert_eq!(vm.focus_element, FocusElement::TaskDescription);
-
-        // Tab forward through controls
+        // Tab from draft task should start cycling through controls at RepositorySelector
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
 
@@ -58,9 +54,9 @@ mod viewmodel_tests {
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, FocusElement::GoButton);
 
-        // Next tab should cycle back to TaskDescription
+        // Next tab should cycle back to RepositorySelector
         assert!(vm.focus_next_control());
-        assert_eq!(vm.focus_element, FocusElement::TaskDescription);
+        assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
     }
 
     #[test]
@@ -106,7 +102,7 @@ mod viewmodel_tests {
 
         // Check that the draft description was updated
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.task.description, "Hello");
+            assert_eq!(card.description.lines().join("\n"), "Hello");
         } else {
             panic!("Expected draft card");
         }
@@ -127,18 +123,18 @@ mod viewmodel_tests {
 
         // Check initial state
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.task.description, "Hello");
+            assert_eq!(card.description.lines().join("\n"), "Hello");
         }
 
         // Backspace should remove characters
         assert!(vm.handle_backspace());
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.task.description, "Hell");
+            assert_eq!(card.description.lines().join("\n"), "Hell");
         }
 
         assert!(vm.handle_backspace());
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.task.description, "Hel");
+            assert_eq!(card.description.lines().join("\n"), "Hel");
         }
     }
 
@@ -157,14 +153,14 @@ mod viewmodel_tests {
 
         // Check initial state
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.task.description, "Line ");
+            assert_eq!(card.description.lines().join("\n"), "Line ");
         }
 
         // Shift+Enter should add a newline
         assert!(vm.handle_enter(true)); // true = shift modifier
 
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.task.description, "Line \n");
+            assert_eq!(card.description.lines().join("\n"), "Line \n");
         } else {
             panic!("Expected draft card");
         }
@@ -246,7 +242,7 @@ mod viewmodel_tests {
 
         // Clear the models to make validation fail
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.task.models.clear();
+            card.models.clear();
         }
 
         vm.focus_element = FocusElement::GoButton;

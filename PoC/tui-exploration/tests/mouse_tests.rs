@@ -1,5 +1,5 @@
 use tui_exploration::view_model::{*, create_draft_card_from_task};
-use ah_domain_types::{DraftTask, TaskState, DeliveryStatus, TaskExecution};
+use ah_domain_types::{DraftTask, TaskState, DeliveryStatus, TaskExecution, SelectedModel};
 use crossterm::event::{MouseEvent, MouseEventKind, MouseButton};
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -339,6 +339,116 @@ fn clicking_task_card_focuses_it() {
     // Should focus on the second task card (array index 1)
     assert_eq!(vm.focus_element, FocusElement::ExistingTask(1));
     assert_eq!(vm.selected_card, 2);
+}
+
+#[test]
+fn down_arrow_from_draft_goes_to_filter_separator() {
+    // This test verifies that pressing Down arrow from draft card navigates to FilterBarSeparator
+    let mut vm = create_test_view_model();
+
+    // Add a dummy task card so navigation logic sees that there are tasks
+    vm.task_cards.push(TaskCardViewModel {
+        id: "dummy".to_string(),
+        task: ah_domain_types::TaskExecution {
+            id: "dummy".to_string(),
+            repository: "dummy".to_string(),
+            branch: "dummy".to_string(),
+            agents: vec![],
+            state: ah_domain_types::TaskState::Completed,
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            activity: vec![],
+            delivery_status: vec![],
+        },
+        title: "dummy".to_string(),
+        metadata: tui_exploration::view_model::TaskCardMetadata {
+            repository: "dummy".to_string(),
+            branch: "dummy".to_string(),
+            models: vec![],
+            state: ah_domain_types::TaskState::Completed,
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            delivery_indicators: "".to_string(),
+        },
+        height: 5,
+        card_type: tui_exploration::view_model::TaskCardType::Completed { delivery_indicators: "".to_string() },
+        focus_element: FocusElement::ExistingTask(0),
+    });
+
+    vm.focus_element = FocusElement::DraftTask(0); // Start with draft focused
+
+    // Simulate Down arrow key
+    let key_event = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Down,
+        crossterm::event::KeyModifiers::empty(),
+    );
+
+    let handled = vm.handle_key_event(key_event);
+    assert!(handled);
+    // Should navigate to FilterBarSeparator (existing tasks separator)
+    assert_eq!(vm.focus_element, FocusElement::FilterBarSeparator);
+}
+
+#[test]
+fn tab_from_draft_cycles_through_controls() {
+    // This test verifies that pressing Tab while draft card is selected cycles through controls
+    let mut vm = create_test_view_model();
+    vm.focus_element = FocusElement::DraftTask(0); // Start with draft focused
+
+    // Test MoveToNextField operation directly (Tab should trigger this)
+    use tui_exploration::settings::KeyboardOperation;
+
+    // First Tab should move to RepositorySelector
+    let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
+    assert!(handled);
+    assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+
+    // Second Tab should move to BranchSelector
+    let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
+    assert!(handled);
+    assert_eq!(vm.focus_element, FocusElement::BranchSelector);
+
+    // Third Tab should move to ModelSelector
+    let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
+    assert!(handled);
+    assert_eq!(vm.focus_element, FocusElement::ModelSelector);
+
+    // Fourth Tab should move to GoButton
+    let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
+    assert!(handled);
+    assert_eq!(vm.focus_element, FocusElement::GoButton);
+
+    // Fifth Tab should cycle back to RepositorySelector
+    let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
+    assert!(handled);
+    assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+}
+
+#[test]
+fn typing_text_while_draft_focused_edits_description() {
+    // This test verifies that typing text while draft card is selected edits the description
+    let mut vm = create_test_view_model();
+    vm.focus_element = FocusElement::DraftTask(0); // Start with draft focused
+
+    // Type some characters
+    let handled = vm.handle_char_input('H');
+    assert!(handled);
+    let handled = vm.handle_char_input('e');
+    assert!(handled);
+    let handled = vm.handle_char_input('l');
+    assert!(handled);
+    let handled = vm.handle_char_input('l');
+    assert!(handled);
+    let handled = vm.handle_char_input('o');
+    assert!(handled);
+
+    // Check that the description was updated
+    assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "Hello");
+    assert_eq!(vm.draft_cards[0].save_state, DraftSaveState::Unsaved);
+
+    // Test backspace
+    let handled = vm.handle_backspace();
+    assert!(handled);
+    assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "Hell");
+    assert_eq!(vm.draft_cards[0].save_state, DraftSaveState::Unsaved);
 }
 
 #[test]

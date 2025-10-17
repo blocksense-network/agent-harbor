@@ -231,8 +231,8 @@ mod navigation_tests {
 
         // ViewModel creates 1 draft card initially with ID "current"
         assert_eq!(vm.draft_cards.len(), 1);
-        assert_eq!(vm.draft_cards[0].task.id, "current");
-        assert_eq!(vm.draft_cards[0].task.description, "");
+        assert_eq!(vm.draft_cards[0].id, "current");
+        assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "");
     }
 
     #[test]

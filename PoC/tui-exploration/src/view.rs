@@ -427,7 +427,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
         if let Some(card) = view_model.draft_cards.first() {
             if let Some(textarea_area) = find_textarea_area_for_card(view_model, card, tasks_area) {
                 // Use simplified cursor positioning logic
-                let (cursor_row, cursor_col) = card.textarea.cursor();
+                let (cursor_row, cursor_col) = card.description.cursor();
                 let caret_x = textarea_area.x.saturating_add(cursor_col as u16).min(textarea_area.x + textarea_area.width - 1);
                 let caret_y = textarea_area.y.saturating_add(cursor_row as u16).min(textarea_area.y + textarea_area.height - 1);
                 frame.set_cursor_position(ratatui::layout::Position::new(caret_x, caret_y));
@@ -605,7 +605,7 @@ fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &DraftCard
     let padding_total = 2; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING
     let available_content = content_height.saturating_sub(button_height + separator_height);
     let available_inner = available_content.saturating_sub(padding_total).max(1);
-    let desired_lines = card.textarea.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
+    let desired_lines = card.description.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
     let visible_lines = desired_lines.min(available_inner).max(1);
 
     let textarea_inner_height = visible_lines as u16;
@@ -666,7 +666,7 @@ fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &DraftCard
     frame.render_widget(Paragraph::new("").style(padding_style), right_padding_area);
 
     // Render the textarea
-    frame.render_widget(&card.textarea, textarea_area);
+    frame.render_widget(&card.description, textarea_area);
 
     // Store textarea area for caret positioning on mouse clicks
     // Temporarily disabled to avoid borrowing issues - will be re-enabled later
@@ -685,22 +685,22 @@ fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &DraftCard
     }
 
     // Render buttons
-    let repo_button_text = if card.task.repository.is_empty() {
+    let repo_button_text = if card.repository.is_empty() {
         "📁 Repository".to_string()
     } else {
-        format!("📁 {}", card.task.repository)
+        format!("📁 {}", card.repository)
     };
 
-    let branch_button_text = if card.task.branch.is_empty() {
+    let branch_button_text = if card.branch.is_empty() {
         "🌿 Branch".to_string()
     } else {
-        format!("🌿 {}", card.task.branch)
+        format!("🌿 {}", card.branch)
     };
 
-    let models_button_text = if card.task.models.is_empty() {
+    let models_button_text = if card.models.is_empty() {
         "🤖 Models".to_string()
     } else {
-        format!("🤖 {} model(s)", card.task.models.len())
+        format!("🤖 {} model(s)", card.models.len())
     };
 
     let go_button_text = "⏎ Go".to_string();

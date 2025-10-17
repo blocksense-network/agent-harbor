@@ -58,6 +58,7 @@ use crate::Settings;
 use crate::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult, LogLevel, ToolStatus};
 use crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
 use futures::stream::StreamExt;
+use ratatui::style::{Style, Modifier};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use crate::settings::{KeyboardOperation, KeyboardShortcut, KeyMatcher};
@@ -82,7 +83,11 @@ impl ViewModel {
                 self.focus_element = FocusElement::GoButton;
             }
             FocusElement::GoButton => {
-                self.focus_element = FocusElement::TaskDescription;
+                self.focus_element = FocusElement::RepositorySelector; // Cycle back to start
+            }
+            FocusElement::DraftTask(_) => {
+                // When on a draft task, Tab should start cycling through controls
+                self.focus_element = FocusElement::RepositorySelector;
             }
             // For other elements, cycle through basic navigation
             FocusElement::SettingsButton => {
@@ -121,6 +126,11 @@ impl ViewModel {
             FocusElement::RepositorySelector => {
                 self.focus_element = FocusElement::TaskDescription;
             }
+            FocusElement::DraftTask(_) => {
+                // When on a draft task, Tab should start cycling through controls
+                println!("Matched DraftTask case");
+                self.focus_element = FocusElement::RepositorySelector;
+            }
             // For other elements, cycle through basic navigation
             FocusElement::SettingsButton => {
                 if !self.task_cards.is_empty() {
@@ -143,12 +153,30 @@ impl ViewModel {
         // Allow text input when focused on draft-related elements
         match self.focus_element {
             FocusElement::TaskDescription | FocusElement::RepositorySelector |
-            FocusElement::BranchSelector | FocusElement::ModelSelector | FocusElement::GoButton => {
-                // For now, we only support editing the description when focused on TaskDescription
+            FocusElement::BranchSelector | FocusElement::ModelSelector | FocusElement::GoButton |
+            FocusElement::DraftTask(_) => {
+                // Support editing the description when focused on TaskDescription or any DraftTask
                 if let FocusElement::TaskDescription = self.focus_element {
                     // Get the first (and currently only) draft card
                     if let Some(card) = self.draft_cards.get_mut(0) {
-                        card.task.description.push(ch);
+                        // Feed the character to the textarea widget
+                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                        let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
+                        card.description.input(key_event);
+
+                        card.save_state = DraftSaveState::Unsaved;
+                        // Reset auto-save timer
+                        card.auto_save_timer = Some(std::time::Instant::now());
+                        return true;
+                    }
+                } else if let FocusElement::DraftTask(idx) = self.focus_element {
+                    // When a draft task is focused, edit its description
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        // Feed the character to the textarea widget
+                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                        let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
+                        card.description.input(key_event);
+
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
                         card.auto_save_timer = Some(std::time::Instant::now());
@@ -163,17 +191,36 @@ impl ViewModel {
 
     /// Handle backspace in focused text areas
     pub fn handle_backspace(&mut self) -> bool {
-        if let FocusElement::TaskDescription = self.focus_element {
-            // Get the first (and currently only) draft card
-            if let Some(card) = self.draft_cards.get_mut(0) {
-                if !card.task.description.is_empty() {
-                    card.task.description.pop();
+        match self.focus_element {
+            FocusElement::TaskDescription => {
+                // Get the first (and currently only) draft card
+                if let Some(card) = self.draft_cards.get_mut(0) {
+                    // Feed backspace to the textarea widget
+                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                    let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                    card.description.input(key_event);
+
                     card.save_state = DraftSaveState::Unsaved;
                     // Reset auto-save timer
                     card.auto_save_timer = Some(std::time::Instant::now());
                     return true;
                 }
             }
+            FocusElement::DraftTask(idx) => {
+                // When a draft task is focused, edit its description
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    // Feed backspace to the textarea widget
+                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                    let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                    card.description.input(key_event);
+
+                    card.save_state = DraftSaveState::Unsaved;
+                    // Reset auto-save timer
+                    card.auto_save_timer = Some(std::time::Instant::now());
+                    return true;
+                }
+            }
+            _ => {}
         }
         false
     }
@@ -186,7 +233,11 @@ impl ViewModel {
                     // Shift+Enter: add newline to description
                     // Get the first (and currently only) draft card
                     if let Some(card) = self.draft_cards.get_mut(0) {
-                        card.task.description.push('\n');
+                        // Feed enter to the textarea widget
+                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                        let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+                        card.description.input(key_event);
+
                         card.save_state = DraftSaveState::Unsaved;
                         card.auto_save_timer = Some(std::time::Instant::now());
                         return true;
@@ -225,11 +276,11 @@ impl ViewModel {
         // Get the first (and currently only) draft card
         if let Some(card) = self.draft_cards.get(0) {
             // Validate that description and models are provided
-            if card.task.description.trim().is_empty() {
+            if card.description.lines().join("\n").trim().is_empty() {
                 self.status_bar.error_message = Some("Task description is required".to_string());
                 return false; // Validation failed
             }
-            if card.task.models.is_empty() {
+            if card.models.is_empty() {
                 self.status_bar.error_message = Some("At least one AI model must be selected".to_string());
                 return false; // Validation failed
             }
@@ -272,9 +323,9 @@ impl ViewModel {
                 let new_draft = DraftTask {
                     id: format!("draft_{}", chrono::Utc::now().timestamp()),
                     description: String::new(),
-                    repository: current_card.task.repository.clone(),
-                    branch: current_card.task.branch.clone(),
-                    models: current_card.task.models.clone(),
+                    repository: current_card.repository.clone(),
+                    branch: current_card.branch.clone(),
+                    models: current_card.models.clone(),
                     created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 };
 
@@ -584,11 +635,14 @@ pub struct TaskCardMetadata {
 #[derive(Debug, Clone)] // PartialEq removed due to TextArea
 pub struct DraftCardViewModel {
     pub id: String, // Unique identifier for the draft card
-    pub task: DraftTask, // Domain object
+    pub repository: String, // Repository name
+    pub branch: String, // Branch name
+    pub models: Vec<SelectedModel>, // Selected models
+    pub created_at: String, // Creation timestamp
     pub height: u16,
     pub controls: DraftControlsViewModel,
     pub save_state: DraftSaveState,
-    pub textarea: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
+    pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
     pub focus_element: FocusElement, // Current focus within this card
     pub auto_save_timer: Option<std::time::Instant>, // Timer for auto-save functionality
 }
@@ -1056,7 +1110,7 @@ impl ViewModel {
     }
 
     /// Handle a KeyboardOperation with the original KeyEvent context
-    fn handle_keyboard_operation(&mut self, operation: KeyboardOperation, key: &KeyEvent) -> bool {
+    pub fn handle_keyboard_operation(&mut self, operation: KeyboardOperation, key: &KeyEvent) -> bool {
 
         match operation {
             KeyboardOperation::MoveToPreviousLine => {
@@ -1066,9 +1120,18 @@ impl ViewModel {
                 }
             }
             KeyboardOperation::MoveToNextLine => {
+                // Always navigate between UI elements (Down arrow behavior)
+                self.navigate_down_hierarchy()
+            }
+            KeyboardOperation::MoveToNextField => {
+                // Tab navigation through controls (when appropriate)
                 match self.focus_element {
-                    FocusElement::DraftTask(_) => self.focus_next_control(),
-                    _ => self.navigate_down_hierarchy(),
+                    FocusElement::DraftTask(_) | FocusElement::TaskDescription |
+                    FocusElement::RepositorySelector | FocusElement::BranchSelector |
+                    FocusElement::ModelSelector | FocusElement::GoButton => {
+                        self.focus_next_control()
+                    }
+                    _ => false,
                 }
             }
             KeyboardOperation::DeleteCharacterBackward => {
@@ -1142,12 +1205,12 @@ impl ViewModel {
             // Use textarea's built-in cursor positioning
             // This is a simplified implementation - a full implementation would need
             // to calculate line/column from the click coordinates
-            let line_index = relative_y.min(card.textarea.lines().len().saturating_sub(1) as u16) as usize;
-            let line = card.textarea.lines().get(line_index).map_or("", |s| s);
+            let line_index = relative_y.min(card.description.lines().len().saturating_sub(1) as u16) as usize;
+            let line = card.description.lines().get(line_index).map_or("", |s| s);
             let col_index = relative_x.min(line.chars().count() as u16) as usize;
 
             // Set cursor position in textarea
-            card.textarea.move_cursor(tui_textarea::CursorMove::Jump(line_index as u16, col_index as u16));
+            card.description.move_cursor(tui_textarea::CursorMove::Jump(line_index as u16, col_index as u16));
         }
 
         self.needs_redraw = true;
@@ -1203,8 +1266,15 @@ impl ViewModel {
 
     /// Update the footer based on current focus state
     pub fn update_footer(&mut self) {
-        let focused_draft = self.get_focused_draft_card().map(|card| &card.task);
-        self.footer = create_footer_view_model(focused_draft, self.focus_element, self.modal_state, &self.settings, self.word_wrap_enabled, self.show_autocomplete_border);
+        let focused_draft = self.get_focused_draft_card().map(|card| DraftTask {
+            id: card.id.clone(),
+            description: card.description.lines().join("\n"),
+            repository: card.repository.clone(),
+            branch: card.branch.clone(),
+            models: card.models.clone(),
+            created_at: card.created_at.clone(),
+        });
+        self.footer = create_footer_view_model(focused_draft.as_ref(), self.focus_element, self.modal_state, &self.settings, self.word_wrap_enabled, self.show_autocomplete_border);
     }
 
     /// Open a modal dialog
@@ -1221,7 +1291,7 @@ impl ViewModel {
     pub fn select_repository(&mut self, repo: String) {
         if let FocusElement::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-            draft_card.task.repository = repo;
+            draft_card.repository = repo;
             }
         }
         self.close_modal();
@@ -1231,7 +1301,7 @@ impl ViewModel {
     pub fn select_branch(&mut self, branch: String) {
         if let FocusElement::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-            draft_card.task.branch = branch;
+            draft_card.branch = branch;
             }
         }
         self.close_modal();
@@ -1241,7 +1311,7 @@ impl ViewModel {
     pub fn select_model_names(&mut self, model_names: Vec<String>) {
         if let FocusElement::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-            draft_card.task.models = model_names.into_iter()
+            draft_card.models = model_names.into_iter()
                 .map(|name| SelectedModel { name, count: 1 })
                 .collect();
             }
@@ -1364,7 +1434,7 @@ impl ViewModel {
         // Add draft cards
         for (index, card) in self.draft_cards.iter().enumerate() {
             self.task_id_to_card_info.insert(
-                card.task.id.clone(),
+                card.id.clone(),
                 TaskCardInfo {
                     card_type: TaskCardTypeEnum::Draft,
                     index,
@@ -1497,15 +1567,15 @@ impl ViewModel {
             return Ok(()); // No focused draft to save
         };
 
-        let draft_id = card.task.id.clone();
-        let description = card.task.description.clone();
-        let repository = card.task.repository.clone();
-        let branch = card.task.branch.clone();
-        let models = card.task.models.clone();
+        let draft_id = card.id.clone();
+        let description = card.description.lines().join("\n");
+        let repository = card.repository.clone();
+        let branch = card.branch.clone();
+        let models = card.models.clone();
 
         // Find and update the draft card in the view model to show "Saving" state
         // Note: We search by ID, not by current focus, since focus might change during await
-        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
             card.save_state = DraftSaveState::Saving;
         }
 
@@ -1519,7 +1589,7 @@ impl ViewModel {
 
         // Update save state based on result - find the card by ID again
         // The card might have been deleted while the save was in flight
-        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
             match result {
                 SaveDraftResult::Success => {
                     card.save_state = DraftSaveState::Saved;
@@ -1547,19 +1617,18 @@ impl ViewModel {
 
     /// Launch a task by draft ID
     pub async fn launch_task(&mut self, draft_id: &str) -> Result<(), String> {
-        if let Some(card) = self.draft_cards.iter().find(|c| c.task.id == draft_id) {
-            let draft = &card.task;
-            if !draft.description.trim().is_empty() && !draft.models.is_empty() {
+        if let Some(card) = self.draft_cards.iter().find(|c| c.id == draft_id) {
+            if !card.description.lines().join("\n").trim().is_empty() && !card.models.is_empty() {
                 // Set loading state
                 self.loading_task_creation = true;
 
                 // In real implementation, this would send a network request
                 // For now, we simulate success by calling the task manager directly
                 let params = TaskLaunchParams {
-                    description: draft.description.clone(),
-                    repository: draft.repository.clone(),
-                    branch: draft.branch.clone(),
-                    models: draft.models.clone(),
+                    description: card.description.lines().join("\n"),
+                    repository: card.repository.clone(),
+                    branch: card.branch.clone(),
+                    models: card.models.clone(),
                 };
 
                 match self.task_manager.launch_task(params).await {
@@ -1567,9 +1636,9 @@ impl ViewModel {
                         // Create a new task execution
                         let task_execution = TaskExecution {
                             id: task_id.clone(),
-                            repository: draft.repository.clone(),
-                            branch: draft.branch.clone(),
-                            agents: draft.models.clone(),
+                            repository: card.repository.clone(),
+                            branch: card.branch.clone(),
+                            agents: card.models.clone(),
                             state: TaskState::Active,
                             timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                             activity: vec![],
@@ -1606,15 +1675,16 @@ impl ViewModel {
 
     /// Create a new draft task
     pub fn create_new_draft_task(&mut self, draft_id: &str) {
-        if let Some(card_index) = self.draft_cards.iter().position(|c| c.task.id == draft_id) {
-            let current_draft = &self.draft_cards[card_index].task;
-            if !current_draft.description.trim().is_empty() {
+        if let Some(card_index) = self.draft_cards.iter().position(|c| c.id == draft_id) {
+            let current_card = &self.draft_cards[card_index];
+            let current_description = current_card.description.lines().join("\n");
+            if !current_description.trim().is_empty() {
                 let draft_task = DraftTask {
                     id: format!("draft_{}", chrono::Utc::now().timestamp()),
-                    description: current_draft.description.clone(),
-                    repository: current_draft.repository.clone(),
-                    branch: current_draft.branch.clone(),
-                    models: current_draft.models.clone(),
+                    description: current_description,
+                    repository: current_card.repository.clone(),
+                    branch: current_card.branch.clone(),
+                    models: current_card.models.clone(),
                     created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 };
 
@@ -1625,11 +1695,6 @@ impl ViewModel {
                 // Update UI
                 self.refresh_draft_cards();
 
-                // Clear current draft for new input
-                if let Some(card) = self.draft_cards.get_mut(card_index + 1) { // +1 because we inserted at 0
-                    card.task.description.clear();
-                    card.textarea = tui_textarea::TextArea::new(vec![]); // Reset textarea
-                }
 
                 // Update UI for the cleared draft
                 self.refresh_draft_cards();
@@ -1657,30 +1722,32 @@ impl ViewModel {
 
     /// Update draft text
     pub fn update_draft_text(&mut self, text: &str, draft_id: &str) {
-        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
-            card.task.description = text.to_string();
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
+            // Update textarea content using mutators
+            card.description.select_all();
+            card.description.insert_str(text);
         }
     }
 
     /// Set draft repository
     pub fn set_draft_repository(&mut self, repo: &str, draft_id: &str) {
-        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
-            card.task.repository = repo.to_string();
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
+            card.repository = repo.to_string();
         }
     }
 
     /// Set draft branch
     pub fn set_draft_branch(&mut self, branch: &str, draft_id: &str) {
-        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
-            card.task.branch = branch.to_string();
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
+            card.branch = branch.to_string();
         }
     }
 
     /// Set draft model names
     pub fn set_draft_model_names(&mut self, model_names: Vec<String>, draft_id: &str) {
-        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
             // Convert model names to SelectedModel with count 1
-            card.task.models = model_names.into_iter()
+            card.models = model_names.into_iter()
                 .map(|name| SelectedModel { name, count: 1 })
                 .collect();
         }
@@ -1852,11 +1919,20 @@ impl ViewModel {
 
 // View Model Creation Functions (moved from model.rs)
 
+/// Create a properly configured TextArea for draft card descriptions
+fn create_draft_card_textarea(text: &str) -> tui_textarea::TextArea<'static> {
+    let mut textarea = tui_textarea::TextArea::new(text.lines().map(|s| s.to_string()).collect::<Vec<String>>());
+    // Remove underline styling from textarea
+    textarea.set_style(Style::default().remove_modifier(Modifier::UNDERLINED));
+    textarea.set_cursor_line_style(Style::default());
+    textarea
+}
+
 /// Create a draft card from a DraftTask
 pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> DraftCardViewModel {
-    let mut textarea = tui_textarea::TextArea::new(task.description.lines().map(|s| s.to_string()).collect::<Vec<String>>());
+    let mut description = create_draft_card_textarea(&task.description);
     if task.description.is_empty() {
-        textarea.set_placeholder_text("Describe what you want the agent to do...");
+        description.set_placeholder_text("Describe what you want the agent to do...");
     }
 
     let controls = DraftControlsViewModel {
@@ -1883,17 +1959,20 @@ pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement)
     };
 
     // Calculate height dynamically like in main.rs TaskCard::height for Draft
-    let visible_lines = textarea.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
+    let visible_lines = description.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
     let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
     let height = inner_height as u16 + 2; // account for rounded border
 
     DraftCardViewModel {
-        id: task.id.clone(),
-        task,
+        id: task.id,
+        repository: task.repository,
+        branch: task.branch,
+        models: task.models,
+        created_at: task.created_at,
         height,
         controls,
         save_state: DraftSaveState::Unsaved,
-        textarea,
+        description,
         focus_element,
         auto_save_timer: None,
     }
@@ -1960,7 +2039,7 @@ fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> 
 /// Create ViewModel representations for draft tasks
 fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[TaskExecution], focus_element: FocusElement) -> Vec<DraftCardViewModel> {
     draft_tasks.iter().map(|draft| {
-        let mut textarea = tui_textarea::TextArea::new(draft.description.lines().map(|s| s.to_string()).collect::<Vec<String>>());
+        let mut textarea = create_draft_card_textarea(&draft.description);
         if draft.description.is_empty() {
             textarea.set_placeholder_text("Describe what you want the agent to do...");
         }
@@ -1995,11 +2074,14 @@ fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[
 
         DraftCardViewModel {
             id: draft.id.clone(),
-            task: draft.clone(),
+            repository: draft.repository.clone(),
+            branch: draft.branch.clone(),
+            models: draft.models.clone(),
+            created_at: draft.created_at.clone(),
             height,
             controls,
             save_state: DraftSaveState::Unsaved,
-            textarea,
+            description: textarea,
             focus_element,
             auto_save_timer: None,
         }
@@ -2155,7 +2237,7 @@ fn create_footer_view_model(focused_draft: Option<&DraftTask>, focus_element: Fo
                 vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::SHIFT, KeyModifiers::empty(), None)]
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::MoveToNextLine,
+                KeyboardOperation::MoveToNextField,
                 vec![KeyMatcher::new(KeyCode::Tab, KeyModifiers::empty(), KeyModifiers::empty(), None)]
             ));
         }
