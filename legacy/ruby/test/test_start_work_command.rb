@@ -135,5 +135,6 @@ end
 class StartWorkGitTest < Minitest::Test
   include RepoTestHelper
   include StartWorkCases
+
   VCS_TYPE = :git
 end

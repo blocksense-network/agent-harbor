@@ -33,11 +33,11 @@ echo "Press Ctrl+C to stop both servers"
 
 # Function to cleanup on exit
 cleanup() {
-  echo ""
-  echo "Stopping servers..."
-  kill $MOCK_PID 2>/dev/null
-  kill $SSR_PID 2>/dev/null
-  exit 0
+    echo ""
+    echo "Stopping servers..."
+    kill $MOCK_PID 2>/dev/null
+    kill $SSR_PID 2>/dev/null
+    exit 0
 }
 
 # Set trap for cleanup

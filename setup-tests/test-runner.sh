@@ -15,8 +15,8 @@ echo -e "${YELLOW}📋 This test runs in an Ubuntu Linux container to verify Nix
 
 # Check if Docker is available
 if ! command -v docker >/dev/null 2>&1; then
-  echo -e "${RED}❌ Docker is not available. Please install Docker first.${NC}"
-  exit 1
+    echo -e "${RED}❌ Docker is not available. Please install Docker first.${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✅ Docker is available${NC}"
@@ -41,10 +41,10 @@ echo -e "${YELLOW}🐳 Running test in Docker container...${NC}"
 # Use --rm to clean up the container after the test
 # Mount the container test script
 docker run --rm \
-  --name agent-harbor-integration-test \
-  -v "$SCRIPT_DIR/container-test.sh:/container-test.sh" \
-  agent-harbor-test \
-  sudo /bin/bash /container-test.sh
+    --name agent-harbor-integration-test \
+    -v "$SCRIPT_DIR/container-test.sh:/container-test.sh" \
+    agent-harbor-test \
+    sudo /bin/bash /container-test.sh
 
 # Check the exit code
 TEST_EXIT_CODE=$?
@@ -54,9 +54,9 @@ echo -e "${YELLOW}🧹 Cleaning up Docker image...${NC}"
 docker rmi agent-harbor-test >/dev/null 2>&1 || true
 
 if [ $TEST_EXIT_CODE -eq 0 ]; then
-  echo -e "${GREEN}🎊 Docker-based codex-setup integration test completed successfully!${NC}"
-  echo -e "${GREEN}✅ Nix installation via codex-setup sourcing works correctly in Ubuntu Linux container${NC}"
+    echo -e "${GREEN}🎊 Docker-based codex-setup integration test completed successfully!${NC}"
+    echo -e "${GREEN}✅ Nix installation via codex-setup sourcing works correctly in Ubuntu Linux container${NC}"
 else
-  echo -e "${RED}💥 Docker-based codex-setup integration test failed!${NC}"
-  exit $TEST_EXIT_CODE
+    echo -e "${RED}💥 Docker-based codex-setup integration test failed!${NC}"
+    exit $TEST_EXIT_CODE
 fi

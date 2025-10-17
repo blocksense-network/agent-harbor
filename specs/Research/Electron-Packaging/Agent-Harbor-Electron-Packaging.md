@@ -1,5 +1,3 @@
-
-
 # **Architecting a Cross-Platform Distribution Pipeline for Electron Applications: A Definitive Guide**
 
 ## **Part I: Foundational Project Setup and Unified Build Configuration**
@@ -163,7 +161,7 @@ Notarization by Apple requires that the application is built with the Hardened R
 
 The content of these files will be nearly identical and must include standard entitlements for Electron to function correctly, as well as the specific entitlement required to manage system extensions.XML  
 \<?xml version="1.0" encoding="UTF-8"?\>  
-\<\!DOCTYPE **plist** **PUBLIC** "-//Apple//DTD PLIST 1.0//EN" "<http://www.apple.com/DTDs/PropertyList-1.0.dtd"\>>>>  
+\<\!DOCTYPE **plist** **PUBLIC** "-//Apple//DTD PLIST 1.0//EN" "<https://www.apple.com/DTDs/PropertyList-1.0.dtd"\>>>  
 \<plist version\="1.0"\>  
 \<dict\>  
     \<key\>com.apple.security.cs.allow-jit\</key\>  
@@ -507,7 +505,7 @@ In contrast, the Linux ecosystem, often characterized by its fragmentation, find
 
 Ultimately, managing this multifaceted complexity at scale is only feasible through a unified configuration and a robust automation pipeline. The use of a centralized electron-builder.yml file acts as a single source of truth, taming the divergent requirements of each platform within a coherent structure. Layering this with a powerful CI/CD system like GitHub Actions, which provides secure credential management and parallel builds across all target operating systems, transforms the release process from a manual, error-prone chore into a reliable, repeatable, and automated workflow. The investment in architecting this pipeline is substantial, but it is an essential prerequisite for any serious cross-platform desktop application in today's security-conscious landscape.
 
-#### **Works cited**
+### **Works cited**
 
 1. Electron Forge: Getting Started, accessed October 14, 2025, [https://www.electronforge.io/](https://www.electronforge.io/)  
 2. Packaging Your Application | Electron, accessed October 14, 2025, [https://electronjs.org/docs/latest/tutorial/tutorial-packaging](https://electronjs.org/docs/latest/tutorial/tutorial-packaging)  

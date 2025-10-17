@@ -15,8 +15,8 @@ WS="$(mktemp -d)"
 CODEX_HOME="$(mktemp -d)"
 
 cleanup() {
-  echo "Cleaning up temporary directories..."
-  rm -rf "$WS" "$CODEX_HOME"
+    echo "Cleaning up temporary directories..."
+    rm -rf "$WS" "$CODEX_HOME"
 }
 trap cleanup EXIT
 
@@ -36,30 +36,30 @@ python -m src.cli run --scenario examples/hello_scenario.yaml --workspace "$WS" 
 echo
 echo "Verifying results..."
 if [ -f "$WS/hello.py" ]; then
-  echo "✓ hello.py was created successfully"
-  echo "Content:"
-  cat "$WS/hello.py"
+    echo "✓ hello.py was created successfully"
+    echo "Content:"
+    cat "$WS/hello.py"
 else
-  echo "✗ hello.py was not created"
-  exit 1
+    echo "✗ hello.py was not created"
+    exit 1
 fi
 
 # Check for rollout files
 if find "$CODEX_HOME/sessions" -name "rollout-*.jsonl" 2>/dev/null | grep -q .; then
-  echo "✓ Rollout files were created"
-  echo "Rollout files:"
-  find "$CODEX_HOME/sessions" -name "rollout-*.jsonl" 2>/dev/null
+    echo "✓ Rollout files were created"
+    echo "Rollout files:"
+    find "$CODEX_HOME/sessions" -name "rollout-*.jsonl" 2>/dev/null
 else
-  echo "✗ No rollout files found"
+    echo "✗ No rollout files found"
 fi
 
 # Check for session log files
 if find "$CODEX_HOME/logs" -name "session-*.jsonl" 2>/dev/null | grep -q .; then
-  echo "✓ Session log files were created"
-  echo "Session log files:"
-  find "$CODEX_HOME/logs" -name "session-*.jsonl" 2>/dev/null
+    echo "✓ Session log files were created"
+    echo "Session log files:"
+    find "$CODEX_HOME/logs" -name "session-*.jsonl" 2>/dev/null
 else
-  echo "✗ No session log files found"
+    echo "✗ No session log files found"
 fi
 
 echo

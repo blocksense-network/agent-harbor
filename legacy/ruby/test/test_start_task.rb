@@ -272,17 +272,20 @@ end
 class StartTaskGitTest < Minitest::Test
   include RepoTestHelper
   include StartTaskCases
+
   VCS_TYPE = :git
 end
 
 class StartTaskHgTest < Minitest::Test
   include RepoTestHelper
   include StartTaskCases
+
   VCS_TYPE = :hg
 end
 
 class StartTaskFossilTest < Minitest::Test
   include RepoTestHelper
   include StartTaskCases
+
   VCS_TYPE = :fossil
 end

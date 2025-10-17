@@ -8,10 +8,10 @@ echo "🏗️  Building CSR client bundle..."
 # For CSR builds, temporarily disable the wrapper index.tsx and use index.csr.tsx directly
 # This prevents SolidStart from including both CSR and SSR versions in the bundle
 if [ -f "src/routes/index.tsx" ]; then
-  mv src/routes/index.tsx src/routes/index.tsx.disabled
+    mv src/routes/index.tsx src/routes/index.tsx.disabled
 fi
 if [ -f "src/routes/index.csr.tsx" ]; then
-  cp src/routes/index.csr.tsx src/routes/index.tsx
+    cp src/routes/index.csr.tsx src/routes/index.tsx
 fi
 
 # Build with SolidStart (client files will be generated even if prerendering fails)
@@ -19,14 +19,14 @@ env WEBUI_BUILD_MODE=client yarn build:client 2>&1 | grep -v "createEvent" || tr
 
 # Restore the wrapper index.tsx
 if [ -f "src/routes/index.tsx.disabled" ]; then
-  mv src/routes/index.tsx src/routes/index.csr.tsx
-  mv src/routes/index.tsx.disabled src/routes/index.tsx
+    mv src/routes/index.tsx src/routes/index.csr.tsx
+    mv src/routes/index.tsx.disabled src/routes/index.tsx
 fi
 
 # Check if client build succeeded (ignore prerendering errors)
 if [ ! -d ".vinxi/build/client/_build" ]; then
-  echo "❌ Client build failed - .vinxi/build/client/_build not found"
-  exit 1
+    echo "❌ Client build failed - .vinxi/build/client/_build not found"
+    exit 1
 fi
 
 echo "✅ Client bundle built successfully"
@@ -48,7 +48,7 @@ cp .output/public/_build/.vite/manifest.json dist/client/.vite/manifest.json
 # Create manifest loader JS file (external file to avoid CSP issues)
 # Transform Vite manifest format to match what the client code expects
 echo "📝 Generating manifest loader script..."
-node << 'NODESCRIPT'
+node <<'NODESCRIPT'
 const fs = require('fs');
 const viteManifest = JSON.parse(fs.readFileSync('dist/client/.vite/manifest.json', 'utf-8'));
 
@@ -74,7 +74,7 @@ NODESCRIPT
 
 # Create index.html with correct asset paths from manifest
 echo "📝 Generating index.html..."
-node << 'NODESCRIPT'
+node <<'NODESCRIPT'
 const fs = require('fs');
 const viteManifest = JSON.parse(fs.readFileSync('dist/client/.vite/manifest.json', 'utf-8'));
 

@@ -1435,7 +1435,7 @@ SSE event taxonomy for sessions:
 
 ### Implementation and Testing Plan
 
-Planning and status tracking for this spec live in [REST-Service.status.md](REST-Service.status.md). That document defines milestones, success criteria, and a precise, automated test plan per specs/AGENTS.md.
+Planning and status tracking for this spec live in [REST-Service.status.md](../REST-Service.status.md). That document defines milestones, success criteria, and a precise, automated test plan per specs/AGENTS.md.
 
 #### Session Info (summary)
 

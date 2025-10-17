@@ -227,12 +227,12 @@ The script generates a process-compose YAML configuration with the following pro
 
 The script sets the following environment variables for the ah-agent process:
 
-### Always Set:
+### Always Set
 - `HOME`: Points to the `user-home/` subdirectory
 - `AH_HOME`: Isolated home directory for Agent Harbor (within user-home)
 - `TUI_TESTING_URI`: IPC endpoint for TUI testing (when enabled)
 
-### Agent-Specific API Variables:
+### Agent-Specific API Variables
 - **Codex**: `CODEX_API_BASE`, `CODEX_API_KEY`
 - **Claude**: `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`
 - **Gemini**: `GOOGLE_AI_BASE_URL`, `GOOGLE_API_KEY`
@@ -241,7 +241,7 @@ The script sets the following environment variables for the ah-agent process:
 - **Cursor CLI**: `CURSOR_API_BASE`, `CURSOR_API_KEY`
 - **Goose**: `GOOSE_API_BASE`, `GOOSE_API_KEY`
 
-### Mock Server Integration:
+### Mock Server Integration
 When `--llm-api` is NOT specified, the script automatically configures the agent to use the mock server by setting the appropriate API base URL and key (typically "mock-key").
 
 ## Troubleshooting

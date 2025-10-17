@@ -66,7 +66,7 @@ SOCKET_PATH="/tmp/agentfs-test.sock"
 echo "Starting AgentFS server on $SOCKET_PATH..."
 $AGENTFS_SERVER &
 SERVER_PID=$!
-sleep 2  # Give server time to start
+sleep 2 # Give server time to start
 
 # Verify server is running
 if ! kill -0 $SERVER_PID 2>/dev/null; then

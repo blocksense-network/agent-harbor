@@ -58,7 +58,7 @@ The dashboard screen has the following elements:
 
 - **Footer**: Displays context-specific keyboard shortcuts.
 
-#### Task States and Card Layouts
+### Task States and Card Layouts
 
 Tasks display in four different states with optimized heights and consistent layout principles:
 
@@ -78,11 +78,11 @@ Tasks display in four different states with optimized heights and consistent lay
 
 The initially focused element is the top draft task card.
 
-#### Handling Arrow Keys within text areas
+### Handling Arrow Keys within text areas
 
 Within text areas, the up and down arrow keys move the caret within the text area when this is possible. Only when they have exhausted the possible movements (i.e. the caret is already on the top line when moving up, or already on the bottom line when moving down), the focus should be moved to the next navigation item in the hierarchy (settings button, draft cards, filter bar, existing tasks, etc).
 
-##### Completed/Merged Cards (2 lines)
+### Completed/Merged Cards (2 lines)
 ```
 ✓ Task title • Delivery indicators
 Repository • Branch • Agent • Timestamp
@@ -109,7 +109,7 @@ Repository • Branch • Agent • Timestamp
 \033[32m✓\033[0m PR #128 merged to main
 ```
 
-##### Active Cards (5 lines)
+### Active Cards (5 lines)
 ```
 ● Task title • Action buttons
 Repository • Branch • Agent • Timestamp • Pause Button • Delete Button
@@ -120,7 +120,7 @@ Repository • Branch • Agent • Timestamp • Pause Button • Delete Button
 
 **Pause/Delete Buttons Placement**: In the right-most position of the task metadata line. Reachable by pressing the right arrow key when an active task is focused.
 
-##### Draft Cards (Variable height)
+### Draft Cards (Variable height)
 
 Variable height cards with auto-expandable text area and controls (keyboard navigable, Enter to submit):
 
@@ -155,7 +155,7 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - Enter key launches the task (calls Go button action)
   - Shift+Enter creates a new line in the text area
 
-#### Model Multi-Selector Modal
+### Model Multi-Selector Modal
 
 The model selection dialog provides advanced agent configuration:
 
@@ -175,7 +175,7 @@ The model selection dialog provides advanced agent configuration:
   - `Enter`: Close the dialog with the current model and count selections. If enter is pressed while the focus is within the selection menu and the currently selected model has count zero, assume that the user wants count = 1 for this particular model. Other counts stay as they are.
   - `Esc`: Close without applying the special logic for the Enter key. Any changes to counds made while the dialog was opened remain in place.
 
-##### Activity Display for Active Tasks
+### Activity Display for Active Tasks
 
 Active task cards show live streaming of agent activity with exactly 3 fixed-height rows displaying the most recent events:
 
@@ -249,7 +249,7 @@ After new "thought" event (scrolls up, oldest row disappears):
 - Users can override with `tui-font-style` config option
 - Always pair symbols with descriptive text for accessibility and grep-ability
 
-#### Footer Shortcuts (Lazygit-style)
+### Footer Shortcuts (Lazygit-style)
 
 Single-line footer without borders showing context-sensitive shortcuts that change dynamically based on application state:
 
@@ -265,7 +265,7 @@ Single-line footer without borders showing context-sensitive shortcuts that chan
 - Enter key launches the task when in draft textarea (calls Go button action)
 - Shift+Enter creates a new line in the text area
 
-#### Draft Auto-Save Behavior
+### Draft Auto-Save Behavior
 
 - **Request Tracking**: Each save attempt is assigned a unique request ID to track validity
 - **Request Invalidation**: When user types while a save request is pending, that request becomes "invalidated"
@@ -282,11 +282,11 @@ Single-line footer without borders showing context-sensitive shortcuts that chan
 - New task input supports multiline editing with Shift+Enter for line breaks
 - Default values for repository/branch/agent are the last ones used
 
-#### Task Creation Workflow
+### Task Creation Workflow
 
 When a user launches a task from the dashboard, the workflow depends on the backend mode:
 
-##### Local Mode (SQLite Database)
+### Local Mode (SQLite Database)
 When running in local mode with SQLite database:
 
 1. **Task Creation**: Dashboard collects repository, branch, agent, and task description from draft card
@@ -297,7 +297,7 @@ When running in local mode with SQLite database:
 4. **Session Monitoring**: Task card in dashboard shows real-time updates via local state and SSE streams
 5. **Window Management**: Multiplexer provides windowing environment; TUI coordinates task creation and monitoring across windows
 
-##### Remote Mode (REST API)
+### Remote Mode (REST API)
 When running in remote mode with REST service:
 
 1. **Task Creation**: Dashboard collects repository, branch, agent, and task description from draft card
@@ -312,7 +312,7 @@ This dual-mode architecture enables the TUI to work seamlessly with both local S
 
 ### Commands and Hotkeys
 
-#### Mouse Support
+### Mouse Support
 
 The TUI provides comprehensive mouse support alongside keyboard navigation:
 
@@ -335,17 +335,17 @@ The TUI provides comprehensive mouse support alongside keyboard navigation:
 
 Right click is left for the native terminal UI to handle in order to preserve its native context manus.
 
-#### Global Navigation
+### Global Navigation
 - **↑↓**: Navigate between ALL cards (draft tasks first, then sessions newest first)
 - **Ctrl+C** (twice): Quit the TUI
 
-#### Task Selection and Navigation
+### Task Selection and Navigation
 - **↑↓**: Navigate between cards with visual selection state
 - **Enter**:
   - When on draft card: Focus the textarea for editing
   - When on session card: Navigate to task details page
 
-#### Advanced Keyboard Navigation
+### Advanced Keyboard Navigation
 
 **Button Navigation in Draft Cards:**
 - `Tab` or `Right`: Repository → Branch → Model → Go → (wrap to Repository)
@@ -358,7 +358,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 - `Tab`: Move to next button
 - `Esc`: Remove current focus. If none was focused, exit the application
 
-#### Draft Task Editing
+### Draft Task Editing
 - **Tab/Shift+Tab**: Cycle between buttons (Repository, Branch, Models, Go) when not in textarea
 - **Enter**: Activate focused button or select item in modal (when in textarea: launch task)
 - **Esc**: Close modal or go back to navigation mode
@@ -367,7 +367,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 - **Backspace**: Delete characters
 - **Auto-complete menu**: When certain characters like / or @ are entered in the text area, show auto-completion menu with dynamically populated choices (@ for citing files, / for selecting workflows, etc)
 
-#### Modal Navigation (Telescope-style)
+### Modal Navigation (Telescope-style)
 - **↑↓**: Navigate through options in fuzzy search
 - **Enter**: Select current item
 - **Esc**: Close modal
@@ -375,7 +375,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 ### Real-Time Behavior
 
-#### Live Event Streaming
+### Live Event Streaming
 
 - Active task cards continuously update with agent activity events
 - Events sent and processed one at a time for smooth UI updates
@@ -399,7 +399,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 ### Visual Design & Theming
 
-#### Charm-Inspired Aesthetics
+### Charm-Inspired Aesthetics
 
 The TUI follows Charm (Bubble Tea/Lip Gloss) design principles with multiple theme options:
 
@@ -419,18 +419,18 @@ The TUI follows Charm (Bubble Tea/Lip Gloss) design principles with multiple the
 - **Powerline-style titles**: ` Title ` glyphs for card headers
 - **Truecolor support**: 24-bit RGB colors for rich visual experience
 
-#### Component Styling
+### Component Styling
 
 - **Cards**: Rounded borders, themed backgrounds, proper padding
 - **Buttons**: Background color changes on focus, bold text
 - **Modals**: Shadow effects, centered positioning, fuzzy search interface
 - **Status indicators**: Color-coded icons (✓ completed, ● active, 📝 draft)
 
-#### Selection Dialog Styles
+### Selection Dialog Styles
 
 The TUI supports two distinct styles for selection interfaces:
 
-#### Modal Dialog Styling
+### Modal Dialog Styling
 
 Modal dialogs use a clean, minimal design:
 
@@ -440,14 +440,14 @@ Modal dialogs use a clean, minimal design:
 - **Consistent Theming**: Follows Charm-inspired design with proper color usage
 - **Shadows**: The dialog drops shadow over the underlying content
 
-#### Input Handling Libraries
+### Input Handling Libraries
 
 The TUI uses specialized Ratatui ecosystem crates for enhanced input handling:
 
 - **tui-textarea**: Multi-line text editing with advanced features
 - **tui-input**: Single-line input for modals
 
-##### Modal Selection Dialogs
+### Modal Selection Dialogs
 Used by draft task controls (Repository, Branch, Model selectors):
 - **Full-screen overlay**: Dialog appears over existing content with background dimming
 - **Dedicated input box**: Separate fuzzy search input at top of dialog
@@ -456,7 +456,7 @@ Used by draft task controls (Repository, Branch, Model selectors):
 - **Navigation**: ESC to cancel, Enter to confirm selection, arrow keys for options
 - **Use cases**: Complex selections requiring focus and search functionality
 
-##### Inline Selection Dialogs
+### Inline Selection Dialogs
 Used by existing tasks filter controls:
 - **In-place expansion**: Options are displayed immedaitely after selecting the filter control.
 - **Relative dialog position**: The dialog is placed on top of the filter control in such a way that the previously displayed filter value falls precisely in the same place as the now editable input box of the selection dialog.
@@ -464,13 +464,13 @@ Used by existing tasks filter controls:
 - **Interactive results**: As the user types within the input box, the list of possible selections is filtered immediately with fuzzy search.
 - **Rendered last**: In order for the dialogs to be displayed on top of all other screen content, they are rendered last.
 
-##### Configuration Option
+### Configuration Option
 The dialog style preference can be configured via `tui.selection-dialog-style`:
 - `modal` (default): Use modal dialogs for all selection interfaces
 - `inline`: Use inline dialogs for all selection interfaces where possible
 - `default`: Each dialog uses the style prescribed by the designers of the Agent Harbor interface.
 
-#### Text Area Shortcuts
+### Text Area Shortcuts
 
 All inputs should have appropriate placeholder text.
 Text inputs should support a combination of CUA, macOS and Emacs key bindings.
@@ -539,17 +539,17 @@ All such variables are in under the "[tui.keymap]" section.
 | | Find previous | `find-previous` | Cmd+Shift+G (macOS) |
 | **Mark and Region** | Set mark (start selection) | `set-mark` | C-SPC or C-@ (Emacs) |
 | | Select all (mark whole text area) | `select-all` | C-x h (Emacs), Ctrl+A (CUA/PC), Cmd+A (macOS) |
-| | Extend selection | no config variable | Shift+movement key (CUA/PC and macOS)
+| | Extend selection | no config variable | Shift+movement key (CUA/PC and macOS) |
 
-Note: In the table, "C-" means Control, "M-" means Meta (often Alt/Option), and combinations like "C-M-" use both. Please note that the Meta key should be the Option key on macOS and the Alt key otherwise. This can be overriden with the configuration option `tui.keymap.meta-key`.
+Note: In the table, "C-" means Control, "M-" means Meta (often Alt/Option), and combinations like "C-M-" use both. Please note that the Meta key should be the Option key on macOS and the Alt key otherwise. This can be overridden with the configuration option `tui.keymap.meta-key`.
 
-#### Card List Keyboard Shortcuts
+### Card List Keyboard Shortcuts
 
 While the focus is on a task card, the user can press Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs) to delete the task.
 
 Draft and active cards are deleted without leaving a trace. Deleting an active cards aborts any running agents.
 
-The delete operation is mapped to archiving the card for completed/merged task. Archied tasks are removed from listings and search resutls by default.
+The delete operation is mapped to archiving the card for completed/merged task. Archived tasks are removed from listings and search results by default.
 
 Both Ctrl+N (CUA/PC), Cmd+N (macOS) create a new draft task card.
 

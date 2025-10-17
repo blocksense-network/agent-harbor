@@ -2,7 +2,7 @@
 # Copy native addon to dist-electron so it can be found without PnP
 # This is needed for Playwright testing where PnP loader doesn't work properly
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="$SCRIPT_DIR/../dist-electron"
 REPO_ROOT="$SCRIPT_DIR/../.."
 

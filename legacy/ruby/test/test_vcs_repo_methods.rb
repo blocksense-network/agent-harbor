@@ -9,6 +9,7 @@ require_relative '../lib/vcs_repo'
 # Test class for VCSRepo functionality
 class TestVCSRepoMethods < Minitest::Test
   include RepoTestHelper
+
   def test_default_remote_http_url_with_https
     repo, remote = setup_repo(:git)
     vcs_repo = VCSRepo.new(repo)

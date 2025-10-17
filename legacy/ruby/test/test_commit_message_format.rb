@@ -11,6 +11,7 @@ require_relative '../lib/agent_tasks'
 # Test class for commit message format and extraction functionality
 class TestCommitMessageFormat < Minitest::Test
   include RepoTestHelper
+
   def test_commit_message_with_https_remote
     repo, remote = setup_repo(:git)
 

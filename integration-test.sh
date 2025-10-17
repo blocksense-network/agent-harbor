@@ -15,8 +15,8 @@ echo -e "${YELLOW}📋 This test runs in an Alpine Linux container to verify Nix
 
 # Check if Docker is available
 if ! command -v docker >/dev/null 2>&1; then
-  echo -e "${RED}❌ Docker is not available. Please install Docker first.${NC}"
-  exit 1
+    echo -e "${RED}❌ Docker is not available. Please install Docker first.${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✅ Docker is available${NC}"
@@ -195,10 +195,10 @@ echo -e "${YELLOW}🐳 Running test in Docker container...${NC}"
 # Use --rm to clean up the container after the test
 # Mount the test script and run it
 docker run --rm \
-  --name agent-harbor-integration-test \
-  -v "$TEST_SCRIPT:/test-inside-container.sh" \
-  agent-harbor-test \
-  /bin/bash /test-inside-container.sh
+    --name agent-harbor-integration-test \
+    -v "$TEST_SCRIPT:/test-inside-container.sh" \
+    agent-harbor-test \
+    /bin/bash /test-inside-container.sh
 
 # Check the exit code
 TEST_EXIT_CODE=$?
@@ -208,9 +208,9 @@ echo -e "${YELLOW}🧹 Cleaning up test files...${NC}"
 rm -rf "$TEST_SCRIPT_DIR"
 
 if [ $TEST_EXIT_CODE -eq 0 ]; then
-  echo -e "${GREEN}🎊 Docker-based integration test completed successfully!${NC}"
-  echo -e "${GREEN}✅ Nix installation via sourcing works correctly in Alpine Linux container${NC}"
+    echo -e "${GREEN}🎊 Docker-based integration test completed successfully!${NC}"
+    echo -e "${GREEN}✅ Nix installation via sourcing works correctly in Alpine Linux container${NC}"
 else
-  echo -e "${RED}💥 Docker-based integration test failed!${NC}"
-  exit $TEST_EXIT_CODE
+    echo -e "${RED}💥 Docker-based integration test failed!${NC}"
+    exit $TEST_EXIT_CODE
 fi

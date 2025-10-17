@@ -12,7 +12,7 @@ RUN_LOG="$LOG_DIR/run-${RUN_ID}.log"
 echo "Logs: $RUN_LOG"
 
 cleanup() {
-  echo "Cleaning up background processes..." >>"$RUN_LOG" 2>&1 || true
+    echo "Cleaning up background processes..." >>"$RUN_LOG" 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -24,8 +24,8 @@ just build-agentfs-extension | tee -a "$RUN_LOG"
 
 EXT_BUNDLE="${REPO_ROOT}/adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension.appex"
 if [[ ! -d "$EXT_BUNDLE" ]]; then
-  echo "Extension bundle not found at $EXT_BUNDLE" | tee -a "$RUN_LOG"
-  exit 1
+    echo "Extension bundle not found at $EXT_BUNDLE" | tee -a "$RUN_LOG"
+    exit 1
 fi
 echo "Extension bundle present: $EXT_BUNDLE" | tee -a "$RUN_LOG"
 

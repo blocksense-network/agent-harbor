@@ -9,8 +9,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 HELPERS="${REPO_ROOT}/adapters/macos/xcode/test-device-setup.sh"
 
 if [[ ! -f "$HELPERS" ]]; then
-  echo "Missing helper: $HELPERS" >&2
-  exit 1
+    echo "Missing helper: $HELPERS" >&2
+    exit 1
 fi
 
 echo "Creating dummy device and mountpoint to trigger FSKit load..."
@@ -21,10 +21,10 @@ echo "Device: $device"
 echo "Mount point: $mp"
 
 if bash -lc "source '$HELPERS'; mount_agentfs '$device' '$mp'"; then
-  echo "Mounted successfully; unmounting..."
-  bash -lc "source '$HELPERS'; unmount_device '$mp'" || true
+    echo "Mounted successfully; unmounting..."
+    bash -lc "source '$HELPERS'; unmount_device '$mp'" || true
 else
-  echo "Mount failed; extension may still require approval. See systemextensionsctl list."
+    echo "Mount failed; extension may still require approval. See systemextensionsctl list."
 fi
 
 echo "Done."

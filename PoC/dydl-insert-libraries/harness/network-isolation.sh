@@ -122,7 +122,7 @@ if command_exists nc && command_exists timeout; then
     echo "Testing with Strategy A blocking..."
     export NETWORK_STRATEGY="fail"
     export LISTENING_BASE_PORT="8000"
-    export LISTENING_PORT_COUNT="1000"  # Allow 8000-8999
+    export LISTENING_PORT_COUNT="1000" # Allow 8000-8999
 
     timeout 2 "$INJECTOR" -l "$LIB_DIR/network-interpose.dylib" nc 127.0.0.1 9999 || echo "Blocked connection failed as expected"
 

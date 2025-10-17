@@ -73,17 +73,20 @@ end
 class FollowUpGitTest < Minitest::Test
   include RepoTestHelper
   include FollowUpCases
+
   VCS_TYPE = :git
 end
 
 class FollowUpHgTest < Minitest::Test
   include RepoTestHelper
   include FollowUpCases
+
   VCS_TYPE = :hg
 end
 
 class FollowUpFossilTest < Minitest::Test
   include RepoTestHelper
   include FollowUpCases
+
   VCS_TYPE = :fossil
 end

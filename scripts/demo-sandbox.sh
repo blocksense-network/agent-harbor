@@ -9,9 +9,9 @@ echo
 
 # Build the sandbox helper if not already built
 if ! command -v ./target/debug/sbx-helper >/dev/null 2>&1; then
-  echo "Building sbx-helper..."
-  cargo build --bin sbx-helper
-  echo
+    echo "Building sbx-helper..."
+    cargo build --bin sbx-helper
+    echo
 fi
 
 echo "The sbx-helper binary provides command-line access to sandboxing functionality."

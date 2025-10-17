@@ -97,7 +97,7 @@ class TestMockAgentPerformance < Minitest::Test
 
       start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      threads = (1..concurrency + 1).map do |i|
+      threads = (1..(concurrency + 1)).map do |i|
         Thread.new do
           Thread.current[:start] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           workspace = create_workspace("concurrent_#{concurrency}_#{i}")

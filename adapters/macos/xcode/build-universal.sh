@@ -17,10 +17,10 @@ echo "Project root: $PROJECT_ROOT"
 
 # Verify we have the correct project root by checking for Cargo.toml
 if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
-  echo "Error: Could not find Cargo.toml in $PROJECT_ROOT"
-  echo "Script dir: $SCRIPT_DIR"
-  echo "Calculated project root: $PROJECT_ROOT"
-  exit 1
+    echo "Error: Could not find Cargo.toml in $PROJECT_ROOT"
+    echo "Script dir: $SCRIPT_DIR"
+    echo "Calculated project root: $PROJECT_ROOT"
+    exit 1
 fi
 
 # Add target architectures for universal binary
@@ -42,19 +42,19 @@ mkdir -p "$LIBS_DIR"
 
 # Create universal libraries for each crate
 lipo -create \
-  "$PROJECT_ROOT/target/aarch64-apple-darwin/release/libagentfs_fskit_sys.a" \
-  "$PROJECT_ROOT/target/x86_64-apple-darwin/release/libagentfs_fskit_sys.a" \
-  -output "$LIBS_DIR/libagentfs_fskit_sys.a"
+    "$PROJECT_ROOT/target/aarch64-apple-darwin/release/libagentfs_fskit_sys.a" \
+    "$PROJECT_ROOT/target/x86_64-apple-darwin/release/libagentfs_fskit_sys.a" \
+    -output "$LIBS_DIR/libagentfs_fskit_sys.a"
 
 lipo -create \
-  "$PROJECT_ROOT/target/aarch64-apple-darwin/release/libagentfs_fskit_bridge.a" \
-  "$PROJECT_ROOT/target/x86_64-apple-darwin/release/libagentfs_fskit_bridge.a" \
-  -output "$LIBS_DIR/libagentfs_fskit_bridge.a"
+    "$PROJECT_ROOT/target/aarch64-apple-darwin/release/libagentfs_fskit_bridge.a" \
+    "$PROJECT_ROOT/target/x86_64-apple-darwin/release/libagentfs_fskit_bridge.a" \
+    -output "$LIBS_DIR/libagentfs_fskit_bridge.a"
 
 lipo -create \
-  "$PROJECT_ROOT/target/aarch64-apple-darwin/release/libagentfs_ffi.a" \
-  "$PROJECT_ROOT/target/x86_64-apple-darwin/release/libagentfs_ffi.a" \
-  -output "$LIBS_DIR/libagentfs_ffi.a"
+    "$PROJECT_ROOT/target/aarch64-apple-darwin/release/libagentfs_ffi.a" \
+    "$PROJECT_ROOT/target/x86_64-apple-darwin/release/libagentfs_ffi.a" \
+    -output "$LIBS_DIR/libagentfs_ffi.a"
 
 # Verify the universal binaries
 echo "Verifying universal binaries..."

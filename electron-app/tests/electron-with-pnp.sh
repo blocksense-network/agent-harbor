@@ -3,7 +3,7 @@
 # This ensures native addons like @agent-harbor/gui-core can be resolved
 
 # Get the directory of this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR/../.."
 
 # Find Electron executable

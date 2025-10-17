@@ -367,11 +367,11 @@ curl -X POST http://localhost:3000/execute \
 
 ## Community Projects & Resources
 
-- **Cline Remote Control Discussion**: https://github.com/cline/cline/discussions/2622
-- **Cline API Feature Request**: https://github.com/cline/cline/issues/4734
+- **Cline Remote Control Discussion**: <https://github.com/cline/cline/discussions/2622>
+- **Cline API Feature Request**: <https://github.com/cline/cline/issues/4734>
 - **Agent Maestro**: Extension with partial automation
-- **VS Code Extension Testing**: https://code.visualstudio.com/api/working-with-extensions/testing-extension
-- **VS Code Commands API**: https://code.visualstudio.com/api/references/commands
+- **VS Code Extension Testing**: <https://code.visualstudio.com/api/working-with-extensions/testing-extension>
+- **VS Code Commands API**: <https://code.visualstudio.com/api/references/commands>
 
 ## Next Steps for Agent Harbor
 

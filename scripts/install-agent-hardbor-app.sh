@@ -11,16 +11,16 @@ echo "Building AgentHarbor app with embedded FSKit extension..."
 just build-agent-harbor
 
 if [[ ! -d "$APP_BUILD_PATH" ]]; then
-  echo "Build did not produce app at: $APP_BUILD_PATH" >&2
-  exit 1
+    echo "Build did not produce app at: $APP_BUILD_PATH" >&2
+    exit 1
 fi
 
 echo "Installing app to: $DEST_APP"
 if cp -R "$APP_BUILD_PATH" "$DEST_APP" 2>/dev/null; then
-  :
+    :
 else
-  echo "Copy without sudo failed; trying sudo..."
-  sudo cp -R "$APP_BUILD_PATH" "$DEST_APP"
+    echo "Copy without sudo failed; trying sudo..."
+    sudo cp -R "$APP_BUILD_PATH" "$DEST_APP"
 fi
 
 echo "Installed: $DEST_APP"

@@ -14,10 +14,10 @@ echo "Calculated project root: $PROJECT_ROOT"
 
 # Verify we have the correct project root by checking for Cargo.toml
 if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
-  echo "Error: Could not find Cargo.toml in $PROJECT_ROOT"
-  echo "Script dir: $SCRIPT_DIR"
-  echo "Calculated project root: $PROJECT_ROOT"
-  exit 1
+    echo "Error: Could not find Cargo.toml in $PROJECT_ROOT"
+    echo "Script dir: $SCRIPT_DIR"
+    echo "Calculated project root: $PROJECT_ROOT"
+    exit 1
 fi
 
 echo "Project root: $PROJECT_ROOT"
@@ -54,19 +54,19 @@ mkdir -p "$SCRIPT_DIR/AgentFSKitExtension.appex/Contents/Resources"
 # Copy the built binary (find the correct path based on architecture and configuration)
 BINARY_PATH=""
 if [ -f "$SCRIPT_DIR/.build/arm64-apple-macosx/$CONFIGURATION/AgentFSKitExtension" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/arm64-apple-macosx/$CONFIGURATION/AgentFSKitExtension"
+    BINARY_PATH="$SCRIPT_DIR/.build/arm64-apple-macosx/$CONFIGURATION/AgentFSKitExtension"
 elif [ -f "$SCRIPT_DIR/.build/x86_64-apple-macosx/$CONFIGURATION/AgentFSKitExtension" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/x86_64-apple-macosx/$CONFIGURATION/AgentFSKitExtension"
+    BINARY_PATH="$SCRIPT_DIR/.build/x86_64-apple-macosx/$CONFIGURATION/AgentFSKitExtension"
 elif [ -f "$SCRIPT_DIR/.build/apple/Products/$CONFIGURATION/AgentFSKitExtension" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/$CONFIGURATION/AgentFSKitExtension"
+    BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/$CONFIGURATION/AgentFSKitExtension"
 elif [ -f "$SCRIPT_DIR/.build/apple/Products/Release/AgentFSKitExtension" ] && [ "$CONFIGURATION" = "release" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/Release/AgentFSKitExtension"
+    BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/Release/AgentFSKitExtension"
 elif [ -f "$SCRIPT_DIR/.build/apple/Products/Debug/AgentFSKitExtension" ] && [ "$CONFIGURATION" = "debug" ]; then
-  BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/Debug/AgentFSKitExtension"
+    BINARY_PATH="$SCRIPT_DIR/.build/apple/Products/Debug/AgentFSKitExtension"
 else
-  echo "Error: Could not find AgentFSKitExtension binary in $CONFIGURATION configuration"
-  find "$SCRIPT_DIR/.build" -name "AgentFSKitExtension" -type f -executable 2>/dev/null || echo "No executable found"
-  exit 1
+    echo "Error: Could not find AgentFSKitExtension binary in $CONFIGURATION configuration"
+    find "$SCRIPT_DIR/.build" -name "AgentFSKitExtension" -type f -executable 2>/dev/null || echo "No executable found"
+    exit 1
 fi
 
 echo "Found binary at: $BINARY_PATH"

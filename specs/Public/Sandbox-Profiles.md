@@ -4,7 +4,7 @@ status: Early-Draft, Needs-Expansion
 
 Sandbox profiles define how local executions are isolated. They are orthogonal to UI and to local/remote mode. The profile is resolved from config or flags and determines the executor that hosts the agent and its per‑task workspace.
 
-See [agent-harbor-Sandboxing-Strategies](Sandboxing/agent-harbor-Sandboxing-Strategies.md) for cross‑platform requirements and design principles that apply to all sandboxing approaches.
+See [Agent-Harbor-Sandboxing-Strategies](Sandboxing/Agent-Harbor-Sandboxing-Strategies.md) for cross‑platform requirements and design principles that apply to all sandboxing approaches.
 
 Why sandboxes (threats and safety):
 

@@ -16,10 +16,10 @@ echo "Project root: $PROJECT_ROOT"
 
 # Verify we have the correct project root by checking for Cargo.toml
 if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
-  echo "Error: Could not find Cargo.toml in $PROJECT_ROOT"
-  echo "Script dir: $SCRIPT_DIR"
-  echo "Calculated project root: $PROJECT_ROOT"
-  exit 1
+    echo "Error: Could not find Cargo.toml in $PROJECT_ROOT"
+    echo "Script dir: $SCRIPT_DIR"
+    echo "Calculated project root: $PROJECT_ROOT"
+    exit 1
 fi
 
 echo "Project root: $PROJECT_ROOT"
