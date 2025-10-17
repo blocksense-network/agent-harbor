@@ -13,6 +13,7 @@ pub mod task;
 pub mod test_runtime;
 pub mod ui;
 pub mod viewmodel;
+pub mod view_model;
 
 pub use app::*;
 pub use error::*;
@@ -22,6 +23,7 @@ pub use msg::*;
 pub use task::{ButtonFocus, ModalState, ModelSelection, Task, TaskState};
 pub use test_runtime::*;
 pub use viewmodel::*;
+pub use view_model::*;
 
 use ratatui::{backend::TestBackend, Terminal};
 

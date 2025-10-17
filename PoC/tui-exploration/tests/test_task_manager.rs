@@ -10,10 +10,11 @@ use tui_exploration::{
     TaskManager,
     task_manager::{
         MockTaskManager, TaskEvent, TaskLaunchParams, TaskLaunchResult,
-        TaskStatus, ToolStatus
+        TaskStatus
     },
     SelectedModel,
 };
+use ah_core::task_manager::ToolStatus;
 
 #[tokio::test]
 async fn test_mock_task_manager_launches_successful_task() {

@@ -1,5 +1,6 @@
 use tui_exploration::view_model::{*, create_draft_card_from_task};
 use ah_domain_types::{DraftTask, TaskState, DeliveryStatus, TaskExecution, SelectedModel};
+use ah_tui::view_model::{FocusElement, ModalState, TaskCardMetadata, TaskCardType, TaskExecutionViewModel};
 use crossterm::event::{MouseEvent, MouseEventKind, MouseButton};
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -347,7 +348,7 @@ fn down_arrow_from_draft_goes_to_filter_separator() {
     let mut vm = create_test_view_model();
 
     // Add a dummy task card so navigation logic sees that there are tasks
-    vm.task_cards.push(TaskCardViewModel {
+    vm.task_cards.push(TaskExecutionViewModel {
         id: "dummy".to_string(),
         task: ah_domain_types::TaskExecution {
             id: "dummy".to_string(),
@@ -360,7 +361,7 @@ fn down_arrow_from_draft_goes_to_filter_separator() {
             delivery_status: vec![],
         },
         title: "dummy".to_string(),
-        metadata: tui_exploration::view_model::TaskCardMetadata {
+        metadata: TaskCardMetadata {
             repository: "dummy".to_string(),
             branch: "dummy".to_string(),
             models: vec![],
@@ -369,7 +370,7 @@ fn down_arrow_from_draft_goes_to_filter_separator() {
             delivery_indicators: "".to_string(),
         },
         height: 5,
-        card_type: tui_exploration::view_model::TaskCardType::Completed { delivery_indicators: "".to_string() },
+        card_type: TaskCardType::Completed { delivery_indicators: "".to_string() },
         focus_element: FocusElement::ExistingTask(0),
     });
 
@@ -442,13 +443,13 @@ fn typing_text_while_draft_focused_edits_description() {
 
     // Check that the description was updated
     assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "Hello");
-    assert_eq!(vm.draft_cards[0].save_state, DraftSaveState::Unsaved);
+    assert_eq!(vm.draft_cards[0].save_state, ah_tui::view_model::DraftSaveState::Unsaved);
 
     // Test backspace
     let handled = vm.handle_backspace();
     assert!(handled);
     assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "Hell");
-    assert_eq!(vm.draft_cards[0].save_state, DraftSaveState::Unsaved);
+    assert_eq!(vm.draft_cards[0].save_state, ah_tui::view_model::DraftSaveState::Unsaved);
 }
 
 #[test]

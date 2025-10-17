@@ -36,8 +36,12 @@
 //! - **Testable**: Rendering logic can be tested independently
 
 use ratatui::{prelude::*, widgets::*};
-use crate::view_model::{ViewModel, DraftCardViewModel, TaskCardViewModel, DraftSaveState, FocusElement, InteractiveArea, MouseAction, TaskCardTypeEnum, TaskCardType, ActivityEntry};
-use crate::task_manager::{TaskEvent, TaskStatus, LogLevel, ToolStatus};
+use crate::view_model::{ViewModel, InteractiveArea, MouseAction, TaskCardTypeEnum};
+use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, DraftSaveState};
+use ah_tui::view_model::{ActivityEntry};
+use ah_tui::view_model::{FocusElement, TaskCardType};
+use crate::task_manager::{TaskEvent, TaskStatus, LogLevel};
+use ah_core::task_manager::ToolStatus;
 use ah_domain_types::TaskState;
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::StatefulImage;
@@ -438,7 +442,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
 }
 
 // Helper function to find the textarea area for a given card (needed for cursor positioning)
-fn find_textarea_area_for_card(_view_model: &ViewModel, _card: &DraftCardViewModel, tasks_area: Rect) -> Option<Rect> {
+fn find_textarea_area_for_card(_view_model: &ViewModel, _card: &TaskEntryViewModel, tasks_area: Rect) -> Option<Rect> {
     // For draft cards, the textarea is positioned with left/right padding of 1
     // and starts after the top border + top padding
     // This is a simplified calculation - in a full implementation you'd track exact positions
@@ -537,7 +541,7 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, theme: &Theme, view_model: &
 }
 
 /// Render a draft card (exact same as main.rs TaskCard::render with state == Draft)
-fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &DraftCardViewModel, theme: &Theme, is_selected: bool) {
+fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) {
     // Draft cards have outer border with "New Task" title
     let border_style = if is_selected {
         Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
@@ -565,7 +569,7 @@ fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &DraftCardViewMode
 }
 
 /// Render a task card (exact same as main.rs TaskCard::render for Active/Completed/Merged)
-fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskCardViewModel, theme: &Theme, is_selected: bool) {
+fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme, is_selected: bool) {
     let display_title = if card.title.len() > 40 {
         format!("{}...", &card.title[..37])
     } else {
@@ -596,7 +600,7 @@ fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskCardViewModel,
 }
 
 /// Render draft card content (exact same as main.rs TaskCard::render_draft_card_content)
-fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &DraftCardViewModel, theme: &Theme) {
+fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme) {
     let content_height = area.height as usize;
 
     // Split the available area between textarea and buttons (exact same as main.rs)
@@ -842,7 +846,7 @@ fn register_draft_card_button_areas(
 }
 
 /// Render active task card (exact same as main.rs TaskCard::render_active_card)
-fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskCardViewModel, theme: &Theme) {
+fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme) {
     // First line: metadata on left, Stop button on right
     let agents_text = if card.metadata.models.is_empty() {
         "No agents".to_string()
@@ -1001,7 +1005,7 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskCardVie
 }
 
 /// Render completed/merged task card (exact same as main.rs TaskCard::render_completed_card)
-fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskCardViewModel, theme: &Theme) {
+fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme) {
     // Parse delivery indicators and apply proper colors
     let delivery_spans = if card.metadata.delivery_indicators.is_empty() {
         vec![Span::styled("⎇ br", Style::default().fg(theme.primary))]

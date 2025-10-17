@@ -52,11 +52,13 @@
 //! ```
 
 use ah_domain_types::{TaskExecution, DraftTask, SelectedModel, TaskState, TaskInfo, DeliveryStatus};
+use ah_tui::view_model::{FocusElement, ModalState, ButtonStyle, ButtonViewModel, DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel, ActivityEntry, TaskCardType, TaskCardMetadata, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskCard, DraftControlsViewModel};
 use crate::workspace_files::WorkspaceFiles;
 use crate::workspace_workflows::WorkspaceWorkflows;
 use crate::Settings;
-use crate::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult, LogLevel, ToolStatus};
-use crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
+use crate::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult, LogLevel};
+use ah_core::task_manager::ToolStatus;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
 use futures::stream::StreamExt;
 use ratatui::style::{Style, Modifier};
 use std::collections::HashMap;
@@ -419,18 +421,6 @@ pub fn rect_contains(rect: ratatui::layout::Rect, x: u16, y: u16) -> bool {
         && y < rect.y.saturating_add(rect.height)
 }
 
-/// Auto-save states for draft tasks
-#[derive(Debug, Clone, PartialEq)]
-pub enum DraftSaveState {
-    /// User has typed but no save request is in flight OR current in-flight request is invalidated
-    Unsaved,
-    /// There is a valid (non-invalidated) save request currently in flight
-    Saving,
-    /// No pending changes AND most recent save request completed successfully
-    Saved,
-    /// Most recent save request failed and no new typing has occurred
-    Error,
-}
 
 /// UI helper enum to represent items in the unified task list
 /// This is used for presentation logic, not domain logic
@@ -472,234 +462,15 @@ pub enum Msg {
     Quit,
 }
 
-/// User interface focus states
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FocusElement {
-    /// Focus on settings button (top of screen)
-    Settings,
-    /// Focus on settings button in header
-    SettingsButton,
-    /// Focus on draft task by index
-    DraftTask(usize),
-    /// Focus on filter bar separator line
-    FilterBarSeparator,
-    /// Focus on filter bar line
-    FilterBarLine,
-    /// Focus on existing task by index
-    ExistingTask(usize),
-    /// Focus on draft task description textarea
-    TaskDescription,
-    /// Focus on repository selector
-    RepositorySelector,
-    /// Focus on repository button
-    RepositoryButton,
-    /// Focus on branch selector
-    BranchSelector,
-    /// Focus on branch button
-    BranchButton,
-    /// Focus on model selector
-    ModelSelector,
-    /// Focus on model button
-    ModelButton,
-    /// Focus on Go button
-    GoButton,
-    /// Focus on Stop button
-    StopButton(usize),
-    /// Focus on filter controls
-    Filter(usize), // index of filter button
-}
 
-/// Modal dialog states
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ModalState {
-    /// No modal active
-    None,
-    /// Repository search modal
-    RepositorySearch,
-    /// Branch search modal
-    BranchSearch,
-    /// Model selection modal
-    ModelSearch,
-    /// Model multi-selection modal
-    ModelSelection,
-    /// Settings modal
-    Settings,
-    /// Go to line modal
-    GoToLine,
-    /// Find and replace modal
-    FindReplace,
-    /// Keyboard shortcut help modal
-    ShortcutHelp,
-}
 
-/// Search and filter modes
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SearchMode {
-    /// No search active
-    None,
-    /// Fuzzy search mode
-    Fuzzy,
-    /// Text search mode
-    Text,
-}
 
-/// Task card presentation model - how tasks are displayed in the UI
-#[derive(Debug, Clone, PartialEq)]
-pub struct TaskCard {
-    pub id: String,
-    pub title: String,
-    pub repository: String,
-    pub branch: String,
-    pub agents: Vec<SelectedModel>,
-    pub state: TaskState,
-    pub timestamp: String,
-    pub activity: Vec<String>, // For active tasks
-    pub delivery_indicators: Vec<DeliveryIndicator>, // For completed/merged tasks
-}
 
-impl TaskCard {
-    /// Get recent activity for display
-    pub fn get_recent_activity(&self, count: usize) -> Vec<String> {
-        if self.state == TaskState::Active {
-            let recent: Vec<String> = self.activity.iter()
-                .rev()
-                .take(count)
-                .cloned()
-                .collect();
-            let mut result: Vec<String> = recent.into_iter().rev().collect();
 
-            // Always return exactly count lines, padding with empty strings at the beginning
-            while result.len() < count {
-                result.insert(0, String::new());
-            }
-            result
-        } else {
-            vec![String::new(); count]
-        }
-    }
-}
 
-/// UI display indicators for delivery status
-#[derive(Debug, Clone, PartialEq)]
-pub enum DeliveryIndicator {
-    BranchCreated,
-    PrCreated { pr_number: u32, title: String },
-    PrMerged { pr_number: u32 },
-}
 
-/// Filter options for task list display
-#[derive(Debug, Clone, PartialEq)]
-pub struct FilterOptions {
-    pub status: TaskStatusFilter,
-    pub time_range: TimeRangeFilter,
-    pub search_query: String,
-}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TaskStatusFilter {
-    All,
-    Active,
-    Completed,
-    Merged,
-}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TimeRangeFilter {
-    AllTime,
-    Today,
-    Week,
-    Month,
-}
-
-/// Auto-save state for UI display
-#[derive(Debug, Clone, PartialEq)]
-pub enum AutoSaveState {
-    Saved,
-    Saving,
-    Unsaved,
-    Error(String),
-}
-
-/// Metadata components for task cards
-#[derive(Debug, Clone, PartialEq)]
-pub struct TaskCardMetadata {
-    pub repository: String,
-    pub branch: String,
-    pub models: Vec<SelectedModel>,
-    pub state: TaskState,
-    pub timestamp: String,
-    pub delivery_indicators: String, // Delivery status indicators (⎇ ⇄ ✓)
-}
-
-/// ViewModel for draft task cards (editable)
-#[derive(Debug, Clone)] // PartialEq removed due to TextArea
-pub struct DraftCardViewModel {
-    pub id: String, // Unique identifier for the draft card
-    pub repository: String, // Repository name
-    pub branch: String, // Branch name
-    pub models: Vec<SelectedModel>, // Selected models
-    pub created_at: String, // Creation timestamp
-    pub height: u16,
-    pub controls: DraftControlsViewModel,
-    pub save_state: DraftSaveState,
-    pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
-    pub focus_element: FocusElement, // Current focus within this card
-    pub auto_save_timer: Option<std::time::Instant>, // Timer for auto-save functionality
-}
-
-/// ViewModel for regular task cards (active/completed/merged)
-#[derive(Debug, Clone, PartialEq)]
-pub struct TaskCardViewModel {
-    pub id: String, // Unique identifier for the task card
-    pub task: TaskExecution, // Domain object
-    pub title: String,
-    pub metadata: TaskCardMetadata,
-    pub height: u16,
-    pub card_type: TaskCardType, // Active, Completed, or Merged
-    pub focus_element: FocusElement, // Current focus within this card
-}
-
-/// Activity entries for active task cards
-#[derive(Debug, Clone, PartialEq)]
-pub enum ActivityEntry {
-    /// Agent thought/reasoning
-    AgentThought {
-        thought: String,
-    },
-    /// Agent file edit
-    AgentEdit {
-        file_path: String,
-        lines_added: usize,
-        lines_removed: usize,
-        description: Option<String>,
-    },
-    /// Tool usage with execution state
-    ToolUse {
-        tool_name: String,
-        tool_execution_id: String,
-        last_line: Option<String>, // None = just started, Some = has output
-        completed: bool, // true when ToolResult received
-        status: ToolStatus,
-    },
-}
-
-/// Different visual types of regular task cards (active/completed/merged)
-#[derive(Debug, Clone, PartialEq)]
-pub enum TaskCardType {
-    /// Active task with real-time activity
-    Active {
-        activity_entries: Vec<ActivityEntry>, // Processed activity data (ViewModel layer)
-        pause_delete_buttons: String,
-    },
-    /// Completed task with delivery indicators
-    Completed {
-        delivery_indicators: String, // Formatted indicator text with colors
-    },
-    /// Merged task with delivery indicators
-    Merged {
-        delivery_indicators: String, // Formatted indicator text with colors
-    },
-}
 
 /// Information about a task card for fast lookups
 #[derive(Debug, Clone)]
@@ -714,47 +485,8 @@ pub enum TaskCardTypeEnum {
     Task,
 }
 
-impl TaskCardType {
-    /// Check if this card type represents an active task
-    pub fn is_active(&self) -> bool {
-        matches!(self, TaskCardType::Active { .. })
-    }
 
-    /// Check if this card type represents a completed task
-    pub fn is_completed(&self) -> bool {
-        matches!(self, TaskCardType::Completed { .. })
-    }
 
-    /// Check if this card type represents a merged task
-    pub fn is_merged(&self) -> bool {
-        matches!(self, TaskCardType::Merged { .. })
-    }
-}
-
-/// Draft card controls view model
-#[derive(Debug, Clone, PartialEq)]
-pub struct DraftControlsViewModel {
-    pub repository_button: ButtonViewModel,
-    pub branch_button: ButtonViewModel,
-    pub model_button: ButtonViewModel,
-    pub go_button: ButtonViewModel,
-}
-
-/// Button presentation state
-#[derive(Debug, Clone, PartialEq)]
-pub struct ButtonViewModel {
-    pub text: String,
-    pub is_focused: bool,
-    pub style: ButtonStyle,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ButtonStyle {
-    Normal,
-    Focused,
-    Active,
-    Disabled,
-}
 
 /// Modal dialog view models
 #[derive(Debug, Clone, PartialEq)]
@@ -889,8 +621,8 @@ pub struct ViewModel {
     pub available_models: Vec<String>,
 
     // Task collections - cards contain the domain objects
-    pub draft_cards: Vec<DraftCardViewModel>, // Draft tasks (editable)
-    pub task_cards: Vec<TaskCardViewModel>, // Regular tasks (active/completed/merged)
+    pub draft_cards: Vec<TaskEntryViewModel>, // Draft tasks (editable)
+    pub task_cards: Vec<TaskExecutionViewModel>, // Regular tasks (active/completed/merged)
 
     // UI interaction state
     pub selected_card: usize,
@@ -953,7 +685,7 @@ impl ViewModel {
 
         // Calculate layout metrics
         let total_content_height: u16 = task_cards.iter()
-            .map(|card: &TaskCardViewModel| card.height + 1) // +1 for spacer
+            .map(|card: &TaskExecutionViewModel| card.height + 1) // +1 for spacer
             .sum::<u16>()
             + 1; // Filter bar height
 
@@ -1020,7 +752,7 @@ impl ViewModel {
             Msg::Key(key_event) => {
                 // Ignore key up events - we only want to process key down events
                 // to avoid double processing (key down and key up)
-                use crossterm::event::KeyEventKind;
+                use ratatui::crossterm::event::KeyEventKind;
                 if matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
                     if self.handle_key_event(key_event) {
                         self.needs_redraw = true;
@@ -1049,7 +781,7 @@ impl ViewModel {
     /// Translate a KeyEvent to a KeyboardOperation by consulting the user's configured key bindings
     fn key_event_to_operation(&self, key: &KeyEvent) -> Option<KeyboardOperation> {
         use crate::settings::*;
-        use crossterm::event::KeyModifiers;
+        use ratatui::crossterm::event::KeyModifiers;
 
         // Special hardcoded handling for Ctrl+N (new draft) - bypass keymap
         if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
@@ -1086,7 +818,7 @@ impl ViewModel {
 
     /// Handle keyboard events by translating to KeyboardOperation and dispatching
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
-        use crossterm::event::KeyModifiers;
+        use ratatui::crossterm::event::KeyModifiers;
 
         // Special handling for Ctrl+N (new draft) - check before keymap lookup
         if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
@@ -1148,7 +880,7 @@ impl ViewModel {
 
     /// Handle mouse events (similar to main.rs handle_mouse)
     pub fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
-        use crossterm::event::{MouseEventKind, MouseButton};
+        use ratatui::crossterm::event::{MouseEventKind, MouseButton};
 
         let column = mouse.column;
         let row = mouse.row;
@@ -1543,7 +1275,7 @@ impl ViewModel {
     }
 
     /// Get the currently focused draft card (mutable reference)
-    pub fn get_focused_draft_card_mut(&mut self) -> Option<&mut DraftCardViewModel> {
+    pub fn get_focused_draft_card_mut(&mut self) -> Option<&mut TaskEntryViewModel> {
         if let FocusElement::DraftTask(index) = self.focus_element {
             self.draft_cards.get_mut(index)
         } else {
@@ -1552,7 +1284,7 @@ impl ViewModel {
     }
 
     /// Get the currently focused draft card (immutable reference)
-    pub fn get_focused_draft_card(&self) -> Option<&DraftCardViewModel> {
+    pub fn get_focused_draft_card(&self) -> Option<&TaskEntryViewModel> {
         if let FocusElement::DraftTask(index) = self.focus_element {
             self.draft_cards.get(index)
         } else {
@@ -1723,9 +1455,10 @@ impl ViewModel {
     /// Update draft text
     pub fn update_draft_text(&mut self, text: &str, draft_id: &str) {
         if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
-            // Update textarea content using mutators
-            card.description.select_all();
-            card.description.insert_str(text);
+            // Update textarea content by clearing and inserting new text
+            // Note: ratatui_textarea doesn't have select_all, so we recreate the textarea
+            card.description = tui_textarea::TextArea::new(text.lines().map(|s| s.to_string()).collect::<Vec<String>>());
+            card.description.set_cursor_line_style(ratatui::style::Style::default());
         }
     }
 
@@ -1925,15 +1658,15 @@ fn create_draft_card_textarea(text: &str) -> tui_textarea::TextArea<'static> {
     // Remove underline styling from textarea
     textarea.set_style(Style::default().remove_modifier(Modifier::UNDERLINED));
     textarea.set_cursor_line_style(Style::default());
+    if text.is_empty() {
+        textarea.set_placeholder_text("Describe what you want the agent to do...");
+    }
     textarea
 }
 
 /// Create a draft card from a DraftTask
-pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> DraftCardViewModel {
-    let mut description = create_draft_card_textarea(&task.description);
-    if task.description.is_empty() {
-        description.set_placeholder_text("Describe what you want the agent to do...");
-    }
+pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> TaskEntryViewModel {
+    let description = create_draft_card_textarea(&task.description);
 
     let controls = DraftControlsViewModel {
         repository_button: ButtonViewModel {
@@ -1963,7 +1696,7 @@ pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement)
     let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
     let height = inner_height as u16 + 2; // account for rounded border
 
-    DraftCardViewModel {
+    TaskEntryViewModel {
         id: task.id,
         repository: task.repository,
         branch: task.branch,
@@ -1979,7 +1712,7 @@ pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement)
 }
 
 /// Create a task card from a TaskExecution
-fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> TaskCardViewModel {
+fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> TaskExecutionViewModel {
     let title = format_title_from_execution(&task);
 
     let metadata = TaskCardMetadata {
@@ -2015,7 +1748,7 @@ fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> 
         }).collect(),
     }, &[task.clone()], false);
 
-    TaskCardViewModel {
+    TaskExecutionViewModel {
         id: task.id.clone(),
         task,
         title: title.clone(),
@@ -2037,12 +1770,9 @@ fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> 
 }
 
 /// Create ViewModel representations for draft tasks
-fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[TaskExecution], focus_element: FocusElement) -> Vec<DraftCardViewModel> {
+fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[TaskExecution], focus_element: FocusElement) -> Vec<TaskEntryViewModel> {
     draft_tasks.iter().map(|draft| {
-        let mut textarea = create_draft_card_textarea(&draft.description);
-        if draft.description.is_empty() {
-            textarea.set_placeholder_text("Describe what you want the agent to do...");
-        }
+        let textarea = create_draft_card_textarea(&draft.description);
 
         let controls = DraftControlsViewModel {
             repository_button: ButtonViewModel {
@@ -2072,7 +1802,7 @@ fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[
         let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
         let height = inner_height as u16 + 2; // account for rounded border
 
-        DraftCardViewModel {
+        TaskEntryViewModel {
             id: draft.id.clone(),
             repository: draft.repository.clone(),
             branch: draft.branch.clone(),
@@ -2089,7 +1819,7 @@ fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[
 }
 
 /// Create ViewModel representations for regular tasks (active/completed/merged)
-fn create_task_card_view_models(draft_tasks: &[DraftTask], task_executions: &[TaskExecution], focus_element: FocusElement, settings: &Settings) -> Vec<TaskCardViewModel> {
+fn create_task_card_view_models(draft_tasks: &[DraftTask], task_executions: &[TaskExecution], focus_element: FocusElement, settings: &Settings) -> Vec<TaskExecutionViewModel> {
     let visible_tasks = TaskItem::all_tasks_from_state(draft_tasks, task_executions);
 
     visible_tasks.into_iter().enumerate().map(|(_idx, task_item)| {
@@ -2129,7 +1859,7 @@ fn create_task_card_view_models(draft_tasks: &[DraftTask], task_executions: &[Ta
                     }).collect::<Vec<_>>().join(" "),
                 };
 
-                TaskCardViewModel {
+                TaskExecutionViewModel {
                     id: ui_task.id.clone(),
                     task: task_execution.clone(),
                     title: ui_task.title.clone(),
@@ -2188,7 +1918,7 @@ fn create_modal_view_model(_modal_state: ModalState, _available_repositories: &[
 
 fn create_footer_view_model(focused_draft: Option<&DraftTask>, focus_element: FocusElement, modal_state: ModalState, _settings: &Settings, _word_wrap_enabled: bool, _show_autocomplete_border: bool) -> FooterViewModel {
     use crate::settings::{KeyboardShortcut, KeyboardOperation, KeyMatcher};
-    use crossterm::event::{KeyCode, KeyModifiers};
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
     let mut shortcuts = Vec::new();
 

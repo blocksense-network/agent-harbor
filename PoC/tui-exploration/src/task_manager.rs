@@ -17,6 +17,7 @@
 //! execution details and returns a result that the ViewModel can translate
 //! into domain messages for the Model.
 
+use ah_core::task_manager::ToolStatus;
 use ah_domain_types::{Repository, Branch, TaskInfo, SelectedModel};
 use async_trait::async_trait;
 use futures::stream::Stream;
@@ -147,14 +148,6 @@ pub enum LogLevel {
     Error,
 }
 
-/// Tool execution status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolStatus {
-    Started,
-    Completed,
-    Failed,
-}
 
 
 /// Result of saving a draft task

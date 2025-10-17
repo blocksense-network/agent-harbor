@@ -51,14 +51,17 @@ pub mod workspace_workflows;
 pub mod task_manager;
 
 // Re-export commonly used types
+pub use ah_core::task_manager::ToolStatus;
 pub use ah_domain_types::{SelectedModel, TaskState, DraftTask, TaskExecution, DeliveryStatus, Repository, Branch, TaskInfo};
-pub use view_model::{Msg, TaskCard, ViewModel, TaskCardViewModel, TaskCardType, FocusElement, ModalState, SearchMode, DraftSaveState, TaskItem};
+pub use view_model::{Msg, ViewModel, TaskCardTypeEnum, TaskItem};
+pub use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, FocusElement, ModalState, TaskCardType, ActivityEntry, ButtonStyle, ButtonViewModel, DraftSaveState, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskCard, TaskCardMetadata};
+pub use ah_tui::view_model::task_entry::DraftControlsViewModel;
 pub use view::ViewCache;
 pub use settings::{Settings, FontStyle, SelectionDialogStyle, KeymapConfig, KeyBinding};
 pub use workspace_workflows::{WorkspaceWorkflows, PathWorkspaceWorkflows};
 pub use task_manager::{
     TaskManager, MockTaskManager, TaskLaunchParams, TaskLaunchResult,
-    TaskEvent, TaskStatus, LogLevel, ToolStatus,
+    TaskEvent, TaskStatus, LogLevel,
     SaveDraftResult
 };
 pub use ah_workflows::{WorkflowResult, WorkflowError};

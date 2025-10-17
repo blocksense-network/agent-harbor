@@ -5,6 +5,7 @@
 
 use tui_exploration::view_model::*;
 use ah_domain_types::{DraftTask, SelectedModel, TaskState, DeliveryStatus, TaskExecution};
+use ah_tui::view_model::{FocusElement, ModalState, DraftSaveState};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Helper function to create a test ViewModel with mock dependencies
@@ -286,7 +287,7 @@ mod viewmodel_tests {
         // Auto-save timer should be set on the draft card (even though focus is on description)
         if let Some(card) = vm.draft_cards.get(0) {
             assert!(card.auto_save_timer.is_some());
-            assert_eq!(card.save_state, tui_exploration::view_model::DraftSaveState::Unsaved);
+            assert_eq!(card.save_state, DraftSaveState::Unsaved);
         } else {
             panic!("Expected draft card");
         }
@@ -311,7 +312,7 @@ mod viewmodel_tests {
 
         // Check the first draft card
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.save_state, tui_exploration::view_model::DraftSaveState::Saved);
+            assert_eq!(card.save_state, DraftSaveState::Saved);
             assert!(card.auto_save_timer.is_none());
         }
     }

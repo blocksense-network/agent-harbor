@@ -5,13 +5,15 @@
 //! - Task Events: TaskEvent processing and activity line generation
 
 use tui_exploration::{
-    view_model::{ViewModel, FocusElement, ActivityEntry, TaskCardType, TaskCardViewModel, TaskCardMetadata},
+    view_model::ViewModel,
     workspace_files::GitWorkspaceFiles,
     workspace_workflows::PathWorkspaceWorkflows,
-    task_manager::{MockTaskManager, TaskEvent, TaskStatus, LogLevel, ToolStatus},
+    task_manager::{MockTaskManager, TaskEvent, TaskStatus, LogLevel},
     settings::Settings,
 };
+use ah_core::task_manager::ToolStatus;
 use ah_domain_types::{TaskExecution, TaskState, SelectedModel, DeliveryStatus};
+use ah_tui::view_model::{FocusElement, ActivityEntry, TaskCardType, TaskCardMetadata, TaskExecutionViewModel};
 
 #[cfg(test)]
 mod navigation_tests {
@@ -58,7 +60,7 @@ mod navigation_tests {
 
         // Now add some existing tasks to test full navigation cycle
         // Add a completed task and an active task
-        vm.task_cards.push(TaskCardViewModel {
+        vm.task_cards.push(TaskExecutionViewModel {
             id: "completed_1".to_string(),
             task: TaskExecution {
                 id: "completed_1".to_string(),
@@ -92,7 +94,7 @@ mod navigation_tests {
             focus_element: FocusElement::ExistingTask(0),
         });
 
-        vm.task_cards.push(TaskCardViewModel {
+        vm.task_cards.push(TaskExecutionViewModel {
             id: "active_1".to_string(),
             task: TaskExecution {
                 id: "active_1".to_string(),

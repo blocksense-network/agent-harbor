@@ -279,15 +279,15 @@ impl KeyboardOperation {
 /// Enhanced key matcher with support for required/optional modifiers
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KeyMatcher {
-    pub code: crossterm::event::KeyCode,
-    pub required: crossterm::event::KeyModifiers,
-    pub optional: crossterm::event::KeyModifiers,
+    pub code: ratatui::crossterm::event::KeyCode,
+    pub required: ratatui::crossterm::event::KeyModifiers,
+    pub optional: ratatui::crossterm::event::KeyModifiers,
     pub char_lower: Option<char>,
 }
 
 impl KeyMatcher {
     /// Create a new key matcher
-    pub fn new(code: crossterm::event::KeyCode, required: crossterm::event::KeyModifiers, optional: crossterm::event::KeyModifiers, char_lower: Option<char>) -> Self {
+    pub fn new(code: ratatui::crossterm::event::KeyCode, required: ratatui::crossterm::event::KeyModifiers, optional: ratatui::crossterm::event::KeyModifiers, char_lower: Option<char>) -> Self {
         Self {
             code,
             required,
@@ -298,7 +298,7 @@ impl KeyMatcher {
 
     /// Convert back to a displayable string representation
     pub fn to_string(&self) -> String {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
         let mut parts = Vec::new();
 
@@ -343,7 +343,7 @@ impl KeyMatcher {
     }
 
     /// Check if this matcher matches a crossterm KeyEvent
-    pub fn matches(&self, event: &crossterm::event::KeyEvent) -> bool {
+    pub fn matches(&self, event: &ratatui::crossterm::event::KeyEvent) -> bool {
         use crossterm::event::KeyModifiers;
 
         // Check key code first
@@ -373,7 +373,7 @@ impl KeyMatcher {
         true
     }
 
-    fn matches_code(&self, code: &crossterm::event::KeyCode) -> bool {
+    fn matches_code(&self, code: &ratatui::crossterm::event::KeyCode) -> bool {
         use crossterm::event::KeyCode;
 
         match (&self.code, code) {
@@ -428,7 +428,7 @@ impl KeyboardShortcut {
     }
 
     /// Check if any of the bindings match the given KeyEvent
-    pub fn matches(&self, event: &crossterm::event::KeyEvent) -> bool {
+    pub fn matches(&self, event: &ratatui::crossterm::event::KeyEvent) -> bool {
         self.bindings.iter().any(|matcher| matcher.matches(event))
     }
 
@@ -559,7 +559,7 @@ impl KeyBinding {
 
     /// Convert to a KeyMatcher for advanced matching
     pub fn to_matcher(&self) -> Result<KeyMatcher, KeyboardShortcutError> {
-        use crossterm::event::{KeyCode, KeyModifiers};
+        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
         let (code, char_lower) = self.parse_key_token()?;
         let mut required = KeyModifiers::empty();
@@ -588,7 +588,7 @@ impl KeyBinding {
     }
 
     /// Parse the key token into KeyCode and optional lowercase character
-    fn parse_key_token(&self) -> Result<(crossterm::event::KeyCode, Option<char>), KeyboardShortcutError> {
+    fn parse_key_token(&self) -> Result<(ratatui::crossterm::event::KeyCode, Option<char>), KeyboardShortcutError> {
         use crossterm::event::KeyCode;
 
         let token = &self.key;
@@ -631,7 +631,7 @@ impl KeyBinding {
     }
 
     /// Check if this key binding matches a crossterm KeyEvent
-    pub fn matches(&self, event: &crossterm::event::KeyEvent) -> bool {
+    pub fn matches(&self, event: &ratatui::crossterm::event::KeyEvent) -> bool {
         match self.to_matcher() {
             Ok(matcher) => matcher.matches(event),
             Err(_) => false,

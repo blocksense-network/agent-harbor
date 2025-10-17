@@ -502,6 +502,7 @@ mod test_utils {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use url::Url;

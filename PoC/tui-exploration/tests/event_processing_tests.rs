@@ -5,12 +5,14 @@
 
 use std::sync::Arc;
 use tui_exploration::{
-    view_model::{ViewModel, FocusElement, ActivityEntry, TaskCardType},
+    view_model::ViewModel,
     workspace_files::GitWorkspaceFiles,
     workspace_workflows::PathWorkspaceWorkflows,
-    task_manager::{MockTaskManager, TaskEvent, TaskStatus, LogLevel, ToolStatus},
+    task_manager::{MockTaskManager, TaskEvent, TaskStatus, LogLevel},
     settings::Settings,
 };
+use ah_core::task_manager::ToolStatus;
+use ah_tui::view_model::{FocusElement, ActivityEntry, TaskCardType, TaskExecutionViewModel};
 use time::OffsetDateTime;
 
 #[cfg(test)]
@@ -49,8 +51,8 @@ mod event_processing_tests {
             delivery_status: vec![],
         };
 
-        use tui_exploration::view_model::{TaskCardViewModel, TaskCardType, TaskCardMetadata};
-        let test_card = TaskCardViewModel {
+        use ah_tui::view_model::{TaskExecutionViewModel, TaskCardType, TaskCardMetadata};
+        let test_card = TaskExecutionViewModel {
             id: "test_task_1".to_string(),
             task: test_task,
             title: "Test Active Task".to_string(),
