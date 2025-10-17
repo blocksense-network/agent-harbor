@@ -1,5 +1,16 @@
 {
-  description = " Agent Harbor";
+  description = "Agent Harbor";
+
+  nixConfig = {
+    extra-substituters = [
+      "https://agent-harbor.cachix.org"
+      "https://mcl-public-cache.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "agent-harbor.cachix.org-1:2x123W9OUoHUzXoSvPv2CRXPo7rjLKAOd6/MkaHFNRA="
+      "mcl-public-cache.cachix.org-1:OcUzMeoSAwNEd3YCaEbNjLV5/Gd+U5VFxdN2WGHfpCI="
+    ];
+  };
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
