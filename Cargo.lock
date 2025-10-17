@@ -463,9 +463,13 @@ name = "ah-rest-client"
 version = "0.1.0"
 dependencies = [
  "ah-client-api",
+ "ah-core",
+ "ah-domain-types",
  "ah-rest-api-contract",
+ "async-stream",
  "async-trait",
  "base64 0.22.1",
+ "chrono",
  "eventsource-client",
  "futures",
  "reqwest",
@@ -474,6 +478,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "tracing",
  "url",
 ]
 
@@ -489,6 +494,22 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "url",
+]
+
+[[package]]
+name = "ah-rest-mock-client"
+version = "0.1.0"
+dependencies = [
+ "ah-core",
+ "ah-domain-types",
+ "async-trait",
+ "chrono",
+ "futures",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

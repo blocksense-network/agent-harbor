@@ -3,15 +3,20 @@
 //! This crate provides a complete HTTP client for the agent-harbor REST API
 //! as specified in REST-Service.md. It includes support for authentication,
 //! request/response handling, and SSE streaming for real-time updates.
+//!
+//! Additionally, it provides a TaskManager trait implementation for use
+//! with the ah-core TaskManager abstraction layer.
 
 pub mod auth;
 pub mod client;
 pub mod error;
 pub mod sse;
+pub mod task_manager;
 
 pub use auth::*;
 pub use client::*;
 pub use error::*;
+pub use task_manager::*;
 
 use ah_client_api::{ClientApi, ClientApiError, ClientApiResult};
 use ah_rest_api_contract::*;

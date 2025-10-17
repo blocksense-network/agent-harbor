@@ -273,6 +273,8 @@ The RestTaskManager has been implemented as a wrapper around the existing RestCl
 
 - Unit tests for TaskManager trait implementation (3 comprehensive tests)
 - Integration tests against webui/mock-server (6 comprehensive tests covering all TaskManager methods)
+- Shared mock server management ensuring single server instance across all tests
+- Individual test isolation - each test works independently or as part of test suite
 - Input validation tests for task launch parameters
 - Error handling tests for API failures
 - Authentication configuration tests

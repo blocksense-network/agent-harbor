@@ -428,8 +428,83 @@ impl TaskManager for RestTaskManager {
 }
 
 #[cfg(test)]
+mod test_utils {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    use std::thread;
+
+    /// Start the mock server in the background
+    pub fn start_mock_server() -> std::process::Child {
+        // Find the mock server directory
+        let project_root = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .parent()
+            .expect("Failed to get project root")
+            .parent()
+            .expect("Failed to get project root")
+            .to_path_buf();
+
+        let mock_server_dir = project_root.join("webui").join("mock-server");
+
+        // Use yarn to start the dev server (which supports hot reloading)
+        Command::new("yarn")
+            .arg("workspace")
+            .arg("ah-webui-mock-server")
+            .arg("run")
+            .arg("dev")
+            .current_dir(&mock_server_dir)
+            .env("NODE_ENV", "test") // Quiet mode for tests
+            .env("QUIET_MODE", "true")
+            .stdout(Stdio::null()) // Suppress output
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("Failed to start mock server")
+    }
+
+    /// Wait for the server to be ready by checking the health endpoint
+    pub fn wait_for_server(port: u16, timeout_secs: u64) -> bool {
+        let start = Instant::now();
+        let client = reqwest::blocking::Client::new();
+
+        while start.elapsed().as_secs() < timeout_secs {
+            if let Ok(resp) = client.get(&format!("http://localhost:{}/health", port)).send() {
+                if resp.status().is_success() {
+                    return true;
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        false
+    }
+
+    /// Ensure mock server is running for testing (only starts if not already running)
+    pub async fn ensure_mock_server_for_test() {
+        // Use spawn_blocking to isolate all blocking operations from tokio runtime
+        tokio::task::spawn_blocking(|| {
+            // First check if server is already running
+            if wait_for_server(3001, 1) {
+                // Server is already running, just return
+                return;
+            }
+
+            // Server not running, start it
+            start_mock_server();
+
+            // Wait for server to be ready
+            assert!(
+                wait_for_server(3001, 30),
+                "Mock server failed to start within 30 seconds"
+            );
+
+            // Give server a moment to fully initialize
+            thread::sleep(Duration::from_secs(2));
+        }).await.expect("Failed to start mock server");
+    }
+}
+
 mod tests {
     use super::*;
+    use super::test_utils::ensure_mock_server_for_test;
     use url::Url;
 
     #[tokio::test]
@@ -484,6 +559,9 @@ mod tests {
 
     #[tokio::test]
     async fn integration_test_launch_task_success() {
+        // Start mock server for this test (background process, cleaned up by OS)
+        ensure_mock_server_for_test().await;
+
         // Test against actual mock server
         let auth = AuthConfig::default();
         let base_url = Url::parse("http://localhost:3001").unwrap(); // Mock server port
@@ -505,10 +583,16 @@ mod tests {
         assert!(result.is_success(), "Task launch should succeed against mock server: {:?}", result.error());
         // Mock server returns ULID-style IDs, not session_ prefixed
         assert!(!result.task_id().unwrap().is_empty());
+
+        // Note: Server process will be cleaned up by OS when test binary exits
+        // No explicit cleanup needed for integration tests
     }
 
     #[tokio::test]
     async fn integration_test_get_initial_tasks() {
+        // Start mock server for this test
+        ensure_mock_server_for_test().await;
+
         // Test against actual mock server
         let auth = AuthConfig::default();
         let base_url = Url::parse("http://localhost:3001").unwrap();
@@ -519,10 +603,16 @@ mod tests {
         // Mock server should return some initial data
         assert!(drafts.len() >= 0);
         assert!(tasks.len() >= 0);
+
+        // Note: Server process will be cleaned up by OS when test binary exits
+        // No explicit cleanup needed for integration tests
     }
 
     #[tokio::test]
     async fn integration_test_list_repositories() {
+        // Start mock server for this test
+        ensure_mock_server_for_test().await;
+
         // Test against actual mock server
         let auth = AuthConfig::default();
         let base_url = Url::parse("http://localhost:3001").unwrap();
@@ -533,10 +623,16 @@ mod tests {
         // Mock server should return repository data
         assert!(!repos.is_empty());
         assert!(repos.iter().any(|r| r.name.contains("agent-harbor")));
+
+        // Note: Server process will be cleaned up by OS when test binary exits
+        // No explicit cleanup needed for integration tests
     }
 
     #[tokio::test]
     async fn integration_test_list_branches() {
+        // Start mock server for this test
+        ensure_mock_server_for_test().await;
+
         // Test against actual mock server
         let auth = AuthConfig::default();
         let base_url = Url::parse("http://localhost:3001").unwrap();
@@ -547,10 +643,16 @@ mod tests {
         // Should return branch data
         assert!(!branches.is_empty());
         assert!(branches.iter().any(|b| b.name == "main"));
+
+        // Note: Server process will be cleaned up by OS when test binary exits
+        // No explicit cleanup needed for integration tests
     }
 
     #[tokio::test]
     async fn integration_test_task_events_stream() {
+        // Start mock server for this test
+        ensure_mock_server_for_test().await;
+
         // Test against actual mock server
         let auth = AuthConfig::default();
         let base_url = Url::parse("http://localhost:3001").unwrap();
@@ -593,10 +695,16 @@ mod tests {
 
         // The main test is that we can create the stream without panicking
         // This verifies the HTTP connection and SSE setup work
+
+        // Note: Server process will be cleaned up by OS when test binary exits
+        // No explicit cleanup needed for integration tests
     }
 
     #[tokio::test]
     async fn integration_test_save_draft_task() {
+        // Start mock server for this test
+        ensure_mock_server_for_test().await;
+
         // Test against actual mock server
         let auth = AuthConfig::default();
         let base_url = Url::parse("http://localhost:3001").unwrap();
@@ -616,5 +724,8 @@ mod tests {
         // Mock server may or may not implement draft persistence yet
         // Either way, the call should not panic
         assert!(matches!(result, SaveDraftResult::Success) || matches!(result, SaveDraftResult::Failure { .. }));
+
+        // Note: Server process will be cleaned up by OS when test binary exits
+        // No explicit cleanup needed for integration tests
     }
 }
