@@ -35,29 +35,48 @@ This strategy enables parallel development tracks while maintaining type safety 
 
 ## Milestone 1: API Contract Foundation
 
-**Status**: Not Started
+**Status**: Completed
 
 ### Deliverables
 
-- [ ] Create `crates/ah-rest-api-contract` with shared request/response types
-- [ ] Implement request validation for all POST/PUT endpoints
-- [ ] Define SSE event types matching [API.md](API.md) specification
-- [ ] Add OpenAPI schema generation with utoipa annotations
-- [ ] Implement JSON serialization/deserialization for all types
-- [ ] Define error types following Problem+JSON format (RFC 7807)
-- [ ] Add pagination, filtering, and query parameter types
-- [ ] Implement idempotency key handling types
+- [x] Create `crates/ah-rest-api-contract` with shared request/response types
+- [x] Implement request validation for all POST/PUT endpoints
+- [x] Define SSE event types matching [API.md](API.md) specification
+- [x] Add OpenAPI schema generation with utoipa annotations
+- [x] Implement JSON serialization/deserialization for all types
+- [x] Define error types following Problem+JSON format (RFC 7807)
+- [x] Add pagination, filtering, and query parameter types
+- [x] Implement idempotency key handling types
 
 ### Verification
 
-- [ ] All API types serialize/deserialize correctly with serde_json
-- [ ] Request validation rejects invalid inputs with descriptive errors
-- [ ] OpenAPI schema generated at `/api/v1/openapi.json` validates with openapi-validator
-- [ ] Problem+JSON error responses include correct status codes and details
-- [ ] Pagination types correctly handle edge cases (empty results, invalid page numbers)
-- [ ] SSE event types match [API.md](API.md) event taxonomy exactly
-- [ ] All required fields validated, optional fields handled correctly
-- [ ] Idempotency keys properly typed and validated (ULID format)
+- [x] All API types serialize/deserialize correctly with serde_json
+- [x] Request validation rejects invalid inputs with descriptive errors
+- [x] OpenAPI schema generated at `/api/v1/openapi.json` validates with openapi-validator
+- [x] Problem+JSON error responses include correct status codes and details
+- [x] Pagination types correctly handle edge cases (empty results, invalid page numbers)
+- [x] SSE event types match [API.md](API.md) event taxonomy exactly
+- [x] All required fields validated, optional fields handled correctly
+- [x] Idempotency keys properly typed and validated (ULID format)
+
+### Implementation Details
+
+The API contract foundation has been implemented in the `crates/ah-rest-api-contract` crate with the following key components:
+
+- **Core Types**: Complete type system for REST API requests/responses including `CreateTaskRequest`, `Session`, `SessionEvent`, and supporting types
+- **Event System**: Extended SSE event types to include agent activity events (`Thought`, `ToolUse`, `ToolResult`, `FileEdit`) with proper serialization
+- **Validation**: Comprehensive validation logic for all POST/PUT endpoints using the `validator` crate
+- **Error Handling**: Problem+JSON format error responses with RFC 7807 compliance
+- **OpenAPI Generation**: Full utoipa integration for automatic OpenAPI schema generation
+- **Idempotency**: ULID-based idempotency key validation and handling
+- **Pagination**: Query parameter types for pagination, filtering, and sorting
+
+### Key Source Files
+
+- `crates/ah-rest-api-contract/src/types.rs` - Core API type definitions
+- `crates/ah-rest-api-contract/src/error.rs` - Error types and Problem+JSON responses
+- `crates/ah-rest-api-contract/src/validation.rs` - Validation logic and comprehensive tests
+- `crates/ah-rest-api-contract/src/lib.rs` - OpenAPI schema generation
 
 ### Test Strategy
 

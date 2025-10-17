@@ -34,10 +34,14 @@ pub enum ApiContractError {
 
     #[error("Invalid delivery mode: {0}")]
     InvalidDeliveryMode(String),
+
+    #[error("Invalid ULID format: {0}")]
+    InvalidUlid(String),
 }
 
 /// Problem+JSON error response format as per RFC 7807
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct ProblemDetails {
     #[serde(rename = "type")]
     pub problem_type: String,

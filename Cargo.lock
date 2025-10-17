@@ -442,6 +442,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "url",
+ "utoipa",
  "uuid",
  "validator 0.18.1",
 ]

@@ -8,6 +8,7 @@ use validator::Validate;
 
 /// Session lifecycle states
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
     #[serde(rename = "queued")]
@@ -55,6 +56,7 @@ impl std::fmt::Display for SessionStatus {
 
 /// Repository mode for task creation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum RepoMode {
     Git,
@@ -64,6 +66,7 @@ pub enum RepoMode {
 
 /// Runtime type for task execution
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum RuntimeType {
     Devcontainer,
@@ -73,6 +76,7 @@ pub enum RuntimeType {
 
 /// Delivery mode for task results
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum DeliveryMode {
     Pr,
@@ -82,6 +86,7 @@ pub enum DeliveryMode {
 
 /// Session event types for SSE streaming
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "camelCase")]
 pub enum EventType {
     Status,
@@ -96,10 +101,15 @@ pub enum EventType {
     Summary,
     FollowersCatalog,
     Note,
+    Thought,
+    ToolUse,
+    ToolResult,
+    FileEdit,
 }
 
 /// Log levels for session events
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Debug,
@@ -110,6 +120,7 @@ pub enum LogLevel {
 
 /// Repository configuration for task creation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct RepoConfig {
     pub mode: RepoMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,6 +133,7 @@ pub struct RepoConfig {
 
 /// Runtime configuration for task execution
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct RuntimeConfig {
     #[serde(rename = "type")]
     pub runtime_type: RuntimeType,
@@ -173,6 +185,7 @@ pub struct DeliveryConfig {
 
 /// Task creation request
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct CreateTaskRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
@@ -205,6 +218,7 @@ pub struct WebhookConfig {
 
 /// Task creation response
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct CreateTaskResponse {
     pub id: String,
     pub status: SessionStatus,
@@ -222,6 +236,7 @@ pub struct TaskLinks {
 
 /// Session information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct Session {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -304,6 +319,7 @@ pub struct SessionListResponse {
 
 /// Session event for SSE streaming
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionEvent {
     #[serde(rename = "type")]
     pub event_type: EventType,
@@ -329,6 +345,27 @@ pub struct SessionEvent {
     pub failed: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeliveryInfo>,
+    // Agent activity event fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_args: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_execution_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines_added: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines_removed: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub ts: DateTime<Utc>,
 }
 
@@ -524,3 +561,7 @@ pub struct LogQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub since: Option<DateTime<Utc>>,
 }
+
+/// Idempotency key for POST requests (ULID format)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdempotencyKey(pub String);
