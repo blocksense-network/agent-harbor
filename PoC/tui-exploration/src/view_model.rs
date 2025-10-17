@@ -312,9 +312,10 @@ pub enum MouseAction {
     SelectCard(usize),
     SelectFilterBarLine,
     ActivateGoButton,
-    OpenRepositoryModal,
-    OpenBranchModal,
-    OpenModelModal,
+    ActivateRepositoryModal,
+    ActivateBranchModal,
+    ActivateModelModal,
+    LaunchTask,
     StopTask(usize),
     OpenSettings,
     EditFilter(FilterControl),
@@ -360,7 +361,7 @@ pub enum FooterAction {
 }
 
 /// Check if a rectangle contains a point
-fn rect_contains(rect: ratatui::layout::Rect, x: u16, y: u16) -> bool {
+pub fn rect_contains(rect: ratatui::layout::Rect, x: u16, y: u16) -> bool {
     x >= rect.x
         && y >= rect.y
         && x < rect.x.saturating_add(rect.width)
@@ -840,6 +841,7 @@ pub struct ViewModel {
     // UI interaction state
     pub selected_card: usize,
     pub interactive_areas: Vec<InteractiveArea>,
+    pub last_textarea_area: Option<ratatui::layout::Rect>, // Last rendered textarea area for caret positioning
 
     // Task event streaming
     pub task_event_sender: Option<mpsc::Sender<(String, TaskEvent)>>, // Shared sender for all task events
@@ -913,6 +915,7 @@ impl ViewModel {
             task_cards,
             selected_card: 0,
             interactive_areas: Vec::new(),
+            last_textarea_area: None,
             active_modal,
             footer,
             filter_bar,
@@ -1081,26 +1084,77 @@ impl ViewModel {
     }
 
     /// Handle mouse events (similar to main.rs handle_mouse)
-    fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
+    pub fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
         use crossterm::event::{MouseEventKind, MouseButton};
 
-        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            let column = mouse.column;
-            let row = mouse.row;
+        let column = mouse.column;
+        let row = mouse.row;
 
-            // Check interactive areas (similar to main.rs)
-            for area in &self.interactive_areas {
-                if rect_contains(area.rect, column, row) {
-                    self.perform_mouse_action(area.action.clone());
-                    return true; // Mouse action performed, UI needs redraw
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check interactive areas (similar to main.rs)
+                for area in &self.interactive_areas {
+                    if rect_contains(area.rect, column, row) {
+                        self.perform_mouse_action(area.action.clone());
+                        return true; // Mouse action performed, UI needs redraw
+                    }
                 }
+
+                // Check if click is in textarea for caret positioning
+                if let Some(textarea_area) = self.last_textarea_area {
+                    if rect_contains(textarea_area, column, row) {
+                        // Position caret in textarea based on click coordinates
+                        self.handle_textarea_click(column, row, &textarea_area);
+                        return true;
+                    }
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                // Map scroll up to navigation up (like arrow keys between UI elements)
+                self.navigate_up_hierarchy();
+                return true;
+            }
+            MouseEventKind::ScrollDown => {
+                // Map scroll down to navigation down (like arrow keys between UI elements)
+                self.navigate_down_hierarchy();
+                return true;
+            }
+            _ => {
+                // Other mouse events (drag, right-click, etc.) not handled yet
             }
         }
         false
     }
 
+    /// Handle textarea click to position caret
+    fn handle_textarea_click(&mut self, column: u16, row: u16, textarea_area: &ratatui::layout::Rect) {
+        // Focus on the draft task description if not already focused
+        if !matches!(self.focus_element, FocusElement::TaskDescription) {
+            self.focus_element = FocusElement::TaskDescription;
+        }
+
+        // Calculate relative position within textarea
+        let relative_x = (column as i32 - textarea_area.x as i32).max(0) as u16;
+        let relative_y = (row as i32 - textarea_area.y as i32).max(0) as u16;
+
+        // Position caret in the first draft card's textarea
+        if let Some(card) = self.draft_cards.first_mut() {
+            // Use textarea's built-in cursor positioning
+            // This is a simplified implementation - a full implementation would need
+            // to calculate line/column from the click coordinates
+            let line_index = relative_y.min(card.textarea.lines().len().saturating_sub(1) as u16) as usize;
+            let line = card.textarea.lines().get(line_index).map_or("", |s| s);
+            let col_index = relative_x.min(line.chars().count() as u16) as usize;
+
+            // Set cursor position in textarea
+            card.textarea.move_cursor(tui_textarea::CursorMove::Jump(line_index as u16, col_index as u16));
+        }
+
+        self.needs_redraw = true;
+    }
+
     /// Perform mouse action (similar to main.rs perform_mouse_action)
-    fn perform_mouse_action(&mut self, action: MouseAction) {
+    pub fn perform_mouse_action(&mut self, action: MouseAction) {
         match action {
             MouseAction::OpenSettings => {
                 self.focus_element = FocusElement::SettingsButton;
@@ -1113,17 +1167,34 @@ impl ViewModel {
                     // Draft card - focus on description
                     self.focus_element = FocusElement::TaskDescription;
                 } else {
-                    // Regular task card
-                    self.focus_element = FocusElement::ExistingTask(idx);
+                    // Regular task card - idx is offset by 1, so array index is idx - 1
+                    self.focus_element = FocusElement::ExistingTask(idx - 1);
                 }
             }
             MouseAction::SelectFilterBarLine => {
                 self.focus_element = FocusElement::FilterBarLine;
             }
+            MouseAction::ActivateRepositoryModal => {
+                self.focus_element = FocusElement::RepositoryButton;
+                self.modal_state = ModalState::RepositorySearch;
+            }
+            MouseAction::ActivateBranchModal => {
+                self.focus_element = FocusElement::BranchButton;
+                self.modal_state = ModalState::BranchSearch;
+            }
+            MouseAction::ActivateModelModal => {
+                self.focus_element = FocusElement::ModelButton;
+                self.modal_state = ModalState::ModelSearch;
+            }
+            MouseAction::LaunchTask => {
+                self.focus_element = FocusElement::GoButton;
+                self.handle_go_button();
+            }
             _ => {
-                // TODO: Handle other mouse actions
+                // TODO: Handle other mouse actions like ActivateGoButton, StopTask, EditFilter, Footer
             }
         }
+        self.needs_redraw = true;
     }
 
     /// Process any pending task events from the event receiver
@@ -1667,7 +1738,7 @@ impl ViewModel {
                     FocusElement::ExistingTask(self.task_cards.len() - 1)
                 } else if self.draft_cards.is_empty() {
                     FocusElement::FilterBarSeparator
-            } else {
+                } else {
                     FocusElement::DraftTask(self.draft_cards.len() - 1)
                 }
             }
@@ -1685,7 +1756,7 @@ impl ViewModel {
                 if !self.draft_cards.is_empty() {
                     FocusElement::DraftTask(self.draft_cards.len() - 1)
                 } else {
-                    FocusElement::Settings
+                    FocusElement::SettingsButton
                 }
             }
             FocusElement::ExistingTask(idx) => {
@@ -1782,7 +1853,7 @@ impl ViewModel {
 // View Model Creation Functions (moved from model.rs)
 
 /// Create a draft card from a DraftTask
-fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> DraftCardViewModel {
+pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> DraftCardViewModel {
     let mut textarea = tui_textarea::TextArea::new(task.description.lines().map(|s| s.to_string()).collect::<Vec<String>>());
     if task.description.is_empty() {
         textarea.set_placeholder_text("Describe what you want the agent to do...");

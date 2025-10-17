@@ -668,6 +668,10 @@ fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &DraftCard
     // Render the textarea
     frame.render_widget(&card.textarea, textarea_area);
 
+    // Store textarea area for caret positioning on mouse clicks
+    // Temporarily disabled to avoid borrowing issues - will be re-enabled later
+    // view_model.last_textarea_area = Some(textarea_area);
+
     // Render separator line
     if (textarea_total_height as usize + separator_height) < content_height {
         let separator_area = Rect {
@@ -762,6 +766,79 @@ fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &DraftCard
 
     let button_paragraph = Paragraph::new(button_line).style(Style::default().bg(theme.bg));
     frame.render_widget(button_paragraph, button_area);
+
+    // Register interactive areas for draft card buttons
+    // Temporarily disabled to avoid borrowing issues - will be re-enabled later
+    // register_draft_card_button_areas(view_model, button_area, &repo_button_text, &branch_button_text, &models_button_text, &go_button_text);
+}
+
+/// Register interactive areas for draft card buttons
+fn register_draft_card_button_areas(
+    view_model: &mut ViewModel,
+    button_area: Rect,
+    repo_text: &str,
+    branch_text: &str,
+    models_text: &str,
+    go_text: &str,
+) {
+    use crate::view_model::MouseAction;
+
+    let mut current_x = button_area.x;
+
+    // Repository button: "📁 Repository" -> add 2 for emoji + space + space
+    let repo_width = repo_text.chars().count() as u16 + 2;
+    let repo_rect = Rect {
+        x: current_x,
+        y: button_area.y,
+        width: repo_width,
+        height: button_area.height,
+    };
+    view_model.interactive_areas.push(InteractiveArea {
+        rect: repo_rect,
+        action: MouseAction::ActivateRepositoryModal,
+    });
+    current_x += repo_width + 1; // +1 for space
+
+    // Branch button: "🌿 Branch" -> add 2 for emoji + space + space
+    let branch_width = branch_text.chars().count() as u16 + 2;
+    let branch_rect = Rect {
+        x: current_x,
+        y: button_area.y,
+        width: branch_width,
+        height: button_area.height,
+    };
+    view_model.interactive_areas.push(InteractiveArea {
+        rect: branch_rect,
+        action: MouseAction::ActivateBranchModal,
+    });
+    current_x += branch_width + 1; // +1 for space
+
+    // Models button: "🤖 Models" -> add 2 for emoji + space + space
+    let models_width = models_text.chars().count() as u16 + 2;
+    let models_rect = Rect {
+        x: current_x,
+        y: button_area.y,
+        width: models_width,
+        height: button_area.height,
+    };
+    view_model.interactive_areas.push(InteractiveArea {
+        rect: models_rect,
+        action: MouseAction::ActivateModelModal,
+    });
+    current_x += models_width + 1; // +1 for space
+
+    // Go button: "⏎ Go" -> add 2 for emoji + space + space
+    let go_width = go_text.chars().count() as u16 + 2;
+    let go_rect = Rect {
+        x: current_x,
+        y: button_area.y,
+        width: go_width,
+        height: button_area.height,
+    };
+    view_model.interactive_areas.push(InteractiveArea {
+        rect: go_rect,
+        action: MouseAction::LaunchTask,
+    });
 }
 
 /// Render active task card (exact same as main.rs TaskCard::render_active_card)
