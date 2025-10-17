@@ -219,11 +219,14 @@ dependencies = [
 name = "ah-core"
 version = "0.1.0"
 dependencies = [
+ "ah-domain-types",
  "ah-local-db",
  "ah-repo",
  "ah-workflows",
  "anyhow",
+ "async-trait",
  "chrono",
+ "futures",
  "regex",
  "serde",
  "serde_json",
@@ -233,6 +236,14 @@ dependencies = [
  "tracing",
  "ureq",
  "uuid",
+]
+
+[[package]]
+name = "ah-domain-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
 ]
 
 [[package]]
