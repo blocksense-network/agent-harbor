@@ -116,6 +116,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ah-rest-mock-client"
+version = "0.1.0"
+dependencies = [
+ "ah-core",
+ "ah-domain-types",
+ "async-trait",
+ "chrono",
+ "futures",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "ah-test-scenarios"
 version = "0.1.0"
 dependencies = [
@@ -3552,6 +3568,7 @@ dependencies = [
  "ah-core",
  "ah-domain-types",
  "ah-repo",
+ "ah-rest-mock-client",
  "ah-tui",
  "ah-workflows",
  "anyhow",

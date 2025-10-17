@@ -8,12 +8,13 @@ use tui_exploration::{
     view_model::ViewModel,
     workspace_files::GitWorkspaceFiles,
     workspace_workflows::PathWorkspaceWorkflows,
-    task_manager::{MockTaskManager, TaskEvent, TaskStatus, LogLevel},
+    TaskEvent, TaskStatus, LogLevel,
     settings::Settings,
 };
 use ah_core::task_manager::ToolStatus;
 use ah_domain_types::{TaskExecution, TaskState, SelectedModel, DeliveryStatus};
 use ah_tui::view_model::{FocusElement, AgentActivityRow, TaskCardType, TaskMetadataViewModel, TaskExecutionViewModel};
+use ah_rest_mock_client::MockRestClient;
 
 #[cfg(test)]
 mod navigation_tests {
@@ -27,7 +28,7 @@ mod navigation_tests {
         // Create a minimal ViewModel for testing navigation
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
         let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
-        let task_manager = Box::new(MockTaskManager::new());
+        let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
         let mut vm = ViewModel::new(
@@ -182,7 +183,7 @@ mod navigation_tests {
         // Create a minimal ViewModel for testing navigation edge cases
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
         let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
-        let task_manager = Box::new(MockTaskManager::new());
+        let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
         let mut vm = ViewModel::new(
@@ -215,13 +216,13 @@ mod navigation_tests {
     }
 
     #[test]
-    fn draft_cards_are_loaded_from_mock_task_manager() {
-        // Test that draft cards are loaded correctly from MockTaskManager
+    fn draft_cards_are_loaded_from_mock_rest_client() {
+        // Test that draft cards are loaded correctly from MockRestClient
 
         // Create a ViewModel
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
         let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
-        let task_manager = Box::new(MockTaskManager::new());
+        let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
         let vm = ViewModel::new(
@@ -244,7 +245,7 @@ mod navigation_tests {
         // Create a ViewModel
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
         let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
-        let task_manager = Box::new(MockTaskManager::new());
+        let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
         let mut vm = ViewModel::new(

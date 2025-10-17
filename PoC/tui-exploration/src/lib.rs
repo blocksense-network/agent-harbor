@@ -48,7 +48,6 @@ pub mod view;
 pub mod settings;
 pub mod workspace_files;
 pub mod workspace_workflows;
-pub mod task_manager;
 
 // Re-export commonly used types
 pub use ah_core::task_manager::ToolStatus;
@@ -58,9 +57,10 @@ pub use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, FocusEl
 pub use ah_tui::view::{ViewCache, Theme};
 pub use settings::{Settings, FontStyle, SelectionDialogStyle, KeymapConfig, KeyBinding};
 pub use workspace_workflows::{WorkspaceWorkflows, PathWorkspaceWorkflows};
-pub use task_manager::{
-    TaskManager, MockTaskManager, TaskLaunchParams, TaskLaunchResult,
-    TaskEvent, TaskStatus, LogLevel,
+pub use ah_core::task_manager::{
+    TaskManager, TaskLaunchParams, TaskLaunchResult,
+    TaskEvent, LogLevel,
     SaveDraftResult
 };
+pub use ah_core::TaskStatus;
 pub use ah_workflows::{WorkflowResult, WorkflowError};

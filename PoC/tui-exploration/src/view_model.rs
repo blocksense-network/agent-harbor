@@ -56,7 +56,7 @@ use ah_tui::view_model::{FocusElement, ModalState, ButtonStyle, ButtonViewModel,
 use crate::workspace_files::WorkspaceFiles;
 use crate::workspace_workflows::WorkspaceWorkflows;
 use crate::Settings;
-use crate::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult, LogLevel};
+use ah_core::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult, LogLevel};
 use ah_core::task_manager::ToolStatus;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
 use futures::stream::StreamExt;

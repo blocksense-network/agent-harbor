@@ -1,6 +1,7 @@
 use tui_exploration::view_model::{*, create_draft_card_from_task};
 use ah_domain_types::{DraftTask, TaskState, DeliveryStatus, TaskExecution, SelectedModel};
 use ah_tui::view_model::{FocusElement, ModalState, TaskMetadataViewModel, TaskCardType, TaskExecutionViewModel};
+use ah_rest_mock_client;
 use crossterm::event::{MouseEvent, MouseEventKind, MouseButton};
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -10,7 +11,7 @@ use tokio::sync::mpsc as tokio_mpsc;
 fn create_test_view_model() -> ViewModel {
     let workspace_files = Box::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
     let workspace_workflows = Box::new(tui_exploration::workspace_workflows::PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
-    let task_manager = Box::new(tui_exploration::task_manager::MockTaskManager::new());
+    let task_manager = Box::new(ah_rest_mock_client::MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
     ViewModel::new(

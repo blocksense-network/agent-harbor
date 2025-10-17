@@ -1,7 +1,8 @@
 //! Simple test program to verify TaskEvent streaming works
 
 use futures::StreamExt;
-use tui_exploration::{task_manager::MockTaskManager, TaskManager, TaskLaunchParams, SelectedModel};
+use tui_exploration::{TaskManager, TaskLaunchParams, SelectedModel};
+use ah_rest_mock_client::MockRestClient;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Runtime::new()?.block_on(async_main())
@@ -10,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing TaskManager event streaming...");
 
-    let manager = MockTaskManager::new();
+    let manager = MockRestClient::new();
     let task_id = "test_task_123";
 
     // Launch a task first

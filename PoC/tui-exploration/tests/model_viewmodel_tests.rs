@@ -6,13 +6,14 @@
 use tui_exploration::view_model::*;
 use ah_domain_types::{DraftTask, SelectedModel, TaskState, DeliveryStatus, TaskExecution};
 use ah_tui::view_model::{FocusElement, ModalState, DraftSaveState};
+use ah_rest_mock_client;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Helper function to create a test ViewModel with mock dependencies
 fn create_test_view_model() -> ViewModel {
     let workspace_files = Box::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
     let workspace_workflows = Box::new(tui_exploration::workspace_workflows::PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
-    let task_manager = Box::new(tui_exploration::task_manager::MockTaskManager::new());
+    let task_manager = Box::new(ah_rest_mock_client::MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
     ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
