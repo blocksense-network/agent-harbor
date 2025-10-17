@@ -15,6 +15,7 @@ Total estimated timeline: 8-10 weeks (broken into major phases with parallel dev
 139 E2E tests are currently skipped because the corresponding features have not yet been implemented in the WebUI. These tests serve as a comprehensive specification of the features that need to be built. The skipped tests cover:
 
 #### **Keyboard Navigation & Accessibility** (16 tests skipped)
+
 - `keyboard-navigation.spec.ts` - Arrow key navigation, Enter key actions, Esc key navigation
 - `focus-management.spec.ts` - Focus state management, dynamic shortcuts, keyboard interactions
 - `focus-blur-scrolling.spec.ts` - Viewport scrolling, blur/focus behavior
@@ -22,24 +23,29 @@ Total estimated timeline: 8-10 weeks (broken into major phases with parallel dev
 - `accessibility.spec.ts` - WCAG AA compliance, screen reader support
 
 #### **TOM Select Components** (21 tests skipped)
+
 - `tom-select-customization.spec.ts` - Custom dropdown with +/- buttons, model selection
 - `tom-select-direction.spec.ts` - Upward-opening dropdowns
 - `tom-select-upward-positioning.spec.ts` - Positioning logic for upward dropdowns
 
 #### **Task Management & UI Features** (8 tests skipped)
+
 - `layout-navigation.spec.ts` - Task-centric layout, content loading, status filtering
 - `fixed-height-cards.spec.ts` - 4-line task card requirements
 - `localstorage-persistence.spec.ts` - Draft state persistence, task editing
 
 #### **Real-time Features** (4 tests skipped)
+
 - `sse-live-updates.spec.ts` - Server-sent events for live session updates
 - `critical-bugs.spec.ts` - SSE event handling, navigation bugs
 
 #### **Build & Infrastructure** (2 tests skipped)
+
 - `build-tooling.spec.ts` - TypeScript compilation checks
 - `example.spec.ts` - Infrastructure tests (some passing, some failing due to unimplemented features)
 
 #### **Reporter & Testing Infrastructure** (2 tests skipped)
+
 - `reporter-validation.spec.ts` - Test reporting functionality
 
 These skipped tests provide a complete roadmap for implementing the remaining WebUI features. Each test includes detailed specifications of expected behavior, making them excellent documentation for future development work.
@@ -100,7 +106,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W1. Project Setup and Mock Server** COMPLETED (1 week)
 
 - **Deliverables**:
-
   - SolidJS + SolidStart + TypeScript + Tailwind CSS project scaffolding
   - Comprehensive mock server implementing [REST-Service/API.md](REST-Service/API.md) endpoints
   - Basic project structure with component organization and routing setup
@@ -108,14 +113,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - CI/CD pipeline setup with automated testing
 
 - **Verification**:
-
   - [x] Infrastructure tests: SolidStart application serves HTML correctly, health endpoint works
   - [x] API contract tests: Mock server responds to all endpoints with correct schemas and validation
   - [x] Build tests: All projects compile successfully with TypeScript strict mode
   - [x] Tooling tests: ESLint and Prettier configurations work across all projects
 
 - **Implementation Details**:
-
   - Created complete WebUI directory structure with `app/`, `mock-server/`, `e2e-tests/`, and `shared/` subdirectories
   - Set up SolidJS application with SolidStart for SSR support, Tailwind CSS for styling, and TypeScript for type safety
   - Built Express.js mock server with TypeScript implementing key REST endpoints (see [Mock Server README](../webui/mock-server/README.md) for complete API coverage)
@@ -125,7 +128,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Created three-pane layout components (repositories, sessions, task details) following [WebUI-PRD.md](WebUI-PRD.md) specifications
 
 - **Key Source Files**:
-
   - `webui/app/src/App.tsx` - Main SolidJS application with routing
   - `webui/app/src/routes/index.tsx` - Dashboard route with layout
   - `webui/app/src/components/layout/MainLayout.tsx` - Top-level navigation layout
@@ -135,7 +137,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - `.github/workflows/ci.yml` - Updated CI pipeline with WebUI jobs
 
 - **Outstanding Tasks**:
-
   - Add more comprehensive mock data for edge cases and error scenarios
   - Implement SSE event streaming in mock server for real-time features
   - Add more detailed TypeScript types for API contracts
@@ -155,7 +156,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W1.5 SolidStart SSR Application** ✅ **COMPLETED** (1 week, parallel with W1)
 
 - **Deliverables**:
-
   - SolidStart application with server-side rendering and client-side hydration
   - Server-side HTML template serving for initial page loads with progressive enhancement
   - Direct client-to-API communication (no SSR proxy middleware needed)
@@ -163,7 +163,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Client-side hydration with SolidJS for enhanced interactivity
 
 - **Verification**:
-
   - [x] SSR tests: Server-side rendering produces correct HTML structure and validates footer/branding
   - [x] Progressive enhancement tests: Basic functionality works without JavaScript
   - [ ] Server-side API fetching: Initial page loads should display task data even without JavaScript
@@ -174,7 +173,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] API proxy middleware removed from SSR server (dual-server architecture)
 
 - **Implementation Details**:
-
   - Created `app/` directory with complete SolidStart application implementation
   - **ARCHITECTURE CHANGE**: Implemented direct client-to-API communication pattern (no proxy middleware needed with dual-server architecture)
   - Removed API proxy middleware from SSR server configuration - client now connects directly to port 3001
@@ -186,7 +184,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - **Key Technical Achievement**: Dual-server architecture cleanly separates concerns - SSR server (port 3000) serves HTML/CSS/JS, API server (port 3001) serves REST endpoints
 
 - **Key Source Files**:
-
   - `webui/app/app.config.ts` - SolidStart/Vinxi configuration (API proxy middleware removed)
   - `webui/app/src/entry-server.tsx` - SSR entry point with HTML template
   - `webui/app/src/app.tsx` - Main SolidJS application component with SessionProvider
@@ -195,7 +192,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - `webui/app/src/routes/index.tsx` - Dashboard route with SSR-compatible rendering
 
 - **Outstanding Tasks**:
-
   - **BLOCKED**: Client-side hydration not working in production build (client-side JavaScript not loading properly)
   - Implement server-side REST API fetching during SSR (optional enhancement for users without JavaScript)
   - Add session management and state hydration between server and client
@@ -221,7 +217,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W3. Task Creation and Session Management** COMPLETED (2 weeks)
 
 - **Deliverables**:
-
   - Task creation form with repository selection and validation
   - Session list with filtering, sorting, and pagination
   - Task details page with two-panel layout (modified files list + agent activity on left, diff viewer on right)
@@ -229,7 +224,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Integration with mock server for CRUD operations
 
 - **Test Coverage** (Comprehensive E2E + API Contract):
-
   - [x] API contract tests: All CRUD operations match [REST-Service/API.md](REST-Service/API.md) specs (existing W1-W2 tests)
   - [x] Form validation tests: Task creation form validation, error display, and submission
   - [x] Repository selection tests: URL validation, branch field validation
@@ -242,7 +236,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] Accessibility tests: Form keyboard navigation and screen reader compatibility
 
 - **Verification** (Automated E2E + Manual):
-
   - [x] Playwright E2E tests: Task creation form validation and submission (task-creation.spec.ts)
   - [x] Playwright E2E tests: Session management, selection, and controls (session-management.spec.ts)
   - [x] Playwright E2E tests: Form validation edge cases and error handling (form-validation.spec.ts)
@@ -252,7 +245,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - API contract tests verify all CRUD operations match [REST-Service/API.md](REST-Service/API.md) specs
 
 - **Implementation Details**:
-
   - Created comprehensive `TaskCreationForm` component with repository URL input, branch selection, agent/runtime dropdowns, and delivery mode configuration
   - Implemented `SessionCard` component displaying session status, metadata, and quick action buttons (stop/cancel)
   - Enhanced `SessionsPane` with real-time session loading, status filtering, auto-refresh every 30 seconds, and pagination support
@@ -264,7 +256,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Included loading states, error boundaries, and graceful API failure handling
 
 - **Key Source Files**:
-
   - `webui/app/src/lib/api.ts` - API client with full REST service integration
   - `webui/app/src/components/tasks/TaskCreationForm.tsx` - Comprehensive task creation form
   - `webui/app/src/components/sessions/SessionCard.tsx` - Session card component with actions
@@ -278,7 +269,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - `webui/e2e-tests/tests/session-interactions.spec.ts` - E2E tests for session interactions
 
 - **Outstanding Tasks**:
-
   - Add branch auto-completion for repository URLs (requires additional git integration)
   - Implement session sorting options beyond status filtering
   - Add bulk session operations (stop multiple sessions)
@@ -301,7 +291,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4. Real-time Features and Live Updates** COMPLETED (2 weeks, parallel with W3)
 
 - **Deliverables**:
-
   - SSE event stream integration for live session updates
   - Real-time log streaming in session detail view
   - Optimistic UI updates for pause/stop/resume actions
@@ -309,7 +298,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Connection error handling and reconnection logic
 
 - **Test Coverage** (Comprehensive E2E + API Contract):
-
   - [x] SSE connection tests: Event streams connect and receive data correctly
   - [x] Real-time update tests: UI updates automatically when events arrive
   - [x] Log streaming tests: New log entries appear in real-time without refresh
@@ -320,7 +308,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] Performance tests: Real-time updates don't cause UI lag or memory leaks
 
 - **Verification** (Automated E2E + Manual):
-
   - [x] Playwright E2E tests: SSE connection status display and indicators (real-time-features.spec.ts)
   - [x] Playwright E2E tests: Real-time log streaming without page refresh
   - [x] Playwright E2E tests: Optimistic UI updates for session controls
@@ -331,7 +318,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Manual verification: Connection status indicators show proper states
 
 - **Implementation Details**:
-
   - Enhanced mock server SSE endpoint with persistent connections and simulated real-time events
   - Implemented comprehensive SSE client with automatic reconnection (exponential backoff, max 5 attempts)
   - Added optimistic UI updates for session controls (stop/pause/resume) with immediate feedback
@@ -341,7 +327,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - **Key Technical Achievement**: SSE endpoint detects test requests vs real clients for proper test compatibility
 
 - **Key Source Files**:
-
   - `webui/mock-server/src/routes/sessions.ts` - Enhanced SSE endpoint with test detection and event streaming
   - `webui/app/src/lib/api.ts` - SSE client with EventSource integration and type definitions
   - `webui/app/src/components/tasks/TaskDetailsPane.tsx` - Real-time log streaming and connection management
@@ -349,7 +334,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - `webui/e2e-tests/tests/real-time-features.spec.ts` - Comprehensive E2E tests for all real-time features
 
 - **Outstanding Tasks**:
-
   - Optimize SSE event frequency to prevent UI performance issues with high-volume events
   - Add configurable reconnection parameters (backoff multiplier, max attempts)
   - Implement event buffering for offline periods to prevent data loss
@@ -367,7 +351,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4.5. Complete Design Redesign** ✅ **COMPLETED** (Major redesign, post-W4)
 
 - **Deliverables**:
-
   - Complete redesign from three-pane layout to simplified task-centric design per updated PRD
   - Agent Harbor branding with logo integration and title change
   - New TaskCard component with 4-line height, status indicators, and live activity display
@@ -376,7 +359,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Simplified navigation: Task Feed and Settings only
 
 - **Test Coverage**:
-
   - [x] Layout tests: Simplified task-centric structure renders correctly (header + task feed + draft tasks)
   - [x] Branding tests: Agent Harbor logo and title display correctly
   - [x] TaskCard tests: 4-line height, status indicators, and live activity rendering
@@ -385,7 +367,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [x] Responsive tests: Layout adapts properly on different screen sizes
 
 - **Verification** (Automated E2E + Manual):
-
   - [x] Agent Harbor branding displays correctly with logo in header
   - [x] Task Feed shows chronological list of tasks with proper status indicators
   - [x] TaskCard displays 4-line format with status icons (✓ completed, ● active, 🔀 merged)
@@ -396,7 +377,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Manual verification: Layout matches PRD specifications exactly
 
 - **Implementation Details**:
-
   - **New Architecture**: Complete shift from three-pane layout to simplified task-centric design
   - **Branding Overhaul**: Changed from "agent-harbor" to "Agent Harbor" with SVG logo integration
   - **Component Redesign**: New TaskCard with status-aware rendering and live activity display
@@ -406,16 +386,13 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - **Always-Visible Drafts**: Draft task creation permanently available at bottom of feed
 
 - **Key Source Files**:
-
   - `webui/app/src/components/layout/MainLayout.tsx` - Agent Harbor branding and simplified navigation
   - `webui/app/src/components/tasks/TaskCard.tsx` - New 4-line task card with status indicators
   - `webui/app/src/components/tasks/DraftTaskCard.tsx` - Always-visible draft with TOM's selects
-  - `webui/app/src/components/common/PopupSelector.tsx` - Enhanced with fuzzy search
   - `webui/app/src/routes/index.tsx` - New task-centric dashboard layout
   - `webui/app/src/assets/agent-harbor-logo.svg` - Agent Harbor branding asset
 
 - **Outstanding Tasks**:
-
   - Update E2E tests to match new component structure and interactions
   - Add task persistence in localStorage for draft recovery
   - Implement real-time updates for task status changes
@@ -439,14 +416,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4.6. Task Details Page** (2-3 weeks)
 
 - **Deliverables**:
-
   - Task Details page with two-panel layout (modified files + agent activity on left, unified diff viewer on right)
   - REST API endpoints for retrieving task metadata, modified files, and activity events
   - Mock server implementation with scenario-based E2E testing
   - Browser integration with dynamic data loading and real-time updates
 
 - **Test Coverage** (Planned):
-
   - [ ] Task details page navigation tests: URL routing and bookmarking
   - [ ] Two-panel layout tests: Resizable split view and panel interactions
   - [ ] Modified files panel tests: File list display, status indicators, and click navigation
@@ -458,14 +433,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4.6.1. Task Details Page Design with Static Data** (1 week)
 
 - **Deliverables**:
-
   - Task Details page component with two-panel layout HTML structure
   - Static mock data for modified files list and agent activity timeline
   - Basic navigation from task cards to details page
   - Responsive design adapting to different screen sizes
 
 - **Test Coverage** (Planned):
-
   - [ ] Page navigation tests: Clicking task titles navigates to details page
   - [ ] Layout tests: Two-panel structure renders correctly with proper proportions
   - [ ] Static content tests: Mock data displays in both panels
@@ -473,7 +446,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [ ] Breadcrumb navigation tests: Header shows task context and back navigation
 
 - **Verification**:
-
   - Playwright tests verify page navigation and basic layout structure
   - Manual verification of responsive design across screen sizes
   - Static content renders correctly without API dependencies
@@ -481,14 +453,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4.6.2. Task Details REST API Design** (1 week, parallel with W4.6.1)
 
 - **Deliverables**:
-
   - REST API specification for task details endpoints based on Scenario-Format.md capabilities
   - Analysis of PRD features that can be implemented through scenarios
   - API design focused on features testable via deterministic mock responses
   - Subset of advanced features (chat interface, time-travel, branching) deferred
 
 - **Features Included** (based on Scenario-Format.md analysis):
-
   - Task metadata retrieval (`GET /api/v1/tasks/{id}`)
   - Modified files list (`GET /api/v1/tasks/{id}/files`)
   - Agent activity events (`GET /api/v1/tasks/{id}/events`)
@@ -496,7 +466,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Session control actions (pause/resume/stop)
 
 - **Features Deferred** (cannot be easily implemented through scenarios):
-
   - Interactive chat interface for sending agent instructions
   - Time-travel functionality and branching from timeline events
   - Context management panel with file picker
@@ -504,13 +473,11 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Sub-session creation and management
 
 - **Test Coverage** (Planned):
-
   - [ ] API specification tests: Endpoints match REST-Service/API.md contracts
   - [ ] Schema validation tests: Response formats match expected data structures
   - [ ] Scenario compatibility tests: All endpoints can be implemented via Scenario-Format.md
 
 - **Verification**:
-
   - API contract tests validate endpoint specifications
   - Manual review confirms feature subset is implementable through scenarios
   - Documentation updated to reflect deferred advanced features
@@ -518,14 +485,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4.6.3. Mock API Server Implementation** (1 week, parallel with W4.6.1-2)
 
 - **Deliverables**:
-
   - Mock server endpoints for all task details APIs
   - Scenario files for E2E testing of task details functionality
   - Deterministic responses for modified files, activity events, and diffs
   - External E2E tests running outside browser environment
 
 - **Test Coverage** (Comprehensive E2E):
-
   - [ ] API contract tests: All new endpoints respond with correct schemas
   - [ ] Scenario-based tests: Deterministic mock responses for task details
   - [ ] File list tests: Modified files endpoint returns proper file metadata
@@ -534,7 +499,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [ ] Error handling tests: Invalid task IDs return appropriate errors
 
 - **Verification** (Automated E2E):
-
   - Playwright tests verify API responses match specifications
   - Scenario files execute successfully with deterministic outcomes
   - Mock server handles all edge cases and error conditions
@@ -542,14 +506,12 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W4.6.4. Browser Integration and Dynamic Content** (1 week, after W4.6.1-3)
 
 - **Deliverables**:
-
   - Integration of task details APIs in browser page
   - Dynamic loading replacing all static mock content
   - Real-time updates for activity events via SSE
   - Error handling and loading states throughout UI
 
 - **Test Coverage** (Browser E2E):
-
   - [ ] Dynamic loading tests: API calls replace static content on page load
   - [ ] Real-time updates tests: Activity events update UI automatically
   - [ ] Error handling tests: API failures display appropriate error states
@@ -557,7 +519,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - [ ] Navigation tests: Back/forward browser navigation preserves state
 
 - **Verification** (Automated E2E):
-
   - Playwright tests verify dynamic content loading and real-time updates
   - Manual verification of error states and loading indicators
   - Browser navigation works correctly with dynamic routing
@@ -567,7 +528,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W5. IDE Integration and Launch Helpers** (1-2 weeks)
 
 - **Deliverables**:
-
   - IDE launch button implementation for VS Code, Cursor, Windsurf
   - Workspace path resolution and IDE protocol handling
   - Platform-specific launch command generation
@@ -575,7 +535,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Integration with operating system URL schemes
 
 - **Test Coverage** (Planned):
-
   - [ ] IDE detection tests: Correct IDE detected based on platform and availability
   - [ ] Launch button tests: Buttons appear only for active sessions with valid workspaces
   - [ ] URL scheme tests: Proper URL schemes generated for each supported IDE
@@ -596,7 +555,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W6. Governance and Multi-tenancy** (2 weeks, parallel with W5)
 
 - **Deliverables**:
-
   - RBAC implementation with role-based feature visibility
   - Tenant/project selection and scoping
   - Admin panels for user and executor management
@@ -604,7 +562,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Settings management with validation
 
 - **Test Coverage** (Planned):
-
   - [ ] RBAC tests: UI elements show/hide based on user roles and permissions
   - [ ] Tenant isolation tests: Data scoped correctly per tenant/project
   - [ ] Admin panel tests: CRUD operations for users, executors, policies
@@ -627,7 +584,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W7. Comprehensive Integration Testing** (2 weeks)
 
 - **Deliverables**:
-
   - Full user journey E2E test coverage across all features
   - Accessibility testing with axe-core (WCAG AA compliance)
   - Performance testing and optimization validation
@@ -636,7 +592,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - End-to-end workflow validation (create → monitor → complete)
 
 - **Test Coverage** (Planned):
-
   - [ ] Complete user journey tests: Full workflows from task creation to completion
   - [ ] Accessibility compliance tests: axe-core checks across all pages/components
   - [ ] Performance regression tests: TTI, bundle size, and runtime performance
@@ -657,7 +612,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 **W8. Production Readiness and Local Mode** (1 week, parallel with W7)
 
 - **Deliverables**:
-
   - Local mode implementation with localhost-only binding
   - Production build optimization and bundle analysis
   - Error boundary implementation and crash reporting
@@ -665,7 +619,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - Final performance optimizations
 
 - **Test Coverage** (Planned):
-
   - [ ] Local mode tests: Server binds only to localhost, no external access
   - [ ] Production build tests: Bundle size within targets, builds successfully
   - [ ] Error boundary tests: JavaScript errors contained, app remains functional
@@ -713,6 +666,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 🟢 **TEST INFRASTRUCTURE COMPLETE - Ready for Feature Implementation**
 
 **Completed in This Session (Sept 29, 2025):**
+
 1. ✅ **PRD Updated**: Added keyboard navigation, context-sensitive shortcuts, TOM Select integration, SSE requirements
 2. ✅ **Test Strategy Document**: Created comprehensive 397-line test strategy covering 100% of PRD requirements
 3. ✅ **Mock Server Enhanced**: Now returns exactly 5 sessions (3 completed, 2 active) with realistic SSE event streams
@@ -721,6 +675,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 6. ✅ **TOM Select Tests**: Created 33 comprehensive E2E tests for fuzzy-search widgets and multi-select
 
 **Test Coverage Summary:**
+
 - keyboard-navigation.spec.ts: 25 tests (arrow keys, Enter navigation, shortcuts, accessibility)
 - tom-select-components.spec.ts: 33 tests (repository/branch/model selectors, fuzzy search, multi-select counters)
 - toast-notifications.spec.ts: 5 tests (error toasts, manual dismissal, positioning, ARIA attributes)
@@ -728,6 +683,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - Total: 68 new E2E tests + existing 14 API contract tests = 82 automated tests
 
 **Next Development Priorities (TDD Approach):**
+
 1. **Implement Keyboard Navigation** - Make keyboard-navigation.spec.ts tests pass (25 tests)
 2. **Integrate TOM Select Library** - Make tom-select-components.spec.ts tests pass (33 tests)
 3. **W5. IDE Integration and Launch Helpers** - One-click IDE launching for VS Code, Cursor, Windsurf
@@ -735,6 +691,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 5. **Performance Optimization** - Sub-2s TTI targets and real-time log latency optimization
 
 **New Architecture Benefits (When Working)**:
+
 - **Simplified UX**: Single-screen task-centric design eliminates navigation complexity
 - **Always-Available Creation**: Draft tasks permanently visible reduces friction for task creation
 - **TOM's Select Widgets**: Fuzzy search and model counters provide powerful yet simple selection
@@ -743,6 +700,7 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Status-at-a-Glance**: 4-line task cards maximize information density without clutter
 
 **Key Technical Achievements (Partial)**:
+
 - **Dual-Server Architecture**: Clean separation between SSR server (HTML/CSS/JS) and API server (REST endpoints), eliminating proxy complexity
 - **SSR HTML Structure**: Server-side rendering produces correct semantic HTML with branding and footer
 - **Agent Harbor Branding**: Complete rebrand with SVG logo integration and consistent theming (HTML level)
