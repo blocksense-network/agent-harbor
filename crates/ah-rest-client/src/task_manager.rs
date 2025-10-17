@@ -504,7 +504,6 @@ mod test_utils {
 
 mod tests {
     use super::*;
-    use super::test_utils::ensure_mock_server_for_test;
     use url::Url;
 
     #[tokio::test]
@@ -560,7 +559,7 @@ mod tests {
     #[tokio::test]
     async fn integration_test_launch_task_success() {
         // Start mock server for this test (background process, cleaned up by OS)
-        ensure_mock_server_for_test().await;
+        super::test_utils::ensure_mock_server_for_test().await;
 
         // Test against actual mock server
         let auth = AuthConfig::default();
@@ -591,7 +590,7 @@ mod tests {
     #[tokio::test]
     async fn integration_test_get_initial_tasks() {
         // Start mock server for this test
-        ensure_mock_server_for_test().await;
+        super::test_utils::ensure_mock_server_for_test().await;
 
         // Test against actual mock server
         let auth = AuthConfig::default();
@@ -611,7 +610,7 @@ mod tests {
     #[tokio::test]
     async fn integration_test_list_repositories() {
         // Start mock server for this test
-        ensure_mock_server_for_test().await;
+        super::test_utils::ensure_mock_server_for_test().await;
 
         // Test against actual mock server
         let auth = AuthConfig::default();
@@ -631,7 +630,7 @@ mod tests {
     #[tokio::test]
     async fn integration_test_list_branches() {
         // Start mock server for this test
-        ensure_mock_server_for_test().await;
+        super::test_utils::ensure_mock_server_for_test().await;
 
         // Test against actual mock server
         let auth = AuthConfig::default();
@@ -651,7 +650,7 @@ mod tests {
     #[tokio::test]
     async fn integration_test_task_events_stream() {
         // Start mock server for this test
-        ensure_mock_server_for_test().await;
+        super::test_utils::ensure_mock_server_for_test().await;
 
         // Test against actual mock server
         let auth = AuthConfig::default();
@@ -703,7 +702,7 @@ mod tests {
     #[tokio::test]
     async fn integration_test_save_draft_task() {
         // Start mock server for this test
-        ensure_mock_server_for_test().await;
+        super::test_utils::ensure_mock_server_for_test().await;
 
         // Test against actual mock server
         let auth = AuthConfig::default();
