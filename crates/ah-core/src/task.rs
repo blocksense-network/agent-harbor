@@ -60,13 +60,13 @@ impl Task {
 
 /// Manages the lifecycle of tasks in the system.
 #[derive(Debug, Clone)]
-pub struct TaskManager {
+pub struct TaskStateManager {
     tasks: Arc<RwLock<HashMap<TaskId, Task>>>,
     next_id: Arc<RwLock<TaskId>>,
 }
 
-impl TaskManager {
-    /// Create a new task manager.
+impl TaskStateManager {
+    /// Create a new task state manager.
     pub fn new() -> Self {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
@@ -108,7 +108,7 @@ impl TaskManager {
     }
 }
 
-impl Default for TaskManager {
+impl Default for TaskStateManager {
     fn default() -> Self {
         Self::new()
     }

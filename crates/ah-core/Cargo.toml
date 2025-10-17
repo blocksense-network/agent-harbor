@@ -16,7 +16,10 @@ chrono = { version = "0.4", features = ["serde"] }
 ah-repo = { path = "../ah-repo" }
 ah-workflows = { path = "../ah-workflows" }
 ah-local-db = { path = "../ah-local-db" }
+ah-domain-types = { path = "../ah-domain-types" }
 ureq = { version = "2.0", features = ["json"] }
 tempfile = "3.0"
 regex = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
+async-trait.workspace = true
+futures.workspace = true

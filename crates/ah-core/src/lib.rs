@@ -12,6 +12,7 @@ pub mod error;
 pub mod push;
 pub mod session;
 pub mod task;
+pub mod task_manager;
 
 /// Core result type used throughout the AH system.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -20,7 +21,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub use error::Error;
 
 /// Task lifecycle management and orchestration.
-pub use task::{Task, TaskId, TaskManager, TaskStatus};
+pub use task::{Task, TaskId, TaskStateManager, TaskStatus};
 
 /// Session lifecycle management and orchestration.
 pub use session::{Session, SessionId, SessionManager, SessionStatus};
@@ -39,3 +40,9 @@ pub use push::{parse_push_to_remote_flag, PushHandler, PushOptions};
 
 /// Database integration for persistence.
 pub use db::DatabaseManager;
+
+/// Task manager abstraction for different execution modes (local, remote, mock).
+pub use task_manager::{
+    TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, TaskExecutionStatus,
+    LogLevel, ToolStatus, SaveDraftResult
+};
