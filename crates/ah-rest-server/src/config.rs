@@ -20,6 +20,9 @@ pub struct ServerConfig {
     /// API key for authentication
     pub api_key: Option<String>,
 
+    /// Additional configuration file to load
+    pub config_file: Option<String>,
+
     /// Rate limiting configuration
     pub rate_limit: RateLimitConfig,
 }
@@ -32,6 +35,7 @@ impl Default for ServerConfig {
             enable_cors: false,
             jwt_secret: None,
             api_key: None,
+            config_file: None,
             rate_limit: RateLimitConfig::default(),
         }
     }

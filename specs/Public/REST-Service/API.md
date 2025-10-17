@@ -137,6 +137,37 @@ Notes:
 - `repo.mode` may also be `upload` (use pre‑signed upload flow) or `none` (operate on previously provisioned workspace template).
 - `runtime.type` may be `local` (no container) or `disabled` (explicitly allowed by policy).
 
+##### Task Execution Workflow
+
+The server implements a sophisticated task execution workflow designed for performance and incremental builds:
+
+1. **Snapshot Cache Management**: The server maintains a global LRU cache of filesystem snapshots for each repository and recent commit. Snapshots are created after a full build and test cycle completes successfully.
+
+2. **Workspace Provisioning Logic**:
+   - When a task starts, the server first checks if a snapshot exists for the task's starting commit
+   - If a snapshot exists, it's mounted as the workspace for the agent
+   - If no snapshot exists, the server acquires a global mutex to prevent concurrent provisioning, checks out the starting commit, and runs `ah agent start` directly (which will create the initial snapshot)
+   - Once the agent process starts, the mutex is released since the agent handles snapshot creation
+
+3. **Configuration Policy**:
+   - The server does not specify policy flags (e.g., sandbox, runtime) to launched processes, relying instead on the configuration system
+   - If the server is launched with `--config <path>`, it forwards this parameter to both `ah agent start` and `ah agent record`
+   - This allows server administrators to specify consistent configuration across all agent executions via config files
+   - Individual task requests cannot override server-level configuration policies
+
+4. **Agent Command Integration**:
+   - Tasks are executed using `ah agent record --session-id <id> -- <agent_command>`
+   - The agent command is constructed as `ah agent start --agent <type> --cwd <workspace_path> --from-snapshot <snapshot_id> --non-interactive --prompt <task_prompt>`
+   - When a cached snapshot is available, `--from-snapshot <snapshot_id>` enables fast workspace restoration
+   - Configuration parameters are forwarded: `--config <server_config>` is added to both the record and start commands
+   - Process output is captured by the recorder and stored in the database
+
+5. **Snapshot Cache Strategy**:
+   - Cache is global across all repositories managed by the server
+   - Each repository can have an optional lower quota than the global limit
+   - LRU eviction ensures the cache stays within disk capacity limits
+   - Snapshots are keyed by repository URL and commit hash
+
 #### List Sessions
 
 - `GET /api/v1/sessions?status=running&projectId=storefront&page=1&perPage=20`

@@ -1,10 +1,11 @@
 //! Task management endpoints
 
+use crate::models::SessionStore;
 use crate::state::AppState;
 use crate::ServerResult;
 use ah_rest_api_contract::{CreateTaskRequest, CreateTaskResponse, SessionStatus};
 use axum::{extract::State, Json};
-use uuid::Uuid;
+use std::sync::Arc;
 // use validator::Validate; // Temporarily disabled due to version mismatch
 
 /// Create a new task/session
@@ -26,54 +27,14 @@ pub async fn create_task(
     // Validate the request (temporarily disabled)
     // request.validate()?;
 
-    // Generate a unique session ID
-    let session_id = Uuid::new_v4().to_string();
+    // Create the session in database
+    let session_service = crate::services::SessionService::new(Arc::clone(&state.session_store));
+    let response = session_service.create_session(&request).await?;
+    drop(session_service); // Release the service
 
-    // Create the session in memory (placeholder - in real implementation,
-    // this would create database records and start the actual task)
-    let mut sessions = state.active_sessions.write().await;
-    let session = ah_rest_api_contract::Session {
-        id: session_id.clone(),
-        tenant_id: request.tenant_id.clone(),
-        project_id: request.project_id.clone(),
-        task: ah_rest_api_contract::TaskInfo {
-            prompt: request.prompt.clone(),
-            attachments: Default::default(),
-            labels: request.labels.clone(),
-        },
-        agent: request.agent.clone(),
-        runtime: request.runtime.clone(),
-        workspace: ah_rest_api_contract::WorkspaceInfo {
-            snapshot_provider: "git".to_string(),     // placeholder
-            mount_path: "/tmp/workspace".to_string(), // placeholder
-            host: None,
-            devcontainer_details: None,
-        },
-        vcs: ah_rest_api_contract::VcsInfo {
-            repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
-            branch: request.repo.branch.clone(),
-            commit: request.repo.commit.clone(),
-        },
-        status: SessionStatus::Queued,
-        started_at: None,
-        ended_at: None,
-        links: ah_rest_api_contract::SessionLinks {
-            self_link: format!("/api/v1/sessions/{}", session_id),
-            events: format!("/api/v1/sessions/{}/events", session_id),
-            logs: format!("/api/v1/sessions/{}/logs", session_id),
-        },
-    };
-    sessions.insert(session_id.clone(), session);
-
-    let response = CreateTaskResponse {
-        id: session_id.clone(),
-        status: SessionStatus::Queued,
-        links: ah_rest_api_contract::TaskLinks {
-            self_link: format!("/api/v1/sessions/{}", session_id),
-            events: format!("/api/v1/sessions/{}/events", session_id),
-            logs: format!("/api/v1/sessions/{}/logs", session_id),
-        },
-    };
+    // Verify the session was created by fetching it
+    let session = state.session_store.get_session(&response.id).await?
+        .ok_or_else(|| crate::ServerError::BadRequest("Failed to retrieve created session".to_string()))?;
 
     Ok(Json(response))
 }

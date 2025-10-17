@@ -9,6 +9,7 @@ pub struct Paths {
     pub user: PathBuf,
     pub repo: Option<PathBuf>,
     pub repo_user: Option<PathBuf>,
+    pub cli_config: Option<PathBuf>,
 }
 
 /// Discover configuration file paths for the current environment
@@ -29,6 +30,7 @@ pub fn discover_paths(repo_root: Option<&Path>) -> Paths {
         user,
         repo,
         repo_user,
+        cli_config: None,
     }
 }
 

@@ -1,6 +1,8 @@
 //! Server state management
 
 use crate::config::ServerConfig;
+use crate::executor::TaskExecutor;
+use crate::models::DatabaseSessionStore;
 use ah_local_db::Database;
 use ah_rest_api_contract::*;
 use std::sync::Arc;
@@ -15,9 +17,11 @@ pub struct AppState {
     /// Server configuration
     pub config: ServerConfig,
 
-    /// In-memory session store for active sessions (for demo purposes)
-    /// In production, this would be replaced with proper session management
-    pub active_sessions: Arc<RwLock<std::collections::HashMap<String, Session>>>,
+    /// Session store for managing sessions
+    pub session_store: Arc<DatabaseSessionStore>,
+
+    /// Task executor for running agent tasks
+    pub task_executor: Arc<TaskExecutor>,
 }
 
 impl AppState {
@@ -29,10 +33,14 @@ impl AppState {
             Arc::new(Database::open(&config.database_path)?)
         };
 
+        let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
+        let task_executor = Arc::new(TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), config.config_file.clone()));
+
         Ok(Self {
             db,
             config,
-            active_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            session_store,
+            task_executor,
         })
     }
 

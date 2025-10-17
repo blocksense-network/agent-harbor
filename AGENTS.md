@@ -11,6 +11,8 @@ tests firsts:
 
 `ruby -Itest test/test_file.rb -n test_method_name`
 
+ALWAYS run testing commands with a suitable timeout because they might hang.
+
 ## Managing dependencies
 
 The development environment of this project is managed in a nix flake at the root of the repo.
@@ -54,6 +56,7 @@ When you are facing issues with a dependency, make sure to study its implementat
 - On failure: the test runner prints the path and file size of the relevant log(s) so developers (or agents) can open them directly without flooding the console or context.
 - Rationale: preserves context-budget for AI tools by avoiding large inline logs, while retaining full fidelity in files.
 - NEVER cheat with the tested assertions in order to satisfy a specified Verification requirement (e.g. one from a .status.md file)
+- ALWAYS prefer creating automated tests instead of managing multiple client and server processes interactively.
 
 ## Writing git commit messages
 

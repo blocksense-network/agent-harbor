@@ -68,13 +68,14 @@ Shell completions are provided via the `ah shell-completion` command group. They
   - `--repo <PATH|URL>`: Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AH auto-detects a VCS root by walking parent directories and checking all supported VCS.
   - `--workspace <NAME>`: Named workspace (only valid on servers that support workspaces). Errors if unsupported by the selected server.
   - `--multiplexer <tmux|zellij|screen>`: Which multiplexer to use for when launching a TUI session.
+  - `--config <PATH>`: Additional configuration file to load (sits just below CLI flags in precedence order).
   - `--json`: Emit machine-readable JSON.
   - `--non-interactive`: Fail instead of prompting when user input is required.
   - `--quiet`: Reduce output
   - `--log-level <debug|info|warn|error>`: Defaults to `info` in release builds and `debug` in debug builds.
   - `--no-color`: Automatically enabled when not running inside a TTY. Otherwise, enabled by default.
   - `--fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>`: Select snapshot strategy (default: `auto`).
-  - `--working-copy <auto|cow-overlay|worktree|in-place>`: Select how the agent’s workspace is presented (default: `auto`).
+  - `--working-copy <auto|cow-overlay|worktree|in-place>`: Select how the agent's workspace is presented (default: `auto`).
 
 ### Subcommands
 
@@ -1188,18 +1189,17 @@ TODO: Verify that these align with everything described in [Sandbox-Profiles.md]
 See also: Local-Sandboxing-on-Linux.md for detailed semantics.
 
 ```
-ah agent start [OPTIONS] <TASK_ID|SESSION_ID>
+ah agent start [OPTIONS]
 
-DESCRIPTION: Starts an agent on a given task by setting up an isolated working copy,
-             configuring the chosen sandbox environment, and launching the coding agent
-             software with the task prompt. This command is used internally by the TUI
-             to execute agents in the agent pane.
+DESCRIPTION: Starts an agent by setting up an isolated working copy, configuring the
+             chosen sandbox environment, and launching the coding agent software with
+             the provided prompt. This command is used internally by the TUI to execute
+             agents in the agent pane and by the REST server for task execution.
 
 OPTIONS:
-  --task-id <ID>                     Task ID to execute (alternative to positional argument)
-  --session-id <ID>                  Session ID to execute (alternative to positional argument)
   --agent <TYPE>[@VERSION]           Agent type and optional version to use
-  --prompt <TEXT>                    Custom prompt text to pass to the agent (overrides task/session prompt)
+  --prompt <TEXT>                    Prompt text to pass to the agent (required)
+  --from-snapshot <SNAPSHOT_ID>      The initial file system snapshot from where the agent execution will start
   --non-interactive                  Enable non-interactive mode (e.g., codex exec)
   --output <text|text-normalized|json|json-normalized>
                                      Output format: text (default), text-normalized, json, or json-normalized
@@ -1221,14 +1221,11 @@ OPTIONS:
   --record-output <yes|no>           Record agent output with ah agent record (default: yes)
   --output-dir <PATH>                Directory for recordings and artifacts
   --follow                           Monitor execution and emit notifications on completion
-
-ARGUMENTS:
-  TASK_ID|SESSION_ID                 Task or session identifier to execute
 ```
 
 BEHAVIOR:
 
-The `ah agent start` command orchestrates the complete agent execution workflow, integrating filesystem isolation, sandboxing, and agent launching. This is the core execution command used by the TUI's agent pane.
+The `ah agent start` command orchestrates the complete agent execution workflow, integrating filesystem isolation, sandboxing, and agent launching. This is the core execution command used by the TUI's agent pane and by the REST server for task execution.
 
 **Working Copy Setup:**
 
@@ -1240,6 +1237,11 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
    - `worktree`: Isolated directory with bind mounts for path preservation
    - `in-place`: Direct execution on current working copy (no isolation)
    - `auto`: Selects optimal mode for the chosen provider
+
+**Snapshot Restoration:**
+
+- **From Snapshot**: When `--from-snapshot` is specified, the workspace is restored from the given filesystem snapshot, enabling fast task launches by skipping expensive checkout and build operations
+- **Incremental Builds**: Restored snapshots provide primed build caches and incremental build state for significantly faster agent startup
 
 **Sandbox Environment Setup:**
 
@@ -1257,7 +1259,7 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
 
 **Agent Execution:**
 
-6. **Agent Launch**: Executes the specified agent type with the task prompt:
+6. **Agent Launch**: Executes the specified agent type with the provided prompt:
    - **Non-Interactive Mode**: When `--non-interactive` is specified, launches agent in non-interactive mode (e.g., `codex exec`)
    - **Output Formatting**: Controls output format via `--output`:
      - `text`: Display agent output unmodified (default)
@@ -1276,28 +1278,32 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
 **Integration Points:**
 
 - **FS Snapshots**: Leverages the `ah-fs-snapshots-daemon` for sudo-less privileged operations
+- **REST Server**: Used for task execution with `--from-snapshot` for fast launches from cached snapshots
 - **TUI Agent Pane**: This command runs inside the right pane of multiplexer windows created by the TUI dashboard (usually wrapped in a `ah agent record` invocation)
-- **Time Travel**: Creates FsSnapshots at logical boundaries for later inspection and branching
+- **Time Travel**: Creates FsSnapshots at logical boundaries for later inspection and branching; `--from-snapshot` enables fast restoration for SessionBranching
 - **Multi-OS Fleets**: Supports execution on leader and follower machines in coordinated fleets
 
 **Error Handling:**
 
-- Validates task/session existence and accessibility
+- Validates snapshot existence when `--from-snapshot` is specified
 - Ensures provider and sandbox compatibility
 - Provides clear error messages for configuration conflicts
-- Graceful cleanup on execution failures
+- Graceful cleanup of workspaces and sandbox resources
 
 **Examples:**
 
 ```bash
-# Start agent on a task with default isolation and sandboxing
-ah agent start task-abc-123
+# Start agent with custom prompt
+ah agent start --agent claude --prompt "Implement a REST API for user management"
+
+# Fast launch from cached snapshot (REST server workflow)
+ah agent start --from-snapshot repo@commit-abc123 --agent codex --non-interactive
 
 # Execute with specific agent and devcontainer sandbox
-ah agent start --agent claude --sandbox devcontainer --devcontainer .devcontainer/devcontainer.json task-abc-123
+ah agent start --agent claude --sandbox devcontainer --devcontainer .devcontainer/devcontainer.json --prompt "Add authentication to the API"
 
 # Run in-place without isolation (policy-gated)
-ah agent start --working-copy in-place --sandbox disabled --agent openhands session-xyz-789
+ah agent start --working-copy in-place --sandbox disabled --agent openhands --prompt "Fix the bug in the login function"
 ```
 
 ```
@@ -1677,7 +1683,6 @@ ah tui --remote-server office-1 --multiplexer tmux
 Start local REST service and WebUI for a single developer:
 
 ```bash
-ah serve rest --local --port 8081
 ah webui --local --port 8080 --rest http://127.0.0.1:8081
 ```
 

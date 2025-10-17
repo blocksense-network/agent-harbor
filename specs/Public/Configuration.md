@@ -34,6 +34,18 @@ Enterprise deployments may enforce specific keys at the System scope. Enforced v
 
 Use a single key `ui` (not `ui.default`) to control the default UI.
 
+### Configuration Layers and Precedence
+
+Configuration values are resolved from multiple sources with the following precedence order (highest to lowest):
+
+1. **CLI flags** - Command-line arguments override all other sources
+2. **CLI --config** - Additional configuration file specified via `--config` flag
+3. **Environment variables** - `AH_*` prefixed variables
+4. **Repo-user scope** - `<repo>/.agents/config.user.toml`
+5. **Repo scope** - `<repo>/.agents/config.toml`
+6. **User scope** - `~/.config/agent-harbor/config.toml` (or `$AH_HOME/config.toml`)
+7. **System scope** - `/etc/agent-harbor/config.toml` (or equivalent platform location)
+
 ### Mapping Rules (Flags ↔ Config ↔ ENV/JSON)
 
 To keep things mechanical and predictable:

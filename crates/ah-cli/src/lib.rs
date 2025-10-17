@@ -16,6 +16,10 @@ pub use clap::{Parser, Subcommand};
 #[command(about = "Agents Workflow CLI")]
 #[command(version, author, long_about = None)]
 pub struct Cli {
+    /// Additional configuration file to load (sits just below CLI flags in precedence order)
+    #[arg(long, help = "Additional configuration file to load")]
+    pub config: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }

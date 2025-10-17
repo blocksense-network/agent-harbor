@@ -11,6 +11,7 @@ pub enum Scope {
     Repo,
     RepoUser,
     Env,
+    CliConfig,
     Flags,
 }
 

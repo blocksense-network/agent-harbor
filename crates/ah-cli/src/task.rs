@@ -408,6 +408,8 @@ impl TaskCreateArgs {
             workspace_path: None,
             started_at: chrono::Utc::now().to_rfc3339(),
             ended_at: None,
+            agent_config: None,
+            runtime_config: None,
         };
 
         db_manager
@@ -419,7 +421,9 @@ impl TaskCreateArgs {
             id: 0, // Will be set by autoincrement
             session_id: session_id.clone(),
             prompt: task_content.clone(),
+            repo_url: None, // TODO: Get from VCS remote URL
             branch: Some(actual_branch_name.clone()),
+            commit: None, // TODO: Get current commit hash
             delivery: Some("branch".to_string()), // Default delivery method
             instances: Some(1),
             labels: None,
@@ -1804,7 +1808,6 @@ exit {}
             "mock", // agent type
             WorkingCopyMode::InPlace,
             None,  // cwd
-            None,  // task_id
             false, // sandbox
             None,  // sandbox_type
             None,  // allow_network
@@ -1835,7 +1838,6 @@ exit {}
             "mock", // agent type
             WorkingCopyMode::InPlace,
             None,          // cwd
-            None,          // task_id
             true,          // sandbox enabled
             Some("local"), // sandbox_type
             Some(false),   // allow_network
@@ -1872,9 +1874,8 @@ exit {}
             repo_dir.path(),
             "mock", // agent type
             WorkingCopyMode::InPlace,
-            None,                  // cwd
-            Some("test-task-123"), // task_id
-            false,                 // sandbox
+            None,  // cwd
+            false, // sandbox
             None,                  // sandbox_type
             None,                  // allow_network
             None,                  // allow_containers
@@ -1907,7 +1908,6 @@ exit {}
             "mock", // agent type
             WorkingCopyMode::InPlace,
             Some(&custom_cwd), // cwd
-            None,              // task_id
             false,             // sandbox
             None,              // sandbox_type
             None,              // allow_network
@@ -2321,7 +2321,6 @@ exit {}
         agent: &str,
         working_copy: crate::agent::start::WorkingCopyMode,
         cwd: Option<&std::path::Path>,
-        task_id: Option<&str>,
         sandbox: bool,
         sandbox_type: Option<&str>,
         allow_network: Option<bool>,
@@ -2407,10 +2406,6 @@ exit {}
             cmd.arg("--cwd").arg(cwd_path);
         }
 
-        // Add task_id if provided
-        if let Some(task) = task_id {
-            cmd.arg("--task-id").arg(task);
-        }
 
         // Add sandbox options if enabled
         if sandbox {
@@ -2559,7 +2554,6 @@ exit {}
             "mock", // agent type
             WorkingCopyMode::Snapshots,
             None,          // cwd
-            None,          // task_id
             true,          // sandbox enabled
             Some("local"), // sandbox_type
             Some(false),   // allow_network

@@ -25,6 +25,15 @@ impl MigrationManager {
         if current_version < 1 {
             Self::apply_migration_1(conn)?;
         }
+        if current_version < 2 {
+            Self::apply_migration_2(conn)?;
+        }
+        if current_version < 3 {
+            Self::apply_migration_3(conn)?;
+        }
+        if current_version < 4 {
+            Self::apply_migration_4(conn)?;
+        }
 
         Ok(())
     }
@@ -74,10 +83,10 @@ impl MigrationManager {
             -- Sessions are concrete agent runs bound to a repo (and optionally a workspace)
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
-                repo_id INTEGER REFERENCES repos(id) ON DELETE RESTRICT,
-                workspace_id INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
-                agent_id INTEGER REFERENCES agents(id) ON DELETE RESTRICT,
-                runtime_id INTEGER REFERENCES runtimes(id) ON DELETE RESTRICT,
+                repo_id INTEGER REFERENCES repos(id),
+                workspace_id INTEGER REFERENCES workspaces(id),
+                agent_id INTEGER REFERENCES agents(id),
+                runtime_id INTEGER REFERENCES runtimes(id),
                 multiplexer_kind TEXT,
                 mux_session TEXT,
                 mux_window INTEGER,
@@ -142,6 +151,67 @@ impl MigrationManager {
             -- Mark migration as applied
             INSERT OR REPLACE INTO schema_migrations (version) VALUES (1);
             "#,
+        )?;
+
+        Ok(())
+    }
+
+    /// Apply migration version 2 - add agent and runtime config fields to sessions
+    fn apply_migration_2(conn: &Connection) -> crate::Result<()> {
+        conn.execute_batch(
+            r#"
+            ALTER TABLE sessions ADD COLUMN agent_config TEXT;
+            ALTER TABLE sessions ADD COLUMN runtime_config TEXT;
+            "#,
+        )?;
+
+        // Record the migration
+        conn.execute(
+            "INSERT INTO schema_migrations (version) VALUES (2)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    /// Apply migration version 3 - add repo_url and commit fields to tasks
+    fn apply_migration_3(conn: &Connection) -> crate::Result<()> {
+        conn.execute_batch(
+            r#"
+            ALTER TABLE tasks ADD COLUMN repo_url TEXT;
+            ALTER TABLE tasks ADD COLUMN "commit" TEXT;
+            "#,
+        )?;
+
+        // Record the migration
+        conn.execute(
+            "INSERT INTO schema_migrations (version) VALUES (3)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    /// Apply migration version 4 - add drafts table
+    fn apply_migration_4(conn: &Connection) -> crate::Result<()> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS drafts (
+                id TEXT PRIMARY KEY,
+                description TEXT NOT NULL,
+                repository TEXT NOT NULL,
+                branch TEXT,
+                models TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            "#,
+        )?;
+
+        // Record the migration
+        conn.execute(
+            "INSERT INTO schema_migrations (version) VALUES (4)",
+            [],
         )?;
 
         Ok(())

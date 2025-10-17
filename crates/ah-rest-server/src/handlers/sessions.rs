@@ -1,6 +1,7 @@
 //! Session management endpoints
 
 use crate::error::ServerError;
+use crate::models::SessionStore;
 use crate::state::AppState;
 use crate::ServerResult;
 use ah_rest_api_contract::*;
@@ -19,31 +20,10 @@ pub async fn list_sessions(
     State(state): State<AppState>,
     Query(filters): Query<FilterQuery>,
 ) -> ServerResult<Json<SessionListResponse>> {
-    let sessions = state.active_sessions.read().await;
+    let sessions = state.session_store.list_sessions(&filters).await?;
 
-    // Apply filters (placeholder implementation)
-    let filtered_sessions: Vec<Session> = sessions
-        .values()
-        .filter(|session| {
-            if let Some(status_filter) = &filters.status {
-                if &session.status.to_string().to_lowercase() != status_filter {
-                    return false;
-                }
-            }
-            if let Some(project_id) = &filters.project_id {
-                if session.project_id.as_ref() != Some(project_id) {
-                    return false;
-                }
-            }
-            if let Some(tenant_id) = &filters.tenant_id {
-                if session.tenant_id.as_ref() != Some(tenant_id) {
-                    return false;
-                }
-            }
-            true
-        })
-        .cloned()
-        .collect();
+    // Sessions are already filtered by the session store
+    let filtered_sessions = sessions;
 
     let total = filtered_sessions.len() as u32;
 
@@ -59,10 +39,8 @@ pub async fn get_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ServerResult<Json<Session>> {
-    let sessions = state.active_sessions.read().await;
-
-    if let Some(session) = sessions.get(&session_id) {
-        Ok(Json(session.clone()))
+    if let Some(internal_session) = state.session_store.get_session(&session_id).await? {
+        Ok(Json(internal_session.session))
     } else {
         Err(ServerError::SessionNotFound(session_id))
     }
@@ -81,13 +59,12 @@ pub async fn delete_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ServerResult<()> {
-    let mut sessions = state.active_sessions.write().await;
+    // Stop the task if it's running
+    let _ = state.task_executor.stop_task(&session_id).await;
 
-    if sessions.remove(&session_id).is_some() {
-        Ok(())
-    } else {
-        Err(ServerError::SessionNotFound(session_id))
-    }
+    // Delete from database
+    state.session_store.delete_session(&session_id).await?;
+    Ok(())
 }
 
 /// Stop a session gracefully
@@ -95,10 +72,9 @@ pub async fn stop_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ServerResult<()> {
-    let mut sessions = state.active_sessions.write().await;
-
-    if let Some(session) = sessions.get_mut(&session_id) {
-        session.status = SessionStatus::Stopping;
+    if let Some(mut internal_session) = state.session_store.get_session(&session_id).await? {
+        internal_session.session.status = SessionStatus::Stopping;
+        state.session_store.update_session(&session_id, &internal_session).await?;
         Ok(())
     } else {
         Err(ServerError::SessionNotFound(session_id))
@@ -110,10 +86,9 @@ pub async fn pause_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ServerResult<()> {
-    let mut sessions = state.active_sessions.write().await;
-
-    if let Some(session) = sessions.get_mut(&session_id) {
-        session.status = SessionStatus::Pausing;
+    if let Some(mut internal_session) = state.session_store.get_session(&session_id).await? {
+        internal_session.session.status = SessionStatus::Pausing;
+        state.session_store.update_session(&session_id, &internal_session).await?;
         Ok(())
     } else {
         Err(ServerError::SessionNotFound(session_id))
@@ -125,10 +100,9 @@ pub async fn resume_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ServerResult<()> {
-    let mut sessions = state.active_sessions.write().await;
-
-    if let Some(session) = sessions.get_mut(&session_id) {
-        session.status = SessionStatus::Resuming;
+    if let Some(mut internal_session) = state.session_store.get_session(&session_id).await? {
+        internal_session.session.status = SessionStatus::Resuming;
+        state.session_store.update_session(&session_id, &internal_session).await?;
         Ok(())
     } else {
         Err(ServerError::SessionNotFound(session_id))
@@ -150,12 +124,11 @@ pub async fn get_session_logs(
 
 /// Stream session events via SSE
 pub async fn stream_session_events(
-    State(state): State<AppState>,
-    Path(session_id): Path<String>,
+    State(_state): State<AppState>,
+    Path(_session_id): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let sessions = state.active_sessions.read().await;
-
-    // Create a simple heartbeat stream
+    // Create a simple heartbeat stream (placeholder - in real implementation,
+    // this would stream actual session events)
     let stream = stream::unfold(0, |count| async move {
         tokio::time::sleep(Duration::from_secs(30)).await;
         Some((
@@ -173,9 +146,8 @@ pub async fn get_session_info(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ServerResult<Json<SessionInfoResponse>> {
-    let sessions = state.active_sessions.read().await;
-
-    if let Some(session) = sessions.get(&session_id) {
+    if let Some(internal_session) = state.session_store.get_session(&session_id).await? {
+        let session = &internal_session.session;
         let response = SessionInfoResponse {
             id: session.id.clone(),
             status: session.status,

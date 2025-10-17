@@ -4,6 +4,7 @@
 //! managing agent tasks and sessions, including lifecycle management, state
 //! transitions, and coordination with other AH components.
 
+pub mod agent_executor;
 pub mod agent_tasks;
 pub mod db;
 pub mod devshell;
@@ -44,5 +45,8 @@ pub use db::DatabaseManager;
 /// Task manager abstraction for different execution modes (local, remote, mock).
 pub use task_manager::{
     TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, TaskExecutionStatus,
-    LogLevel, ToolStatus, SaveDraftResult
+    LogLevel, ToolStatus, SaveDraftResult, LocalTaskManager
 };
+
+/// Agent execution engine for spawning and managing agent processes.
+pub use agent_executor::{AgentExecutor, AgentExecutionConfig, WorkingCopyMode};

@@ -20,6 +20,10 @@ struct Args {
     #[arg(long)]
     cors: bool,
 
+    /// Additional configuration file to load
+    #[arg(long)]
+    config: Option<String>,
+
     /// Log level
     #[arg(short, long, default_value = "info")]
     log_level: String,
@@ -45,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         bind_addr: args.bind,
         database_path: args.database,
         enable_cors: args.cors,
+        config_file: args.config,
         ..Default::default()
     };
 

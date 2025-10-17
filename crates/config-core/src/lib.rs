@@ -14,7 +14,7 @@ pub mod provenance;
 pub mod extract;
 
 pub use schema::SchemaRoot;
-pub use provenance::Scope;
+pub use provenance::{Scope, Scope::*};
 
 use anyhow::Result;
 use serde_json::Value as J;
@@ -30,7 +30,7 @@ pub struct Resolved {
 
 /// Load and merge all configuration layers according to precedence rules
 ///
-/// Precedence order: system < user < repo < repo-user < env < flags
+/// Precedence order: system < user < repo < repo-user < env < cli-config < flags
 pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Resolved> {
     use Scope::*;
 
@@ -62,6 +62,9 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
         .and_then(|p| p.exists().then(|| loader::read_layer_from_file(p, RepoUser).ok()))
         .flatten();
     let env_layer = env::env_overlay()?;
+    let cli_config_layer = paths.cli_config.as_ref()
+        .and_then(|p| p.exists().then(|| loader::read_layer_from_file(p, CliConfig).ok()))
+        .flatten();
     let flags_layer = env::flags_overlay(flag_sets);
 
     // Define layers in precedence order
@@ -71,6 +74,7 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
         (repo_layer.as_ref().map(|l| &l.json), Repo),
         (repo_user_layer.as_ref().map(|l| &l.json), RepoUser),
         (Some(&env_layer), Env),
+        (cli_config_layer.as_ref().map(|l| &l.json), CliConfig),
         (Some(&flags_layer), Flags),
     ];
 
@@ -308,6 +312,7 @@ mod tests {
             user: user_config_path,
             repo: Some(repo_config_path),
             repo_user: None,
+            cli_config: None,
         };
 
         let resolved = load_all(&paths, &[]).unwrap();

@@ -286,35 +286,57 @@ The RestTaskManager has been implemented as a wrapper around the existing RestCl
 
 ## Milestone 5: Production Server - Core Infrastructure
 
-**Status**: Not Started
+**Status**: Completed
 
 ### Deliverables
 
-- [ ] Create `crates/ah-rest-server` with Axum HTTP server
-- [ ] SQLite database backend using sqlx with migrations
-- [ ] Database schema for tasks, sessions, events, workspaces
-- [ ] Server initialization and graceful shutdown
-- [ ] Configuration loading (bind address, port, database path)
-- [ ] Health check endpoint implementation
-- [ ] CORS middleware from tower-http
-- [ ] Request tracing middleware with request IDs
-- [ ] OpenAPI documentation serving at /api/v1/openapi.json
-- [ ] Swagger UI or RapiDoc serving at /api/docs
-- [ ] Rate limiting middleware (tower-governor or Tower's RateLimitLayer)
+- [x] Create `crates/ah-rest-server` with Axum HTTP server
+- [x] SQLite database backend using sqlx with migrations
+- [x] Database schema for tasks, sessions, events, workspaces
+- [x] Server initialization and graceful shutdown
+- [x] Configuration loading (bind address, port, database path)
+- [x] Health check endpoint implementation
+- [x] CORS middleware from tower-http
+- [x] Request tracing middleware with request IDs
+- [x] OpenAPI documentation serving at /api/v1/openapi.json
+- [x] Swagger UI or RapiDoc serving at /api/docs
+- [x] Rate limiting middleware (tower-governor or Tower's RateLimitLayer)
 
 ### Verification
 
-- [ ] Server starts on configured bind address and port
-- [ ] Health check endpoint returns 200 OK
-- [ ] SQLite database created with correct schema
-- [ ] Database migrations run successfully on startup
-- [ ] Server logs requests with unique request IDs
-- [ ] CORS headers present for OPTIONS requests
-- [ ] OpenAPI schema accessible at /api/v1/openapi.json
-- [ ] Swagger UI accessible at /api/docs
-- [ ] Rate limiting returns 429 with Retry-After header
-- [ ] Server shuts down gracefully on SIGTERM/SIGINT
-- [ ] Server handles concurrent requests correctly
+- [x] Server starts on configured bind address and port
+- [x] Health check endpoint returns 200 OK
+- [x] SQLite database created with correct schema
+- [x] Database migrations run successfully on startup
+- [x] Server logs requests with unique request IDs
+- [x] CORS headers present for OPTIONS requests
+- [x] OpenAPI schema accessible at /api/v1/openapi.json
+- [x] Swagger UI accessible at /api/docs
+- [x] Rate limiting returns 429 with Retry-After header
+- [x] Server shuts down gracefully on SIGTERM/SIGINT
+- [x] Server handles concurrent requests correctly
+
+### Implementation Details
+
+The production server core infrastructure has been implemented in `crates/ah-rest-server` with the following key components:
+
+- **Axum HTTP Server**: Full-featured web framework with async support and Tower ecosystem integration
+- **SQLite Backend**: Uses `ah-local-db` crate for database operations with connection pooling
+- **Middleware Stack**: Comprehensive middleware including request tracing, compression, CORS, and rate limiting
+- **Configuration System**: Flexible configuration loading with environment variable support
+- **Health Endpoints**: Standard health check, readiness check, and version endpoints
+- **OpenAPI Integration**: Auto-generated OpenAPI spec with Swagger UI interface
+- **Error Handling**: Problem+JSON error responses following RFC 7807
+- **Request Tracing**: Unique request IDs and structured logging with tracing
+
+### Key Source Files
+
+- `crates/ah-rest-server/src/server.rs` - Main server implementation with routing and middleware
+- `crates/ah-rest-server/src/config.rs` - Configuration management
+- `crates/ah-rest-server/src/state.rs` - Shared application state
+- `crates/ah-rest-server/src/handlers/health.rs` - Health check endpoints with OpenAPI annotations
+- `crates/ah-rest-server/src/handlers/openapi.rs` - OpenAPI spec generation and Swagger UI
+- `crates/ah-rest-server/src/middleware.rs` - Custom middleware including rate limiting
 
 ### Test Strategy
 
@@ -328,42 +350,73 @@ The RestTaskManager has been implemented as a wrapper around the existing RestCl
 
 ## Milestone 6: Production Server - Task Lifecycle
 
-**Status**: Not Started
+**Status**: Completed
 
 ### Deliverables
 
-- [ ] Implement POST /api/v1/tasks endpoint
-- [ ] Task state machine (queued → provisioning → running → completed/failed)
-- [ ] Integration with `ah agent start` for task execution
-- [ ] Integration with `ah agent record` for session recording
-- [ ] Task process lifecycle management (spawn, monitor, cleanup)
-- [ ] Task output capture and storage
-- [ ] Session state persistence in SQLite
-- [ ] Task cleanup on server shutdown
-- [ ] Resource limits enforcement (max concurrent tasks)
-- [ ] Workspace provisioning and cleanup
+- [x] Implement POST /api/v1/tasks endpoint
+- [x] Task state machine (queued → provisioning → running → completed/failed)
+- [x] Integration with `ah agent start` for task execution
+- [x] Integration with `ah agent record` for session recording
+- [x] Task process lifecycle management (spawn, monitor, cleanup)
+- [x] Task output capture and storage
+- [x] Session state persistence in SQLite
+- [x] Task cleanup on server shutdown
+- [x] Resource limits enforcement (max concurrent tasks)
+- [x] Workspace provisioning and cleanup
 
 ### Verification
 
-- [ ] POST /api/v1/tasks creates task record in database
-- [ ] Task transitions through lifecycle states correctly
-- [ ] Server spawns `ah agent record` wrapping `ah agent start`
-- [ ] Task output captured and stored in database
-- [ ] GET /api/v1/sessions/{id} returns correct task state
-- [ ] Task cleanup removes workspace and process on completion
-- [ ] Server respects max-concurrent-tasks limit
-- [ ] Failed tasks transition to failed state with error message
-- [ ] Cancelled tasks can be stopped via DELETE /api/v1/sessions/{id}
-- [ ] Server recovers running tasks after restart (or marks them as failed)
+- [x] POST /api/v1/tasks creates task record in database
+- [x] Task transitions through lifecycle states correctly
+- [x] Server spawns `ah agent record` wrapping `ah agent start`
+- [x] Task output captured and stored in database
+- [x] GET /api/v1/sessions/{id} returns correct task state
+- [x] Task cleanup removes workspace and process on completion
+- [x] Server respects max-concurrent-tasks limit
+- [x] Failed tasks transition to failed state with error message
+- [x] Cancelled tasks can be stopped via DELETE /api/v1/sessions/{id}
+- [x] Server recovers running tasks after restart (or marks them as failed)
+
+### Implementation Details
+
+The production server task lifecycle has been fully implemented with comprehensive database integration, snapshot caching, and agent orchestration:
+
+- **Database Session Store**: Complete SQLite persistence using `DatabaseSessionStore` with foreign key constraints and proper migration support
+- **Task Executor Service**: Background service managing task state transitions, process lifecycle, and resource limits
+- **Snapshot Caching**: Global LRU cache for repository snapshots with disk capacity limits and eviction policies
+- **Workspace Provisioning**: Intelligent provisioning logic using cached snapshots or fresh checkout with global mutex locking
+- **Agent Integration**: Direct integration with `ah agent record` wrapping `ah agent start`, supporting configuration forwarding and snapshot restoration
+- **State Machine**: Tasks progress through queued → provisioning → running → completed/failed states with proper error handling
+- **Resource Limits**: Configurable max concurrent tasks with enforcement and queue management
+- **Task Cancellation**: DELETE endpoint for graceful task termination and cleanup
+- **Database Migrations**: Versioned schema migrations including drafts table, task metadata, and repository tracking
+- **Local Task Manager**: Complete implementation with database-backed draft storage and repository/branch enumeration
+- **Configuration System**: Layered configuration support with `--config` parameter forwarding to agent processes
+
+### Key Source Files
+
+- `crates/ah-rest-server/src/executor.rs` - TaskExecutor with snapshot caching, workspace provisioning, and agent process spawning
+- `crates/ah-rest-server/src/models.rs` - DatabaseSessionStore with SQLite persistence and API contract mapping
+- `crates/ah-rest-server/src/state.rs` - AppState integration and configuration parameter passing
+- `crates/ah-rest-server/src/main.rs` - Server CLI with --config parameter support
+- `crates/ah-core/src/agent_executor.rs` - Core agent spawning logic shared between server and local modes
+- `crates/ah-core/src/task_manager.rs` - LocalTaskManager with database-backed draft storage and repository management
+- `crates/ah-core/src/db.rs` - DatabaseManager with repository and draft CRUD operations
+- `crates/ah-local-db/src/models.rs` - Database models including DraftRecord, DraftStore, and enhanced TaskRecord
+- `crates/ah-local-db/src/migrations.rs` - Database migrations including drafts table and schema versioning
+- `crates/config-core/src/lib.rs` - Configuration layering system with CLI --config support
 
 ### Test Strategy
 
-- End-to-end tests creating tasks and monitoring until completion
-- Process lifecycle tests (spawn, monitor, kill, cleanup)
-- Concurrent task tests ensuring resource limits work
-- Crash recovery tests (restart server with running tasks)
-- Task cancellation tests validating cleanup
-- Workspace provisioning tests with different snapshot providers
+- End-to-end integration tests creating tasks via REST API and monitoring lifecycle completion
+- Process lifecycle tests (spawn, monitor, kill, cleanup) with resource limit enforcement
+- Database persistence tests ensuring session state survives server restarts
+- Snapshot caching tests with LRU eviction and workspace provisioning logic
+- Configuration forwarding tests verifying --config parameters reach agent processes
+- Local Task Manager tests with database-backed draft storage and repository enumeration
+- Concurrent task execution tests respecting max-concurrent-tasks limits
+- Agent integration tests validating `ah agent record` and `ah agent start` command construction
 
 ---
 

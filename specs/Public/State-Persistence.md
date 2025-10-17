@@ -125,6 +125,17 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts);
 
+-- Draft tasks that can be saved and resumed later
+CREATE TABLE IF NOT EXISTS drafts (
+  id           TEXT PRIMARY KEY,               -- stable ULID/UUID string
+  description  TEXT NOT NULL,                  -- user-provided task description
+  repository   TEXT NOT NULL,                  -- repository identifier (ID or URL)
+  branch       TEXT,                           -- target branch name
+  models       TEXT NOT NULL,                  -- JSON array of selected models
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 -- Key/value subsystem for small, fast lookups (scoped configuration, caches)
 CREATE TABLE IF NOT EXISTS kv (
   scope        TEXT NOT NULL,                  -- user|repo|repo-user|system|...

@@ -36,26 +36,29 @@ pub enum ConfigCommands {
 }
 
 impl ConfigCommands {
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, global_config: Option<&str>) -> Result<()> {
         match self {
             ConfigCommands::Show { key, show_origin } => {
-                show_config(key.as_deref(), show_origin).await
+                show_config(key.as_deref(), show_origin, global_config).await
             }
             ConfigCommands::Get { key } => {
-                get_config_value(&key).await
+                get_config_value(&key, global_config).await
             }
             ConfigCommands::Set { key, value, scope } => {
-                set_config_value(&key, &value, &scope).await
+                set_config_value(&key, &value, &scope, global_config).await
             }
             ConfigCommands::Explain { key } => {
-                explain_config(&key).await
+                explain_config(&key, global_config).await
             }
         }
     }
 }
 
-async fn show_config(key_filter: Option<&str>, show_origin: bool) -> Result<()> {
-    let paths = paths::discover_paths(None); // TODO: Get repo root from context
+async fn show_config(key_filter: Option<&str>, show_origin: bool, config_file: Option<&str>) -> Result<()> {
+    let mut paths = paths::discover_paths(None); // TODO: Get repo root from context
+    if let Some(config_path) = config_file {
+        paths.cli_config = Some(std::path::PathBuf::from(config_path));
+    }
     let resolved = load_all(&paths, &[])?;
 
     println!("Configuration:");
@@ -82,8 +85,11 @@ async fn show_config(key_filter: Option<&str>, show_origin: bool) -> Result<()> 
     Ok(())
 }
 
-async fn get_config_value(key: &str) -> Result<()> {
-    let paths = paths::discover_paths(None);
+async fn get_config_value(key: &str, config_file: Option<&str>) -> Result<()> {
+    let mut paths = paths::discover_paths(None);
+    if let Some(config_path) = config_file {
+        paths.cli_config = Some(std::path::PathBuf::from(config_path));
+    }
     let resolved = load_all(&paths, &[])?;
 
     if let Some(value) = get_nested_value(&resolved.json, key) {
@@ -96,8 +102,11 @@ async fn get_config_value(key: &str) -> Result<()> {
     Ok(())
 }
 
-async fn set_config_value(key: &str, value: &str, scope: &str) -> Result<()> {
-    let paths = paths::discover_paths(None);
+async fn set_config_value(key: &str, value: &str, scope: &str, config_file: Option<&str>) -> Result<()> {
+    let mut paths = paths::discover_paths(None);
+    if let Some(config_path) = config_file {
+        paths.cli_config = Some(std::path::PathBuf::from(config_path));
+    }
     let resolved = load_all(&paths, &[])?;
 
     // Check if the key is enforced
@@ -121,8 +130,11 @@ async fn set_config_value(key: &str, value: &str, scope: &str) -> Result<()> {
     Ok(())
 }
 
-async fn explain_config(key: &str) -> Result<()> {
-    let paths = paths::discover_paths(None);
+async fn explain_config(key: &str, config_file: Option<&str>) -> Result<()> {
+    let mut paths = paths::discover_paths(None);
+    if let Some(config_path) = config_file {
+        paths.cli_config = Some(std::path::PathBuf::from(config_path));
+    }
     let resolved = load_all(&paths, &[])?;
 
     if let Some(scope) = resolved.provenance.winner.get(key) {
@@ -188,6 +200,7 @@ fn format_scope(scope: config_core::Scope) -> &'static str {
         config_core::Scope::Repo => "repo",
         config_core::Scope::RepoUser => "repo-user",
         config_core::Scope::Env => "environment",
+        config_core::Scope::CliConfig => "cli-config",
         config_core::Scope::Flags => "command-line",
     }
 }

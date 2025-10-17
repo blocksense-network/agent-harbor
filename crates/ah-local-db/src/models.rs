@@ -115,6 +115,8 @@ pub struct SessionRecord {
     pub workspace_path: Option<String>,
     pub started_at: String,
     pub ended_at: Option<String>,
+    pub agent_config: Option<String>,
+    pub runtime_config: Option<String>,
 }
 
 /// Database model for tasks.
@@ -123,7 +125,9 @@ pub struct TaskRecord {
     pub id: i64,
     pub session_id: String,
     pub prompt: String,
+    pub repo_url: Option<String>,
     pub branch: Option<String>,
+    pub commit: Option<String>,
     pub delivery: Option<String>,
     pub instances: Option<i64>,
     pub labels: Option<String>,
@@ -140,7 +144,9 @@ impl TaskRecord {
             id: task.id.0 as i64,
             session_id: "".to_string(), // Will be set when creating task record
             prompt: task.description.clone(),
-            branch: None, // Will be set when creating task record
+            repo_url: None,
+            branch: None,
+            commit: None,
             delivery: None,
             instances: None,
             labels: None,
@@ -190,6 +196,16 @@ pub struct FsSnapshotRecord {
     pub metadata: Option<String>,
 }
 
+pub struct DraftRecord {
+    pub id: String,
+    pub description: String,
+    pub repository: String,
+    pub branch: Option<String>,
+    pub models: String, // JSON string
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Database operations for repositories.
 pub struct RepoStore<'a> {
     conn: &'a rusqlite::Connection,
@@ -226,6 +242,58 @@ impl<'a> RepoStore<'a> {
         )?;
 
         let mut rows = stmt.query_map(params![root_path], |row| {
+            Ok(RepoRecord {
+                id: row.get(0)?,
+                vcs: row.get(1)?,
+                root_path: row.get(2)?,
+                remote_url: row.get(3)?,
+                default_branch: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?;
+
+        match rows.next() {
+            Some(Ok(record)) => Ok(Some(record)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    pub fn list(&self) -> crate::Result<Vec<RepoRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, vcs, root_path, remote_url, default_branch, created_at
+            FROM repos ORDER BY created_at DESC
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(RepoRecord {
+                id: row.get(0)?,
+                vcs: row.get(1)?,
+                root_path: row.get(2)?,
+                remote_url: row.get(3)?,
+                default_branch: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?;
+
+        let mut repos = Vec::new();
+        for row in rows {
+            repos.push(row?);
+        }
+        Ok(repos)
+    }
+
+    pub fn get_by_id(&self, id: i64) -> crate::Result<Option<RepoRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, vcs, root_path, remote_url, default_branch, created_at
+            FROM repos WHERE id = ?
+            "#,
+        )?;
+
+        let mut rows = stmt.query_map(params![id], |row| {
             Ok(RepoRecord {
                 id: row.get(0)?,
                 vcs: row.get(1)?,
@@ -354,8 +422,8 @@ impl<'a> SessionStore<'a> {
     pub fn insert(&self, record: &SessionRecord) -> crate::Result<()> {
         self.conn.execute(
             r#"
-            INSERT INTO sessions (id, repo_id, workspace_id, agent_id, runtime_id, multiplexer_kind, mux_session, mux_window, pane_left, pane_right, pid_agent, status, log_path, workspace_path, started_at, ended_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sessions (id, repo_id, workspace_id, agent_id, runtime_id, multiplexer_kind, mux_session, mux_window, pane_left, pane_right, pid_agent, status, log_path, workspace_path, started_at, ended_at, agent_config, runtime_config)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             params![
                 record.id,
@@ -373,7 +441,9 @@ impl<'a> SessionStore<'a> {
                 record.log_path,
                 record.workspace_path,
                 record.started_at,
-                record.ended_at
+                record.ended_at,
+                record.agent_config,
+                record.runtime_config
             ],
         )?;
         Ok(())
@@ -382,7 +452,7 @@ impl<'a> SessionStore<'a> {
     pub fn get(&self, session_id: &str) -> crate::Result<Option<SessionRecord>> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT id, repo_id, workspace_id, agent_id, runtime_id, multiplexer_kind, mux_session, mux_window, pane_left, pane_right, pid_agent, status, log_path, workspace_path, started_at, ended_at
+            SELECT id, repo_id, workspace_id, agent_id, runtime_id, multiplexer_kind, mux_session, mux_window, pane_left, pane_right, pid_agent, status, log_path, workspace_path, started_at, ended_at, agent_config, runtime_config
             FROM sessions WHERE id = ?
             "#,
         )?;
@@ -405,6 +475,8 @@ impl<'a> SessionStore<'a> {
                 workspace_path: row.get(13)?,
                 started_at: row.get(14)?,
                 ended_at: row.get(15)?,
+                agent_config: row.get(16)?,
+                runtime_config: row.get(17)?,
             })
         })?;
 
@@ -431,6 +503,84 @@ impl<'a> SessionStore<'a> {
         )?;
         Ok(())
     }
+
+    pub fn update(&self, record: &SessionRecord) -> crate::Result<()> {
+        self.conn.execute(
+            r#"
+            UPDATE sessions
+            SET repo_id = ?, workspace_id = ?, agent_id = ?, runtime_id = ?, multiplexer_kind = ?, mux_session = ?, mux_window = ?, pane_left = ?, pane_right = ?, pid_agent = ?, status = ?, log_path = ?, workspace_path = ?, started_at = ?, ended_at = ?, agent_config = ?, runtime_config = ?
+            WHERE id = ?
+            "#,
+            params![
+                record.repo_id,
+                record.workspace_id,
+                record.agent_id,
+                record.runtime_id,
+                record.multiplexer_kind,
+                record.mux_session,
+                record.mux_window,
+                record.pane_left,
+                record.pane_right,
+                record.pid_agent,
+                record.status,
+                record.log_path,
+                record.workspace_path,
+                record.started_at,
+                record.ended_at,
+                record.agent_config,
+                record.runtime_config,
+                record.id
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete(&self, session_id: &str) -> crate::Result<()> {
+        self.conn.execute(
+            "DELETE FROM sessions WHERE id = ?",
+            params![session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list(&self) -> crate::Result<Vec<SessionRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, repo_id, workspace_id, agent_id, runtime_id, multiplexer_kind, mux_session, mux_window, pane_left, pane_right, pid_agent, status, log_path, workspace_path, started_at, ended_at, agent_config, runtime_config
+            FROM sessions
+            ORDER BY started_at DESC
+            "#,
+        )?;
+
+        let records = stmt.query_map([], |row| {
+            Ok(SessionRecord {
+                id: row.get(0)?,
+                repo_id: row.get(1)?,
+                workspace_id: row.get(2)?,
+                agent_id: row.get(3)?,
+                runtime_id: row.get(4)?,
+                multiplexer_kind: row.get(5)?,
+                mux_session: row.get(6)?,
+                mux_window: row.get(7)?,
+                pane_left: row.get(8)?,
+                pane_right: row.get(9)?,
+                pid_agent: row.get(10)?,
+                status: row.get(11)?,
+                log_path: row.get(12)?,
+                workspace_path: row.get(13)?,
+                started_at: row.get(14)?,
+                ended_at: row.get(15)?,
+                agent_config: row.get(16)?,
+                runtime_config: row.get(17)?,
+            })
+        })?;
+
+        let mut result = Vec::new();
+        for record in records {
+            result.push(record?);
+        }
+        Ok(result)
+    }
 }
 
 /// Database operations for tasks.
@@ -446,13 +596,15 @@ impl<'a> TaskStore<'a> {
     pub fn insert(&self, record: &TaskRecord) -> crate::Result<i64> {
         self.conn.execute(
             r#"
-            INSERT INTO tasks (session_id, prompt, branch, delivery, instances, labels, browser_automation, browser_profile, chatgpt_username, codex_workspace)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (session_id, prompt, repo_url, branch, "commit", delivery, instances, labels, browser_automation, browser_profile, chatgpt_username, codex_workspace)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             params![
                 record.session_id,
                 record.prompt,
+                record.repo_url,
                 record.branch,
+                record.commit,
                 record.delivery,
                 record.instances,
                 record.labels,
@@ -468,7 +620,7 @@ impl<'a> TaskStore<'a> {
     pub fn get_by_session(&self, session_id: &str) -> crate::Result<Option<TaskRecord>> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT id, session_id, prompt, branch, delivery, instances, labels, browser_automation, browser_profile, chatgpt_username, codex_workspace
+            SELECT id, session_id, prompt, repo_url, branch, "commit", delivery, instances, labels, browser_automation, browser_profile, chatgpt_username, codex_workspace
             FROM tasks WHERE session_id = ?
             "#,
         )?;
@@ -478,14 +630,16 @@ impl<'a> TaskStore<'a> {
                 id: row.get(0)?,
                 session_id: row.get(1)?,
                 prompt: row.get(2)?,
-                branch: row.get(3)?,
-                delivery: row.get(4)?,
-                instances: row.get(5)?,
-                labels: row.get(6)?,
-                browser_automation: row.get(7)?,
-                browser_profile: row.get(8)?,
-                chatgpt_username: row.get(9)?,
-                codex_workspace: row.get(10)?,
+                repo_url: row.get(3)?,
+                branch: row.get(4)?,
+                commit: row.get(5)?,
+                delivery: row.get(6)?,
+                instances: row.get(7)?,
+                labels: row.get(8)?,
+                browser_automation: row.get(9)?,
+                browser_profile: row.get(10)?,
+                chatgpt_username: row.get(11)?,
+                codex_workspace: row.get(12)?,
             })
         })?;
 
@@ -595,5 +749,115 @@ impl<'a> KvStore<'a> {
             Some(Err(e)) => Err(e.into()),
             None => Ok(None),
         }
+    }
+}
+
+/// Database operations for drafts.
+pub struct DraftStore<'a> {
+    conn: &'a rusqlite::Connection,
+}
+
+impl<'a> DraftStore<'a> {
+    pub fn new(conn: &'a rusqlite::Connection) -> Self {
+        Self { conn }
+    }
+
+    pub fn insert(&self, record: &DraftRecord) -> crate::Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT INTO drafts (id, description, repository, branch, models, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+            params![
+                record.id,
+                record.description,
+                record.repository,
+                record.branch,
+                record.models,
+                record.created_at,
+                record.updated_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_by_id(&self, id: &str) -> crate::Result<Option<DraftRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, description, repository, branch, models, created_at, updated_at
+            FROM drafts WHERE id = ?
+            "#,
+        )?;
+
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(DraftRecord {
+                id: row.get(0)?,
+                description: row.get(1)?,
+                repository: row.get(2)?,
+                branch: row.get(3)?,
+                models: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?;
+
+        match rows.next() {
+            Some(Ok(record)) => Ok(Some(record)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    pub fn list(&self) -> crate::Result<Vec<DraftRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, description, repository, branch, models, created_at, updated_at
+            FROM drafts ORDER BY updated_at DESC
+            "#,
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(DraftRecord {
+                id: row.get(0)?,
+                description: row.get(1)?,
+                repository: row.get(2)?,
+                branch: row.get(3)?,
+                models: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?;
+
+        let mut drafts = Vec::new();
+        for row in rows {
+            drafts.push(row?);
+        }
+        Ok(drafts)
+    }
+
+    pub fn update(&self, record: &DraftRecord) -> crate::Result<()> {
+        self.conn.execute(
+            r#"
+            UPDATE drafts SET description = ?, repository = ?, branch = ?, models = ?, updated_at = ?
+            WHERE id = ?
+            "#,
+            params![
+                record.description,
+                record.repository,
+                record.branch,
+                record.models,
+                record.updated_at,
+                record.id
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete(&self, id: &str) -> crate::Result<()> {
+        self.conn.execute(
+            "DELETE FROM drafts WHERE id = ?",
+            params![id],
+        )?;
+        Ok(())
     }
 }

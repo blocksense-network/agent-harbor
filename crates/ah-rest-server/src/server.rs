@@ -3,9 +3,10 @@
 use crate::config::ServerConfig;
 use crate::error::ServerResult;
 use crate::handlers;
-use crate::middleware;
+use crate::middleware::{rate_limit_middleware, RateLimitState};
 use crate::state::AppState;
 use axum::{
+    http::HeaderValue,
     middleware::from_fn,
     routing::{delete, get, post, put},
     Router,
@@ -31,6 +32,9 @@ impl Server {
     pub async fn new(config: ServerConfig) -> ServerResult<Self> {
         let state = AppState::new(config.clone()).await?;
 
+        // Start the task executor
+        state.task_executor.start();
+
         // Build the application with all routes and middleware
         let app = Self::build_app(state, &config);
 
@@ -45,7 +49,29 @@ impl Server {
             .layer(PropagateRequestIdLayer::x_request_id())
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
-            .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any));
+            .layer(from_fn({
+                let rate_limit_state = std::sync::Arc::new(RateLimitState::new(config.rate_limit.clone()));
+                move |req, next| {
+                    let state = std::sync::Arc::clone(&rate_limit_state);
+                    rate_limit_middleware(state, req, next)
+                }
+            }))
+            .layer({
+                if config.enable_cors {
+                    CorsLayer::new()
+                        .allow_origin(Any)
+                        .allow_methods(Any)
+                        .allow_headers(Any)
+                } else {
+                    CorsLayer::new()
+                        .allow_origin(vec![
+                            HeaderValue::from_static("http://localhost:3000"),
+                            HeaderValue::from_static("http://127.0.0.1:3000"),
+                        ])
+                        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
+                        .allow_headers([axum::http::header::AUTHORIZATION, axum::http::header::CONTENT_TYPE])
+                }
+            });
 
         // API routes
         let api_routes = Router::new()

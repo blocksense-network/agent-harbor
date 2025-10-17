@@ -81,9 +81,9 @@ pub struct AgentStartArgs {
     #[arg(long)]
     pub cwd: Option<PathBuf>,
 
-    /// Task ID to associate with this agent session
+    /// Restore workspace from filesystem snapshot (enables fast task launch)
     #[arg(long)]
-    pub task_id: Option<String>,
+    pub from_snapshot: Option<String>,
 
     /// Enable sandbox mode
     #[arg(long)]

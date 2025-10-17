@@ -3,29 +3,37 @@
 use crate::ServerResult;
 use axum::Json;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// Health check response
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub timestamp: String,
 }
 
 /// Version response
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct VersionResponse {
     pub version: String,
     pub build_info: BuildInfo,
 }
 
 /// Build information
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct BuildInfo {
     pub git_commit: Option<String>,
     pub build_date: Option<String>,
 }
 
 /// Health check endpoint
+#[utoipa::path(
+    get,
+    path = "/api/v1/healthz",
+    responses(
+        (status = 200, description = "Server is healthy", body = HealthResponse)
+    )
+)]
 pub async fn health_check() -> ServerResult<Json<HealthResponse>> {
     let response = HealthResponse {
         status: "ok".to_string(),
@@ -35,6 +43,14 @@ pub async fn health_check() -> ServerResult<Json<HealthResponse>> {
 }
 
 /// Readiness check endpoint
+#[utoipa::path(
+    get,
+    path = "/api/v1/readyz",
+    responses(
+        (status = 200, description = "Server is ready to accept requests", body = HealthResponse),
+        (status = 503, description = "Server is not ready", body = HealthResponse)
+    )
+)]
 pub async fn readiness_check() -> ServerResult<Json<HealthResponse>> {
     // In a real implementation, this would check database connectivity,
     // external service dependencies, etc.
@@ -46,6 +62,13 @@ pub async fn readiness_check() -> ServerResult<Json<HealthResponse>> {
 }
 
 /// Version endpoint
+#[utoipa::path(
+    get,
+    path = "/api/v1/version",
+    responses(
+        (status = 200, description = "Server version information", body = VersionResponse)
+    )
+)]
 pub async fn version() -> ServerResult<Json<VersionResponse>> {
     let response = VersionResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
