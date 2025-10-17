@@ -262,7 +262,7 @@
       commonPackages = (aiCodingAgentsForSystem system) ++ [
         # Rust toolchain
         (pkgs.rust-bin.stable.latest.default.override {
-          extensions = ["rustfmt" "clippy"];
+          extensions = ["rustfmt" "clippy" "rust-src"];
           targets = [
             # Linux
             "x86_64-unknown-linux-gnu"
@@ -328,6 +328,9 @@
         pkgs.cargo-outdated
         pkgs.cargo-nextest
         pkgs.cargo-insta
+
+        # Rust analyzer (matching the Nix-provided toolchain)
+        pkgs.rust-analyzer
       ];
 
       # Linux-specific packages
