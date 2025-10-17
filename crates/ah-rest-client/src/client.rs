@@ -188,7 +188,7 @@ impl RestClient {
         tenant_id: Option<&str>,
         project_id: Option<&str>,
     ) -> RestClientResult<Vec<Repository>> {
-        let mut url = "/api/v1/repos".to_string();
+        let mut url = "/api/v1/repositories".to_string();
         let mut params = Vec::new();
 
         if let Some(tenant_id) = tenant_id {

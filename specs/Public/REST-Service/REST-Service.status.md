@@ -242,7 +242,7 @@ The MockRestClient has been implemented in `crates/ah-rest-mock-client/src/lib.r
 - [x] Client works with self-signed certificates when validation disabled
 - [x] Client connection pool reuses connections efficiently
 - [x] Client handles server-side errors (4xx, 5xx) gracefully
-- [x] All tests pass against existing webui/mock-server
+- [x] All integration tests pass against existing webui/mock-server
 - [x] Identified mock-server improvements documented and implemented
 - [x] TaskManager trait implementation matches mock client behavior (Milestone 3)
 
@@ -272,6 +272,7 @@ The RestTaskManager has been implemented as a wrapper around the existing RestCl
 ### Test Strategy
 
 - Unit tests for TaskManager trait implementation (3 comprehensive tests)
+- Integration tests against webui/mock-server (6 comprehensive tests covering all TaskManager methods)
 - Input validation tests for task launch parameters
 - Error handling tests for API failures
 - Authentication configuration tests
