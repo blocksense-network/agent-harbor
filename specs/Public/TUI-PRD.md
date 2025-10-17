@@ -513,7 +513,7 @@ All such variables are in under the "[tui.keymap]" section.
 | | Transpose words | `transpose-words` | M-t (Emacs) |
 | | Undo | `undo` | C-_ or C-/ (Emacs), Ctrl+Z (CUA/PC), Cmd+Z (macOS) |
 | | Redo | `redo` | C-? (Emacs), Ctrl+Y (CUA/PC), Cmd+Shift+Z (macOS) |
-| | Open (insert) new line | `open-new-line` | C-o (Emacs), Enter (CUA/PC and macOS) |
+| | Open (insert) new line | `open-new-line` | C-o (Emacs), Enter (CUA/PC and macOS), Shift+Enter (TUI) |
 | | Indent or complete | `indent-or-complete` | TAB (Emacs) |
 | | Delete to beginning of line | `delete-to-beginning-of-line` | Cmd+Backspace (macOS) |
 | **Text Transformation** | Uppercase word | `uppercase-word` | M-u (Emacs) |

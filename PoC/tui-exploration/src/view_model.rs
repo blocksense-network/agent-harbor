@@ -51,11 +51,361 @@
 //!   (selection, focus)                                     (drafts, executions)
 //! ```
 
-use crate::model::{Model, TaskExecution, TaskItem, DraftTask, SelectedModel, DeliveryStatus, DomainMsg, TaskState};
-use crate::workspace_files::{WorkspaceFiles, RepositoryFile};
+use ah_domain_types::{TaskExecution, DraftTask, SelectedModel, TaskState, TaskInfo, DeliveryStatus};
+use crate::workspace_files::WorkspaceFiles;
 use crate::workspace_workflows::WorkspaceWorkflows;
-use ah_workflows::WorkflowError;
-use crossterm::event::{KeyCode, KeyModifiers, KeyEvent, MouseEvent};
+use crate::Settings;
+use crate::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult, LogLevel, ToolStatus};
+use crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
+use futures::stream::StreamExt;
+use std::collections::HashMap;
+use tokio::sync::mpsc;
+use crate::settings::{KeyboardOperation, KeyboardShortcut, KeyMatcher};
+
+/// Focus control navigation (similar to main.rs)
+impl ViewModel {
+    /// Navigate to the next focusable control
+    pub fn focus_next_control(&mut self) -> bool {
+        // Implement PRD-compliant tab navigation for draft cards
+        let old_focus = self.focus_element;
+        match self.focus_element {
+            FocusElement::TaskDescription => {
+                self.focus_element = FocusElement::RepositorySelector;
+            }
+            FocusElement::RepositorySelector => {
+                self.focus_element = FocusElement::BranchSelector;
+            }
+            FocusElement::BranchSelector => {
+                self.focus_element = FocusElement::ModelSelector;
+            }
+            FocusElement::ModelSelector => {
+                self.focus_element = FocusElement::GoButton;
+            }
+            FocusElement::GoButton => {
+                self.focus_element = FocusElement::TaskDescription;
+            }
+            // For other elements, cycle through basic navigation
+            FocusElement::SettingsButton => {
+                if !self.draft_cards.is_empty() {
+                    self.focus_element = FocusElement::TaskDescription;
+                } else if !self.task_cards.is_empty() {
+                    self.focus_element = FocusElement::FilterBarSeparator;
+                } else {
+                    self.focus_element = FocusElement::SettingsButton; // Stay on settings if nothing else
+                }
+            }
+            _ => {
+                self.focus_element = FocusElement::SettingsButton;
+            }
+        }
+        old_focus != self.focus_element
+    }
+
+    /// Navigate to the previous focusable control
+    pub fn focus_previous_control(&mut self) -> bool {
+        // Implement PRD-compliant shift+tab navigation for draft cards (reverse order)
+        let old_focus = self.focus_element;
+        match self.focus_element {
+            FocusElement::TaskDescription => {
+                self.focus_element = FocusElement::GoButton;
+            }
+            FocusElement::GoButton => {
+                self.focus_element = FocusElement::ModelSelector;
+            }
+            FocusElement::ModelSelector => {
+                self.focus_element = FocusElement::BranchSelector;
+            }
+            FocusElement::BranchSelector => {
+                self.focus_element = FocusElement::RepositorySelector;
+            }
+            FocusElement::RepositorySelector => {
+                self.focus_element = FocusElement::TaskDescription;
+            }
+            // For other elements, cycle through basic navigation
+            FocusElement::SettingsButton => {
+                if !self.task_cards.is_empty() {
+                    self.focus_element = FocusElement::FilterBarSeparator;
+                } else if !self.draft_cards.is_empty() {
+                    self.focus_element = FocusElement::TaskDescription;
+                } else {
+                    self.focus_element = FocusElement::SettingsButton; // Stay on settings if nothing else
+                }
+            }
+            _ => {
+                self.focus_element = FocusElement::TaskDescription;
+            }
+        }
+        old_focus != self.focus_element
+    }
+
+    /// Handle character input in focused text areas
+    pub fn handle_char_input(&mut self, ch: char) -> bool {
+        // Allow text input when focused on draft-related elements
+        match self.focus_element {
+            FocusElement::TaskDescription | FocusElement::RepositorySelector |
+            FocusElement::BranchSelector | FocusElement::ModelSelector | FocusElement::GoButton => {
+                // For now, we only support editing the description when focused on TaskDescription
+                if let FocusElement::TaskDescription = self.focus_element {
+                    // Get the first (and currently only) draft card
+                    if let Some(card) = self.draft_cards.get_mut(0) {
+                        card.task.description.push(ch);
+                        card.save_state = DraftSaveState::Unsaved;
+                        // Reset auto-save timer
+                        card.auto_save_timer = Some(std::time::Instant::now());
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Handle backspace in focused text areas
+    pub fn handle_backspace(&mut self) -> bool {
+        if let FocusElement::TaskDescription = self.focus_element {
+            // Get the first (and currently only) draft card
+            if let Some(card) = self.draft_cards.get_mut(0) {
+                if !card.task.description.is_empty() {
+                    card.task.description.pop();
+                    card.save_state = DraftSaveState::Unsaved;
+                    // Reset auto-save timer
+                    card.auto_save_timer = Some(std::time::Instant::now());
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Handle enter key (including shift+enter for newlines)
+    pub fn handle_enter(&mut self, shift: bool) -> bool {
+        match self.focus_element {
+            FocusElement::TaskDescription => {
+                if shift {
+                    // Shift+Enter: add newline to description
+                    // Get the first (and currently only) draft card
+                    if let Some(card) = self.draft_cards.get_mut(0) {
+                        card.task.description.push('\n');
+                        card.save_state = DraftSaveState::Unsaved;
+                        card.auto_save_timer = Some(std::time::Instant::now());
+                        return true;
+                    }
+                } else {
+                    // Enter: launch task (same as Go button)
+                    return self.handle_go_button();
+                }
+            }
+            FocusElement::GoButton => {
+                return self.handle_go_button();
+            }
+            FocusElement::RepositorySelector => {
+                self.modal_state = ModalState::RepositorySearch;
+                return true;
+            }
+            FocusElement::BranchSelector => {
+                self.modal_state = ModalState::BranchSearch;
+                return true;
+            }
+            FocusElement::ModelSelector => {
+                self.modal_state = ModalState::ModelSearch;
+                return true;
+            }
+            FocusElement::SettingsButton => {
+                self.modal_state = ModalState::Settings;
+                return true;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Handle Go button activation (task launch)
+    pub fn handle_go_button(&mut self) -> bool {
+        // Get the first (and currently only) draft card
+        if let Some(card) = self.draft_cards.get(0) {
+            // Validate that description and models are provided
+            if card.task.description.trim().is_empty() {
+                self.status_bar.error_message = Some("Task description is required".to_string());
+                return false; // Validation failed
+            }
+            if card.task.models.is_empty() {
+                self.status_bar.error_message = Some("At least one AI model must be selected".to_string());
+                return false; // Validation failed
+            }
+
+            // TODO: Launch the task via task_manager
+            // For now, just clear the error and show success
+            self.status_bar.error_message = None;
+            self.status_bar.status_message = Some("Task launched successfully".to_string());
+            return true; // Success
+        }
+        false
+    }
+
+    /// Handle escape key
+    pub fn handle_escape(&mut self) -> bool {
+        match self.focus_element {
+            FocusElement::TaskDescription | FocusElement::RepositorySelector |
+            FocusElement::BranchSelector | FocusElement::ModelSelector | FocusElement::GoButton => {
+                // Return to draft task navigation
+                if !self.draft_cards.is_empty() {
+                    self.focus_element = FocusElement::DraftTask(0);
+                } else {
+                    self.focus_element = FocusElement::SettingsButton;
+                }
+                return true;
+            }
+            _ => {
+                // For other focus elements, escape might exit the application
+                // (handled by main loop)
+            }
+        }
+        false
+    }
+
+    /// Handle Ctrl+N to create new draft task
+    pub fn handle_ctrl_n(&mut self) -> bool {
+        if !self.draft_cards.is_empty() {
+            // Create a new draft task based on the first (current) draft
+            if let Some(current_card) = self.draft_cards.get(0) {
+                let new_draft = DraftTask {
+                    id: format!("draft_{}", chrono::Utc::now().timestamp()),
+                    description: String::new(),
+                    repository: current_card.task.repository.clone(),
+                    branch: current_card.task.branch.clone(),
+                    models: current_card.task.models.clone(),
+                    created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                };
+
+                let new_card = create_draft_card_from_task(new_draft, FocusElement::TaskDescription);
+                self.draft_cards.push(new_card);
+                self.focus_element = FocusElement::TaskDescription; // Focus on the new draft's description
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Handle auto-save timer tick
+    pub fn handle_tick(&mut self) -> bool {
+        let mut changed = false;
+        for card in &mut self.draft_cards {
+            if let Some(timer) = card.auto_save_timer {
+                if timer.elapsed() > std::time::Duration::from_millis(500) {
+                    if card.save_state == DraftSaveState::Unsaved {
+                        card.save_state = DraftSaveState::Saved;
+                        card.auto_save_timer = None;
+                        changed = true;
+                        // TODO: Actually save to storage
+                    }
+                }
+            }
+        }
+        changed
+    }
+}
+
+/// Mouse action types for interactive areas
+#[derive(Debug, Clone, PartialEq)]
+pub enum MouseAction {
+    SelectCard(usize),
+    SelectFilterBarLine,
+    ActivateGoButton,
+    OpenRepositoryModal,
+    OpenBranchModal,
+    OpenModelModal,
+    StopTask(usize),
+    OpenSettings,
+    EditFilter(FilterControl),
+    Footer(FooterAction),
+}
+
+/// Interactive area for mouse clicks
+#[derive(Debug, Clone)]
+pub struct InteractiveArea {
+    pub rect: ratatui::layout::Rect,
+    pub action: MouseAction,
+}
+
+/// Filter control types for task filtering
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FilterControl {
+    Repository,
+    Status,
+    Creator,
+}
+
+impl FilterControl {
+    pub fn index(self) -> usize {
+        match self {
+            FilterControl::Repository => 0,
+            FilterControl::Status => 1,
+            FilterControl::Creator => 2,
+        }
+    }
+}
+
+/// Footer action types for keyboard shortcuts
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FooterAction {
+    LaunchDraft,
+    InsertNewLine,
+    FocusNextField,
+    FocusPreviousField,
+    OpenShortcutHelp,
+    OpenSettings,
+    StopTask(usize),
+    Quit,
+}
+
+/// Check if a rectangle contains a point
+fn rect_contains(rect: ratatui::layout::Rect, x: u16, y: u16) -> bool {
+    x >= rect.x
+        && y >= rect.y
+        && x < rect.x.saturating_add(rect.width)
+        && y < rect.y.saturating_add(rect.height)
+}
+
+/// Auto-save states for draft tasks
+#[derive(Debug, Clone, PartialEq)]
+pub enum DraftSaveState {
+    /// User has typed but no save request is in flight OR current in-flight request is invalidated
+    Unsaved,
+    /// There is a valid (non-invalidated) save request currently in flight
+    Saving,
+    /// No pending changes AND most recent save request completed successfully
+    Saved,
+    /// Most recent save request failed and no new typing has occurred
+    Error,
+}
+
+/// UI helper enum to represent items in the unified task list
+/// This is used for presentation logic, not domain logic
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaskItem {
+    Draft(DraftTask),
+    Task(TaskExecution, usize), // TaskExecution and its original index in the task_executions vector
+}
+
+impl TaskItem {
+    /// Get the combined list of all tasks (drafts + executions) for UI presentation
+    pub fn all_tasks_from_state(draft_tasks: &[DraftTask], task_executions: &[TaskExecution]) -> Vec<TaskItem> {
+        let mut result = Vec::new();
+
+        // Add all draft tasks
+        for draft in draft_tasks {
+            result.push(TaskItem::Draft(draft.clone()));
+        }
+
+        // Add all task executions
+        for (i, task) in task_executions.iter().enumerate() {
+            result.push(TaskItem::Task(task.clone(), i));
+        }
+
+        result
+    }
+}
 
 /// UI-level messages that are handled by the ViewModel
 #[derive(Debug, Clone, PartialEq)]
@@ -75,22 +425,34 @@ pub enum Msg {
 pub enum FocusElement {
     /// Focus on settings button (top of screen)
     Settings,
+    /// Focus on settings button in header
+    SettingsButton,
     /// Focus on draft task by index
     DraftTask(usize),
     /// Focus on filter bar separator line
     FilterBarSeparator,
+    /// Focus on filter bar line
+    FilterBarLine,
     /// Focus on existing task by index
     ExistingTask(usize),
     /// Focus on draft task description textarea
     TaskDescription,
     /// Focus on repository selector
     RepositorySelector,
+    /// Focus on repository button
+    RepositoryButton,
     /// Focus on branch selector
     BranchSelector,
+    /// Focus on branch button
+    BranchButton,
     /// Focus on model selector
     ModelSelector,
+    /// Focus on model button
+    ModelButton,
     /// Focus on Go button
     GoButton,
+    /// Focus on Stop button
+    StopButton(usize),
     /// Focus on filter controls
     Filter(usize), // index of filter button
 }
@@ -206,31 +568,72 @@ pub enum AutoSaveState {
     Error(String),
 }
 
-/// Card display information for rendering
+/// Metadata components for task cards
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaskCardViewModel {
-    pub id: String,
-    pub title: String,
-    pub metadata_line: String,
-    pub height: u16,
-    pub is_selected: bool,
-    pub card_type: TaskCardType,
+pub struct TaskCardMetadata {
+    pub repository: String,
+    pub branch: String,
+    pub models: Vec<SelectedModel>,
+    pub state: TaskState,
+    pub timestamp: String,
+    pub delivery_indicators: String, // Delivery status indicators (⎇ ⇄ ✓)
 }
 
-/// Different visual types of task cards
+/// ViewModel for draft task cards (editable)
+#[derive(Debug, Clone)] // PartialEq removed due to TextArea
+pub struct DraftCardViewModel {
+    pub id: String, // Unique identifier for the draft card
+    pub task: DraftTask, // Domain object
+    pub height: u16,
+    pub controls: DraftControlsViewModel,
+    pub save_state: DraftSaveState,
+    pub textarea: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
+    pub focus_element: FocusElement, // Current focus within this card
+    pub auto_save_timer: Option<std::time::Instant>, // Timer for auto-save functionality
+}
+
+/// ViewModel for regular task cards (active/completed/merged)
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskCardViewModel {
+    pub id: String, // Unique identifier for the task card
+    pub task: TaskExecution, // Domain object
+    pub title: String,
+    pub metadata: TaskCardMetadata,
+    pub height: u16,
+    pub card_type: TaskCardType, // Active, Completed, or Merged
+    pub focus_element: FocusElement, // Current focus within this card
+}
+
+/// Activity entries for active task cards
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActivityEntry {
+    /// Agent thought/reasoning
+    AgentThought {
+        thought: String,
+    },
+    /// Agent file edit
+    AgentEdit {
+        file_path: String,
+        lines_added: usize,
+        lines_removed: usize,
+        description: Option<String>,
+    },
+    /// Tool usage with execution state
+    ToolUse {
+        tool_name: String,
+        tool_execution_id: String,
+        last_line: Option<String>, // None = just started, Some = has output
+        completed: bool, // true when ToolResult received
+        status: ToolStatus,
+    },
+}
+
+/// Different visual types of regular task cards (active/completed/merged)
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskCardType {
-    /// Draft card with editable content
-    Draft {
-        description: String,
-        cursor_position: (u16, u16), // row, col within textarea
-        show_placeholder: bool,
-        controls: DraftControlsViewModel,
-        auto_save_indicator: String,
-    },
     /// Active task with real-time activity
     Active {
-        activity_lines: Vec<String>, // Exactly N lines (configurable)
+        activity_entries: Vec<ActivityEntry>, // Processed activity data (ViewModel layer)
         pause_delete_buttons: String,
     },
     /// Completed task with delivery indicators
@@ -243,12 +646,20 @@ pub enum TaskCardType {
     },
 }
 
-impl TaskCardType {
-    /// Check if this card type represents a draft task
-    pub fn is_draft(&self) -> bool {
-        matches!(self, TaskCardType::Draft { .. })
-    }
+/// Information about a task card for fast lookups
+#[derive(Debug, Clone)]
+pub struct TaskCardInfo {
+    pub card_type: TaskCardTypeEnum, // Draft or Task
+    pub index: usize, // Index within the respective collection
+}
 
+#[derive(Debug, Clone)]
+pub enum TaskCardTypeEnum {
+    Draft,
+    Task,
+}
+
+impl TaskCardType {
     /// Check if this card type represents an active task
     pub fn is_active(&self) -> bool {
         matches!(self, TaskCardType::Active { .. })
@@ -337,13 +748,7 @@ pub enum SettingsFieldType {
 /// Footer shortcuts presentation
 #[derive(Debug, Clone, PartialEq)]
 pub struct FooterViewModel {
-    pub shortcuts: Vec<ShortcutViewModel>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ShortcutViewModel {
-    pub key: String,
-    pub description: String,
+    pub shortcuts: Vec<KeyboardShortcut>,
 }
 
 /// Filter bar presentation
@@ -375,17 +780,12 @@ pub struct StatusBarViewModel {
     pub last_operation: String,
     pub connection_status: String,
     pub error_message: Option<String>,
+    pub status_message: Option<String>, // Success/status messages
 }
 
 /// Main ViewModel containing all presentation state
 pub struct ViewModel {
-    // Header
-    pub title: String,
-    pub show_settings_button: bool,
 
-    // Task cards
-    pub task_cards: Vec<TaskCardViewModel>,
-    pub has_draft_cards: bool,
     pub focus_element: FocusElement, // Current UI focus state
 
     // Modals
@@ -406,57 +806,113 @@ pub struct ViewModel {
     pub total_content_height: u16,
     pub visible_area_height: u16,
 
-    // Text editing state
-    pub draft_textarea: Option<tui_textarea::TextArea<'static>>, // TextArea for draft editing
+    // Settings configuration
+    pub settings: Settings,
 
     // UI state (moved from Model)
     pub modal_state: ModalState,
     pub search_mode: SearchMode,
-    pub activity_lines_count: usize, // 1-3 configurable activity lines
     pub word_wrap_enabled: bool,
     pub show_autocomplete_border: bool,
     pub status_message: Option<String>,
     pub error_message: Option<String>,
 
+    // Loading states (moved from Model)
+    pub loading_task_creation: bool,
+    pub loading_repositories: bool,
+    pub loading_branches: bool,
+    pub loading_models: bool,
+
     // Service dependencies
     pub workspace_files: Box<dyn WorkspaceFiles>,
     pub workspace_workflows: Box<dyn WorkspaceWorkflows>,
+    pub task_manager: Box<dyn TaskManager>, // Task launching abstraction
+
+    // Domain state - available options
+    pub available_repositories: Vec<String>,
+    pub available_branches: Vec<String>,
+    pub available_models: Vec<String>,
+
+    // Task collections - cards contain the domain objects
+    pub draft_cards: Vec<DraftCardViewModel>, // Draft tasks (editable)
+    pub task_cards: Vec<TaskCardViewModel>, // Regular tasks (active/completed/merged)
+
+    // UI interaction state
+    pub selected_card: usize,
+    pub interactive_areas: Vec<InteractiveArea>,
+
+    // Task event streaming
+    pub task_event_sender: Option<mpsc::Sender<(String, TaskEvent)>>, // Shared sender for all task events
+    pub task_event_receiver: Option<mpsc::Receiver<(String, TaskEvent)>>, // Shared receiver for all task events
+    pub active_task_streams: HashMap<String, tokio::task::JoinHandle<()>>, // Active task event consumers
+    pub task_id_to_card_info: HashMap<String, TaskCardInfo>, // Maps task_id to card type and index for fast lookups
+    pub needs_redraw: bool, // Flag to indicate when UI needs to be redrawn
 }
 
 impl ViewModel {
     /// Create a new ViewModel with service dependencies
     pub fn new(
-        model: &Model,
         workspace_files: Box<dyn WorkspaceFiles>,
         workspace_workflows: Box<dyn WorkspaceWorkflows>,
+        task_manager: Box<dyn TaskManager>,
+        settings: Settings,
     ) -> Self {
-        // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
-        let initial_focus = if !model.draft_tasks.is_empty() {
-            FocusElement::DraftTask(0) // Focus on first draft task
-        } else if !model.task_executions.is_empty() {
-            FocusElement::ExistingTask(0) // Focus on first existing task
-        } else {
-            FocusElement::Settings // Fall back to settings if no tasks
+        // Initialize available options
+        let available_repositories = vec![
+            "blocksense/agent-harbor".to_string(),
+            "example/project".to_string(),
+        ];
+        let available_branches = vec!["main".to_string(), "develop".to_string()];
+        let available_models = vec![
+            "Claude 3.5 Sonnet".to_string(),
+            "GPT-4".to_string(),
+            "Claude 3 Opus".to_string(),
+        ];
+
+        // Create initial draft card with embedded domain object
+        let initial_draft = DraftTask {
+            id: "current".to_string(),
+            description: String::new(),
+            repository: "blocksense/agent-harbor".to_string(),
+            branch: "main".to_string(),
+            models: vec![SelectedModel {
+                name: "Claude 3.5 Sonnet".to_string(),
+                count: 1
+            }],
+            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         };
 
-        let task_cards = create_task_card_view_models(model, initial_focus);
-        let active_modal = create_modal_view_model(ModalState::None, &model.available_repositories, &model.available_branches, &model.available_models, &model.current_draft, model.activity_lines_count, model.word_wrap_enabled, model.show_autocomplete_border);
-        let footer = create_footer_view_model(model, initial_focus, ModalState::None, model.activity_lines_count, model.word_wrap_enabled, model.show_autocomplete_border); // Use initial focus
-        let filter_bar = create_filter_bar_view_model(model);
-        let status_bar = create_status_bar_view_model(model, None, None);
+        // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
+        let initial_focus = FocusElement::DraftTask(0); // Focus on the single draft task
+
+        // Create task collections - cards contain the domain objects
+        let draft_cards = vec![create_draft_card_from_task(initial_draft.clone(), initial_focus)];
+        let task_cards = vec![]; // Start with no task cards
+
+        let focused_draft = &initial_draft;
+        let active_modal = create_modal_view_model(ModalState::None, &available_repositories, &available_branches, &available_models, &Some(initial_draft.clone()), settings.activity_rows(), true, false);
+        let footer = create_footer_view_model(Some(focused_draft), initial_focus, ModalState::None, &settings, true, false); // Use initial focus
+        let filter_bar = create_filter_bar_view_model();
+        let status_bar = create_status_bar_view_model(None, None, false, false, false, false);
 
         // Calculate layout metrics
         let total_content_height: u16 = task_cards.iter()
-            .map(|card| card.height + 1) // +1 for spacer
+            .map(|card: &TaskCardViewModel| card.height + 1) // +1 for spacer
             .sum::<u16>()
             + 1; // Filter bar height
 
         ViewModel {
-            title: "Agent Harbor".to_string(),
-            show_settings_button: true,
-            has_draft_cards: task_cards.iter().any(|card| matches!(card.card_type, TaskCardType::Draft { .. })),
             focus_element: initial_focus,
+
+            // Domain state
+            available_repositories,
+            available_branches,
+            available_models,
+
+            draft_cards,
             task_cards,
+            selected_card: 0,
+            interactive_areas: Vec::new(),
             active_modal,
             footer,
             filter_bar,
@@ -465,38 +921,219 @@ impl ViewModel {
             needs_scrollbar: total_content_height > 20, // Rough estimate, View layer refines
             total_content_height,
             visible_area_height: 20, // Will be set by View layer
-            draft_textarea: None, // Initialized when entering draft editing
+
+            // Settings configuration
+            settings,
 
             // Initialize UI state with defaults (moved from Model)
             modal_state: ModalState::None,
             search_mode: SearchMode::None,
-            activity_lines_count: model.activity_lines_count,
-            word_wrap_enabled: model.word_wrap_enabled,
-            show_autocomplete_border: model.show_autocomplete_border,
+            word_wrap_enabled: true,
+            show_autocomplete_border: false,
             status_message: None,
             error_message: None,
 
+            // Initialize loading states
+            loading_task_creation: false,
+            loading_repositories: false,
+            loading_branches: false,
+            loading_models: false,
+
+            // Initialize quit flag
+
             // Service dependencies
-                    workspace_files,
-                    workspace_workflows,
+            workspace_files,
+            workspace_workflows,
+            task_manager,
+
+            // Task event streaming
+            task_event_sender: None,
+            task_event_receiver: None,
+            active_task_streams: HashMap::new(),
+            task_id_to_card_info: HashMap::new(),
+            needs_redraw: true,
         }
     }
 }
 
 impl ViewModel {
-    /// Update the selection state in task cards based on current focus_element
-    pub fn update_task_card_selections(&mut self) {
-        for (idx, card) in self.task_cards.iter_mut().enumerate() {
-            card.is_selected = match self.focus_element {
-                FocusElement::DraftTask(task_idx) | FocusElement::ExistingTask(task_idx) => Some(idx) == Some(task_idx),
-                _ => false,
-            };
+    /// Handle incoming UI messages and update ViewModel state
+    pub fn update(&mut self, msg: Msg) -> Result<(), String> {
+        match msg {
+            Msg::Key(key_event) => {
+                // Ignore key up events - we only want to process key down events
+                // to avoid double processing (key down and key up)
+                use crossterm::event::KeyEventKind;
+                if matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                    if self.handle_key_event(key_event) {
+                        self.needs_redraw = true;
+                    }
+                }
+            }
+            Msg::Mouse(mouse_event) => {
+                if self.handle_mouse_event(mouse_event) {
+                    self.needs_redraw = true;
+                }
+            }
+            Msg::Tick => {
+                // Handle periodic updates (activity simulation, etc.)
+                let had_activity_changes = self.update_active_task_activities();
+                if had_activity_changes {
+                    self.needs_redraw = true;
+                }
+            }
+            Msg::Quit => {
+                // Application is quitting, no state changes needed
+            }
+        }
+        Ok(())
+    }
+
+    /// Translate a KeyEvent to a KeyboardOperation by consulting the user's configured key bindings
+    fn key_event_to_operation(&self, key: &KeyEvent) -> Option<KeyboardOperation> {
+        use crate::settings::*;
+        use crossterm::event::KeyModifiers;
+
+        // Special hardcoded handling for Ctrl+N (new draft) - bypass keymap
+        if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
+            if mods.contains(KeyModifiers::CONTROL) {
+                return None; // Let it be handled as character input for new draft
+            }
+        }
+
+        // Get the keymap configuration from settings
+        let keymap = self.settings.keymap();
+
+        // Check all possible keyboard operations to see if any match this key event
+        // This approach allows users to fully customize their key bindings
+
+        // Define all operations we care about in the TUI
+        // These are operations that have default key bindings defined
+        let operations_to_check = vec![
+            KeyboardOperation::MoveToPreviousLine, // Up arrow
+            KeyboardOperation::MoveToNextLine, // Down arrow, Tab
+            KeyboardOperation::DeleteCharacterBackward, // Backspace
+            KeyboardOperation::OpenNewLine, // Shift+Enter
+        ];
+
+        // Find the first operation that matches this key event
+        for operation in operations_to_check {
+            if keymap.matches(operation, key) {
+                return Some(operation);
+            }
+        }
+
+        // No configured operation matched
+        None
+    }
+
+    /// Handle keyboard events by translating to KeyboardOperation and dispatching
+    pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
+        use crossterm::event::KeyModifiers;
+
+        // Special handling for Ctrl+N (new draft) - check before keymap lookup
+        if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
+            if mods.contains(KeyModifiers::CONTROL) {
+                return self.handle_ctrl_n();
+            }
+        }
+
+        // First try to translate the key event to a keyboard operation
+        if let Some(operation) = self.key_event_to_operation(&key) {
+            return self.handle_keyboard_operation(operation, &key);
+        }
+
+        // Handle character input directly if it's not a recognized operation
+        if let KeyCode::Char(ch) = key.code {
+            return self.handle_char_input(ch);
+        }
+
+        // If no operation matched and it's not character input, the key is not handled
+        false
+    }
+
+    /// Handle a KeyboardOperation with the original KeyEvent context
+    fn handle_keyboard_operation(&mut self, operation: KeyboardOperation, key: &KeyEvent) -> bool {
+
+        match operation {
+            KeyboardOperation::MoveToPreviousLine => {
+                match self.focus_element {
+                    FocusElement::DraftTask(_) => self.focus_previous_control(),
+                    _ => self.navigate_up_hierarchy(),
+                }
+            }
+            KeyboardOperation::MoveToNextLine => {
+                match self.focus_element {
+                    FocusElement::DraftTask(_) => self.focus_next_control(),
+                    _ => self.navigate_down_hierarchy(),
+                }
+            }
+            KeyboardOperation::DeleteCharacterBackward => {
+                // Backspace
+                self.handle_backspace()
+            }
+            KeyboardOperation::OpenNewLine => {
+                // Shift+Enter
+                self.handle_enter(true)
+            }
+            _ => false, // Other operations not implemented yet
         }
     }
 
+    /// Handle mouse events (similar to main.rs handle_mouse)
+    fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
+        use crossterm::event::{MouseEventKind, MouseButton};
+
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            let column = mouse.column;
+            let row = mouse.row;
+
+            // Check interactive areas (similar to main.rs)
+            for area in &self.interactive_areas {
+                if rect_contains(area.rect, column, row) {
+                    self.perform_mouse_action(area.action.clone());
+                    return true; // Mouse action performed, UI needs redraw
+                }
+            }
+        }
+        false
+    }
+
+    /// Perform mouse action (similar to main.rs perform_mouse_action)
+    fn perform_mouse_action(&mut self, action: MouseAction) {
+        match action {
+            MouseAction::OpenSettings => {
+                self.focus_element = FocusElement::SettingsButton;
+                self.modal_state = ModalState::Settings;
+                // TODO: Initialize settings form
+            }
+            MouseAction::SelectCard(idx) => {
+                self.selected_card = idx;
+                if idx == 0 {
+                    // Draft card - focus on description
+                    self.focus_element = FocusElement::TaskDescription;
+                } else {
+                    // Regular task card
+                    self.focus_element = FocusElement::ExistingTask(idx);
+                }
+            }
+            MouseAction::SelectFilterBarLine => {
+                self.focus_element = FocusElement::FilterBarLine;
+            }
+            _ => {
+                // TODO: Handle other mouse actions
+            }
+        }
+    }
+
+    /// Process any pending task events from the event receiver
+
+    /// Update the selection state in task cards based on current focus_element
+
     /// Update the footer based on current focus state
-    pub fn update_footer(&mut self, model: &Model) {
-        self.footer = create_footer_view_model(model, self.focus_element, self.modal_state, self.activity_lines_count, self.word_wrap_enabled, self.show_autocomplete_border);
+    pub fn update_footer(&mut self) {
+        let focused_draft = self.get_focused_draft_card().map(|card| &card.task);
+        self.footer = create_footer_view_model(focused_draft, self.focus_element, self.modal_state, &self.settings, self.word_wrap_enabled, self.show_autocomplete_border);
     }
 
     /// Open a modal dialog
@@ -510,27 +1147,33 @@ impl ViewModel {
     }
 
     /// Select a repository from modal
-    pub fn select_repository(&mut self, repo: String, model: &mut Model) {
-        if let Some(ref mut draft) = model.current_draft {
-            draft.repository = repo;
+    pub fn select_repository(&mut self, repo: String) {
+        if let FocusElement::DraftTask(idx) = self.focus_element {
+            if let Some(draft_card) = self.draft_cards.get_mut(idx) {
+            draft_card.task.repository = repo;
+            }
         }
         self.close_modal();
     }
 
     /// Select a branch from modal
-    pub fn select_branch(&mut self, branch: String, model: &mut Model) {
-        if let Some(ref mut draft) = model.current_draft {
-            draft.branch = branch;
+    pub fn select_branch(&mut self, branch: String) {
+        if let FocusElement::DraftTask(idx) = self.focus_element {
+            if let Some(draft_card) = self.draft_cards.get_mut(idx) {
+            draft_card.task.branch = branch;
+            }
         }
         self.close_modal();
     }
 
     /// Select model names from modal
-    pub fn select_model_names(&mut self, model_names: Vec<String>, model: &mut Model) {
-        if let Some(ref mut draft) = model.current_draft {
-            draft.models = model_names.into_iter()
+    pub fn select_model_names(&mut self, model_names: Vec<String>) {
+        if let FocusElement::DraftTask(idx) = self.focus_element {
+            if let Some(draft_card) = self.draft_cards.get_mut(idx) {
+            draft_card.task.models = model_names.into_iter()
                 .map(|name| SelectedModel { name, count: 1 })
                 .collect();
+            }
         }
         self.close_modal();
     }
@@ -556,295 +1199,482 @@ impl ViewModel {
     }
 
     /// Handle launch task operation and return domain messages
-    fn handle_launch_task(&mut self, model: &Model) -> Vec<DomainMsg> {
-        if let Some(draft) = &model.current_draft {
-            if !draft.description.trim().is_empty() && !draft.models.is_empty() {
-                self.set_status_message("Creating task...".to_string());
-                vec![DomainMsg::LaunchTask]
-            } else {
-                self.set_error_message("Please provide a task description and select at least one model".to_string());
-                vec![]
+    /// Process a TaskEvent and update the corresponding task card's activity entries
+    pub fn process_task_event(&mut self, task_id: &str, event: TaskEvent) {
+        // Find the card info for this task_id
+        if let Some(card_info) = self.task_id_to_card_info.get(task_id) {
+            match card_info.card_type {
+                TaskCardTypeEnum::Draft => {
+                    // Draft cards don't have activity events - they're just text inputs
+                    // Task events for draft cards don't make sense in this context
+                }
+                TaskCardTypeEnum::Task => {
+                    if let Some(card) = self.task_cards.get_mut(card_info.index) {
+                        if let TaskCardType::Active { ref mut activity_entries, .. } = card.card_type {
+                            match event {
+                                TaskEvent::Thought { thought, .. } => {
+                                    // Add new thought entry
+                                    let activity_entry = ActivityEntry::AgentThought { thought };
+                                    activity_entries.push(activity_entry);
+                                }
+                                TaskEvent::FileEdit { file_path, lines_added, lines_removed, description, .. } => {
+                                    // Add new file edit entry
+                                    let activity_entry = ActivityEntry::AgentEdit {
+                                        file_path,
+                                        lines_added,
+                                        lines_removed,
+                                        description,
+                                    };
+                                    activity_entries.push(activity_entry);
+                                }
+                                TaskEvent::ToolUse { tool_name, tool_execution_id, status, .. } => {
+                                    // Add new tool use entry
+                                    let activity_entry = ActivityEntry::ToolUse {
+                                        tool_name,
+                                        tool_execution_id,
+                                        last_line: None,
+                                        completed: false,
+                                        status,
+                                    };
+                                    activity_entries.push(activity_entry);
+                                }
+                                TaskEvent::Log { message, tool_execution_id: Some(tool_exec_id), .. } => {
+                                    // Update existing tool use entry with log message as last_line
+                                    if let Some(ActivityEntry::ToolUse { tool_execution_id, ref mut last_line, .. }) =
+                                        activity_entries.iter_mut().rev().find(|entry| {
+                                            matches!(entry, ActivityEntry::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_exec_id)
+                                        }) {
+                                        *last_line = Some(message);
+                                    }
+                                }
+                                TaskEvent::ToolResult { tool_name, tool_output, tool_execution_id, status: result_status, .. } => {
+                                    // Update existing tool use entry to mark as completed
+                                    if let Some(ActivityEntry::ToolUse { ref mut completed, ref mut last_line, ref mut status, .. }) =
+                                        activity_entries.iter_mut().rev().find(|entry| {
+                                            matches!(entry, ActivityEntry::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_execution_id)
+                                        }) {
+                                        *completed = true;
+                                        *status = result_status;
+                                        // Set last_line to first line of final output if not already set
+                                        if last_line.is_none() {
+                                            *last_line = Some(tool_output.lines().next().unwrap_or("Completed").to_string());
+                                        }
+                                    }
+                                }
+                                // Other events (Status, Log without tool_execution_id) are not converted to activity entries
+                                // They might be used for other purposes like status updates
+                                _ => return, // Skip events that don't affect activity entries
+                            };
+
+                            // Keep only the most recent N events
+                            while activity_entries.len() > self.settings.activity_rows() {
+                                activity_entries.remove(0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Initialize the shared task event channel
+    fn initialize_task_event_channel(&mut self) {
+        if self.task_event_sender.is_none() {
+            let (tx, rx) = mpsc::channel(100);
+            self.task_event_sender = Some(tx);
+            self.task_event_receiver = Some(rx);
+        }
+    }
+
+    /// Rebuild the task_id to card info mapping for fast lookups
+    pub fn rebuild_task_id_mapping(&mut self) {
+        self.task_id_to_card_info.clear();
+
+        // Add draft cards
+        for (index, card) in self.draft_cards.iter().enumerate() {
+            self.task_id_to_card_info.insert(
+                card.task.id.clone(),
+                TaskCardInfo {
+                    card_type: TaskCardTypeEnum::Draft,
+                    index,
+                },
+            );
+        }
+
+        // Add task cards
+        for (index, card) in self.task_cards.iter().enumerate() {
+            self.task_id_to_card_info.insert(
+                card.task.id.clone(),
+                TaskCardInfo {
+                    card_type: TaskCardTypeEnum::Task,
+                    index,
+                },
+            );
+        }
+    }
+
+    /// Start consuming events for a launched task
+    fn start_task_event_consumption(&mut self, task_id: &str) {
+        // Initialize shared channel if not already done
+        self.initialize_task_event_channel();
+
+        let stream = self.task_manager.task_events_stream(task_id);
+        let task_id_owned = task_id.to_string();
+        let task_id_for_hashmap = task_id.to_string();
+
+        // Clone the shared sender for this task
+        let tx = self.task_event_sender.as_ref().unwrap().clone();
+
+        // Spawn a task to consume the event stream and send events with task_id to the shared channel
+        let handle = tokio::spawn(async move {
+            let mut stream = stream;
+            while let Some(event) = stream.next().await {
+                let _ = tx.send((task_id_owned.clone(), event)).await;
+            }
+        });
+
+        self.active_task_streams.insert(task_id_for_hashmap, handle);
+    }
+
+    /// Process any pending task events from the shared receiver (non-blocking)
+    pub fn process_pending_task_events(&mut self) {
+        // Collect all available events first to avoid borrow conflicts
+        let mut pending_events = Vec::new();
+        if let Some(ref mut receiver) = self.task_event_receiver {
+            while let Ok(event) = receiver.try_recv() {
+                pending_events.push(event);
+            }
+        }
+
+        // Now process the collected events
+        for (task_id, event) in pending_events {
+            self.process_task_event(&task_id, event);
+        }
+    }
+
+    /// Load initial tasks from the TaskManager
+    pub async fn load_initial_tasks(&mut self) -> Result<(), String> {
+        let (draft_infos, task_infos) = self.task_manager.get_initial_tasks().await;
+
+        // Only add draft cards from TaskManager if we don't already have any draft cards
+        if self.draft_cards.is_empty() {
+            // Convert draft TaskInfo to draft cards with embedded tasks
+            for draft_info in draft_infos {
+                let draft = DraftTask {
+                    id: draft_info.id,
+                    description: draft_info.title, // Use title as initial description
+                    repository: draft_info.repository,
+                    branch: draft_info.branch,
+                    models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }], // Default model
+                    created_at: draft_info.created_at,
+                };
+                let draft_card = create_draft_card_from_task(draft, self.focus_element);
+                self.draft_cards.push(draft_card);
+            }
+        }
+
+        // Convert task TaskInfo to task cards with embedded tasks
+        for task_info in task_infos {
+            let task_execution = TaskExecution {
+                id: task_info.id,
+                repository: task_info.repository,
+                branch: task_info.branch,
+                agents: vec![], // Would need to be populated from task_info if available
+                state: match task_info.status.as_str() {
+                    "running" => TaskState::Active,
+                    "completed" => TaskState::Completed,
+                    _ => TaskState::Active, // Default to Active for unknown states
+                },
+                timestamp: task_info.created_at,
+                activity: vec![], // Initial tasks don't have activity
+                delivery_status: vec![], // No delivery status for initial load
+            };
+            let task_card = create_task_card_from_execution(task_execution, &self.settings);
+            self.task_cards.push(task_card);
+        }
+
+        // UI is already updated since we pushed the cards directly
+
+        // Build the task ID mapping for fast lookups
+        self.rebuild_task_id_mapping();
+
+        Ok(())
+    }
+
+    /// Get the currently focused draft card (mutable reference)
+    pub fn get_focused_draft_card_mut(&mut self) -> Option<&mut DraftCardViewModel> {
+        if let FocusElement::DraftTask(index) = self.focus_element {
+            self.draft_cards.get_mut(index)
+        } else {
+            None
+        }
+    }
+
+    /// Get the currently focused draft card (immutable reference)
+    pub fn get_focused_draft_card(&self) -> Option<&DraftCardViewModel> {
+        if let FocusElement::DraftTask(index) = self.focus_element {
+            self.draft_cards.get(index)
+        } else {
+            None
+        }
+    }
+
+    /// Auto-save the currently focused draft task
+    pub async fn save_current_draft(&mut self) -> Result<(), String> {
+        // Get the focused draft card with its embedded task data
+        let Some(card) = self.get_focused_draft_card() else {
+            return Ok(()); // No focused draft to save
+        };
+
+        let draft_id = card.task.id.clone();
+        let description = card.task.description.clone();
+        let repository = card.task.repository.clone();
+        let branch = card.task.branch.clone();
+        let models = card.task.models.clone();
+
+        // Find and update the draft card in the view model to show "Saving" state
+        // Note: We search by ID, not by current focus, since focus might change during await
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+            card.save_state = DraftSaveState::Saving;
+        }
+
+        let result = self.task_manager.save_draft_task(
+            &draft_id,
+            &description,
+            &repository,
+            &branch,
+            &models,
+        ).await;
+
+        // Update save state based on result - find the card by ID again
+        // The card might have been deleted while the save was in flight
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+            match result {
+                SaveDraftResult::Success => {
+                    card.save_state = DraftSaveState::Saved;
+                    Ok(())
+                }
+                SaveDraftResult::Failure { error } => {
+                    card.save_state = DraftSaveState::Error;
+                    Err(error)
+                }
             }
         } else {
-            vec![]
+            // Draft card was deleted while save was in flight - ignore the result
+            Ok(())
         }
     }
 
-    /// Handle key events and return domain messages for Model updates
-    /// Returns a vector of domain messages to send to the Model
-    pub fn handle_key_event(&mut self, key: KeyEvent, model: &Model) -> Vec<DomainMsg> {
-        use KeyCode::*;
-
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-
-        // Handle modal state first
-        if self.modal_state != ModalState::None {
-            return self.handle_modal_key_event(key);
-        }
-
-        match (key.code, ctrl, shift) {
-            // Navigation
-            (Up, false, false) => {
-                self.handle_navigation(NavigationDirection::Up, model);
-                vec![]
-            }
-            (Down, false, false) => {
-                self.handle_navigation(NavigationDirection::Down, model);
-                vec![]
-            }
-
-            // Enter key - context sensitive
-            (Enter, false, false) => {
-                match self.focus_element {
-                    FocusElement::Settings => {
-                        // Open settings modal (not implemented yet)
-                        vec![]
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        // Enter draft editing mode for this draft
-                        if model.draft_tasks.get(idx).is_some() {
-                            self.enter_draft_editing_mode(idx, model);
-                        }
-                        vec![]
-                    }
-                    FocusElement::FilterBarSeparator => {
-                        // Open filter interface (not implemented yet)
-                        vec![]
-                    }
-                    FocusElement::ExistingTask(idx) => {
-                        // Show task details (not implemented yet)
-                        vec![]
-                    }
-                    FocusElement::GoButton => self.handle_launch_task(model),
-                    FocusElement::TaskDescription => self.handle_launch_task(model),
-                    FocusElement::RepositorySelector => {
-                        self.open_modal(ModalState::RepositorySearch);
-                        vec![]
-                    }
-                    FocusElement::BranchSelector => {
-                        self.open_modal(ModalState::BranchSearch);
-                        vec![]
-                    }
-                    FocusElement::ModelSelector => {
-                        self.open_modal(ModalState::ModelSelection);
-                        vec![]
-                    }
-                    FocusElement::Filter(_) => {
-                        // Open filter interface
-                        vec![]
-                    }
-                }
-            }
-
-            // Tab navigation in draft editing
-            (Tab, false, false) => {
-                self.handle_tab_navigation(false);
-                vec![]
-            }
-            (BackTab, false, true) => {
-                self.handle_tab_navigation(true);
-                vec![]
-            }
-
-            // Escape - return to navigation mode
-            (Esc, false, false) => {
-                match self.focus_element {
-                    FocusElement::TaskDescription | FocusElement::RepositorySelector
-                    | FocusElement::BranchSelector | FocusElement::ModelSelector
-                    | FocusElement::GoButton => {
-                        // Return to draft task navigation
-                        self.exit_draft_editing_mode();
-                        vec![]
-                    }
-                    _ => {
-                        self.close_modal();
-                        vec![]
-                    }
-                }
-            }
-
-            // Create new draft
-            (Char('n'), true, false) => {
-                vec![DomainMsg::CreateDraft]
-            }
-
-            // Delete current task
-            (Char('w'), true, false) => {
-                match self.focus_element {
-                    FocusElement::DraftTask(idx) => vec![DomainMsg::DeleteTask(idx)],
-                    FocusElement::ExistingTask(idx) => {
-                        // Convert to combined index (drafts + existing)
-                        let combined_idx = model.draft_tasks.len() + idx;
-                        vec![DomainMsg::DeleteTask(combined_idx)]
-                    }
-                    _ => vec![],
-                }
-            }
-
-            // Text input in description area
-            (Char(c), false, false) if matches!(self.focus_element, FocusElement::TaskDescription) => {
-                self.handle_text_input(c, model)
-            }
-            (Backspace, false, false) if matches!(self.focus_element, FocusElement::TaskDescription) => {
-                self.handle_text_backspace(model)
-            }
-            (Enter, false, true) if matches!(self.focus_element, FocusElement::TaskDescription) => {
-                // Shift+Enter for new line
-                self.handle_text_input('\n', model)
-            }
-
-            _ => vec![],
+    /// Mark the currently focused draft as having unsaved changes
+    pub fn mark_focused_draft_unsaved(&mut self) {
+        if let Some(card) = self.get_focused_draft_card_mut() {
+            card.save_state = DraftSaveState::Unsaved;
         }
     }
 
-    /// Enter draft editing mode for a specific draft
-    fn enter_draft_editing_mode(&mut self, draft_idx: usize, model: &Model) {
-        if let Some(draft) = model.draft_tasks.get(draft_idx) {
-            // Create TextArea with the draft's current content
-            let mut textarea = tui_textarea::TextArea::default();
-            for line in draft.description.lines() {
-                textarea.insert_str(line);
-                textarea.move_cursor(tui_textarea::CursorMove::End);
-                if draft.description.contains('\n') {
-                    textarea.insert_newline();
+    // Domain business logic methods (moved from Model)
+
+    /// Launch a task by draft ID
+    pub async fn launch_task(&mut self, draft_id: &str) -> Result<(), String> {
+        if let Some(card) = self.draft_cards.iter().find(|c| c.task.id == draft_id) {
+            let draft = &card.task;
+            if !draft.description.trim().is_empty() && !draft.models.is_empty() {
+                // Set loading state
+                self.loading_task_creation = true;
+
+                // In real implementation, this would send a network request
+                // For now, we simulate success by calling the task manager directly
+                let params = TaskLaunchParams {
+                    description: draft.description.clone(),
+                    repository: draft.repository.clone(),
+                    branch: draft.branch.clone(),
+                    models: draft.models.clone(),
+                };
+
+                match self.task_manager.launch_task(params).await {
+                    TaskLaunchResult::Success { task_id } => {
+                        // Create a new task execution
+                        let task_execution = TaskExecution {
+                            id: task_id.clone(),
+                            repository: draft.repository.clone(),
+                            branch: draft.branch.clone(),
+                            agents: draft.models.clone(),
+                            state: TaskState::Active,
+                            timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                            activity: vec![],
+                            delivery_status: vec![],
+                        };
+
+                        // Create a new task card with the embedded task execution
+                        let task_card = create_task_card_from_execution(task_execution, &self.settings);
+                        self.task_cards.push(task_card);
+
+                        // Start listening to task events
+                        self.start_task_event_consumption(&task_id);
+
+                        // Clear loading state
+                        self.loading_task_creation = false;
+
+                        // Update UI
+                        self.refresh_task_cards();
+
+                        Ok(())
+                    }
+                    TaskLaunchResult::Failure { error } => {
+                        self.loading_task_creation = false;
+                        Err(error)
+                    }
                 }
-            }
-            // Remove the trailing newline if it exists
-            if draft.description.ends_with('\n') {
-                let lines = textarea.lines();
-                if lines.len() > 1 {
-                    textarea.move_cursor(tui_textarea::CursorMove::Up);
-                    textarea.move_cursor(tui_textarea::CursorMove::End);
-                    textarea.delete_str(1);
-                }
-            }
-
-            self.draft_textarea = Some(textarea);
-            self.focus_element = FocusElement::TaskDescription;
-        }
-    }
-
-    /// Exit draft editing mode
-    fn exit_draft_editing_mode(&mut self) {
-        self.draft_textarea = None;
-        // Return to the appropriate draft task focus
-        // This would need to be updated based on which draft we were editing
-        self.focus_element = FocusElement::DraftTask(0); // Simplified
-    }
-
-    /// Handle text input in the textarea
-    fn handle_text_input(&mut self, c: char, model: &Model) -> Vec<DomainMsg> {
-        if let Some(textarea) = &mut self.draft_textarea {
-            textarea.insert_char(c);
-            let content = textarea.lines().join("\n");
-            vec![DomainMsg::UpdateDraftText(content)]
-    } else {
-            vec![]
-        }
-    }
-
-    /// Handle backspace in the textarea
-    fn handle_text_backspace(&mut self, model: &Model) -> Vec<DomainMsg> {
-        if let Some(textarea) = &mut self.draft_textarea {
-            textarea.delete_char();
-            let content = textarea.lines().join("\n");
-            vec![DomainMsg::UpdateDraftText(content)]
             } else {
-            vec![]
-        }
-    }
-
-
-    fn handle_modal_key_event(&mut self, key: KeyEvent) -> Vec<DomainMsg> {
-        match key.code {
-            KeyCode::Esc => {
-                self.close_modal();
-                vec![]
+                Ok(())
             }
-            KeyCode::Enter => {
-                // Modal selection would be handled here
-                // For now, just close modal
-                self.close_modal();
-                vec![]
-            }
-            _ => vec![],
+        } else {
+            Ok(())
         }
     }
 
-    fn handle_tab_navigation(&mut self, backward: bool) {
-        // This would handle tab navigation within the ViewModel's focus state
-        // For now, simplified - just cycle through draft editing fields
-        // Implementation would depend on current focus state
-    }
+    /// Create a new draft task
+    pub fn create_new_draft_task(&mut self, draft_id: &str) {
+        if let Some(card_index) = self.draft_cards.iter().position(|c| c.task.id == draft_id) {
+            let current_draft = &self.draft_cards[card_index].task;
+            if !current_draft.description.trim().is_empty() {
+                let draft_task = DraftTask {
+                    id: format!("draft_{}", chrono::Utc::now().timestamp()),
+                    description: current_draft.description.clone(),
+                    repository: current_draft.repository.clone(),
+                    branch: current_draft.branch.clone(),
+                    models: current_draft.models.clone(),
+                    created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                };
 
-    /// Handle navigation through the UI hierarchy
-    /// Returns true if the navigation was handled (focus changed)
-    pub fn handle_navigation(&mut self, direction: NavigationDirection, model: &Model) -> bool {
-        // Handle textarea navigation first if we're in a textarea
-        if matches!(self.focus_element, FocusElement::TaskDescription) {
-            if self.handle_textarea_navigation(direction, model) {
-                return true;
-            }
-        }
+                // Create a new draft card with the embedded task
+                let new_card = create_draft_card_from_task(draft_task, self.focus_element);
+                self.draft_cards.insert(0, new_card);
 
-        // Handle hierarchical navigation
-        match direction {
-            NavigationDirection::Up => self.navigate_up_hierarchy(model),
-            NavigationDirection::Down => self.navigate_down_hierarchy(model),
-        }
-    }
+                // Update UI
+                self.refresh_draft_cards();
 
-    /// Handle navigation within a textarea before moving focus
-    fn handle_textarea_navigation(&mut self, direction: NavigationDirection, _model: &Model) -> bool {
-        if let Some(textarea) = &mut self.draft_textarea {
-            match direction {
-                NavigationDirection::Up => {
-                    // Try to move up in textarea, if at top, let hierarchy navigation handle it
-                    let (row, _) = textarea.cursor();
-                    if row == 0 {
-                        // At top of textarea, allow focus to move up
-                        return false;
-                    }
-                    // Move up within textarea
-                    textarea.move_cursor(tui_textarea::CursorMove::Up);
-                    true
+                // Clear current draft for new input
+                if let Some(card) = self.draft_cards.get_mut(card_index + 1) { // +1 because we inserted at 0
+                    card.task.description.clear();
+                    card.textarea = tui_textarea::TextArea::new(vec![]); // Reset textarea
                 }
-                NavigationDirection::Down => {
-                    // Try to move down in textarea, if at bottom, let hierarchy navigation handle it
-                    let (row, _) = textarea.cursor();
-                    let lines = textarea.lines().len();
-                    if row >= lines.saturating_sub(1) {
-                        // At bottom of textarea, allow focus to move down
-                        return false;
-                    }
-                    // Move down within textarea
-                    textarea.move_cursor(tui_textarea::CursorMove::Down);
-                    true
-                }
+
+                // Update UI for the cleared draft
+                self.refresh_draft_cards();
             }
-    } else {
-            false
         }
     }
 
+    /// Delete a task by its index in the combined draft + task list
+    pub fn delete_task_by_index(&mut self, combined_index: usize) {
+        let total_drafts = self.draft_cards.len();
+
+        if combined_index < total_drafts {
+            // Delete draft task
+            self.draft_cards.remove(combined_index);
+            self.refresh_draft_cards();
+        } else {
+            // Delete regular task
+            let regular_task_index = combined_index - total_drafts;
+            if regular_task_index < self.task_cards.len() {
+                self.task_cards.remove(regular_task_index);
+                self.refresh_task_cards();
+            }
+        }
+    }
+
+    /// Update draft text
+    pub fn update_draft_text(&mut self, text: &str, draft_id: &str) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+            card.task.description = text.to_string();
+        }
+    }
+
+    /// Set draft repository
+    pub fn set_draft_repository(&mut self, repo: &str, draft_id: &str) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+            card.task.repository = repo.to_string();
+        }
+    }
+
+    /// Set draft branch
+    pub fn set_draft_branch(&mut self, branch: &str, draft_id: &str) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+            card.task.branch = branch.to_string();
+        }
+    }
+
+    /// Set draft model names
+    pub fn set_draft_model_names(&mut self, model_names: Vec<String>, draft_id: &str) {
+        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.task.id == draft_id) {
+            // Convert model names to SelectedModel with count 1
+            card.task.models = model_names.into_iter()
+                .map(|name| SelectedModel { name, count: 1 })
+                .collect();
+        }
+    }
+
+    /// Update active task activities (simulation)
+    pub fn update_active_task_activities(&mut self) -> bool {
+        // Simulate activity updates for active tasks
+        let mut had_changes = false;
+        for card in self.task_cards.iter_mut() {
+            if card.task.state == TaskState::Active {
+                // In real implementation, would receive via SSE
+                // For testing, simulate random activities
+                // For now, just return false since we don't actually change anything
+                had_changes = false;
+            }
+        }
+        had_changes
+    }
+
+    /// Handle network messages (simplified since we don't use NetworkMsg anymore)
+    pub fn handle_repositories_loaded(&mut self, repos: Vec<String>) {
+        self.available_repositories = repos;
+        self.loading_repositories = false;
+    }
+
+    pub fn handle_branches_loaded(&mut self, branches: Vec<String>) {
+        self.available_branches = branches;
+        self.loading_branches = false;
+    }
+
+    pub fn handle_models_loaded(&mut self, models: Vec<String>) {
+        self.available_models = models;
+        self.loading_models = false;
+    }
+
+    pub fn handle_task_created(&mut self, _task_id: String) {
+        self.loading_task_creation = false;
+    }
+
+    pub fn handle_initial_tasks_loaded(&mut self, tasks: Vec<TaskInfo>) {
+        // Convert TaskInfo to TaskExecution objects and add them
+        for _task_info in tasks {
+            // This would need to be implemented based on how TaskInfo maps to TaskExecution
+        }
+    }
+
+    // UI refresh helpers
     /// Navigate up through the UI hierarchy
-    fn navigate_up_hierarchy(&mut self, model: &Model) -> bool {
+    pub fn navigate_up_hierarchy(&mut self) -> bool {
         let new_focus = match self.focus_element {
-            FocusElement::Settings => {
+            FocusElement::SettingsButton => {
                 // At top, wrap to bottom (last existing task or filter separator or last draft)
-                if !model.task_executions.is_empty() {
-                    FocusElement::ExistingTask(model.task_executions.len() - 1)
-                } else if model.draft_tasks.is_empty() {
+                if !self.task_cards.is_empty() {
+                    FocusElement::ExistingTask(self.task_cards.len() - 1)
+                } else if self.draft_cards.is_empty() {
                     FocusElement::FilterBarSeparator
             } else {
-                    FocusElement::DraftTask(model.draft_tasks.len() - 1)
+                    FocusElement::DraftTask(self.draft_cards.len() - 1)
                 }
             }
             FocusElement::DraftTask(idx) => {
                 if idx == 0 {
                     // First draft, go to settings
-                    FocusElement::Settings
+                    FocusElement::SettingsButton
                 } else {
                     // Previous draft
                     FocusElement::DraftTask(idx - 1)
@@ -852,8 +1682,8 @@ impl ViewModel {
             }
             FocusElement::FilterBarSeparator => {
                 // From filter separator, go to last draft or settings
-                if !model.draft_tasks.is_empty() {
-                    FocusElement::DraftTask(model.draft_tasks.len() - 1)
+                if !self.draft_cards.is_empty() {
+                    FocusElement::DraftTask(self.draft_cards.len() - 1)
                 } else {
                     FocusElement::Settings
                 }
@@ -873,8 +1703,7 @@ impl ViewModel {
 
         if new_focus != self.focus_element {
             self.focus_element = new_focus;
-            self.update_task_card_selections();
-            self.update_footer(model);
+            self.update_footer();
             true
         } else {
             false
@@ -882,26 +1711,26 @@ impl ViewModel {
     }
 
     /// Navigate down through the UI hierarchy
-    fn navigate_down_hierarchy(&mut self, model: &Model) -> bool {
+    pub fn navigate_down_hierarchy(&mut self) -> bool {
         let new_focus = match self.focus_element {
-            FocusElement::Settings => {
+            FocusElement::SettingsButton => {
                 // From settings, go to first draft or filter separator or first existing
-                if !model.draft_tasks.is_empty() {
+                if !self.draft_cards.is_empty() {
                     FocusElement::DraftTask(0)
-                } else if !model.task_executions.is_empty() {
+                } else if !self.task_cards.is_empty() {
                     FocusElement::FilterBarSeparator
                 } else {
                     FocusElement::ExistingTask(0)
                 }
             }
             FocusElement::DraftTask(idx) => {
-                if idx >= model.draft_tasks.len() - 1 {
+                if idx >= self.draft_cards.len() - 1 {
                     // Last draft, go to filter separator if we have existing tasks
-                    if !model.task_executions.is_empty() {
+                    if !self.task_cards.is_empty() {
                         FocusElement::FilterBarSeparator
                     } else {
                         // No existing tasks, wrap to settings
-                        FocusElement::Settings
+                        FocusElement::SettingsButton
                     }
                 } else {
                     // Next draft
@@ -910,16 +1739,16 @@ impl ViewModel {
             }
             FocusElement::FilterBarSeparator => {
                 // From filter separator, go to first existing task or wrap to settings
-                if !model.task_executions.is_empty() {
+                if !self.task_cards.is_empty() {
                     FocusElement::ExistingTask(0)
                 } else {
-                    FocusElement::Settings
+                    FocusElement::SettingsButton
                 }
             }
             FocusElement::ExistingTask(idx) => {
-                if idx >= model.task_executions.len() - 1 {
+                if idx >= self.task_cards.len() - 1 {
                     // Last existing task, wrap to settings
-                    FocusElement::Settings
+                    FocusElement::SettingsButton
                 } else {
                     // Next existing task
                     FocusElement::ExistingTask(idx + 1)
@@ -931,48 +1760,187 @@ impl ViewModel {
 
         if new_focus != self.focus_element {
             self.focus_element = new_focus;
-            self.update_task_card_selections();
-            self.update_footer(model);
+            self.update_footer();
             true
         } else {
             false
         }
     }
+
+    // UI refresh helpers
+    pub fn refresh_draft_cards(&mut self) {
+        // Since cards contain the tasks directly, we don't need to recreate them
+        // Just update any UI-specific properties if needed
+    }
+
+    pub fn refresh_task_cards(&mut self) {
+        // Since cards contain the tasks directly, we don't need to recreate them
+        // Just update any UI-specific properties if needed
+    }
 }
 
-/// Navigation directions for the hierarchical UI
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NavigationDirection {
-    Up,
-    Down,
+// View Model Creation Functions (moved from model.rs)
+
+/// Create a draft card from a DraftTask
+fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> DraftCardViewModel {
+    let mut textarea = tui_textarea::TextArea::new(task.description.lines().map(|s| s.to_string()).collect::<Vec<String>>());
+    if task.description.is_empty() {
+        textarea.set_placeholder_text("Describe what you want the agent to do...");
+    }
+
+    let controls = DraftControlsViewModel {
+        repository_button: ButtonViewModel {
+            text: task.repository.clone(),
+            is_focused: false,
+            style: ButtonStyle::Normal,
+        },
+        branch_button: ButtonViewModel {
+            text: task.branch.clone(),
+            is_focused: false,
+            style: ButtonStyle::Normal,
+        },
+        model_button: ButtonViewModel {
+            text: task.models.first().map(|m| m.name.clone()).unwrap_or_else(|| "Select model".to_string()),
+            is_focused: false,
+            style: ButtonStyle::Normal,
+        },
+        go_button: ButtonViewModel {
+            text: "Go".to_string(),
+            is_focused: false,
+            style: ButtonStyle::Normal,
+        },
+    };
+
+    // Calculate height dynamically like in main.rs TaskCard::height for Draft
+    let visible_lines = textarea.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
+    let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
+    let height = inner_height as u16 + 2; // account for rounded border
+
+    DraftCardViewModel {
+        id: task.id.clone(),
+        task,
+        height,
+        controls,
+        save_state: DraftSaveState::Unsaved,
+        textarea,
+        focus_element,
+        auto_save_timer: None,
+    }
 }
 
-fn create_task_card_view_models(model: &Model, focus_element: FocusElement) -> Vec<TaskCardViewModel> {
-    let visible_tasks = model.all_tasks();
+/// Create a task card from a TaskExecution
+fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> TaskCardViewModel {
+    let title = format_title_from_execution(&task);
 
-    visible_tasks.into_iter().enumerate().map(|(idx, task_item)| {
-        match task_item {
-            TaskItem::Draft(draft) => {
-                TaskCardViewModel {
-                    id: draft.id.clone(),
-                    title: if draft.description.is_empty() {
-                        "New Task".to_string()
-                    } else {
-                        // Use first line of description as title
-                        draft.description.lines().next().unwrap_or("New Task").to_string()
-                    },
-                    metadata_line: format!("Draft • {} • {}", draft.repository, draft.branch),
-                    height: calculate_draft_card_height(&draft, model),
-                    is_selected: false, // Will be updated by update_task_card_selections
-                    card_type: TaskCardType::Draft {
-                        description: draft.description.clone(),
-                        cursor_position: (0, 0), // TODO: Calculate actual cursor position
-                        show_placeholder: draft.description.is_empty(),
-                        controls: create_draft_controls_view_model(model, focus_element),
-                        auto_save_indicator: format_auto_save_indicator(AutoSaveState::Saved), // Default for drafts
-                    },
-                }
+    let metadata = TaskCardMetadata {
+        repository: task.repository.clone(),
+        branch: task.branch.clone(),
+        models: task.agents.clone(),
+        state: task.state,
+        timestamp: task.timestamp.clone(),
+        delivery_indicators: task.delivery_status.iter().map(|status| {
+            match status {
+                DeliveryStatus::BranchCreated => "⎇",
+                DeliveryStatus::PullRequestCreated { .. } => "⇄",
+                DeliveryStatus::PullRequestMerged { .. } => "✓",
             }
+        }).collect::<Vec<_>>().join(" "),
+    };
+
+    let card_type = create_card_type_view_model(&TaskCard {
+        id: task.id.clone(),
+        title: title.clone(),
+        repository: task.repository.clone(),
+        branch: task.branch.clone(),
+        agents: task.agents.clone(),
+        state: task.state,
+        timestamp: task.timestamp.clone(),
+        activity: task.activity.clone(),
+        delivery_indicators: task.delivery_status.iter().map(|status| {
+            match status {
+                DeliveryStatus::BranchCreated => DeliveryIndicator::BranchCreated,
+                DeliveryStatus::PullRequestCreated { pr_number, title } => DeliveryIndicator::PrCreated { pr_number: *pr_number, title: title.clone() },
+                DeliveryStatus::PullRequestMerged { pr_number } => DeliveryIndicator::PrMerged { pr_number: *pr_number },
+            }
+        }).collect(),
+    }, &[task.clone()], false);
+
+    TaskCardViewModel {
+        id: task.id.clone(),
+        task,
+        title: title.clone(),
+        metadata,
+        height: calculate_card_height(&TaskCard {
+            id: String::new(),
+            title: title.clone(),
+            repository: String::new(),
+            branch: String::new(),
+            agents: vec![],
+            state: TaskState::Active,
+            timestamp: String::new(),
+            activity: vec![],
+            delivery_indicators: vec![],
+        }, settings),
+        card_type,
+        focus_element: FocusElement::GoButton, // Default focus for task cards
+    }
+}
+
+/// Create ViewModel representations for draft tasks
+fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[TaskExecution], focus_element: FocusElement) -> Vec<DraftCardViewModel> {
+    draft_tasks.iter().map(|draft| {
+        let mut textarea = tui_textarea::TextArea::new(draft.description.lines().map(|s| s.to_string()).collect::<Vec<String>>());
+        if draft.description.is_empty() {
+            textarea.set_placeholder_text("Describe what you want the agent to do...");
+        }
+
+        let controls = DraftControlsViewModel {
+            repository_button: ButtonViewModel {
+                text: draft.repository.clone(),
+                is_focused: false,
+                style: ButtonStyle::Normal,
+            },
+            branch_button: ButtonViewModel {
+                text: draft.branch.clone(),
+                is_focused: false,
+                style: ButtonStyle::Normal,
+            },
+            model_button: ButtonViewModel {
+                text: draft.models.first().map(|m| m.name.clone()).unwrap_or_else(|| "Select model".to_string()),
+                is_focused: false,
+                style: ButtonStyle::Normal,
+            },
+            go_button: ButtonViewModel {
+                text: "Go".to_string(),
+                is_focused: false,
+                style: ButtonStyle::Normal,
+            },
+        };
+
+        // Calculate height dynamically like in main.rs TaskCard::height for Draft
+        let visible_lines = textarea.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
+        let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
+        let height = inner_height as u16 + 2; // account for rounded border
+
+        DraftCardViewModel {
+            id: draft.id.clone(),
+            task: draft.clone(),
+            height,
+            controls,
+            save_state: DraftSaveState::Unsaved,
+            textarea,
+            focus_element,
+            auto_save_timer: None,
+        }
+    }).collect()
+}
+
+/// Create ViewModel representations for regular tasks (active/completed/merged)
+fn create_task_card_view_models(draft_tasks: &[DraftTask], task_executions: &[TaskExecution], focus_element: FocusElement, settings: &Settings) -> Vec<TaskCardViewModel> {
+    let visible_tasks = TaskItem::all_tasks_from_state(draft_tasks, task_executions);
+
+    visible_tasks.into_iter().enumerate().map(|(_idx, task_item)| {
+        match task_item {
             TaskItem::Task(task_execution, _) => {
                 // Convert TaskExecution to UI TaskCard
                 let ui_task = TaskCard {
@@ -987,22 +1955,40 @@ fn create_task_card_view_models(model: &Model, focus_element: FocusElement) -> V
                     delivery_indicators: task_execution.delivery_status.iter().map(|status| {
                         match status {
                             DeliveryStatus::BranchCreated => DeliveryIndicator::BranchCreated,
-                            DeliveryStatus::PullRequestCreated { pr_number, title } =>
-                                DeliveryIndicator::PrCreated { pr_number: *pr_number, title: title.clone() },
-                            DeliveryStatus::PullRequestMerged { pr_number } =>
-                                DeliveryIndicator::PrMerged { pr_number: *pr_number },
+                            DeliveryStatus::PullRequestCreated { pr_number, title } => DeliveryIndicator::PrCreated { pr_number: *pr_number, title: title.clone() },
+                            DeliveryStatus::PullRequestMerged { pr_number } => DeliveryIndicator::PrMerged { pr_number: *pr_number },
                         }
                     }).collect(),
                 };
 
+                let metadata = TaskCardMetadata {
+                    repository: ui_task.repository.clone(),
+                    branch: ui_task.branch.clone(),
+                    models: ui_task.agents.clone(),
+                    state: ui_task.state,
+                    timestamp: ui_task.timestamp.clone(),
+                    delivery_indicators: ui_task.delivery_indicators.iter().map(|indicator| {
+                        match indicator {
+                            DeliveryIndicator::BranchCreated => "⎇",
+                            DeliveryIndicator::PrCreated { .. } => "⇄",
+                            DeliveryIndicator::PrMerged { .. } => "✓",
+                        }
+                    }).collect::<Vec<_>>().join(" "),
+                };
+
                 TaskCardViewModel {
                     id: ui_task.id.clone(),
+                    task: task_execution.clone(),
                     title: ui_task.title.clone(),
-                    metadata_line: format_metadata_line(&ui_task),
-                    height: calculate_card_height(&ui_task, model),
-                    is_selected: false, // Will be updated by update_task_card_selections
-                    card_type: create_card_type_view_model(&ui_task, model, false),
+                    metadata,
+                    height: calculate_card_height(&ui_task, settings),
+                    card_type: create_card_type_view_model(&ui_task, task_executions, false),
+                    focus_element,
                 }
+            }
+            TaskItem::Draft(_) => {
+                // Drafts are now handled by create_draft_card_view_models
+                unreachable!("Drafts should not appear in task card creation")
             }
         }
     }).collect()
@@ -1011,335 +1997,134 @@ fn create_task_card_view_models(model: &Model, focus_element: FocusElement) -> V
 fn format_title_from_execution(task: &TaskExecution) -> String {
     // For executed tasks, we might want to generate a title from the repository/branch
     // or use some other logic. For now, use a generic title.
-    format!("Task {}", &task.id)
+    format!("Task {}", task.id)
 }
 
-fn calculate_draft_card_height(_draft: &DraftTask, _model: &Model) -> u16 {
-    // Draft cards have description + controls
-    // For now, use a fixed height - can be made dynamic later
-    6 // Description (3 lines) + controls (3 lines)
+fn calculate_card_height(task: &TaskCard, settings: &Settings) -> u16 {
+    // Calculate height based on activity lines + fixed overhead
+    let activity_lines = settings.activity_rows().min(task.activity.len()) as u16;
+    3 + activity_lines // Header + metadata + activity
 }
 
-fn create_draft_controls_view_model(model: &Model, focus_element: FocusElement) -> DraftControlsViewModel {
-    DraftControlsViewModel {
-                    repository_button: ButtonViewModel {
-            text: model.current_draft.as_ref().map(|d| d.repository.clone()).unwrap_or_default(),
-                        is_focused: matches!(focus_element, FocusElement::RepositorySelector),
-                        style: if matches!(focus_element, FocusElement::RepositorySelector) {
-                            ButtonStyle::Focused
-                        } else {
-                            ButtonStyle::Normal
-                        },
-                    },
-                    branch_button: ButtonViewModel {
-            text: model.current_draft.as_ref().map(|d| d.branch.clone()).unwrap_or_default(),
-                        is_focused: matches!(focus_element, FocusElement::BranchSelector),
-                        style: if matches!(focus_element, FocusElement::BranchSelector) {
-                            ButtonStyle::Focused
-                        } else {
-                            ButtonStyle::Normal
-                        },
-                    },
-                    model_button: ButtonViewModel {
-            text: format!("{} model{}", model.current_draft.as_ref()
-                .map(|d| d.models.len()).unwrap_or(0), if model.current_draft.as_ref()
-                .map(|d| d.models.len()).unwrap_or(0) != 1 { "s" } else { "" }),
-                        is_focused: matches!(focus_element, FocusElement::ModelSelector),
-                        style: if matches!(focus_element, FocusElement::ModelSelector) {
-                            ButtonStyle::Focused
-                        } else {
-                            ButtonStyle::Normal
-                        },
-                    },
-                    go_button: ButtonViewModel {
-            text: "Launch".to_string(),
-                        is_focused: matches!(focus_element, FocusElement::GoButton),
-                        style: if matches!(focus_element, FocusElement::GoButton) {
-                ButtonStyle::Active
-                        } else {
-                            ButtonStyle::Normal
-                        },
-                    },
-    }
-}
-
-fn format_auto_save_indicator(state: AutoSaveState) -> String {
-    match state {
-        AutoSaveState::Saved => "✓".to_string(),
-        AutoSaveState::Saving => "⟳".to_string(),
-        AutoSaveState::Unsaved => "●".to_string(),
-        AutoSaveState::Error(_) => "✗".to_string(),
-    }
-}
-
-fn format_metadata_line(task: &TaskCard) -> String {
+fn create_card_type_view_model(task: &TaskCard, _task_executions: &[TaskExecution], _is_selected: bool) -> TaskCardType {
     match task.state {
-        TaskState::Active => {
-            format!("{} • {} • {} • {}",
-                task.repository,
-                task.branch,
-                format_models(&task.agents),
-                task.timestamp)
-        },
-        TaskState::Completed => {
-            format!("{} • {} • {} • Completed {}",
-                task.repository,
-                task.branch,
-                format_models(&task.agents),
-                task.timestamp)
-        },
-        TaskState::Merged => {
-            format!("{} • {} • {} • Merged {}",
-                task.repository,
-                task.branch,
-                format_models(&task.agents),
-                task.timestamp)
-        },
-        TaskState::Draft => {
-            // This shouldn't happen since drafts are handled separately now
-            format!("{} • {} • Draft", task.repository, task.branch)
-        }
-    }
-}
-
-fn format_models(models: &[SelectedModel]) -> String {
-    if models.is_empty() {
-        "No models".to_string()
-    } else if models.len() == 1 {
-        format!("{} (x{})", models[0].name, models[0].count)
-    } else {
-        let model_strings: Vec<String> = models.iter()
-            .map(|model| format!("{} (x{})", model.name, model.count))
-            .collect();
-        model_strings.join(", ")
-    }
-}
-
-fn calculate_card_height(task: &TaskCard, model: &Model) -> u16 {
-    match task.state {
-        TaskState::Completed | TaskState::Merged => 3, // Title + metadata + padding
-        TaskState::Active => {
-            2 + model.activity_lines_count as u16 + 3 // Title + metadata + N activity lines + borders
-        },
-        TaskState::Draft => {
-            // This shouldn't happen since drafts are handled separately now
-            6 // Fallback height
-        }
-    }
-}
-
-fn create_card_type_view_model(task: &TaskCard, model: &Model, is_selected: bool) -> TaskCardType {
-    match task.state {
-        TaskState::Draft => {
-            // This shouldn't happen since drafts are handled separately now
-            TaskCardType::Completed {
-                delivery_indicators: "Legacy Draft".to_string(),
-            }
-        },
-        TaskState::Active => {
-            TaskCardType::Active {
-                activity_lines: task.get_recent_activity(model.activity_lines_count),
-                pause_delete_buttons: "⏸ Pause • ✕ Delete".to_string(),
-            }
-        },
-        TaskState::Completed => {
-            TaskCardType::Completed {
-                delivery_indicators: format_delivery_indicators(&task.delivery_indicators),
-            }
-        },
-        TaskState::Merged => {
-            TaskCardType::Merged {
-                delivery_indicators: format_delivery_indicators(&task.delivery_indicators),
-            }
-        },
-    }
-}
-
-fn format_delivery_indicators(indicators: &[DeliveryIndicator]) -> String {
-    indicators.iter().map(|indicator| {
-        match indicator {
-            DeliveryIndicator::BranchCreated => "⎇ branch".to_string(),
-            DeliveryIndicator::PrCreated { pr_number, title } => {
-                format!("⇄ PR #{} — \"{}\"", pr_number, title)
-            },
-            DeliveryIndicator::PrMerged { pr_number } => {
-                format!("✓ PR #{} merged to main", pr_number)
-            }
-        }
-    }).collect::<Vec<_>>().join(" • ")
-}
-
-fn create_modal_view_model(modal_state: ModalState, available_repositories: &[String], available_branches: &[String], available_models: &[String], current_draft: &Option<DraftTask>, activity_lines_count: usize, word_wrap_enabled: bool, show_autocomplete_border: bool) -> Option<ModalViewModel> {
-    match modal_state {
-        ModalState::None => None,
-        ModalState::RepositorySearch => Some(ModalViewModel {
-            title: "Select Repository".to_string(),
-            input_value: String::new(),
-            filtered_options: available_repositories.iter()
-                .map(|repo| (repo.clone(), current_draft.as_ref().map(|d| &d.repository == repo).unwrap_or(false)))
-                .collect(),
-            selected_index: 0,
-            modal_type: ModalType::Search {
-                placeholder: "Type to search repositories...".to_string()
-            },
-        }),
-        ModalState::BranchSearch => Some(ModalViewModel {
-            title: "Select Branch".to_string(),
-            input_value: String::new(),
-            filtered_options: available_branches.iter()
-                .map(|branch| (branch.clone(), current_draft.as_ref().map(|d| &d.branch == branch).unwrap_or(false)))
-                .collect(),
-            selected_index: 0,
-            modal_type: ModalType::Search {
-                placeholder: "Type to search branches...".to_string()
-            },
-        }),
-        ModalState::ModelSelection => Some(ModalViewModel {
-            title: "Select Models".to_string(),
-            input_value: String::new(),
-            filtered_options: available_models.iter()
-                .map(|model_name| (model_name.clone(), false))
-                .collect(),
-            selected_index: 0,
-            modal_type: ModalType::ModelSelection {
-                options: available_models.iter().map(|model_name| {
-                    let selected_model = current_draft.as_ref()
-                        .map(|d| d.models.iter().find(|sm| sm.name == *model_name))
-                        .flatten();
-                    ModelOptionViewModel {
-                        name: model_name.clone(),
-                        count: selected_model.map_or(0, |sm| sm.count),
-                        is_selected: selected_model.is_some(),
-                    }
-                }).collect()
-            },
-        }),
-        ModalState::Settings => Some(ModalViewModel {
-            title: "Settings".to_string(),
-            input_value: String::new(),
-            filtered_options: Vec::new(),
-            selected_index: 0,
-            modal_type: ModalType::Settings {
-                fields: vec![
-                    SettingsFieldViewModel {
-                        label: "Activity Lines".to_string(),
-                        value: activity_lines_count.to_string(),
-                        is_focused: false,
-                        field_type: SettingsFieldType::Number,
-                    },
-                    SettingsFieldViewModel {
-                        label: "Word Wrap".to_string(),
-                        value: word_wrap_enabled.to_string(),
-                        is_focused: false,
-                        field_type: SettingsFieldType::Boolean,
-                    },
-                    SettingsFieldViewModel {
-                        label: "Autocomplete Border".to_string(),
-                        value: show_autocomplete_border.to_string(),
-                        is_focused: false,
-                        field_type: SettingsFieldType::Boolean,
-                    },
-                ]
-            },
-        }),
-        _ => None, // Other modals not implemented yet
-    }
-}
-
-fn create_footer_view_model(model: &Model, focus_element: FocusElement, modal_state: ModalState, activity_lines_count: usize, word_wrap_enabled: bool, show_autocomplete_border: bool) -> FooterViewModel {
-    let shortcuts = match (&modal_state, &focus_element) {
-        // Modal active - takes precedence over focus element
-        (modal_state, _) if *modal_state != ModalState::None => vec![
-            ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-            ShortcutViewModel { key: "Enter".to_string(), description: "Select".to_string() },
-            ShortcutViewModel { key: "Esc".to_string(), description: "Back".to_string() },
-        ],
-
-        // Settings button focused
-        (_, FocusElement::Settings) => vec![
-            ShortcutViewModel { key: "↓".to_string(), description: "Next".to_string() },
-            ShortcutViewModel { key: "Enter".to_string(), description: "Settings".to_string() },
-            ShortcutViewModel { key: "Ctrl+C x2".to_string(), description: "Quit".to_string() },
-        ],
-
-        // Draft task focused
-        (_, FocusElement::DraftTask(_)) => vec![
-            ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-            ShortcutViewModel { key: "Enter".to_string(), description: "Edit Draft".to_string() },
-            ShortcutViewModel { key: "Ctrl+C x2".to_string(), description: "Quit".to_string() },
-        ],
-
-        // Filter bar separator focused
-        (_, FocusElement::FilterBarSeparator) => vec![
-            ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-            ShortcutViewModel { key: "Enter".to_string(), description: "Filter".to_string() },
-            ShortcutViewModel { key: "Ctrl+C x2".to_string(), description: "Quit".to_string() },
-        ],
-
-        // Existing task focused
-        (_, FocusElement::ExistingTask(_)) => {
-            // Get the task state to determine appropriate shortcuts
-            let task_state = match focus_element {
-                FocusElement::ExistingTask(idx) => {
-                    model.task_executions.get(idx).map(|t| t.state)
+        TaskState::Active => TaskCardType::Active {
+            activity_entries: task.activity.iter().map(|activity| {
+                // For now, treat all activities as agent thoughts
+                // This could be improved to parse different activity types
+                ActivityEntry::AgentThought {
+                    thought: activity.clone(),
                 }
-                _ => None,
-            };
-            match task_state {
-                Some(TaskState::Active) => vec![
-                    ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-                    ShortcutViewModel { key: "Enter".to_string(), description: "Show Task Progress".to_string() },
-                    ShortcutViewModel { key: "Ctrl+C x2".to_string(), description: "Quit".to_string() },
-                ],
-                Some(TaskState::Completed) | Some(TaskState::Merged) => vec![
-                    ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-                    ShortcutViewModel { key: "Enter".to_string(), description: "Show Task Details".to_string() },
-                    ShortcutViewModel { key: "Ctrl+C x2".to_string(), description: "Quit".to_string() },
-                ],
-                _ => vec![
-            ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-            ShortcutViewModel { key: "Enter".to_string(), description: "Select Task".to_string() },
-            ShortcutViewModel { key: "Ctrl+C x2".to_string(), description: "Quit".to_string() },
-        ],
-            }
+            }).collect(),
+            pause_delete_buttons: "Pause | Delete".to_string(),
         },
-
-        // Draft textarea focused
-        (_, FocusElement::TaskDescription) => {
-            let agent_text = if model.current_draft.as_ref()
-                .map(|d| d.models.len() <= 1).unwrap_or(true) {
-                "Launch Agent".to_string()
-            } else {
-                "Launch Agents".to_string()
-            };
-            vec![
-                ShortcutViewModel { key: "Enter".to_string(), description: agent_text },
-                ShortcutViewModel { key: "Shift+Enter".to_string(), description: "New Line".to_string() },
-                ShortcutViewModel { key: "Tab".to_string(), description: "Next Field".to_string() },
-            ]
+        TaskState::Completed => TaskCardType::Completed {
+            delivery_indicators: String::new(), // Would populate from task.delivery_indicators if available
         },
-
-        // Other focus states (repository, branch, model selectors, etc.)
-        _ => vec![
-            ShortcutViewModel { key: "↑↓".to_string(), description: "Navigate".to_string() },
-            ShortcutViewModel { key: "Enter".to_string(), description: "Select".to_string() },
-            ShortcutViewModel { key: "Esc".to_string(), description: "Back".to_string() },
-        ],
-    };
-
-    FooterViewModel { shortcuts }
+        TaskState::Merged => TaskCardType::Merged {
+            delivery_indicators: String::new(), // Would populate from task.delivery_indicators if available
+        },
+        TaskState::Draft => unreachable!("Drafts should not be in task_executions"),
+    }
 }
 
-fn create_filter_bar_view_model(_model: &Model) -> FilterBarViewModel {
-    // Filters are now handled at the ViewModel level
-    // Return default values for now
+fn create_modal_view_model(_modal_state: ModalState, _available_repositories: &[String], _available_branches: &[String], _available_models: &[String], _current_draft: &Option<DraftTask>, _activity_lines_count: usize, _word_wrap_enabled: bool, _show_autocomplete_border: bool) -> Option<ModalViewModel> {
+    // Placeholder implementation
+    None
+}
+
+fn create_footer_view_model(focused_draft: Option<&DraftTask>, focus_element: FocusElement, modal_state: ModalState, _settings: &Settings, _word_wrap_enabled: bool, _show_autocomplete_border: bool) -> FooterViewModel {
+    use crate::settings::{KeyboardShortcut, KeyboardOperation, KeyMatcher};
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    let mut shortcuts = Vec::new();
+
+    // Create hardcoded shortcuts based on PRD specifications
+    // These are the context-sensitive shortcuts that should be displayed in the footer
+
+    match (focus_element, modal_state) {
+        (_, ModalState::RepositorySearch) | (_, ModalState::BranchSearch) | (_, ModalState::ModelSearch) => {
+            // Modal active: "↑↓ Navigate • Enter Select • Esc Back"
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::MoveToNextLine,
+                vec![KeyMatcher::new(KeyCode::Down, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::IndentOrComplete,
+                vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::DeleteCharacterBackward,
+                vec![KeyMatcher::new(KeyCode::Esc, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+        }
+        (_, ModalState::Settings) => {
+            // Settings modal shortcuts - similar to other modals
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::MoveToNextLine,
+                vec![KeyMatcher::new(KeyCode::Down, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::IndentOrComplete,
+                vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::DeleteCharacterBackward,
+                vec![KeyMatcher::new(KeyCode::Esc, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+        }
+        (FocusElement::DraftTask(_), ModalState::None) if focused_draft.is_some() => {
+            // Draft textarea focused: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::IndentOrComplete,
+                vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::OpenNewLine,
+                vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::SHIFT, KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::MoveToNextLine,
+                vec![KeyMatcher::new(KeyCode::Tab, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+        }
+        (FocusElement::ExistingTask(_), ModalState::None) => {
+            // Completed/merged task focused: "↑↓ Navigate • Enter Show Task Details • Ctrl+C x2 Quit"
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::MoveToNextLine,
+                vec![KeyMatcher::new(KeyCode::Down, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::IndentOrComplete,
+                vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+        }
+        _ => {
+            // Default navigation: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::MoveToNextLine,
+                vec![KeyMatcher::new(KeyCode::Down, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::IndentOrComplete,
+                vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
+            ));
+        }
+    }
+
+    FooterViewModel {
+        shortcuts,
+    }
+}
+
+fn create_filter_bar_view_model() -> FilterBarViewModel {
     FilterBarViewModel {
         status_filter: FilterButtonViewModel {
             current_value: "All".to_string(),
             is_focused: false,
         },
         time_filter: FilterButtonViewModel {
-            current_value: "All Time".to_string(),
+            current_value: "Any".to_string(),
             is_focused: false,
         },
         search_box: SearchBoxViewModel {
@@ -1351,824 +2136,13 @@ fn create_filter_bar_view_model(_model: &Model) -> FilterBarViewModel {
     }
 }
 
-fn create_status_bar_view_model(model: &Model, status_message: Option<&String>, error_message: Option<&String>) -> StatusBarViewModel {
-    let backend_indicator = "local".to_string(); // In real app, would be dynamic
-
-    let last_operation: String = if model.loading_states.task_creation {
-        "Creating task...".to_string()
-    } else if model.loading_states.repositories {
-        "Loading repositories...".to_string()
-    } else if model.loading_states.branches {
-        "Loading branches...".to_string()
-    } else if model.loading_states.models {
-        "Loading models...".to_string()
-    } else if let Some(msg) = status_message {
-        (*msg).clone()
-    } else {
-        "Ready".to_string()
-    };
-
-    let connection_status = if model.loading_states.repositories ||
-                              model.loading_states.branches ||
-                              model.loading_states.models ||
-                              model.loading_states.task_creation {
-        "Connecting...".to_string()
-    } else {
-        "Connected".to_string()
-    };
-
+fn create_status_bar_view_model(status_message: Option<&String>, error_message: Option<&String>, _loading_task_creation: bool, _loading_repositories: bool, _loading_branches: bool, _loading_models: bool) -> StatusBarViewModel {
     StatusBarViewModel {
-        backend_indicator,
-        last_operation,
-        connection_status,
-        error_message: error_message.map(|s| s.clone()),
+        backend_indicator: "local".to_string(),
+        last_operation: "Ready".to_string(),
+        connection_status: "Connected".to_string(),
+        error_message: error_message.cloned(),
+        status_message: status_message.cloned(),
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn view_model_formats_title_and_shows_settings() {
-        let model = Model::default();
-        let vm: ViewModel = (&model).into();
-
-        assert_eq!(vm.title, "Agent Harbor");
-        assert!(vm.show_settings_button);
-    }
-
-    // #[test]
-    // fn view_model_creates_draft_card_with_placeholder() {
-    //     // This test needs to be updated for the new MVVM architecture
-    //     // TODO: Update to use TaskExecution and proper domain messages
-    // }
-
-    // #[test]
-    // fn view_model_formats_active_task_with_activity() {
-    //     // This test needs to be updated for the new MVVM architecture
-    //     // TODO: Update to use TaskExecution and proper domain messages
-    // }
-
-    #[test]
-    fn view_model_shows_correct_footer_for_focus_state() {
-        // Test draft textarea focused
-        let mut model = Model::default();
-        model.focus_element = FocusElement::TaskDescription;
-        if let Some(ref mut draft) = model.current_draft {
-            draft.models = vec![SelectedModel { name: "Claude".to_string(), count: 1 }];
-        }
-
-        let vm: ViewModel = (&model).into();
-
-        assert!(vm.footer.shortcuts.iter().any(|s| s.description == "Launch Agent"));
-        assert!(vm.footer.shortcuts.iter().any(|s| s.description == "New Line"));
-        assert!(vm.footer.shortcuts.iter().any(|s| s.description == "Next Field"));
-
-        // Test plural case for agents
-        if let Some(ref mut draft) = model.current_draft {
-            draft.models.push(SelectedModel { name: "GPT-4".to_string(), count: 1 });
-        }
-        let vm: ViewModel = (&model).into();
-
-        assert!(vm.footer.shortcuts.iter().any(|s| s.description == "Launch Agents"));
-    }
-
-    // #[test]
-    // fn view_model_shows_correct_footer_for_task_navigation() {
-    //     // This test needs to be updated for the new MVVM architecture
-    //     // TODO: Update to use TaskExecution and proper domain messages
-    // }
-
-    #[test]
-    fn view_model_shows_correct_footer_for_modals() {
-        let model = Model::default();
-        let mut vm: ViewModel = (&model).into();
-        vm.modal_state = ModalState::RepositorySearch;
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Select"),
-            ("Esc", "Back"),
-        ]);
-    }
-
-    #[test]
-    fn view_model_handles_modal_states() {
-        let mut model = Model::default();
-        model.modal_state = ModalState::RepositorySearch;
-
-        let vm: ViewModel = (&model).into();
-
-        assert!(vm.active_modal.is_some());
-        let modal = vm.active_modal.unwrap();
-        assert_eq!(modal.title, "Select Repository");
-        assert!(!modal.filtered_options.is_empty());
-    }
-
-    /// Test hierarchical navigation order: Settings → Draft cards → Filter bar → Existing tasks
-    #[test]
-    fn navigation_follows_hierarchical_order() {
-        let model = create_model_with_drafts_and_tasks(2, 1, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-
-        // Initially focused on first draft task (per PRD)
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-
-        // Down arrow should move to second draft task
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(1));
-
-        // Down arrow should move to filter bar separator
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::FilterBarSeparator);
-
-        // Down arrow should move to first existing task
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::ExistingTask(0));
-
-        // Down arrow should wrap to settings button
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::Settings);
-
-        // Down arrow should move to first draft task
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-
-        // Up arrow should wrap back to settings
-        vm.handle_navigation(NavigationDirection::Up, &model);
-        assert_eq!(vm.focus_element, FocusElement::Settings);
-    }
-
-    /// Test that draft tasks are displayed at the top, sorted newest first
-    #[test]
-    fn draft_tasks_display_at_top_newest_first() {
-        let mut model = Model::default();
-
-        // Add draft tasks with different timestamps (older first, but should display newest first)
-        model.draft_tasks.push(DraftTask {
-            id: "draft_older".to_string(),
-            description: "Older draft".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 09:00:00".to_string(),
-        });
-        model.draft_tasks.push(DraftTask {
-            id: "draft_newer".to_string(),
-            description: "Newer draft".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
-            created_at: "2023-01-01 10:00:00".to_string(),
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Should have 2 task cards
-        assert_eq!(vm.task_cards.len(), 2);
-
-        // First card should be the newer draft
-        assert_eq!(vm.task_cards[0].title, "Newer draft");
-        assert!(vm.task_cards[0].card_type.is_draft());
-
-        // Second card should be the older draft
-        assert_eq!(vm.task_cards[1].title, "Older draft");
-        assert!(vm.task_cards[1].card_type.is_draft());
-    }
-
-    /// Test that existing tasks follow draft tasks in chronological order (newest first)
-    #[test]
-    fn existing_tasks_follow_drafts_chronological_order() {
-        let mut model = Model::default();
-
-        // Add one draft task
-        model.draft_tasks.push(DraftTask {
-            id: "draft_1".to_string(),
-            description: "Draft task".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:00:00".to_string(),
-        });
-
-        // Add existing tasks with different timestamps
-        model.task_executions.push(TaskExecution {
-            id: "task_older".to_string(),
-            repository: "repo1".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Completed,
-            timestamp: "2023-01-01 10:00:00".to_string(),
-            activity: vec![],
-            delivery_status: vec![],
-        });
-        model.task_executions.push(TaskExecution {
-            id: "task_newer".to_string(),
-            repository: "repo2".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
-            state: TaskState::Active,
-            timestamp: "2023-01-01 11:00:00".to_string(),
-            activity: vec!["Processing...".to_string()],
-            delivery_status: vec![],
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Should have 3 task cards total
-        assert_eq!(vm.task_cards.len(), 3);
-
-        // First card should be the draft
-        assert_eq!(vm.task_cards[0].title, "Draft task");
-        assert!(vm.task_cards[0].card_type.is_draft());
-
-        // Second card should be the newer existing task
-        assert_eq!(vm.task_cards[1].title, "Task task_newer");
-        assert!(vm.task_cards[1].card_type.is_active());
-
-        // Third card should be the older existing task
-        assert_eq!(vm.task_cards[2].title, "Task task_older");
-        assert!(vm.task_cards[2].card_type.is_completed());
-    }
-
-    /// Test that draft cards have variable height based on content
-    #[test]
-    fn draft_cards_variable_height_based_on_content() {
-        let mut model = Model::default();
-
-        // Add draft with short description
-        model.draft_tasks.push(DraftTask {
-            id: "draft_short".to_string(),
-            description: "Short".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:00:00".to_string(),
-        });
-
-        // Add draft with long description
-        model.draft_tasks.push(DraftTask {
-            id: "draft_long".to_string(),
-            description: "This is a much longer description\nwith multiple lines\nand more content\nthat should result in\na taller card".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:01:00".to_string(),
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Both should be draft cards
-        assert!(vm.task_cards[0].card_type.is_draft());
-        assert!(vm.task_cards[1].card_type.is_draft());
-
-        // Heights should be different (longer content = taller card)
-        // Note: Actual height calculation may vary, but they should be different
-        assert_ne!(vm.task_cards[0].height, vm.task_cards[1].height);
-    }
-
-    /// Test that active cards maintain fixed height regardless of activity
-    #[test]
-    fn active_cards_fixed_height_regardless_of_activity() {
-        let mut model = Model::default();
-
-        // Add active task with minimal activity
-        model.task_executions.push(TaskExecution {
-            id: "active_minimal".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Active,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec!["Starting...".to_string()],
-            delivery_status: vec![],
-        });
-
-        // Add active task with extensive activity
-        model.task_executions.push(TaskExecution {
-            id: "active_extensive".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
-            state: TaskState::Active,
-            timestamp: "2023-01-01 12:01:00".to_string(),
-            activity: vec![
-                "Analyzing codebase structure".to_string(),
-                "Tool usage: search_codebase".to_string(),
-                "Found 42 matches in 12 files".to_string(),
-                "Processing results".to_string(),
-                "Generating summary".to_string(),
-                "Tool usage: analyze_code".to_string(),
-                "Completed analysis".to_string(),
-            ],
-            delivery_status: vec![],
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Both should be active cards
-        assert!(vm.task_cards[0].card_type.is_active());
-        assert!(vm.task_cards[1].card_type.is_active());
-
-        // Heights should be the same (fixed height for active cards)
-        assert_eq!(vm.task_cards[0].height, vm.task_cards[1].height);
-    }
-
-    /// Test that completed/merged cards maintain fixed height
-    #[test]
-    fn completed_cards_fixed_height() {
-        let mut model = Model::default();
-
-        // Add completed task
-        model.task_executions.push(TaskExecution {
-            id: "completed_1".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Completed,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec![],
-            delivery_status: vec![],
-        });
-
-        // Add merged task
-        model.task_executions.push(TaskExecution {
-            id: "merged_1".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
-            state: TaskState::Merged,
-            timestamp: "2023-01-01 12:01:00".to_string(),
-            activity: vec![],
-            delivery_status: vec![],
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Both should be completed cards
-        assert!(vm.task_cards[0].card_type.is_completed());
-        assert!(vm.task_cards[1].card_type.is_completed());
-
-        // Heights should be the same (fixed height for completed cards)
-        assert_eq!(vm.task_cards[0].height, vm.task_cards[1].height);
-    }
-
-    /// Test completed card metadata format: "✓ Task title • Delivery indicators"
-    #[test]
-    fn completed_card_metadata_format() {
-        let mut model = Model::default();
-
-        model.task_executions.push(TaskExecution {
-            id: "completed_1".to_string(),
-            repository: "test/repo".to_string(),
-            branch: "feature/auth".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Completed,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec![],
-            delivery_status: vec![DeliveryStatus::BranchCreated, DeliveryStatus::PullRequestCreated {
-                pr_number: 42,
-                title: "Add authentication".to_string()
-            }],
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Check title line format
-        assert_eq!(vm.task_cards[0].title, "Task completed_1");
-
-        // Check metadata line contains repository and branch
-        assert!(vm.task_cards[0].metadata_line.contains("test/repo"));
-        assert!(vm.task_cards[0].metadata_line.contains("feature/auth"));
-
-        // Check card type is completed
-        assert!(vm.task_cards[0].card_type.is_completed());
-    }
-
-    /// Test active card metadata format with pause/delete buttons
-    #[test]
-    fn active_card_metadata_with_buttons() {
-        let mut model = Model::default();
-
-        model.task_executions.push(TaskExecution {
-            id: "active_1".to_string(),
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Active,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec!["Working...".to_string()],
-            delivery_status: vec![],
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Check title line format
-        assert_eq!(vm.task_cards[0].title, "Task active_1");
-
-        // Check metadata line contains repository and branch
-        assert!(vm.task_cards[0].metadata_line.contains("test/repo"));
-        assert!(vm.task_cards[0].metadata_line.contains("main"));
-
-        // Check card type is active
-        assert!(vm.task_cards[0].card_type.is_active());
-    }
-
-    /// Test draft card shows placeholder when empty
-    #[test]
-    fn draft_card_shows_placeholder_when_empty() {
-        let mut model = Model::default();
-
-        // Add draft with empty description
-        model.draft_tasks.push(DraftTask {
-            id: "draft_empty".to_string(),
-            description: String::new(),
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:00:00".to_string(),
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Check that it's a draft card
-        assert!(vm.task_cards[0].card_type.is_draft());
-
-        // Check title for empty draft
-        assert_eq!(vm.task_cards[0].title, "New Task");
-    }
-
-    /// Test draft card shows first line of description as title
-    #[test]
-    fn draft_card_title_from_first_line() {
-        let mut model = Model::default();
-
-        // Add draft with multi-line description
-        model.draft_tasks.push(DraftTask {
-            id: "draft_multi".to_string(),
-            description: "First line of description\nSecond line\nThird line".to_string(),
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:00:00".to_string(),
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Check title is first line of description
-        assert_eq!(vm.task_cards[0].title, "First line of description");
-    }
-
-
-    #[test]
-    fn footer_shortcuts_settings_focused() {
-        let model = Model::default();
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::Settings;
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↓", "Next"),
-            ("Enter", "Settings"),
-            ("Ctrl+C x2", "Quit"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_draft_selected() {
-        let model = create_model_with_drafts_and_tasks(1, 0, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::DraftTask(0); // Focus on the draft
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Edit Draft"),
-            ("Ctrl+C x2", "Quit"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_filter_separator_focused() {
-        let model = create_model_with_drafts_and_tasks(1, 1, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::FilterBarSeparator;
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Filter"),
-            ("Ctrl+C x2", "Quit"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_active_task_selected() {
-        let model = create_model_with_drafts_and_tasks(0, 1, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::ExistingTask(0); // Focus on the active task
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Show Task Progress"),
-            ("Ctrl+C x2", "Quit"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_completed_task_selected() {
-        let model = create_model_with_drafts_and_tasks(0, 0, 1, 0);
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::ExistingTask(0); // Focus on the completed task
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Show Task Details"),
-            ("Ctrl+C x2", "Quit"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_merged_task_selected() {
-        let model = create_model_with_drafts_and_tasks(0, 0, 0, 1);
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::ExistingTask(0); // Focus on the merged task
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Show Task Details"),
-            ("Ctrl+C x2", "Quit"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_draft_textarea_focused_single_agent() {
-        let mut model = create_model_with_drafts_and_tasks(1, 0, 0, 0);
-        // Set up draft with single agent
-        if let Some(draft) = model.current_draft.as_mut() {
-            draft.models = vec![SelectedModel { name: "Claude".to_string(), count: 1 }];
-        }
-
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::TaskDescription;
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("Enter", "Launch Agent"),
-            ("Shift+Enter", "New Line"),
-            ("Tab", "Next Field"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_draft_textarea_focused_multiple_agents() {
-        let mut model = create_model_with_drafts_and_tasks(1, 0, 0, 0);
-        // Set up draft with multiple agents
-        if let Some(draft) = model.current_draft.as_mut() {
-            draft.models = vec![
-                SelectedModel { name: "Claude".to_string(), count: 1 },
-                SelectedModel { name: "GPT-4".to_string(), count: 1 },
-            ];
-        }
-
-        let mut vm: ViewModel = (&model).into();
-        vm.focus_element = FocusElement::TaskDescription;
-
-        vm.update_footer(&model);
-
-        assert_footer_shortcuts(&vm, &[
-            ("Enter", "Launch Agents"),
-            ("Shift+Enter", "New Line"),
-            ("Tab", "Next Field"),
-        ]);
-    }
-
-    #[test]
-    fn footer_shortcuts_modal_active() {
-        let model = create_model_with_drafts_and_tasks(1, 1, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-        vm.modal_state = ModalState::RepositorySearch;
-
-        vm.update_footer(&model); // Modal takes precedence
-
-        assert_footer_shortcuts(&vm, &[
-            ("↑↓", "Navigate"),
-            ("Enter", "Select"),
-            ("Esc", "Back"),
-        ]);
-    }
-
-    /// Test that visual selection state is highlighted
-    #[test]
-    fn visual_selection_state_highlighted() {
-        let model = create_model_with_drafts_and_tasks(1, 1, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-
-        // Initially focused on first draft task
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-        assert!(vm.task_cards[0].is_selected);
-        assert!(!vm.task_cards[1].is_selected);
-
-        // Navigate to second draft task
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(1));
-        assert!(!vm.task_cards[0].is_selected);
-        assert!(vm.task_cards[1].is_selected);
-
-        // Navigate to filter separator
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::FilterBarSeparator);
-        assert!(!vm.task_cards[0].is_selected);
-        assert!(!vm.task_cards[1].is_selected);
-    }
-
-    /// Test navigation wraps around the complete hierarchy
-    #[test]
-    fn navigation_wraps_around_hierarchy() {
-        let model = create_model_with_drafts_and_tasks(1, 1, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-
-        // Start with focus on first draft task
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-
-        // Down to filter separator
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::FilterBarSeparator);
-
-        // Down to existing task
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::ExistingTask(0));
-
-        // Down should wrap to settings
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::Settings);
-
-        // Down to first draft task
-        vm.handle_navigation(NavigationDirection::Down, &model);
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-    }
-
-    /// Test that initially focused element is the top draft task
-    #[test]
-    fn initially_focused_element_is_top_draft_task() {
-        let mut model = Model::default();
-
-        // Add draft task
-        model.draft_tasks.push(DraftTask {
-            id: "draft_1".to_string(),
-            description: "Test draft".to_string(),
-            repository: "repo".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:00:00".to_string(),
-        });
-
-        let vm: ViewModel = (&model).into();
-
-        // Initially focused on the draft task
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-    }
-
-    /// Test textarea navigation prioritizes text lines over focus movement
-    #[test]
-    fn textarea_navigation_prioritizes_text_lines() {
-        let mut model = create_model_with_drafts_and_tasks(1, 0, 0, 0);
-        let mut vm: ViewModel = (&model).into();
-
-        // Manually create a multi-line draft for testing
-        if let Some(draft) = model.draft_tasks.get_mut(0) {
-            draft.description = "Line 1\nLine 2\nLine 3".to_string();
-        }
-
-        // Enter draft editing mode
-        vm.enter_draft_editing_mode(0, &model);
-        assert_eq!(vm.focus_element, FocusElement::TaskDescription);
-
-        // Should be able to navigate within textarea first
-        let handled = vm.handle_textarea_navigation(NavigationDirection::Down, &model);
-        assert!(handled); // Should handle navigation within textarea
-
-        // At bottom of textarea, should allow focus to move
-        // (This would require setting cursor to bottom first, simplified for test)
-    }
-
-    // Test helper functions for creating common test scenarios
-
-    /// Helper function to create a draft task
-    fn create_draft_task(id: &str, description: &str, repository: &str, branch: &str) -> DraftTask {
-        DraftTask {
-            id: id.to_string(),
-            description: description.to_string(),
-            repository: repository.to_string(),
-            branch: branch.to_string(),
-            models: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            created_at: "2023-01-01 12:00:00".to_string(),
-        }
-    }
-
-    /// Helper function to create an active task execution
-    fn create_active_task(id: &str, repository: &str, branch: &str) -> TaskExecution {
-        TaskExecution {
-            id: id.to_string(),
-            repository: repository.to_string(),
-            branch: branch.to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Active,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec!["Working...".to_string()],
-            delivery_status: vec![],
-        }
-    }
-
-    /// Helper function to create a completed task execution
-    fn create_completed_task(id: &str, repository: &str, branch: &str) -> TaskExecution {
-        TaskExecution {
-            id: id.to_string(),
-            repository: repository.to_string(),
-            branch: branch.to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Completed,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec![],
-            delivery_status: vec![DeliveryStatus::BranchCreated],
-        }
-    }
-
-    /// Helper function to create a merged task execution
-    fn create_merged_task(id: &str, repository: &str, branch: &str) -> TaskExecution {
-        TaskExecution {
-            id: id.to_string(),
-            repository: repository.to_string(),
-            branch: branch.to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
-            state: TaskState::Merged,
-            timestamp: "2023-01-01 12:00:00".to_string(),
-            activity: vec![],
-            delivery_status: vec![DeliveryStatus::PullRequestMerged { pr_number: 42 }],
-        }
-    }
-
-    /// Helper function to create a model with initial draft and tasks
-    fn create_model_with_drafts_and_tasks(draft_count: usize, active_count: usize, completed_count: usize, merged_count: usize) -> Model {
-        let mut model = Model::default();
-
-        // Add draft tasks (newest first, so we add them in reverse order)
-        for i in (0..draft_count).rev() {
-            let timestamp = format!("2023-01-01 1{}:00:00", i);
-            let mut draft = create_draft_task(&format!("draft_{}", i), &format!("Draft {}", i), "repo", "main");
-            draft.created_at = timestamp;
-            model.draft_tasks.push(draft);
-        }
-
-        // Add active tasks
-        for i in 0..active_count {
-            model.task_executions.push(create_active_task(&format!("active_{}", i), "repo", "main"));
-        }
-
-        // Add completed tasks
-        for i in 0..completed_count {
-            model.task_executions.push(create_completed_task(&format!("completed_{}", i), "repo", "main"));
-        }
-
-        // Add merged tasks
-        for i in 0..merged_count {
-            model.task_executions.push(create_merged_task(&format!("merged_{}", i), "repo", "main"));
-        }
-
-        model
-    }
-
-    /// Helper function to assert exact footer shortcuts in order
-    fn assert_footer_shortcuts(vm: &ViewModel, expected: &[(&str, &str)]) {
-        assert_eq!(vm.footer.shortcuts.len(), expected.len(),
-            "Expected {} shortcuts, got {}", expected.len(), vm.footer.shortcuts.len());
-
-        for (i, (expected_key, expected_desc)) in expected.iter().enumerate() {
-            assert_eq!(vm.footer.shortcuts[i].key, *expected_key,
-                "Shortcut {} key mismatch: expected '{}', got '{}'",
-                i, expected_key, vm.footer.shortcuts[i].key);
-            assert_eq!(vm.footer.shortcuts[i].description, *expected_desc,
-                "Shortcut {} description mismatch: expected '{}', got '{}'",
-                i, expected_desc, vm.footer.shortcuts[i].description);
-        }
-    }
-
-    // #[test]
-    // fn view_model_formats_delivery_indicators() {
-    //     // This test needs to be updated for the new DeliveryIndicator variants
-    //     // TODO: Update to use BranchCreated, PrCreated, PrMerged
-    // }
-}

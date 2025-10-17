@@ -63,6 +63,7 @@ apps/macos/AgentsWorkflow/PlugIns/
 
 # Rust backup files
 *.rs.bk
+**/*.backup
 
 # IDE files
 .vscode/

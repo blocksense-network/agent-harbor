@@ -43,14 +43,22 @@
 //! terminal UIs using this MVVM architecture. The public API is designed
 //! to be minimal and focused on the essential building blocks.
 
-pub mod model;
 pub mod view_model;
 pub mod view;
+pub mod settings;
 pub mod workspace_files;
 pub mod workspace_workflows;
+pub mod task_manager;
 
 // Re-export commonly used types
-pub use model::{Model, SelectedModel, DomainMsg, NetworkMsg, TaskState};
-pub use view_model::{Msg, TaskCard, ViewModel, TaskCardViewModel, TaskCardType, FocusElement, ModalState, SearchMode};
+pub use ah_domain_types::{SelectedModel, TaskState, DraftTask, TaskExecution, DeliveryStatus, Repository, Branch, TaskInfo};
+pub use view_model::{Msg, TaskCard, ViewModel, TaskCardViewModel, TaskCardType, FocusElement, ModalState, SearchMode, DraftSaveState, TaskItem};
+pub use view::ViewCache;
+pub use settings::{Settings, FontStyle, SelectionDialogStyle, KeymapConfig, KeyBinding};
 pub use workspace_workflows::{WorkspaceWorkflows, PathWorkspaceWorkflows};
+pub use task_manager::{
+    TaskManager, MockTaskManager, TaskLaunchParams, TaskLaunchResult,
+    TaskEvent, TaskStatus, LogLevel, ToolStatus,
+    SaveDraftResult
+};
 pub use ah_workflows::{WorkflowResult, WorkflowError};

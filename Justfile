@@ -38,19 +38,19 @@ test-rust-verbose: build-rust-test-binaries
 
 # Build TUI exploration binary (legacy implementation)
 build-tui-exploration:
-    cargo build -p tui-exploration
+    cd PoC/tui-exploration && cargo build --bin tui-exploration
 
 # Build TUI MVVM binary (new MVVM architecture)
 build-tui-mvvm:
-    cargo build -p tui-exploration --bin tui-mvvm
+    cd PoC/tui-exploration && cargo build --bin tui-mvvm
 
 # Run TUI exploration binary (legacy implementation)
 run-tui-exploration: build-tui-exploration
-    cargo run -p tui-exploration
+    cd PoC/tui-exploration && cargo run --bin tui-exploration
 
 # Run TUI MVVM binary (new MVVM architecture)
 run-tui-mvvm: build-tui-mvvm
-    cargo run -p tui-exploration --bin tui-mvvm
+    cd PoC/tui-exploration && cargo run --bin tui-mvvm
 
 # Build both TUI binaries
 build-tui-both: build-tui-exploration build-tui-mvvm
@@ -711,6 +711,25 @@ repomix-tui:
         --style markdown \
         --header-text "TUI Complete Implementation and Specification" \
         --include "{{REPOMIX_TUI_PATTERNS}}"
+
+# TUI Exploration PoC include patterns as a multiline string
+REPOMIX_TUI_EXPLORATION_PATTERNS := replace("""
+PoC/tui-exploration/**/*
+specs/Public/TUI-PRD.md
+specs/Public/TUI.status.md
+""", "\n", ",")
+
+# Create repomix bundle of TUI exploration PoC (implementation + related specs)
+repomix-tui-exploration:
+    @echo "📦 Creating TUI exploration PoC repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-TUI-Exploration.md \
+        --style markdown \
+        --header-text "TUI Exploration PoC - Interactive Dashboard Implementation" \
+        --include "{{REPOMIX_TUI_EXPLORATION_PATTERNS}}" \
+        --ignore "PoC/tui-exploration/target/**"
 
 # AgentFS include patterns as a multiline string
 REPOMIX_AGENTFS_PATTERNS := replace("""

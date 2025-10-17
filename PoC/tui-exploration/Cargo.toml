@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 ratatui = "*"
-crossterm = "0.29"
+crossterm = { version = "0.29", features = ["serde"] }
 anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
@@ -27,12 +27,32 @@ tokio-stream = "0.1"
 tokio = { version = "1.0", features = ["process", "rt-multi-thread", "macros", "test-util", "io-util"] }
 ah-repo = { path = "../../crates/ah-repo" }
 ah-workflows = { path = "../../crates/ah-workflows" }
+ah-domain-types = { path = "../../crates/ah-domain-types" }
 tempfile = "3.0"
+time = { version = "0.3", features = ["serde", "serde-well-known"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+fluent = "0.17.0"
+unic-langid = "0.9.6"
 
 [dependencies.ratatui-image]
 version = "8"
 features = ["crossterm"]
 
 [[bin]]
+name = "tui-exploration"
+path = "src/main.rs"
+
+[[bin]]
 name = "tui-mvvm"
 path = "src/main_mvvm.rs"
+
+[[bin]]
+name = "test-event-stream"
+path = "test_event_stream.rs"
+
+[[bin]]
+name = "test-enhanced-settings"
+path = "test_enhanced_settings.rs"

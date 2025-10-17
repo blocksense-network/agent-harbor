@@ -1,0 +1,8 @@
+[package]
+name = "ah-domain-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+chrono = "0.4"

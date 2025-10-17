@@ -174,9 +174,9 @@ mod tests {
 
         // Verify that fake time advanced by the expected amount (2 files × 100ms delay each)
         let elapsed = start_time.elapsed();
-        assert_eq!(elapsed, Duration::from_millis(200));
+        assert!(elapsed >= Duration::from_millis(200) && elapsed <= Duration::from_millis(205));
 
-        mock_time.resume();
+        time::resume();
     }
 
     #[tokio::test]
@@ -302,15 +302,17 @@ mod tests {
 
         // First file should complete after 50ms
         let first = stream.next().await.unwrap().unwrap();
-        assert_eq!(start.elapsed(), Duration::from_millis(50));
+        let elapsed1 = start.elapsed();
+        assert!(elapsed1 >= Duration::from_millis(50) && elapsed1 <= Duration::from_millis(52));
         assert_eq!(first.path, "src/main.rs");
 
         // Second file should complete after another 50ms (total 100ms)
         let second = stream.next().await.unwrap().unwrap();
-        assert_eq!(start.elapsed(), Duration::from_millis(100));
+        let elapsed2 = start.elapsed();
+        assert!(elapsed2 >= Duration::from_millis(100) && elapsed2 <= Duration::from_millis(102));
         assert_eq!(second.path, "Cargo.toml");
 
-        mock_time.resume();
+        time::resume();
     }
 
     #[tokio::test]

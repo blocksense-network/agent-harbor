@@ -162,9 +162,10 @@ Example session with recent events:
   "runtime": { ... },
   "agent": { ... },
   "recent_events": [
-    { "thought": "Analyzing authentication flow", "ts": "2025-09-30T17:10:00Z" },
-    { "tool_name": "read_file", "tool_output": "File read successfully", "tool_status": "success", "ts": "2025-09-30T17:10:05Z" },
-    { "file_path": "src/auth.ts", "lines_added": 5, "lines_removed": 2, "ts": "2025-09-30T17:10:10Z" }
+    { "type": "thought", "thought": "Analyzing authentication flow", "ts": "2025-09-30T17:10:00Z" },
+    { "type": "tool_use", "tool_name": "read_file", "tool_args": {"target_file": "src/auth.ts"}, "tool_execution_id": "tool_exec_01H...", "status": "started", "ts": "2025-09-30T17:10:02Z" },
+    { "type": "tool_result", "tool_name": "read_file", "tool_output": "File read successfully", "tool_execution_id": "tool_exec_01H...", "status": "completed", "ts": "2025-09-30T17:10:05Z" },
+    { "type": "file_edit", "file_path": "src/auth.ts", "lines_added": 5, "lines_removed": 2, "ts": "2025-09-30T17:10:10Z" }
   ],
   ...
 }
@@ -200,6 +201,7 @@ Event payload (SSE `data:` line):
   "type": "log",
   "level": "info",
   "message": "Running tests...",
+  "tool_execution_id": "tool_exec_01H...",
   "ts": "2025-01-01T12:00:00Z"
 }
 ```
@@ -220,6 +222,7 @@ Additional event types for agent activity:
   "type": "tool_use",
   "tool_name": "search_codebase",
   "tool_args": { "query": "authentication", "include_pattern": "*.ts" },
+  "tool_execution_id": "tool_exec_01H...",
   "status": "started",
   "ts": "2025-01-01T12:00:05Z"
 }
@@ -230,6 +233,7 @@ Additional event types for agent activity:
   "type": "tool_result",
   "tool_name": "search_codebase",
   "tool_output": "Found 42 matches in 12 files",
+  "tool_execution_id": "tool_exec_01H...",
   "status": "completed",
   "ts": "2025-01-01T12:00:08Z"
 }
@@ -245,6 +249,8 @@ Additional event types for agent activity:
   "ts": "2025-01-01T12:05:00Z"
 }
 ```
+
+**Tool Execution ID (`tool_execution_id`)**: A unique identifier assigned to each tool execution, used to correlate `tool_use`, `tool_result`, and related `log` events when multiple tools are running concurrently. This field is optional for `log` events (set to `null` when the log is not associated with a specific tool execution).
 
 Query parameters for events endpoint:
 - `type`: Filter by event types (comma-separated: `thought,tool_use,file_edit,log,status`)
