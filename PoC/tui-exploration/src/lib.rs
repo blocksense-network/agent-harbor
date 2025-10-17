@@ -54,9 +54,8 @@ pub mod task_manager;
 pub use ah_core::task_manager::ToolStatus;
 pub use ah_domain_types::{SelectedModel, TaskState, DraftTask, TaskExecution, DeliveryStatus, Repository, Branch, TaskInfo};
 pub use view_model::{Msg, ViewModel, TaskCardTypeEnum, TaskItem};
-pub use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, FocusElement, ModalState, TaskCardType, ActivityEntry, ButtonStyle, ButtonViewModel, DraftSaveState, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskCard, TaskCardMetadata};
-pub use ah_tui::view_model::task_entry::DraftControlsViewModel;
-pub use view::ViewCache;
+pub use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, FocusElement, ModalState, TaskCardType, AgentActivityRow, ButtonStyle, ButtonViewModel, DraftSaveState, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskMetadataViewModel, TaskEntryControlsViewModel};
+pub use ah_tui::view::{ViewCache, Theme};
 pub use settings::{Settings, FontStyle, SelectionDialogStyle, KeymapConfig, KeyBinding};
 pub use workspace_workflows::{WorkspaceWorkflows, PathWorkspaceWorkflows};
 pub use task_manager::{

@@ -1,6 +1,6 @@
 use tui_exploration::view_model::{*, create_draft_card_from_task};
 use ah_domain_types::{DraftTask, TaskState, DeliveryStatus, TaskExecution, SelectedModel};
-use ah_tui::view_model::{FocusElement, ModalState, TaskCardMetadata, TaskCardType, TaskExecutionViewModel};
+use ah_tui::view_model::{FocusElement, ModalState, TaskMetadataViewModel, TaskCardType, TaskExecutionViewModel};
 use crossterm::event::{MouseEvent, MouseEventKind, MouseButton};
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -361,7 +361,7 @@ fn down_arrow_from_draft_goes_to_filter_separator() {
             delivery_status: vec![],
         },
         title: "dummy".to_string(),
-        metadata: TaskCardMetadata {
+        metadata: TaskMetadataViewModel {
             repository: "dummy".to_string(),
             branch: "dummy".to_string(),
             models: vec![],

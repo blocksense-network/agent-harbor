@@ -38,44 +38,14 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::view_model::{ViewModel, InteractiveArea, MouseAction, TaskCardTypeEnum};
 use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, DraftSaveState};
-use ah_tui::view_model::{ActivityEntry};
+use ah_tui::view_model::{AgentActivityRow};
 use ah_tui::view_model::{FocusElement, TaskCardType};
+use ah_tui::view::{ViewCache, Theme};
+use ah_tui::view::draft_card;
 use crate::task_manager::{TaskEvent, TaskStatus, LogLevel};
 use ah_core::task_manager::ToolStatus;
 use ah_domain_types::TaskState;
-use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::StatefulImage;
-
-/// Cache for view-related computations and state
-pub struct ViewCache {
-    // Image rendering state
-    pub picker: Option<ratatui_image::picker::Picker>,
-    pub logo_protocol: Option<ratatui_image::protocol::StatefulProtocol>,
-
-    // Cached computed strings - only recompute if inputs changed
-    last_separator_width: Option<u16>,
-    cached_separator: Option<String>,
-}
-
-impl ViewCache {
-    pub fn new() -> Self {
-        ViewCache {
-            picker: None,
-            logo_protocol: None,
-            last_separator_width: None,
-            cached_separator: None,
-        }
-    }
-
-    /// Get a cached separator string - only recomputes if width changed
-    pub fn get_separator(&mut self, width: u16) -> &str {
-        if self.last_separator_width != Some(width) {
-            self.cached_separator = Some("─".repeat(width as usize));
-            self.last_separator_width = Some(width);
-        }
-        self.cached_separator.as_ref().unwrap()
-    }
-}
 
 /// Display item types (exact same as main.rs)
 #[derive(Debug, Clone)]
@@ -85,122 +55,102 @@ enum DisplayItem {
     Spacer,
 }
 
-/// Charm-inspired theme with cohesive colors and styling
-#[derive(Debug, Clone)]
-pub struct Theme {
-    pub bg: Color,
-    pub surface: Color,
-    pub text: Color,
-    pub muted: Color,
-    pub primary: Color,
-    pub accent: Color,
-    pub success: Color,
-    pub warning: Color,
-    pub error: Color,
-    pub border: Color,
-    pub border_focused: Color,
-}
+fn render_header(frame: &mut Frame<'_>, area: Rect, theme: &Theme, view_model: &mut ViewModel, view_cache: &mut ViewCache) {
+    // Create padded content area within the header
+    let content_area = if area.width >= 6 && area.height >= 4 {
+        // Add padding: 1 line top/bottom, 2 columns left/right
+        let vertical_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Top padding
+                Constraint::Min(1),    // Content area
+                Constraint::Length(1), // Bottom padding
+            ])
+            .split(area);
 
-impl Default for Theme {
-    fn default() -> Self {
-        Self {
-            // Dark theme inspired by Catppuccin Mocha with Charm aesthetics
-            bg: Color::Rgb(17, 17, 27),                // Base background
-            surface: Color::Rgb(24, 24, 37),           // Card/surface background
-            text: Color::Rgb(205, 214, 244),           // Main text
-            muted: Color::Rgb(127, 132, 156),          // Secondary text
-            primary: Color::Rgb(137, 180, 250),        // Blue for primary actions
-            accent: Color::Rgb(166, 218, 149),         // Green for success/accent
-            success: Color::Rgb(166, 218, 149),        // Green
-            warning: Color::Rgb(250, 179, 135),        // Orange/yellow
-            error: Color::Rgb(243, 139, 168),          // Red/pink
-            border: Color::Rgb(69, 71, 90),            // Border color
-            border_focused: Color::Rgb(137, 180, 250), // Focused border color
-        }
-    }
-}
+        let middle_area = vertical_chunks[1];
 
-impl Theme {
-    /// Create a card block with Charm-style rounded borders and padding (exact ah-tui style)
-    fn card_block(&self, title: &str) -> Block {
-        let title_line = Line::from(vec![
-            Span::raw("┤").fg(self.border),
-            Span::raw(format!(" {} ", title))
-                .style(Style::default().fg(self.text).add_modifier(Modifier::BOLD)),
-            Span::raw("├").fg(self.border),
-        ]);
+        let horizontal_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(2), // Left padding
+                Constraint::Min(1),    // Content area
+                Constraint::Length(2), // Right padding
+            ])
+            .split(middle_area);
 
-        Block::default()
-            .title(title_line)
-            .title_alignment(ratatui::layout::Alignment::Left)
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(self.border))
-            .padding(Padding::new(1, 1, 1, 1))
-            .style(Style::default().bg(self.bg))
-    }
+        horizontal_chunks[1]
+    } else {
+        // If area is too small, use the full area (no padding)
+        area
+    };
 
-    /// Create a card block with a right-aligned button in the title area
-    fn card_block_with_button(
-        &self,
-        title: &str,
-        button_text: &str,
-        button_focused: bool,
-    ) -> Block {
-        let button_style = if button_focused {
-            Style::default().fg(self.bg).bg(self.error).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(self.error).bg(self.surface).add_modifier(Modifier::BOLD)
+    // Render settings button in upper right corner (before logo to ensure it's always visible)
+    if area.width > 15 && area.height > 2 {
+        let button_text = "⚙ Settings";
+        let button_width = button_text.len() as u16 + 2; // +2 for padding
+        let button_x = area.x.saturating_add(area.width.saturating_sub(button_width + 2));
+        let button_area = Rect {
+            x: button_x,   // 2 units from right edge
+            y: area.y + 1, // Just below top padding
+            width: button_width,
+            height: 1,
         };
 
-        let title_line = Line::from(vec![
-            Span::raw("┤").fg(self.border),
-            Span::raw(format!(" {} ", title))
-                .style(Style::default().fg(self.text).add_modifier(Modifier::BOLD)),
-            Span::raw("├").fg(self.border),
-            Span::raw(" ".repeat(15)), // Spacer to push button to right
-            Span::styled(format!(" {} ", button_text), button_style),
+        let button_style = if matches!(view_model.focus_element, FocusElement::SettingsButton) {
+            Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(theme.primary)
+                .bg(theme.surface)
+                .add_modifier(Modifier::BOLD)
+        };
+
+        let button_line = Line::from(vec![
+            Span::styled(" ", button_style),
+            Span::styled(button_text, button_style),
+            Span::styled(" ", button_style),
         ]);
 
-        Block::default()
-            .title(title_line)
-            .title_alignment(ratatui::layout::Alignment::Left)
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(self.border))
-            .padding(Padding::new(2, 2, 1, 1))
-            .style(Style::default().bg(self.bg))
+        let button_paragraph = Paragraph::new(button_line);
+        frame.render_widget(button_paragraph, button_area);
+
+        view_model.interactive_areas.push(InteractiveArea {
+            rect: button_area,
+            action: MouseAction::OpenSettings,
+        });
     }
 
-    /// Style for primary elements
-    fn primary_style(&self) -> Style {
-        Style::default().fg(self.primary).add_modifier(Modifier::BOLD)
+    // Try to render the logo as an image first using persisted protocol
+    if let Some(protocol) = view_cache.logo_protocol.as_mut() {
+        // Render the logo image using StatefulImage widget in the padded area
+        let image_widget = StatefulImage::default();
+        frame.render_stateful_widget(image_widget, content_area, protocol);
+
+        // Check for encoding errors and log them (don't fail the whole UI)
+        if let Some(Err(e)) = protocol.last_encoding_result() {
+            // If image rendering fails, fall through to ASCII
+            eprintln!("Image logo rendering failed: {}", e);
+        } else {
+            // Image rendered successfully, we're done
+            return;
+        }
     }
 
-    /// Style for focused elements
-    fn focused_style(&self) -> Style {
-        Style::default().fg(self.bg).bg(self.primary).add_modifier(Modifier::BOLD)
-    }
+    // Fallback to ASCII logo
+    render_ascii_logo(frame, content_area);
+}
 
-    /// Style for text elements
-    fn text_style(&self) -> Style {
-        Style::default().fg(self.text)
-    }
+/// Render the ASCII logo as fallback
+fn render_ascii_logo(frame: &mut Frame<'_>, area: Rect) {
+    // Try to read the ASCII logo from assets
+    let logo_content = include_str!("../../../assets/agent-harbor-logo-80.ansi");
 
-    /// Style for success elements
-    fn success_style(&self) -> Style {
-        Style::default().fg(self.success)
-    }
-
-    /// Style for warning elements
-    fn warning_style(&self) -> Style {
-        Style::default().fg(self.warning)
-    }
-
-    /// Style for error elements
-    fn error_style(&self) -> Style {
-        Style::default().fg(self.error)
-    }
+    // Create a paragraph with the logo, preserving ANSI escape codes
+    let header = Paragraph::new(logo_content)
+        .style(Style::default())
+        .alignment(Alignment::Center);
+    frame.render_widget(header, area);
 }
 
 
@@ -382,7 +332,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                         TaskCardTypeEnum::Draft => {
                             let card = &view_model.draft_cards[card_info.index];
                             let is_selected = matches!(view_model.focus_element, FocusElement::DraftTask(idx) if idx == card_info.index);
-                            render_draft_card(frame, rect, card, &theme, is_selected);
+                            draft_card::render_draft_card(frame, rect, card, &theme, is_selected);
                             0 // Draft card is always at index 0
                         }
                         TaskCardTypeEnum::Task => {
@@ -454,119 +404,6 @@ fn find_textarea_area_for_card(_view_model: &ViewModel, _card: &TaskEntryViewMod
     ))
 }
 
-fn render_header(frame: &mut Frame<'_>, area: Rect, theme: &Theme, view_model: &mut ViewModel, view_cache: &mut ViewCache) {
-    // Create padded content area within the header
-    let content_area = if area.width >= 6 && area.height >= 4 {
-        // Add padding: 1 line top/bottom, 2 columns left/right
-        let vertical_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1), // Top padding
-                Constraint::Min(1),    // Content area
-                Constraint::Length(1), // Bottom padding
-            ])
-            .split(area);
-
-        let middle_area = vertical_chunks[1];
-
-        let horizontal_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(2), // Left padding
-                Constraint::Min(1),    // Content area
-                Constraint::Length(2), // Right padding
-            ])
-            .split(middle_area);
-
-        horizontal_chunks[1]
-    } else {
-        // If area is too small, use the full area (no padding)
-        area
-    };
-
-    // Render settings button in upper right corner (before logo to ensure it's always visible)
-    if area.width > 15 && area.height > 2 {
-        let button_text = "⚙ Settings";
-        let button_width = button_text.len() as u16 + 2; // +2 for padding
-        let button_x = area.x.saturating_add(area.width.saturating_sub(button_width + 2));
-        let button_area = Rect {
-            x: button_x,   // 2 units from right edge
-            y: area.y + 1, // Just below top padding
-            width: button_width,
-            height: 1,
-        };
-
-        let button_style = if matches!(view_model.focus_element, FocusElement::SettingsButton) {
-            Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD)
-        };
-
-        let button_line = Line::from(vec![
-            Span::styled(" ", button_style),
-            Span::styled(button_text, button_style),
-            Span::styled(" ", button_style),
-        ]);
-
-        let button_paragraph = Paragraph::new(button_line);
-        frame.render_widget(button_paragraph, button_area);
-
-        view_model.interactive_areas.push(InteractiveArea {
-            rect: button_area,
-            action: MouseAction::OpenSettings,
-        });
-    }
-
-    // Try to render the logo as an image first using persisted protocol
-    if let Some(protocol) = view_cache.logo_protocol.as_mut() {
-        // Render the logo image using StatefulImage widget in the padded area
-        let image_widget = StatefulImage::default();
-        frame.render_stateful_widget(image_widget, content_area, protocol);
-
-        // Check for encoding errors and log them (don't fail the whole UI)
-        if let Some(Err(e)) = protocol.last_encoding_result() {
-            // If image rendering fails, fall through to ASCII
-            eprintln!("Image logo rendering failed: {}", e);
-        } else {
-            // Image rendered successfully, we're done
-            return;
-        }
-    }
-
-    // Fallback to ASCII logo
-    render_ascii_logo(frame, content_area);
-}
-
-/// Render a draft card (exact same as main.rs TaskCard::render with state == Draft)
-fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) {
-    // Draft cards have outer border with "New Task" title
-    let border_style = if is_selected {
-        Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.border)
-    };
-
-    let title_style = if is_selected {
-        Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.border).add_modifier(Modifier::BOLD)
-    };
-
-    let border_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(border_style)
-        .title("┤ New Task ├")
-        .title_alignment(ratatui::layout::Alignment::Left)
-        .title_style(title_style);
-
-    let inner_area = border_block.inner(area);
-    frame.render_widget(border_block, area);
-    render_draft_card_content(frame, inner_area, card, theme);
-}
 
 /// Render a task card (exact same as main.rs TaskCard::render for Active/Completed/Merged)
 fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme, is_selected: bool) {
@@ -599,251 +436,7 @@ fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewM
     }
 }
 
-/// Render draft card content (exact same as main.rs TaskCard::render_draft_card_content)
-fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme) {
-    let content_height = area.height as usize;
 
-    // Split the available area between textarea and buttons (exact same as main.rs)
-    let button_height: usize = 1; // Single line for buttons
-    let separator_height: usize = 1; // Empty line between
-    let padding_total = 2; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING
-    let available_content = content_height.saturating_sub(button_height + separator_height);
-    let available_inner = available_content.saturating_sub(padding_total).max(1);
-    let desired_lines = card.description.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
-    let visible_lines = desired_lines.min(available_inner).max(1);
-
-    let textarea_inner_height = visible_lines as u16;
-    let textarea_total_height = (visible_lines + padding_total) as u16;
-
-    // Add configurable left padding for textarea and buttons
-    let textarea_area = Rect {
-        x: area.x + 1, // TEXTAREA_LEFT_PADDING
-        y: area.y + 1, // TEXTAREA_TOP_PADDING
-        width: area.width.saturating_sub(2), // Left + right padding
-        height: textarea_inner_height,
-    };
-
-    let button_area = Rect {
-        x: area.x, // BUTTON_LEFT_PADDING = 0
-        y: area.y + textarea_total_height + separator_height as u16,
-        width: area.width,
-        height: button_height as u16,
-    };
-
-    // Render padding areas around textarea
-    let padding_style = Style::default().bg(theme.bg);
-
-    // Top padding
-    let top_padding_area = Rect {
-        x: area.x,
-        y: area.y,
-        width: area.width,
-        height: 1, // TEXTAREA_TOP_PADDING
-    };
-    frame.render_widget(Paragraph::new("").style(padding_style), top_padding_area);
-
-    // Bottom padding
-    let bottom_padding_area = Rect {
-        x: area.x,
-        y: area.y + 1 + textarea_inner_height, // After top padding + textarea
-        width: area.width,
-        height: 1, // TEXTAREA_BOTTOM_PADDING
-    };
-    frame.render_widget(Paragraph::new("").style(padding_style), bottom_padding_area);
-
-    // Left padding
-    let left_padding_area = Rect {
-        x: area.x,
-        y: area.y + 1,
-        width: 1, // TEXTAREA_LEFT_PADDING
-        height: textarea_inner_height,
-    };
-    frame.render_widget(Paragraph::new("").style(padding_style), left_padding_area);
-
-    // Right padding
-    let right_padding_area = Rect {
-        x: area.x + area.width.saturating_sub(1),
-        y: area.y + 1,
-        width: 1, // TEXTAREA_RIGHT_PADDING
-        height: textarea_inner_height,
-    };
-    frame.render_widget(Paragraph::new("").style(padding_style), right_padding_area);
-
-    // Render the textarea
-    frame.render_widget(&card.description, textarea_area);
-
-    // Store textarea area for caret positioning on mouse clicks
-    // Temporarily disabled to avoid borrowing issues - will be re-enabled later
-    // view_model.last_textarea_area = Some(textarea_area);
-
-    // Render separator line
-    if (textarea_total_height as usize + separator_height) < content_height {
-        let separator_area = Rect {
-            x: area.x,
-            y: area.y + textarea_total_height,
-            width: area.width,
-            height: separator_height as u16,
-        };
-        let separator = Paragraph::new("").style(Style::default().bg(theme.bg));
-        frame.render_widget(separator, separator_area);
-    }
-
-    // Render buttons
-    let repo_button_text = if card.repository.is_empty() {
-        "📁 Repository".to_string()
-    } else {
-        format!("📁 {}", card.repository)
-    };
-
-    let branch_button_text = if card.branch.is_empty() {
-        "🌿 Branch".to_string()
-    } else {
-        format!("🌿 {}", card.branch)
-    };
-
-    let models_button_text = if card.models.is_empty() {
-        "🤖 Models".to_string()
-    } else {
-        format!("🤖 {} model(s)", card.models.len())
-    };
-
-    let go_button_text = "⏎ Go".to_string();
-
-    // Create button spans with focus styling using theme - exactly like main.rs
-    let repo_button = if matches!(card.focus_element, FocusElement::RepositoryButton) {
-        Span::styled(format!(" {} ", repo_button_text), theme.focused_style())
-    } else {
-        Span::styled(
-            format!(" {} ", repo_button_text),
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
-
-    let branch_button = if matches!(card.focus_element, FocusElement::BranchButton) {
-        Span::styled(format!(" {} ", branch_button_text), theme.focused_style())
-    } else {
-        Span::styled(
-            format!(" {} ", branch_button_text),
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
-
-    let models_button = if matches!(card.focus_element, FocusElement::ModelButton) {
-        Span::styled(format!(" {} ", models_button_text), theme.focused_style())
-    } else {
-        Span::styled(
-            format!(" {} ", models_button_text),
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
-
-    let go_button = if matches!(card.focus_element, FocusElement::GoButton) {
-        Span::styled(
-            format!(" {} ", go_button_text),
-            Style::default().fg(Color::Black).bg(theme.accent).add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::styled(
-            format!(" {} ", go_button_text),
-            Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD),
-        )
-    };
-
-    let button_line = Line::from(vec![
-        repo_button,
-        Span::raw(" "),
-        branch_button,
-        Span::raw(" "),
-        models_button,
-        Span::raw(" "),
-        go_button,
-    ]);
-
-    let button_paragraph = Paragraph::new(button_line).style(Style::default().bg(theme.bg));
-    frame.render_widget(button_paragraph, button_area);
-
-    // Register interactive areas for draft card buttons
-    // Temporarily disabled to avoid borrowing issues - will be re-enabled later
-    // register_draft_card_button_areas(view_model, button_area, &repo_button_text, &branch_button_text, &models_button_text, &go_button_text);
-}
-
-/// Register interactive areas for draft card buttons
-fn register_draft_card_button_areas(
-    view_model: &mut ViewModel,
-    button_area: Rect,
-    repo_text: &str,
-    branch_text: &str,
-    models_text: &str,
-    go_text: &str,
-) {
-    use crate::view_model::MouseAction;
-
-    let mut current_x = button_area.x;
-
-    // Repository button: "📁 Repository" -> add 2 for emoji + space + space
-    let repo_width = repo_text.chars().count() as u16 + 2;
-    let repo_rect = Rect {
-        x: current_x,
-        y: button_area.y,
-        width: repo_width,
-        height: button_area.height,
-    };
-    view_model.interactive_areas.push(InteractiveArea {
-        rect: repo_rect,
-        action: MouseAction::ActivateRepositoryModal,
-    });
-    current_x += repo_width + 1; // +1 for space
-
-    // Branch button: "🌿 Branch" -> add 2 for emoji + space + space
-    let branch_width = branch_text.chars().count() as u16 + 2;
-    let branch_rect = Rect {
-        x: current_x,
-        y: button_area.y,
-        width: branch_width,
-        height: button_area.height,
-    };
-    view_model.interactive_areas.push(InteractiveArea {
-        rect: branch_rect,
-        action: MouseAction::ActivateBranchModal,
-    });
-    current_x += branch_width + 1; // +1 for space
-
-    // Models button: "🤖 Models" -> add 2 for emoji + space + space
-    let models_width = models_text.chars().count() as u16 + 2;
-    let models_rect = Rect {
-        x: current_x,
-        y: button_area.y,
-        width: models_width,
-        height: button_area.height,
-    };
-    view_model.interactive_areas.push(InteractiveArea {
-        rect: models_rect,
-        action: MouseAction::ActivateModelModal,
-    });
-    current_x += models_width + 1; // +1 for space
-
-    // Go button: "⏎ Go" -> add 2 for emoji + space + space
-    let go_width = go_text.chars().count() as u16 + 2;
-    let go_rect = Rect {
-        x: current_x,
-        y: button_area.y,
-        width: go_width,
-        height: button_area.height,
-    };
-    view_model.interactive_areas.push(InteractiveArea {
-        rect: go_rect,
-        action: MouseAction::LaunchTask,
-    });
-}
 
 /// Render active task card (exact same as main.rs TaskCard::render_active_card)
 fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme) {
@@ -908,14 +501,14 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
         let mut all_lines = Vec::new();
         for entry in activity_entries.iter().rev().take(3).rev() {
             match entry {
-                ActivityEntry::AgentThought { thought } => {
+                AgentActivityRow::AgentThought { thought } => {
                     all_lines.push(Line::from(vec![
                         Span::styled("💭", Style::default().fg(theme.muted)),
                         Span::raw(" "),
                         Span::styled(thought.clone(), Style::default().fg(theme.text)),
                     ]));
                 }
-                ActivityEntry::AgentEdit { file_path, lines_added, lines_removed, description } => {
+                AgentActivityRow::AgentEdit { file_path, lines_added, lines_removed, description } => {
                     let desc = if let Some(desc) = description.as_ref() {
                         desc.clone()
                     } else {
@@ -927,7 +520,7 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
                         Span::styled(desc, Style::default().fg(theme.text)),
                     ]));
                 }
-                ActivityEntry::ToolUse { tool_name, last_line, completed, status, .. } => {
+                AgentActivityRow::ToolUse { tool_name, last_line, completed, status, .. } => {
                     if *completed {
                         // Completed tool: show final result
                         let status_icon = match status {
@@ -1065,17 +658,6 @@ fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExec
     frame.render_widget(paragraph, area);
 }
 
-/// Render the ASCII logo as fallback
-fn render_ascii_logo(frame: &mut Frame<'_>, area: Rect) {
-    // Try to read the ASCII logo from assets
-    let logo_content = include_str!("../../../assets/agent-harbor-logo-80.ansi");
-
-    // Create a paragraph with the logo, preserving ANSI escape codes
-    let header = Paragraph::new(logo_content)
-        .style(Style::default())
-        .alignment(Alignment::Center);
-    frame.render_widget(header, area);
-}
 
 fn render_filter_bar(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, theme: &Theme, view_cache: &mut ViewCache) {
     let repo_label = "All".to_string(); // TODO: Get from view_model

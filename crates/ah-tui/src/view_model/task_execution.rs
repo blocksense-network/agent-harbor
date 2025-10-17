@@ -5,7 +5,7 @@ use ah_core::task_manager::ToolStatus;
 use super::{ButtonViewModel, FocusElement};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaskCardMetadata {
+pub struct TaskMetadataViewModel {
     pub repository: String,
     pub branch: String,
     pub models: Vec<SelectedModel>,
@@ -16,7 +16,7 @@ pub struct TaskCardMetadata {
 
 /// Activity entries for active task cards
 #[derive(Debug, Clone, PartialEq)]
-pub enum ActivityEntry {
+pub enum AgentActivityRow {
     /// Agent thought/reasoning
     AgentThought {
         thought: String,
@@ -43,7 +43,7 @@ pub enum ActivityEntry {
 pub enum TaskCardType {
     /// Active task with real-time activity
     Active {
-        activity_entries: Vec<ActivityEntry>, // Processed activity data (ViewModel layer)
+        activity_entries: Vec<AgentActivityRow>, // Processed activity data (ViewModel layer)
         pause_delete_buttons: String,
     },
     /// Completed task with delivery indicators
@@ -62,7 +62,7 @@ pub struct TaskExecutionViewModel {
     pub id: String, // Unique identifier for the task card
     pub task: TaskExecution, // Domain object
     pub title: String,
-    pub metadata: TaskCardMetadata,
+    pub metadata: TaskMetadataViewModel,
     pub height: u16,
     pub card_type: TaskCardType, // Active, Completed, or Merged
     pub focus_element: FocusElement, // Current focus within this card

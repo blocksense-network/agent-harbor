@@ -13,7 +13,7 @@ use tui_exploration::{
 };
 use ah_core::task_manager::ToolStatus;
 use ah_domain_types::{TaskExecution, TaskState, SelectedModel, DeliveryStatus};
-use ah_tui::view_model::{FocusElement, ActivityEntry, TaskCardType, TaskCardMetadata, TaskExecutionViewModel};
+use ah_tui::view_model::{FocusElement, AgentActivityRow, TaskCardType, TaskMetadataViewModel, TaskExecutionViewModel};
 
 #[cfg(test)]
 mod navigation_tests {
@@ -76,7 +76,7 @@ mod navigation_tests {
                 delivery_status: vec![DeliveryStatus::BranchCreated],
             },
             title: "Completed Task".to_string(),
-            metadata: TaskCardMetadata {
+            metadata: TaskMetadataViewModel {
                 repository: "test/repo".to_string(),
                 branch: "main".to_string(),
                 models: vec![SelectedModel {
@@ -110,7 +110,7 @@ mod navigation_tests {
                 delivery_status: vec![],
             },
             title: "Active Task".to_string(),
-            metadata: TaskCardMetadata {
+            metadata: TaskMetadataViewModel {
                 repository: "test/repo".to_string(),
                 branch: "feature/test".to_string(),
                 models: vec![SelectedModel {
@@ -123,7 +123,7 @@ mod navigation_tests {
             },
             height: 5,
             card_type: TaskCardType::Active {
-                activity_entries: vec![ActivityEntry::AgentThought { thought: "Working...".to_string() }],
+                activity_entries: vec![AgentActivityRow::AgentThought { thought: "Working...".to_string() }],
                 pause_delete_buttons: "Pause | Delete".to_string(),
             },
             focus_element: FocusElement::ExistingTask(1),

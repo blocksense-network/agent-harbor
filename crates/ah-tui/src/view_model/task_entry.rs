@@ -4,7 +4,7 @@ use ah_domain_types::SelectedModel;
 use super::{ButtonViewModel, DraftSaveState, FocusElement};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DraftControlsViewModel {
+pub struct TaskEntryControlsViewModel {
     pub repository_button: ButtonViewModel,
     pub branch_button: ButtonViewModel,
     pub model_button: ButtonViewModel,
@@ -20,7 +20,7 @@ pub struct TaskEntryViewModel {
     pub models: Vec<SelectedModel>, // Selected models
     pub created_at: String, // Creation timestamp
     pub height: u16,
-    pub controls: DraftControlsViewModel,
+    pub controls: TaskEntryControlsViewModel,
     pub save_state: DraftSaveState,
     pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
     pub focus_element: FocusElement, // Current focus within this card

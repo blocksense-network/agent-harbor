@@ -12,7 +12,7 @@ use tui_exploration::{
     settings::Settings,
 };
 use ah_core::task_manager::ToolStatus;
-use ah_tui::view_model::{FocusElement, ActivityEntry, TaskCardType, TaskExecutionViewModel};
+use ah_tui::view_model::{FocusElement, AgentActivityRow, TaskCardType, TaskExecutionViewModel};
 use time::OffsetDateTime;
 
 #[cfg(test)]
@@ -51,12 +51,12 @@ mod event_processing_tests {
             delivery_status: vec![],
         };
 
-        use ah_tui::view_model::{TaskExecutionViewModel, TaskCardType, TaskCardMetadata};
+        use ah_tui::view_model::{TaskExecutionViewModel, TaskCardType, TaskMetadataViewModel};
         let test_card = TaskExecutionViewModel {
             id: "test_task_1".to_string(),
             task: test_task,
             title: "Test Active Task".to_string(),
-            metadata: TaskCardMetadata {
+            metadata: TaskMetadataViewModel {
                 repository: "test/repo".to_string(),
                 branch: "main".to_string(),
                 models: vec![ah_domain_types::SelectedModel {
@@ -98,7 +98,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::AgentThought { thought } => {
+                AgentActivityRow::AgentThought { thought } => {
                     assert_eq!(thought, "Analyzing the codebase structure");
                 }
                 _ => panic!("Expected AgentThought activity entry"),
@@ -128,7 +128,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::AgentEdit { file_path, lines_added, lines_removed, description } => {
+                AgentActivityRow::AgentEdit { file_path, lines_added, lines_removed, description } => {
                     assert_eq!(file_path, "src/main.rs");
                     assert_eq!(*lines_added, 10);
                     assert_eq!(*lines_removed, 5);
@@ -161,7 +161,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
+                AgentActivityRow::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     assert_eq!(*last_line, None); // Initially no output
@@ -203,7 +203,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
+                AgentActivityRow::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     assert_eq!(last_line, &Some("Found 42 files in directory".to_string()));
@@ -253,7 +253,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
+                AgentActivityRow::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     // Should still have the log message as last_line
@@ -287,15 +287,15 @@ mod event_processing_tests {
 
             // Should have thoughts 3, 4, 5 (most recent)
             match &activity_entries[0] {
-                ActivityEntry::AgentThought { thought } => assert_eq!(thought, "Thought number 3"),
+                AgentActivityRow::AgentThought { thought } => assert_eq!(thought, "Thought number 3"),
                 _ => panic!("Expected AgentThought"),
             }
             match &activity_entries[1] {
-                ActivityEntry::AgentThought { thought } => assert_eq!(thought, "Thought number 4"),
+                AgentActivityRow::AgentThought { thought } => assert_eq!(thought, "Thought number 4"),
                 _ => panic!("Expected AgentThought"),
             }
             match &activity_entries[2] {
-                ActivityEntry::AgentThought { thought } => assert_eq!(thought, "Thought number 5"),
+                AgentActivityRow::AgentThought { thought } => assert_eq!(thought, "Thought number 5"),
                 _ => panic!("Expected AgentThought"),
             }
         }
@@ -462,19 +462,19 @@ mod event_processing_tests {
 
             // Find the tool entries (order may vary)
             let tool1_entry = activity_entries.iter().find(|entry| {
-                matches!(entry, ActivityEntry::ToolUse { tool_execution_id, .. } if tool_execution_id == "tool_exec_1")
+                matches!(entry, AgentActivityRow::ToolUse { tool_execution_id, .. } if tool_execution_id == "tool_exec_1")
             });
             let tool2_entry = activity_entries.iter().find(|entry| {
-                matches!(entry, ActivityEntry::ToolUse { tool_execution_id, .. } if tool_execution_id == "tool_exec_2")
+                matches!(entry, AgentActivityRow::ToolUse { tool_execution_id, .. } if tool_execution_id == "tool_exec_2")
             });
 
             assert!(tool1_entry.is_some());
             assert!(tool2_entry.is_some());
 
-            if let ActivityEntry::ToolUse { last_line, .. } = tool1_entry.unwrap() {
+            if let AgentActivityRow::ToolUse { last_line, .. } = tool1_entry.unwrap() {
                 assert_eq!(last_line, &Some("Listing directory contents".to_string()));
             }
-            if let ActivityEntry::ToolUse { last_line, .. } = tool2_entry.unwrap() {
+            if let AgentActivityRow::ToolUse { last_line, .. } = tool2_entry.unwrap() {
                 assert_eq!(last_line, &Some("Searching for functions".to_string()));
             }
         }
@@ -509,7 +509,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::ToolUse { last_line, completed, .. } => {
+                AgentActivityRow::ToolUse { last_line, completed, .. } => {
                     assert_eq!(last_line, &Some("total 42".to_string()));
                     assert_eq!(*completed, true);
                 }
@@ -573,7 +573,7 @@ mod event_processing_tests {
         if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                ActivityEntry::ToolUse { completed, status, last_line, .. } => {
+                AgentActivityRow::ToolUse { completed, status, last_line, .. } => {
                     assert_eq!(*completed, true);
                     assert_eq!(*status, ToolStatus::Failed);
                     assert_eq!(last_line, &Some("bash: invalid_command: command not found".to_string()));

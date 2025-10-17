@@ -1,14 +1,63 @@
-//! ViewModel types and structures for the TUI
+//! ViewModel Layer - UI State and Presentation Models
 //!
 //! This module contains the presentation models and UI state management
-//! types that bridge the domain model to the UI rendering layer.
+//! that bridge the domain model to the UI rendering layer. The ViewModel
+//! layer handles all UI logic, input processing, and state transformations.
+//!
+//! ## What Belongs Here:
+//!
+//! ✅ **Presentation Models**: ViewModel structs that transform domain data for UI
+//! ✅ **UI State Management**: Focus tracking, selection states, modal states
+//! ✅ **Input Processing**: Key handling, mouse event processing, validation
+//! ✅ **State Transformations**: Domain objects → UI display formats
+//! ✅ **UI Logic**: Navigation, focus management, interaction handling
+//! ✅ **Network Operations**: API calls and data fetching are allowed here!
+//!
+//! ## Architecture Deviation from Classic MVVM:
+//!
+//! Unlike classic MVVM architecture, we allow network API calls to be implemented
+//! directly within the ViewModel. This enables the most natural code expression
+//! without requiring complex message passing for input handling, network requests,
+//! and responses.
+//!
+//! ## Primary Mission: Headless Testing
+//!
+//! The main goal of the ViewModel is to enable **fully headless testing** that can
+//! run with simulated time at maximum CPU speed. This is made possible by Tokio's
+//! fake time support, allowing the ViewModel's mission to be accomplished while
+//! keeping the code simple and natural.
+//!
+//! ## What Does NOT Belong Here:
+//!
+//! ❌ **Business Logic**: Domain rules, validation, data operations
+//! ❌ **Rendering**: Ratatui widget creation, styling, layout
+//! ❌ **Domain Entities**: Core business objects, persistence
+//!
+//! ## Architecture Role:
+//!
+//! The ViewModel is the reactive bridge between Model and View:
+//! 1. **Receives Domain Events** - Updates from the Model layer
+//! 2. **Manages UI State** - Focus, selection, navigation state
+//! 3. **Processes Input** - Key events, mouse events, user interactions
+//! 4. **Transforms Data** - Domain objects → presentation models
+//! 5. **Updates View** - Notifies View of state changes for re-rendering
+//!
+//! ## Design Principles:
+//!
+//! - **Reactive Updates**: ViewModel responds to domain changes and user input
+//! - **State Encapsulation**: All UI state is managed in one place
+//! - **Input Abstraction**: Platform-agnostic input event handling
+//! - **Data Transformation**: Domain → UI data structure conversions
+//! - **Event-Driven**: Clear separation of input → processing → output
+//! - **Testability**: Fully headless testing with mocked external APIs
+//!                    and simulated time
 
 pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
-pub use task_entry::{TaskEntryViewModel, DraftControlsViewModel};
-pub use task_execution::{TaskExecutionViewModel, ActivityEntry, TaskCardType, TaskCardMetadata};
+pub use task_entry::{TaskEntryViewModel, TaskEntryControlsViewModel};
+pub use task_execution::{TaskExecutionViewModel, AgentActivityRow, TaskCardType, TaskMetadataViewModel};
 
 // Common UI types used across view models
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -117,16 +166,3 @@ pub enum AutoSaveState {
     Error(String),
 }
 
-/// Task card presentation model - how tasks are displayed in the UI
-#[derive(Debug, Clone, PartialEq)]
-pub struct TaskCard {
-    pub id: String,
-    pub title: String,
-    pub repository: String,
-    pub branch: String,
-    pub agents: Vec<ah_domain_types::SelectedModel>,
-    pub state: ah_domain_types::TaskState,
-    pub timestamp: String,
-    pub activity: Vec<String>, // For active tasks
-    pub delivery_indicators: Vec<DeliveryIndicator>, // For completed/merged tasks
-}

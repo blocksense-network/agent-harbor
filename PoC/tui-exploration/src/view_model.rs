@@ -52,7 +52,7 @@
 //! ```
 
 use ah_domain_types::{TaskExecution, DraftTask, SelectedModel, TaskState, TaskInfo, DeliveryStatus};
-use ah_tui::view_model::{FocusElement, ModalState, ButtonStyle, ButtonViewModel, DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel, ActivityEntry, TaskCardType, TaskCardMetadata, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskCard, DraftControlsViewModel};
+use ah_tui::view_model::{FocusElement, ModalState, ButtonStyle, ButtonViewModel, DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel, AgentActivityRow, TaskCardType, TaskMetadataViewModel, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskEntryControlsViewModel};
 use crate::workspace_files::WorkspaceFiles;
 use crate::workspace_workflows::WorkspaceWorkflows;
 use crate::Settings;
@@ -1087,12 +1087,12 @@ impl ViewModel {
                             match event {
                                 TaskEvent::Thought { thought, .. } => {
                                     // Add new thought entry
-                                    let activity_entry = ActivityEntry::AgentThought { thought };
+                                    let activity_entry = AgentActivityRow::AgentThought { thought };
                                     activity_entries.push(activity_entry);
                                 }
                                 TaskEvent::FileEdit { file_path, lines_added, lines_removed, description, .. } => {
                                     // Add new file edit entry
-                                    let activity_entry = ActivityEntry::AgentEdit {
+                                    let activity_entry = AgentActivityRow::AgentEdit {
                                         file_path,
                                         lines_added,
                                         lines_removed,
@@ -1102,7 +1102,7 @@ impl ViewModel {
                                 }
                                 TaskEvent::ToolUse { tool_name, tool_execution_id, status, .. } => {
                                     // Add new tool use entry
-                                    let activity_entry = ActivityEntry::ToolUse {
+                                    let activity_entry = AgentActivityRow::ToolUse {
                                         tool_name,
                                         tool_execution_id,
                                         last_line: None,
@@ -1113,18 +1113,18 @@ impl ViewModel {
                                 }
                                 TaskEvent::Log { message, tool_execution_id: Some(tool_exec_id), .. } => {
                                     // Update existing tool use entry with log message as last_line
-                                    if let Some(ActivityEntry::ToolUse { tool_execution_id, ref mut last_line, .. }) =
+                                    if let Some(AgentActivityRow::ToolUse { tool_execution_id, ref mut last_line, .. }) =
                                         activity_entries.iter_mut().rev().find(|entry| {
-                                            matches!(entry, ActivityEntry::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_exec_id)
+                                            matches!(entry, AgentActivityRow::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_exec_id)
                                         }) {
                                         *last_line = Some(message);
                                     }
                                 }
                                 TaskEvent::ToolResult { tool_name, tool_output, tool_execution_id, status: result_status, .. } => {
                                     // Update existing tool use entry to mark as completed
-                                    if let Some(ActivityEntry::ToolUse { ref mut completed, ref mut last_line, ref mut status, .. }) =
+                                    if let Some(AgentActivityRow::ToolUse { ref mut completed, ref mut last_line, ref mut status, .. }) =
                                         activity_entries.iter_mut().rev().find(|entry| {
-                                            matches!(entry, ActivityEntry::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_execution_id)
+                                            matches!(entry, AgentActivityRow::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_execution_id)
                                         }) {
                                         *completed = true;
                                         *status = result_status;
@@ -1668,7 +1668,7 @@ fn create_draft_card_textarea(text: &str) -> tui_textarea::TextArea<'static> {
 pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement) -> TaskEntryViewModel {
     let description = create_draft_card_textarea(&task.description);
 
-    let controls = DraftControlsViewModel {
+    let controls = TaskEntryControlsViewModel {
         repository_button: ButtonViewModel {
             text: task.repository.clone(),
             is_focused: false,
@@ -1715,7 +1715,7 @@ pub fn create_draft_card_from_task(task: DraftTask, focus_element: FocusElement)
 fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> TaskExecutionViewModel {
     let title = format_title_from_execution(&task);
 
-    let metadata = TaskCardMetadata {
+    let metadata = TaskMetadataViewModel {
         repository: task.repository.clone(),
         branch: task.branch.clone(),
         models: task.agents.clone(),
@@ -1730,40 +1730,30 @@ fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> 
         }).collect::<Vec<_>>().join(" "),
     };
 
-    let card_type = create_card_type_view_model(&TaskCard {
-        id: task.id.clone(),
-        title: title.clone(),
-        repository: task.repository.clone(),
-        branch: task.branch.clone(),
-        agents: task.agents.clone(),
-        state: task.state,
-        timestamp: task.timestamp.clone(),
-        activity: task.activity.clone(),
-        delivery_indicators: task.delivery_status.iter().map(|status| {
-            match status {
-                DeliveryStatus::BranchCreated => DeliveryIndicator::BranchCreated,
-                DeliveryStatus::PullRequestCreated { pr_number, title } => DeliveryIndicator::PrCreated { pr_number: *pr_number, title: title.clone() },
-                DeliveryStatus::PullRequestMerged { pr_number } => DeliveryIndicator::PrMerged { pr_number: *pr_number },
-            }
-        }).collect(),
-    }, &[task.clone()], false);
+    let card_type = match task.state {
+        TaskState::Active => TaskCardType::Active {
+            activity_entries: task.activity.iter().map(|activity| {
+                AgentActivityRow::AgentThought {
+                    thought: activity.clone(),
+                }
+            }).collect(),
+            pause_delete_buttons: "Pause | Delete".to_string(),
+        },
+        TaskState::Completed => TaskCardType::Completed {
+            delivery_indicators: String::new(),
+        },
+        TaskState::Merged => TaskCardType::Merged {
+            delivery_indicators: String::new(),
+        },
+        TaskState::Draft => unreachable!("Drafts should not be in task_executions"),
+    };
 
     TaskExecutionViewModel {
         id: task.id.clone(),
-        task,
+        task: task.clone(),
         title: title.clone(),
         metadata,
-        height: calculate_card_height(&TaskCard {
-            id: String::new(),
-            title: title.clone(),
-            repository: String::new(),
-            branch: String::new(),
-            agents: vec![],
-            state: TaskState::Active,
-            timestamp: String::new(),
-            activity: vec![],
-            delivery_indicators: vec![],
-        }, settings),
+        height: calculate_card_height(&task, settings),
         card_type,
         focus_element: FocusElement::GoButton, // Default focus for task cards
     }
@@ -1774,7 +1764,7 @@ fn create_draft_card_view_models(draft_tasks: &[DraftTask], _task_executions: &[
     draft_tasks.iter().map(|draft| {
         let textarea = create_draft_card_textarea(&draft.description);
 
-        let controls = DraftControlsViewModel {
+        let controls = TaskEntryControlsViewModel {
             repository_button: ButtonViewModel {
                 text: draft.repository.clone(),
                 is_focused: false,
@@ -1825,47 +1815,48 @@ fn create_task_card_view_models(draft_tasks: &[DraftTask], task_executions: &[Ta
     visible_tasks.into_iter().enumerate().map(|(_idx, task_item)| {
         match task_item {
             TaskItem::Task(task_execution, _) => {
-                // Convert TaskExecution to UI TaskCard
-                let ui_task = TaskCard {
-                    id: task_execution.id.clone(),
-                    title: format_title_from_execution(&task_execution),
+                let title = format_title_from_execution(&task_execution);
+
+                let metadata = TaskMetadataViewModel {
                     repository: task_execution.repository.clone(),
                     branch: task_execution.branch.clone(),
-                    agents: task_execution.agents.clone(),
+                    models: task_execution.agents.clone(),
                     state: task_execution.state,
                     timestamp: task_execution.timestamp.clone(),
-                    activity: task_execution.activity.clone(),
                     delivery_indicators: task_execution.delivery_status.iter().map(|status| {
                         match status {
-                            DeliveryStatus::BranchCreated => DeliveryIndicator::BranchCreated,
-                            DeliveryStatus::PullRequestCreated { pr_number, title } => DeliveryIndicator::PrCreated { pr_number: *pr_number, title: title.clone() },
-                            DeliveryStatus::PullRequestMerged { pr_number } => DeliveryIndicator::PrMerged { pr_number: *pr_number },
-                        }
-                    }).collect(),
-                };
-
-                let metadata = TaskCardMetadata {
-                    repository: ui_task.repository.clone(),
-                    branch: ui_task.branch.clone(),
-                    models: ui_task.agents.clone(),
-                    state: ui_task.state,
-                    timestamp: ui_task.timestamp.clone(),
-                    delivery_indicators: ui_task.delivery_indicators.iter().map(|indicator| {
-                        match indicator {
-                            DeliveryIndicator::BranchCreated => "⎇",
-                            DeliveryIndicator::PrCreated { .. } => "⇄",
-                            DeliveryIndicator::PrMerged { .. } => "✓",
+                            DeliveryStatus::BranchCreated => "⎇",
+                            DeliveryStatus::PullRequestCreated { .. } => "⇄",
+                            DeliveryStatus::PullRequestMerged { .. } => "✓",
                         }
                     }).collect::<Vec<_>>().join(" "),
                 };
 
+                let card_type = match task_execution.state {
+                    TaskState::Active => TaskCardType::Active {
+                        activity_entries: task_execution.activity.iter().map(|activity| {
+                            AgentActivityRow::AgentThought {
+                                thought: activity.clone(),
+                            }
+                        }).collect(),
+                        pause_delete_buttons: "Pause | Delete".to_string(),
+                    },
+                    TaskState::Completed => TaskCardType::Completed {
+                        delivery_indicators: String::new(),
+                    },
+                    TaskState::Merged => TaskCardType::Merged {
+                        delivery_indicators: String::new(),
+                    },
+                    TaskState::Draft => unreachable!("Drafts should not be in task_executions"),
+                };
+
                 TaskExecutionViewModel {
-                    id: ui_task.id.clone(),
+                    id: task_execution.id.clone(),
                     task: task_execution.clone(),
-                    title: ui_task.title.clone(),
+                    title,
                     metadata,
-                    height: calculate_card_height(&ui_task, settings),
-                    card_type: create_card_type_view_model(&ui_task, task_executions, false),
+                    height: calculate_card_height(&task_execution, settings),
+                    card_type,
                     focus_element,
                 }
             }
@@ -1883,33 +1874,12 @@ fn format_title_from_execution(task: &TaskExecution) -> String {
     format!("Task {}", task.id)
 }
 
-fn calculate_card_height(task: &TaskCard, settings: &Settings) -> u16 {
+fn calculate_card_height(task: &TaskExecution, settings: &Settings) -> u16 {
     // Calculate height based on activity lines + fixed overhead
     let activity_lines = settings.activity_rows().min(task.activity.len()) as u16;
     3 + activity_lines // Header + metadata + activity
 }
 
-fn create_card_type_view_model(task: &TaskCard, _task_executions: &[TaskExecution], _is_selected: bool) -> TaskCardType {
-    match task.state {
-        TaskState::Active => TaskCardType::Active {
-            activity_entries: task.activity.iter().map(|activity| {
-                // For now, treat all activities as agent thoughts
-                // This could be improved to parse different activity types
-                ActivityEntry::AgentThought {
-                    thought: activity.clone(),
-                }
-            }).collect(),
-            pause_delete_buttons: "Pause | Delete".to_string(),
-        },
-        TaskState::Completed => TaskCardType::Completed {
-            delivery_indicators: String::new(), // Would populate from task.delivery_indicators if available
-        },
-        TaskState::Merged => TaskCardType::Merged {
-            delivery_indicators: String::new(), // Would populate from task.delivery_indicators if available
-        },
-        TaskState::Draft => unreachable!("Drafts should not be in task_executions"),
-    }
-}
 
 fn create_modal_view_model(_modal_state: ModalState, _available_repositories: &[String], _available_branches: &[String], _available_models: &[String], _current_draft: &Option<DraftTask>, _activity_lines_count: usize, _word_wrap_enabled: bool, _show_autocomplete_border: bool) -> Option<ModalViewModel> {
     // Placeholder implementation

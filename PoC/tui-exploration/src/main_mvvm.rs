@@ -39,6 +39,7 @@ use tui_exploration::{
     workspace_workflows::PathWorkspaceWorkflows,
     task_manager::MockTaskManager,
 };
+use ah_tui::Theme;
 use image::GenericImageView;
 
 /// Initialize logo rendering components (Picker and StatefulProtocol)
@@ -245,7 +246,7 @@ async fn run_app_mvvm(
     let mut view_model = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
 
     // Initialize view cache with image rendering components
-    let theme = crate::view::Theme::default();
+    let theme = Theme::default();
     let (picker, logo_protocol) = initialize_logo_rendering(theme.bg);
     let mut view_cache = ViewCache::new();
     view_cache.picker = picker;

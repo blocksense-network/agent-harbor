@@ -12,6 +12,7 @@ pub mod msg;
 pub mod task;
 pub mod test_runtime;
 pub mod ui;
+pub mod view;
 pub mod viewmodel;
 pub mod view_model;
 
@@ -23,7 +24,8 @@ pub use msg::*;
 pub use task::{ButtonFocus, ModalState, ModelSelection, Task, TaskState};
 pub use test_runtime::*;
 pub use viewmodel::*;
-pub use view_model::*;
+pub use view::{ViewCache, Theme};
+pub use view_model::{TaskEntryViewModel, TaskExecutionViewModel, AgentActivityRow, TaskCardType, TaskMetadataViewModel, TaskEntryControlsViewModel, FocusElement, ButtonStyle, ButtonViewModel, DraftSaveState, SearchMode, DeliveryIndicator, FilterOptions, TaskStatusFilter, TimeRangeFilter, AutoSaveState};
 
 use ratatui::{backend::TestBackend, Terminal};
 
