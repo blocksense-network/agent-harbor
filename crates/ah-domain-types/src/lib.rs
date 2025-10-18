@@ -15,3 +15,6 @@ pub mod repository;
 pub use task::*;
 pub use agent::*;
 pub use repository::*;
+
+// Re-export shared enums
+pub use task::{TaskExecutionStatus, LogLevel, ToolStatus};

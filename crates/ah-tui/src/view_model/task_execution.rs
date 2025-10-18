@@ -1,7 +1,7 @@
 //! Task Execution ViewModel - for active/completed/merged task cards
 
 use ah_domain_types::{TaskExecution, SelectedModel, TaskState};
-use ah_core::task_manager::ToolStatus;
+use ah_domain_types::task::ToolStatus;
 use super::{ButtonViewModel, FocusElement};
 
 #[derive(Debug, Clone, PartialEq)]

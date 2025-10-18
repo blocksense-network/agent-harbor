@@ -48,22 +48,6 @@ impl RestTaskManager {
         &self.client
     }
 
-    /// Convert REST API session status to TaskExecutionStatus
-    fn session_status_to_task_status(status: SessionStatus) -> TaskExecutionStatus {
-        match status {
-            SessionStatus::Queued => TaskExecutionStatus::Queued,
-            SessionStatus::Provisioning => TaskExecutionStatus::Provisioning,
-            SessionStatus::Running => TaskExecutionStatus::Running,
-            SessionStatus::Pausing => TaskExecutionStatus::Pausing,
-            SessionStatus::Paused => TaskExecutionStatus::Paused,
-            SessionStatus::Resuming => TaskExecutionStatus::Resuming,
-            SessionStatus::Stopping => TaskExecutionStatus::Stopping,
-            SessionStatus::Stopped => TaskExecutionStatus::Stopped,
-            SessionStatus::Completed => TaskExecutionStatus::Completed,
-            SessionStatus::Failed => TaskExecutionStatus::Failed,
-            SessionStatus::Cancelled => TaskExecutionStatus::Cancelled,
-        }
-    }
 
     /// Convert REST API event to TaskEvent
     fn convert_session_event(event: SessionEvent) -> TaskEvent {
@@ -71,7 +55,7 @@ impl RestTaskManager {
             EventType::Status => {
                 if let Some(status) = event.status {
                     TaskEvent::Status {
-                        status: Self::session_status_to_task_status(status),
+                        status,
                         ts: event.ts.into(),
                     }
                 } else {
@@ -85,12 +69,7 @@ impl RestTaskManager {
             EventType::Log => {
                 if let (Some(level), Some(message)) = (event.level, event.message) {
                     TaskEvent::Log {
-                        level: match level {
-                            ah_rest_api_contract::LogLevel::Debug => LogLevel::Debug,
-                            ah_rest_api_contract::LogLevel::Info => LogLevel::Info,
-                            ah_rest_api_contract::LogLevel::Warn => LogLevel::Warn,
-                            ah_rest_api_contract::LogLevel::Error => LogLevel::Error,
-                        },
+                        level,
                         message,
                         tool_execution_id: event.tool_execution_id,
                         ts: event.ts.into(),

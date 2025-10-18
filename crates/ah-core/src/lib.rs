@@ -10,7 +10,9 @@ pub mod db;
 pub mod devshell;
 pub mod editor;
 pub mod error;
+pub mod local_task_manager;
 pub mod push;
+pub mod rest_task_manager;
 pub mod session;
 pub mod task;
 pub mod task_manager;
@@ -44,9 +46,18 @@ pub use db::DatabaseManager;
 
 /// Task manager abstraction for different execution modes (local, remote, mock).
 pub use task_manager::{
-    TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, TaskExecutionStatus,
-    LogLevel, ToolStatus, SaveDraftResult, LocalTaskManager
+    TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent,
+    SaveDraftResult
 };
+
+/// Local task manager for direct execution on the local machine.
+pub use local_task_manager::LocalTaskManager;
+
+/// Re-export domain types
+pub use ah_domain_types::{TaskExecutionStatus, LogLevel, ToolStatus};
 
 /// Agent execution engine for spawning and managing agent processes.
 pub use agent_executor::{AgentExecutor, AgentExecutionConfig, WorkingCopyMode};
+
+/// REST API-based task manager implementation.
+pub use rest_task_manager::{GenericRestTaskManager, RestTaskManager, RestApiClient};

@@ -1,58 +1,14 @@
 //! API contract types for the agent-harbor REST service
 
+use ah_domain_types::{TaskExecutionStatus, LogLevel};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::Url;
 use validator::Validate;
 
-/// Session lifecycle states
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[serde(rename_all = "lowercase")]
-pub enum SessionStatus {
-    #[serde(rename = "queued")]
-    Queued,
-    #[serde(rename = "provisioning")]
-    Provisioning,
-    #[serde(rename = "running")]
-    Running,
-    #[serde(rename = "pausing")]
-    Pausing,
-    #[serde(rename = "paused")]
-    Paused,
-    #[serde(rename = "resuming")]
-    Resuming,
-    #[serde(rename = "stopping")]
-    Stopping,
-    #[serde(rename = "stopped")]
-    Stopped,
-    #[serde(rename = "completed")]
-    Completed,
-    #[serde(rename = "failed")]
-    Failed,
-    #[serde(rename = "cancelled")]
-    Cancelled,
-}
-
-impl std::fmt::Display for SessionStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            SessionStatus::Queued => "queued",
-            SessionStatus::Provisioning => "provisioning",
-            SessionStatus::Running => "running",
-            SessionStatus::Pausing => "pausing",
-            SessionStatus::Paused => "paused",
-            SessionStatus::Resuming => "resuming",
-            SessionStatus::Stopping => "stopping",
-            SessionStatus::Stopped => "stopped",
-            SessionStatus::Completed => "completed",
-            SessionStatus::Failed => "failed",
-            SessionStatus::Cancelled => "cancelled",
-        };
-        write!(f, "{}", s)
-    }
-}
+/// Session lifecycle states - alias for TaskExecutionStatus
+pub type SessionStatus = TaskExecutionStatus;
 
 /// Repository mode for task creation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,17 +61,6 @@ pub enum EventType {
     ToolUse,
     ToolResult,
     FileEdit,
-}
-
-/// Log levels for session events
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    Debug,
-    Info,
-    Warn,
-    Error,
 }
 
 /// Repository configuration for task creation

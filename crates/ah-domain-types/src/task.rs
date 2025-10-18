@@ -19,6 +19,61 @@ pub enum TaskState {
     Merged,
 }
 
+/// Task execution status - shared between REST API and local task management
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskExecutionStatus {
+    Queued,
+    Provisioning,
+    Running,
+    Pausing,
+    Paused,
+    Resuming,
+    Stopping,
+    Stopped,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl std::fmt::Display for TaskExecutionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let status_str = match self {
+            TaskExecutionStatus::Queued => "queued",
+            TaskExecutionStatus::Provisioning => "provisioning",
+            TaskExecutionStatus::Running => "running",
+            TaskExecutionStatus::Pausing => "pausing",
+            TaskExecutionStatus::Paused => "paused",
+            TaskExecutionStatus::Resuming => "resuming",
+            TaskExecutionStatus::Stopping => "stopping",
+            TaskExecutionStatus::Stopped => "stopped",
+            TaskExecutionStatus::Completed => "completed",
+            TaskExecutionStatus::Failed => "failed",
+            TaskExecutionStatus::Cancelled => "cancelled",
+        };
+        write!(f, "{}", status_str)
+    }
+}
+
+/// Log levels for task events
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+/// Tool execution status
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolStatus {
+    Started,
+    Completed,
+    Failed,
+}
+
 /// Draft task - represents a task being created/edited
 /// Different from TaskCard as it has different lifecycle and structure
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

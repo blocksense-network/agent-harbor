@@ -7,11 +7,14 @@
 
 use ah_core::{
     TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, TaskExecutionStatus,
-    LogLevel, ToolStatus, SaveDraftResult
+    SaveDraftResult
 };
+use ah_domain_types::{LogLevel, ToolStatus};
 use ah_domain_types::{Repository, Branch, TaskInfo, SelectedModel};
+use ah_rest_api_contract::*;
 use async_trait::async_trait;
-use futures::stream::{self, Stream};
+use futures::{Stream, StreamExt};
+use futures::stream;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -274,6 +277,214 @@ impl TaskManager for MockRestClient {
 
     fn description(&self) -> &str {
         "Mock REST Client (for testing TaskManager interface)"
+    }
+}
+
+#[async_trait::async_trait]
+impl ah_core::RestApiClient for MockRestClient {
+    async fn create_task(&self, request: &ah_rest_api_contract::CreateTaskRequest) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>> {
+        // Simulate creating a task by converting the request to a task launch
+        let params = ah_core::TaskLaunchParams {
+            repository: request.repo.url.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "unknown".to_string()),
+            branch: request.repo.branch.clone().unwrap_or_else(|| "main".to_string()),
+            description: request.prompt.clone(),
+            models: vec![ah_domain_types::SelectedModel {
+                name: request.agent.agent_type.clone(),
+                count: 1,
+            }],
+        };
+
+        match self.launch_task(params).await {
+            ah_core::TaskLaunchResult::Success { task_id } => Ok(ah_rest_api_contract::CreateTaskResponse {
+                id: task_id.clone(),
+                status: ah_rest_api_contract::SessionStatus::Queued,
+                links: ah_rest_api_contract::TaskLinks {
+                    self_link: format!("/api/v1/tasks/{}", task_id),
+                    events: format!("/api/v1/tasks/{}/events", task_id),
+                    logs: format!("/api/v1/tasks/{}/logs", task_id),
+                },
+            }),
+            ah_core::TaskLaunchResult::Failure { error } => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, error))),
+        }
+    }
+
+    async fn stream_session_events(&self, session_id: &str) -> Result<std::pin::Pin<Box<dyn futures::Stream<Item = Result<ah_rest_api_contract::SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>> {
+        // Convert our TaskEvent stream to SessionEvent stream
+        let task_stream = self.task_events_stream(session_id);
+
+        let converted_stream = task_stream.map(|task_event| {
+            // Convert TaskEvent to SessionEvent - this is a simplified conversion
+            // In a real implementation, this would need more comprehensive mapping
+            let session_event = ah_rest_api_contract::SessionEvent {
+                event_type: match task_event {
+                    ah_core::TaskEvent::Status { .. } => ah_rest_api_contract::EventType::Status,
+                    ah_core::TaskEvent::Log { .. } => ah_rest_api_contract::EventType::Log,
+                    ah_core::TaskEvent::Thought { .. } => ah_rest_api_contract::EventType::Thought,
+                    ah_core::TaskEvent::ToolUse { .. } => ah_rest_api_contract::EventType::ToolUse,
+                    ah_core::TaskEvent::ToolResult { .. } => ah_rest_api_contract::EventType::ToolResult,
+                    ah_core::TaskEvent::FileEdit { .. } => ah_rest_api_contract::EventType::FileEdit,
+                },
+                status: match &task_event {
+                    ah_core::TaskEvent::Status { status, .. } => Some(match status {
+                        ah_core::TaskExecutionStatus::Queued => ah_rest_api_contract::SessionStatus::Queued,
+                        ah_core::TaskExecutionStatus::Provisioning => ah_rest_api_contract::SessionStatus::Provisioning,
+                        ah_core::TaskExecutionStatus::Running => ah_rest_api_contract::SessionStatus::Running,
+                        ah_core::TaskExecutionStatus::Pausing => ah_rest_api_contract::SessionStatus::Pausing,
+                        ah_core::TaskExecutionStatus::Paused => ah_rest_api_contract::SessionStatus::Paused,
+                        ah_core::TaskExecutionStatus::Resuming => ah_rest_api_contract::SessionStatus::Resuming,
+                        ah_core::TaskExecutionStatus::Stopping => ah_rest_api_contract::SessionStatus::Stopping,
+                        ah_core::TaskExecutionStatus::Stopped => ah_rest_api_contract::SessionStatus::Stopped,
+                        ah_core::TaskExecutionStatus::Completed => ah_rest_api_contract::SessionStatus::Completed,
+                        ah_core::TaskExecutionStatus::Failed => ah_rest_api_contract::SessionStatus::Failed,
+                        ah_core::TaskExecutionStatus::Cancelled => ah_rest_api_contract::SessionStatus::Cancelled,
+                    }),
+                    _ => None,
+                },
+                level: match &task_event {
+                    ah_core::TaskEvent::Log { level, .. } => Some(level.clone()),
+                    _ => None,
+                },
+                message: match &task_event {
+                    ah_core::TaskEvent::Log { message, .. } => Some(message.clone()),
+                    _ => None,
+                },
+                thought: match &task_event {
+                    ah_core::TaskEvent::Thought { thought, .. } => Some(thought.clone()),
+                    _ => None,
+                },
+                reasoning: match &task_event {
+                    ah_core::TaskEvent::Thought { reasoning, .. } => reasoning.clone(),
+                    _ => None,
+                },
+                tool_name: match &task_event {
+                    ah_core::TaskEvent::ToolUse { tool_name, .. } |
+                    ah_core::TaskEvent::ToolResult { tool_name, .. } => Some(tool_name.clone()),
+                    _ => None,
+                },
+                tool_args: match &task_event {
+                    ah_core::TaskEvent::ToolUse { tool_args, .. } => Some(serde_json::Value::String(tool_args.to_string())),
+                    _ => None,
+                },
+                tool_output: match &task_event {
+                    ah_core::TaskEvent::ToolResult { tool_output, .. } => Some(tool_output.clone()),
+                    _ => None,
+                },
+                tool_execution_id: match &task_event {
+                    ah_core::TaskEvent::ToolUse { tool_execution_id, .. } |
+                    ah_core::TaskEvent::ToolResult { tool_execution_id, .. } => Some(tool_execution_id.clone()),
+                    ah_core::TaskEvent::Log { tool_execution_id, .. } => tool_execution_id.clone(),
+                    _ => None,
+                },
+                file_path: match &task_event {
+                    ah_core::TaskEvent::FileEdit { file_path, .. } => Some(file_path.clone()),
+                    _ => None,
+                },
+                lines_added: match &task_event {
+                    ah_core::TaskEvent::FileEdit { lines_added, .. } => Some(*lines_added as u32),
+                    _ => None,
+                },
+                lines_removed: match &task_event {
+                    ah_core::TaskEvent::FileEdit { lines_removed, .. } => Some(*lines_removed as u32),
+                    _ => None,
+                },
+                description: match &task_event {
+                    ah_core::TaskEvent::FileEdit { description, .. } => description.clone(),
+                    _ => None,
+                },
+                ts: match task_event {
+                    ah_core::TaskEvent::Status { ts, .. } => ts,
+                    ah_core::TaskEvent::Log { ts, .. } => ts,
+                    ah_core::TaskEvent::Thought { ts, .. } => ts,
+                    ah_core::TaskEvent::ToolUse { ts, .. } => ts,
+                    ah_core::TaskEvent::ToolResult { ts, .. } => ts,
+                    ah_core::TaskEvent::FileEdit { ts, .. } => ts,
+                },
+                snapshot_id: None,
+                note: None,
+                hosts: None,
+                host: None,
+                stream: None,
+                passed: None,
+                failed: None,
+                delivery: None,
+            };
+            Ok(session_event)
+        });
+
+        Ok(Box::pin(converted_stream))
+    }
+
+    async fn list_sessions(&self, _tenant_id: Option<&str>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
+        // Get tasks from the mock client
+        let (_drafts, tasks) = self.get_initial_tasks().await;
+
+        let sessions = tasks.into_iter().map(|task| {
+            ah_rest_api_contract::Session {
+                id: task.id.clone(),
+                tenant_id: None,
+                project_id: None,
+                task: ah_rest_api_contract::TaskInfo {
+                    prompt: task.title,
+                    attachments: std::collections::HashMap::new(),
+                    labels: std::collections::HashMap::new(),
+                },
+                agent: ah_rest_api_contract::AgentConfig {
+                    agent_type: task.models.first().cloned().unwrap_or_else(|| "claude-code".to_string()),
+                    version: "latest".to_string(),
+                    settings: std::collections::HashMap::new(),
+                },
+                runtime: ah_rest_api_contract::RuntimeConfig {
+                    runtime_type: ah_rest_api_contract::RuntimeType::Local,
+                    devcontainer_path: None,
+                    resources: None,
+                },
+                workspace: ah_rest_api_contract::WorkspaceInfo {
+                    snapshot_provider: "none".to_string(),
+                    mount_path: "/tmp".to_string(),
+                    host: None,
+                    devcontainer_details: None,
+                },
+                vcs: ah_rest_api_contract::VcsInfo {
+                    repo_url: Some(task.repository),
+                    branch: Some(task.branch),
+                    commit: None,
+                },
+                status: match task.status.as_str() {
+                    "running" => ah_rest_api_contract::SessionStatus::Running,
+                    "completed" => ah_rest_api_contract::SessionStatus::Completed,
+                    "failed" => ah_rest_api_contract::SessionStatus::Failed,
+                    "cancelled" => ah_rest_api_contract::SessionStatus::Cancelled,
+                    _ => ah_rest_api_contract::SessionStatus::Running,
+                },
+                started_at: Some(chrono::DateTime::parse_from_rfc3339(&task.created_at).unwrap_or_else(|_| chrono::Utc::now().into()).with_timezone(&chrono::Utc)),
+                ended_at: None,
+                links: ah_rest_api_contract::SessionLinks {
+                    self_link: format!("/api/v1/sessions/{}", task.id),
+                    events: format!("/api/v1/sessions/{}/events", task.id),
+                    logs: format!("/api/v1/sessions/{}/logs", task.id),
+                },
+            }
+        }).collect();
+
+        Ok(ah_rest_api_contract::SessionListResponse {
+            items: sessions,
+            next_page: None,
+            total: None,
+        })
+    }
+
+    async fn list_repositories(&self, _tenant_id: Option<&str>, _project_id: Option<&str>) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>> {
+        // Get repositories from the mock client
+        let repos = ah_core::TaskManager::list_repositories(self).await;
+
+        Ok(repos.into_iter().map(|repo| ah_rest_api_contract::Repository {
+            id: repo.id,
+            display_name: repo.name,
+            scm_provider: "git".to_string(),
+            remote_url: url::Url::parse(&repo.url).unwrap_or_else(|_| url::Url::parse("https://example.com").unwrap()),
+            default_branch: repo.default_branch,
+            last_used_at: Some(chrono::Utc::now()),
+        }).collect())
     }
 }
 
