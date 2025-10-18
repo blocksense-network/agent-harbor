@@ -221,8 +221,11 @@ version = "0.1.0"
 dependencies = [
  "ah-domain-types",
  "ah-local-db",
+ "ah-mux",
+ "ah-mux-core",
  "ah-repo",
  "ah-rest-api-contract",
+ "ah-tui-multiplexer",
  "ah-workflows",
  "anyhow",
  "async-stream",

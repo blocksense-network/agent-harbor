@@ -51,6 +51,7 @@ pub use task_manager::{
 };
 
 /// Local task manager for direct execution on the local machine.
+/// Uses a dynamic multiplexer implementation.
 pub use local_task_manager::LocalTaskManager;
 
 /// Re-export domain types

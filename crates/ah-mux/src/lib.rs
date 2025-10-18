@@ -7,6 +7,10 @@
 pub mod kitty;
 pub mod tmux;
 
+#[cfg(feature = "kitty")]
+pub use kitty::KittyMultiplexer;
+pub use tmux::TmuxMultiplexer;
+
 use ah_mux_core::*;
 
 /// Get the default multiplexer for the current system
