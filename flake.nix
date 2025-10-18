@@ -13,21 +13,31 @@
   };
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    git-hooks.url = "github:cachix/git-hooks.nix";
+    nixos-modules.url = "github:metacraft-labs/nixos-modules";
+
+    nixpkgs.follows = "nixos-modules/nixpkgs-unstable";
+    # TODO: Replace with fenix
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    git-hooks.follows = "nixos-modules/git-hooks-nix";
+
     nix-ai-tools = {
       url = "github:numtide/nix-ai-tools";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.treefmt-nix.follows = "nixos-modules/treefmt-nix";
     };
     codex = {
       url = "git+file:./vendor/codex";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "nixos-modules/flake-utils";
       inputs.rust-overlay.follows = "rust-overlay";
     };
     sosumi-docs-downloader = {
       url = "git+https://github.com/blocksense-network/sosumi-docs-downloader.git";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.git-hooks.follows = "git-hooks";
       inputs.rust-overlay.follows = "rust-overlay";
     };
   };
@@ -40,6 +50,7 @@
     nix-ai-tools,
     codex,
     sosumi-docs-downloader,
+    ...
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
     forAllSystems = nixpkgs.lib.genAttrs systems;
