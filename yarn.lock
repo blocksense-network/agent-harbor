@@ -21,8 +21,8 @@ __metadata:
 
 "@agent-harbor/gui-core@file:../crates/ah-gui-core::locator=agent-harbor-gui%40workspace%3Aelectron-app":
   version: 0.1.0
-  resolution: "@agent-harbor/gui-core@file:../crates/ah-gui-core#../crates/ah-gui-core::hash=00688f&locator=agent-harbor-gui%40workspace%3Aelectron-app"
-  checksum: 10c0/97dfddc402592681069c73b569f4a02415663bf20afebe1f82e4f18130337277e9fea42081f0d2e93b6b0957a38b1db421bb8c86ba1884a5b5a741eaa711b0d7
+  resolution: "@agent-harbor/gui-core@file:../crates/ah-gui-core#../crates/ah-gui-core::hash=89f5ed&locator=agent-harbor-gui%40workspace%3Aelectron-app"
+  checksum: 10c0/b1a8cd6c169666fc889c19a9da20313aa68ccfa6f2796149c0080c907ca20a90b6f661c9ad0d6a84a119330e2f59f9ba4bbae1eb78d8c98cc37ee5af5793e745
   languageName: node
   linkType: hard
 

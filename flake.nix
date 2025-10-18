@@ -300,12 +300,13 @@
 
         pkgs.just
         pkgs.ruby
-        pkgs.python3
-        pkgs.python3Packages.pyyaml
-        pkgs.python3Packages.pexpect
-        pkgs.python3Packages.ptyprocess
-        pkgs.python3Packages.pytest
-        pkgs.python3Packages.pyzmq
+        (pkgs.python3.withPackages (ps: [
+          ps.pyyaml
+          ps.pexpect
+          ps.ptyprocess
+          ps.pytest
+          ps.pyzmq
+        ]))
         pkgs.ruby
         pkgs.bundler
         pkgs.rubocop
@@ -421,13 +422,6 @@
           echo "Loaded yarn-outdated plugin from Nix: $YARN_PLUGINS"
 
           echo "Agent harbor development environment loaded${if isDarwin then " (macOS)" else if isLinux then " (Linux)" else ""}"
-
-          # Python packages setup (add to PYTHONPATH)
-          export PYTHONPATH="${pkgs.python3Packages.pyyaml}/lib/python3.12/site-packages:$PYTHONPATH"
-          export PYTHONPATH="${pkgs.python3Packages.pexpect}/lib/python3.12/site-packages:$PYTHONPATH"
-          export PYTHONPATH="${pkgs.python3Packages.ptyprocess}/lib/python3.12/site-packages:$PYTHONPATH"
-          export PYTHONPATH="${pkgs.python3Packages.pytest}/lib/python3.12/site-packages:$PYTHONPATH"
-          export PYTHONPATH="${pkgs.python3Packages.pyzmq}/lib/python3.12/site-packages:$PYTHONPATH"
 
           # Playwright setup (use Nix-provided browsers, skip runtime downloads)
           export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"

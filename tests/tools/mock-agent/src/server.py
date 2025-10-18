@@ -119,7 +119,7 @@ import os
 import sys
 import uuid
 import importlib.util
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from typing import Dict, Any
@@ -228,7 +228,7 @@ class MockAPIHandler(BaseHTTPRequestHandler):
 
         # Create log entry
         log_entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "method": self.command,
             "path": self.path,
             "headers": dict(self.headers),

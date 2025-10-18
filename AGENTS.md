@@ -18,7 +18,7 @@ ALWAYS run testing commands with a suitable timeout because they might hang.
 The development environment of this project is managed in a nix flake at the root of the repo.
 All development is expected to be done in a nix dev shell that can be entered with direnv.
 The `just` command runner is configured to automatically execute all commands in the Nix dev shell.
-Python packages are typically added to the Nix flake. The dev shell appends to PYTHONPATH, so always append python search paths. You should never reset the PYTHONPATH in user code.
+Python packages are typically added to the Nix flake.
 Node.js packages are managed with yarn in PnP mode. One exception is the Playwright package, for which we manage the browsers through the nix flake.
 Rust packages are managed with Cargo, while Rust itself is pinned in the nix flake.
 Feel free to add any additional software that is needed for the project goals by expanding the nix flake.
