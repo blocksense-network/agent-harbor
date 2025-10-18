@@ -10,7 +10,7 @@ use ah_core::{
     SaveDraftResult
 };
 use ah_domain_types::{LogLevel, ToolStatus};
-use ah_domain_types::{Repository, Branch, TaskInfo, SelectedModel};
+use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, TaskState, SelectedModel, DeliveryStatus};
 use ah_rest_api_contract::*;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
@@ -31,6 +31,8 @@ pub struct MockRestClient {
     delay_ms: u64,
     /// Whether to simulate failures
     simulate_failures: bool,
+    /// Whether to return mock data when no tasks are stored
+    return_mock_data: bool,
     /// Next task ID counter
     next_task_id: Arc<RwLock<u64>>,
 }
@@ -41,8 +43,9 @@ impl MockRestClient {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
             drafts: Arc::new(RwLock::new(HashMap::new())),
-            delay_ms: 100,
+            delay_ms: 50,
             simulate_failures: false,
+            return_mock_data: false,
             next_task_id: Arc::new(RwLock::new(1)),
         }
     }
@@ -59,6 +62,14 @@ impl MockRestClient {
     pub fn with_failures(simulate_failures: bool) -> Self {
         Self {
             simulate_failures,
+            ..Self::new()
+        }
+    }
+
+    /// Create a mock client that returns mock data
+    pub fn with_mock_data() -> Self {
+        Self {
+            return_mock_data: true,
             ..Self::new()
         }
     }
@@ -81,6 +92,25 @@ impl MockRestClient {
         let id = *counter;
         *counter += 1;
         format!("draft_{}", id)
+    }
+
+    /// Convert TaskInfo to TaskExecution
+    fn task_info_to_execution(&self, task_info: TaskInfo) -> TaskExecution {
+        TaskExecution {
+            id: task_info.id,
+            repository: task_info.repository,
+            branch: task_info.branch,
+            agents: task_info.models.into_iter().map(|name| SelectedModel { name, count: 1 }).collect(),
+            state: match task_info.status.as_str() {
+                "running" => TaskState::Active,
+                "completed" => TaskState::Completed,
+                "merged" => TaskState::Merged,
+                _ => TaskState::Active,
+            },
+            timestamp: task_info.created_at,
+            activity: vec![], // Would be populated from events
+            delivery_status: vec![], // Would be populated based on status
+        }
     }
 
     /// Create realistic event stream for a task
@@ -156,14 +186,70 @@ impl TaskManager for MockRestClient {
         self.create_event_stream(task_id)
     }
 
-    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskInfo>) {
+    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
         // Simulate network delay
         if self.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
         }
 
-        let drafts = self.drafts.read().await.values().cloned().collect();
-        let tasks = self.tasks.read().await.values().cloned().collect();
+        // Get any stored tasks/drafts
+        let mut drafts: Vec<TaskInfo> = self.drafts.read().await.values().cloned().collect();
+        let mut tasks: Vec<TaskExecution> = Vec::new();
+
+        // Convert stored TaskInfo to TaskExecution and add any mock data
+        for task_info in self.tasks.read().await.values() {
+            tasks.push(self.task_info_to_execution(task_info.clone()));
+        }
+
+            // If no tasks are stored and mock data is enabled, add mock data
+            if tasks.is_empty() && self.return_mock_data {
+            // Add 2 active tasks
+            tasks.push(TaskExecution {
+                id: "Implement user authentication flow".to_string(),
+                repository: "myapp/backend".to_string(),
+                branch: "main".to_string(),
+                agents: vec![SelectedModel { name: "Claude 3.5 Sonnet".to_string(), count: 1 }],
+                state: TaskState::Active,
+                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::hours(1)).unwrap().to_rfc3339(),
+                activity: vec!["Analyzing user requirements".to_string(), "Examining codebase structure".to_string()],
+                delivery_status: vec![],
+            });
+
+            tasks.push(TaskExecution {
+                id: "Optimize database queries for performance".to_string(),
+                repository: "myapp/backend".to_string(),
+                branch: "feature/db-optimization".to_string(),
+                agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
+                state: TaskState::Active,
+                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::hours(2)).unwrap().to_rfc3339(),
+                activity: vec!["Reviewing current database schema".to_string()],
+                delivery_status: vec![],
+            });
+
+            // Add 1 completed task
+            tasks.push(TaskExecution {
+                id: "Add error handling to API endpoints".to_string(),
+                repository: "myapp/backend".to_string(),
+                branch: "main".to_string(),
+                agents: vec![SelectedModel { name: "Claude 3 Opus".to_string(), count: 1 }],
+                state: TaskState::Completed,
+                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(1)).unwrap().to_rfc3339(),
+                activity: vec!["Added comprehensive error handling to all API endpoints".to_string(), "Updated API response formats with proper error codes".to_string(), "Added detailed logging for debugging failed requests".to_string(), "Created unit tests for error scenarios".to_string()],
+                delivery_status: vec![DeliveryStatus::BranchCreated, DeliveryStatus::PullRequestCreated { pr_number: 123, title: "Add error handling to API endpoints".to_string() }],
+            });
+
+            // Add 1 merged task
+            tasks.push(TaskExecution {
+                id: "Implement dark mode toggle in UI".to_string(),
+                repository: "myapp/frontend".to_string(),
+                branch: "feature/dark-mode".to_string(),
+                agents: vec![SelectedModel { name: "GPT-3.5 Turbo".to_string(), count: 1 }],
+                state: TaskState::Merged,
+                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(2)).unwrap().to_rfc3339(),
+                activity: vec!["Implemented dark mode CSS variables for consistent theming".to_string(), "Added theme toggle component to header navigation".to_string(), "Updated all component styling for dark mode compatibility".to_string(), "Added user preference persistence in localStorage".to_string(), "Tested accessibility compliance with dark theme".to_string()],
+                delivery_status: vec![DeliveryStatus::BranchCreated, DeliveryStatus::PullRequestCreated { pr_number: 456, title: "Implement dark mode toggle in UI".to_string() }, DeliveryStatus::PullRequestMerged { pr_number: 456 }],
+            });
+        }
 
         (drafts, tasks)
     }
@@ -424,12 +510,12 @@ impl ah_core::RestApiClient for MockRestClient {
                 tenant_id: None,
                 project_id: None,
                 task: ah_rest_api_contract::TaskInfo {
-                    prompt: task.title,
+                    prompt: task.id.clone(), // Use task id as prompt since TaskExecution doesn't have title
                     attachments: std::collections::HashMap::new(),
                     labels: std::collections::HashMap::new(),
                 },
                 agent: ah_rest_api_contract::AgentConfig {
-                    agent_type: task.models.first().cloned().unwrap_or_else(|| "claude-code".to_string()),
+                    agent_type: task.agents.first().map(|m| m.name.clone()).unwrap_or_else(|| "claude-code".to_string()),
                     version: "latest".to_string(),
                     settings: std::collections::HashMap::new(),
                 },
@@ -449,14 +535,13 @@ impl ah_core::RestApiClient for MockRestClient {
                     branch: Some(task.branch),
                     commit: None,
                 },
-                status: match task.status.as_str() {
-                    "running" => ah_rest_api_contract::SessionStatus::Running,
-                    "completed" => ah_rest_api_contract::SessionStatus::Completed,
-                    "failed" => ah_rest_api_contract::SessionStatus::Failed,
-                    "cancelled" => ah_rest_api_contract::SessionStatus::Cancelled,
-                    _ => ah_rest_api_contract::SessionStatus::Running,
+                status: match task.state {
+                    TaskState::Active => ah_rest_api_contract::SessionStatus::Running,
+                    TaskState::Completed => ah_rest_api_contract::SessionStatus::Completed,
+                    TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed, // Map merged to completed
+                    TaskState::Draft => ah_rest_api_contract::SessionStatus::Running,
                 },
-                started_at: Some(chrono::DateTime::parse_from_rfc3339(&task.created_at).unwrap_or_else(|_| chrono::Utc::now().into()).with_timezone(&chrono::Utc)),
+                started_at: Some(chrono::DateTime::parse_from_rfc3339(&task.timestamp).unwrap_or_else(|_| chrono::Utc::now().into()).with_timezone(&chrono::Utc)),
                 ended_at: None,
                 links: ah_rest_api_contract::SessionLinks {
                     self_link: format!("/api/v1/sessions/{}", task.id),

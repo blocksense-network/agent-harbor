@@ -28,16 +28,20 @@ use std::{
 };
 use tracing::{trace};
 use tracing_subscriber;
+use futures::StreamExt;
 use crossbeam_channel as chan;
 
 use tui_exploration::{
     view_model::ViewModel,
     view,
+    TaskManager,
     ViewCache,
     settings::Settings,
     workspace_files::GitWorkspaceFiles,
     workspace_workflows::PathWorkspaceWorkflows,
+    TaskState,
 };
+
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::Theme;
 use image::GenericImageView;
@@ -240,7 +244,7 @@ async fn run_app_mvvm(
     let workspace_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let workspace_files = Box::new(GitWorkspaceFiles::new(workspace_dir.clone()));
     let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(workspace_dir));
-    let task_manager = Box::new(MockRestClient::new());
+    let task_manager = Box::new(MockRestClient::with_mock_data());
 
     let settings = Settings::default();
     let mut view_model = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
@@ -364,7 +368,6 @@ static ALTERNATE_SCREEN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static KB_FLAGS_PUSHED: AtomicBool = AtomicBool::new(false);
 static MOUSE_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Main entry point for the MVVM TUI application
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting MVVM TUI application...");

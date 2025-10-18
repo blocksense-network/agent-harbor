@@ -7,7 +7,7 @@ use ah_core::{
     TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, TaskExecutionStatus,
     LogLevel, ToolStatus, SaveDraftResult
 };
-use ah_domain_types::{Repository, Branch, TaskInfo, SelectedModel};
+use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, TaskState, SelectedModel};
 use ah_rest_api_contract::{CreateTaskRequest, AgentConfig, RepoConfig, RepoMode, SessionStatus, SessionEvent, EventType};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
@@ -290,27 +290,28 @@ impl TaskManager for RestTaskManager {
         })
     }
 
-    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskInfo>) {
+    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
         match self.client.list_sessions(None).await {
             Ok(response) => {
-                let tasks: Vec<TaskInfo> = response.items.into_iter().map(|session| {
-                    TaskInfo {
+                let tasks: Vec<TaskExecution> = response.items.into_iter().map(|session| {
+                    TaskExecution {
                         id: session.id,
-                        title: session.task.prompt.clone(),
-                        status: match session.status {
-                            SessionStatus::Completed => "completed".to_string(),
-                            SessionStatus::Failed => "failed".to_string(),
-                            SessionStatus::Cancelled => "cancelled".to_string(),
-                            _ => "running".to_string(),
-                        },
                         repository: session.vcs.repo_url.unwrap_or_else(|| "unknown".to_string()),
                         branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
-                        created_at: session.started_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-                        models: vec![session.agent.agent_type],
+                        agents: vec![SelectedModel { name: session.agent.agent_type, count: 1 }],
+                        state: match session.status {
+                            SessionStatus::Completed => TaskState::Completed,
+                            SessionStatus::Failed => TaskState::Completed, // Map failed to completed for now
+                            SessionStatus::Cancelled => TaskState::Completed, // Map cancelled to completed for now
+                            _ => TaskState::Active,
+                        },
+                        timestamp: session.started_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        activity: vec![], // Would need to be populated from session events
+                        delivery_status: vec![], // Would need to be populated from session data
                     }
                 }).collect();
 
-                // For now, return all tasks as completed tasks (drafts would need separate API)
+                // For now, return empty drafts (drafts would need separate API)
                 (vec![], tasks)
             }
             Err(e) => {

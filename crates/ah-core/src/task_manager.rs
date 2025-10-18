@@ -17,7 +17,7 @@
 //! execution details and returns a result that the ViewModel can translate
 //! into domain messages for the Model.
 
-use ah_domain_types::{Repository, Branch, TaskInfo, SelectedModel, TaskExecutionStatus, LogLevel, ToolStatus};
+use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, SelectedModel, TaskExecutionStatus, LogLevel, ToolStatus};
 use ah_local_db::models::DraftRecord;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -215,7 +215,7 @@ pub trait TaskManager: Send + Sync {
     ///
     /// Returns separate collections for draft tasks and completed tasks that should be shown
     /// when the application starts. Drafts are editable, tasks are read-only.
-    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskInfo>);
+    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>);
 
     /// Auto-save modifications to a draft task
     ///

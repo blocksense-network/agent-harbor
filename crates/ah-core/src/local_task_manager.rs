@@ -7,7 +7,7 @@
 //! Tasks are executed through the configured multiplexer (tmux, kitty, etc.) to provide
 //! proper terminal window management and session isolation.
 
-use ah_domain_types::{Repository, Branch, TaskInfo, SelectedModel, TaskExecutionStatus, LogLevel, ToolStatus};
+use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, SelectedModel, TaskExecutionStatus, LogLevel, ToolStatus};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
 use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig, PaneRole};
@@ -98,7 +98,7 @@ where
         Box::pin(futures::stream::empty())
     }
 
-    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskInfo>) {
+    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
         // Get draft tasks from the database
         match self.db_manager.list_drafts() {
             Ok(draft_records) => {
@@ -121,7 +121,7 @@ where
                 }).collect();
 
                 // For completed tasks, return empty for now (could be extended to get from database)
-                (draft_tasks, Vec::new())
+                (draft_tasks, Vec::<TaskExecution>::new())
             }
             Err(e) => {
                 tracing::warn!("Failed to list drafts: {}", e);

@@ -206,7 +206,28 @@ Example session with recent events:
 
 #### Get Session
 
-- `GET /api/v1/sessions/{id}` → session details including current status, workspace summary, and recent events.
+- `GET /api/v1/sessions/{id}` → session details including current status, workspace summary, recent events, and change statistics.
+
+  **Response includes change statistics for completed sessions:**
+  ```json
+  {
+    "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+    "status": "completed",
+    "prompt": "Fix authentication bug",
+    "repo": { ... },
+    "agent": { ... },
+    "createdAt": "2025-01-01T11:00:00Z",
+    "completedAt": "2025-01-01T12:15:00Z",
+    "changes": {
+      "files_changed": 3,
+      "lines_added": 42,
+      "lines_removed": 18
+    },
+    "recent_events": [ ... ]
+  }
+  ```
+
+  **Purpose:** The `changes` field provides aggregated file change statistics for TUI completed/merged task cards to display VS Code-style summaries like "3 files changed (+42 -18)". Only included for completed sessions.
 
 #### Stop / Cancel
 

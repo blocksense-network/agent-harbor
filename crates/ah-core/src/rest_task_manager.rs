@@ -4,7 +4,7 @@
 //! the real REST API client or a mock client, allowing seamless switching between
 //! production and testing environments.
 
-use ah_domain_types::{Repository as DomainRepository, Branch, TaskInfo, SelectedModel};
+use ah_domain_types::{Repository as DomainRepository, Branch, TaskInfo, TaskExecution, TaskState, SelectedModel};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
@@ -271,23 +271,24 @@ where
         })
     }
 
-    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskInfo>) {
+    async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
         match self.client.list_sessions(None).await {
             Ok(response) => {
-                let tasks: Vec<TaskInfo> = response.items.into_iter().map(|session| {
-                    TaskInfo {
+                let tasks: Vec<TaskExecution> = response.items.into_iter().map(|session| {
+                    TaskExecution {
                         id: session.id,
-                        title: session.task.prompt.clone(),
-                        status: match session.status {
-                            ah_rest_api_contract::SessionStatus::Completed => "completed".to_string(),
-                            ah_rest_api_contract::SessionStatus::Failed => "failed".to_string(),
-                            ah_rest_api_contract::SessionStatus::Cancelled => "cancelled".to_string(),
-                            _ => "running".to_string(),
-                        },
                         repository: session.vcs.repo_url.unwrap_or_else(|| "unknown".to_string()),
                         branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
-                        created_at: session.started_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-                        models: vec![session.agent.agent_type],
+                        agents: vec![SelectedModel { name: session.agent.agent_type, count: 1 }],
+                        state: match session.status {
+                            ah_rest_api_contract::SessionStatus::Completed => TaskState::Completed,
+                            ah_rest_api_contract::SessionStatus::Failed => TaskState::Completed,
+                            ah_rest_api_contract::SessionStatus::Cancelled => TaskState::Completed,
+                            _ => TaskState::Active,
+                        },
+                        timestamp: session.started_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        activity: vec![], // Would need to be populated from session events
+                        delivery_status: vec![], // Would need to be populated from session data
                     }
                 }).collect();
 

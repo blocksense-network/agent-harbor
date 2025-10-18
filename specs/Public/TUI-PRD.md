@@ -84,9 +84,14 @@ Within text areas, the up and down arrow keys move the caret within the text are
 
 ##### Completed/Merged Cards (2 lines)
 ```
-✓ Task title • Delivery indicators
-Repository • Branch • Agent • Timestamp
+✓ Task title in card border
+Repository • Branch • Agent • Timestamp • Delivery indicators • Summary of changes
 ```
+
+The **summary of changes** shows the total impact across all modified files in VS Code-style format:
+- Format: `{N} file(s) changed (+{lines_added} -{lines_removed})`
+- Example: `3 files changed (+42 -18)`
+- Shows net lines added and removed across all files modified during the task
 
 **Delivery indicators** show delivery method outcome with ANSI color coding:
 - **Unicode symbols** (default, `tui-font-style = "unicode"`):
