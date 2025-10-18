@@ -21,6 +21,25 @@ on:
     branches: [main, linux-sandbox]
 
 jobs:
+  build-and-cache-devshell:
+    runs-on: [self-hosted, nixos, x86-64-v3]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build & activate the Nix Dev Shell
+        run: nix build -L --json .#devShells.x86_64-linux.default
+
   test:
     runs-on: ubuntu-latest
 
