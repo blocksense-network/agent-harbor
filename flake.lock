@@ -992,6 +992,10 @@
     "root": {
       "inputs": {
         "codex": "codex",
+        "flake-parts": [
+          "nixos-modules",
+          "flake-parts"
+        ],
         "git-hooks": [
           "nixos-modules",
           "git-hooks-nix"

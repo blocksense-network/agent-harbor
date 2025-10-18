@@ -22,6 +22,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     git-hooks.follows = "nixos-modules/git-hooks-nix";
+    flake-parts.follows = "nixos-modules/flake-parts";
 
     nix-ai-tools = {
       url = "github:numtide/nix-ai-tools";
