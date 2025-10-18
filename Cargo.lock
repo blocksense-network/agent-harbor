@@ -225,6 +225,7 @@ dependencies = [
  "ah-mux-core",
  "ah-repo",
  "ah-rest-api-contract",
+ "ah-rest-client",
  "ah-tui-multiplexer",
  "ah-workflows",
  "anyhow",
@@ -470,8 +471,6 @@ name = "ah-rest-client"
 version = "0.1.0"
 dependencies = [
  "ah-client-api",
- "ah-core",
- "ah-domain-types",
  "ah-rest-api-contract",
  "async-stream",
  "async-trait",

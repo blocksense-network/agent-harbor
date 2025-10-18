@@ -6,8 +6,6 @@ description = "REST API client for agent-harbor service"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-core = { path = "../ah-core" }
-ah-domain-types = { path = "../ah-domain-types" }
 ah-rest-api-contract = { path = "../ah-rest-api-contract" }
 ah-client-api = { path = "../ah-client-api" }
 tokio = { workspace = true, features = ["full"] }

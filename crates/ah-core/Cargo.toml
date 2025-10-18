@@ -18,6 +18,7 @@ ah-workflows = { path = "../ah-workflows" }
 ah-local-db = { path = "../ah-local-db" }
 ah-domain-types = { path = "../ah-domain-types" }
 ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+ah-rest-client = { path = "../ah-rest-client" }
 ah-mux-core = { path = "../ah-mux-core" }
 ah-mux = { path = "../ah-mux" }
 ah-tui-multiplexer = { path = "../ah-tui-multiplexer" }

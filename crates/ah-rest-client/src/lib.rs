@@ -4,19 +4,21 @@
 //! as specified in REST-Service.md. It includes support for authentication,
 //! request/response handling, and SSE streaming for real-time updates.
 //!
-//! Additionally, it provides a TaskManager trait implementation for use
-//! with the ah-core TaskManager abstraction layer.
+//! ## Design Principles
+//!
+//! This crate is designed to have minimal dependencies and can be used by
+//! third-party software to interact with Agent Harbor APIs without bringing
+//! additional baggage. It provides low-level HTTP client functionality and
+//! implements the ClientApi trait for compatibility with the broader ecosystem.
 
 pub mod auth;
 pub mod client;
 pub mod error;
 pub mod sse;
-pub mod task_manager;
 
 pub use auth::*;
 pub use client::*;
 pub use error::*;
-pub use task_manager::*;
 
 use ah_client_api::{ClientApi, ClientApiError, ClientApiResult};
 use ah_rest_api_contract::*;

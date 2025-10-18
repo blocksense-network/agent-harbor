@@ -15,6 +15,17 @@ use crate::{
 use ah_domain_types::{TaskExecutionStatus, LogLevel, ToolStatus};
 
 /// Trait for REST API clients that can be used with RestTaskManager
+///
+/// This trait defines a subset of REST API features that ah-core needs for task
+/// execution. It stays in ah-core rather than ah-rest-client because:
+///
+/// 1. It represents ah-core's interface requirements, not the REST client's capabilities
+/// 2. It allows ah-core to work with different client implementations (real, mock)
+/// 3. It keeps the REST client crate focused on low-level HTTP operations
+/// 4. Third-party users of ah-rest-client don't need this trait abstraction
+///
+/// Since ah-core depends on ah-rest-client, we can implement this trait directly
+/// for RestClient, eliminating the need for a wrapper type.
 #[async_trait]
 pub trait RestApiClient: Send + Sync {
     /// Create a new task
@@ -24,7 +35,7 @@ pub trait RestApiClient: Send + Sync {
     async fn stream_session_events(&self, session_id: &str) -> Result<Pin<Box<dyn Stream<Item = Result<ah_rest_api_contract::SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// List sessions
-    async fn list_sessions(&self, tenant_id: Option<&str>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>>;
+    async fn list_sessions(&self, filters: Option<&ah_rest_api_contract::FilterQuery>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// List repositories
     async fn list_repositories(&self, tenant_id: Option<&str>, project_id: Option<&str>) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>;
@@ -366,6 +377,37 @@ where
 
 /// Type alias for the most common usage: RestTaskManager with a dynamic RestApiClient
 pub type RestTaskManager = GenericRestTaskManager<Box<dyn RestApiClient>>;
+
+#[async_trait]
+impl RestApiClient for ah_rest_client::RestClient {
+    async fn create_task(&self, request: &ah_rest_api_contract::CreateTaskRequest) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>> {
+        self.create_task(request)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn stream_session_events(&self, session_id: &str) -> Result<Pin<Box<dyn Stream<Item = Result<ah_rest_api_contract::SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>> {
+        let stream = self.stream_session_events(session_id)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        let mapped_stream = stream.map(|item| {
+            item.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        });
+        Ok(Box::pin(mapped_stream))
+    }
+
+    async fn list_sessions(&self, filters: Option<&ah_rest_api_contract::FilterQuery>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
+        self.list_sessions(filters)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn list_repositories(&self, tenant_id: Option<&str>, project_id: Option<&str>) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>> {
+        self.list_repositories(tenant_id, project_id)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+}
 
 #[cfg(test)]
 mod tests {

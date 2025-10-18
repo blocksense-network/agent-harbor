@@ -10,6 +10,41 @@
 //! Different implementations handle local execution, remote REST API calls,
 //! and mock testing scenarios.
 //!
+//! ## Design Principles
+//!
+//! ### Location and Dependencies
+//!
+//! The `TaskManager` trait is intentionally located in `ah-core` because:
+//!
+//! 1. **ah-core contains everything necessary for task execution**: Whether
+//!    executing tasks locally through multiplexers or remotely via REST APIs,
+//!    ah-core provides the full execution environment and coordination logic.
+//!
+//! 2. **ah-core implements TaskManager for all execution modes**: It contains
+//!    implementations that use local multiplexers (`LocalTaskManager`) and
+//!    REST API clients (`GenericRestTaskManager`).
+//!
+//! 3. **The RestApiClient trait stays in ah-core**: It defines a subset of REST
+//!    API features that ah-core needs for task execution. This trait abstracts
+//!    the HTTP client implementation, allowing ah-core to work with both real
+//!    REST clients and mock clients for testing.
+//!
+//! ### Separation from REST Client Crate
+//!
+//! The `ah-rest-client` crate intentionally does NOT implement the `TaskManager`
+//! trait to maintain minimal dependencies. This design allows:
+//!
+//! 1. **Third-party usage**: External software can use `ah-rest-client` to
+//!    interact with Agent Harbor APIs without pulling in the heavy dependencies
+//!    of ah-core (multiplexers, local execution, database, etc.).
+//!
+//! 2. **Clean dependency boundaries**: ah-core depends on ah-rest-client for
+//!    HTTP communication, but ah-rest-client does not depend on ah-core.
+//!
+//! 3. **Flexible composition**: ah-core can compose TaskManager implementations
+//!    that use the REST client, while the REST client remains a lightweight
+//!    HTTP library.
+//!
 //! ## Usage in MVVM Architecture
 //!
 //! The ViewModel holds a reference to a TaskManager and calls `launch_task()`

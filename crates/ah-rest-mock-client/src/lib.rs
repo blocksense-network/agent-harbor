@@ -500,7 +500,7 @@ impl ah_core::RestApiClient for MockRestClient {
         Ok(Box::pin(converted_stream))
     }
 
-    async fn list_sessions(&self, _tenant_id: Option<&str>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_sessions(&self, _filters: Option<&ah_rest_api_contract::FilterQuery>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
         // Get tasks from the mock client
         let (_drafts, tasks) = self.get_initial_tasks().await;
 

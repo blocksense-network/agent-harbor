@@ -10,36 +10,6 @@ use crate::auth::AuthConfig;
 use crate::error::{RestClientError, RestClientResult};
 use crate::sse::SessionEventStream;
 
-#[async_trait::async_trait]
-impl ah_core::RestApiClient for RestClient {
-    async fn create_task(&self, request: &CreateTaskRequest) -> Result<CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>> {
-        self.create_task(request)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-    }
-
-    async fn stream_session_events(&self, session_id: &str) -> Result<std::pin::Pin<Box<dyn futures::Stream<Item = Result<SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>> {
-        let stream = self.stream_session_events(session_id)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        let mapped_stream = stream.map(|item| {
-            item.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-        });
-        Ok(Box::pin(mapped_stream))
-    }
-
-    async fn list_sessions(&self, _tenant_id: Option<&str>) -> Result<SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
-        self.list_sessions(None)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-    }
-
-    async fn list_repositories(&self, tenant_id: Option<&str>, project_id: Option<&str>) -> Result<Vec<Repository>, Box<dyn std::error::Error + Send + Sync>> {
-        self.list_repositories(tenant_id, project_id)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-    }
-}
 
 /// REST API client for agent-harbor service
 #[derive(Debug, Clone)]
