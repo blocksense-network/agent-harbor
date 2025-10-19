@@ -24,8 +24,12 @@ version = "0.1.0"
 dependencies = [
  "ah-domain-types",
  "ah-local-db",
+ "ah-mux",
+ "ah-mux-core",
  "ah-repo",
  "ah-rest-api-contract",
+ "ah-rest-client",
+ "ah-tui-multiplexer",
  "ah-workflows",
  "anyhow",
  "async-stream",
@@ -67,6 +71,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ah-mux"
+version = "0.1.0"
+dependencies = [
+ "ah-mux-core",
+ "async-trait",
+ "regex",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
+name = "ah-mux-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "ah-repo"
 version = "0.1.0"
 dependencies = [
@@ -101,8 +125,6 @@ name = "ah-rest-client"
 version = "0.1.0"
 dependencies = [
  "ah-client-api",
- "ah-core",
- "ah-domain-types",
  "ah-rest-api-contract",
  "async-stream",
  "async-trait",
@@ -175,6 +197,16 @@ dependencies = [
  "tracing-subscriber",
  "tui-textarea",
  "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "ah-tui-multiplexer"
+version = "0.1.0"
+dependencies = [
+ "ah-mux",
+ "ah-mux-core",
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

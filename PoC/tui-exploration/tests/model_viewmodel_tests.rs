@@ -36,55 +36,94 @@ mod viewmodel_tests {
     }
 
     #[test]
-    fn viewmodel_tab_navigation_cycles_through_draft_controls() {
+    fn viewmodel_tab_navigation_cycles_through_draft_card_controls() {
         // Test PRD requirement: "TAB navigation between controls" for draft cards
         let mut vm = create_test_view_model();
 
         // Start with focus on draft task (initial state)
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
 
-        // Tab from draft task should start cycling through controls at RepositorySelector
+        // Check that the draft card's internal focus starts on TaskDescription
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
+
+        // Tab from draft task should cycle through the card's internal controls
         assert!(vm.focus_next_control());
-        assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+        // Global focus should remain on the draft task
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        // But internal focus should move to RepositorySelector
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::RepositorySelector);
+        }
 
         assert!(vm.focus_next_control());
-        assert_eq!(vm.focus_element, FocusElement::BranchSelector);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::BranchSelector);
+        }
 
         assert!(vm.focus_next_control());
-        assert_eq!(vm.focus_element, FocusElement::ModelSelector);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::ModelSelector);
+        }
 
         assert!(vm.focus_next_control());
-        assert_eq!(vm.focus_element, FocusElement::GoButton);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::GoButton);
+        }
 
-        // Next tab should cycle back to RepositorySelector
+        // Next tab should cycle back to TaskDescription
         assert!(vm.focus_next_control());
-        assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
     }
 
     #[test]
-    fn viewmodel_shift_tab_navigation_cycles_backward() {
+    fn viewmodel_shift_tab_navigation_cycles_backward_through_card_controls() {
         // Test PRD requirement: "TAB navigation between controls" (reverse direction)
         let mut vm = create_test_view_model();
 
-        // Start in draft editing mode
-        vm.focus_element = FocusElement::TaskDescription;
+        // Start with draft task focused (initial state)
+        vm.focus_element = FocusElement::DraftTask(0);
 
-        // Shift+Tab backward through controls
+        // Shift+Tab backward through card internal controls
         assert!(vm.focus_previous_control());
-        assert_eq!(vm.focus_element, FocusElement::GoButton);
+        // Global focus should remain on the draft task
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        // But internal focus should move to GoButton
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::GoButton);
+        }
 
         assert!(vm.focus_previous_control());
-        assert_eq!(vm.focus_element, FocusElement::ModelSelector);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::ModelSelector);
+        }
 
         assert!(vm.focus_previous_control());
-        assert_eq!(vm.focus_element, FocusElement::BranchSelector);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::BranchSelector);
+        }
 
         assert!(vm.focus_previous_control());
-        assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::RepositorySelector);
+        }
 
         // Next shift+tab should cycle back to TaskDescription
         assert!(vm.focus_previous_control());
-        assert_eq!(vm.focus_element, FocusElement::TaskDescription);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
     }
 
     #[test]
@@ -92,10 +131,15 @@ mod viewmodel_tests {
         // Test PRD requirement: text input in draft description
         let mut vm = create_test_view_model();
 
-        // Enter draft editing mode (focus on description)
-        vm.focus_element = FocusElement::TaskDescription;
+        // Start with draft task focused (global focus)
+        vm.focus_element = FocusElement::DraftTask(0);
 
-        // Type some text
+        // Verify the card's internal focus is on TaskDescription
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
+
+        // Type some text - should work because card internal focus is TaskDescription
         assert!(vm.handle_char_input('H'));
         assert!(vm.handle_char_input('e'));
         assert!(vm.handle_char_input('l'));
@@ -115,8 +159,8 @@ mod viewmodel_tests {
         // Test PRD requirement: backspace functionality in text input
         let mut vm = create_test_view_model();
 
-        // Focus on task description and add some text
-        vm.focus_element = FocusElement::TaskDescription;
+        // Start with draft task focused and add some text
+        vm.focus_element = FocusElement::DraftTask(0);
         vm.handle_char_input('H');
         vm.handle_char_input('e');
         vm.handle_char_input('l');
@@ -145,8 +189,8 @@ mod viewmodel_tests {
         // Test PRD requirement: "Shift+Enter creates a new line in the text area"
         let mut vm = create_test_view_model();
 
-        // Focus on task description and add some text
-        vm.focus_element = FocusElement::TaskDescription;
+        // Start with draft task focused and add some text
+        vm.focus_element = FocusElement::DraftTask(0);
         vm.handle_char_input('L');
         vm.handle_char_input('i');
         vm.handle_char_input('n');
@@ -173,7 +217,7 @@ mod viewmodel_tests {
         // Test PRD requirement: Enter key activates modal dialogs for selectors
         let mut vm = create_test_view_model();
 
-        // Test repository selector
+        // Test repository selector (global focus)
         vm.focus_element = FocusElement::RepositorySelector;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::RepositorySearch);
@@ -181,7 +225,7 @@ mod viewmodel_tests {
         // Reset modal state
         vm.modal_state = ModalState::None;
 
-        // Test branch selector
+        // Test branch selector (global focus)
         vm.focus_element = FocusElement::BranchSelector;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::BranchSearch);
@@ -189,7 +233,7 @@ mod viewmodel_tests {
         // Reset modal state
         vm.modal_state = ModalState::None;
 
-        // Test model selector
+        // Test model selector (global focus)
         vm.focus_element = FocusElement::ModelSelector;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::ModelSearch);
@@ -197,10 +241,67 @@ mod viewmodel_tests {
         // Reset modal state
         vm.modal_state = ModalState::None;
 
-        // Test settings button
+        // Test settings button (global focus)
         vm.focus_element = FocusElement::SettingsButton;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::Settings);
+    }
+
+    #[test]
+    fn viewmodel_enter_on_draft_card_activates_based_on_internal_focus() {
+        // Test PRD requirement: Enter key on draft card activates based on internal focus
+        let mut vm = create_test_view_model();
+
+        // Start with draft task focused
+        vm.focus_element = FocusElement::DraftTask(0);
+
+        // Initially, card internal focus should be on TaskDescription
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
+
+        // Enter with TaskDescription focused should launch task (same as Go button)
+        // This will fail validation since description is empty, but that's expected
+        assert!(!vm.handle_enter(false)); // Should return false due to validation failure
+        assert!(vm.status_bar.error_message.is_some());
+
+        // Now test with repository selector focused internally
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = FocusElement::RepositorySelector;
+        }
+        vm.modal_state = ModalState::None; // Reset modal state
+        vm.status_bar.error_message = None; // Reset error
+
+        assert!(vm.handle_enter(false));
+        assert_eq!(vm.modal_state, ModalState::RepositorySearch);
+
+        // Test branch selector
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = FocusElement::BranchSelector;
+        }
+        vm.modal_state = ModalState::None;
+
+        assert!(vm.handle_enter(false));
+        assert_eq!(vm.modal_state, ModalState::BranchSearch);
+
+        // Test model selector
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = FocusElement::ModelSelector;
+        }
+        vm.modal_state = ModalState::None;
+
+        assert!(vm.handle_enter(false));
+        assert_eq!(vm.modal_state, ModalState::ModelSearch);
+
+        // Test go button
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = FocusElement::GoButton;
+        }
+        vm.modal_state = ModalState::None;
+
+        // Should try to launch task (will fail validation again)
+        assert!(!vm.handle_enter(false));
+        assert!(vm.status_bar.error_message.is_some());
     }
 
     #[test]
@@ -208,12 +309,23 @@ mod viewmodel_tests {
         // Test PRD requirement: Esc key returns from editing to navigation mode
         let mut vm = create_test_view_model();
 
-        // Start in draft editing mode
-        vm.focus_element = FocusElement::TaskDescription;
+        // With the new focus model, draft tasks are always globally focused during editing
+        // Start with draft task focused (global focus) and some internal focus
+        vm.focus_element = FocusElement::DraftTask(0);
 
-        // Escape should return to draft task navigation
+        // Change the card's internal focus to something else (simulating being in a control)
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = FocusElement::RepositorySelector;
+        }
+
+        // Escape should return the card's internal focus to TaskDescription
         assert!(vm.handle_escape());
+        // Global focus should remain on the draft task
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        // Internal focus should be back on TaskDescription
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
     }
 
     #[test]
@@ -268,7 +380,12 @@ mod viewmodel_tests {
 
         // Should have created a new draft task
         assert_eq!(vm.draft_cards.len(), initial_draft_count + 1);
-        assert_eq!(vm.focus_element, FocusElement::TaskDescription);
+        // Global focus should be on the new draft task
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(initial_draft_count));
+        // The new card's internal focus should be on TaskDescription
+        if let Some(card) = vm.draft_cards.get(initial_draft_count) {
+            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+        }
     }
 
     #[test]
@@ -276,16 +393,16 @@ mod viewmodel_tests {
         // Test PRD requirement: Auto-save functionality
         let mut vm = create_test_view_model();
 
-        // Focus on task description for editing
-        vm.focus_element = FocusElement::TaskDescription;
+        // Start with draft task focused (global focus)
+        vm.focus_element = FocusElement::DraftTask(0);
 
-        // Type some text
+        // Type some text (should work since card internal focus is on TaskDescription)
         vm.handle_char_input('T');
         vm.handle_char_input('e');
         vm.handle_char_input('x');
         vm.handle_char_input('t');
 
-        // Auto-save timer should be set on the draft card (even though focus is on description)
+        // Auto-save timer should be set on the draft card
         if let Some(card) = vm.draft_cards.get(0) {
             assert!(card.auto_save_timer.is_some());
             assert_eq!(card.save_state, DraftSaveState::Unsaved);
@@ -299,8 +416,8 @@ mod viewmodel_tests {
         // Test PRD requirement: Auto-save timer expiration
         let mut vm = create_test_view_model();
 
-        // Focus on task description and type something to set the timer
-        vm.focus_element = FocusElement::TaskDescription;
+        // Start with draft task focused and type something to set the timer
+        vm.focus_element = FocusElement::DraftTask(0);
         vm.handle_char_input('T');
 
         // Get the first draft card and manually set its timer to expired state

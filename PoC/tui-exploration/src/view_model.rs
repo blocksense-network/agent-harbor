@@ -70,84 +70,103 @@ impl ViewModel {
     /// Navigate to the next focusable control
     pub fn focus_next_control(&mut self) -> bool {
         // Implement PRD-compliant tab navigation for draft cards
-        let old_focus = self.focus_element;
         match self.focus_element {
-            FocusElement::TaskDescription => {
-                self.focus_element = FocusElement::RepositorySelector;
+            FocusElement::DraftTask(idx) => {
+                // When on a draft task, Tab should cycle through the card's internal controls
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    let old_internal_focus = card.focus_element;
+                    match card.focus_element {
+                        FocusElement::TaskDescription => {
+                            card.focus_element = FocusElement::RepositorySelector;
+                        }
+                        FocusElement::RepositorySelector => {
+                            card.focus_element = FocusElement::BranchSelector;
+                        }
+                        FocusElement::BranchSelector => {
+                            card.focus_element = FocusElement::ModelSelector;
+                        }
+                        FocusElement::ModelSelector => {
+                            card.focus_element = FocusElement::GoButton;
+                        }
+                        FocusElement::GoButton => {
+                            card.focus_element = FocusElement::TaskDescription; // Cycle back to start
+                        }
+                        _ => {
+                            card.focus_element = FocusElement::RepositorySelector;
+                        }
+                    }
+                    return old_internal_focus != card.focus_element;
+                }
+                false
             }
-            FocusElement::RepositorySelector => {
-                self.focus_element = FocusElement::BranchSelector;
-            }
-            FocusElement::BranchSelector => {
-                self.focus_element = FocusElement::ModelSelector;
-            }
-            FocusElement::ModelSelector => {
-                self.focus_element = FocusElement::GoButton;
-            }
-            FocusElement::GoButton => {
-                self.focus_element = FocusElement::RepositorySelector; // Cycle back to start
-            }
-            FocusElement::DraftTask(_) => {
-                // When on a draft task, Tab should start cycling through controls
-                self.focus_element = FocusElement::RepositorySelector;
-            }
-            // For other elements, cycle through basic navigation
+            // For other global focus elements, handle normally
             FocusElement::SettingsButton => {
                 if !self.draft_cards.is_empty() {
-                    self.focus_element = FocusElement::TaskDescription;
+                    self.focus_element = FocusElement::DraftTask(0);
+                    true
                 } else if !self.task_cards.is_empty() {
                     self.focus_element = FocusElement::FilterBarSeparator;
+                    true
                 } else {
-                    self.focus_element = FocusElement::SettingsButton; // Stay on settings if nothing else
+                    false // Stay on settings if nothing else
                 }
             }
             _ => {
                 self.focus_element = FocusElement::SettingsButton;
+                true
             }
         }
-        old_focus != self.focus_element
     }
 
     /// Navigate to the previous focusable control
     pub fn focus_previous_control(&mut self) -> bool {
         // Implement PRD-compliant shift+tab navigation for draft cards (reverse order)
-        let old_focus = self.focus_element;
         match self.focus_element {
-            FocusElement::TaskDescription => {
-                self.focus_element = FocusElement::GoButton;
+            FocusElement::DraftTask(idx) => {
+                // When on a draft task, Shift+Tab should cycle through the card's internal controls in reverse
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    let old_internal_focus = card.focus_element;
+                    match card.focus_element {
+                        FocusElement::TaskDescription => {
+                            card.focus_element = FocusElement::GoButton;
+                        }
+                        FocusElement::GoButton => {
+                            card.focus_element = FocusElement::ModelSelector;
+                        }
+                        FocusElement::ModelSelector => {
+                            card.focus_element = FocusElement::BranchSelector;
+                        }
+                        FocusElement::BranchSelector => {
+                            card.focus_element = FocusElement::RepositorySelector;
+                        }
+                        FocusElement::RepositorySelector => {
+                            card.focus_element = FocusElement::TaskDescription; // Cycle back to end
+                        }
+                        _ => {
+                            card.focus_element = FocusElement::GoButton;
+                        }
+                    }
+                    return old_internal_focus != card.focus_element;
+                }
+                false
             }
-            FocusElement::GoButton => {
-                self.focus_element = FocusElement::ModelSelector;
-            }
-            FocusElement::ModelSelector => {
-                self.focus_element = FocusElement::BranchSelector;
-            }
-            FocusElement::BranchSelector => {
-                self.focus_element = FocusElement::RepositorySelector;
-            }
-            FocusElement::RepositorySelector => {
-                self.focus_element = FocusElement::TaskDescription;
-            }
-            FocusElement::DraftTask(_) => {
-                // When on a draft task, Tab should start cycling through controls
-                println!("Matched DraftTask case");
-                self.focus_element = FocusElement::RepositorySelector;
-            }
-            // For other elements, cycle through basic navigation
+            // For other global focus elements, handle normally
             FocusElement::SettingsButton => {
                 if !self.task_cards.is_empty() {
-                    self.focus_element = FocusElement::FilterBarSeparator;
+                    self.focus_element = FocusElement::ExistingTask(self.task_cards.len() - 1);
+                    true
                 } else if !self.draft_cards.is_empty() {
-                    self.focus_element = FocusElement::TaskDescription;
+                    self.focus_element = FocusElement::DraftTask(self.draft_cards.len() - 1);
+                    true
                 } else {
-                    self.focus_element = FocusElement::SettingsButton; // Stay on settings if nothing else
+                    false // Stay on settings if nothing else
                 }
             }
             _ => {
-                self.focus_element = FocusElement::TaskDescription;
+                self.focus_element = FocusElement::SettingsButton;
+                true
             }
         }
-        old_focus != self.focus_element
     }
 
     /// Handle character input in focused text areas
@@ -172,17 +191,19 @@ impl ViewModel {
                         return true;
                     }
                 } else if let FocusElement::DraftTask(idx) = self.focus_element {
-                    // When a draft task is focused, edit its description
+                    // When a draft task is focused, edit its description only if internal focus is on text area
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        // Feed the character to the textarea widget
-                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                        let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
-                        card.description.input(key_event);
+                        if card.focus_element == FocusElement::TaskDescription {
+                            // Feed the character to the textarea widget
+                            use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                            let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
+                            card.description.input(key_event);
 
-                        card.save_state = DraftSaveState::Unsaved;
-                        // Reset auto-save timer
-                        card.auto_save_timer = Some(std::time::Instant::now());
-                        return true;
+                            card.save_state = DraftSaveState::Unsaved;
+                            // Reset auto-save timer
+                            card.auto_save_timer = Some(std::time::Instant::now());
+                            return true;
+                        }
                     }
                 }
             }
@@ -209,17 +230,19 @@ impl ViewModel {
                 }
             }
             FocusElement::DraftTask(idx) => {
-                // When a draft task is focused, edit its description
+                // When a draft task is focused, edit its description only if internal focus is on text area
                 if let Some(card) = self.draft_cards.get_mut(idx) {
-                    // Feed backspace to the textarea widget
-                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                    let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
-                    card.description.input(key_event);
+                    if card.focus_element == FocusElement::TaskDescription {
+                        // Feed backspace to the textarea widget
+                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                        let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                        card.description.input(key_event);
 
-                    card.save_state = DraftSaveState::Unsaved;
-                    // Reset auto-save timer
-                    card.auto_save_timer = Some(std::time::Instant::now());
-                    return true;
+                        card.save_state = DraftSaveState::Unsaved;
+                        // Reset auto-save timer
+                        card.auto_save_timer = Some(std::time::Instant::now());
+                        return true;
+                    }
                 }
             }
             _ => {}
@@ -230,6 +253,46 @@ impl ViewModel {
     /// Handle enter key (including shift+enter for newlines)
     pub fn handle_enter(&mut self, shift: bool) -> bool {
         match self.focus_element {
+            FocusElement::DraftTask(idx) => {
+                // Handle Enter on a draft card based on its internal focus
+                if let Some(card) = self.draft_cards.get(idx) {
+                    match card.focus_element {
+                        FocusElement::TaskDescription => {
+                            if shift {
+                                // Shift+Enter: add newline to description
+                                if let Some(card) = self.draft_cards.get_mut(idx) {
+                                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                                    let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+                                    card.description.input(key_event);
+                                    card.save_state = DraftSaveState::Unsaved;
+                                    card.auto_save_timer = Some(std::time::Instant::now());
+                                    return true;
+                                }
+                            } else {
+                                // Enter: launch task (same as Go button)
+                                return self.handle_go_button();
+                            }
+                        }
+                        FocusElement::RepositorySelector => {
+                            self.modal_state = ModalState::RepositorySearch;
+                            return true;
+                        }
+                        FocusElement::BranchSelector => {
+                            self.modal_state = ModalState::BranchSearch;
+                            return true;
+                        }
+                        FocusElement::ModelSelector => {
+                            self.modal_state = ModalState::ModelSearch;
+                            return true;
+                        }
+                        FocusElement::GoButton => {
+                            return self.handle_go_button();
+                        }
+                        _ => return false,
+                    }
+                }
+                false
+            }
             FocusElement::TaskDescription => {
                 if shift {
                     // Shift+Enter: add newline to description
@@ -244,6 +307,7 @@ impl ViewModel {
                         card.auto_save_timer = Some(std::time::Instant::now());
                         return true;
                     }
+                    return false; // No draft card found
                 } else {
                     // Enter: launch task (same as Go button)
                     return self.handle_go_button();
@@ -268,9 +332,8 @@ impl ViewModel {
                 self.modal_state = ModalState::Settings;
                 return true;
             }
-            _ => {}
+            _ => return false,
         }
-        false
     }
 
     /// Handle Go button activation (task launch)
@@ -299,6 +362,13 @@ impl ViewModel {
     /// Handle escape key
     pub fn handle_escape(&mut self) -> bool {
         match self.focus_element {
+            FocusElement::DraftTask(idx) => {
+                // When a draft task is focused, return to the text description focus
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    card.focus_element = FocusElement::TaskDescription;
+                    return true;
+                }
+            }
             FocusElement::TaskDescription | FocusElement::RepositorySelector |
             FocusElement::BranchSelector | FocusElement::ModelSelector | FocusElement::GoButton => {
                 // Return to draft task navigation
@@ -333,7 +403,8 @@ impl ViewModel {
 
                 let new_card = create_draft_card_from_task(new_draft, FocusElement::TaskDescription);
                 self.draft_cards.push(new_card);
-                self.focus_element = FocusElement::TaskDescription; // Focus on the new draft's description
+                let new_index = self.draft_cards.len() - 1;
+                self.focus_element = FocusElement::DraftTask(new_index); // Focus on the new draft task
                 return true;
             }
         }
@@ -671,15 +742,16 @@ impl ViewModel {
         };
 
         // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
-        let initial_focus = FocusElement::DraftTask(0); // Focus on the single draft task
+        let initial_global_focus = FocusElement::DraftTask(0); // Focus on the single draft task
+        let initial_card_focus = FocusElement::TaskDescription; // Initially focus the text area within the card
 
         // Create task collections - cards contain the domain objects
-        let draft_cards = vec![create_draft_card_from_task(initial_draft.clone(), initial_focus)];
+        let draft_cards = vec![create_draft_card_from_task(initial_draft.clone(), initial_card_focus)];
         let task_cards = vec![]; // Start with no task cards
 
         let focused_draft = &initial_draft;
         let active_modal = create_modal_view_model(ModalState::None, &available_repositories, &available_branches, &available_models, &Some(initial_draft.clone()), settings.activity_rows(), true, false);
-        let footer = create_footer_view_model(Some(focused_draft), initial_focus, ModalState::None, &settings, true, false); // Use initial focus
+        let footer = create_footer_view_model(Some(focused_draft), initial_global_focus, ModalState::None, &settings, true, false); // Use initial focus
         let filter_bar = create_filter_bar_view_model();
         let status_bar = create_status_bar_view_model(None, None, false, false, false, false);
 
@@ -690,7 +762,7 @@ impl ViewModel {
             + 1; // Filter bar height
 
         ViewModel {
-            focus_element: initial_focus,
+            focus_element: initial_global_focus,
 
             // Domain state
             available_repositories,
@@ -847,13 +919,43 @@ impl ViewModel {
         match operation {
             KeyboardOperation::MoveToPreviousLine => {
                 match self.focus_element {
-                    FocusElement::DraftTask(_) => self.focus_previous_control(),
+                    FocusElement::DraftTask(idx) => {
+                        // First try to move cursor up in the draft card's text area
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            use tui_textarea::CursorMove;
+                            let old_cursor = card.description.cursor();
+                            card.description.move_cursor(CursorMove::Up);
+                            let new_cursor = card.description.cursor();
+                            if new_cursor != old_cursor {
+                                // Cursor moved successfully within text area
+                                return true;
+                            }
+                        }
+                        // Cursor can't move up, navigate to settings button
+                        self.navigate_up_hierarchy()
+                    }
                     _ => self.navigate_up_hierarchy(),
                 }
             }
             KeyboardOperation::MoveToNextLine => {
-                // Always navigate between UI elements (Down arrow behavior)
-                self.navigate_down_hierarchy()
+                match self.focus_element {
+                    FocusElement::DraftTask(idx) => {
+                        // First try to move cursor down in the draft card's text area
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            use tui_textarea::CursorMove;
+                            let old_cursor = card.description.cursor();
+                            card.description.move_cursor(CursorMove::Down);
+                            let new_cursor = card.description.cursor();
+                            if new_cursor != old_cursor {
+                                // Cursor moved successfully within text area
+                                return true;
+                            }
+                        }
+                        // Cursor can't move down, navigate down hierarchy
+                        self.navigate_down_hierarchy()
+                    }
+                    _ => self.navigate_down_hierarchy(),
+                }
             }
             KeyboardOperation::MoveToNextField => {
                 // Tab navigation through controls (when appropriate)

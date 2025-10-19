@@ -390,38 +390,61 @@ fn down_arrow_from_draft_goes_to_filter_separator() {
 }
 
 #[test]
-fn tab_from_draft_cycles_through_controls() {
-    // This test verifies that pressing Tab while draft card is selected cycles through controls
+fn tab_from_draft_cycles_through_card_controls() {
+    // This test verifies that pressing Tab while draft card is selected cycles through card internal controls
     let mut vm = create_test_view_model();
     vm.focus_element = FocusElement::DraftTask(0); // Start with draft focused
+
+    // Verify initial state
+    assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+    if let Some(card) = vm.draft_cards.get(0) {
+        assert_eq!(card.focus_element, FocusElement::TaskDescription);
+    }
 
     // Test MoveToNextField operation directly (Tab should trigger this)
     use tui_exploration::settings::KeyboardOperation;
 
-    // First Tab should move to RepositorySelector
+    // First Tab should move card internal focus to RepositorySelector
     let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
     assert!(handled);
-    assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+    // Global focus should remain on draft task
+    assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+    // Internal focus should move to RepositorySelector
+    if let Some(card) = vm.draft_cards.get(0) {
+        assert_eq!(card.focus_element, FocusElement::RepositorySelector);
+    }
 
     // Second Tab should move to BranchSelector
     let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
     assert!(handled);
-    assert_eq!(vm.focus_element, FocusElement::BranchSelector);
+    assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+    if let Some(card) = vm.draft_cards.get(0) {
+        assert_eq!(card.focus_element, FocusElement::BranchSelector);
+    }
 
     // Third Tab should move to ModelSelector
     let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
     assert!(handled);
-    assert_eq!(vm.focus_element, FocusElement::ModelSelector);
+    assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+    if let Some(card) = vm.draft_cards.get(0) {
+        assert_eq!(card.focus_element, FocusElement::ModelSelector);
+    }
 
     // Fourth Tab should move to GoButton
     let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
     assert!(handled);
-    assert_eq!(vm.focus_element, FocusElement::GoButton);
+    assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+    if let Some(card) = vm.draft_cards.get(0) {
+        assert_eq!(card.focus_element, FocusElement::GoButton);
+    }
 
-    // Fifth Tab should cycle back to RepositorySelector
+    // Fifth Tab should cycle back to TaskDescription
     let handled = vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty()));
     assert!(handled);
-    assert_eq!(vm.focus_element, FocusElement::RepositorySelector);
+    assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+    if let Some(card) = vm.draft_cards.get(0) {
+        assert_eq!(card.focus_element, FocusElement::TaskDescription);
+    }
 }
 
 #[test]
