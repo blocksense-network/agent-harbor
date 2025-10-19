@@ -294,6 +294,18 @@ fn parse_key_token(
         "end" => (KeyCode::End, false, "End".to_string()),
         "pageup" | "page-up" => (KeyCode::PageUp, false, "PageUp".to_string()),
         "pagedown" | "page-down" => (KeyCode::PageDown, false, "PageDown".to_string()),
+        token if token.len() > 1 && token.to_lowercase().starts_with('f') => {
+            // Handle function keys F1-F12
+            if let Ok(num) = token[1..].parse::<u8>() {
+                if (1..=12).contains(&num) {
+                    (KeyCode::F(num), false, format!("F{}", num))
+                } else {
+                    return Err(ShortcutParseError::UnsupportedKey(token.to_string()));
+                }
+            } else {
+                return Err(ShortcutParseError::UnsupportedKey(token.to_string()));
+            }
+        }
         _ => {
             let mut chars = token.chars();
             let first = chars
