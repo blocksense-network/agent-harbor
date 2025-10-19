@@ -53,10 +53,11 @@
 
 use ah_domain_types::{TaskExecution, DraftTask, SelectedModel, TaskState, TaskInfo, DeliveryStatus};
 use ah_tui::view_model::{FocusElement, ModalState, ButtonStyle, ButtonViewModel, DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel, AgentActivityRow, TaskCardType, TaskMetadataViewModel, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskEntryControlsViewModel};
-use crate::workspace_files::WorkspaceFiles;
-use crate::workspace_workflows::WorkspaceWorkflows;
 use crate::Settings;
 use ah_core::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult};
+use crate::workspace_files::WorkspaceFiles;
+use ah_workflows::WorkspaceWorkflowsEnumerator;
+use ah_tui::view::autocomplete::{InlineAutocomplete, AutocompleteKeyResult};
 use ah_domain_types::task::ToolStatus;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
 use futures::stream::StreamExt;
@@ -184,6 +185,9 @@ impl ViewModel {
                         let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
                         card.description.input(key_event);
 
+                        // Trigger autocomplete after textarea change
+                        self.autocomplete.after_textarea_change(&card.description);
+
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
                         card.auto_save_timer = Some(std::time::Instant::now());
@@ -197,6 +201,9 @@ impl ViewModel {
                             use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                             let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
                             card.description.input(key_event);
+
+                            // Trigger autocomplete after textarea change
+                            self.autocomplete.after_textarea_change(&card.description);
 
                             card.save_state = DraftSaveState::Unsaved;
                             // Reset auto-save timer
@@ -682,8 +689,11 @@ pub struct ViewModel {
 
     // Service dependencies
     pub workspace_files: Box<dyn WorkspaceFiles>,
-    pub workspace_workflows: Box<dyn WorkspaceWorkflows>,
+    pub workspace_workflows: Box<dyn WorkspaceWorkflowsEnumerator>,
     pub task_manager: Box<dyn TaskManager>, // Task launching abstraction
+
+    // Autocomplete system
+    pub autocomplete: InlineAutocomplete,
 
     // Domain state - available options
     pub available_repositories: Vec<String>,
@@ -711,7 +721,7 @@ impl ViewModel {
     /// Create a new ViewModel with service dependencies
     pub fn new(
         workspace_files: Box<dyn WorkspaceFiles>,
-        workspace_workflows: Box<dyn WorkspaceWorkflows>,
+        workspace_workflows: Box<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Box<dyn TaskManager>,
         settings: Settings,
     ) -> Self {
@@ -806,6 +816,9 @@ impl ViewModel {
             workspace_workflows,
             task_manager,
 
+            // Autocomplete system - initialize with empty providers for now
+            autocomplete: InlineAutocomplete::new(),
+
             // Task event streaming
             task_event_sender: None,
             task_event_receiver: None,
@@ -838,6 +851,11 @@ impl ViewModel {
             Msg::Tick => {
                 // Handle periodic updates (activity simulation, etc.)
                 let had_activity_changes = self.update_active_task_activities();
+
+                // Handle autocomplete periodic updates
+                self.autocomplete.on_tick();
+                self.autocomplete.poll_results();
+
                 if had_activity_changes {
                     self.needs_redraw = true;
                 }
@@ -901,6 +919,23 @@ impl ViewModel {
         if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
             if mods.contains(KeyModifiers::CONTROL) {
                 return self.handle_ctrl_n();
+            }
+        }
+
+        // Handle autocomplete keys when focused on TaskDescription
+        if matches!(self.focus_element, FocusElement::TaskDescription) {
+            if let Some(card) = self.draft_cards.get_mut(0) {
+                match self.autocomplete.handle_key_event(&key, &mut card.description) {
+                    AutocompleteKeyResult::Consumed { text_changed } => {
+                        if text_changed {
+                            self.autocomplete.after_textarea_change(&card.description);
+                        }
+                        return true;
+                    }
+                    AutocompleteKeyResult::Ignored => {
+                        // Continue with normal key handling
+                    }
+                }
             }
         }
 

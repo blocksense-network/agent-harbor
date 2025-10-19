@@ -7,10 +7,10 @@ use std::sync::Arc;
 use tui_exploration::{
     view_model::ViewModel,
     workspace_files::GitWorkspaceFiles,
-    workspace_workflows::PathWorkspaceWorkflows,
     TaskEvent, TaskStatus, LogLevel,
     settings::Settings,
 };
+use ah_workflows::{WorkflowProcessor, WorkflowConfig};
 use ah_core::task_manager::ToolStatus;
 use ah_tui::view_model::{FocusElement, AgentActivityRow, TaskCardType, TaskExecutionViewModel};
 use ah_rest_mock_client::MockRestClient;
@@ -24,7 +24,7 @@ mod event_processing_tests {
     // Helper function to create a test ViewModel with a running task
     fn create_test_view_model_with_active_task() -> ViewModel {
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-        let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+        let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Box::new(MockRestClient::new());
         let mut settings = Settings::default();
         settings.active_sessions_activity_rows = Some(3); // Set activity rows for testing
@@ -389,7 +389,7 @@ mod event_processing_tests {
     #[test]
     fn events_for_draft_tasks_are_ignored() {
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-        let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+        let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 

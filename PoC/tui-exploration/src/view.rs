@@ -278,13 +278,17 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
             }
         };
 
-            let rect = Rect {
-                x: tasks_area.x,
-                y: screen_y,
-                width: tasks_area.width,
-            height: item_height,
-            };
-            item_rects.push((item, rect));
+            // Only add items that fit within the screen bounds
+            let screen = frame.area();
+            if screen_y + item_height <= screen.height {
+                let rect = Rect {
+                    x: tasks_area.x,
+                    y: screen_y,
+                    width: tasks_area.width,
+                    height: item_height,
+                };
+                item_rects.push((item, rect));
+            }
         screen_y = screen_y.saturating_add(item_height);
     }
 
@@ -304,7 +308,9 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                         TaskCardTypeEnum::Draft => {
                             let card = &view_model.draft_cards[card_info.index];
                             let is_selected = matches!(view_model.focus_element, FocusElement::DraftTask(idx) if idx == card_info.index);
-                            draft_card::render_draft_card(frame, rect, card, &theme, is_selected);
+                            let textarea_area = draft_card::render_draft_card(frame, rect, card, &theme, is_selected);
+                            // Store textarea area for autocomplete positioning
+                            view_model.last_textarea_area = Some(textarea_area);
                             0 // Draft card is always at index 0
                         }
                         TaskCardTypeEnum::Task => {
@@ -322,6 +328,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                     });
                 }
             }
+        }
     }
 
     // Render footer
@@ -356,11 +363,27 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                 let (cursor_row, cursor_col) = card.description.cursor();
                 let caret_x = textarea_area.x.saturating_add(cursor_col as u16).min(textarea_area.x + textarea_area.width - 1);
                 let caret_y = textarea_area.y.saturating_add(cursor_row as u16).min(textarea_area.y + textarea_area.height - 1);
-                frame.set_cursor_position(ratatui::layout::Position::new(caret_x, caret_y));
+
+                // Ensure cursor position is within screen bounds
+                let screen = frame.area();
+                let safe_caret_x = caret_x.min(screen.x + screen.width - 1);
+                let safe_caret_y = caret_y.min(screen.y + screen.height - 1);
+
+                frame.set_cursor_position(ratatui::layout::Position::new(safe_caret_x, safe_caret_y));
             }
         }
     }
-}
+
+    // Render autocomplete menu if textarea area is available
+    if let Some(area) = view_model.last_textarea_area {
+        view_model.autocomplete.render(
+            frame,
+            area,
+            &view_model.draft_cards.first().unwrap().description,
+            &theme,
+            theme.surface, // Use surface color for autocomplete background
+        );
+    }
 }
 
 // Helper function to find the textarea area for a given card (needed for cursor positioning)

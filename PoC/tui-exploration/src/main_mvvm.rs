@@ -37,12 +37,12 @@ use tui_exploration::{
     TaskManager,
     ViewCache,
     settings::Settings,
-    workspace_files::GitWorkspaceFiles,
-    workspace_workflows::PathWorkspaceWorkflows,
     TaskState,
     ModalState,
 };
 
+use tui_exploration::workspace_files::GitWorkspaceFiles;
+use ah_workflows::{WorkflowProcessor, WorkflowConfig};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::Theme;
 use image::GenericImageView;
@@ -244,7 +244,11 @@ async fn run_app_mvvm(
     // Create service instances
     let workspace_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let workspace_files = Box::new(GitWorkspaceFiles::new(workspace_dir.clone()));
-    let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(workspace_dir));
+    let config = WorkflowConfig::default();
+    let workspace_workflows = Box::new(
+        WorkflowProcessor::for_repo(config, &workspace_dir)
+            .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default()))
+    );
     let task_manager = Box::new(MockRestClient::with_mock_data());
 
     let settings = Settings::default();

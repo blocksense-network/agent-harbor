@@ -10,7 +10,8 @@ use super::Theme;
 use crate::view_model::{FocusElement, TaskEntryViewModel};
 
 /// Render a draft card (exact same as main.rs TaskCard::render with state == Draft)
-pub fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) {
+/// Returns the textarea area for autocomplete positioning
+pub fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) -> Rect {
     // Draft cards have outer border with "New Task" title
     let border_style = if is_selected {
         Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
@@ -34,11 +35,11 @@ pub fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryView
 
     let inner_area = border_block.inner(area);
     frame.render_widget(border_block, area);
-    render_draft_card_content(frame, inner_area, card, theme, is_selected);
+    render_draft_card_content(frame, inner_area, card, theme, is_selected)
 }
 
 /// Render draft card content (exact same as main.rs TaskCard::render_draft_card_content)
-pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) {
+pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) -> Rect {
     let content_height = area.height as usize;
 
     // Split the available area between textarea and buttons (exact same as main.rs)
@@ -212,4 +213,7 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
     // Register interactive areas for draft card buttons
     // Temporarily disabled to avoid borrowing issues - will be re-enabled later when ViewModel is moved to ah-tui
     // register_draft_card_button_areas(view_model, button_area, &repo_button_text, &branch_button_text, &models_button_text, &go_button_text);
+
+    // Return the textarea area for autocomplete positioning
+    textarea_area
 }

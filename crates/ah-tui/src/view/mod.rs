@@ -44,6 +44,7 @@
 use ratatui::{prelude::*, widgets::*};
 
 // pub mod header; // Header rendering components - TODO: move later
+pub mod autocomplete; // Autocomplete rendering components
 pub mod draft_card; // Draft card rendering components
 pub mod dialogs; // Dialog/modal rendering components
 
@@ -178,6 +179,11 @@ impl Theme {
     /// Style for text elements
     pub fn text_style(&self) -> Style {
         Style::default().fg(self.text)
+    }
+
+    /// Style for muted elements
+    pub fn muted_style(&self) -> Style {
+        Style::default().fg(self.muted)
     }
 
     /// Style for success elements

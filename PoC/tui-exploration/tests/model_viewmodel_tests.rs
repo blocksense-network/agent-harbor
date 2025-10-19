@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 /// Helper function to create a test ViewModel with mock dependencies
 fn create_test_view_model() -> ViewModel {
     let workspace_files = Box::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-    let workspace_workflows = Box::new(tui_exploration::workspace_workflows::PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+    let workspace_workflows = Box::new(ah_workflows::WorkflowProcessor::new(ah_workflows::WorkflowConfig::default()));
     let task_manager = Box::new(ah_rest_mock_client::MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 

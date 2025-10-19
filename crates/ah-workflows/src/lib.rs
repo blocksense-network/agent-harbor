@@ -3,12 +3,35 @@
 //! This crate implements the workflow commands feature for Agent Harbor tasks.
 //! It processes `/command` directives and `@agents-setup` environment directives
 //! in task descriptions, expanding them into dynamic content and environment variables.
+//! It also provides functionality to enumerate valid workflow commands in a workspace.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 use ah_repo::VcsRepo;
+
+/// Information about a workflow command available in the workspace
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkflowCommand {
+    /// The command name (without leading /)
+    pub name: String,
+    /// Where the command is defined
+    pub source: WorkflowCommandSource,
+    /// Optional description from the first line of text files
+    pub description: Option<String>,
+}
+
+/// Source of a workflow command
+#[derive(Debug, Clone, PartialEq)]
+pub enum WorkflowCommandSource {
+    /// Executable script in .agents/workflows/
+    Script(PathBuf),
+    /// Text file in .agents/workflows/
+    TextFile(PathBuf),
+    /// Executable found in system PATH
+    Path,
+}
 
 /// Result of processing workflow commands and environment directives
 #[derive(Debug, Clone, PartialEq)]
@@ -303,6 +326,158 @@ impl WorkflowProcessor {
                 (var, final_value)
             })
             .collect()
+    }
+
+
+    async fn enumerate_repo_commands(&self, wf_dir: &Path, commands: &mut Vec<WorkflowCommand>) -> Result<(), WorkflowError> {
+        if let Ok(mut entries) = tokio::fs::read_dir(wf_dir).await {
+            while let Some(entry) = entries.next_entry().await.map_err(WorkflowError::Io)? {
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if let Some(cmd_name) = Self::extract_command_name(file_name) {
+                        // Check if command is whitelisted
+                        if self.config.extra_workflow_executables.contains(&cmd_name) {
+                            let source = if path.is_file() && Self::is_script_file(&path) {
+                                WorkflowCommandSource::Script(path.clone())
+                            } else if file_name.ends_with(".txt") {
+                                WorkflowCommandSource::TextFile(path.clone())
+                            } else {
+                                continue; // Skip non-script, non-text files
+                            };
+
+                            // Read first line for description if it's a text file
+                            let description = if matches!(source, WorkflowCommandSource::TextFile(_)) {
+                                Self::read_command_description(&path).await.ok()
+                            } else {
+                                None
+                            };
+
+                            commands.push(WorkflowCommand {
+                                name: cmd_name,
+                                source,
+                                description,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn extract_command_name(file_name: &str) -> Option<String> {
+        if file_name.ends_with(".txt") {
+            Some(file_name.trim_end_matches(".txt").to_string())
+        } else {
+            Some(file_name.to_string())
+        }
+    }
+
+    fn is_script_file(path: &Path) -> bool {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            path.metadata()
+                .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
+        }
+        #[cfg(windows)]
+        {
+            if let Some(extension) = path.extension() {
+                let ext = extension.to_string_lossy().to_lowercase();
+                matches!(ext.as_str(), "exe" | "bat" | "cmd" | "ps1")
+            } else {
+                false
+            }
+        }
+    }
+
+    async fn read_command_description(path: &Path) -> Result<String, WorkflowError> {
+        let content = tokio::fs::read_to_string(path).await?;
+        let first_line = content.lines().next().unwrap_or("").trim();
+        if first_line.is_empty() {
+            Ok("No description available".to_string())
+        } else {
+            Ok(first_line.to_string())
+        }
+    }
+}
+
+/// Trait for workspace workflow services that enumerate valid workflow commands
+#[async_trait::async_trait]
+pub trait WorkspaceWorkflowsEnumerator: Send + Sync {
+    /// Enumerate all valid workflow commands available in the workspace
+    async fn enumerate_workflow_commands(&self) -> Result<Vec<WorkflowCommand>, WorkflowError>;
+}
+
+#[async_trait::async_trait]
+impl WorkspaceWorkflowsEnumerator for WorkflowProcessor {
+    async fn enumerate_workflow_commands(&self) -> Result<Vec<WorkflowCommand>, WorkflowError> {
+        let mut commands = Vec::new();
+
+        // Check repository workflows directory first
+        if let Some(repo) = &self.repo {
+            let wf_dir = repo.root().join(".agents").join("workflows");
+            if wf_dir.exists() {
+                self.enumerate_repo_commands(&wf_dir, &mut commands).await?;
+            }
+        } else if let Some(ref wf_dir) = self.config.repo_workflows_dir {
+            if wf_dir.exists() {
+                self.enumerate_repo_commands(wf_dir, &mut commands).await?;
+            }
+        }
+
+        // Add whitelisted PATH commands
+        for cmd in &self.config.extra_workflow_executables {
+            if Self::find_in_path(cmd).is_some() {
+                // Only add if not already present from repo workflows
+                if !commands.iter().any(|c| c.name == *cmd) {
+                    commands.push(WorkflowCommand {
+                        name: cmd.clone(),
+                        source: WorkflowCommandSource::Path,
+                        description: None,
+                    });
+                }
+            }
+        }
+
+        // Sort commands by name for consistent output
+        commands.sort_by(|a, b| a.name.cmp(&b.name));
+
+        Ok(commands)
+    }
+}
+
+/// Mock implementation for testing
+#[cfg(test)]
+pub struct MockWorkspaceWorkflowsEnumerator {
+    pub commands: Vec<WorkflowCommand>,
+}
+
+#[cfg(test)]
+impl MockWorkspaceWorkflowsEnumerator {
+    /// Create a new mock service with the given commands
+    pub fn new(commands: Vec<WorkflowCommand>) -> Self {
+        Self { commands }
+    }
+
+    /// Create a mock service with no commands
+    pub fn empty() -> Self {
+        Self { commands: vec![] }
+    }
+
+    /// Add a command to the mock service
+    pub fn with_command(mut self, command: WorkflowCommand) -> Self {
+        self.commands.push(command);
+        self
+    }
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl WorkspaceWorkflowsEnumerator for MockWorkspaceWorkflowsEnumerator {
+    async fn enumerate_workflow_commands(&self) -> Result<Vec<WorkflowCommand>, WorkflowError> {
+        Ok(self.commands.clone())
     }
 }
 
@@ -739,5 +914,203 @@ mod tests {
         assert_eq!(split("hello \"world test\""), Ok(vec!["hello".to_string(), "world test".to_string()]));
         assert_eq!(split("cmd arg1 arg2"), Ok(vec!["cmd".to_string(), "arg1".to_string(), "arg2".to_string()]));
         assert!(split("unclosed \"quote").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_enumerate_workflow_commands_empty_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir(&repo_dir).unwrap();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(&["init"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        let config = WorkflowConfig {
+            extra_workflow_executables: vec!["git".to_string(), "cargo".to_string()],
+            repo_workflows_dir: None,
+        };
+
+        let processor = WorkflowProcessor::for_repo(config, &repo_dir).unwrap();
+        let commands = processor.enumerate_workflow_commands().await.unwrap();
+
+        // Should find git and cargo from PATH
+        assert!(commands.len() >= 2);
+        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
+        assert!(commands.iter().any(|c| c.name == "cargo" && matches!(c.source, WorkflowCommandSource::Path)));
+    }
+
+    #[tokio::test]
+    async fn test_enumerate_workflow_commands_with_repo_scripts() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir(&repo_dir).unwrap();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(&["init"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        // Create workflows directory with script and text file
+        let wf_dir = repo_dir.join(".agents").join("workflows");
+        std::fs::create_dir_all(&wf_dir).unwrap();
+
+        let script_path = wf_dir.join("test-script");
+        std::fs::write(&script_path, "#!/bin/sh\necho test").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script_path, perms).unwrap();
+        }
+
+        let text_path = wf_dir.join("info.txt");
+        std::fs::write(&text_path, "Information about the project").unwrap();
+
+        let config = WorkflowConfig {
+            extra_workflow_executables: vec!["test-script".to_string(), "info".to_string(), "git".to_string()],
+            repo_workflows_dir: None,
+        };
+
+        let processor = WorkflowProcessor::for_repo(config, &repo_dir).unwrap();
+        let commands = processor.enumerate_workflow_commands().await.unwrap();
+
+        // Should find the repo script and text file
+        assert!(commands.iter().any(|c| c.name == "test-script" && matches!(c.source, WorkflowCommandSource::Script(_))));
+        assert!(commands.iter().any(|c| {
+            c.name == "info" &&
+            matches!(c.source, WorkflowCommandSource::TextFile(_)) &&
+            c.description == Some("Information about the project".to_string())
+        }));
+
+        // Should still find git from PATH
+        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
+    }
+
+    #[tokio::test]
+    async fn test_enumerate_workflow_commands_non_whitelisted() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir(&repo_dir).unwrap();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(&["init"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        // Create workflows directory with non-whitelisted script
+        let wf_dir = repo_dir.join(".agents").join("workflows");
+        std::fs::create_dir_all(&wf_dir).unwrap();
+
+        let script_path = wf_dir.join("non-whitelisted");
+        std::fs::write(&script_path, "#!/bin/sh\necho test").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script_path, perms).unwrap();
+        }
+
+        let config = WorkflowConfig {
+            extra_workflow_executables: vec!["git".to_string()], // Only git is whitelisted
+            repo_workflows_dir: None,
+        };
+
+        let processor = WorkflowProcessor::for_repo(config, &repo_dir).unwrap();
+        let commands = processor.enumerate_workflow_commands().await.unwrap();
+
+        // Should not find the non-whitelisted script
+        assert!(!commands.iter().any(|c| c.name == "non-whitelisted"));
+
+        // Should still find git from PATH
+        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
+    }
+
+    #[tokio::test]
+    async fn test_enumerate_workflow_commands_no_repo() {
+        let config = WorkflowConfig {
+            extra_workflow_executables: vec!["git".to_string(), "cargo".to_string()],
+            repo_workflows_dir: None,
+        };
+
+        let processor = WorkflowProcessor::new(config);
+        let commands = processor.enumerate_workflow_commands().await.unwrap();
+
+        // Should find whitelisted commands from PATH
+        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
+        assert!(commands.iter().any(|c| c.name == "cargo" && matches!(c.source, WorkflowCommandSource::Path)));
+    }
+
+
+    #[tokio::test]
+    async fn test_enumerate_workflow_commands_empty_description() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        std::fs::create_dir(&repo_dir).unwrap();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(&["init"])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+
+        // Create workflows directory with empty text file
+        let wf_dir = repo_dir.join(".agents").join("workflows");
+        std::fs::create_dir_all(&wf_dir).unwrap();
+
+        let text_path = wf_dir.join("empty.txt");
+        std::fs::write(&text_path, "").unwrap();
+
+        let config = WorkflowConfig {
+            extra_workflow_executables: vec!["empty".to_string()],
+            repo_workflows_dir: None,
+        };
+
+        let processor = WorkflowProcessor::for_repo(config, &repo_dir).unwrap();
+        let commands = processor.enumerate_workflow_commands().await.unwrap();
+
+        // Should have default description for empty file
+        let empty_cmd = commands.iter().find(|c| c.name == "empty").unwrap();
+        assert_eq!(empty_cmd.description, Some("No description available".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_mock_workspace_workflows() {
+        let mock_commands = vec![
+            WorkflowCommand {
+                name: "test-cmd".to_string(),
+                source: WorkflowCommandSource::Script(PathBuf::from("/tmp/test")),
+                description: Some("Test command".to_string()),
+            },
+            WorkflowCommand {
+                name: "info".to_string(),
+                source: WorkflowCommandSource::TextFile(PathBuf::from("/tmp/info.txt")),
+                description: Some("Info command".to_string()),
+            },
+        ];
+
+        let service = MockWorkspaceWorkflowsEnumerator::new(mock_commands);
+        let commands = service.enumerate_workflow_commands().await.unwrap();
+
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0].name, "test-cmd");
+        assert_eq!(commands[1].name, "info");
+    }
+
+    #[tokio::test]
+    async fn test_mock_workspace_workflows_empty() {
+        let service = MockWorkspaceWorkflowsEnumerator::empty();
+        let commands = service.enumerate_workflow_commands().await.unwrap();
+        assert!(commands.is_empty());
     }
 }

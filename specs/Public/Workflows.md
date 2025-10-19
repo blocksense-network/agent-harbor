@@ -43,7 +43,7 @@ For a workflow command `/command`:
 2. **Text File Fallback**: If no executable script is found in `.agents/workflows/`, look for a text file at `.agents/workflows/command.txt` and include its contents.
 3. **Configuration-based Whitelist**: Check if `command` is listed in the `extra_workflow_executables` configuration variable. If not listed, report an error.
 4. **PATH Verification**: If listed in the whitelist, verify that the executable exists in the system `PATH` and is executable. If not found in PATH, report an error.
-5. **Error Handling**: If the command is not whitelisted, not found in PATH, and no script/text file exists, report an error in diagnostics.
+5. **Error Handling**: If no script/text file exists, the command is not whitelisted, or it's not found in PATH, report an error in diagnostics.
 
 ### Script Execution
 

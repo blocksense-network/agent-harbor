@@ -16,10 +16,11 @@ ah-rest-client = { path = "../ah-rest-client" }
 ah-test-scenarios = { path = "../ah-test-scenarios" }
 ah-domain-types = { path = "../ah-domain-types" }
 ah-core = { path = "../ah-core" }
+ah-workflows = { path = "../ah-workflows" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
 ratatui = "0.29"
-crossterm = "0.29"
+crossterm = "0.28"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -33,6 +34,10 @@ tui-textarea = { path = "../../vendor/tui-textarea", features = ["search"] }
 similar = "2.5"
 ratatui-image = { version = "8", features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+crossbeam-channel = "0.5"
+nucleo = "0.5"
+once_cell = "1.0"
+unicode-segmentation = "1.0"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -47,7 +47,6 @@ pub mod view_model;
 pub mod view;
 pub mod settings;
 pub mod workspace_files;
-pub mod workspace_workflows;
 
 // Re-export commonly used types
 pub use ah_domain_types::task::ToolStatus;
@@ -56,7 +55,7 @@ pub use view_model::{Msg, ViewModel, TaskCardTypeEnum, TaskItem};
 pub use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, FocusElement, ModalState, TaskCardType, AgentActivityRow, ButtonStyle, ButtonViewModel, DraftSaveState, SearchMode, DeliveryIndicator, FilterOptions, AutoSaveState, TaskMetadataViewModel, TaskEntryControlsViewModel};
 pub use ah_tui::view::{ViewCache, Theme};
 pub use settings::{Settings, FontStyle, SelectionDialogStyle, KeymapConfig, KeyBinding};
-pub use workspace_workflows::{WorkspaceWorkflows, PathWorkspaceWorkflows};
+pub use ah_workflows::WorkspaceWorkflowsEnumerator;
 pub use ah_core::task_manager::{
     TaskManager, TaskLaunchParams, TaskLaunchResult,
     TaskEvent,

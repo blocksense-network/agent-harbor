@@ -7,10 +7,10 @@
 use tui_exploration::{
     view_model::ViewModel,
     workspace_files::GitWorkspaceFiles,
-    workspace_workflows::PathWorkspaceWorkflows,
     TaskEvent, TaskStatus, LogLevel,
     settings::Settings,
 };
+use ah_workflows::{WorkflowProcessor, WorkflowConfig};
 use ah_core::task_manager::ToolStatus;
 use ah_domain_types::{TaskExecution, TaskState, SelectedModel, DeliveryStatus};
 use ah_tui::view_model::{FocusElement, AgentActivityRow, TaskCardType, TaskMetadataViewModel, TaskExecutionViewModel};
@@ -27,7 +27,7 @@ mod navigation_tests {
 
         // Create a minimal ViewModel for testing navigation
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-        let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+        let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
@@ -182,7 +182,7 @@ mod navigation_tests {
     fn view_model_navigation_edge_cases() {
         // Create a minimal ViewModel for testing navigation edge cases
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-        let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+        let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
@@ -221,7 +221,7 @@ mod navigation_tests {
 
         // Create a ViewModel
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-        let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+        let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
@@ -244,7 +244,7 @@ mod navigation_tests {
 
         // Create a ViewModel
         let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-        let workspace_workflows = Box::new(PathWorkspaceWorkflows::new(std::path::PathBuf::from(".")));
+        let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
