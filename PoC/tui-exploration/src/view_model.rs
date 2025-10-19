@@ -74,7 +74,6 @@ impl ViewModel {
             FocusElement::DraftTask(idx) => {
                 // When on a draft task, Tab should cycle through the card's internal controls
                 if let Some(card) = self.draft_cards.get_mut(idx) {
-                    let old_internal_focus = card.focus_element;
                     match card.focus_element {
                         FocusElement::TaskDescription => {
                             card.focus_element = FocusElement::RepositorySelector;
@@ -95,7 +94,7 @@ impl ViewModel {
                             card.focus_element = FocusElement::RepositorySelector;
                         }
                     }
-                    return old_internal_focus != card.focus_element;
+                    return true;
                 }
                 false
             }
@@ -146,7 +145,7 @@ impl ViewModel {
                             card.focus_element = FocusElement::GoButton;
                         }
                     }
-                    return old_internal_focus != card.focus_element;
+                    return true;
                 }
                 false
             }
@@ -872,7 +871,13 @@ impl ViewModel {
         // These are operations that have default key bindings defined
         let operations_to_check = vec![
             KeyboardOperation::MoveToPreviousLine, // Up arrow
-            KeyboardOperation::MoveToNextLine, // Down arrow, Tab
+            KeyboardOperation::MoveToNextLine, // Down arrow
+            KeyboardOperation::MoveToNextField, // Tab
+            KeyboardOperation::MoveToPreviousField, // Shift+Tab
+            KeyboardOperation::MoveToBeginningOfLine, // Home
+            KeyboardOperation::MoveToEndOfLine, // End
+            KeyboardOperation::MoveForwardOneCharacter, // Right arrow
+            KeyboardOperation::MoveBackwardOneCharacter, // Left arrow
             KeyboardOperation::DeleteCharacterBackward, // Backspace
             KeyboardOperation::OpenNewLine, // Shift+Enter
         ];
@@ -904,6 +909,18 @@ impl ViewModel {
             return self.handle_keyboard_operation(operation, &key);
         }
 
+        // Handle special key codes directly
+        use ratatui::crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Enter => {
+                return self.handle_enter(key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT));
+            }
+            KeyCode::Esc => {
+                return self.handle_escape();
+            }
+            _ => {}
+        }
+
         // Handle character input directly if it's not a recognized operation
         if let KeyCode::Char(ch) = key.code {
             return self.handle_char_input(ch);
@@ -917,6 +934,66 @@ impl ViewModel {
     pub fn handle_keyboard_operation(&mut self, operation: KeyboardOperation, key: &KeyEvent) -> bool {
 
         match operation {
+            KeyboardOperation::MoveToNextField => {
+                // Tab key: move between controls within current focus element
+                self.focus_next_control()
+            }
+            KeyboardOperation::MoveToPreviousField => {
+                // Shift+Tab key: move backward between controls within current focus element
+                self.focus_previous_control()
+            }
+            KeyboardOperation::MoveToBeginningOfLine => {
+                // Home key: move cursor to beginning of line in text area
+                if let FocusElement::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == FocusElement::TaskDescription {
+                            use tui_textarea::CursorMove;
+                            card.description.move_cursor(CursorMove::Head);
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            KeyboardOperation::MoveToEndOfLine => {
+                // End key: move cursor to end of line in text area
+                if let FocusElement::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == FocusElement::TaskDescription {
+                            use tui_textarea::CursorMove;
+                            card.description.move_cursor(CursorMove::End);
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            KeyboardOperation::MoveForwardOneCharacter => {
+                // Right arrow: move cursor forward one character in text area
+                if let FocusElement::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == FocusElement::TaskDescription {
+                            use tui_textarea::CursorMove;
+                            card.description.move_cursor(CursorMove::Forward);
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            KeyboardOperation::MoveBackwardOneCharacter => {
+                // Left arrow: move cursor backward one character in text area
+                if let FocusElement::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == FocusElement::TaskDescription {
+                            use tui_textarea::CursorMove;
+                            card.description.move_cursor(CursorMove::Back);
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
             KeyboardOperation::MoveToPreviousLine => {
                 match self.focus_element {
                     FocusElement::DraftTask(idx) => {
@@ -955,17 +1032,6 @@ impl ViewModel {
                         self.navigate_down_hierarchy()
                     }
                     _ => self.navigate_down_hierarchy(),
-                }
-            }
-            KeyboardOperation::MoveToNextField => {
-                // Tab navigation through controls (when appropriate)
-                match self.focus_element {
-                    FocusElement::DraftTask(_) | FocusElement::TaskDescription |
-                    FocusElement::RepositorySelector | FocusElement::BranchSelector |
-                    FocusElement::ModelSelector | FocusElement::GoButton => {
-                        self.focus_next_control()
-                    }
-                    _ => false,
                 }
             }
             KeyboardOperation::DeleteCharacterBackward => {
@@ -1176,10 +1242,8 @@ impl ViewModel {
     /// Handle launch task operation and return domain messages
     /// Process a TaskEvent and update the corresponding task card's activity entries
     pub fn process_task_event(&mut self, task_id: &str, event: TaskEvent) {
-        tracing::trace!("process_task_event: Processing event for task {}: {:?}", task_id, event);
         // Find the card info for this task_id
         if let Some(card_info) = self.task_id_to_card_info.get(task_id) {
-            tracing::trace!("process_task_event: Found card info for task {}, card_type: {:?}, index: {}", task_id, card_info.card_type, card_info.index);
             match card_info.card_type {
                 TaskCardTypeEnum::Draft => {
                     // Draft cards don't have activity events - they're just text inputs
@@ -1193,7 +1257,6 @@ impl ViewModel {
                                     // Add new thought entry
                                     let activity_entry = AgentActivityRow::AgentThought { thought: thought.clone() };
                                     activity_entries.push(activity_entry);
-                                    tracing::trace!("process_task_event: Added thought activity for task {}: {}", task_id, thought);
                                 }
                                 TaskEvent::FileEdit { file_path, lines_added, lines_removed, description, .. } => {
                                     // Add new file edit entry
@@ -1204,7 +1267,6 @@ impl ViewModel {
                                         description: description.clone(),
                                     };
                                     activity_entries.push(activity_entry);
-                                    tracing::trace!("process_task_event: Added file edit activity for task {}: {} (+{}, -{})", task_id, file_path, lines_added, lines_removed);
                                 }
                                 TaskEvent::ToolUse { tool_name, tool_execution_id, status, .. } => {
                                     // Add new tool use entry
@@ -1216,7 +1278,6 @@ impl ViewModel {
                                         status,
                                     };
                                     activity_entries.push(activity_entry);
-                                    tracing::trace!("process_task_event: Added tool use activity for task {}: {} ({})", task_id, tool_name, tool_execution_id);
                                 }
                                 TaskEvent::Log { message, tool_execution_id: Some(tool_exec_id), .. } => {
                                     // Update existing tool use entry with log message as last_line
@@ -1225,9 +1286,7 @@ impl ViewModel {
                                             matches!(entry, AgentActivityRow::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_exec_id)
                                         }) {
                                         *last_line = Some(message.clone());
-                                        tracing::trace!("process_task_event: Updated tool log for task {} tool {}: {}", task_id, tool_exec_id, message);
                                     } else {
-                                        tracing::trace!("process_task_event: Could not find tool use entry for log event, tool_exec_id: {}", tool_exec_id);
                                     }
                                 }
                                 TaskEvent::ToolResult { tool_name, tool_output, tool_execution_id, status: result_status, .. } => {
@@ -1242,9 +1301,7 @@ impl ViewModel {
                                         if last_line.is_none() {
                                             *last_line = Some(tool_output.lines().next().unwrap_or("Completed").to_string());
                                         }
-                                        tracing::trace!("process_task_event: Completed tool {} for task {} with status {:?}", tool_execution_id, task_id, result_status);
                                     } else {
-                                        tracing::trace!("process_task_event: Could not find tool use entry for result event, tool_exec_id: {}", tool_execution_id);
                                     }
                                 }
                                 // Other events (Status, Log without tool_execution_id) are not converted to activity entries
@@ -1258,7 +1315,6 @@ impl ViewModel {
                                 activity_entries.remove(0);
                             }
                             if before_trim > activity_entries.len() {
-                                tracing::trace!("process_task_event: Trimmed {} activity entries for task {}, now has {}", before_trim - activity_entries.len(), task_id, activity_entries.len());
                             }
 
                             // Height remains fixed at 5 for active cards (title + separator + max 3 activity lines)
@@ -1330,7 +1386,6 @@ impl ViewModel {
 
     /// Process any pending task events from the shared receiver (non-blocking)
     pub fn process_pending_task_events(&mut self) {
-        tracing::trace!("process_pending_task_events: Starting to process pending events");
         // Collect all available events first to avoid borrow conflicts
         let mut pending_events = Vec::new();
         if let Some(ref mut receiver) = self.task_event_receiver {
@@ -1338,12 +1393,10 @@ impl ViewModel {
                 pending_events.push(event);
             }
         }
-        tracing::trace!("process_pending_task_events: Collected {} pending events", pending_events.len());
 
         // Now process the collected events
         let mut events_processed = false;
         for (task_id, event) in pending_events {
-            tracing::trace!("process_pending_task_events: Processing event for task {}: {:?}", task_id, event);
             self.process_task_event(&task_id, event);
             events_processed = true;
         }
@@ -1356,9 +1409,7 @@ impl ViewModel {
 
     /// Load initial tasks from the TaskManager
     pub async fn load_initial_tasks(&mut self) -> Result<(), String> {
-        tracing::trace!("load_initial_tasks: Starting to load initial tasks");
         let (draft_infos, task_executions) = self.task_manager.get_initial_tasks().await;
-        tracing::trace!("load_initial_tasks: Got {} drafts and {} tasks", draft_infos.len(), task_executions.len());
 
         // Only add draft cards from TaskManager if we don't already have any draft cards
         if self.draft_cards.is_empty() {
@@ -1389,10 +1440,8 @@ impl ViewModel {
         self.rebuild_task_id_mapping();
 
         // Start event consumption for active tasks so they show live activity
-        tracing::trace!("load_initial_tasks: Starting event consumption for active tasks");
         for task_execution in &task_executions {
             if matches!(task_execution.state, TaskState::Active) {
-                tracing::trace!("load_initial_tasks: Starting event stream for active task {}", task_execution.id);
                 self.start_task_event_consumption(&task_execution.id);
             }
         }
@@ -1699,6 +1748,15 @@ impl ViewModel {
         };
 
         if new_focus != self.focus_element {
+            // Reset internal focus of draft cards when they lose global focus
+            if let FocusElement::DraftTask(idx) = self.focus_element {
+                if !matches!(new_focus, FocusElement::DraftTask(_)) {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        card.focus_element = FocusElement::TaskDescription;
+                    }
+                }
+            }
+
             self.focus_element = new_focus;
             self.update_footer();
             true
@@ -1756,6 +1814,15 @@ impl ViewModel {
         };
 
         if new_focus != self.focus_element {
+            // Reset internal focus of draft cards when they lose global focus
+            if let FocusElement::DraftTask(idx) = self.focus_element {
+                if !matches!(new_focus, FocusElement::DraftTask(_)) {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        card.focus_element = FocusElement::TaskDescription;
+                    }
+                }
+            }
+
             self.focus_element = new_focus;
             self.update_footer();
             true
@@ -1863,7 +1930,6 @@ fn create_task_card_from_execution(task: TaskExecution, settings: &Settings) -> 
                     thought: activity.clone(),
                 }
             }).collect::<Vec<_>>();
-            tracing::trace!("create_task_card_from_execution: Creating Active card for task {} with {} initial activity entries", task.id, activity_entries.len());
             TaskCardType::Active {
                 activity_entries,
                 pause_delete_buttons: "Pause | Delete".to_string(),

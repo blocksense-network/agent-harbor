@@ -108,6 +108,7 @@ pub enum KeyboardOperation {
     OpenNewLine,
     IndentOrComplete,
     MoveToNextField,
+    MoveToPreviousField,
     DeleteToBeginningOfLine,
 
     // Text Transformation
@@ -141,6 +142,7 @@ pub enum KeyboardOperation {
 
     // Mark and Region
     SetMark,
+    SelectWordUnderCursor,
     SelectAll,
 }
 
@@ -183,6 +185,7 @@ impl KeyboardOperation {
             KeyboardOperation::OpenNewLine => "shortcut-open-new-line",
             KeyboardOperation::IndentOrComplete => "shortcut-indent-or-complete",
             KeyboardOperation::MoveToNextField => "shortcut-move-to-next-field",
+            KeyboardOperation::MoveToPreviousField => "shortcut-move-to-previous-field",
             KeyboardOperation::DeleteToBeginningOfLine => "shortcut-delete-to-beginning-of-line",
             KeyboardOperation::UppercaseWord => "shortcut-uppercase-word",
             KeyboardOperation::LowercaseWord => "shortcut-lowercase-word",
@@ -207,6 +210,7 @@ impl KeyboardOperation {
             KeyboardOperation::FindPrevious => "shortcut-find-previous",
             KeyboardOperation::SetMark => "shortcut-set-mark",
             KeyboardOperation::SelectAll => "shortcut-select-all",
+            KeyboardOperation::SelectWordUnderCursor => "shortcut-select-word-under-cursor",
         }
     }
 
@@ -248,6 +252,7 @@ impl KeyboardOperation {
             KeyboardOperation::OpenNewLine => "Open new line below",
             KeyboardOperation::IndentOrComplete => "Indent or complete",
             KeyboardOperation::MoveToNextField => "Move to next field",
+            KeyboardOperation::MoveToPreviousField => "Move to previous field",
             KeyboardOperation::DeleteToBeginningOfLine => "Delete to beginning of line",
             KeyboardOperation::UppercaseWord => "Uppercase word",
             KeyboardOperation::LowercaseWord => "Lowercase word",
@@ -272,6 +277,7 @@ impl KeyboardOperation {
             KeyboardOperation::FindPrevious => "Find previous match",
             KeyboardOperation::SetMark => "Set mark for selection",
             KeyboardOperation::SelectAll => "Select all text",
+            KeyboardOperation::SelectWordUnderCursor => "Select word under cursor",
         }
     }
 }
@@ -675,6 +681,11 @@ impl KeymapConfig {
                 vec!["Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveToPreviousField,
+                vec!["Shift+Tab".to_string()],
+                vec!["Shift+Tab".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToPreviousLine,
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
@@ -847,6 +858,11 @@ impl KeymapConfig {
                 vec!["Ctrl+A".to_string()],
                 vec!["Cmd+A".to_string(), "Ctrl+A".to_string()],
             ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::SelectWordUnderCursor,
+                vec!["Alt+@".to_string()],
+                vec!["Alt+@".to_string()],
+            ),
         ]
     }
 
@@ -859,6 +875,8 @@ impl KeymapConfig {
             KeyboardOperation::MoveBackwardOneCharacter => &self.move_backward_one_character,
             KeyboardOperation::MoveToNextLine => &self.move_to_next_line,
             KeyboardOperation::MoveToNextField => &self.move_to_next_field,
+            KeyboardOperation::MoveToPreviousField => &self.move_to_previous_field,
+            KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
             KeyboardOperation::MoveBackwardOneWord => &self.move_backward_one_word,
@@ -936,6 +954,8 @@ impl KeymapConfig {
             KeyboardOperation::MoveBackwardOneCharacter => self.move_backward_one_character.clone().unwrap_or_default(),
             KeyboardOperation::MoveToNextLine => self.move_to_next_line.clone().unwrap_or_default(),
             KeyboardOperation::MoveToNextField => self.move_to_next_field.clone().unwrap_or_default(),
+            KeyboardOperation::MoveToPreviousField => self.move_to_previous_field.clone().unwrap_or_default(),
+            KeyboardOperation::SelectWordUnderCursor => self.select_word_under_cursor.clone().unwrap_or_default(),
             KeyboardOperation::MoveToPreviousLine => self.move_to_previous_line.clone().unwrap_or_default(),
             KeyboardOperation::MoveForwardOneWord => self.move_forward_one_word.clone().unwrap_or_default(),
             KeyboardOperation::MoveBackwardOneWord => self.move_backward_one_word.clone().unwrap_or_default(),
@@ -1021,6 +1041,8 @@ impl Default for KeymapConfig {
             move_backward_one_character: None,
             move_to_next_line: None,
             move_to_next_field: None,
+            move_to_previous_field: None,
+            select_word_under_cursor: None,
             move_to_previous_line: None,
             move_forward_one_word: None,
             move_backward_one_word: None,
@@ -1097,6 +1119,8 @@ impl Default for KeymapConfig {
                     KeyboardOperation::MoveBackwardOneCharacter => config.move_backward_one_character = Some(matchers),
                     KeyboardOperation::MoveToNextLine => config.move_to_next_line = Some(matchers),
                     KeyboardOperation::MoveToNextField => config.move_to_next_field = Some(matchers),
+                    KeyboardOperation::MoveToPreviousField => config.move_to_previous_field = Some(matchers),
+                    KeyboardOperation::SelectWordUnderCursor => config.select_word_under_cursor = Some(matchers),
                     KeyboardOperation::MoveToPreviousLine => config.move_to_previous_line = Some(matchers),
                     KeyboardOperation::MoveForwardOneWord => config.move_forward_one_word = Some(matchers),
                     KeyboardOperation::MoveBackwardOneWord => config.move_backward_one_word = Some(matchers),
@@ -1176,6 +1200,10 @@ pub struct KeymapConfig {
     pub move_to_next_line: Option<Vec<KeyMatcher>>,
     #[serde(rename = "move-to-next-field")]
     pub move_to_next_field: Option<Vec<KeyMatcher>>,
+    #[serde(rename = "move-to-previous-field")]
+    pub move_to_previous_field: Option<Vec<KeyMatcher>>,
+    #[serde(rename = "select-word-under-cursor")]
+    pub select_word_under_cursor: Option<Vec<KeyMatcher>>,
     #[serde(rename = "move-to-previous-line")]
     pub move_to_previous_line: Option<Vec<KeyMatcher>>,
     #[serde(rename = "move-forward-one-word")]

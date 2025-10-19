@@ -40,6 +40,7 @@ use tui_exploration::{
     workspace_files::GitWorkspaceFiles,
     workspace_workflows::PathWorkspaceWorkflows,
     TaskState,
+    ModalState,
 };
 
 use ah_rest_mock_client::MockRestClient;
@@ -330,9 +331,13 @@ async fn run_app_mvvm(
                 view_model.update_footer();
                 if view_model.needs_redraw {
                     terminal.draw(|frame| {
+                        let size = frame.area();
                         // Use full render for production
                         // simple_render(frame, &mut view_model);
                         view::render(frame, &mut view_model, &mut view_cache);
+
+                        // Render modals on top of main UI
+                        render_modals(frame, &view_model, size, &theme);
                     })?;
                     view_model.needs_redraw = false;
                 }
@@ -346,9 +351,13 @@ async fn run_app_mvvm(
                 if view_model.needs_redraw {
                     view_model.update_footer();
                     terminal.draw(|frame| {
+                        let size = frame.area();
                         // Use full render for production
                         // simple_render(frame, &mut view_model);
                         view::render(frame, &mut view_model, &mut view_cache);
+
+                        // Render modals on top of main UI
+                        render_modals(frame, &view_model, size, &theme);
                     })?;
                     view_model.needs_redraw = false;
                 }
@@ -357,6 +366,50 @@ async fn run_app_mvvm(
     }
 
     Ok(())
+}
+
+/// Render modals on top of the main UI
+fn render_modals(frame: &mut ratatui::Frame, view_model: &ViewModel, area: ratatui::layout::Rect, theme: &ah_tui::Theme) {
+    use ah_tui::view::dialogs::{
+        render_fuzzy_modal, render_model_selection_modal, render_settings_dialog,
+        render_go_to_line_modal, render_find_replace_modal, render_shortcut_help_modal,
+    };
+
+    match view_model.modal_state {
+        ModalState::None => {
+            // No modal to render
+        }
+        ModalState::RepositorySearch => {
+            // Create a placeholder fuzzy search modal for repository selection
+            let modal = ah_tui::view::dialogs::FuzzySearchModal {
+                input: String::new(),
+                options: view_model.available_repositories.clone(),
+                selected_index: 0,
+            };
+            render_fuzzy_modal(frame, &modal, area, theme);
+        }
+        ModalState::BranchSearch => {
+            // Create a placeholder fuzzy search modal for branch selection
+            let modal = ah_tui::view::dialogs::FuzzySearchModal {
+                input: String::new(),
+                options: view_model.available_branches.clone(),
+                selected_index: 0,
+            };
+            render_fuzzy_modal(frame, &modal, area, theme);
+        }
+        ModalState::ModelSearch => {
+            // Create a placeholder fuzzy search modal for model selection
+            let modal = ah_tui::view::dialogs::FuzzySearchModal {
+                input: String::new(),
+                options: view_model.available_models.clone(),
+                selected_index: 0,
+            };
+            render_fuzzy_modal(frame, &modal, area, theme);
+        }
+        ModalState::Settings => {
+            render_settings_dialog(frame, area, theme);
+        }
+    }
 }
 
 // Global flag to ensure cleanup only happens once

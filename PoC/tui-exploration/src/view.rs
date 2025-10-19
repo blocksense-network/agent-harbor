@@ -175,18 +175,15 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
     let min_total_height = min_header_height + min_tasks_height + footer_height + padding_height;
 
     let (header_height, tasks_height, footer_y, padding_y) = if size.height >= min_total_height {
-        tracing::trace!("render: Terminal size: {}x{}, using full layout", size.width, size.height);
         // Enough space for full layout
         (min_header_height, size.height - min_header_height - footer_height - padding_height, size.height - footer_height - padding_height, size.height - padding_height)
     } else if size.height >= 10 {
-        tracing::trace!("render: Terminal size: {}x{}, using minimum viable layout", size.width, size.height);
         // Minimum viable layout
         let available = size.height - footer_height - padding_height;
         let header_actual = (available * 3 / 5).max(3); // 60% for header minimum 3
         let tasks_actual = available - header_actual;
         (header_actual, tasks_actual, size.height - footer_height - padding_height, size.height - padding_height)
     } else {
-        tracing::trace!("render: Terminal size: {}x{}, using emergency layout", size.width, size.height);
         // Emergency layout for very small terminals
         (size.height.saturating_sub(2), 0, size.height.saturating_sub(1), size.height)
     };
@@ -429,7 +426,6 @@ fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewM
 
 /// Render active task card (exact same as main.rs TaskCard::render_active_card)
 fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme) {
-    tracing::trace!("render_active_task_card: Rendering active card for task {}, area: {:?}", card.id, area);
     // First line: metadata on left, Stop button on right
     let agents_text = if card.metadata.models.is_empty() {
         "No agents".to_string()
@@ -487,11 +483,9 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
 
     // Activity lines - display activity entries
     let activity_lines: Vec<Line> = if let TaskCardType::Active { activity_entries, .. } = &card.card_type {
-        tracing::trace!("render_active_task_card: Card {} has {} activity entries", card.id, activity_entries.len());
         // Convert the activity entries to display lines (may be multiple lines per entry)
         let mut all_lines = Vec::new();
         for entry in activity_entries.iter().rev().take(3).rev() {
-            tracing::trace!("render_active_task_card: Processing activity entry: {:?}", entry);
             match entry {
                 AgentActivityRow::AgentThought { thought } => {
                     all_lines.push(Line::from(vec![
@@ -559,7 +553,6 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
         all_lines
     } else {
         // Fallback for non-active cards (shouldn't happen)
-        tracing::trace!("render_active_task_card: Card {} is not active, showing fallback", card.id);
         vec![
             Line::from(vec![
                 Span::styled("❓", Style::default().fg(theme.muted)),
@@ -587,7 +580,6 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
     }
 
     // Render all lines (7 lines to fill inner area)
-    tracing::trace!("render_active_task_card: Rendering {} lines for task {} (inner area 7 lines)", all_lines.len(), card.id);
     for (i, line) in all_lines.iter().enumerate() {
             let line_area = Rect {
                 x: area.x, // ACTIVE_TASK_LEFT_PADDING = 0
@@ -598,7 +590,6 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
             let para = Paragraph::new(line.clone());
             frame.render_widget(para, line_area);
         }
-    tracing::trace!("render_active_task_card: Finished rendering active card for task {}", card.id);
 }
 
 /// Calculate the summary of changes from activity entries

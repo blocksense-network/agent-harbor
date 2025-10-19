@@ -1,5 +1,6 @@
 //! Renders draft task cards with textarea and control buttons.
 
+
 use ratatui::{
     prelude::*,
     widgets::*,
@@ -33,11 +34,11 @@ pub fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryView
 
     let inner_area = border_block.inner(area);
     frame.render_widget(border_block, area);
-    render_draft_card_content(frame, inner_area, card, theme);
+    render_draft_card_content(frame, inner_area, card, theme, is_selected);
 }
 
 /// Render draft card content (exact same as main.rs TaskCard::render_draft_card_content)
-pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme) {
+pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) {
     let content_height = area.height as usize;
 
     // Split the available area between textarea and buttons (exact same as main.rs)
@@ -147,7 +148,7 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
     let go_button_text = "⏎ Go".to_string();
 
     // Create button spans with focus styling using theme - exactly like main.rs
-    let repo_button = if matches!(card.focus_element, FocusElement::RepositoryButton) {
+    let repo_button = if is_selected && matches!(card.focus_element, FocusElement::RepositorySelector) {
         Span::styled(format!(" {} ", repo_button_text), theme.focused_style())
     } else {
         Span::styled(
@@ -159,7 +160,7 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
         )
     };
 
-    let branch_button = if matches!(card.focus_element, FocusElement::BranchButton) {
+    let branch_button = if is_selected && matches!(card.focus_element, FocusElement::BranchSelector) {
         Span::styled(format!(" {} ", branch_button_text), theme.focused_style())
     } else {
         Span::styled(
@@ -171,7 +172,7 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
         )
     };
 
-    let models_button = if matches!(card.focus_element, FocusElement::ModelButton) {
+    let models_button = if is_selected && matches!(card.focus_element, FocusElement::ModelSelector) {
         Span::styled(format!(" {} ", models_button_text), theme.focused_style())
     } else {
         Span::styled(
@@ -183,7 +184,7 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
         )
     };
 
-    let go_button = if matches!(card.focus_element, FocusElement::GoButton) {
+    let go_button = if is_selected && matches!(card.focus_element, FocusElement::GoButton) {
         Span::styled(
             format!(" {} ", go_button_text),
             Style::default().fg(Color::Black).bg(theme.accent).add_modifier(Modifier::BOLD),
