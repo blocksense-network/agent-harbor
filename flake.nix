@@ -69,6 +69,11 @@
           "x86_64-darwin"
           "aarch64-darwin"
         ];
+
+        imports = [
+          ./nix/pre-commit.nix
+        ];
+
         flake =
           let
             forAllSystems = nixpkgs.lib.genAttrs systems;
