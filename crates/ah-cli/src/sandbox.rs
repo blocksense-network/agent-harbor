@@ -265,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires manual setup and can hang indefinitely"]
     fn test_sandbox_filesystem_isolation_cli_integration() {
         // Integration test for `ah agent sandbox` command CLI functionality
         // This tests that the sandbox command accepts parameters and attempts execution

@@ -357,6 +357,9 @@
 
         # Rust analyzer (matching the Nix-provided toolchain)
         pkgs.rust-analyzer
+
+        # OpenSSL for Rust crates that require it
+        pkgs.openssl
       ];
 
       # Linux-specific packages

@@ -1,6 +1,7 @@
 //! Agent start command implementation
 
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
+use anyhow::{Context, anyhow};
 use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -333,7 +334,7 @@ impl AgentStartArgs {
     /// Run the mock agent inside a sandbox environment
     async fn run_mock_agent_in_sandbox(
         &self,
-        _actual_cwd: std::path::PathBuf,
+        actual_cwd: std::path::PathBuf,
     ) -> anyhow::Result<()> {
         #[cfg(target_os = "linux")]
         {
@@ -396,10 +397,11 @@ impl AgentStartArgs {
             }
 
             // Create process configuration
+            let config = self.build_agent_config()?;
             let process_config = ProcessConfig {
                 command: agent_cmd,
                 working_dir: Some(actual_cwd.to_string_lossy().to_string()),
-                env: self.build_agent_env(),
+                env: config.env_vars,
             };
 
             // Set up the process manager with the agent command

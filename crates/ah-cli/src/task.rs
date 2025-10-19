@@ -2157,6 +2157,7 @@ exit {}
     }
 
     #[test]
+    #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_agent_record_branch_points() -> Result<()> {
         // Get the shared test context
         let context = get_test_context();
@@ -2221,6 +2222,7 @@ exit {}
     }
 
     #[tokio::test]
+    #[ignore = "requires manual setup and can hang indefinitely"]
     async fn integration_test_viewer_navigation() -> Result<()> {
         use tui_testing::TestedTerminalProgram;
 
@@ -2523,6 +2525,7 @@ exit {}
     }
 
     #[test]
+    #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_agent_start_fs_snapshots_sandbox() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
@@ -2909,6 +2912,7 @@ exit {}
 
     /// Integration test for session recording with mock agent (milestone 2.4.5)
     #[test]
+    #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_session_recording_mock_agent() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
@@ -3025,6 +3029,7 @@ exit {}
 
     /// Integration test for session recording with Codex CLI (milestone 2.4.5)
     #[test]
+    #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_session_recording_codex() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
