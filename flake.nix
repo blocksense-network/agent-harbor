@@ -352,6 +352,9 @@
         pkgs.cargo-nextest
         pkgs.cargo-insta
 
+        # Pre-commit tool for manual hook execution
+        pkgs.pre-commit
+
         # Rust analyzer (matching the Nix-provided toolchain)
         pkgs.rust-analyzer
       ];
