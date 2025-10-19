@@ -72,18 +72,17 @@ if command -v mkfs.btrfs >/dev/null 2>&1; then
   if [ -b "$BTRFS_LOOP" ]; then
     echo "  ✅ Btrfs loop device $BTRFS_LOOP exists"
 
-    # Check if mounted
-    if mount | grep -q "$BTRFS_LOOP"; then
-      MOUNTPOINT=$(mount | grep "$BTRFS_LOOP" | awk '{print $3}')
-      echo "  ✅ Loop device mounted at $MOUNTPOINT"
+    # Check if mounted by checking if the expected mount point is a mount point
+    if mountpoint -q "$CACHE_DIR/btrfs_mount"; then
+      echo "  ✅ Btrfs filesystem mounted at $CACHE_DIR/btrfs_mount"
 
-      if [ -d "$MOUNTPOINT/test_subvol" ]; then
-        echo "  ✅ Test subvolume exists at $MOUNTPOINT/test_subvol"
+      if [ -d "$CACHE_DIR/btrfs_mount/test_subvol" ]; then
+        echo "  ✅ Test subvolume exists at $CACHE_DIR/btrfs_mount/test_subvol"
       else
         echo "  ❌ Test subvolume missing"
       fi
     else
-      echo "  ❌ Loop device not mounted"
+      echo "  ❌ Btrfs filesystem not mounted"
     fi
   else
     echo "  ❌ Btrfs loop device $BTRFS_LOOP does not exist"
@@ -102,7 +101,7 @@ if command -v zfs >/dev/null 2>&1 && zpool list "$ZFS_POOL" >/dev/null 2>&1 && z
   ZFS_READY=true
 fi
 
-if command -v mkfs.btrfs >/dev/null 2>&1 && [ -b "$BTRFS_LOOP" ] && mount | grep -q "$BTRFS_LOOP"; then
+if command -v mkfs.btrfs >/dev/null 2>&1 && [ -b "$BTRFS_LOOP" ] && mountpoint -q "$CACHE_DIR/btrfs_mount"; then
   BTRFS_READY=true
 fi
 
