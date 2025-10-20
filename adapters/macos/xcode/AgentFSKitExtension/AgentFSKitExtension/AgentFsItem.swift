@@ -34,7 +34,9 @@ final class AgentFsItem: FSItem {
     var name: FSFileName
     let id: UInt64
 
-    // Path relative to volume root (e.g., "/foo/bar")
+    /// Full path expressed as raw bytes (without a trailing NUL). Use for all FFI calls.
+    var pathBytes: Data
+    /// Debug string for logging only; may be lossy for non-UTF8 names.
     var path: String
 
     var attributes = FSItem.Attributes()
@@ -47,7 +49,8 @@ final class AgentFsItem: FSItem {
     init(name: FSFileName) {
         self.name = name
         self.id = AgentFsItem.generateUniqueItemID()
-        self.path = "/" // Default to root - must be set by caller using volume path builder
+        self.pathBytes = Data([0x2f]) // "/"
+        self.path = "/" // Caller updates for non-root items via volume path builder
 
         // Initialize attributes after self is set up
         attributes.fileID = FSItem.Identifier(rawValue: id) ?? .invalid
@@ -69,7 +72,8 @@ final class AgentFsItem: FSItem {
     init(name: FSFileName, id: UInt64) {
         self.name = name
         self.id = id
-        self.path = "/" // Default to root - should be set by caller
+        self.pathBytes = Data([0x2f])
+        self.path = "/"
 
         // Initialize attributes after self is set up
         attributes.fileID = FSItem.Identifier(rawValue: id) ?? .invalid
@@ -90,6 +94,7 @@ final class AgentFsItem: FSItem {
     // Create root item synchronously (special case)
     static func createRoot() -> AgentFsItem {
         let root = AgentFsItem(name: FSFileName(string: "/"), id: FSItem.Identifier.rootDirectory.rawValue)
+        root.pathBytes = Data([0x2f])
         root.path = "/"
         root.attributes.parentID = FSItem.Identifier.parentOfRoot
         root.attributes.fileID = FSItem.Identifier.rootDirectory

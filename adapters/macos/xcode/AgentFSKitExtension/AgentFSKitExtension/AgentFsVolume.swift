@@ -77,7 +77,73 @@ func af_resolve_id(_ fs: UInt64, _ pid: UInt32, _ path: UnsafePointer<CChar>?, _
 func af_create_child_by_id(_ fs: UInt64, _ parent_id: UInt64, _ name_ptr: UnsafePointer<UInt8>?, _ name_len: Int, _ item_type: UInt32, _ mode: UInt32, _ out_node_id: UnsafeMutablePointer<UInt64>?) -> Int32
 
 @available(macOS 15.4, *)
+private struct ProcessIdentityKey: Hashable {
+    let pid: pid_t
+    let pidVersion: UInt32
+}
+
+@available(macOS 15.4, *)
+private struct ProcessIdentity {
+    let pid: pid_t
+    let pidVersion: UInt32
+    let uid: uid_t
+    let gid: gid_t
+}
+
+@available(macOS 15.4, *)
 final class AgentFsVolume: FSVolume {
+
+    // MARK: - Byte helpers
+
+    /// Call body with a NUL-terminated C string created from a Data buffer.
+    @inline(__always)
+    private func withNullTerminatedCStr<R>(_ bytes: Data, _ body: (UnsafePointer<CChar>) -> R) -> R {
+        var tmp = bytes
+        tmp.append(0)
+        return tmp.withUnsafeBytes { raw in
+            let ptr = raw.bindMemory(to: CChar.self).baseAddress!
+            return body(ptr)
+        }
+    }
+
+    /// Join directory bytes with the provided child name without materializing Swift Strings.
+    @inline(__always)
+    private func constructPathBytes(for name: FSFileName, in directory: AgentFsItem) -> Data {
+        var output = directory.pathBytes
+        if output.last != 0x2f { // '/'
+            output.append(0x2f)
+        }
+        output.append(contentsOf: name.data)
+        return output
+    }
+
+    private func obtainHandle(for item: AgentFsItem, wantsWrite: Bool) throws -> (handle: UInt64, pid: UInt32, transient: Bool) {
+        if let existing = handleStateQueue.sync(execute: { () -> (UInt64, UInt32?)? in
+            guard let handle = opensByItem[item.attributes.fileID]?.last else { return nil }
+            return (handle, handleToPid[handle])
+        }) {
+            let pid = existing.1 ?? getCallingPid()
+            return (existing.0, pid, false)
+        }
+
+        var handle: UInt64 = 0
+        let pid = getCallingPid()
+        let optionsJson = "{\"read\":true,\"write\":\(wantsWrite)}"
+        let result = coreQueue.sync {
+            optionsJson.withCString { options_cstr in
+                af_open_by_id(fsHandle, pid, item.attributes.fileID.rawValue, options_cstr, &handle)
+            }
+        }
+
+        if result != 0 {
+            if let error = afResultToFSKitError(result) {
+                throw error
+            }
+            throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
+        }
+
+        return (handle, pid, true)
+    }
 
     /// Convert AfResult error codes to FSKit errors
     /// Returns nil for success (AfOk = 0), or an Error for actual errors
@@ -116,8 +182,17 @@ final class AgentFsVolume: FSVolume {
     private let logger = Logger(subsystem: "com.agentfs.AgentFSKitExtension", category: "AgentFsVolume")
 
     private let root: AgentFsItem
-    private var processCache: [pid_t: UInt32] = [:] // Map from system PID to registered PID
+    private var processCache: [ProcessIdentityKey: UInt32] = [:] // caller identity -> registered PID
     private var handleToPid: [UInt64: UInt32] = [:] // Map from handle ID to registered PID
+    private var opensByItem: [FSItem.Identifier: [UInt64]] = [:]
+    private let handleStateQueue = DispatchQueue(label: "com.agentfs.AgentFSKitExtension.handleState")
+
+    private static let auditTokenClass: NSObject.Type? = NSClassFromString("FSAuditToken") as? NSObject.Type
+    private static let selToken = NSSelectorFromString("token")
+    private static let selPid = NSSelectorFromString("pid")
+    private static let selPidVersion = NSSelectorFromString("pidversion")
+    private static let selEuid = NSSelectorFromString("euid")
+    private static let selEgid = NSSelectorFromString("egid")
 
     private var fsHandle: UInt64 {
         return coreHandle?.load(as: UInt64.self) ?? 0
@@ -136,67 +211,78 @@ final class AgentFsVolume: FSVolume {
         )
     }
 
-    /// Get the calling process credentials
-    /// TODO: Implement proper audit token extraction from FSKit operation context
-    private func getCallingProcessInfo() -> (pid: pid_t, uid: uid_t, gid: gid_t)? {
-        // For now, use current process credentials as fallback
-        // FSKit should provide access to calling process audit tokens
-        return (pid: getpid(), uid: getuid(), gid: getgid())
+    /// Attempt to resolve the caller identity from FSKit's thread-local audit token.
+    private func resolveAuditTokenIdentity() -> ProcessIdentity? {
+        guard
+            let cls = AgentFsVolume.auditTokenClass,
+            let tokenUnmanaged = cls.perform(AgentFsVolume.selToken),
+            let token = tokenUnmanaged.takeUnretainedValue() as? NSObject,
+            let pidValue = token.perform(AgentFsVolume.selPid)?.takeUnretainedValue() as? NSNumber,
+            let pidVersionValue = token.perform(AgentFsVolume.selPidVersion)?.takeUnretainedValue() as? NSNumber,
+            let uidValue = token.perform(AgentFsVolume.selEuid)?.takeUnretainedValue() as? NSNumber,
+            let gidValue = token.perform(AgentFsVolume.selEgid)?.takeUnretainedValue() as? NSNumber
+        else {
+            return nil
+        }
+
+        return ProcessIdentity(
+            pid: pid_t(pidValue.int32Value),
+            pidVersion: pidVersionValue.uint32Value,
+            uid: uid_t(uidValue.uint32Value),
+            gid: gid_t(gidValue.uint32Value)
+        )
     }
 
-    /// Get or register the calling process and return the registered PID
-    private func getRegisteredPid(forProcessInfo info: (pid: pid_t, uid: uid_t, gid: gid_t)) -> UInt32 {
-        let (systemPid, uid, gid) = info
-        return getRegisteredPid(forPid: systemPid, uid: uid, gid: gid)
+    /// Get the calling process identity, falling back to the extension process when unavailable.
+    private func getCallingProcessIdentity() -> ProcessIdentity {
+        if let identity = resolveAuditTokenIdentity() {
+            return identity
+        }
+        return ProcessIdentity(pid: getpid(), pidVersion: 0, uid: getuid(), gid: getgid())
     }
 
-    /// Get or register a process and return the registered PID
-    private func getRegisteredPid(forPid systemPid: pid_t, uid: uid_t, gid: gid_t) -> UInt32 {
-        // Check cache first
-        if let registeredPid = processCache[systemPid] {
-            return registeredPid
+    /// Get or register a process and return the registered PID.
+    private func getRegisteredPid(for identity: ProcessIdentity) -> UInt32 {
+        let key = ProcessIdentityKey(pid: identity.pid, pidVersion: identity.pidVersion)
+        if let cached = processCache[key] {
+            return cached
         }
 
         var registeredPid: UInt32 = 0
         let result = af_register_process(
             fsHandle,
-            UInt32(systemPid),
-            0, // parent_pid (unknown)
-            UInt32(uid),
-            UInt32(gid),
+            UInt32(identity.pid),
+            0,
+            UInt32(identity.uid),
+            UInt32(identity.gid),
             &registeredPid
         )
 
-        if result == 0 { // AfOk
-            processCache[systemPid] = registeredPid
-            logger.debug("Registered process PID \(systemPid) as \(registeredPid) with uid=\(uid), gid=\(gid)")
+        if result == 0 {
+            processCache[key] = registeredPid
+            logger.debug("Registered PID \(identity.pid)@\(identity.pidVersion) as \(registeredPid) uid=\(identity.uid) gid=\(identity.gid)")
             return registeredPid
         } else {
-            logger.error("Failed to register process PID \(systemPid), result: \(result)")
-            // Fallback to system PID
-            processCache[systemPid] = UInt32(systemPid)
-            return UInt32(systemPid)
+            logger.error("Failed to register PID \(identity.pid)@\(identity.pidVersion); result=\(result)")
+            let fallback = UInt32(identity.pid)
+            processCache[key] = fallback
+            return fallback
         }
     }
 
-    /// Get the registered PID for a handle
+    /// Get the registered PID for a handle.
     private func getPidForHandle(_ handle: UInt64) -> UInt32 {
-        if let pid = handleToPid[handle] {
+        if let pid = handleStateQueue.sync(execute: { handleToPid[handle] }) {
             return pid
         }
-        // Fallback: get calling process PID
-        if let processInfo = getCallingProcessInfo() {
-            return getRegisteredPid(forProcessInfo: processInfo)
-        }
-        return getRegisteredPid(forPid: getpid(), uid: getuid(), gid: getgid())
+        let identity = getCallingProcessIdentity()
+        return getRegisteredPid(for: identity)
     }
 
-    /// Get the calling process PID, registering it if necessary
+    /// Get the calling process PID, registering it if necessary.
     private func getCallingPid() -> UInt32 {
-        if let processInfo = getCallingProcessInfo() {
-            return getRegisteredPid(forProcessInfo: processInfo)
-        }
-        return getRegisteredPid(forPid: getpid(), uid: getuid(), gid: getgid())
+        let identity = getCallingProcessIdentity()
+        return getRegisteredPid(for: identity)
     }
 
 }
@@ -204,29 +290,17 @@ final class AgentFsVolume: FSVolume {
 @available(macOS 15.4, *)
 extension AgentFsVolume: FSVolume.PathConfOperations {
 
-    var maximumLinkCount: Int {
-        return -1
-    }
+    var maximumLinkCount: Int { 65_535 }
 
-    var maximumNameLength: Int {
-        return -1
-    }
+    var maximumNameLength: Int { 255 }
 
-    var restrictsOwnershipChanges: Bool {
-        return false
-    }
+    var restrictsOwnershipChanges: Bool { false }
 
-    var truncatesLongNames: Bool {
-        return false
-    }
+    var truncatesLongNames: Bool { false }
 
-    var maximumXattrSize: Int {
-        return Int.max
-    }
+    var maximumXattrSize: Int { 65_536 }
 
-    var maximumFileSize: UInt64 {
-        return UInt64.max
-    }
+    var maximumFileSize: UInt64 { UInt64.max }
 }
 
 @available(macOS 15.4, *)
@@ -362,7 +436,9 @@ extension AgentFsVolume: FSVolume.Operations {
         var buffer = [CChar](repeating: 0, count: 64)
         let ok = coreQueue.sync { () -> Bool in
             let callingPid = getCallingPid()
-            return agentItem.path.withCString { af_getattr(fsHandle, callingPid, $0, &buffer, buffer.count) } == 0
+            return withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                af_getattr(fsHandle, callingPid, cPath, &buffer, buffer.count)
+            } == 0
         }
         guard ok else { throw fs_errorForPOSIXError(POSIXError.EIO.rawValue) }
 
@@ -417,17 +493,20 @@ extension AgentFsVolume: FSVolume.Operations {
         // Support mode and times; others unsupported for now
         if newAttributes.isValid(.mode) {
             let mode = newAttributes.mode
-            let path = agentItem.path
-        let rc = coreQueue.sync { return path.withCString { af_set_mode(fsHandle, getCallingPid(), $0, mode) } }
+            let rc = coreQueue.sync {
+                withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                    af_set_mode(fsHandle, getCallingPid(), cPath, mode)
+                }
+            }
             if rc != 0, let err = afResultToFSKitError(rc) { throw err }
         }
 
         if newAttributes.isValid(.uid) || newAttributes.isValid(.gid) {
             let uid = newAttributes.uid
             let gid = newAttributes.gid
-            let rc = coreQueue.sync { () -> Int32 in
-                return agentItem.path.withCString { p in
-                    af_set_owner(fsHandle, getCallingPid(), p, uid, gid)
+            let rc = coreQueue.sync {
+                withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                    af_set_owner(fsHandle, getCallingPid(), cPath, uid, gid)
                 }
             }
             if rc != 0, let err = afResultToFSKitError(rc) { throw err }
@@ -444,7 +523,11 @@ extension AgentFsVolume: FSVolume.Operations {
         if newAttributes.isValid(.changeTime) { needTimes = true }
         if newAttributes.isValid(.birthTime) { needTimes = true }
         if needTimes {
-            let rc = coreQueue.sync { return agentItem.path.withCString { af_set_times(fsHandle, getCallingPid(), $0, atime, mtime, ctime, birthtime) } }
+            let rc = coreQueue.sync {
+                withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                    af_set_times(fsHandle, getCallingPid(), cPath, atime, mtime, ctime, birthtime)
+                }
+            }
             if rc != 0, let err = afResultToFSKitError(rc) { throw err }
         }
 
@@ -462,25 +545,25 @@ extension AgentFsVolume: FSVolume.Operations {
             throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        // Construct the full path for the lookup
-        let fullPath = constructPath(for: name, in: dirItem)
+        let fullPathBytes = constructPathBytes(for: name, in: dirItem)
 
-        // Resolve stable IDs for the item and its parent
         var nodeId: UInt64 = 0
         var parentId: UInt64 = 0
-        _ = fullPath.withCString { p in af_resolve_id(fsHandle, getCallingPid(), p, &nodeId, &parentId) }
+        _ = withNullTerminatedCStr(fullPathBytes) { cPath in
+            af_resolve_id(fsHandle, getCallingPid(), cPath, &nodeId, &parentId)
+        }
 
-        // Call Rust core to get item attributes (48-byte struct)
         var buffer = [CChar](repeating: 0, count: 64)
         let result = coreQueue.sync { () -> Int32 in
-            return fullPath.withCString { path_cstr in
+            withNullTerminatedCStr(fullPathBytes) { cPath in
                 let callingPid = getCallingPid()
-                return af_getattr(fsHandle, callingPid, path_cstr, &buffer, buffer.count)
+                return af_getattr(fsHandle, callingPid, cPath, &buffer, buffer.count)
             }
         }
 
         if result != 0 {
-            logger.debug("lookupItem: failed to stat path \(fullPath), error: \(result)")
+            let debugPath = String(decoding: fullPathBytes, as: UTF8.self)
+            logger.debug("lookupItem: failed to stat path \(debugPath), error: \(result)")
             if let error = afResultToFSKitError(result) {
                 throw error
             } else {
@@ -490,7 +573,8 @@ extension AgentFsVolume: FSVolume.Operations {
 
         // Parse the attributes from the buffer
         let item = AgentFsItem(name: name, id: nodeId)
-        item.path = fullPath
+        item.pathBytes = fullPathBytes
+        item.path = String(decoding: fullPathBytes, as: UTF8.self)
         item.attributes.fileID = FSItem.Identifier(rawValue: nodeId) ?? .invalid
         if parentId != 0, let pid = FSItem.Identifier(rawValue: parentId) {
             item.attributes.parentID = pid
@@ -549,20 +633,25 @@ extension AgentFsVolume: FSVolume.Operations {
             return
         }
 
-        // If this item has an open file handle, close it in the Rust core
-        if let handleValue = agentItem.userData as? UInt64 {
-            logger.debug("reclaimItem: closing open handle \(handleValue)")
-            let result = coreQueue.sync { () -> Int32 in
-                af_close(fsHandle, getCallingPid(), handleValue)
+        let handlesToClose = handleStateQueue.sync { () -> [(UInt64, UInt32?)] in
+            let handles = opensByItem.removeValue(forKey: agentItem.attributes.fileID) ?? []
+            return handles.map { handle in
+                let pid = handleToPid.removeValue(forKey: handle)
+                return (handle, pid)
             }
+        }
+        agentItem.userData = nil
+
+        for (handle, storedPid) in handlesToClose {
+            logger.debug("reclaimItem: closing handle \(handle)")
+            let pidForHandle = storedPid ?? getCallingPid()
+            let result = coreQueue.sync { af_close(fsHandle, pidForHandle, handle) }
             if result != 0 {
-                logger.warning("reclaimItem: failed to close handle \(handleValue), error: \(result)")
+                logger.warning("reclaimItem: failed to close handle \(handle), error: \(result)")
             }
         }
 
-        // Clear any cached data and references to help with memory management
         agentItem.data = nil
-        agentItem.userData = nil
 
         // Note: We don't remove from children here as that's handled by the volume
         // This method is called when FsKit determines the item is no longer needed
@@ -580,13 +669,10 @@ extension AgentFsVolume: FSVolume.Operations {
             throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        // Use stored path for correct symlink location
-        let linkPath = agentItem.path
-
         var buffer = [CChar](repeating: 0, count: 4096)
         let result = coreQueue.sync { () -> Int32 in
-            return linkPath.withCString { path_cstr in
-                af_readlink(fsHandle, getCallingPid(), path_cstr, &buffer, buffer.count)
+            withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                af_readlink(fsHandle, getCallingPid(), cPath, &buffer, buffer.count)
             }
         }
 
@@ -619,10 +705,7 @@ extension AgentFsVolume: FSVolume.Operations {
         }
 
         // Create using byte-safe API with parent ID
-        guard let dir = directory as? AgentFsItem else {
-            throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
-        }
-        let parentId = dir.attributes.fileID.rawValue
+        let parentId = directory.attributes.fileID.rawValue
         var createdNodeId: UInt64 = 0
         let mode = UInt32(newAttributes.mode)
         let itemType: UInt32 = (type == .directory) ? 1 : 0
@@ -640,9 +723,11 @@ extension AgentFsVolume: FSVolume.Operations {
 
         // Build AgentFsItem and set path via parent + name bytes
         let item = AgentFsItem(name: name)
-        item.path = constructPath(for: name, in: dir)
+        let pathBytes = constructPathBytes(for: name, in: directory)
+        item.pathBytes = pathBytes
+        item.path = String(decoding: pathBytes, as: UTF8.self)
         mergeAttributes(item.attributes, request: newAttributes)
-        item.attributes.parentID = dir.attributes.fileID
+        item.attributes.parentID = directory.attributes.fileID
         item.attributes.fileID = FSItem.Identifier(rawValue: createdNodeId) ?? .invalid
         item.attributes.type = type
         return (item, name)
@@ -660,13 +745,12 @@ extension AgentFsVolume: FSVolume.Operations {
             throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        // Construct full path for the link
-        let linkPath = constructPath(for: name, in: directory)
-        let targetPath = contents.string ?? ""
+        let linkBytes = constructPathBytes(for: name, in: directory)
+        let targetCString = contents.string ?? ""
 
-        let result = coreQueue.sync { () -> Int32 in
-            linkPath.withCString { link_cstr in
-                targetPath.withCString { target_cstr in
+        let result = coreQueue.sync {
+            withNullTerminatedCStr(linkBytes) { link_cstr in
+                targetCString.withCString { target_cstr in
                     af_symlink(fsHandle, getCallingPid(), target_cstr, link_cstr)
                 }
             }
@@ -682,7 +766,8 @@ extension AgentFsVolume: FSVolume.Operations {
 
         // Create FSItem for the new symlink
         let item = AgentFsItem(name: name)
-        item.path = linkPath
+        item.pathBytes = linkBytes
+        item.path = String(decoding: linkBytes, as: UTF8.self)
         mergeAttributes(item.attributes, request: newAttributes)
         item.attributes.parentID = directory.attributes.fileID
         item.attributes.type = .symlink
@@ -713,18 +798,15 @@ extension AgentFsVolume: FSVolume.Operations {
             throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        // Construct full path for the item to remove
-        let itemPath = constructPath(for: name, in: directory)
+        let itemBytes = constructPathBytes(for: name, in: directory)
 
         let itemType = agentItem.attributes.type
-        let result: Int32 = coreQueue.sync { () -> Int32 in
-            if itemType == .directory {
-                itemPath.withCString { path_cstr in
-                    af_rmdir(fsHandle, getCallingPid(), path_cstr)
-                }
-            } else {
-                itemPath.withCString { path_cstr in
-                    af_unlink(fsHandle, getCallingPid(), path_cstr)
+        let result: Int32 = coreQueue.sync {
+            withNullTerminatedCStr(itemBytes) { cPath in
+                if itemType == .directory {
+                    af_rmdir(fsHandle, getCallingPid(), cPath)
+                } else {
+                    af_unlink(fsHandle, getCallingPid(), cPath)
                 }
             }
         }
@@ -756,12 +838,39 @@ extension AgentFsVolume: FSVolume.Operations {
             throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        let sourcePath = constructPath(for: sourceName, in: sourceDir)
-        let destPath = constructPath(for: destinationName, in: destDir)
+        let sourceBytes = constructPathBytes(for: sourceName, in: sourceDir)
+        let destBytes = constructPathBytes(for: destinationName, in: destDir)
 
-        let result = coreQueue.sync { () -> Int32 in
-            return sourcePath.withCString { src_cstr in
-                destPath.withCString { dst_cstr in
+        var destNode: UInt64 = 0
+        var destParent: UInt64 = 0
+        let destResolve = withNullTerminatedCStr(destBytes) { cDest in
+            af_resolve_id(fsHandle, getCallingPid(), cDest, &destNode, &destParent)
+        }
+
+        if overItem == nil && destResolve == 0 {
+            throw fs_errorForPOSIXError(POSIXError.EEXIST.rawValue)
+        }
+
+        if let overAgent = overItem as? AgentFsItem, destResolve == 0 {
+            let removeResult: Int32 = coreQueue.sync {
+                withNullTerminatedCStr(destBytes) { cDest in
+                    switch overAgent.attributes.type {
+                    case .directory:
+                        return af_rmdir(fsHandle, getCallingPid(), cDest)
+                    default:
+                        return af_unlink(fsHandle, getCallingPid(), cDest)
+                    }
+                }
+            }
+
+            if removeResult != 0, let err = afResultToFSKitError(removeResult) {
+                throw err
+            }
+        }
+
+        let result = coreQueue.sync {
+            withNullTerminatedCStr(sourceBytes) { src_cstr in
+                withNullTerminatedCStr(destBytes) { dst_cstr in
                     af_rename(fsHandle, getCallingPid(), src_cstr, dst_cstr)
                 }
             }
@@ -775,9 +884,10 @@ extension AgentFsVolume: FSVolume.Operations {
             }
         }
 
-        // Update item name and path to keep subsequent path-based ops correct
         agentItem.name = destinationName
-        agentItem.path = destPath
+        agentItem.pathBytes = destBytes
+        agentItem.path = String(decoding: destBytes, as: UTF8.self)
+        agentItem.attributes.parentID = destDir.attributes.fileID
 
         return destinationName
     }
@@ -789,73 +899,56 @@ extension AgentFsVolume: FSVolume.Operations {
         attributes: FSItem.GetAttributesRequest?,
         packer: FSDirectoryEntryPacker
     ) async throws -> FSDirectoryVerifier {
-        logger.debug("enumerateDirectory: \(directory)")
-
         guard let directory = directory as? AgentFsItem else {
             throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        // Construct directory path from stored path
-        let dirPath = directory.path
-
-        // Call Rust core to read directory
-        var buffer = [CChar](repeating: 0, count: 16384) // Larger buffer for directory listing
+        let dirBytes = directory.pathBytes
+        var buffer = [UInt8](repeating: 0, count: 16_384)
         var outLen: size_t = 0
-        let result = coreQueue.sync { () -> Int32 in
-            return dirPath.withCString { path_cstr in
-                af_readdir(fsHandle, getCallingPid(), path_cstr, &buffer, buffer.count, &outLen)
+        let result: Int32 = buffer.withUnsafeMutableBytes { bufPtr in
+            let byteCount = bufPtr.count
+            return coreQueue.sync {
+                withNullTerminatedCStr(dirBytes) { cDir in
+                    af_readdir(
+                        fsHandle,
+                        getCallingPid(),
+                        cDir,
+                        bufPtr.bindMemory(to: CChar.self).baseAddress,
+                        byteCount,
+                        &outLen
+                    )
+                }
             }
         }
 
         if result != 0 {
-            logger.error("enumerateDirectory: failed to read directory \(dirPath)")
             if let error = afResultToFSKitError(result) {
                 throw error
-            } else {
-                throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
             }
+            throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
         }
 
-        // Parse directory entries from buffer
-        // Assume buffer contains null-terminated UTF-8 strings for filenames
-        var entries: [String] = []
+        var entries: [FSFileName] = []
+        let total = Int(outLen)
         var offset = 0
-
-        while offset < outLen {
-            // Find null terminator
-            var endOffset = offset
-            while endOffset < outLen && buffer[endOffset] != 0 {
-                endOffset += 1
+        while offset < total {
+            var end = offset
+            while end < total && buffer[end] != 0 { end += 1 }
+            if end > offset {
+                let dataSlice = Data(buffer[offset..<end])
+                entries.append(FSFileName(data: dataSlice))
             }
-
-            if endOffset > offset {
-                // Extract filename from null-terminated C string
-                buffer.withUnsafeBufferPointer { bufferPtr in
-                    let filenamePtr = bufferPtr.baseAddress!.advanced(by: offset)
-                    if let filename = String(cString: filenamePtr, encoding: .utf8) {
-                        entries.append(filename)
-                    }
-                }
-            }
-
-            // Move to next entry (skip null terminator)
-            offset = endOffset + 1
-
-            // Stop if we hit a double null (end of list) or buffer end
-            if offset >= outLen || buffer[offset] == 0 {
-                break
-            }
+            offset = end + 1
         }
 
-        logger.debug("enumerateDirectory: found \(entries.count) entries in \(dirPath)")
+        let debugDir = String(decoding: dirBytes, as: UTF8.self)
+        logger.debug("enumerateDirectory: found \(entries.count) entries in \(debugDir)")
 
-        // Handle cookie-based enumeration
-        let currentCookie = cookie.rawValue
-        var nextCookieValue = currentCookie
+        var nextCookieValue = cookie.rawValue
 
-        // Always include "." and ".." first
-        if currentCookie == 0 {
-            let _ = packer.packEntry(
+        if cookie.rawValue == 0 {
+            _ = packer.packEntry(
                 name: FSFileName(string: "."),
                 itemType: .directory,
                 itemID: directory.attributes.fileID,
@@ -865,109 +958,101 @@ extension AgentFsVolume: FSVolume.Operations {
             nextCookieValue = 1
         }
 
-        if currentCookie <= 1 {
-            let parentId = directory.attributes.parentID
-            let _ = packer.packEntry(
+        if cookie.rawValue <= 1 {
+            _ = packer.packEntry(
                 name: FSFileName(string: ".."),
                 itemType: .directory,
-                itemID: parentId,
+                itemID: directory.attributes.parentID,
                 nextCookie: FSDirectoryCookie(2),
-                attributes: nil // Don't provide attributes for ..
+                attributes: nil
             )
-            nextCookieValue = 2
+            nextCookieValue = max(nextCookieValue, 2)
         }
 
-
-        // Add actual directory entries starting from cookie position
-        let startIndex = Int(currentCookie) - 2 // Adjust for . and ..
-        if startIndex >= 0 && startIndex < entries.count {
+        let startIndex = max(0, Int(cookie.rawValue) - 2)
+        if startIndex < entries.count {
             for i in startIndex..<entries.count {
                 let entryName = entries[i]
-                nextCookieValue += 1
-
-                // Skip . and .. as they're handled above
-                if entryName == "." || entryName == ".." {
+                let entryData = entryName.data
+                if entryData == Data([0x2e]) || entryData == Data([0x2e, 0x2e]) {
                     continue
                 }
 
-                // Determine entry type by trying to stat it (simplified)
-                var entryType = FSItem.ItemType.file
-                let entryPath = constructPath(for: FSFileName(string: entryName), in: directory)
-                var statBuffer = [CChar](repeating: 0, count: 64)
-                let statResult = coreQueue.sync { () -> Int32 in
-                    return entryPath.withCString { path_cstr in
-                        let callingPid = getCallingPid()
-                        return af_getattr(fsHandle, callingPid, path_cstr, &statBuffer, statBuffer.count)
+                nextCookieValue += 1
+
+                let entryPathBytes = constructPathBytes(for: entryName, in: directory)
+                var statBuffer = [UInt8](repeating: 0, count: 64)
+                let statResult: Int32 = statBuffer.withUnsafeMutableBytes { statPtr in
+                    let statCount = statPtr.count
+                    return coreQueue.sync {
+                        withNullTerminatedCStr(entryPathBytes) { cPath in
+                            af_getattr(
+                                fsHandle,
+                                getCallingPid(),
+                                cPath,
+                                statPtr.bindMemory(to: CChar.self).baseAddress,
+                                statCount
+                            )
+                        }
                     }
                 }
 
+                var entryType: FSItem.ItemType = .file
                 if statResult == 0 && statBuffer.count >= 48 {
                     let fileTypeByte = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 8, as: UInt8.self) }
                     switch fileTypeByte {
-                    case 0: entryType = .file
                     case 1: entryType = .directory
                     case 2: entryType = .symlink
                     default: entryType = .file
                     }
                 }
 
-                // Create a temporary item for this entry to get attributes if requested
                 var entryAttributes: FSItem.Attributes? = nil
-                if attributes != nil {
-                    // Fill from getattr for accuracy
-                    var abuf = [CChar](repeating: 0, count: 64)
-                    let ok = coreQueue.sync { () -> Bool in
-                        let callingPid = getCallingPid()
-                        return entryPath.withCString { af_getattr(fsHandle, callingPid, $0, &abuf, abuf.count) } == 0
-                    }
-                    if ok {
-                        let size = abuf.withUnsafeBytes { $0.load(fromByteOffset: 0, as: UInt64.self) }
-                        let mode = abuf.withUnsafeBytes { $0.load(fromByteOffset: 9, as: UInt32.self) }
-                        let atime = abuf.withUnsafeBytes { $0.load(fromByteOffset: 13, as: Int64.self) }
-                        let mtime = abuf.withUnsafeBytes { $0.load(fromByteOffset: 21, as: Int64.self) }
-                        let ctime = abuf.withUnsafeBytes { $0.load(fromByteOffset: 29, as: Int64.self) }
-                        let birthtime = abuf.withUnsafeBytes { $0.load(fromByteOffset: 37, as: Int64.self) }
-                        let attrs = FSItem.Attributes()
-                        attrs.type = entryType
-                        attrs.size = size
-                        attrs.allocSize = size
-                        attrs.mode = mode
-                        attrs.parentID = directory.attributes.fileID
-                        attrs.accessTime = timespec(tv_sec: Int(atime), tv_nsec: 0)
-                        attrs.modifyTime = timespec(tv_sec: Int(mtime), tv_nsec: 0)
-                        attrs.changeTime = timespec(tv_sec: Int(ctime), tv_nsec: 0)
-                        attrs.birthTime = timespec(tv_sec: Int(birthtime), tv_nsec: 0)
-                        entryAttributes = attrs
-                    }
+                if attributes != nil && statResult == 0 {
+                    let attrs = FSItem.Attributes()
+                    let size = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 0, as: UInt64.self) }
+                    let mode = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 9, as: UInt32.self) }
+                    let atime = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 13, as: Int64.self) }
+                    let mtime = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 21, as: Int64.self) }
+                    let ctime = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 29, as: Int64.self) }
+                    let birthtime = statBuffer.withUnsafeBytes { $0.load(fromByteOffset: 37, as: Int64.self) }
+                    attrs.type = entryType
+                    attrs.size = size
+                    attrs.allocSize = size
+                    attrs.mode = mode
+                    attrs.parentID = directory.attributes.fileID
+                    attrs.accessTime = timespec(tv_sec: Int(atime), tv_nsec: 0)
+                    attrs.modifyTime = timespec(tv_sec: Int(mtime), tv_nsec: 0)
+                    attrs.changeTime = timespec(tv_sec: Int(ctime), tv_nsec: 0)
+                    attrs.birthTime = timespec(tv_sec: Int(birthtime), tv_nsec: 0)
+                    entryAttributes = attrs
                 }
 
-                // Resolve stable IDs for this entry
                 var nodeId: UInt64 = 0
                 var parentId: UInt64 = 0
-                _ = entryPath.withCString { p in af_resolve_id(fsHandle, getCallingPid(), p, &nodeId, &parentId) }
+                _ = withNullTerminatedCStr(entryPathBytes) { cPath in
+                    af_resolve_id(fsHandle, getCallingPid(), cPath, &nodeId, &parentId)
+                }
 
                 let packResult = packer.packEntry(
-                    name: FSFileName(string: entryName),
+                    name: entryName,
                     itemType: entryType,
                     itemID: FSItem.Identifier(rawValue: nodeId) ?? .invalid,
                     nextCookie: FSDirectoryCookie(nextCookieValue),
                     attributes: entryAttributes
                 )
 
-                // Stop if packer indicates no more space
                 if !packResult {
                     break
                 }
             }
         }
 
-        logger.debug("enumerateDirectory: completed for \(dirPath) with \(entries.count) entries")
-        // Compute a simple verifier from directory path and entry count to detect changes between calls
         var hasher = Hasher()
-        hasher.combine(dirPath)
+        hasher.combine(dirBytes)
         hasher.combine(entries.count)
-        let v = hasher.finalize()
-        return FSDirectoryVerifier(UInt64(bitPattern: Int64(v)))
+        let verifierValue = hasher.finalize()
+        return FSDirectoryVerifier(UInt64(bitPattern: Int64(verifierValue)))
     }
 
     private func mergeAttributes(_ existing: FSItem.Attributes, request: FSItem.SetAttributesRequest) {
@@ -1059,19 +1144,7 @@ extension AgentFsVolume: FSVolume.OpenCloseOperations {
             return
         }
 
-        // If already has a handle, don't open again
-        if agentItem.userData != nil {
-            logger.debug("open: item already has handle")
-            return
-        }
-
-        // Get calling process information and register it
-        let callingPid: UInt32
-        if let processInfo = getCallingProcessInfo() {
-            callingPid = getRegisteredPid(forProcessInfo: processInfo)
-        } else {
-            callingPid = getRegisteredPid(forPid: getpid(), uid: getuid(), gid: getgid())
-        }
+        let callingPid = getCallingPid()
 
         // Map FSVolume.OpenModes to options JSON for FFI
         var handle: UInt64 = 0
@@ -1100,10 +1173,16 @@ extension AgentFsVolume: FSVolume.OpenCloseOperations {
             }
         }
 
-        // Store the handle in userData
-        agentItem.userData = handle
-        // Cache the PID mapping for this handle
-        handleToPid[handle] = callingPid
+        let shouldSetUserData = handleStateQueue.sync { () -> Bool in
+            handleToPid[handle] = callingPid
+            var list = opensByItem[agentItem.attributes.fileID] ?? []
+            list.append(handle)
+            opensByItem[agentItem.attributes.fileID] = list
+            return list.count == 1
+        }
+        if shouldSetUserData {
+            agentItem.userData = handle
+        }
         logger.debug("open: opened handle \(handle) for id=\(agentItem.attributes.fileID.rawValue) with PID \(callingPid)")
     }
 
@@ -1120,24 +1199,30 @@ extension AgentFsVolume: FSVolume.OpenCloseOperations {
             return
         }
 
-        // Get and clear the handle
-        guard let handle = agentItem.userData as? UInt64 else {
+        let popped = handleStateQueue.sync { () -> (UInt64, UInt32?, UInt64?)? in
+            guard var list = opensByItem[agentItem.attributes.fileID], let h = list.popLast() else {
+                return nil
+            }
+            opensByItem[agentItem.attributes.fileID] = list.isEmpty ? nil : list
+            let pid = handleToPid.removeValue(forKey: h)
+            let next = list.last
+            return (h, pid, next)
+        }
+
+        guard let record = popped else {
             logger.debug("close: no handle to close")
             return
         }
+        agentItem.userData = record.2
 
-        // Close file handle using Rust FFI
-        let pidForHandle = getPidForHandle(handle)
-        let result = coreQueue.sync { af_close(fsHandle, pidForHandle, handle) }
+        let pidForHandle = record.1 ?? getCallingPid()
+        let result = coreQueue.sync { af_close(fsHandle, pidForHandle, record.0) }
 
         if result != 0 {
-            logger.warning("close: failed to close handle \(handle), error: \(result)")
+            logger.warning("close: failed to close handle \(record.0), error: \(result)")
             // Don't throw here as the item should still be considered closed
         }
-
-        // Clear the handle
-        agentItem.userData = nil
-        logger.debug("close: closed handle \(handle)")
+        logger.debug("close: closed handle \(record.0)")
     }
 }
 
@@ -1153,16 +1238,15 @@ extension AgentFsVolume: FSVolume.ReadWriteOperations {
 
         logger.debug("Read operation: \(agentItem.name), offset: \(offset), length: \(length)")
 
-        // Handle regular file reads
-        guard let handle = agentItem.userData as? UInt64 else {
-            throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
+        let (handle, pidForHandle, transient) = try obtainHandle(for: agentItem, wantsWrite: false)
+        defer {
+            if transient {
+                _ = coreQueue.sync { af_close(fsHandle, pidForHandle, handle) }
+            }
         }
 
-        // Prepare buffer for reading
         var bytesRead: UInt32 = 0
         var readData = Data(count: length)
-
-        let pidForHandle = getPidForHandle(handle)
         let result = coreQueue.sync { () -> Int32 in
             return readData.withUnsafeMutableBytes { bufferPtr in
                 af_read(fsHandle, pidForHandle, handle, UInt64(offset), bufferPtr.baseAddress, UInt32(length), &bytesRead)
@@ -1200,13 +1284,13 @@ extension AgentFsVolume: FSVolume.ReadWriteOperations {
 
         logger.debug("Write operation: \(agentItem.name), offset: \(offset), length: \(data.count)")
 
-        // Handle regular file writes
-        guard let handle = agentItem.userData as? UInt64 else {
-            throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
+        let (handle, pidForHandle, transient) = try obtainHandle(for: agentItem, wantsWrite: true)
+        defer {
+            if transient {
+                _ = coreQueue.sync { af_close(fsHandle, pidForHandle, handle) }
+            }
         }
-
         var bytesWritten: UInt32 = 0
-        let pidForHandle = getPidForHandle(handle)
         let result = coreQueue.sync { () -> Int32 in
             return data.withUnsafeBytes { bufferPtr in
                 af_write(fsHandle, pidForHandle, handle, UInt64(offset), bufferPtr.baseAddress, UInt32(data.count), &bytesWritten)
@@ -1236,40 +1320,78 @@ extension AgentFsVolume: FSVolume.ReadWriteOperations {
 extension AgentFsVolume: FSVolume.XattrOperations {
 
     func xattr(named name: FSFileName, of item: FSItem) async throws -> Data {
-        logger.debug("xattr: \(item) - \(name.string ?? "NA")")
+        logger.debug("xattr: \(item)")
 
-        guard let agentItem = item as? AgentFsItem, let key = name.string else {
+        guard let agentItem = item as? AgentFsItem else {
             throw fs_errorForPOSIXError(POSIXError.EINVAL.rawValue)
         }
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        var outLen: size_t = 0
-        let rc = coreQueue.sync { () -> Int32 in
-            return agentItem.path.withCString { p in
-                return key.withCString { n in
-                    return buffer.withUnsafeMutableBytes { bufPtr in
-                        af_xattr_get(fsHandle, getCallingPid(), p, n, bufPtr.baseAddress, bufPtr.count, &outLen)
+
+        var nameBytes = [UInt8](name.data)
+        nameBytes.append(0)
+
+        var capacity = 4096
+        while true {
+            var buffer = [UInt8](repeating: 0, count: capacity)
+            var outLen: size_t = 0
+            let rc: Int32 = buffer.withUnsafeMutableBytes { bufPtr in
+                let byteCount = bufPtr.count
+                return coreQueue.sync {
+                    withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                        nameBytes.withUnsafeBytes { namePtr in
+                            af_xattr_get(
+                                fsHandle,
+                                getCallingPid(),
+                                cPath,
+                                namePtr.bindMemory(to: CChar.self).baseAddress,
+                                bufPtr.baseAddress,
+                                byteCount,
+                                &outLen
+                            )
+                        }
                     }
                 }
             }
+
+            if rc == Int32(POSIXError.ERANGE.rawValue) {
+                capacity = max(capacity * 2, Int(outLen))
+                continue
+            }
+
+            if rc != 0, let err = afResultToFSKitError(rc) { throw err }
+            return Data(buffer.prefix(Int(outLen)))
         }
-        if rc != 0, let err = afResultToFSKitError(rc) { throw err }
-        return Data(buffer.prefix(Int(outLen)))
     }
 
     func setXattr(named name: FSFileName, to value: Data?, on item: FSItem, policy: FSVolume.SetXattrPolicy) async throws {
         logger.debug("setXattrOf: \(item)")
-        guard let agentItem = item as? AgentFsItem, let key = name.string else {
+        guard let agentItem = item as? AgentFsItem else {
             throw fs_errorForPOSIXError(POSIXError.EINVAL.rawValue)
         }
-        let rc: Int32 = coreQueue.sync { () -> Int32 in
-            return agentItem.path.withCString { p in
-                return key.withCString { n in
+        var nameBytes = [UInt8](name.data)
+        nameBytes.append(0)
+        let rc: Int32 = coreQueue.sync {
+            withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                nameBytes.withUnsafeBytes { namePtr in
                     if let value = value {
                         return value.withUnsafeBytes { bufPtr in
-                            af_xattr_set(fsHandle, getCallingPid(), p, n, bufPtr.baseAddress, bufPtr.count)
+                            af_xattr_set(
+                                fsHandle,
+                                getCallingPid(),
+                                cPath,
+                                namePtr.bindMemory(to: CChar.self).baseAddress,
+                                bufPtr.baseAddress,
+                                bufPtr.count
+                            )
                         }
                     } else {
-                        return af_xattr_set(fsHandle, getCallingPid(), p, n, nil, 0)
+                        return af_xattr_set(
+                            fsHandle,
+                            getCallingPid(),
+                            cPath,
+                            namePtr.bindMemory(to: CChar.self).baseAddress,
+                            nil,
+                            0
+                        )
                     }
                 }
             }
@@ -1280,43 +1402,46 @@ extension AgentFsVolume: FSVolume.XattrOperations {
     func xattrs(of item: FSItem) async throws -> [FSFileName] {
         logger.debug("listXattrs: \(item)")
         guard let agentItem = item as? AgentFsItem else { throw fs_errorForPOSIXError(POSIXError.EINVAL.rawValue) }
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        var outLen: size_t = 0
-        let rc = coreQueue.sync { () -> Int32 in
-            return agentItem.path.withCString { p in
-                return buffer.withUnsafeMutableBytes { bufPtr in
-                    af_xattr_list(fsHandle, getCallingPid(), p, bufPtr.baseAddress, bufPtr.count, &outLen)
+        var capacity = 4096
+        while true {
+            var buffer = [UInt8](repeating: 0, count: capacity)
+            var outLen: size_t = 0
+            let rc: Int32 = buffer.withUnsafeMutableBytes { bufPtr in
+                let byteCount = bufPtr.count
+                return coreQueue.sync {
+                    withNullTerminatedCStr(agentItem.pathBytes) { cPath in
+                        af_xattr_list(
+                            fsHandle,
+                            getCallingPid(),
+                            cPath,
+                            bufPtr.baseAddress,
+                            byteCount,
+                            &outLen
+                        )
+                    }
                 }
             }
-        }
-        if rc != 0, let err = afResultToFSKitError(rc) { throw err }
-        // Parse NUL-delimited names
-        var names: [FSFileName] = []
-        var start = 0
-        let total = Int(outLen)
-        while start < total {
-            var end = start
-            while end < total && buffer[end] != 0 { end += 1 }
-            if end > start {
-                let s = String(bytes: buffer[start..<end], encoding: .utf8) ?? ""
-                names.append(FSFileName(string: s))
+
+            if rc == Int32(POSIXError.ERANGE.rawValue) {
+                capacity = max(capacity * 2, Int(outLen))
+                continue
             }
-            start = end + 1
+
+            if rc != 0, let err = afResultToFSKitError(rc) { throw err }
+
+            var names: [FSFileName] = []
+            let total = Int(outLen)
+            var offset = 0
+            while offset < total {
+                var end = offset
+                while end < total && buffer[end] != 0 { end += 1 }
+                if end > offset {
+                    let dataSlice = Data(buffer[offset..<end])
+                    names.append(FSFileName(data: dataSlice))
+                }
+                offset = end + 1
+            }
+            return names
         }
-        return names
-    }
-}
-
-// MARK: - Helper Methods
-
-private func constructPath(for name: FSFileName, in directory: AgentFsItem) -> String {
-    // Build path relative to volume root using the directory's path
-    let nameStr = name.string ?? ""
-
-    // Use the directory's stored path to build the full path
-    if directory.path == "/" {
-        return "/" + nameStr
-    } else {
-        return directory.path + "/" + nameStr
     }
 }
