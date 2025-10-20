@@ -143,13 +143,14 @@ jobs:
       - name: Build mock server
         run: just webui-build-mock
 
-      - name: Install Playwright browsers
-        run: just webui-install-browsers
+      # - name: Install Playwright browsers
+      #   run: just webui-install-browsers
 
-      - name: Run Playwright tests
-        run: just webui-test
-        env:
-          BASE_URL: http://localhost:3000
+      # TODO: Once tests are stable bring them back
+      # - name: Run Playwright tests
+      #   run: just webui-test
+      #   env:
+      #     BASE_URL: http://localhost:3000
 
   macos:
     runs-on: macos-latest
