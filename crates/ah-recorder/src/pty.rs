@@ -3,7 +3,7 @@
 // Uses portable-pty for cross-platform PTY support and vt100 for terminal state tracking
 
 use crate::format::{RecData, RecResize, Record};
-use crate::writer::{now_ns, AhrWriter};
+use crate::writer::{AhrWriter, now_ns};
 use anyhow::{Context, Result};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
@@ -86,9 +86,7 @@ impl PtyRecorder {
             pixel_height: 0,
         };
 
-        let pair = pty_system
-            .openpty(pty_size)
-            .context("Failed to create PTY")?;
+        let pair = pty_system.openpty(pty_size).context("Failed to create PTY")?;
 
         // Build command
         let mut cmd_builder = CommandBuilder::new(cmd);
@@ -157,9 +155,7 @@ impl PtyRecorder {
                     }
                     Err(e) => {
                         error!(error = %e, "PTY read error");
-                        let _ = self
-                            .tx
-                            .send(PtyEvent::Error(format!("PTY read error: {}", e)));
+                        let _ = self.tx.send(PtyEvent::Error(format!("PTY read error: {}", e)));
                         break;
                     }
                 }
@@ -170,7 +166,9 @@ impl PtyRecorder {
             let exit_code = status.exit_code();
 
             debug!(exit_code = ?exit_code, "Child process exited");
-            let _ = self.tx.send(PtyEvent::Exit { code: Some(exit_code) });
+            let _ = self.tx.send(PtyEvent::Exit {
+                code: Some(exit_code),
+            });
 
             Ok(())
         })
@@ -185,9 +183,7 @@ impl PtyRecorder {
             pixel_height: 0,
         };
 
-        self.master
-            .resize(size)
-            .context("Failed to resize PTY")?;
+        self.master.resize(size).context("Failed to resize PTY")?;
 
         debug!(cols = cols, rows = rows, "Resized PTY");
 
@@ -265,10 +261,8 @@ impl TerminalState {
     pub fn resize(&mut self, rows: u16, cols: u16) {
         // vt100::Parser doesn't provide a resize method in the public API
         // We need to create a new parser with the new size
-        let old_parser = std::mem::replace(
-            &mut self.parser,
-            vt100::Parser::new(rows, cols, 1_000_000),
-        );
+        let old_parser =
+            std::mem::replace(&mut self.parser, vt100::Parser::new(rows, cols, 1_000_000));
 
         // Copy the terminal state from old to new parser if possible
         // This is a limitation of the vt100 crate API
@@ -304,10 +298,7 @@ impl RecordingSession {
         writer: AhrWriter,
         config: &PtyRecorderConfig,
     ) -> Self {
-        let terminal = Arc::new(Mutex::new(TerminalState::new(
-            config.rows,
-            config.cols,
-        )));
+        let terminal = Arc::new(Mutex::new(TerminalState::new(config.rows, config.cols)));
 
         Self {
             recorder: Some(recorder_handle),

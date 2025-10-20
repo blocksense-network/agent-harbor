@@ -382,7 +382,9 @@ fn test_overlay_enforcement_e2e() {
     );
 
     if !orchestrator_path.exists() {
-        println!("⚠️  Skipping E2E overlay enforcement test - overlay_test_orchestrator binary not found");
+        println!(
+            "⚠️  Skipping E2E overlay enforcement test - overlay_test_orchestrator binary not found"
+        );
         println!("   Build with: cargo build --bin overlay_test_orchestrator");
         println!("   Looking in: {:?}", orchestrator_path);
         return;
@@ -519,7 +521,9 @@ async fn test_filesystem_isolation_overlay() {
         println!("Sandbox execution failed: {:?}", e);
         // In some test environments, this might fail due to permissions
         // Skip the test rather than failing
-        println!("⚠️  Skipping filesystem isolation test - sandbox execution failed (likely insufficient privileges)");
+        println!(
+            "⚠️  Skipping filesystem isolation test - sandbox execution failed (likely insufficient privileges)"
+        );
         return;
     }
 
@@ -556,7 +560,9 @@ async fn test_filesystem_isolation_overlay() {
             final_content, original_content,
             "File content should be restored to original after overlay cleanup - isolation failed!"
         );
-        println!("✅ Filesystem isolation test passed - overlay properly isolated writes and restored original state");
+        println!(
+            "✅ Filesystem isolation test passed - overlay properly isolated writes and restored original state"
+        );
     } else {
         // If overlay wasn't mounted, file should remain modified (direct writes, no isolation)
         assert_eq!(
@@ -564,7 +570,9 @@ async fn test_filesystem_isolation_overlay() {
             format!("{}\n", modified_content),
             "File content should remain modified when overlay is not mounted"
         );
-        println!("⚠️  Overlay not mounted (likely due to test environment permissions) - skipping isolation verification");
+        println!(
+            "⚠️  Overlay not mounted (likely due to test environment permissions) - skipping isolation verification"
+        );
     }
 }
 
@@ -649,7 +657,9 @@ async fn test_filesystem_isolation_readonly_mount() {
     let result = sandbox.exec_process().await;
     if let Err(ref e) = result {
         println!("Sandbox execution failed: {:?}", e);
-        println!("⚠️  Skipping readonly filesystem test - sandbox execution failed (likely insufficient privileges)");
+        println!(
+            "⚠️  Skipping readonly filesystem test - sandbox execution failed (likely insufficient privileges)"
+        );
         return;
     }
 

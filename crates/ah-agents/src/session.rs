@@ -1,8 +1,8 @@
 /// Session archive export/import functionality
 use crate::traits::{AgentError, AgentResult};
-use flate2::write::GzEncoder;
-use flate2::read::GzDecoder;
 use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 use std::fs::File;
 use std::path::Path;
 use tar::{Archive, Builder};
@@ -32,18 +32,21 @@ pub async fn export_directory(source_dir: &Path, dest_path: &Path) -> AgentResul
     let dest_path = dest_path.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        let file = File::create(&dest_path)
-            .map_err(|e| AgentError::SessionExportFailed(format!("Failed to create archive file: {}", e)))?;
+        let file = File::create(&dest_path).map_err(|e| {
+            AgentError::SessionExportFailed(format!("Failed to create archive file: {}", e))
+        })?;
 
         let encoder = GzEncoder::new(file, Compression::default());
         let mut tar = Builder::new(encoder);
 
         // Add all files from source directory
-        tar.append_dir_all(".", &source_dir)
-            .map_err(|e| AgentError::SessionExportFailed(format!("Failed to add files to archive: {}", e)))?;
+        tar.append_dir_all(".", &source_dir).map_err(|e| {
+            AgentError::SessionExportFailed(format!("Failed to add files to archive: {}", e))
+        })?;
 
-        tar.finish()
-            .map_err(|e| AgentError::SessionExportFailed(format!("Failed to finalize archive: {}", e)))?;
+        tar.finish().map_err(|e| {
+            AgentError::SessionExportFailed(format!("Failed to finalize archive: {}", e))
+        })?;
 
         debug!("Session export completed successfully");
         Ok(())
@@ -56,11 +59,11 @@ pub async fn export_directory(source_dir: &Path, dest_path: &Path) -> AgentResul
 ///
 /// Extracts all files from the archive at `archive_path` into `dest_dir`.
 /// The destination directory will be created if it doesn't exist.
-pub async fn import_directory(
-    archive_path: &Path,
-    dest_dir: &Path,
-) -> AgentResult<()> {
-    info!("Importing session from {:?} to {:?}", archive_path, dest_dir);
+pub async fn import_directory(archive_path: &Path, dest_dir: &Path) -> AgentResult<()> {
+    info!(
+        "Importing session from {:?} to {:?}",
+        archive_path, dest_dir
+    );
 
     if !archive_path.exists() {
         return Err(AgentError::SessionImportFailed(format!(
@@ -77,14 +80,16 @@ pub async fn import_directory(
     let dest_dir = dest_dir.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        let file = File::open(&archive_path)
-            .map_err(|e| AgentError::SessionImportFailed(format!("Failed to open archive: {}", e)))?;
+        let file = File::open(&archive_path).map_err(|e| {
+            AgentError::SessionImportFailed(format!("Failed to open archive: {}", e))
+        })?;
 
         let decoder = GzDecoder::new(file);
         let mut archive = Archive::new(decoder);
 
-        archive.unpack(&dest_dir)
-            .map_err(|e| AgentError::SessionImportFailed(format!("Failed to extract archive: {}", e)))?;
+        archive.unpack(&dest_dir).map_err(|e| {
+            AgentError::SessionImportFailed(format!("Failed to extract archive: {}", e))
+        })?;
 
         debug!("Session import completed successfully");
         Ok(())
@@ -96,8 +101,8 @@ pub async fn import_directory(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs::{self, write};
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_export_import_roundtrip() {

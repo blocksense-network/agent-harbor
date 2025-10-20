@@ -3,11 +3,11 @@
 use crate::error::ServerError;
 use axum::{
     extract::Request,
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 
 /// Authentication configuration

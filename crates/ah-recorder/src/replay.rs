@@ -3,7 +3,7 @@
 // Replays AHR recordings to reconstruct the final terminal state
 // using vt100 terminal emulation.
 
-use crate::reader::{AhrReader, AhrReadEvent};
+use crate::reader::{AhrReadEvent, AhrReader};
 use crate::snapshots::{Snapshot, SnapshotsReader};
 use std::collections::HashMap;
 use std::path::Path;
@@ -75,7 +75,11 @@ pub fn replay_ahr_file<P: AsRef<Path>>(path: P) -> std::io::Result<ReplayResult>
 
     for event in events {
         match event {
-            AhrReadEvent::Data { data, start_byte_off, .. } => {
+            AhrReadEvent::Data {
+                data,
+                start_byte_off,
+                ..
+            } => {
                 // Process the data through vt100 parser
                 parser.process(&data);
 
@@ -99,7 +103,12 @@ pub fn replay_ahr_file<P: AsRef<Path>>(path: P) -> std::io::Result<ReplayResult>
 
                 // Update row tracking based on changes from previous state
                 let current_byte_off = start_byte_off + data.len() as u64;
-                update_row_tracking_changed(&mut row_last_write, &prev_screen_hashes, &current_hashes, current_byte_off);
+                update_row_tracking_changed(
+                    &mut row_last_write,
+                    &prev_screen_hashes,
+                    &current_hashes,
+                    current_byte_off,
+                );
 
                 // Update previous hashes for next iteration
                 prev_screen_hashes = current_hashes;
@@ -110,7 +119,12 @@ pub fn replay_ahr_file<P: AsRef<Path>>(path: P) -> std::io::Result<ReplayResult>
                 // Resize the terminal
                 parser.set_size(rows, cols);
             }
-            AhrReadEvent::Snapshot { ts_ns, snapshot_id, anchor_byte, label } => {
+            AhrReadEvent::Snapshot {
+                ts_ns,
+                snapshot_id,
+                anchor_byte,
+                label,
+            } => {
                 // Collect snapshot metadata
                 snapshots.push(Snapshot {
                     id: snapshot_id,
@@ -149,13 +163,21 @@ pub fn create_branch_points<P: AsRef<Path>>(
     let replay_result = replay_ahr_file(&ahr_path)?;
 
     // Interleave lines and snapshots by position
-    let result = interleave_by_position(&replay_result.lines, &replay_result.snapshots, replay_result.total_bytes);
+    let result = interleave_by_position(
+        &replay_result.lines,
+        &replay_result.snapshots,
+        replay_result.total_bytes,
+    );
 
     Ok(result)
 }
 
 /// Interleave terminal lines and snapshots by their position values
-pub fn interleave_by_position(lines: &[TerminalLine], snapshots: &[Snapshot], total_bytes: u64) -> BranchPointsResult {
+pub fn interleave_by_position(
+    lines: &[TerminalLine],
+    snapshots: &[Snapshot],
+    total_bytes: u64,
+) -> BranchPointsResult {
     // Create a combined list of items with their positions
     let mut items_with_positions: Vec<(u64, InterleavedItem)> = Vec::new();
 
@@ -173,20 +195,16 @@ pub fn interleave_by_position(lines: &[TerminalLine], snapshots: &[Snapshot], to
 
     // Sort by position, then by type (lines before snapshots at same position)
     items_with_positions.sort_by(|a, b| {
-        a.0.cmp(&b.0).then_with(|| {
-            match (&a.1, &b.1) {
-                (InterleavedItem::Line(_), InterleavedItem::Snapshot(_)) => std::cmp::Ordering::Less,
-                (InterleavedItem::Snapshot(_), InterleavedItem::Line(_)) => std::cmp::Ordering::Greater,
-                _ => std::cmp::Ordering::Equal,
-            }
+        a.0.cmp(&b.0).then_with(|| match (&a.1, &b.1) {
+            (InterleavedItem::Line(_), InterleavedItem::Snapshot(_)) => std::cmp::Ordering::Less,
+            (InterleavedItem::Snapshot(_), InterleavedItem::Line(_)) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
         })
     });
 
     // Extract just the items
-    let items: Vec<InterleavedItem> = items_with_positions
-        .into_iter()
-        .map(|(_, item)| item)
-        .collect();
+    let items: Vec<InterleavedItem> =
+        items_with_positions.into_iter().map(|(_, item)| item).collect();
 
     BranchPointsResult { items, total_bytes }
 }

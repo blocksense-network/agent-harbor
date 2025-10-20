@@ -1,6 +1,6 @@
 //! Database migration management.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 /// Database migration manager.
 pub struct MigrationManager;
@@ -166,10 +166,7 @@ impl MigrationManager {
         )?;
 
         // Record the migration
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (2)",
-            [],
-        )?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (2)", [])?;
 
         Ok(())
     }
@@ -184,10 +181,7 @@ impl MigrationManager {
         )?;
 
         // Record the migration
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (3)",
-            [],
-        )?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (3)", [])?;
 
         Ok(())
     }
@@ -209,10 +203,7 @@ impl MigrationManager {
         )?;
 
         // Record the migration
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (4)",
-            [],
-        )?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (4)", [])?;
 
         Ok(())
     }

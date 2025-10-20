@@ -7,7 +7,7 @@
 
 pub mod error;
 
-use nix::mount::{mount, MsFlags};
+use nix::mount::{MsFlags, mount};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};

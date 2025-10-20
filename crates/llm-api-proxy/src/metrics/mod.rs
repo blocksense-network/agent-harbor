@@ -5,8 +5,8 @@
 //!
 //! TODO: Integrate with actual Helicone telemetry when available
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 // TODO: Uncomment when telemetry crate is available
 // use telemetry::MetricsCollector as HeliconeMetrics;
@@ -57,7 +57,8 @@ impl MetricsCollector {
     ) {
         self.successful_requests.fetch_add(1, Ordering::Relaxed);
         self.active_requests.fetch_sub(1, Ordering::Relaxed);
-        self.total_response_time_ms.fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+        self.total_response_time_ms
+            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
 
         // Try to extract token counts from response
         self.extract_and_record_tokens(response);
@@ -78,7 +79,8 @@ impl MetricsCollector {
     ) {
         self.failed_requests.fetch_add(1, Ordering::Relaxed);
         self.active_requests.fetch_sub(1, Ordering::Relaxed);
-        self.total_response_time_ms.fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+        self.total_response_time_ms
+            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
 
         tracing::debug!(
             "Request failed: {} ({}ms) - {:?}",
@@ -91,10 +93,15 @@ impl MetricsCollector {
     /// Extract and record token counts from response
     fn extract_and_record_tokens(&self, response: &crate::proxy::ProxyResponse) {
         // Try to extract token usage from OpenAI-style responses (including OpenRouter)
-        if let Ok(openai_resp) = serde_json::from_value::<async_openai::types::CreateChatCompletionResponse>(response.payload.clone()) {
+        if let Ok(openai_resp) = serde_json::from_value::<
+            async_openai::types::CreateChatCompletionResponse,
+        >(response.payload.clone())
+        {
             if let Some(usage) = openai_resp.usage {
-                self.total_prompt_tokens.fetch_add(usage.prompt_tokens as u64, Ordering::Relaxed);
-                self.total_completion_tokens.fetch_add(usage.completion_tokens as u64, Ordering::Relaxed);
+                self.total_prompt_tokens
+                    .fetch_add(usage.prompt_tokens as u64, Ordering::Relaxed);
+                self.total_completion_tokens
+                    .fetch_add(usage.completion_tokens as u64, Ordering::Relaxed);
             }
         }
 

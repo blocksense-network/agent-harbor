@@ -72,8 +72,7 @@ id = "test-user-integration"
 # API configuration will be overridden by environment variables
 "#;
 
-    fs::write(codex_dir.join("config.toml"), config_toml)
-        .expect("Failed to write config.toml");
+    fs::write(codex_dir.join("config.toml"), config_toml).expect("Failed to write config.toml");
 }
 
 /// Set up environment variables needed for testing
@@ -192,9 +191,9 @@ async fn test_claude_with_mock_server() {
 
             // Verify no onboarding screens were shown (which would cause different output/errors)
             assert!(
-                !stdout_str.contains("Terms of Service") &&
-                !stdout_str.contains("Enter your API key") &&
-                !stderr_str.contains("authentication required"),
+                !stdout_str.contains("Terms of Service")
+                    && !stdout_str.contains("Enter your API key")
+                    && !stderr_str.contains("authentication required"),
                 "Agent should not show onboarding screens. Stdout: {}, Stderr: {}",
                 stdout_str,
                 stderr_str
@@ -312,9 +311,9 @@ async fn test_codex_with_mock_server() {
 
             // Verify no onboarding screens were shown (which would cause different output/errors)
             assert!(
-                !stdout_str.contains("Terms of Service") &&
-                !stdout_str.contains("Enter your API key") &&
-                !stderr_str.contains("authentication required"),
+                !stdout_str.contains("Terms of Service")
+                    && !stdout_str.contains("Enter your API key")
+                    && !stderr_str.contains("authentication required"),
                 "Agent should not show onboarding screens. Stdout: {}, Stderr: {}",
                 stdout_str,
                 stderr_str

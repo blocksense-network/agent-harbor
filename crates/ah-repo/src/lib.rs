@@ -9,5 +9,5 @@ pub mod test_helpers;
 pub mod vcs_types;
 
 pub use error::{VcsError, VcsResult};
-pub use repo::{VcsRepo, FileStream};
+pub use repo::{FileStream, VcsRepo};
 pub use vcs_types::VcsType;

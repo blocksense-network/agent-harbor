@@ -319,7 +319,9 @@ mod tests {
                 stdout,
                 stderr
             );
-            println!("⚠️  Sandbox command failed as expected in test environment (missing providers/permissions)");
+            println!(
+                "⚠️  Sandbox command failed as expected in test environment (missing providers/permissions)"
+            );
         } else {
             println!("✅ Sandbox command executed successfully");
         }

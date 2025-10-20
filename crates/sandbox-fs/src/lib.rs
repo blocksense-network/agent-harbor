@@ -2,7 +2,7 @@
 
 #![cfg(target_os = "linux")]
 
-use nix::mount::{mount, umount2, MntFlags, MsFlags};
+use nix::mount::{MntFlags, MsFlags, mount, umount2};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};

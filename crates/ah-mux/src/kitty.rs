@@ -848,9 +848,12 @@ mod tests {
                                     // Verify we have the expected number of windows
                                     let final_windows =
                                         kitty.list_windows_detailed().unwrap_or_default();
-                                    assert!(final_windows.len() >= initial_count + 2,
-                                           "Should have at least {} windows after creating 2 splits, got {}",
-                                           initial_count + 2, final_windows.len());
+                                    assert!(
+                                        final_windows.len() >= initial_count + 2,
+                                        "Should have at least {} windows after creating 2 splits, got {}",
+                                        initial_count + 2,
+                                        final_windows.len()
+                                    );
 
                                     // Test focusing different panes and verify focus changes
                                     let _ = kitty.focus_window(&window_id);

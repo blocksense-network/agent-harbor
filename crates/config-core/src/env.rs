@@ -10,13 +10,13 @@ pub fn env_overlay() -> Result<J> {
         .add_source(
             config::Environment::with_prefix("AH")
                 .separator("_")
-                .convert_case(config::Case::Kebab)
+                .convert_case(config::Case::Kebab),
         )
         .build()?;
 
     // Deserialize to JSON; this reflects nested structures via kebab segments
     Ok(serde_json::to_value(
-        built.try_deserialize::<serde_json::Map<String, J>>()?
+        built.try_deserialize::<serde_json::Map<String, J>>()?,
     )?)
 }
 

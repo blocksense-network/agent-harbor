@@ -1,8 +1,8 @@
 //! Task Execution ViewModel - for active/completed/merged task cards
 
-use ah_domain_types::{TaskExecution, SelectedModel, TaskState};
-use ah_domain_types::task::ToolStatus;
 use super::{ButtonViewModel, FocusElement};
+use ah_domain_types::task::ToolStatus;
+use ah_domain_types::{SelectedModel, TaskExecution, TaskState};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskMetadataViewModel {
@@ -18,9 +18,7 @@ pub struct TaskMetadataViewModel {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentActivityRow {
     /// Agent thought/reasoning
-    AgentThought {
-        thought: String,
-    },
+    AgentThought { thought: String },
     /// Agent file edit
     AgentEdit {
         file_path: String,
@@ -33,7 +31,7 @@ pub enum AgentActivityRow {
         tool_name: String,
         tool_execution_id: String,
         last_line: Option<String>, // None = just started, Some = has output
-        completed: bool, // true when ToolResult received
+        completed: bool,           // true when ToolResult received
         status: ToolStatus,
     },
 }
@@ -59,11 +57,11 @@ pub enum TaskCardType {
 /// ViewModel for task execution cards (active/completed/merged)
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskExecutionViewModel {
-    pub id: String, // Unique identifier for the task card
+    pub id: String,          // Unique identifier for the task card
     pub task: TaskExecution, // Domain object
     pub title: String,
     pub metadata: TaskMetadataViewModel,
     pub height: u16,
-    pub card_type: TaskCardType, // Active, Completed, or Merged
+    pub card_type: TaskCardType,     // Active, Completed, or Merged
     pub focus_element: FocusElement, // Current focus within this card
 }

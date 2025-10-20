@@ -536,10 +536,7 @@ impl<'a> SessionStore<'a> {
     }
 
     pub fn delete(&self, session_id: &str) -> crate::Result<()> {
-        self.conn.execute(
-            "DELETE FROM sessions WHERE id = ?",
-            params![session_id],
-        )?;
+        self.conn.execute("DELETE FROM sessions WHERE id = ?", params![session_id])?;
         Ok(())
     }
 
@@ -854,10 +851,7 @@ impl<'a> DraftStore<'a> {
     }
 
     pub fn delete(&self, id: &str) -> crate::Result<()> {
-        self.conn.execute(
-            "DELETE FROM drafts WHERE id = ?",
-            params![id],
-        )?;
+        self.conn.execute("DELETE FROM drafts WHERE id = ?", params![id])?;
         Ok(())
     }
 }

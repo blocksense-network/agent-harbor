@@ -3,10 +3,10 @@
 //! This module provides overlay functionality that allows AgentFS to operate
 //! as an overlay on top of an existing filesystem, with copy-on-write semantics.
 
-use std::io::Read;
-use std::path::Path;
 use crate::error::{FsError, FsResult};
 use crate::{Attributes, DirEntry, LowerFs};
+use std::io::Read;
+use std::path::Path;
 
 /// Host filesystem implementation of LowerFs trait
 /// This provides access to the underlying host filesystem for overlay operations.

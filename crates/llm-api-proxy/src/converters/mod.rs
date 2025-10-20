@@ -8,11 +8,11 @@
 //! The conversions are based on the Helicone ai-gateway mapper implementations,
 //! adapted for our use case.
 
-pub mod openai_to_anthropic;
 pub mod anthropic_to_openai;
+pub mod openai_to_anthropic;
 
-use async_openai::types as openai;
 use anthropic_ai_sdk::types as anthropic;
+use async_openai::types as openai;
 use serde::{Deserialize, Serialize};
 
 /// Supported API formats
@@ -84,7 +84,8 @@ pub mod streaming {
     /// Convert Anthropic streaming event to OpenAI format
     pub fn anthropic_to_openai_chunk(
         event: anthropic::message::StreamEvent,
-    ) -> Result<Option<ConversionResponse<openai::CreateChatCompletionStreamResponse>>, crate::Error> {
+    ) -> Result<Option<ConversionResponse<openai::CreateChatCompletionStreamResponse>>, crate::Error>
+    {
         anthropic_to_openai::convert_stream_chunk(event)
     }
 }

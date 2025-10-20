@@ -3,13 +3,12 @@
 use ah_rest_api_contract::*;
 use futures::StreamExt;
 use reqwest::{Client as HttpClient, Method, Response};
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{Deserialize, de::DeserializeOwned};
 use url::Url;
 
 use crate::auth::AuthConfig;
 use crate::error::{RestClientError, RestClientResult};
 use crate::sse::SessionEventStream;
-
 
 /// REST API client for agent-harbor service
 #[derive(Debug, Clone)]

@@ -3,8 +3,8 @@
 //! These types represent tasks, their states, and related business entities
 //! that are shared across the Agent Harbor system.
 
-use serde::{Deserialize, Serialize};
 use crate::agent::SelectedModel;
+use serde::{Deserialize, Serialize};
 
 /// Task execution states as defined in PRD
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -97,7 +97,7 @@ pub struct TaskExecution {
     pub agents: Vec<SelectedModel>,
     pub state: TaskState,
     pub timestamp: String,
-    pub activity: Vec<String>, // For active tasks
+    pub activity: Vec<String>,                // For active tasks
     pub delivery_status: Vec<DeliveryStatus>, // For completed/merged tasks
 }
 
@@ -135,11 +135,7 @@ impl TaskExecution {
     /// Get recent activity for display
     pub fn get_recent_activity(&self, count: usize) -> Vec<String> {
         if self.state == TaskState::Active {
-            let recent: Vec<String> = self.activity.iter()
-                .rev()
-                .take(count)
-                .cloned()
-                .collect();
+            let recent: Vec<String> = self.activity.iter().rev().take(count).cloned().collect();
             let mut result: Vec<String> = recent.into_iter().rev().collect();
 
             // Always return exactly count lines, padding with empty strings at the beginning

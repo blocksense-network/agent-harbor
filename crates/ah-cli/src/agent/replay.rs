@@ -4,9 +4,9 @@
 // either by fast-forwarding through the recording or by simulating
 // the original timing.
 
-use ah_recorder::{replay_ahr_file, ReplayResult, TerminalViewer, ViewerConfig, ViewerEventLoop};
-use ah_recorder::viewer::GutterPosition;
 use crate::agent::record::CliGutterPosition;
+use ah_recorder::viewer::GutterPosition;
+use ah_recorder::{ReplayResult, TerminalViewer, ViewerConfig, ViewerEventLoop, replay_ahr_file};
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
@@ -78,11 +78,14 @@ pub async fn execute(args: ReplayArgs) -> Result<()> {
 
 /// Print metadata and statistics about the recording
 async fn print_metadata(ahr_path: &PathBuf) -> Result<()> {
-    let replay_result = replay_ahr_file(ahr_path)
-        .context("Failed to replay recording for metadata")?;
+    let replay_result =
+        replay_ahr_file(ahr_path).context("Failed to replay recording for metadata")?;
 
     println!("Recording: {}", ahr_path.display());
-    println!("Initial terminal size: {}x{}", replay_result.initial_cols, replay_result.initial_rows);
+    println!(
+        "Initial terminal size: {}x{}",
+        replay_result.initial_cols, replay_result.initial_rows
+    );
     println!("Total bytes processed: {}", replay_result.total_bytes);
     println!("Terminal lines: {}", replay_result.lines.len());
     println!("Snapshots: {}", replay_result.snapshots.len());
@@ -91,7 +94,10 @@ async fn print_metadata(ahr_path: &PathBuf) -> Result<()> {
         println!("\nSnapshots:");
         for snapshot in &replay_result.snapshots {
             let label = snapshot.label.as_deref().unwrap_or("<unnamed>");
-            println!("  ID {}: {} (byte {})", snapshot.id, label, snapshot.anchor_byte);
+            println!(
+                "  ID {}: {} (byte {})",
+                snapshot.id, label, snapshot.anchor_byte
+            );
         }
     }
 
@@ -100,8 +106,7 @@ async fn print_metadata(ahr_path: &PathBuf) -> Result<()> {
 
 /// Perform fast-forward replay and display final terminal state
 async fn fast_replay(ahr_path: &PathBuf, no_colors: bool) -> Result<()> {
-    let replay_result = replay_ahr_file(ahr_path)
-        .context("Failed to replay recording")?;
+    let replay_result = replay_ahr_file(ahr_path).context("Failed to replay recording")?;
 
     // Display the final terminal state
     for line in &replay_result.lines {
@@ -121,8 +126,8 @@ async fn fast_replay(ahr_path: &PathBuf, no_colors: bool) -> Result<()> {
 /// Run the viewer in interactive mode for testing
 async fn run_viewer_mode(ahr_path: &PathBuf, gutter: &CliGutterPosition) -> Result<()> {
     // First replay the recording to get the final terminal state
-    let replay_result = replay_ahr_file(ahr_path)
-        .context("Failed to replay recording for viewer")?;
+    let replay_result =
+        replay_ahr_file(ahr_path).context("Failed to replay recording for viewer")?;
 
     // Create a terminal state with the final state by simulating the data
     // For testing, we'll create a terminal state and feed it enough data to show the final state

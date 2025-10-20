@@ -15,8 +15,8 @@ use ssz::{Decode, Encode};
 use ssz_derive::{Decode as SszDecode, Encode as SszEncode};
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
@@ -221,32 +221,41 @@ async fn handle_connection(
 
     // Decode SSZ to Request
     let request = Request::from_ssz_bytes(&request_bytes).map_err(|e| {
-        io::Error::new(io::ErrorKind::InvalidData, format!("Failed to decode SSZ request: {:?}", e))
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Failed to decode SSZ request: {:?}", e),
+        )
     })?;
 
     match request {
         Request::Snapshot((snapshot_id, label_bytes)) => {
             let label = String::from_utf8_lossy(&label_bytes).to_string();
-            debug!("Received snapshot notification: id={}, label={:?}", snapshot_id, label);
-            eprintln!("DEBUG: IPC server received snapshot notification: id={}, label={:?}", snapshot_id, label);
+            debug!(
+                "Received snapshot notification: id={}, label={:?}",
+                snapshot_id, label
+            );
+            eprintln!(
+                "DEBUG: IPC server received snapshot notification: id={}, label={:?}",
+                snapshot_id, label
+            );
 
             // Send command to recorder and wait for response
             let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
-            command_tx.send(IpcCommand::Snapshot {
-                snapshot_id,
-                label,
-                response_tx,
-            }).map_err(|_| io::Error::new(
-                io::ErrorKind::Other,
-                "Failed to send command to recorder",
-            ))?;
+            command_tx
+                .send(IpcCommand::Snapshot {
+                    snapshot_id,
+                    label,
+                    response_tx,
+                })
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::Other, "Failed to send command to recorder")
+                })?;
 
             // Wait for recorder to process snapshot and respond
-            let response = response_rx.await.map_err(|_| io::Error::new(
-                io::ErrorKind::Other,
-                "Recorder did not respond",
-            ))?;
+            let response = response_rx
+                .await
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Recorder did not respond"))?;
 
             // Send length-prefixed response
             let response_bytes = response.as_ssz_bytes();
@@ -301,7 +310,10 @@ impl IpcClient {
 
         // Decode response
         let response = Response::from_ssz_bytes(&response_bytes).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("Failed to decode SSZ response: {:?}", e))
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to decode SSZ response: {:?}", e),
+            )
         })?;
 
         Ok(response)

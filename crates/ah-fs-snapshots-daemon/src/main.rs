@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use ssz::{Decode, Encode};
 use std::path::PathBuf;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tracing::{error, info};
 
 mod operations;
@@ -87,7 +87,7 @@ async fn run_socket_mode(socket_path: PathBuf) -> Result<()> {
 }
 
 async fn run_stdin_mode() -> Result<()> {
-    use tokio::io::{stdin, AsyncBufReadExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, BufReader, stdin};
     use types::Request;
 
     let stdin = BufReader::new(stdin());

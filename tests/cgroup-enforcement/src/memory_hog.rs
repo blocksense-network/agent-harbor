@@ -5,7 +5,7 @@
 //! SAFETY: This program only performs the memory attack when run inside
 //! the sandbox with the SANDBOX_TEST_MODE environment variable set.
 
-use std::alloc::{alloc, Layout};
+use std::alloc::{Layout, alloc};
 use std::ptr;
 
 const SANDBOX_TEST_ENV: &str = "SANDBOX_TEST_MODE";

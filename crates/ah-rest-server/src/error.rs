@@ -2,9 +2,9 @@
 
 use ah_rest_api_contract::ProblemDetails;
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 
 /// Server result type

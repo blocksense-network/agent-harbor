@@ -130,7 +130,9 @@ fn test_ptrace_in_debug_mode(sbx_helper: &str) -> (bool, bool) {
         Ok(Some(status)) => {
             // Process has already exited - likely due to permission error
             if status.code() == Some(1) {
-                info!("⚠️  Sandbox exited with permission error (expected in unprivileged environment)");
+                info!(
+                    "⚠️  Sandbox exited with permission error (expected in unprivileged environment)"
+                );
                 info!(
                     "   This test requires privileges to create namespaces and mount filesystems"
                 );
@@ -234,7 +236,9 @@ fn test_ptrace_in_normal_mode(sbx_helper: &str) -> (bool, bool) {
         Ok(Some(status)) => {
             // Process has already exited - likely due to permission error
             if status.code() == Some(1) {
-                info!("⚠️  Sandbox exited with permission error (expected in unprivileged environment)");
+                info!(
+                    "⚠️  Sandbox exited with permission error (expected in unprivileged environment)"
+                );
                 info!(
                     "   This test requires privileges to create namespaces and mount filesystems"
                 );

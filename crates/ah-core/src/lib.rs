@@ -33,21 +33,20 @@ pub use session::{Session, SessionId, SessionManager, SessionStatus};
 pub use agent_tasks::AgentTasks;
 
 /// Interactive editor integration for task content creation.
-pub use editor::{edit_content_interactive, EditorError, EDITOR_HINT};
+pub use editor::{EDITOR_HINT, EditorError, edit_content_interactive};
 
 /// Nix devshell detection and parsing utilities.
 pub use devshell::devshell_names;
 
 /// Push operations and remote management utilities.
-pub use push::{parse_push_to_remote_flag, PushHandler, PushOptions};
+pub use push::{PushHandler, PushOptions, parse_push_to_remote_flag};
 
 /// Database integration for persistence.
 pub use db::DatabaseManager;
 
 /// Task manager abstraction for different execution modes (local, remote, mock).
 pub use task_manager::{
-    TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent,
-    SaveDraftResult
+    SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
 
 /// Local task manager for direct execution on the local machine.
@@ -55,11 +54,10 @@ pub use task_manager::{
 pub use local_task_manager::LocalTaskManager;
 
 /// Re-export domain types
-pub use ah_domain_types::{TaskExecutionStatus, LogLevel, ToolStatus};
+pub use ah_domain_types::{LogLevel, TaskExecutionStatus, ToolStatus};
 
 /// Agent execution engine for spawning and managing agent processes.
-pub use agent_executor::{AgentExecutor, AgentExecutionConfig, WorkingCopyMode};
+pub use agent_executor::{AgentExecutionConfig, AgentExecutor, WorkingCopyMode};
 
 /// REST API-based task manager implementation.
-pub use rest_task_manager::{GenericRestTaskManager, RestTaskManager, RestApiClient};
-
+pub use rest_task_manager::{GenericRestTaskManager, RestApiClient, RestTaskManager};

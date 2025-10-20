@@ -56,8 +56,10 @@ pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
-pub use task_entry::{TaskEntryViewModel, TaskEntryControlsViewModel};
-pub use task_execution::{TaskExecutionViewModel, AgentActivityRow, TaskCardType, TaskMetadataViewModel};
+pub use task_entry::{TaskEntryControlsViewModel, TaskEntryViewModel};
+pub use task_execution::{
+    AgentActivityRow, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
+};
 
 // Common UI types used across view models
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -165,4 +167,3 @@ pub enum AutoSaveState {
     Unsaved,
     Error(String),
 }
-

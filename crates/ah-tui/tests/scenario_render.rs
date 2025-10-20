@@ -1,7 +1,7 @@
 //! Scenario-based initial render test
 
 use ah_test_scenarios::{Scenario, ScenarioTerminal};
-use ah_tui::{app::AppState, create_test_terminal, ViewModel};
+use ah_tui::{ViewModel, app::AppState, create_test_terminal};
 use ratatui::widgets::ListState;
 
 #[test]

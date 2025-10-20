@@ -2,7 +2,7 @@
 
 use crate::ServerResult;
 use ah_rest_api_contract::{Project, Repository};
-use axum::{extract::Query, Json};
+use axum::{Json, extract::Query};
 
 /// List projects
 pub async fn list_projects(

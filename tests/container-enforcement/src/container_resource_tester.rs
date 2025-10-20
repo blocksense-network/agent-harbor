@@ -28,7 +28,9 @@ fn main() -> anyhow::Result<()> {
     let can_enforce_limits = check_privileged_environment();
     if !can_enforce_limits {
         info!("⚠️  Running in unprivileged environment - cgroup limits cannot be enforced");
-        info!("⚠️  This is expected behavior for security. Container resource limits will be tested but may not fail containers.");
+        info!(
+            "⚠️  This is expected behavior for security. Container resource limits will be tested but may not fail containers."
+        );
     }
 
     // Test 1: Run a container that tries to use excessive memory
@@ -55,8 +57,12 @@ fn main() -> anyhow::Result<()> {
                 println!("FAIL: Container memory limit not enforced");
                 std::process::exit(1);
             } else {
-                info!("⚠️  Container memory limit not enforced (expected in unprivileged environment)");
-                info!("✓ Memory limit test completed (limit not enforced due to unprivileged mode)");
+                info!(
+                    "⚠️  Container memory limit not enforced (expected in unprivileged environment)"
+                );
+                info!(
+                    "✓ Memory limit test completed (limit not enforced due to unprivileged mode)"
+                );
             }
         }
         Err(e) => {
@@ -90,10 +96,10 @@ fn main() -> anyhow::Result<()> {
                 println!("FAIL: Container PID limit not enforced");
                 std::process::exit(1);
             } else {
-                info!("⚠️  Container PID limit not enforced (expected in unprivileged environment)");
                 info!(
-                    "✓ PID limit test completed (limit not enforced due to unprivileged mode)"
+                    "⚠️  Container PID limit not enforced (expected in unprivileged environment)"
                 );
+                info!("✓ PID limit test completed (limit not enforced due to unprivileged mode)");
             }
         }
         Err(e) => {
@@ -145,7 +151,9 @@ fn main() -> anyhow::Result<()> {
     if can_enforce_limits {
         println!("SUCCESS: All resource limit tests passed (privileged environment)");
     } else {
-        println!("SUCCESS: All resource limit tests passed (unprivileged environment - limits not enforced)");
+        println!(
+            "SUCCESS: All resource limit tests passed (unprivileged environment - limits not enforced)"
+        );
     }
     std::process::exit(0);
 }

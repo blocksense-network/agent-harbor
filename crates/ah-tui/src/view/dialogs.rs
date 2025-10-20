@@ -3,10 +3,7 @@
 //! This module contains all dialog and modal rendering functions
 //! extracted from the main application for better organization.
 
-use ratatui::{
-    prelude::*,
-    widgets::*,
-};
+use ratatui::{prelude::*, widgets::*};
 
 use super::Theme;
 
@@ -201,14 +198,16 @@ pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rec
         height: 1,
     };
 
-    let input_paragraph = Paragraph::new(modal.input.as_str())
-        .style(Style::default().fg(theme.text));
+    let input_paragraph =
+        Paragraph::new(modal.input.as_str()).style(Style::default().fg(theme.text));
     frame.render_widget(input_paragraph, input_area);
 
     // Options section
     let options_area = layout[1];
     let start_index = modal.selected_index.saturating_sub(5);
-    let visible_options = modal.options.iter()
+    let visible_options = modal
+        .options
+        .iter()
         .enumerate()
         .skip(start_index)
         .take(options_area.height as usize)
@@ -234,7 +233,12 @@ pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rec
 }
 
 /// Render model selection modal
-pub fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionModal, area: Rect, theme: &Theme) {
+pub fn render_model_selection_modal(
+    frame: &mut Frame,
+    modal: &ModelSelectionModal,
+    area: Rect,
+    theme: &Theme,
+) {
     // Calculate modal dimensions
     let modal_width = 50.min(area.width - 4);
     let modal_height = 15.min(area.height - 4);
@@ -257,7 +261,8 @@ pub fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionMod
     // Main modal
     let title_line = Line::from(vec![
         Span::raw("").fg(theme.primary),
-        Span::raw(" Model Selection ").style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        Span::raw(" Model Selection ")
+            .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
         Span::raw("").fg(theme.primary),
     ]);
 
@@ -281,7 +286,12 @@ pub fn render_model_selection_modal(frame: &mut Frame, modal: &ModelSelectionMod
 }
 
 /// Render go to line modal
-pub fn render_go_to_line_modal(frame: &mut Frame, modal: &GoToLineModal, area: Rect, theme: &Theme) {
+pub fn render_go_to_line_modal(
+    frame: &mut Frame,
+    modal: &GoToLineModal,
+    area: Rect,
+    theme: &Theme,
+) {
     // Calculate modal dimensions
     let modal_width = 40.min(area.width - 4);
     let modal_height = 6.min(area.height - 4);
@@ -304,7 +314,8 @@ pub fn render_go_to_line_modal(frame: &mut Frame, modal: &GoToLineModal, area: R
     // Main modal
     let title_line = Line::from(vec![
         Span::raw("").fg(theme.primary),
-        Span::raw(" Go to Line ").style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        Span::raw(" Go to Line ")
+            .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
         Span::raw("").fg(theme.primary),
     ]);
 
@@ -328,18 +339,23 @@ pub fn render_go_to_line_modal(frame: &mut Frame, modal: &GoToLineModal, area: R
     ])];
 
     if let Some(error) = &modal.error {
-        content_lines.push(Line::from(vec![
-            Span::styled(error, Style::default().fg(theme.error)),
-        ]));
+        content_lines.push(Line::from(vec![Span::styled(
+            error,
+            Style::default().fg(theme.error),
+        )]));
     }
 
-    let content = Paragraph::new(content_lines)
-        .wrap(Wrap { trim: true });
+    let content = Paragraph::new(content_lines).wrap(Wrap { trim: true });
     frame.render_widget(content, inner_area);
 }
 
 /// Render find replace modal
-pub fn render_find_replace_modal(frame: &mut Frame, modal: &FindReplaceModal, area: Rect, theme: &Theme) {
+pub fn render_find_replace_modal(
+    frame: &mut Frame,
+    modal: &FindReplaceModal,
+    area: Rect,
+    theme: &Theme,
+) {
     // Calculate modal dimensions
     let modal_width = 60.min(area.width - 4);
     let modal_height = 10.min(area.height - 4);
@@ -367,7 +383,10 @@ pub fn render_find_replace_modal(frame: &mut Frame, modal: &FindReplaceModal, ar
 
     let title_line = Line::from(vec![
         Span::raw("").fg(theme.primary),
-        Span::styled(format!(" {} ", title_text), Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!(" {} ", title_text),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
         Span::raw("").fg(theme.primary),
     ]);
 
@@ -388,9 +407,10 @@ pub fn render_find_replace_modal(frame: &mut Frame, modal: &FindReplaceModal, ar
     let mut content_lines = Vec::new();
 
     if modal.is_regex {
-        content_lines.push(Line::from(vec![
-            Span::styled("Regex mode", Style::default().fg(theme.accent)),
-        ]));
+        content_lines.push(Line::from(vec![Span::styled(
+            "Regex mode",
+            Style::default().fg(theme.accent),
+        )]));
     }
 
     content_lines.push(Line::from(vec![
@@ -406,18 +426,23 @@ pub fn render_find_replace_modal(frame: &mut Frame, modal: &FindReplaceModal, ar
     }
 
     if let Some(error) = &modal.error {
-        content_lines.push(Line::from(vec![
-            Span::styled(error, Style::default().fg(theme.error)),
-        ]));
+        content_lines.push(Line::from(vec![Span::styled(
+            error,
+            Style::default().fg(theme.error),
+        )]));
     }
 
-    let content = Paragraph::new(content_lines)
-        .wrap(Wrap { trim: true });
+    let content = Paragraph::new(content_lines).wrap(Wrap { trim: true });
     frame.render_widget(content, inner_area);
 }
 
 /// Render shortcut help modal
-pub fn render_shortcut_help_modal(frame: &mut Frame, modal: &ShortcutHelpModal, area: Rect, theme: &Theme) {
+pub fn render_shortcut_help_modal(
+    frame: &mut Frame,
+    modal: &ShortcutHelpModal,
+    area: Rect,
+    theme: &Theme,
+) {
     // Calculate modal dimensions
     let modal_width = 80.min(area.width - 4);
     let modal_height = 20.min(area.height - 4);
@@ -440,7 +465,8 @@ pub fn render_shortcut_help_modal(frame: &mut Frame, modal: &ShortcutHelpModal, 
     // Main modal
     let title_line = Line::from(vec![
         Span::raw("").fg(theme.primary),
-        Span::raw(" Keyboard Shortcuts ").style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        Span::raw(" Keyboard Shortcuts ")
+            .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
         Span::raw("").fg(theme.primary),
     ]);
 
@@ -478,7 +504,7 @@ fn render_modal_input_line<'a>(
             Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme.muted)
-        }
+        },
     ));
 
     spans.push(Span::styled(
@@ -487,7 +513,7 @@ fn render_modal_input_line<'a>(
             Style::default().fg(theme.text)
         } else {
             Style::default().fg(theme.muted)
-        }
+        },
     ));
 
     spans

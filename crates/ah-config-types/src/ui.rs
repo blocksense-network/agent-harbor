@@ -1,7 +1,7 @@
 //! UI-related configuration types
 
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// Root-level UI configuration that gets flattened into the main config.
 /// This contains all top-level keys related to UI and general application settings.

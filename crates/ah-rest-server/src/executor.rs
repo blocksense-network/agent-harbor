@@ -4,9 +4,9 @@
 //! queued → provisioning → running → completed/failed
 
 use crate::models::{DatabaseSessionStore, InternalSession, SessionStore};
-use ah_core::{AgentExecutor, AgentExecutionConfig};
-use ah_rest_api_contract::{SessionStatus, TaskInfo, Session};
+use ah_core::{AgentExecutionConfig, AgentExecutor};
 use ah_local_db::Database;
+use ah_rest_api_contract::{Session, SessionStatus, TaskInfo};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info, warn};
 use uuid;
 
@@ -43,12 +43,19 @@ impl SnapshotCache {
 
     /// Get snapshot path for a repository and commit, if it exists
     fn get_snapshot(&self, repo_url: &str, commit: &str) -> Option<PathBuf> {
-        self.entries.get(&(repo_url.to_string(), commit.to_string()))
+        self.entries
+            .get(&(repo_url.to_string(), commit.to_string()))
             .map(|(path, _, _)| path.clone())
     }
 
     /// Add or update a snapshot in the cache
-    fn add_snapshot(&mut self, repo_url: String, commit: String, snapshot_path: PathBuf, size: u64) {
+    fn add_snapshot(
+        &mut self,
+        repo_url: String,
+        commit: String,
+        snapshot_path: PathBuf,
+        size: u64,
+    ) {
         let key = (repo_url, commit);
         let now = Utc::now();
 
@@ -69,7 +76,9 @@ impl SnapshotCache {
     fn evict_if_needed(&mut self) {
         while self.current_size > self.max_size && !self.entries.is_empty() {
             // Find the oldest entry
-            let oldest_key = self.entries.iter()
+            let oldest_key = self
+                .entries
+                .iter()
                 .min_by_key(|(_, (_, time, _))| *time)
                 .map(|(key, _)| key.clone());
 
@@ -97,7 +106,11 @@ pub struct TaskExecutor {
 
 impl TaskExecutor {
     /// Create a new task executor
-    pub fn new(db: Arc<Database>, session_store: Arc<DatabaseSessionStore>, config_file: Option<String>) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        session_store: Arc<DatabaseSessionStore>,
+        config_file: Option<String>,
+    ) -> Self {
         // Create snapshot cache
         let snapshot_base_dir = std::env::temp_dir().join("ah-snapshots");
         let snapshot_cache = Arc::new(RwLock::new(SnapshotCache::new(
@@ -106,9 +119,7 @@ impl TaskExecutor {
         )));
 
         // Create agent executor configuration
-        let config = AgentExecutionConfig {
-            config_file,
-        };
+        let config = AgentExecutionConfig { config_file };
 
         let agent_executor = Arc::new(AgentExecutor::new(config));
 
@@ -167,7 +178,10 @@ impl TaskExecutor {
         let running_count = self.running_tasks.read().await.len();
 
         if running_count >= self.max_concurrent_tasks {
-            debug!("Max concurrent tasks ({}) reached, skipping queued task processing", self.max_concurrent_tasks);
+            debug!(
+                "Max concurrent tasks ({}) reached, skipping queued task processing",
+                self.max_concurrent_tasks
+            );
             return Ok(());
         }
 
@@ -179,7 +193,8 @@ impl TaskExecutor {
             tenant_id: None,
         };
         let sessions = self.session_store.list_sessions(&filter).await?;
-        let queued_sessions: Vec<_> = sessions.into_iter()
+        let queued_sessions: Vec<_> = sessions
+            .into_iter()
             .filter(|s| s.status == SessionStatus::Queued)
             .take(self.max_concurrent_tasks - running_count)
             .collect();
@@ -188,7 +203,9 @@ impl TaskExecutor {
             if let Err(e) = self.start_task(&session.id).await {
                 error!("Failed to start task {}: {}", session.id, e);
                 // Mark as failed
-                if let Some(mut internal_session) = self.session_store.get_session(&session.id).await? {
+                if let Some(mut internal_session) =
+                    self.session_store.get_session(&session.id).await?
+                {
                     internal_session.session.status = SessionStatus::Failed;
                     let _ = self.session_store.update_session(&session.id, &internal_session).await;
                 }
@@ -215,7 +232,10 @@ impl TaskExecutor {
         let snapshot_id = match self.provision_workspace(&internal_session.session).await {
             Ok(snapshot_id) => snapshot_id,
             Err(e) => {
-                error!("Workspace provisioning failed for task {}: {}", session_id, e);
+                error!(
+                    "Workspace provisioning failed for task {}: {}",
+                    session_id, e
+                );
                 internal_session.session.status = SessionStatus::Failed;
                 self.session_store.update_session(session_id, &internal_session).await?;
                 return Err(e);
@@ -230,24 +250,25 @@ impl TaskExecutor {
         info!("Starting task {}: running", session_id);
 
         // Start the agent process
-        let handle = self.agent_executor.spawn_agent_process(
-            session_id,
-            &internal_session.session.agent.agent_type,
-            &internal_session.session.task.prompt,
-            ah_core::WorkingCopyMode::Snapshots, // Server uses snapshot mode
-            Some(&std::path::PathBuf::from(&internal_session.session.workspace.mount_path)),
-            snapshot_id,
-        ).await?;
+        let handle = self
+            .agent_executor
+            .spawn_agent_process(
+                session_id,
+                &internal_session.session.agent.agent_type,
+                &internal_session.session.task.prompt,
+                ah_core::WorkingCopyMode::Snapshots, // Server uses snapshot mode
+                Some(&std::path::PathBuf::from(
+                    &internal_session.session.workspace.mount_path,
+                )),
+                snapshot_id,
+            )
+            .await?;
 
         // Store the running task handle
         self.running_tasks.write().await.insert(session_id.to_string(), handle);
 
         Ok(())
     }
-
-
-
-
 
     /// Provision workspace for the task
     ///
@@ -257,10 +278,13 @@ impl TaskExecutor {
     /// 3. If no, acquire lock, checkout commit, let agent create snapshot
     async fn provision_workspace(&self, session: &Session) -> Result<Option<String>> {
         // Get repository and commit information
-        let repo_url = session.vcs.repo_url.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Repository URL is required for workspace provisioning"))?;
-        let commit = session.vcs.commit.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Commit hash is required for workspace provisioning"))?;
+        let repo_url = session.vcs.repo_url.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Repository URL is required for workspace provisioning")
+        })?;
+        let commit =
+            session.vcs.commit.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("Commit hash is required for workspace provisioning")
+            })?;
 
         // Check if we have a cached snapshot
         let snapshot_path = {
@@ -275,7 +299,10 @@ impl TaskExecutor {
         }
 
         // No snapshot found, need to provision workspace
-        info!("No snapshot found for {}@{}, provisioning workspace", repo_url, commit);
+        info!(
+            "No snapshot found for {}@{}, provisioning workspace",
+            repo_url, commit
+        );
 
         // Acquire provisioning lock to prevent concurrent provisioning
         let _lock = self.provisioning_lock.lock().await;
@@ -287,7 +314,10 @@ impl TaskExecutor {
         };
 
         if let Some(_snapshot_path) = snapshot_path {
-            info!("Snapshot became available during lock wait for {}@{}", repo_url, commit);
+            info!(
+                "Snapshot became available during lock wait for {}@{}",
+                repo_url, commit
+            );
             let snapshot_id = format!("{}@{}", repo_url, commit);
             return Ok(Some(snapshot_id));
         }
@@ -306,7 +336,10 @@ impl TaskExecutor {
         let test_fs_path = PathBuf::from("/Volumes/AH_test_zfs/test_dataset");
 
         if !test_fs_path.exists() {
-            return Err(anyhow::anyhow!("Test filesystem not available at {:?}", test_fs_path));
+            return Err(anyhow::anyhow!(
+                "Test filesystem not available at {:?}",
+                test_fs_path
+            ));
         }
 
         // Create a workspace directory within the test filesystem
@@ -315,14 +348,23 @@ impl TaskExecutor {
 
         std::fs::create_dir_all(&workspace_path)?;
 
-        info!("Using test filesystem workspace at {:?} for {}@{}", workspace_path, repo_url, commit);
+        info!(
+            "Using test filesystem workspace at {:?} for {}@{}",
+            workspace_path, repo_url, commit
+        );
 
         // Instead of cloning a real repository, create a minimal test repository structure
         self.create_test_repository_structure(&workspace_path)?;
 
         // Set up basic files that an agent might expect
-        std::fs::write(workspace_path.join("README.md"), "# Test Repository\n\nThis is a test repository for agent execution.\n")?;
-        std::fs::write(workspace_path.join("package.json"), r#"{"name": "test-repo", "version": "1.0.0"}"#)?;
+        std::fs::write(
+            workspace_path.join("README.md"),
+            "# Test Repository\n\nThis is a test repository for agent execution.\n",
+        )?;
+        std::fs::write(
+            workspace_path.join("package.json"),
+            r#"{"name": "test-repo", "version": "1.0.0"}"#,
+        )?;
 
         info!("Test workspace prepared at {:?}", workspace_path);
 
@@ -340,8 +382,14 @@ impl TaskExecutor {
         std::fs::create_dir_all(workspace_path.join("docs"))?;
 
         // Create some basic files
-        std::fs::write(workspace_path.join("src").join("main.rs"), "fn main() { println!(\"Hello, world!\"); }")?;
-        std::fs::write(workspace_path.join("tests").join("test.rs"), "#[test] fn test_example() { assert!(true); }")?;
+        std::fs::write(
+            workspace_path.join("src").join("main.rs"),
+            "fn main() { println!(\"Hello, world!\"); }",
+        )?;
+        std::fs::write(
+            workspace_path.join("tests").join("test.rs"),
+            "#[test] fn test_example() { assert!(true); }",
+        )?;
 
         Ok(())
     }
@@ -349,7 +397,8 @@ impl TaskExecutor {
     /// Clean up completed tasks
     async fn cleanup_completed_tasks(&self) -> Result<()> {
         let mut running_tasks = self.running_tasks.write().await;
-        let completed_sessions: Vec<String> = running_tasks.iter()
+        let completed_sessions: Vec<String> = running_tasks
+            .iter()
             .filter_map(|(session_id, handle)| {
                 if handle.is_finished() {
                     Some(session_id.clone())

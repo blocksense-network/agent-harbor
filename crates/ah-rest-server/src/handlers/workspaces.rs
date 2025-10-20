@@ -1,9 +1,9 @@
 //! Workspace management endpoints
 
-use crate::error::ServerError;
 use crate::ServerResult;
+use crate::error::ServerError;
 use ah_rest_api_contract::Workspace;
-use axum::{extract::Path, Json};
+use axum::{Json, extract::Path};
 
 /// List workspaces
 pub async fn list_workspaces() -> ServerResult<Json<Vec<Workspace>>> {

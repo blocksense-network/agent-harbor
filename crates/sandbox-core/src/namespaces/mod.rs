@@ -1,11 +1,11 @@
 //! Linux namespace management for sandbox isolation.
 
-use nix::sched::{unshare, CloneFlags};
-use nix::unistd::{getuid, setgroups, setresgid, setresuid, Gid, Uid};
+use nix::sched::{CloneFlags, unshare};
+use nix::unistd::{Gid, Uid, getuid, setgroups, setresgid, setresuid};
 use tracing::{debug, info, warn};
 
-use crate::error::Error;
 use crate::Result;
+use crate::error::Error;
 
 /// Configuration for namespace isolation
 ///

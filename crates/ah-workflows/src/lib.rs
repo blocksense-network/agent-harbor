@@ -5,11 +5,11 @@
 //! in task descriptions, expanding them into dynamic content and environment variables.
 //! It also provides functionality to enumerate valid workflow commands in a workspace.
 
+use ah_repo::VcsRepo;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
-use ah_repo::VcsRepo;
 
 /// Information about a workflow command available in the workspace
 #[derive(Debug, Clone, PartialEq)]
@@ -105,10 +105,7 @@ pub struct WorkflowProcessor {
 impl WorkflowProcessor {
     /// Create a new workflow processor with the given configuration
     pub fn new(config: WorkflowConfig) -> Self {
-        Self {
-            config,
-            repo: None,
-        }
+        Self { config, repo: None }
     }
 
     /// Create a workflow processor for a specific repository
@@ -135,7 +132,12 @@ impl WorkflowProcessor {
                         diagnostics.extend(command_result.diagnostics);
                         // Process each line of command output for @agents-setup directives
                         for output_line in command_result.output.lines() {
-                            self.handle_workflow_line(output_line, &mut env_vars, &mut diagnostics, &mut output_lines);
+                            self.handle_workflow_line(
+                                output_line,
+                                &mut env_vars,
+                                &mut diagnostics,
+                                &mut output_lines,
+                            );
                         }
                     }
                     Err(e) => {
@@ -212,7 +214,11 @@ impl WorkflowProcessor {
         Err(WorkflowError::CommandNotFoundInPath(cmd.clone()))
     }
 
-    async fn execute_script(&self, script_path: &Path, args: &[String]) -> Result<CommandResult, WorkflowError> {
+    async fn execute_script(
+        &self,
+        script_path: &Path,
+        args: &[String],
+    ) -> Result<CommandResult, WorkflowError> {
         // Make script executable if needed (Unix only)
         #[cfg(unix)]
         {
@@ -237,7 +243,12 @@ impl WorkflowProcessor {
 
         let mut diagnostics = Vec::new();
         if !output.status.success() {
-            diagnostics.push(format!("$ {} {}\n{}", script_path.display(), args.join(" "), stderr));
+            diagnostics.push(format!(
+                "$ {} {}\n{}",
+                script_path.display(),
+                args.join(" "),
+                stderr
+            ));
         }
 
         Ok(CommandResult {
@@ -248,15 +259,14 @@ impl WorkflowProcessor {
 
     fn find_in_path(command: &str) -> Option<PathBuf> {
         std::env::var_os("PATH").and_then(|path_var| {
-            std::env::split_paths(&path_var)
-                .find_map(|dir| {
-                    let candidate = dir.join(command);
-                    if candidate.is_file() && is_executable(&candidate) {
-                        Some(candidate)
-                    } else {
-                        None
-                    }
-                })
+            std::env::split_paths(&path_var).find_map(|dir| {
+                let candidate = dir.join(command);
+                if candidate.is_file() && is_executable(&candidate) {
+                    Some(candidate)
+                } else {
+                    None
+                }
+            })
         })
     }
 
@@ -307,8 +317,12 @@ impl WorkflowProcessor {
         }
     }
 
-    fn finalize_environment(&self, env_vars: HashMap<String, EnvVarInfo>) -> HashMap<String, String> {
-        env_vars.into_iter()
+    fn finalize_environment(
+        &self,
+        env_vars: HashMap<String, EnvVarInfo>,
+    ) -> HashMap<String, String> {
+        env_vars
+            .into_iter()
             .map(|(var, info)| {
                 let mut values = Vec::new();
                 if let Some(direct) = info.direct {
@@ -318,9 +332,8 @@ impl WorkflowProcessor {
 
                 // Deduplicate while preserving order (like Ruby's uniq)
                 let mut seen = std::collections::HashSet::new();
-                let deduplicated: Vec<String> = values.into_iter()
-                    .filter(|v| seen.insert(v.clone()))
-                    .collect();
+                let deduplicated: Vec<String> =
+                    values.into_iter().filter(|v| seen.insert(v.clone())).collect();
 
                 let final_value = deduplicated.join(",");
                 (var, final_value)
@@ -328,8 +341,11 @@ impl WorkflowProcessor {
             .collect()
     }
 
-
-    async fn enumerate_repo_commands(&self, wf_dir: &Path, commands: &mut Vec<WorkflowCommand>) -> Result<(), WorkflowError> {
+    async fn enumerate_repo_commands(
+        &self,
+        wf_dir: &Path,
+        commands: &mut Vec<WorkflowCommand>,
+    ) -> Result<(), WorkflowError> {
         if let Ok(mut entries) = tokio::fs::read_dir(wf_dir).await {
             while let Some(entry) = entries.next_entry().await.map_err(WorkflowError::Io)? {
                 let path = entry.path();
@@ -346,11 +362,12 @@ impl WorkflowProcessor {
                             };
 
                             // Read first line for description if it's a text file
-                            let description = if matches!(source, WorkflowCommandSource::TextFile(_)) {
-                                Self::read_command_description(&path).await.ok()
-                            } else {
-                                None
-                            };
+                            let description =
+                                if matches!(source, WorkflowCommandSource::TextFile(_)) {
+                                    Self::read_command_description(&path).await.ok()
+                                } else {
+                                    None
+                                };
 
                             commands.push(WorkflowCommand {
                                 name: cmd_name,
@@ -569,7 +586,10 @@ mod tests {
         let result = processor.process_workflows(input).await.unwrap();
 
         assert_eq!(result.processed_text, "This is a test task.\nAnother line.");
-        assert_eq!(result.environment.get("TEST_VAR"), Some(&"test_value".to_string()));
+        assert_eq!(
+            result.environment.get("TEST_VAR"),
+            Some(&"test_value".to_string())
+        );
         assert!(result.diagnostics.is_empty());
     }
 
@@ -581,7 +601,10 @@ mod tests {
         let input = "@agents-setup VAR=base\n@agents-setup VAR+=extra\n@agents-setup VAR+=more";
         let result = processor.process_workflows(input).await.unwrap();
 
-        assert_eq!(result.environment.get("VAR"), Some(&"base,extra,more".to_string()));
+        assert_eq!(
+            result.environment.get("VAR"),
+            Some(&"base,extra,more".to_string())
+        );
     }
 
     #[tokio::test]
@@ -652,7 +675,11 @@ mod tests {
         std::fs::create_dir_all(&wf_dir).unwrap();
 
         let hello_script = wf_dir.join("hello");
-        std::fs::write(&hello_script, "#!/bin/sh\necho hello\necho '@agents-setup FOO=bar'\n").unwrap();
+        std::fs::write(
+            &hello_script,
+            "#!/bin/sh\necho hello\necho '@agents-setup FOO=bar'\n",
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -711,7 +738,11 @@ mod tests {
         std::fs::create_dir_all(&wf_dir).unwrap();
 
         let ruby_script = wf_dir.join("ruby_wf");
-        std::fs::write(&ruby_script, "#!/usr/bin/env ruby\nputs 'ruby works'\nputs '@agents-setup RUBY_FLAG=1'").unwrap();
+        std::fs::write(
+            &ruby_script,
+            "#!/usr/bin/env ruby\nputs 'ruby works'\nputs '@agents-setup RUBY_FLAG=1'",
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -890,7 +921,10 @@ mod tests {
         let input = "@agents-setup VAR=base\n@agents-setup VAR+=extra";
         let result = processor.process_workflows(input).await.unwrap();
 
-        assert_eq!(result.environment.get("VAR"), Some(&"base,extra".to_string()));
+        assert_eq!(
+            result.environment.get("VAR"),
+            Some(&"base,extra".to_string())
+        );
         assert!(result.diagnostics.is_empty());
     }
 
@@ -910,9 +944,22 @@ mod tests {
     fn test_shellwords_split() {
         use super::shellwords::split;
 
-        assert_eq!(split("hello world"), Ok(vec!["hello".to_string(), "world".to_string()]));
-        assert_eq!(split("hello \"world test\""), Ok(vec!["hello".to_string(), "world test".to_string()]));
-        assert_eq!(split("cmd arg1 arg2"), Ok(vec!["cmd".to_string(), "arg1".to_string(), "arg2".to_string()]));
+        assert_eq!(
+            split("hello world"),
+            Ok(vec!["hello".to_string(), "world".to_string()])
+        );
+        assert_eq!(
+            split("hello \"world test\""),
+            Ok(vec!["hello".to_string(), "world test".to_string()])
+        );
+        assert_eq!(
+            split("cmd arg1 arg2"),
+            Ok(vec![
+                "cmd".to_string(),
+                "arg1".to_string(),
+                "arg2".to_string()
+            ])
+        );
         assert!(split("unclosed \"quote").is_err());
     }
 
@@ -939,8 +986,16 @@ mod tests {
 
         // Should find git and cargo from PATH
         assert!(commands.len() >= 2);
-        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
-        assert!(commands.iter().any(|c| c.name == "cargo" && matches!(c.source, WorkflowCommandSource::Path)));
+        assert!(
+            commands
+                .iter()
+                .any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|c| c.name == "cargo" && matches!(c.source, WorkflowCommandSource::Path))
+        );
     }
 
     #[tokio::test]
@@ -974,7 +1029,11 @@ mod tests {
         std::fs::write(&text_path, "Information about the project").unwrap();
 
         let config = WorkflowConfig {
-            extra_workflow_executables: vec!["test-script".to_string(), "info".to_string(), "git".to_string()],
+            extra_workflow_executables: vec![
+                "test-script".to_string(),
+                "info".to_string(),
+                "git".to_string(),
+            ],
             repo_workflows_dir: None,
         };
 
@@ -982,15 +1041,21 @@ mod tests {
         let commands = processor.enumerate_workflow_commands().await.unwrap();
 
         // Should find the repo script and text file
-        assert!(commands.iter().any(|c| c.name == "test-script" && matches!(c.source, WorkflowCommandSource::Script(_))));
+        assert!(commands.iter().any(
+            |c| c.name == "test-script" && matches!(c.source, WorkflowCommandSource::Script(_))
+        ));
         assert!(commands.iter().any(|c| {
-            c.name == "info" &&
-            matches!(c.source, WorkflowCommandSource::TextFile(_)) &&
-            c.description == Some("Information about the project".to_string())
+            c.name == "info"
+                && matches!(c.source, WorkflowCommandSource::TextFile(_))
+                && c.description == Some("Information about the project".to_string())
         }));
 
         // Should still find git from PATH
-        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
+        assert!(
+            commands
+                .iter()
+                .any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path))
+        );
     }
 
     #[tokio::test]
@@ -1032,7 +1097,11 @@ mod tests {
         assert!(!commands.iter().any(|c| c.name == "non-whitelisted"));
 
         // Should still find git from PATH
-        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
+        assert!(
+            commands
+                .iter()
+                .any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path))
+        );
     }
 
     #[tokio::test]
@@ -1046,10 +1115,17 @@ mod tests {
         let commands = processor.enumerate_workflow_commands().await.unwrap();
 
         // Should find whitelisted commands from PATH
-        assert!(commands.iter().any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path)));
-        assert!(commands.iter().any(|c| c.name == "cargo" && matches!(c.source, WorkflowCommandSource::Path)));
+        assert!(
+            commands
+                .iter()
+                .any(|c| c.name == "git" && matches!(c.source, WorkflowCommandSource::Path))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|c| c.name == "cargo" && matches!(c.source, WorkflowCommandSource::Path))
+        );
     }
-
 
     #[tokio::test]
     async fn test_enumerate_workflow_commands_empty_description() {
@@ -1081,7 +1157,10 @@ mod tests {
 
         // Should have default description for empty file
         let empty_cmd = commands.iter().find(|c| c.name == "empty").unwrap();
-        assert_eq!(empty_cmd.description, Some("No description available".to_string()));
+        assert_eq!(
+            empty_cmd.description,
+            Some("No description available".to_string())
+        );
     }
 
     #[tokio::test]

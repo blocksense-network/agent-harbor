@@ -1,7 +1,7 @@
 //! Repository-related configuration types
 
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 // Alias for backward compatibility
 pub type RepoConfig = RepoSection;

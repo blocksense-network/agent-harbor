@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use std::time::Duration;
-use tmq::{request, Context as TmqContext};
+use tmq::{Context as TmqContext, request};
 
 /// Simple command-line client for sending commands to TUI test runner
 #[derive(Parser)]

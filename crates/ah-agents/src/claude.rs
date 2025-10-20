@@ -52,21 +52,27 @@ impl ClaudeAgent {
 
         // Create .claude directory
         let claude_dir = home_dir.join(".claude");
-        tokio::fs::create_dir_all(&claude_dir).await
-            .map_err(|e| AgentError::ConfigCreationFailed(format!("Failed to create .claude directory: {}", e)))?;
+        tokio::fs::create_dir_all(&claude_dir).await.map_err(|e| {
+            AgentError::ConfigCreationFailed(format!("Failed to create .claude directory: {}", e))
+        })?;
 
         // Get current timestamp in ISO 8601 format with microseconds
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| AgentError::ConfigCreationFailed(format!("Failed to get system time: {}", e)))?;
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|e| {
+            AgentError::ConfigCreationFailed(format!("Failed to get system time: {}", e))
+        })?;
         let timestamp_ms = now.as_millis();
-        let timestamp_iso = chrono::DateTime::from_timestamp(now.as_secs() as i64, (now.as_nanos() % 1_000_000_000) as u32)
-            .ok_or_else(|| AgentError::ConfigCreationFailed("Failed to create timestamp".to_string()))?
-            .format("%Y-%m-%dT%H:%M:%S%.6fZ")
-            .to_string();
+        let timestamp_iso = chrono::DateTime::from_timestamp(
+            now.as_secs() as i64,
+            (now.as_nanos() % 1_000_000_000) as u32,
+        )
+        .ok_or_else(|| AgentError::ConfigCreationFailed("Failed to create timestamp".to_string()))?
+        .format("%Y-%m-%dT%H:%M:%S%.6fZ")
+        .to_string();
 
         // Get Claude version for configuration
-        let claude_version = self.detect_version().await
+        let claude_version = self
+            .detect_version()
+            .await
             .map(|v| v.version)
             .unwrap_or_else(|_| "1.0.0".to_string());
 
@@ -131,11 +137,13 @@ impl ClaudeAgent {
 
         // Write .claude.json configuration file
         let config_path = home_dir.join(".claude.json");
-        let config_json = serde_json::to_string_pretty(&config)
-            .map_err(|e| AgentError::ConfigCreationFailed(format!("Failed to serialize config: {}", e)))?;
+        let config_json = serde_json::to_string_pretty(&config).map_err(|e| {
+            AgentError::ConfigCreationFailed(format!("Failed to serialize config: {}", e))
+        })?;
 
-        tokio::fs::write(&config_path, config_json).await
-            .map_err(|e| AgentError::ConfigCreationFailed(format!("Failed to write .claude.json: {}", e)))?;
+        tokio::fs::write(&config_path, config_json).await.map_err(|e| {
+            AgentError::ConfigCreationFailed(format!("Failed to write .claude.json: {}", e))
+        })?;
 
         debug!("Created Claude configuration at {:?}", config_path);
         Ok(())
@@ -157,11 +165,8 @@ impl AgentExecutor for ClaudeAgent {
     async fn detect_version(&self) -> AgentResult<AgentVersion> {
         debug!("Detecting Claude Code version");
 
-        let output = Command::new(&self.binary_path)
-            .arg("--version")
-            .output()
-            .await
-            .map_err(|e| {
+        let output =
+            Command::new(&self.binary_path).arg("--version").output().await.map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     AgentError::AgentNotFound(self.binary_path.clone())
                 } else {
@@ -185,7 +190,10 @@ impl AgentExecutor for ClaudeAgent {
         Self::parse_version(&version_output)
     }
 
-    async fn prepare_launch(&self, config: AgentLaunchConfig) -> AgentResult<tokio::process::Command> {
+    async fn prepare_launch(
+        &self,
+        config: AgentLaunchConfig,
+    ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Claude Code launch with prompt: {:?}",
             config.prompt.chars().take(50).collect::<String>()
@@ -200,7 +208,10 @@ impl AgentExecutor for ClaudeAgent {
 
         // Set up onboarding skip configuration for custom HOME
         if using_custom_home {
-            debug!("Creating Claude configuration to skip onboarding in {:?}", config.home_dir);
+            debug!(
+                "Creating Claude configuration to skip onboarding in {:?}",
+                config.home_dir
+            );
             self.setup_onboarding_skip(&config.home_dir, &config.working_dir).await?;
         }
 
@@ -208,7 +219,10 @@ impl AgentExecutor for ClaudeAgent {
         if config.copy_credentials && using_custom_home {
             if let Ok(system_home) = std::env::var("HOME") {
                 let system_home = PathBuf::from(system_home);
-                debug!("Copying credentials from {:?} to {:?}", system_home, config.home_dir);
+                debug!(
+                    "Copying credentials from {:?} to {:?}",
+                    system_home, config.home_dir
+                );
                 self.copy_credentials(&system_home, &config.home_dir).await?;
             }
         }
@@ -266,7 +280,10 @@ impl AgentExecutor for ClaudeAgent {
     }
 
     async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()> {
-        info!("Copying Claude Code credentials from {:?} to {:?}", src_home, dst_home);
+        info!(
+            "Copying Claude Code credentials from {:?} to {:?}",
+            src_home, dst_home
+        );
 
         let paths = claude_credential_paths();
         copy_files(&paths, src_home, dst_home).await?;

@@ -13,8 +13,8 @@ pub mod task;
 pub mod test_runtime;
 pub mod ui;
 pub mod view;
-pub mod viewmodel;
 pub mod view_model;
+pub mod viewmodel;
 
 pub use app::*;
 pub use error::*;
@@ -23,11 +23,16 @@ pub use model::*;
 pub use msg::*;
 pub use task::{ButtonFocus, ModalState, ModelSelection, Task, TaskState};
 pub use test_runtime::*;
+pub use view::{Theme, ViewCache};
+pub use view_model::{
+    AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
+    DraftSaveState, FilterOptions, FocusElement, SearchMode, TaskCardType,
+    TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionViewModel, TaskMetadataViewModel,
+    TaskStatusFilter, TimeRangeFilter,
+};
 pub use viewmodel::*;
-pub use view::{ViewCache, Theme};
-pub use view_model::{TaskEntryViewModel, TaskExecutionViewModel, AgentActivityRow, TaskCardType, TaskMetadataViewModel, TaskEntryControlsViewModel, FocusElement, ButtonStyle, ButtonViewModel, DraftSaveState, SearchMode, DeliveryIndicator, FilterOptions, TaskStatusFilter, TimeRangeFilter, AutoSaveState};
 
-use ratatui::{backend::TestBackend, Terminal};
+use ratatui::{Terminal, backend::TestBackend};
 
 /// Helpers for tests/runners to render with a deterministic backend
 pub fn create_test_terminal(width: u16, height: u16) -> Terminal<TestBackend> {

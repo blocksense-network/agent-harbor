@@ -45,7 +45,9 @@ impl ScenarioPlayer {
         let session_id = self.extract_session_id(&request)?;
 
         // Get or create session
-        let mut session = self.active_sessions.get(&session_id)
+        let mut session = self
+            .active_sessions
+            .get(&session_id)
             .cloned()
             .unwrap_or_else(|| ScenarioSession::new(session_id.clone()));
 
@@ -166,9 +168,7 @@ pub struct ServerConfig {
 #[serde(untagged)]
 pub enum TimelineEvent {
     /// LLM response event (groups multiple response elements)
-    LlmResponse {
-        llm_response: Vec<ResponseElement>,
-    },
+    LlmResponse { llm_response: Vec<ResponseElement> },
     /// Individual events for backward compatibility
     Event(HashMap<String, serde_yaml::Value>),
     /// Control events
@@ -185,21 +185,13 @@ pub enum TimelineEvent {
 #[serde(untagged)]
 pub enum ResponseElement {
     /// Thinking event
-    Think {
-        think: Vec<ThinkingStep>,
-    },
+    Think { think: Vec<ThinkingStep> },
     /// Tool use event
-    AgentToolUse {
-        agent_tool_use: ToolUseData,
-    },
+    AgentToolUse { agent_tool_use: ToolUseData },
     /// File edits event
-    AgentEdits {
-        agent_edits: FileEditData,
-    },
+    AgentEdits { agent_edits: FileEditData },
     /// Assistant response event
-    Assistant {
-        assistant: Vec<AssistantStep>,
-    },
+    Assistant { assistant: Vec<AssistantStep> },
 }
 
 /// Thinking step

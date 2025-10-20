@@ -6,7 +6,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph},
 };
-use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
+use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
 
 use crate::task::{Task, TaskState};
 use crate::viewmodel::ViewModel;

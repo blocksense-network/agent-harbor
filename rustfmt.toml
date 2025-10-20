@@ -8,3 +8,6 @@ newline_style = "Auto"
 
 # Misc
 chain_width = 80
+
+# Modern Style
+style_edition = "2024"

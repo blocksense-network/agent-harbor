@@ -83,7 +83,9 @@ fn run_enforcement_test(
                         if status.success() {
                             println!("✅ Test PASSED - process completed normally");
                         } else {
-                            println!("⚠️  Test UNCLEAR - process exited with error (may indicate limits enforced)");
+                            println!(
+                                "⚠️  Test UNCLEAR - process exited with error (may indicate limits enforced)"
+                            );
                         }
                         return Ok(());
                     }

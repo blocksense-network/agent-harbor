@@ -258,10 +258,12 @@ async fn test_agent_task_file_in_current_branch_error_when_not_on_task_branch() 
     // Should fail when not on a task branch
     let result = agent_tasks.agent_task_file_in_current_branch();
     assert!(result.is_err(), "Should fail when not on task branch");
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("not currently on an agent task branch"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("not currently on an agent task branch")
+    );
 }
 
 #[tokio::test]

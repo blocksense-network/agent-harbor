@@ -101,13 +101,15 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
 
     // Find the test-guest binary at runtime
     // Use CARGO_TARGET_DIR if set, otherwise assume standard location
-    let target_dir = std::env::var("CARGO_TARGET_DIR")
-        .unwrap_or_else(|_| "target".to_string());
+    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
     let test_guest_path = format!("{}/debug/test-guest", target_dir);
 
     // Check if the binary exists
     if !std::path::Path::new(&test_guest_path).exists() {
-        println!("test-guest binary not found at {}, skipping test", test_guest_path);
+        println!(
+            "test-guest binary not found at {}, skipping test",
+            test_guest_path
+        );
         return Ok(());
     }
 
@@ -148,9 +150,13 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
     let screenshots = runner.get_screenshots().await;
     println!("Captured screenshots: {:?}", screenshots);
     if !screenshots.is_empty() {
-        println!("Test completed successfully - test_guest program ran, produced output, and captured screenshots");
+        println!(
+            "Test completed successfully - test_guest program ran, produced output, and captured screenshots"
+        );
     } else {
-        println!("Test completed successfully - test_guest program ran and produced output (IPC communication had issues)");
+        println!(
+            "Test completed successfully - test_guest program ran and produced output (IPC communication had issues)"
+        );
     }
 
     Ok(())

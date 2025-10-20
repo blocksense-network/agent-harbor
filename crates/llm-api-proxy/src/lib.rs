@@ -48,7 +48,7 @@ pub use proxy::LlmApiProxy;
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub use config::ProviderConfig;
 /// Re-export commonly used types
 pub use converters::{ApiFormat, ConversionRequest, ConversionResponse};
-pub use config::ProviderConfig;
 pub use scenario::{Scenario, ScenarioPlayer};

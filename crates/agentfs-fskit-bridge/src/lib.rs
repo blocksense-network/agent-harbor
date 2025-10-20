@@ -40,7 +40,7 @@ extern "C" {
         response_actual_len: *mut usize,
     ) -> i32;
     fn af_getattr(fs: u64, path: *const libc::c_char, out_attrs: *mut u8, attrs_size: usize)
-        -> i32;
+    -> i32;
     fn af_rmdir(fs: u64, path: *const libc::c_char) -> i32;
     fn af_unlink(fs: u64, path: *const libc::c_char) -> i32;
     fn af_symlink(fs: u64, target: *const libc::c_char, linkpath: *const libc::c_char) -> i32;

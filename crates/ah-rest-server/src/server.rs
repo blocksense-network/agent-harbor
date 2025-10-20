@@ -3,13 +3,13 @@
 use crate::config::ServerConfig;
 use crate::error::ServerResult;
 use crate::handlers;
-use crate::middleware::{rate_limit_middleware, RateLimitState};
+use crate::middleware::{RateLimitState, rate_limit_middleware};
 use crate::state::AppState;
 use axum::{
+    Router,
     http::HeaderValue,
     middleware::from_fn,
     routing::{delete, get, post, put},
-    Router,
 };
 use std::net::SocketAddr;
 use tower::ServiceBuilder;
@@ -50,7 +50,8 @@ impl Server {
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
             .layer(from_fn({
-                let rate_limit_state = std::sync::Arc::new(RateLimitState::new(config.rate_limit.clone()));
+                let rate_limit_state =
+                    std::sync::Arc::new(RateLimitState::new(config.rate_limit.clone()));
                 move |req, next| {
                     let state = std::sync::Arc::clone(&rate_limit_state);
                     rate_limit_middleware(state, req, next)
@@ -58,18 +59,23 @@ impl Server {
             }))
             .layer({
                 if config.enable_cors {
-                    CorsLayer::new()
-                        .allow_origin(Any)
-                        .allow_methods(Any)
-                        .allow_headers(Any)
+                    CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any)
                 } else {
                     CorsLayer::new()
                         .allow_origin(vec![
                             HeaderValue::from_static("http://localhost:3000"),
                             HeaderValue::from_static("http://127.0.0.1:3000"),
                         ])
-                        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
-                        .allow_headers([axum::http::header::AUTHORIZATION, axum::http::header::CONTENT_TYPE])
+                        .allow_methods([
+                            axum::http::Method::GET,
+                            axum::http::Method::POST,
+                            axum::http::Method::PUT,
+                            axum::http::Method::DELETE,
+                        ])
+                        .allow_headers([
+                            axum::http::header::AUTHORIZATION,
+                            axum::http::header::CONTENT_TYPE,
+                        ])
                 }
             });
 

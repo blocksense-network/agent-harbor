@@ -1,14 +1,14 @@
 //! Process execution and lifecycle management for sandboxing.
 
-use nix::mount::{mount, MsFlags};
+use nix::mount::{MsFlags, mount};
 use nix::sys::wait;
-use nix::unistd::{fork, ForkResult, Pid};
+use nix::unistd::{ForkResult, Pid, fork};
 use std::ffi::CString;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
 
-use crate::error::Error;
 use crate::Result;
+use crate::error::Error;
 
 /// Configuration for process execution
 #[derive(Debug, Clone)]
@@ -84,7 +84,10 @@ impl ProcessManager {
 
                 // Mount /proc for the new PID namespace (may fail due to user namespace limitations)
                 if let Err(e) = self.mount_proc() {
-                    warn!("Failed to mount /proc in child process (expected in unprivileged user namespaces): {}", e);
+                    warn!(
+                        "Failed to mount /proc in child process (expected in unprivileged user namespaces): {}",
+                        e
+                    );
                     // Continue execution - some functionality may be limited but sandbox still provides other isolation
                 }
 

@@ -6,7 +6,7 @@ use futures_lite::AsyncReadExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tmq::{reply, Context as TmqContext};
+use tmq::{Context as TmqContext, reply};
 use tokio::sync::Mutex;
 
 /// Builder for TuiTestRunner configuration, similar to tokio::process::Command

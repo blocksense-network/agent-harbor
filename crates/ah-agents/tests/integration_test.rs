@@ -121,9 +121,15 @@ async fn test_launch_config_builder() {
     assert_eq!(config.home_dir, PathBuf::from("/tmp/home"));
     assert!(config.interactive);
     assert!(config.json_output);
-    assert_eq!(config.api_server, Some("http://localhost:18080".to_string()));
+    assert_eq!(
+        config.api_server,
+        Some("http://localhost:18080".to_string())
+    );
     assert_eq!(config.mcp_servers, vec!["server1"]);
-    assert_eq!(config.env_vars, vec![("KEY1".to_string(), "VALUE1".to_string())]);
+    assert_eq!(
+        config.env_vars,
+        vec![("KEY1".to_string(), "VALUE1".to_string())]
+    );
     assert_eq!(config.working_dir, PathBuf::from("/tmp/work"));
 }
 

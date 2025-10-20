@@ -8,11 +8,7 @@ use tracing::{debug, warn};
 ///
 /// This is a helper function for copying credential files and configurations
 /// from the user's home directory to a custom agent HOME directory.
-pub async fn copy_files(
-    files: &[PathBuf],
-    src_base: &Path,
-    dst_base: &Path,
-) -> AgentResult<()> {
+pub async fn copy_files(files: &[PathBuf], src_base: &Path, dst_base: &Path) -> AgentResult<()> {
     for file in files {
         let src_path = src_base.join(file);
         let dst_path = dst_base.join(file);

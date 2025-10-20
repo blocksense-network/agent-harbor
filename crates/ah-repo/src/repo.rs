@@ -1,8 +1,8 @@
+use futures::Stream;
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, Stdio};
-use futures::Stream;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::error::{VcsError, VcsResult};
@@ -313,11 +313,14 @@ impl VcsRepo {
                                 }
                                 Ok(_) => return None, // Process completed successfully
                                 Err(e) => {
-                                    return Some((Err(VcsError::CommandFailed {
-                                        command: "tracked files command".to_string(),
-                                        exit_code: -1,
-                                        stderr: format!("Wait error: {}", e),
-                                    }), (reader, child, buffer)));
+                                    return Some((
+                                        Err(VcsError::CommandFailed {
+                                            command: "tracked files command".to_string(),
+                                            exit_code: -1,
+                                            stderr: format!("Wait error: {}", e),
+                                        }),
+                                        (reader, child, buffer),
+                                    ));
                                 }
                             }
                         }
@@ -334,7 +337,7 @@ impl VcsRepo {
                         }
                     }
                 }
-            }
+            },
         );
 
         Ok(Box::pin(stream))
@@ -703,28 +706,67 @@ impl VcsRepo {
 
     fn get_tip_commit_command(&self, branch: &str) -> Vec<String> {
         match self.vcs_type {
-            VcsType::Git => vec!["git".to_string(), "rev-parse".to_string(), branch.to_string()],
-            VcsType::Hg => vec!["hg".to_string(), "log".to_string(), "-r".to_string(), branch.to_string(), "--template".to_string(), "{node}".to_string()],
-            VcsType::Fossil => vec![
-                "sh".to_string(), "-c".to_string(),
-                format!("fossil sql \"SELECT blob.uuid FROM tag JOIN tagxref ON tag.tagid=tagxref.tagid JOIN tagxref ON tag.tagid=tagxref.tagid JOIN blob ON blob.rid=tagxref.rid WHERE tag.tagname='sym-{}' ORDER BY tagxref.mtime DESC LIMIT 1\" | head -n 1", branch)
+            VcsType::Git => vec![
+                "git".to_string(),
+                "rev-parse".to_string(),
+                branch.to_string(),
             ],
-            VcsType::Bzr => vec!["bzr".to_string(), "revno".to_string(), "--revision".to_string(), format!("branch:{}", branch)],
+            VcsType::Hg => vec![
+                "hg".to_string(),
+                "log".to_string(),
+                "-r".to_string(),
+                branch.to_string(),
+                "--template".to_string(),
+                "{node}".to_string(),
+            ],
+            VcsType::Fossil => vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "fossil sql \"SELECT blob.uuid FROM tag JOIN tagxref ON tag.tagid=tagxref.tagid JOIN tagxref ON tag.tagid=tagxref.tagid JOIN blob ON blob.rid=tagxref.rid WHERE tag.tagname='sym-{}' ORDER BY tagxref.mtime DESC LIMIT 1\" | head -n 1",
+                    branch
+                ),
+            ],
+            VcsType::Bzr => vec![
+                "bzr".to_string(),
+                "revno".to_string(),
+                "--revision".to_string(),
+                format!("branch:{}", branch),
+            ],
         }
     }
 
     fn get_commit_count_command(&self, base_branch: &str, branch: &str) -> Vec<String> {
         match self.vcs_type {
-            VcsType::Git => vec!["git".to_string(), "rev-list".to_string(), format!("{}..{}", base_branch, branch), "--count".to_string()],
+            VcsType::Git => vec![
+                "git".to_string(),
+                "rev-list".to_string(),
+                format!("{}..{}", base_branch, branch),
+                "--count".to_string(),
+            ],
             VcsType::Hg => vec![
-                "sh".to_string(), "-c".to_string(),
-                format!("hg log -r \"branch({}) and not ancestors({})\" --template '{{node}}\\n' | wc -l", branch, base_branch)
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "hg log -r \"branch({}) and not ancestors({})\" --template '{{node}}\\n' | wc -l",
+                    branch, base_branch
+                ),
             ],
             VcsType::Fossil => vec![
-                "sh".to_string(), "-c".to_string(),
-                format!("fossil sql \"SELECT count(*) FROM tag JOIN tagxref ON tag.tagid=tagxref.tagid WHERE tag.tagname='sym-{}\'\" | tail -n 1", branch)
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "fossil sql \"SELECT count(*) FROM tag JOIN tagxref ON tag.tagid=tagxref.tagid WHERE tag.tagname='sym-{}\'\" | tail -n 1",
+                    branch
+                ),
             ],
-            VcsType::Bzr => vec!["bzr".to_string(), "log".to_string(), "--revision".to_string(), format!("..branch:{}", branch), "--count-only".to_string()],
+            VcsType::Bzr => vec![
+                "bzr".to_string(),
+                "log".to_string(),
+                "--revision".to_string(),
+                format!("..branch:{}", branch),
+                "--count-only".to_string(),
+            ],
         }
     }
 
@@ -747,12 +789,35 @@ impl VcsRepo {
 
     fn get_commit_message_command(&self, commit_hash: &str) -> Vec<String> {
         match self.vcs_type {
-            VcsType::Git => vec!["git".to_string(), "log".to_string(), "-1".to_string(), "--pretty=format:%B".to_string(), commit_hash.to_string()],
-            VcsType::Hg => vec!["hg".to_string(), "log".to_string(), "-r".to_string(), commit_hash.to_string(), "--template".to_string(), "{desc}".to_string()],
-            VcsType::Bzr => vec!["bzr".to_string(), "log".to_string(), "-r".to_string(), commit_hash.to_string(), "--show-ids".to_string()],
+            VcsType::Git => vec![
+                "git".to_string(),
+                "log".to_string(),
+                "-1".to_string(),
+                "--pretty=format:%B".to_string(),
+                commit_hash.to_string(),
+            ],
+            VcsType::Hg => vec![
+                "hg".to_string(),
+                "log".to_string(),
+                "-r".to_string(),
+                commit_hash.to_string(),
+                "--template".to_string(),
+                "{desc}".to_string(),
+            ],
+            VcsType::Bzr => vec![
+                "bzr".to_string(),
+                "log".to_string(),
+                "-r".to_string(),
+                commit_hash.to_string(),
+                "--show-ids".to_string(),
+            ],
             VcsType::Fossil => vec![
-                "sh".to_string(), "-c".to_string(),
-                format!("fossil sql \"SELECT event.comment FROM event JOIN blob ON event.objid=blob.rid WHERE blob.uuid='{}' AND event.type='ci' LIMIT 1\"", commit_hash)
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "fossil sql \"SELECT event.comment FROM event JOIN blob ON event.objid=blob.rid WHERE blob.uuid='{}' AND event.type='ci' LIMIT 1\"",
+                    commit_hash
+                ),
             ],
         }
     }
@@ -784,32 +849,86 @@ impl VcsRepo {
             VcsType::Git => {
                 let is_primary_branch = self.is_protected_branch(current_branch);
                 if is_primary_branch {
-                    vec![vec!["git".to_string(), "rev-list".to_string(), "--max-parents=0".to_string(), "HEAD".to_string(), "--pretty=%H".to_string()]]
+                    vec![vec![
+                        "git".to_string(),
+                        "rev-list".to_string(),
+                        "--max-parents=0".to_string(),
+                        "HEAD".to_string(),
+                        "--pretty=%H".to_string(),
+                    ]]
                 } else {
                     // For feature branches, find merge base and get first commit after it
                     vec![
-                        vec!["sh".to_string(), "-c".to_string(), format!("git merge-base {} HEAD", self.default_branch())],
-                        vec!["sh".to_string(), "-c".to_string(), "git log --reverse --pretty=%H $1..HEAD | head -n 1".to_string()],
+                        vec![
+                            "sh".to_string(),
+                            "-c".to_string(),
+                            format!("git merge-base {} HEAD", self.default_branch()),
+                        ],
+                        vec![
+                            "sh".to_string(),
+                            "-c".to_string(),
+                            "git log --reverse --pretty=%H $1..HEAD | head -n 1".to_string(),
+                        ],
                     ]
                 }
             }
-            VcsType::Hg => vec![vec!["hg".to_string(), "log".to_string(), "-r".to_string(), format!("min(branch('{}'))", current_branch), "--template".to_string(), "{node}\\n".to_string()]],
-            VcsType::Bzr => vec![vec!["bzr".to_string(), "log".to_string(), "-r".to_string(), format!("first(branch('{}'))", current_branch), "--format=rev_id".to_string()]],
+            VcsType::Hg => vec![vec![
+                "hg".to_string(),
+                "log".to_string(),
+                "-r".to_string(),
+                format!("min(branch('{}'))", current_branch),
+                "--template".to_string(),
+                "{node}\\n".to_string(),
+            ]],
+            VcsType::Bzr => vec![vec![
+                "bzr".to_string(),
+                "log".to_string(),
+                "-r".to_string(),
+                format!("first(branch('{}'))", current_branch),
+                "--format=rev_id".to_string(),
+            ]],
             VcsType::Fossil => vec![vec![
-                "sh".to_string(), "-c".to_string(),
-                format!("fossil sql \"SELECT blob.uuid FROM tag JOIN tagxref ON tag.tagid=tagxref.tagid JOIN event ON tagxref.rid=event.objid JOIN blob ON blob.rid=tagxref.rid WHERE tag.tagname='sym-{}' AND event.comment NOT LIKE 'Create new branch named%' ORDER BY tagxref.mtime ASC LIMIT 1\"", current_branch)
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "fossil sql \"SELECT blob.uuid FROM tag JOIN tagxref ON tag.tagid=tagxref.tagid JOIN event ON tagxref.rid=event.objid JOIN blob ON blob.rid=tagxref.rid WHERE tag.tagname='sym-{}' AND event.comment NOT LIKE 'Create new branch named%' ORDER BY tagxref.mtime ASC LIMIT 1\"",
+                    current_branch
+                ),
             ]],
         }
     }
 
     fn get_files_in_commit_command(&self, commit_hash: &str) -> Vec<String> {
         match self.vcs_type {
-            VcsType::Git => vec!["git".to_string(), "diff-tree".to_string(), "--no-commit-id".to_string(), "--name-only".to_string(), "-r".to_string(), commit_hash.to_string()],
-            VcsType::Hg => vec!["hg".to_string(), "status".to_string(), "--change".to_string(), commit_hash.to_string(), "--no-status".to_string()],
-            VcsType::Bzr => vec!["bzr".to_string(), "whatchanged".to_string(), "-r".to_string(), commit_hash.to_string(), "--short".to_string()],
+            VcsType::Git => vec![
+                "git".to_string(),
+                "diff-tree".to_string(),
+                "--no-commit-id".to_string(),
+                "--name-only".to_string(),
+                "-r".to_string(),
+                commit_hash.to_string(),
+            ],
+            VcsType::Hg => vec![
+                "hg".to_string(),
+                "status".to_string(),
+                "--change".to_string(),
+                commit_hash.to_string(),
+                "--no-status".to_string(),
+            ],
+            VcsType::Bzr => vec![
+                "bzr".to_string(),
+                "whatchanged".to_string(),
+                "-r".to_string(),
+                commit_hash.to_string(),
+                "--short".to_string(),
+            ],
             VcsType::Fossil => vec![
-                "sh".to_string(), "-c".to_string(),
-                format!("fossil sql \"SELECT filename.name FROM filename JOIN mlink ON filename.fnid=mlink.fnid JOIN mlink ON filename.fnid=mlink.fnid JOIN blob ON mlink.mid=blob.rid WHERE blob.uuid='{}'\"", commit_hash)
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "fossil sql \"SELECT filename.name FROM filename JOIN mlink ON filename.fnid=mlink.fnid JOIN mlink ON filename.fnid=mlink.fnid JOIN blob ON mlink.mid=blob.rid WHERE blob.uuid='{}'\"",
+                    commit_hash
+                ),
             ],
         }
     }

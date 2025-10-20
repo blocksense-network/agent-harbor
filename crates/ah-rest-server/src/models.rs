@@ -1,6 +1,8 @@
 //! Data models and business logic
 
-use ah_local_db::{Database, SessionRecord, SessionStore as DbSessionStore, TaskRecord, TaskStore as DbTaskStore};
+use ah_local_db::{
+    Database, SessionRecord, SessionStore as DbSessionStore, TaskRecord, TaskStore as DbTaskStore,
+};
 use ah_rest_api_contract::*;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -248,10 +250,10 @@ impl DatabaseSessionStore {
     fn internal_session_to_record(session: &InternalSession) -> SessionRecord {
         SessionRecord {
             id: session.session.id.clone(),
-            repo_id: None, // TODO: Implement repo lookup
-            workspace_id: None, // TODO: Implement workspace lookup
-            agent_id: None, // TODO: Implement agent lookup
-            runtime_id: None, // TODO: Implement runtime lookup
+            repo_id: None,                              // TODO: Implement repo lookup
+            workspace_id: None,                         // TODO: Implement workspace lookup
+            agent_id: None,                             // TODO: Implement agent lookup
+            runtime_id: None,                           // TODO: Implement runtime lookup
             multiplexer_kind: Some("tmux".to_string()), // Default multiplexer
             mux_session: None,
             mux_window: None,
@@ -259,17 +261,25 @@ impl DatabaseSessionStore {
             pane_right: None,
             pid_agent: None, // Will be set when process starts
             status: Self::session_status_to_string(session.session.status),
-            log_path: None, // Will be set when recording starts
+            log_path: None,       // Will be set when recording starts
             workspace_path: None, // Will be set when workspace is provisioned
             started_at: session.session.started_at.unwrap_or_else(|| Utc::now()).to_rfc3339(),
             ended_at: session.session.ended_at.map(|dt| dt.to_rfc3339()),
-            agent_config: Some(serde_json::to_string(&session.session.agent).unwrap_or_else(|_| "{}".to_string())),
-            runtime_config: Some(serde_json::to_string(&session.session.runtime).unwrap_or_else(|_| "{}".to_string())),
+            agent_config: Some(
+                serde_json::to_string(&session.session.agent).unwrap_or_else(|_| "{}".to_string()),
+            ),
+            runtime_config: Some(
+                serde_json::to_string(&session.session.runtime)
+                    .unwrap_or_else(|_| "{}".to_string()),
+            ),
         }
     }
 
     /// Convert SessionRecord to InternalSession
-    fn record_to_internal_session(record: SessionRecord, task: Option<TaskRecord>) -> InternalSession {
+    fn record_to_internal_session(
+        record: SessionRecord,
+        task: Option<TaskRecord>,
+    ) -> InternalSession {
         let task_info = if let Some(ref task_record) = task {
             TaskInfo {
                 prompt: task_record.prompt.clone(),
@@ -296,17 +306,21 @@ impl DatabaseSessionStore {
         InternalSession {
             session: Session {
                 id: record.id,
-                tenant_id: None, // TODO: Implement tenant lookup
+                tenant_id: None,  // TODO: Implement tenant lookup
                 project_id: None, // TODO: Implement project lookup
                 task: task_info,
-                agent: record.agent_config.as_ref()
+                agent: record
+                    .agent_config
+                    .as_ref()
                     .and_then(|config| serde_json::from_str(config).ok())
                     .unwrap_or_else(|| AgentConfig {
                         agent_type: "unknown".to_string(),
                         version: "latest".to_string(),
                         settings: HashMap::new(),
                     }),
-                runtime: record.runtime_config.as_ref()
+                runtime: record
+                    .runtime_config
+                    .as_ref()
                     .and_then(|config| serde_json::from_str(config).ok())
                     .unwrap_or_else(|| RuntimeConfig {
                         runtime_type: RuntimeType::Local,
@@ -315,11 +329,14 @@ impl DatabaseSessionStore {
                     }),
                 workspace: WorkspaceInfo {
                     snapshot_provider: "git".to_string(),
-                    mount_path: record.workspace_path.unwrap_or_else(|| "/tmp/workspace".to_string()),
+                    mount_path: record
+                        .workspace_path
+                        .unwrap_or_else(|| "/tmp/workspace".to_string()),
                     host: None,
                     devcontainer_details: None,
                 },
-                vcs: task.as_ref()
+                vcs: task
+                    .as_ref()
                     .map(|task_record| VcsInfo {
                         repo_url: task_record.repo_url.clone(),
                         branch: task_record.branch.clone(),
@@ -331,8 +348,14 @@ impl DatabaseSessionStore {
                         commit: None,
                     }),
                 status: Self::string_to_session_status(&record.status),
-                started_at: Some(DateTime::parse_from_rfc3339(&record.started_at).unwrap_or_else(|_| Utc::now().into()).into()),
-                ended_at: record.ended_at.map(|s| DateTime::parse_from_rfc3339(&s).unwrap_or_else(|_| Utc::now().into()).into()),
+                started_at: Some(
+                    DateTime::parse_from_rfc3339(&record.started_at)
+                        .unwrap_or_else(|_| Utc::now().into())
+                        .into(),
+                ),
+                ended_at: record.ended_at.map(|s| {
+                    DateTime::parse_from_rfc3339(&s).unwrap_or_else(|_| Utc::now().into()).into()
+                }),
                 links: SessionLinks {
                     self_link: format!("/api/v1/sessions/{}", session_id),
                     events: format!("/api/v1/sessions/{}/events", session_id),
@@ -341,7 +364,7 @@ impl DatabaseSessionStore {
             },
             created_at: Utc::now(), // TODO: Track creation time
             updated_at: Utc::now(),
-            logs: vec![], // TODO: Implement log storage
+            logs: vec![],   // TODO: Implement log storage
             events: vec![], // TODO: Implement event storage
         }
     }
@@ -370,12 +393,20 @@ impl SessionStore for DatabaseSessionStore {
             workspace_path: None,
             started_at: Utc::now().to_rfc3339(),
             ended_at: None,
-            agent_config: Some(serde_json::to_string(&request.agent).unwrap_or_else(|_| "{}".to_string())),
-            runtime_config: Some(serde_json::to_string(&request.runtime).unwrap_or_else(|_| "{}".to_string())),
+            agent_config: Some(
+                serde_json::to_string(&request.agent).unwrap_or_else(|_| "{}".to_string()),
+            ),
+            runtime_config: Some(
+                serde_json::to_string(&request.runtime).unwrap_or_else(|_| "{}".to_string()),
+            ),
         };
 
         // Store session in database
-        let conn = self.db.connection().lock().map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
         let session_store = DbSessionStore::new(&conn);
         session_store.insert(&session_record)?;
 
@@ -392,7 +423,10 @@ impl SessionStore for DatabaseSessionStore {
             labels: if request.labels.is_empty() {
                 None
             } else {
-                Some(serde_json::to_string(&request.labels).unwrap_or_else(|_| "default".to_string()))
+                Some(
+                    serde_json::to_string(&request.labels)
+                        .unwrap_or_else(|_| "default".to_string()),
+                )
             },
             browser_automation: 1, // Default enabled
             browser_profile: None,
@@ -408,7 +442,11 @@ impl SessionStore for DatabaseSessionStore {
     }
 
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Option<InternalSession>> {
-        let conn = self.db.connection().lock().map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
         let session_store = DbSessionStore::new(&conn);
         let task_store = DbTaskStore::new(&conn);
 
@@ -427,21 +465,33 @@ impl SessionStore for DatabaseSessionStore {
         session: &InternalSession,
     ) -> anyhow::Result<()> {
         let record = Self::internal_session_to_record(session);
-        let conn = self.db.connection().lock().map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
         let session_store = DbSessionStore::new(&conn);
         session_store.update(&record)?;
         Ok(())
     }
 
     async fn delete_session(&self, session_id: &str) -> anyhow::Result<()> {
-        let conn = self.db.connection().lock().map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
         let session_store = DbSessionStore::new(&conn);
         session_store.delete(session_id)?;
         Ok(())
     }
 
     async fn list_sessions(&self, filters: &FilterQuery) -> anyhow::Result<Vec<Session>> {
-        let conn = self.db.connection().lock().map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+        let conn = self
+            .db
+            .connection()
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
         let session_store = DbSessionStore::new(&conn);
         let task_store = DbTaskStore::new(&conn);
 

@@ -34,7 +34,11 @@ impl AppState {
         };
 
         let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
-        let task_executor = Arc::new(TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), config.config_file.clone()));
+        let task_executor = Arc::new(TaskExecutor::new(
+            Arc::clone(&db),
+            Arc::clone(&session_store),
+            config.config_file.clone(),
+        ));
 
         Ok(Self {
             db,

@@ -100,7 +100,10 @@ impl AhrBlockHeader {
         if magic != AHR_MAGIC {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Invalid AHR magic: expected 0x{:08X}, got 0x{:08X}", AHR_MAGIC, magic),
+                format!(
+                    "Invalid AHR magic: expected 0x{:08X}, got 0x{:08X}",
+                    AHR_MAGIC, magic
+                ),
             ));
         }
 
@@ -108,7 +111,10 @@ impl AhrBlockHeader {
         if version > AHR_VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Unsupported AHR version: {} (max supported: {})", version, AHR_VERSION),
+                format!(
+                    "Unsupported AHR version: {} (max supported: {})",
+                    version, AHR_VERSION
+                ),
             ));
         }
 
@@ -364,7 +370,10 @@ impl RecSnapshot {
         let mut label_bytes = vec![0u8; label_len];
         r.read_exact(&mut label_bytes)?;
         let label = String::from_utf8(label_bytes).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("Invalid UTF-8 in snapshot label: {}", e))
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Invalid UTF-8 in snapshot label: {}", e),
+            )
         })?;
 
         Ok(Self {
@@ -425,7 +434,7 @@ impl Record {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Unknown record tag: {}", header.tag),
-                ))
+                ));
             }
         };
 
@@ -506,12 +515,7 @@ mod tests {
 
     #[test]
     fn test_rec_snapshot_roundtrip() {
-        let snapshot = RecSnapshot::new(
-            1234567890,
-            42,
-            1000,
-            "checkpoint-after-build".to_string(),
-        );
+        let snapshot = RecSnapshot::new(1234567890, 42, 1000, "checkpoint-after-build".to_string());
 
         let mut buf = Vec::new();
         snapshot.write_to(&mut buf).unwrap();
@@ -548,12 +552,7 @@ mod tests {
             Record::Resize(RecResize::new(200, 80, 24)),
             Record::Input(RecInput::new(300, b"abc".to_vec())),
             Record::Mark(RecMark::new(400, 1, 2)),
-            Record::Snapshot(RecSnapshot::new(
-                500,
-                1,
-                2000,
-                "test-snapshot".to_string(),
-            )),
+            Record::Snapshot(RecSnapshot::new(500, 1, 2000, "test-snapshot".to_string())),
         ];
 
         for record in records {

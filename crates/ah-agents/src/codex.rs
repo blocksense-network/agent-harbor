@@ -58,11 +58,8 @@ impl AgentExecutor for CodexAgent {
     async fn detect_version(&self) -> AgentResult<AgentVersion> {
         debug!("Detecting Codex CLI version");
 
-        let output = Command::new(&self.binary_path)
-            .arg("--version")
-            .output()
-            .await
-            .map_err(|e| {
+        let output =
+            Command::new(&self.binary_path).arg("--version").output().await.map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     AgentError::AgentNotFound(self.binary_path.clone())
                 } else {
@@ -86,7 +83,10 @@ impl AgentExecutor for CodexAgent {
         Self::parse_version(&version_output)
     }
 
-    async fn prepare_launch(&self, config: AgentLaunchConfig) -> AgentResult<tokio::process::Command> {
+    async fn prepare_launch(
+        &self,
+        config: AgentLaunchConfig,
+    ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Codex CLI launch with prompt: {:?}",
             config.prompt.chars().take(50).collect::<String>()
@@ -97,7 +97,10 @@ impl AgentExecutor for CodexAgent {
             if let Ok(system_home) = std::env::var("HOME") {
                 let system_home = PathBuf::from(system_home);
                 if system_home != config.home_dir {
-                    debug!("Copying credentials from {:?} to {:?}", system_home, config.home_dir);
+                    debug!(
+                        "Copying credentials from {:?} to {:?}",
+                        system_home, config.home_dir
+                    );
                     self.copy_credentials(&system_home, &config.home_dir).await?;
                 }
             }
@@ -162,7 +165,10 @@ impl AgentExecutor for CodexAgent {
     }
 
     async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()> {
-        info!("Copying Codex credentials from {:?} to {:?}", src_home, dst_home);
+        info!(
+            "Copying Codex credentials from {:?} to {:?}",
+            src_home, dst_home
+        );
 
         let paths = codex_credential_paths();
         copy_files(&paths, src_home, dst_home).await?;

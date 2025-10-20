@@ -38,10 +38,7 @@ pub fn validate_against_schema(v: &J) -> Result<()> {
 
     let validation_result = validator.validate(v);
     if let Err(errors) = validation_result {
-        let error_msg = errors
-            .map(|e| e.to_string())
-            .collect::<Vec<_>>()
-            .join("\n  - ");
+        let error_msg = errors.map(|e| e.to_string()).collect::<Vec<_>>().join("\n  - ");
         anyhow::bail!("Config schema validation failed:\n  - {}", error_msg);
     }
 
@@ -57,8 +54,8 @@ pub struct Layer {
 
 /// Load and validate a configuration layer from file
 pub fn read_layer_from_file(path: &Path, scope: crate::Scope) -> Result<Layer> {
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("reading config file {:?}", path))?;
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("reading config file {:?}", path))?;
 
     let json = parse_toml_to_json(&content)?;
     validate_against_schema(&json)?;

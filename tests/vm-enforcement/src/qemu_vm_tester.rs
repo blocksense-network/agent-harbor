@@ -60,7 +60,9 @@ fn main() -> anyhow::Result<()> {
                         || stderr.contains("not available")
                         || stderr.contains("disabled"))
                 {
-                    info!("✓ QEMU correctly reports KVM unavailability (expected in some test environments)");
+                    info!(
+                        "✓ QEMU correctly reports KVM unavailability (expected in some test environments)"
+                    );
                     println!("SUCCESS: KVM access properly managed (unavailable as expected)");
                     std::process::exit(0);
                 } else {

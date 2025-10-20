@@ -6,7 +6,7 @@
 use ah_client_api::ClientApi;
 use ah_test_scenarios::{Scenario, Step};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{backend::TestBackend, Terminal};
+use ratatui::{Terminal, backend::TestBackend};
 use std::sync::Arc;
 use tokio::time;
 

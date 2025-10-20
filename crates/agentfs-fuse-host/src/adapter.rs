@@ -11,13 +11,13 @@ use agentfs_core::{
 };
 use agentfs_proto::*;
 use fuser::{
-    FileAttr, FileType, ReplyAttr, ReplyBMap, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty,
-    ReplyEntry, ReplyLSeek, ReplyLock, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
-    TimeOrNow, FUSE_ROOT_ID,
+    FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyBMap, ReplyCreate, ReplyData, ReplyDirectory,
+    ReplyEmpty, ReplyEntry, ReplyLSeek, ReplyLock, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr,
+    Request, TimeOrNow,
 };
 use libc::{
-    c_int, EACCES, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ENAMETOOLONG, ENOENT, ENOTDIR, ENOTEMPTY,
-    ENOTSUP,
+    EACCES, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ENAMETOOLONG, ENOENT, ENOTDIR, ENOTEMPTY, ENOTSUP,
+    c_int,
 };
 use std::collections::HashMap;
 use std::ffi::OsStr;

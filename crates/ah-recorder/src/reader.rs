@@ -3,7 +3,7 @@
 // Reads compressed AHR blocks, decompresses them, and yields individual records
 // for replay or analysis.
 
-use crate::format::{AhrBlockHeader, Record, REC_DATA, REC_RESIZE, REC_SNAPSHOT};
+use crate::format::{AhrBlockHeader, REC_DATA, REC_RESIZE, REC_SNAPSHOT, Record};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::fs::File;
 use std::io::{self, BufReader, Read};
@@ -19,11 +19,7 @@ pub enum AhrReadEvent {
         data: Vec<u8>,
     },
     /// Terminal resize record
-    Resize {
-        ts_ns: u64,
-        cols: u16,
-        rows: u16,
-    },
+    Resize { ts_ns: u64, cols: u16, rows: u16 },
     /// Filesystem snapshot record
     Snapshot {
         ts_ns: u64,
@@ -85,7 +81,8 @@ impl AhrReader {
         self.file.read_exact(&mut compressed_data)?;
 
         // Decompress the data
-        let decompressed = self.decompress_block(&compressed_data, header.uncompressed_len as usize)?;
+        let decompressed =
+            self.decompress_block(&compressed_data, header.uncompressed_len as usize)?;
 
         // Parse records from decompressed data
         self.parse_records(&decompressed)

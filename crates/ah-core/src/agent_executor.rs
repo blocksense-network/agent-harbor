@@ -128,8 +128,15 @@ impl AgentExecutor {
         cwd: Option<&Path>,
         snapshot_id: Option<String>,
     ) -> String {
-        self.get_agent_command(session_id, agent_type, prompt, working_copy_mode, cwd, snapshot_id)
-            .join(" ")
+        self.get_agent_command(
+            session_id,
+            agent_type,
+            prompt,
+            working_copy_mode,
+            cwd,
+            snapshot_id,
+        )
+        .join(" ")
     }
 
     /// Spawn the agent process using `ah agent record` wrapping `ah agent start`
@@ -186,13 +193,23 @@ impl AgentExecutor {
             match cmd.status() {
                 Ok(status) => {
                     if status.success() {
-                        info!("Agent process completed successfully for session {}", session_id);
+                        info!(
+                            "Agent process completed successfully for session {}",
+                            session_id
+                        );
                     } else {
-                        error!("Agent process failed with exit code {:?} for session {}", status.code(), session_id);
+                        error!(
+                            "Agent process failed with exit code {:?} for session {}",
+                            status.code(),
+                            session_id
+                        );
                     }
                 }
                 Err(e) => {
-                    error!("Failed to spawn agent process for session {}: {}", session_id, e);
+                    error!(
+                        "Failed to spawn agent process for session {}: {}",
+                        session_id, e
+                    );
                 }
             }
         });

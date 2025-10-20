@@ -1,8 +1,8 @@
+use futures::StreamExt;
 use std::fs;
 use std::path::Path;
 use std::process::Stdio;
 use tempfile::TempDir;
-use futures::StreamExt;
 use tokio::time::{self, Duration};
 
 use ah_repo::{VcsError, VcsRepo, VcsType};
@@ -278,20 +278,26 @@ async fn test_stream_tracked_files_basic() {
     fs::create_dir_all(repo.path().join("src")).unwrap();
     fs::write(repo.path().join("src/lib.rs"), "pub fn lib() {}").unwrap();
     fs::write(repo.path().join("src/main.rs"), "fn main() {}").unwrap();
-    fs::write(repo.path().join("Cargo.toml"), r#"[package]
+    fs::write(
+        repo.path().join("Cargo.toml"),
+        r#"[package]
 name = "test"
 version = "0.1.0"
-edition = "2021""#).unwrap();
+edition = "2021""#,
+    )
+    .unwrap();
 
     // Add and commit the files
     std::process::Command::new("git")
         .args(&["add", "."])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
     std::process::Command::new("git")
         .args(&["commit", "-m", "Add source files"])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
 
     let mut stream = vcs_repo.stream_tracked_files().await.unwrap();
 
@@ -356,11 +362,13 @@ async fn test_stream_tracked_files_partial_collection() {
     std::process::Command::new("git")
         .args(&["add", "."])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
     std::process::Command::new("git")
         .args(&["commit", "-m", "Add test files"])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
 
     let mut stream = vcs_repo.stream_tracked_files().await.unwrap();
 
@@ -398,11 +406,13 @@ async fn test_stream_tracked_files_with_nested_dirs() {
     std::process::Command::new("git")
         .args(&["add", "."])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
     std::process::Command::new("git")
         .args(&["commit", "-m", "Add nested files"])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
 
     let stream = vcs_repo.stream_tracked_files().await.unwrap();
     let files: Vec<_> = stream.collect().await;
@@ -482,17 +492,23 @@ async fn test_stream_tracked_files_large_repo() {
 
     // Create many files to test streaming performance
     for i in 0..100 {
-        fs::write(repo.path().join(format!("file_{}.txt", i)), format!("content {}", i)).unwrap();
+        fs::write(
+            repo.path().join(format!("file_{}.txt", i)),
+            format!("content {}", i),
+        )
+        .unwrap();
     }
 
     std::process::Command::new("git")
         .args(&["add", "."])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
     std::process::Command::new("git")
         .args(&["commit", "-m", "Add many files"])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
 
     let stream = vcs_repo.stream_tracked_files().await.unwrap();
     let files: Vec<_> = stream.collect().await;
@@ -524,11 +540,13 @@ async fn test_stream_tracked_files_concurrent_access() {
     std::process::Command::new("git")
         .args(&["add", "."])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
     std::process::Command::new("git")
         .args(&["commit", "-m", "Add files"])
         .current_dir(repo.path())
-        .output().unwrap();
+        .output()
+        .unwrap();
 
     // Test concurrent streaming
     let (result1, result2) = tokio::join!(

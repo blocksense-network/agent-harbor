@@ -9,12 +9,12 @@
 use crate::snapshots::Snapshot;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, MouseButton, MouseEvent};
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame, Terminal,
 };
 use std::collections::HashMap;
 use std::io;
@@ -97,7 +97,10 @@ pub struct SearchState {
 
 impl TerminalViewer {
     /// Create a new viewer with the given terminal state and configuration
-    pub fn new(terminal_state: Arc<Mutex<crate::pty::TerminalState>>, config: ViewerConfig) -> Self {
+    pub fn new(
+        terminal_state: Arc<Mutex<crate::pty::TerminalState>>,
+        config: ViewerConfig,
+    ) -> Self {
         let mut viewer = Self {
             terminal_state,
             row_metadata: Arc::new(Mutex::new(HashMap::new())),
@@ -150,15 +153,22 @@ impl TerminalViewer {
                 0 // Placeholder
             };
 
-            metadata.insert(row_idx, RowMetadata {
-                last_write_byte,
-                content_hash,
-            });
+            metadata.insert(
+                row_idx,
+                RowMetadata {
+                    last_write_byte,
+                    content_hash,
+                },
+            );
         }
     }
 
     /// Find the nearest snapshot to a given row
-    pub fn find_nearest_snapshot<'a>(&self, row_index: usize, snapshots: &'a [Snapshot]) -> Option<&'a Snapshot> {
+    pub fn find_nearest_snapshot<'a>(
+        &self,
+        row_index: usize,
+        snapshots: &'a [Snapshot],
+    ) -> Option<&'a Snapshot> {
         let metadata = self.row_metadata.lock().unwrap();
         let row_last_write = metadata.get(&row_index)?.last_write_byte;
 
@@ -168,7 +178,11 @@ impl TerminalViewer {
     }
 
     /// Start instruction overlay at the given row
-    pub fn start_instruction_overlay(&mut self, row_index: usize, existing_instruction: Option<String>) {
+    pub fn start_instruction_overlay(
+        &mut self,
+        row_index: usize,
+        existing_instruction: Option<String>,
+    ) {
         let is_new = existing_instruction.is_none();
         self.instruction_overlay = Some(InstructionOverlay {
             row_index,
@@ -280,7 +294,8 @@ impl TerminalViewer {
 
         let recorded_cols = self.config.cols as usize;
         let available_width: usize = 80; // Approximate terminal width, could be passed as parameter
-        let viewport_cols = recorded_cols.min(available_width.saturating_sub(gutter_width).saturating_sub(2));
+        let viewport_cols =
+            recorded_cols.min(available_width.saturating_sub(gutter_width).saturating_sub(2));
 
         // Calculate gutter position
         let total_width = viewport_cols as u16 + 2 + gutter_width as u16;
@@ -288,7 +303,10 @@ impl TerminalViewer {
 
         let is_in_gutter = match self.config.gutter {
             GutterPosition::Left => col >= x_offset && col < x_offset + gutter_width as u16,
-            GutterPosition::Right => col >= x_offset + viewport_cols as u16 + 2 && col < x_offset + viewport_cols as u16 + 2 + gutter_width as u16,
+            GutterPosition::Right => {
+                col >= x_offset + viewport_cols as u16 + 2
+                    && col < x_offset + viewport_cols as u16 + 2 + gutter_width as u16
+            }
             GutterPosition::None => false,
         };
 
@@ -444,14 +462,24 @@ impl TerminalViewer {
         }
 
         let terminal_widget = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title(format!("Terminal ({}x{})", recorded_cols, recorded_rows)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!("Terminal ({}x{})", recorded_cols, recorded_rows)),
+            )
             .wrap(Wrap { trim: false });
 
         frame.render_widget(terminal_widget, terminal_area);
     }
 
     /// Render the gutter with snapshot markers
-    fn render_gutter(&self, frame: &mut Frame, area: Rect, snapshots: &[Snapshot], visible_rows: usize) {
+    fn render_gutter(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        snapshots: &[Snapshot],
+        visible_rows: usize,
+    ) {
         let mut lines = Vec::new();
         let start_row = self.scroll_offset;
 
@@ -461,9 +489,16 @@ impl TerminalViewer {
             // Check if this row has any snapshots
             let has_snapshot = snapshots.iter().any(|snapshot| {
                 // Find the nearest snapshot to this row based on anchor_byte proximity to row's last_write_byte
-                if let Some(row_last_write) = self.row_metadata.lock().unwrap().get(&(row_idx as usize)).map(|meta| meta.last_write_byte) {
+                if let Some(row_last_write) = self
+                    .row_metadata
+                    .lock()
+                    .unwrap()
+                    .get(&(row_idx as usize))
+                    .map(|meta| meta.last_write_byte)
+                {
                     // Consider it a match if the snapshot is within a reasonable range of this row
-                    (snapshot.anchor_byte as i64 - row_last_write as i64).abs() < 1000 // Within 1000 bytes
+                    (snapshot.anchor_byte as i64 - row_last_write as i64).abs() < 1000
+                // Within 1000 bytes
                 } else {
                     false
                 }
@@ -495,14 +530,14 @@ impl TerminalViewer {
             height: overlay_height,
         };
 
-        let title = if overlay.is_new { "New Instruction" } else { "Edit Instruction" };
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL);
+        let title = if overlay.is_new {
+            "New Instruction"
+        } else {
+            "Edit Instruction"
+        };
+        let block = Block::default().title(title).borders(Borders::ALL);
 
-        let text = Paragraph::new(overlay.text.as_str())
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let text = Paragraph::new(overlay.text.as_str()).block(block).wrap(Wrap { trim: false });
 
         frame.render_widget(Clear, overlay_area);
         frame.render_widget(text, overlay_area);
@@ -519,8 +554,8 @@ impl TerminalViewer {
         };
 
         let search_text = format!("/{}", search.query);
-        let search_widget = Paragraph::new(search_text)
-            .style(Style::default().bg(Color::Blue).fg(Color::White));
+        let search_widget =
+            Paragraph::new(search_text).style(Style::default().bg(Color::Blue).fg(Color::White));
 
         frame.render_widget(search_widget, overlay_area);
     }

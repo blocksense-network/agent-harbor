@@ -7,18 +7,23 @@
 //! Tasks are executed through the configured multiplexer (tmux, kitty, etc.) to provide
 //! proper terminal window management and session isolation.
 
-use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, SelectedModel, TaskExecutionStatus, LogLevel, ToolStatus};
+use crate::db::DatabaseManager;
+use crate::task_manager::{
+    SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
+};
+use ah_domain_types::{
+    Branch, LogLevel, Repository, SelectedModel, TaskExecution, TaskExecutionStatus, TaskInfo,
+    ToolStatus,
+};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
 use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig, PaneRole};
-use crate::db::DatabaseManager;
-use crate::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde_json;
-use std::pin::Pin;
 use std::path::PathBuf;
+use std::pin::Pin;
 
 /// Generic Local task manager implementation that executes tasks through a multiplexer
 ///
@@ -41,7 +46,11 @@ where
         let agent_executor = std::sync::Arc::new(crate::AgentExecutor::new(config));
         let db_manager = DatabaseManager::new()?;
         let multiplexer = AwMultiplexer::new(multiplexer);
-        Ok(Self { agent_executor, db_manager, multiplexer })
+        Ok(Self {
+            agent_executor,
+            db_manager,
+            multiplexer,
+        })
     }
 }
 
@@ -85,11 +94,9 @@ where
                     task_id: session_id,
                 }
             }
-            Err(e) => {
-                TaskLaunchResult::Failure {
-                    error: format!("Failed to create task layout in multiplexer: {}", e),
-                }
-            }
+            Err(e) => TaskLaunchResult::Failure {
+                error: format!("Failed to create task layout in multiplexer: {}", e),
+            },
         }
     }
 
@@ -102,23 +109,30 @@ where
         // Get draft tasks from the database
         match self.db_manager.list_drafts() {
             Ok(draft_records) => {
-                let draft_tasks: Vec<TaskInfo> = draft_records.into_iter().map(|draft| {
-                    // Parse models JSON
-                    let models = match serde_json::from_str::<Vec<ah_domain_types::SelectedModel>>(&draft.models) {
-                        Ok(models) => models.iter().map(|m| m.name.clone()).collect(),
-                        Err(_) => Vec::new(),
-                    };
+                let draft_tasks: Vec<TaskInfo> =
+                    draft_records
+                        .into_iter()
+                        .map(|draft| {
+                            // Parse models JSON
+                            let models = match serde_json::from_str::<
+                                Vec<ah_domain_types::SelectedModel>,
+                            >(&draft.models)
+                            {
+                                Ok(models) => models.iter().map(|m| m.name.clone()).collect(),
+                                Err(_) => Vec::new(),
+                            };
 
-                    TaskInfo {
-                        id: draft.id,
-                        title: draft.description,
-                        status: "draft".to_string(),
-                        repository: draft.repository,
-                        branch: draft.branch.unwrap_or_default(),
-                        created_at: draft.created_at,
-                        models,
-                    }
-                }).collect();
+                            TaskInfo {
+                                id: draft.id,
+                                title: draft.description,
+                                status: "draft".to_string(),
+                                repository: draft.repository,
+                                branch: draft.branch.unwrap_or_default(),
+                                created_at: draft.created_at,
+                                models,
+                            }
+                        })
+                        .collect();
 
                 // For completed tasks, return empty for now (could be extended to get from database)
                 (draft_tasks, Vec::<TaskExecution>::new())
@@ -170,16 +184,23 @@ where
     async fn list_repositories(&self) -> Vec<Repository> {
         // Get repositories from the local database
         match self.db_manager.list_repositories() {
-            Ok(repos) => repos.into_iter().map(|repo_record| {
-                let remote_url = repo_record.remote_url.as_ref();
-                let root_path = repo_record.root_path.as_ref();
-                Repository {
-                    id: repo_record.id.to_string(),
-                    name: remote_url.unwrap_or(&root_path.unwrap_or(&"Unknown".to_string())).clone(),
-                    url: remote_url.unwrap_or(&"".to_string()).clone(),
-                    default_branch: repo_record.default_branch.unwrap_or_else(|| "main".to_string()),
-                }
-            }).collect(),
+            Ok(repos) => repos
+                .into_iter()
+                .map(|repo_record| {
+                    let remote_url = repo_record.remote_url.as_ref();
+                    let root_path = repo_record.root_path.as_ref();
+                    Repository {
+                        id: repo_record.id.to_string(),
+                        name: remote_url
+                            .unwrap_or(&root_path.unwrap_or(&"Unknown".to_string()))
+                            .clone(),
+                        url: remote_url.unwrap_or(&"".to_string()).clone(),
+                        default_branch: repo_record
+                            .default_branch
+                            .unwrap_or_else(|| "main".to_string()),
+                    }
+                })
+                .collect(),
             Err(e) => {
                 tracing::warn!("Failed to list repositories: {}", e);
                 Vec::new()
@@ -199,21 +220,34 @@ where
                                 Ok(repo) => {
                                     match repo.branches() {
                                         Ok(branch_names) => {
-                                            let default_branch = repo_record.default_branch.unwrap_or_else(|| "main".to_string());
-                                            branch_names.into_iter().map(|name| Branch {
-                                                name: name.clone(),
-                                                is_default: name == default_branch,
-                                                last_commit: None, // Could be populated if needed
-                                            }).collect()
+                                            let default_branch = repo_record
+                                                .default_branch
+                                                .unwrap_or_else(|| "main".to_string());
+                                            branch_names
+                                                .into_iter()
+                                                .map(|name| Branch {
+                                                    name: name.clone(),
+                                                    is_default: name == default_branch,
+                                                    last_commit: None, // Could be populated if needed
+                                                })
+                                                .collect()
                                         }
                                         Err(e) => {
-                                            tracing::warn!("Failed to get branches for repository {}: {}", repository_id, e);
+                                            tracing::warn!(
+                                                "Failed to get branches for repository {}: {}",
+                                                repository_id,
+                                                e
+                                            );
                                             Vec::new()
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    tracing::warn!("Failed to open repository at {}: {}", root_path, e);
+                                    tracing::warn!(
+                                        "Failed to open repository at {}: {}",
+                                        root_path,
+                                        e
+                                    );
                                     Vec::new()
                                 }
                             }

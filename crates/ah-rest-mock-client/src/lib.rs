@@ -6,15 +6,17 @@
 //! behavior and configurable delays.
 
 use ah_core::{
-    TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, TaskExecutionStatus,
-    SaveDraftResult
+    SaveDraftResult, TaskEvent, TaskExecutionStatus, TaskLaunchParams, TaskLaunchResult,
+    TaskManager,
+};
+use ah_domain_types::{
+    Branch, DeliveryStatus, Repository, SelectedModel, TaskExecution, TaskInfo, TaskState,
 };
 use ah_domain_types::{LogLevel, ToolStatus};
-use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, TaskState, SelectedModel, DeliveryStatus};
 use ah_rest_api_contract::*;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
 use futures::stream;
+use futures::{Stream, StreamExt};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -100,7 +102,11 @@ impl MockRestClient {
             id: task_info.id,
             repository: task_info.repository,
             branch: task_info.branch,
-            agents: task_info.models.into_iter().map(|name| SelectedModel { name, count: 1 }).collect(),
+            agents: task_info
+                .models
+                .into_iter()
+                .map(|name| SelectedModel { name, count: 1 })
+                .collect(),
             state: match task_info.status.as_str() {
                 "running" => TaskState::Active,
                 "completed" => TaskState::Completed,
@@ -108,7 +114,7 @@ impl MockRestClient {
                 _ => TaskState::Active,
             },
             timestamp: task_info.created_at,
-            activity: vec![], // Would be populated from events
+            activity: vec![],        // Would be populated from events
             delivery_status: vec![], // Would be populated based on status
         }
     }
@@ -123,7 +129,7 @@ impl MockRestClient {
             |mut state| async move {
                 tokio::time::sleep(std::time::Duration::from_millis(state.next_delay_ms())).await;
                 state.next_event()
-            }
+            },
         ))
     }
 
@@ -201,17 +207,26 @@ impl TaskManager for MockRestClient {
             tasks.push(self.task_info_to_execution(task_info.clone()));
         }
 
-            // If no tasks are stored and mock data is enabled, add mock data
-            if tasks.is_empty() && self.return_mock_data {
+        // If no tasks are stored and mock data is enabled, add mock data
+        if tasks.is_empty() && self.return_mock_data {
             // Add 2 active tasks
             tasks.push(TaskExecution {
                 id: "Implement user authentication flow".to_string(),
                 repository: "myapp/backend".to_string(),
                 branch: "main".to_string(),
-                agents: vec![SelectedModel { name: "Claude 3.5 Sonnet".to_string(), count: 1 }],
+                agents: vec![SelectedModel {
+                    name: "Claude 3.5 Sonnet".to_string(),
+                    count: 1,
+                }],
                 state: TaskState::Active,
-                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::hours(1)).unwrap().to_rfc3339(),
-                activity: vec!["Analyzing user requirements".to_string(), "Examining codebase structure".to_string()],
+                timestamp: chrono::Utc::now()
+                    .checked_sub_signed(chrono::Duration::hours(1))
+                    .unwrap()
+                    .to_rfc3339(),
+                activity: vec![
+                    "Analyzing user requirements".to_string(),
+                    "Examining codebase structure".to_string(),
+                ],
                 delivery_status: vec![],
             });
 
@@ -219,9 +234,15 @@ impl TaskManager for MockRestClient {
                 id: "Optimize database queries for performance".to_string(),
                 repository: "myapp/backend".to_string(),
                 branch: "feature/db-optimization".to_string(),
-                agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
+                agents: vec![SelectedModel {
+                    name: "GPT-4".to_string(),
+                    count: 1,
+                }],
                 state: TaskState::Active,
-                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::hours(2)).unwrap().to_rfc3339(),
+                timestamp: chrono::Utc::now()
+                    .checked_sub_signed(chrono::Duration::hours(2))
+                    .unwrap()
+                    .to_rfc3339(),
                 activity: vec!["Reviewing current database schema".to_string()],
                 delivery_status: vec![],
             });
@@ -231,11 +252,28 @@ impl TaskManager for MockRestClient {
                 id: "Add error handling to API endpoints".to_string(),
                 repository: "myapp/backend".to_string(),
                 branch: "main".to_string(),
-                agents: vec![SelectedModel { name: "Claude 3 Opus".to_string(), count: 1 }],
+                agents: vec![SelectedModel {
+                    name: "Claude 3 Opus".to_string(),
+                    count: 1,
+                }],
                 state: TaskState::Completed,
-                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(1)).unwrap().to_rfc3339(),
-                activity: vec!["Added comprehensive error handling to all API endpoints".to_string(), "Updated API response formats with proper error codes".to_string(), "Added detailed logging for debugging failed requests".to_string(), "Created unit tests for error scenarios".to_string()],
-                delivery_status: vec![DeliveryStatus::BranchCreated, DeliveryStatus::PullRequestCreated { pr_number: 123, title: "Add error handling to API endpoints".to_string() }],
+                timestamp: chrono::Utc::now()
+                    .checked_sub_signed(chrono::Duration::days(1))
+                    .unwrap()
+                    .to_rfc3339(),
+                activity: vec![
+                    "Added comprehensive error handling to all API endpoints".to_string(),
+                    "Updated API response formats with proper error codes".to_string(),
+                    "Added detailed logging for debugging failed requests".to_string(),
+                    "Created unit tests for error scenarios".to_string(),
+                ],
+                delivery_status: vec![
+                    DeliveryStatus::BranchCreated,
+                    DeliveryStatus::PullRequestCreated {
+                        pr_number: 123,
+                        title: "Add error handling to API endpoints".to_string(),
+                    },
+                ],
             });
 
             // Add 1 merged task
@@ -243,18 +281,44 @@ impl TaskManager for MockRestClient {
                 id: "Implement dark mode toggle in UI".to_string(),
                 repository: "myapp/frontend".to_string(),
                 branch: "feature/dark-mode".to_string(),
-                agents: vec![SelectedModel { name: "GPT-3.5 Turbo".to_string(), count: 1 }],
+                agents: vec![SelectedModel {
+                    name: "GPT-3.5 Turbo".to_string(),
+                    count: 1,
+                }],
                 state: TaskState::Merged,
-                timestamp: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(2)).unwrap().to_rfc3339(),
-                activity: vec!["Implemented dark mode CSS variables for consistent theming".to_string(), "Added theme toggle component to header navigation".to_string(), "Updated all component styling for dark mode compatibility".to_string(), "Added user preference persistence in localStorage".to_string(), "Tested accessibility compliance with dark theme".to_string()],
-                delivery_status: vec![DeliveryStatus::BranchCreated, DeliveryStatus::PullRequestCreated { pr_number: 456, title: "Implement dark mode toggle in UI".to_string() }, DeliveryStatus::PullRequestMerged { pr_number: 456 }],
+                timestamp: chrono::Utc::now()
+                    .checked_sub_signed(chrono::Duration::days(2))
+                    .unwrap()
+                    .to_rfc3339(),
+                activity: vec![
+                    "Implemented dark mode CSS variables for consistent theming".to_string(),
+                    "Added theme toggle component to header navigation".to_string(),
+                    "Updated all component styling for dark mode compatibility".to_string(),
+                    "Added user preference persistence in localStorage".to_string(),
+                    "Tested accessibility compliance with dark theme".to_string(),
+                ],
+                delivery_status: vec![
+                    DeliveryStatus::BranchCreated,
+                    DeliveryStatus::PullRequestCreated {
+                        pr_number: 456,
+                        title: "Implement dark mode toggle in UI".to_string(),
+                    },
+                    DeliveryStatus::PullRequestMerged { pr_number: 456 },
+                ],
             });
         }
 
         (drafts, tasks)
     }
 
-    async fn save_draft_task(&self, draft_id: &str, description: &str, repository: &str, branch: &str, models: &[SelectedModel]) -> SaveDraftResult {
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[SelectedModel],
+    ) -> SaveDraftResult {
         // Simulate persistence delay
         if self.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
@@ -368,10 +432,19 @@ impl TaskManager for MockRestClient {
 
 #[async_trait::async_trait]
 impl ah_core::RestApiClient for MockRestClient {
-    async fn create_task(&self, request: &ah_rest_api_contract::CreateTaskRequest) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn create_task(
+        &self,
+        request: &ah_rest_api_contract::CreateTaskRequest,
+    ) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>>
+    {
         // Simulate creating a task by converting the request to a task launch
         let params = ah_core::TaskLaunchParams {
-            repository: request.repo.url.as_ref().map(|u| u.to_string()).unwrap_or_else(|| "unknown".to_string()),
+            repository: request
+                .repo
+                .url
+                .as_ref()
+                .map(|u| u.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
             branch: request.repo.branch.clone().unwrap_or_else(|| "main".to_string()),
             description: request.prompt.clone(),
             models: vec![ah_domain_types::SelectedModel {
@@ -381,20 +454,40 @@ impl ah_core::RestApiClient for MockRestClient {
         };
 
         match self.launch_task(params).await {
-            ah_core::TaskLaunchResult::Success { task_id } => Ok(ah_rest_api_contract::CreateTaskResponse {
-                id: task_id.clone(),
-                status: ah_rest_api_contract::SessionStatus::Queued,
-                links: ah_rest_api_contract::TaskLinks {
-                    self_link: format!("/api/v1/tasks/{}", task_id),
-                    events: format!("/api/v1/tasks/{}/events", task_id),
-                    logs: format!("/api/v1/tasks/{}/logs", task_id),
-                },
-            }),
-            ah_core::TaskLaunchResult::Failure { error } => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, error))),
+            ah_core::TaskLaunchResult::Success { task_id } => {
+                Ok(ah_rest_api_contract::CreateTaskResponse {
+                    id: task_id.clone(),
+                    status: ah_rest_api_contract::SessionStatus::Queued,
+                    links: ah_rest_api_contract::TaskLinks {
+                        self_link: format!("/api/v1/tasks/{}", task_id),
+                        events: format!("/api/v1/tasks/{}/events", task_id),
+                        logs: format!("/api/v1/tasks/{}/logs", task_id),
+                    },
+                })
+            }
+            ah_core::TaskLaunchResult::Failure { error } => Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                error,
+            ))),
         }
     }
 
-    async fn stream_session_events(&self, session_id: &str) -> Result<std::pin::Pin<Box<dyn futures::Stream<Item = Result<ah_rest_api_contract::SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn stream_session_events(
+        &self,
+        session_id: &str,
+    ) -> Result<
+        std::pin::Pin<
+            Box<
+                dyn futures::Stream<
+                        Item = Result<
+                            ah_rest_api_contract::SessionEvent,
+                            Box<dyn std::error::Error + Send + Sync>,
+                        >,
+                    > + Send,
+            >,
+        >,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         // Convert our TaskEvent stream to SessionEvent stream
         let task_stream = self.task_events_stream(session_id);
 
@@ -407,22 +500,48 @@ impl ah_core::RestApiClient for MockRestClient {
                     ah_core::TaskEvent::Log { .. } => ah_rest_api_contract::EventType::Log,
                     ah_core::TaskEvent::Thought { .. } => ah_rest_api_contract::EventType::Thought,
                     ah_core::TaskEvent::ToolUse { .. } => ah_rest_api_contract::EventType::ToolUse,
-                    ah_core::TaskEvent::ToolResult { .. } => ah_rest_api_contract::EventType::ToolResult,
-                    ah_core::TaskEvent::FileEdit { .. } => ah_rest_api_contract::EventType::FileEdit,
+                    ah_core::TaskEvent::ToolResult { .. } => {
+                        ah_rest_api_contract::EventType::ToolResult
+                    }
+                    ah_core::TaskEvent::FileEdit { .. } => {
+                        ah_rest_api_contract::EventType::FileEdit
+                    }
                 },
                 status: match &task_event {
                     ah_core::TaskEvent::Status { status, .. } => Some(match status {
-                        ah_core::TaskExecutionStatus::Queued => ah_rest_api_contract::SessionStatus::Queued,
-                        ah_core::TaskExecutionStatus::Provisioning => ah_rest_api_contract::SessionStatus::Provisioning,
-                        ah_core::TaskExecutionStatus::Running => ah_rest_api_contract::SessionStatus::Running,
-                        ah_core::TaskExecutionStatus::Pausing => ah_rest_api_contract::SessionStatus::Pausing,
-                        ah_core::TaskExecutionStatus::Paused => ah_rest_api_contract::SessionStatus::Paused,
-                        ah_core::TaskExecutionStatus::Resuming => ah_rest_api_contract::SessionStatus::Resuming,
-                        ah_core::TaskExecutionStatus::Stopping => ah_rest_api_contract::SessionStatus::Stopping,
-                        ah_core::TaskExecutionStatus::Stopped => ah_rest_api_contract::SessionStatus::Stopped,
-                        ah_core::TaskExecutionStatus::Completed => ah_rest_api_contract::SessionStatus::Completed,
-                        ah_core::TaskExecutionStatus::Failed => ah_rest_api_contract::SessionStatus::Failed,
-                        ah_core::TaskExecutionStatus::Cancelled => ah_rest_api_contract::SessionStatus::Cancelled,
+                        ah_core::TaskExecutionStatus::Queued => {
+                            ah_rest_api_contract::SessionStatus::Queued
+                        }
+                        ah_core::TaskExecutionStatus::Provisioning => {
+                            ah_rest_api_contract::SessionStatus::Provisioning
+                        }
+                        ah_core::TaskExecutionStatus::Running => {
+                            ah_rest_api_contract::SessionStatus::Running
+                        }
+                        ah_core::TaskExecutionStatus::Pausing => {
+                            ah_rest_api_contract::SessionStatus::Pausing
+                        }
+                        ah_core::TaskExecutionStatus::Paused => {
+                            ah_rest_api_contract::SessionStatus::Paused
+                        }
+                        ah_core::TaskExecutionStatus::Resuming => {
+                            ah_rest_api_contract::SessionStatus::Resuming
+                        }
+                        ah_core::TaskExecutionStatus::Stopping => {
+                            ah_rest_api_contract::SessionStatus::Stopping
+                        }
+                        ah_core::TaskExecutionStatus::Stopped => {
+                            ah_rest_api_contract::SessionStatus::Stopped
+                        }
+                        ah_core::TaskExecutionStatus::Completed => {
+                            ah_rest_api_contract::SessionStatus::Completed
+                        }
+                        ah_core::TaskExecutionStatus::Failed => {
+                            ah_rest_api_contract::SessionStatus::Failed
+                        }
+                        ah_core::TaskExecutionStatus::Cancelled => {
+                            ah_rest_api_contract::SessionStatus::Cancelled
+                        }
                     }),
                     _ => None,
                 },
@@ -443,12 +562,14 @@ impl ah_core::RestApiClient for MockRestClient {
                     _ => None,
                 },
                 tool_name: match &task_event {
-                    ah_core::TaskEvent::ToolUse { tool_name, .. } |
-                    ah_core::TaskEvent::ToolResult { tool_name, .. } => Some(tool_name.clone()),
+                    ah_core::TaskEvent::ToolUse { tool_name, .. }
+                    | ah_core::TaskEvent::ToolResult { tool_name, .. } => Some(tool_name.clone()),
                     _ => None,
                 },
                 tool_args: match &task_event {
-                    ah_core::TaskEvent::ToolUse { tool_args, .. } => Some(serde_json::Value::String(tool_args.to_string())),
+                    ah_core::TaskEvent::ToolUse { tool_args, .. } => {
+                        Some(serde_json::Value::String(tool_args.to_string()))
+                    }
                     _ => None,
                 },
                 tool_output: match &task_event {
@@ -456,9 +577,15 @@ impl ah_core::RestApiClient for MockRestClient {
                     _ => None,
                 },
                 tool_execution_id: match &task_event {
-                    ah_core::TaskEvent::ToolUse { tool_execution_id, .. } |
-                    ah_core::TaskEvent::ToolResult { tool_execution_id, .. } => Some(tool_execution_id.clone()),
-                    ah_core::TaskEvent::Log { tool_execution_id, .. } => tool_execution_id.clone(),
+                    ah_core::TaskEvent::ToolUse {
+                        tool_execution_id, ..
+                    }
+                    | ah_core::TaskEvent::ToolResult {
+                        tool_execution_id, ..
+                    } => Some(tool_execution_id.clone()),
+                    ah_core::TaskEvent::Log {
+                        tool_execution_id, ..
+                    } => tool_execution_id.clone(),
                     _ => None,
                 },
                 file_path: match &task_event {
@@ -470,7 +597,9 @@ impl ah_core::RestApiClient for MockRestClient {
                     _ => None,
                 },
                 lines_removed: match &task_event {
-                    ah_core::TaskEvent::FileEdit { lines_removed, .. } => Some(*lines_removed as u32),
+                    ah_core::TaskEvent::FileEdit { lines_removed, .. } => {
+                        Some(*lines_removed as u32)
+                    }
                     _ => None,
                 },
                 description: match &task_event {
@@ -500,56 +629,71 @@ impl ah_core::RestApiClient for MockRestClient {
         Ok(Box::pin(converted_stream))
     }
 
-    async fn list_sessions(&self, _filters: Option<&ah_rest_api_contract::FilterQuery>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_sessions(
+        &self,
+        _filters: Option<&ah_rest_api_contract::FilterQuery>,
+    ) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>>
+    {
         // Get tasks from the mock client
         let (_drafts, tasks) = self.get_initial_tasks().await;
 
-        let sessions = tasks.into_iter().map(|task| {
-            ah_rest_api_contract::Session {
-                id: task.id.clone(),
-                tenant_id: None,
-                project_id: None,
-                task: ah_rest_api_contract::TaskInfo {
-                    prompt: task.id.clone(), // Use task id as prompt since TaskExecution doesn't have title
-                    attachments: std::collections::HashMap::new(),
-                    labels: std::collections::HashMap::new(),
-                },
-                agent: ah_rest_api_contract::AgentConfig {
-                    agent_type: task.agents.first().map(|m| m.name.clone()).unwrap_or_else(|| "claude-code".to_string()),
-                    version: "latest".to_string(),
-                    settings: std::collections::HashMap::new(),
-                },
-                runtime: ah_rest_api_contract::RuntimeConfig {
-                    runtime_type: ah_rest_api_contract::RuntimeType::Local,
-                    devcontainer_path: None,
-                    resources: None,
-                },
-                workspace: ah_rest_api_contract::WorkspaceInfo {
-                    snapshot_provider: "none".to_string(),
-                    mount_path: "/tmp".to_string(),
-                    host: None,
-                    devcontainer_details: None,
-                },
-                vcs: ah_rest_api_contract::VcsInfo {
-                    repo_url: Some(task.repository),
-                    branch: Some(task.branch),
-                    commit: None,
-                },
-                status: match task.state {
-                    TaskState::Active => ah_rest_api_contract::SessionStatus::Running,
-                    TaskState::Completed => ah_rest_api_contract::SessionStatus::Completed,
-                    TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed, // Map merged to completed
-                    TaskState::Draft => ah_rest_api_contract::SessionStatus::Running,
-                },
-                started_at: Some(chrono::DateTime::parse_from_rfc3339(&task.timestamp).unwrap_or_else(|_| chrono::Utc::now().into()).with_timezone(&chrono::Utc)),
-                ended_at: None,
-                links: ah_rest_api_contract::SessionLinks {
-                    self_link: format!("/api/v1/sessions/{}", task.id),
-                    events: format!("/api/v1/sessions/{}/events", task.id),
-                    logs: format!("/api/v1/sessions/{}/logs", task.id),
-                },
-            }
-        }).collect();
+        let sessions = tasks
+            .into_iter()
+            .map(|task| {
+                ah_rest_api_contract::Session {
+                    id: task.id.clone(),
+                    tenant_id: None,
+                    project_id: None,
+                    task: ah_rest_api_contract::TaskInfo {
+                        prompt: task.id.clone(), // Use task id as prompt since TaskExecution doesn't have title
+                        attachments: std::collections::HashMap::new(),
+                        labels: std::collections::HashMap::new(),
+                    },
+                    agent: ah_rest_api_contract::AgentConfig {
+                        agent_type: task
+                            .agents
+                            .first()
+                            .map(|m| m.name.clone())
+                            .unwrap_or_else(|| "claude-code".to_string()),
+                        version: "latest".to_string(),
+                        settings: std::collections::HashMap::new(),
+                    },
+                    runtime: ah_rest_api_contract::RuntimeConfig {
+                        runtime_type: ah_rest_api_contract::RuntimeType::Local,
+                        devcontainer_path: None,
+                        resources: None,
+                    },
+                    workspace: ah_rest_api_contract::WorkspaceInfo {
+                        snapshot_provider: "none".to_string(),
+                        mount_path: "/tmp".to_string(),
+                        host: None,
+                        devcontainer_details: None,
+                    },
+                    vcs: ah_rest_api_contract::VcsInfo {
+                        repo_url: Some(task.repository),
+                        branch: Some(task.branch),
+                        commit: None,
+                    },
+                    status: match task.state {
+                        TaskState::Active => ah_rest_api_contract::SessionStatus::Running,
+                        TaskState::Completed => ah_rest_api_contract::SessionStatus::Completed,
+                        TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed, // Map merged to completed
+                        TaskState::Draft => ah_rest_api_contract::SessionStatus::Running,
+                    },
+                    started_at: Some(
+                        chrono::DateTime::parse_from_rfc3339(&task.timestamp)
+                            .unwrap_or_else(|_| chrono::Utc::now().into())
+                            .with_timezone(&chrono::Utc),
+                    ),
+                    ended_at: None,
+                    links: ah_rest_api_contract::SessionLinks {
+                        self_link: format!("/api/v1/sessions/{}", task.id),
+                        events: format!("/api/v1/sessions/{}/events", task.id),
+                        logs: format!("/api/v1/sessions/{}/logs", task.id),
+                    },
+                }
+            })
+            .collect();
 
         Ok(ah_rest_api_contract::SessionListResponse {
             items: sessions,
@@ -558,18 +702,27 @@ impl ah_core::RestApiClient for MockRestClient {
         })
     }
 
-    async fn list_repositories(&self, _tenant_id: Option<&str>, _project_id: Option<&str>) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_repositories(
+        &self,
+        _tenant_id: Option<&str>,
+        _project_id: Option<&str>,
+    ) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>
+    {
         // Get repositories from the mock client
         let repos = ah_core::TaskManager::list_repositories(self).await;
 
-        Ok(repos.into_iter().map(|repo| ah_rest_api_contract::Repository {
-            id: repo.id,
-            display_name: repo.name,
-            scm_provider: "git".to_string(),
-            remote_url: url::Url::parse(&repo.url).unwrap_or_else(|_| url::Url::parse("https://example.com").unwrap()),
-            default_branch: repo.default_branch,
-            last_used_at: Some(chrono::Utc::now()),
-        }).collect())
+        Ok(repos
+            .into_iter()
+            .map(|repo| ah_rest_api_contract::Repository {
+                id: repo.id,
+                display_name: repo.name,
+                scm_provider: "git".to_string(),
+                remote_url: url::Url::parse(&repo.url)
+                    .unwrap_or_else(|_| url::Url::parse("https://example.com").unwrap()),
+                default_branch: repo.default_branch,
+                last_used_at: Some(chrono::Utc::now()),
+            })
+            .collect())
     }
 }
 
@@ -631,14 +784,48 @@ impl MockEventState {
         let ts = self.start_time + chrono::Duration::milliseconds((self.event_index as i64) * 500);
 
         let event = match self.event_index {
-            0 => TaskEvent::Status { status: TaskExecutionStatus::Queued, ts },
-            1 => TaskEvent::Log { level: LogLevel::Info, message: "Task queued for execution".to_string(), tool_execution_id: None, ts },
-            2 => TaskEvent::Status { status: TaskExecutionStatus::Provisioning, ts },
-            3 => TaskEvent::Log { level: LogLevel::Info, message: "Provisioning workspace...".to_string(), tool_execution_id: None, ts },
-            4 => TaskEvent::Log { level: LogLevel::Info, message: "Cloning repository...".to_string(), tool_execution_id: None, ts },
-            5 => TaskEvent::Log { level: LogLevel::Info, message: "Setting up development environment...".to_string(), tool_execution_id: None, ts },
-            6 => TaskEvent::Status { status: TaskExecutionStatus::Running, ts },
-            7 => TaskEvent::Log { level: LogLevel::Info, message: "Starting agent execution".to_string(), tool_execution_id: None, ts },
+            0 => TaskEvent::Status {
+                status: TaskExecutionStatus::Queued,
+                ts,
+            },
+            1 => TaskEvent::Log {
+                level: LogLevel::Info,
+                message: "Task queued for execution".to_string(),
+                tool_execution_id: None,
+                ts,
+            },
+            2 => TaskEvent::Status {
+                status: TaskExecutionStatus::Provisioning,
+                ts,
+            },
+            3 => TaskEvent::Log {
+                level: LogLevel::Info,
+                message: "Provisioning workspace...".to_string(),
+                tool_execution_id: None,
+                ts,
+            },
+            4 => TaskEvent::Log {
+                level: LogLevel::Info,
+                message: "Cloning repository...".to_string(),
+                tool_execution_id: None,
+                ts,
+            },
+            5 => TaskEvent::Log {
+                level: LogLevel::Info,
+                message: "Setting up development environment...".to_string(),
+                tool_execution_id: None,
+                ts,
+            },
+            6 => TaskEvent::Status {
+                status: TaskExecutionStatus::Running,
+                ts,
+            },
+            7 => TaskEvent::Log {
+                level: LogLevel::Info,
+                message: "Starting agent execution".to_string(),
+                tool_execution_id: None,
+                ts,
+            },
 
             // Initial thoughts
             8 => TaskEvent::Thought {
@@ -648,7 +835,9 @@ impl MockEventState {
             },
             9 => TaskEvent::Thought {
                 thought: "Examining the codebase structure and existing patterns".to_string(),
-                reasoning: Some("Looking for similar implementations to follow conventions".to_string()),
+                reasoning: Some(
+                    "Looking for similar implementations to follow conventions".to_string(),
+                ),
                 ts,
             },
 
@@ -662,7 +851,7 @@ impl MockEventState {
                     status: ToolStatus::Started,
                     ts,
                 }
-            },
+            }
             11 => TaskEvent::Log {
                 level: LogLevel::Info,
                 message: "Running cargo check...".to_string(),
@@ -683,7 +872,8 @@ impl MockEventState {
             },
             14 => TaskEvent::ToolResult {
                 tool_name: "cargo".to_string(),
-                tool_output: "Finished dev [unoptimized + debuginfo] target(s) in 8.45s".to_string(),
+                tool_output: "Finished dev [unoptimized + debuginfo] target(s) in 8.45s"
+                    .to_string(),
                 tool_execution_id: self.get_or_create_tool_execution_id(10),
                 status: ToolStatus::Completed,
                 ts,
@@ -718,7 +908,7 @@ impl MockEventState {
                     status: ToolStatus::Started,
                     ts,
                 }
-            },
+            }
             19 => TaskEvent::Log {
                 level: LogLevel::Info,
                 message: "Compiling agent-harbor v0.1.0 (/workspace)".to_string(),
@@ -793,7 +983,8 @@ impl MockEventState {
             },
             31 => TaskEvent::ToolResult {
                 tool_name: "cargo".to_string(),
-                tool_output: "Finished dev [unoptimized + debuginfo] target(s) in 45.23s".to_string(),
+                tool_output: "Finished dev [unoptimized + debuginfo] target(s) in 45.23s"
+                    .to_string(),
                 tool_execution_id: self.get_or_create_tool_execution_id(18),
                 status: ToolStatus::Completed,
                 ts,
@@ -802,7 +993,9 @@ impl MockEventState {
             // More thoughts and file edits
             32 => TaskEvent::Thought {
                 thought: "Optimizing database queries for better performance".to_string(),
-                reasoning: Some("Analyzing current query patterns and identifying bottlenecks".to_string()),
+                reasoning: Some(
+                    "Analyzing current query patterns and identifying bottlenecks".to_string(),
+                ),
                 ts,
             },
             33 => TaskEvent::FileEdit {
@@ -828,7 +1021,7 @@ impl MockEventState {
                     status: ToolStatus::Started,
                     ts,
                 }
-            },
+            }
             36 => TaskEvent::Log {
                 level: LogLevel::Info,
                 message: "running 12 tests".to_string(),
@@ -915,7 +1108,9 @@ impl MockEventState {
             },
             50 => TaskEvent::ToolResult {
                 tool_name: "cargo".to_string(),
-                tool_output: "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out".to_string(),
+                tool_output:
+                    "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
+                        .to_string(),
                 tool_execution_id: self.get_or_create_tool_execution_id(35),
                 status: ToolStatus::Completed,
                 ts,
@@ -934,22 +1129,33 @@ impl MockEventState {
                 description: Some("Updated documentation with new features".to_string()),
                 ts,
             },
-            53 => TaskEvent::Status { status: TaskExecutionStatus::Completed, ts },
-            54 => TaskEvent::Log { level: LogLevel::Info, message: "Task completed successfully".to_string(), tool_execution_id: None, ts },
+            53 => TaskEvent::Status {
+                status: TaskExecutionStatus::Completed,
+                ts,
+            },
+            54 => TaskEvent::Log {
+                level: LogLevel::Info,
+                message: "Task completed successfully".to_string(),
+                tool_execution_id: None,
+                ts,
+            },
 
             // End of stream
             _ => return None,
         };
 
         self.event_index += 1;
-        Some((event, Self {
-            task_id: self.task_id.clone(),
-            event_index: self.event_index,
-            start_time: self.start_time,
-            tool_execution_counter: self.tool_execution_counter,
-            active_tool_executions: self.active_tool_executions.clone(),
-            delay_ms: self.delay_ms,
-        }))
+        Some((
+            event,
+            Self {
+                task_id: self.task_id.clone(),
+                event_index: self.event_index,
+                start_time: self.start_time,
+                tool_execution_counter: self.tool_execution_counter,
+                active_tool_executions: self.active_tool_executions.clone(),
+                delay_ms: self.delay_ms,
+            },
+        ))
     }
 }
 
@@ -1008,7 +1214,10 @@ mod tests {
         let result = client.launch_task(params).await;
 
         assert!(!result.is_success());
-        assert_eq!(result.error().unwrap(), "At least one model must be selected");
+        assert_eq!(
+            result.error().unwrap(),
+            "At least one model must be selected"
+        );
     }
 
     #[tokio::test]
@@ -1048,13 +1257,15 @@ mod tests {
             count: 1,
         }];
 
-        let result = client.save_draft_task(
-            "draft_001",
-            "Test description",
-            "test/repo",
-            "main",
-            &models,
-        ).await;
+        let result = client
+            .save_draft_task(
+                "draft_001",
+                "Test description",
+                "test/repo",
+                "main",
+                &models,
+            )
+            .await;
 
         assert!(matches!(result, SaveDraftResult::Success));
     }

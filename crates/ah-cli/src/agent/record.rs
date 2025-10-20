@@ -3,17 +3,17 @@
 // Spawns a command under a PTY, captures output to .ahr file format,
 // and provides a basic viewer for monitoring the session.
 
-use ah_recorder::{
-    now_ns, AhrWriter, PtyRecorder, PtyRecorderConfig, RecordingSession,
-    WriterConfig, TerminalViewer, ViewerConfig, ViewerEventLoop,
-};
 use ah_recorder::viewer::GutterPosition;
-use tracing::error;
+use ah_recorder::{
+    AhrWriter, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalViewer, ViewerConfig,
+    ViewerEventLoop, WriterConfig, now_ns,
+};
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::{signal, spawn};
+use tracing::error;
 use tracing::{debug, info};
 
 /// Position of the snapshot indicator gutter
@@ -136,11 +136,16 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
     );
 
     // Parse environment variables
-    let env_vars = args.env_vars.iter()
+    let env_vars = args
+        .env_vars
+        .iter()
         .map(|env_var| {
             let parts: Vec<&str> = env_var.splitn(2, '=').collect();
             if parts.len() != 2 {
-                anyhow::bail!("Invalid environment variable format: {}. Expected KEY=VALUE", env_var);
+                anyhow::bail!(
+                    "Invalid environment variable format: {}. Expected KEY=VALUE",
+                    env_var
+                );
             }
             Ok((parts[0].to_string(), parts[1].to_string()))
         })
@@ -156,8 +161,8 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
 
     // Create AHR writer
     let writer_config = WriterConfig::default().with_brotli_quality(args.brotli_q);
-    let writer = AhrWriter::create(&out_file, writer_config)
-        .context("Failed to create AHR writer")?;
+    let writer =
+        AhrWriter::create(&out_file, writer_config).context("Failed to create AHR writer")?;
 
     // Set up IPC server for snapshot notifications
     use ah_recorder::ipc::{IpcServer, IpcServerConfig};
@@ -173,7 +178,10 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
     };
 
     // Set environment variable so external commands know how to connect
-    env::set_var("AH_RECORDER_IPC_SOCKET", socket_path.to_string_lossy().to_string());
+    env::set_var(
+        "AH_RECORDER_IPC_SOCKET",
+        socket_path.to_string_lossy().to_string(),
+    );
 
     // Create shared byte offset counter for IPC
     let current_byte_offset = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -184,7 +192,10 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
         .context("Failed to start IPC server")?;
 
     info!("IPC server started, socket: {:?}", socket_path);
-    eprintln!("DEBUG: AH_RECORDER_IPC_SOCKET set to: {:?}", env::var("AH_RECORDER_IPC_SOCKET"));
+    eprintln!(
+        "DEBUG: AH_RECORDER_IPC_SOCKET set to: {:?}",
+        env::var("AH_RECORDER_IPC_SOCKET")
+    );
 
     // Give IPC server time to start accepting connections
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -384,8 +395,10 @@ pub async fn execute_branch_points(args: BranchPointsArgs) -> Result<()> {
 fn output_json(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
     use serde_json::json;
 
-    let items: Vec<serde_json::Value> = branch_points.items.iter().map(|item| {
-        match item {
+    let items: Vec<serde_json::Value> = branch_points
+        .items
+        .iter()
+        .map(|item| match item {
             ah_recorder::InterleavedItem::Line(line) => {
                 json!({
                     "kind": "line",
@@ -403,8 +416,8 @@ fn output_json(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
                     "anchor_byte": snapshot.anchor_byte
                 })
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     let output = json!({
         "total_bytes": branch_points.total_bytes,
@@ -424,11 +437,17 @@ fn output_markdown(branch_points: &ah_recorder::BranchPointsResult) -> Result<()
     for item in &branch_points.items {
         match item {
             ah_recorder::InterleavedItem::Line(line) => {
-                println!("**Line {}** (byte {}): {}", line.index, line.last_write_byte, line.text);
+                println!(
+                    "**Line {}** (byte {}): {}",
+                    line.index, line.last_write_byte, line.text
+                );
             }
             ah_recorder::InterleavedItem::Snapshot(snapshot) => {
                 let label = snapshot.label.as_deref().unwrap_or("unnamed");
-                println!("📸 **Snapshot {}** (byte {}): {}", snapshot.id, snapshot.anchor_byte, label);
+                println!(
+                    "📸 **Snapshot {}** (byte {}): {}",
+                    snapshot.id, snapshot.anchor_byte, label
+                );
             }
         }
     }
@@ -446,12 +465,18 @@ fn output_csv(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
             ah_recorder::InterleavedItem::Line(line) => {
                 // Escape quotes in text
                 let escaped_text = line.text.replace("\"", "\"\"");
-                println!("line,{},{},\"{}\"", line.index, line.last_write_byte, escaped_text);
+                println!(
+                    "line,{},{},\"{}\"",
+                    line.index, line.last_write_byte, escaped_text
+                );
             }
             ah_recorder::InterleavedItem::Snapshot(snapshot) => {
                 let label = snapshot.label.as_deref().unwrap_or("");
                 let escaped_label = label.replace("\"", "\"\"");
-                println!("snapshot,{},{},\"{}\"", snapshot.id, snapshot.anchor_byte, escaped_label);
+                println!(
+                    "snapshot,{},{},\"{}\"",
+                    snapshot.id, snapshot.anchor_byte, escaped_label
+                );
             }
         }
     }

@@ -1,6 +1,6 @@
 //! API contract types for the agent-harbor REST service
 
-use ah_domain_types::{TaskExecutionStatus, LogLevel};
+use ah_domain_types::{LogLevel, TaskExecutionStatus};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

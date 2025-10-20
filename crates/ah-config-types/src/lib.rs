@@ -7,6 +7,6 @@
 //! The `UiRoot` struct gets flattened into the main schema, while other structs
 //! like `RepoConfig` remain as nested sections.
 
-pub mod ui;
 pub mod repo;
 pub mod server;
+pub mod ui;

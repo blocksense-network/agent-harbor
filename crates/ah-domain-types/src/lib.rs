@@ -7,14 +7,14 @@
 //! These types represent the business domain entities and should be
 //! UI-agnostic, reusable across different contexts.
 
-pub mod task;
 pub mod agent;
 pub mod repository;
+pub mod task;
 
 // Re-export commonly used types
-pub use task::*;
 pub use agent::*;
 pub use repository::*;
+pub use task::*;
 
 // Re-export shared enums
-pub use task::{TaskExecutionStatus, LogLevel, ToolStatus};
+pub use task::{LogLevel, TaskExecutionStatus, ToolStatus};

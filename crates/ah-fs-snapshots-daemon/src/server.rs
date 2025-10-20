@@ -1,10 +1,10 @@
 use crate::operations::process_request;
 use crate::types::Request;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio_stream::{wrappers::UnixListenerStream, StreamExt};
+use tokio_stream::{StreamExt, wrappers::UnixListenerStream};
 use tracing::{debug, error, info, warn};
 
 // SSZ encoding/decoding functions for daemon communication

@@ -88,18 +88,19 @@ impl SnapshotsWriter {
     /// Returns the assigned snapshot ID.
     pub fn append(&mut self, snapshot: &Snapshot) -> Result<u64> {
         // Serialize to JSON
-        let json = serde_json::to_string(snapshot)
-            .context("Failed to serialize snapshot")?;
+        let json = serde_json::to_string(snapshot).context("Failed to serialize snapshot")?;
 
         // Write with newline
-        writeln!(self.writer, "{}", json)
-            .context("Failed to write snapshot")?;
+        writeln!(self.writer, "{}", json).context("Failed to write snapshot")?;
 
         // Flush to ensure durability (each snapshot is atomic)
-        self.writer.flush()
-            .context("Failed to flush snapshots file")?;
+        self.writer.flush().context("Failed to flush snapshots file")?;
 
-        trace!(id = snapshot.id, anchor_byte = snapshot.anchor_byte, "Wrote snapshot");
+        trace!(
+            id = snapshot.id,
+            anchor_byte = snapshot.anchor_byte,
+            "Wrote snapshot"
+        );
 
         Ok(snapshot.id)
     }
@@ -135,9 +136,9 @@ impl SnapshotsWriter {
 
     /// Finalize the writer, flushing any buffered data
     pub fn finalize(mut self) -> Result<()> {
-        self.writer.flush()
-            .context("Failed to flush snapshots writer")?;
-        self.writer.into_inner()
+        self.writer.flush().context("Failed to flush snapshots writer")?;
+        self.writer
+            .into_inner()
             .map_err(|e| anyhow::anyhow!("Failed to finalize writer: {}", e))?
             .sync_all()
             .context("Failed to sync snapshots file")?;
@@ -163,8 +164,8 @@ pub struct SnapshotsReader {
 impl SnapshotsReader {
     /// Load all snapshots from a file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path.as_ref())
-            .context("Failed to read snapshots file")?;
+        let content =
+            std::fs::read_to_string(path.as_ref()).context("Failed to read snapshots file")?;
 
         let mut snapshots = Vec::new();
         for (line_num, line) in content.lines().enumerate() {
@@ -222,15 +223,13 @@ impl SnapshotsReader {
 
     /// Find the snapshot closest to a given byte offset
     pub fn find_closest(&self, byte_off: u64) -> Option<&Snapshot> {
-        self.snapshots
-            .iter()
-            .min_by_key(|s| {
-                if s.anchor_byte > byte_off {
-                    s.anchor_byte - byte_off
-                } else {
-                    byte_off - s.anchor_byte
-                }
-            })
+        self.snapshots.iter().min_by_key(|s| {
+            if s.anchor_byte > byte_off {
+                s.anchor_byte - byte_off
+            } else {
+                byte_off - s.anchor_byte
+            }
+        })
     }
 }
 
@@ -248,7 +247,12 @@ mod tests {
         let mut writer = SnapshotsWriter::create(&path)?;
 
         let ts = now_ns();
-        writer.create_snapshot(ts, 100, Some("test".to_string()), Some("manual".to_string()))?;
+        writer.create_snapshot(
+            ts,
+            100,
+            Some("test".to_string()),
+            Some("manual".to_string()),
+        )?;
         writer.create_snapshot(ts + 1000, 200, None, Some("auto".to_string()))?;
 
         writer.finalize()?;

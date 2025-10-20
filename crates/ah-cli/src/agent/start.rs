@@ -156,7 +156,11 @@ impl AgentStartArgs {
             AgentType::Claude => Box::new(ah_agents::claude()),
             AgentType::Codex => Box::new(ah_agents::codex()),
             // For agents not yet implemented in ah-agents, fall back to old logic
-            AgentType::Gemini | AgentType::Opencode | AgentType::Qwen | AgentType::CursorCli | AgentType::Goose => {
+            AgentType::Gemini
+            | AgentType::Opencode
+            | AgentType::Qwen
+            | AgentType::CursorCli
+            | AgentType::Goose => {
                 return self.run_legacy_agent().await;
             }
             AgentType::Mock => unreachable!(), // handled above
@@ -193,7 +197,10 @@ impl AgentStartArgs {
         }
 
         // Set working directory
-        let cwd = self.cwd.clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
+        let cwd = self
+            .cwd
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
         config = config.working_dir(cwd);
 
         // Add additional environment variables from agent_flags if they look like KEY=VALUE
@@ -213,13 +220,9 @@ impl AgentStartArgs {
 
     /// Build the home directory path for the agent
     fn build_home_dir(&self) -> anyhow::Result<PathBuf> {
-        let base_dir = std::env::var("AH_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("/tmp"))
-                    .join(".agent-harbor")
-            });
+        let base_dir = std::env::var("AH_HOME").map(PathBuf::from).unwrap_or_else(|_| {
+            dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp")).join(".agent-harbor")
+        });
 
         let agent_name = match self.agent {
             AgentType::Claude => "claude",
@@ -288,7 +291,9 @@ impl AgentStartArgs {
             .stderr(Stdio::inherit());
 
         // Parse agent flags
-        let agent_flags: Vec<&str> = self.agent_flags.as_ref()
+        let agent_flags: Vec<&str> = self
+            .agent_flags
+            .as_ref()
             .map(|s| s.split_whitespace().collect())
             .unwrap_or_default();
 
@@ -372,7 +377,9 @@ impl AgentStartArgs {
             ];
 
             // Parse agent flags
-            let agent_flags: Vec<String> = self.agent_flags.as_ref()
+            let agent_flags: Vec<String> = self
+                .agent_flags
+                .as_ref()
                 .map(|s| s.split_whitespace().map(|s| s.to_string()).collect())
                 .unwrap_or_default();
 
@@ -424,7 +431,6 @@ impl AgentStartArgs {
             ))
         }
     }
-
 }
 
 #[cfg(test)]

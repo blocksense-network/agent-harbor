@@ -102,9 +102,17 @@ fn run_overlay_test(
                     // This might be a permission error - check stderr for EPERM
                     // For now, we'll treat exit code 1 as potentially a permission issue
                     // and report it as a skip rather than a failure
-                    println!("⚠️  {} test SKIPPED - likely due to insufficient privileges (exit code: {:?})", test_type.description(), status.code());
-                    println!("   This test requires privileges to create namespaces and mount filesystems");
-                    println!("   Run with appropriate privileges (e.g., sudo) or in a privileged environment");
+                    println!(
+                        "⚠️  {} test SKIPPED - likely due to insufficient privileges (exit code: {:?})",
+                        test_type.description(),
+                        status.code()
+                    );
+                    println!(
+                        "   This test requires privileges to create namespaces and mount filesystems"
+                    );
+                    println!(
+                        "   Run with appropriate privileges (e.g., sudo) or in a privileged environment"
+                    );
                     Ok(()) // Treat as success (skipped)
                 } else {
                     println!(

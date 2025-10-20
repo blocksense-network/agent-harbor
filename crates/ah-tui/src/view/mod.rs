@@ -45,8 +45,8 @@ use ratatui::{prelude::*, widgets::*};
 
 // pub mod header; // Header rendering components - TODO: move later
 pub mod autocomplete; // Autocomplete rendering components
-pub mod draft_card; // Draft card rendering components
-pub mod dialogs; // Dialog/modal rendering components
+pub mod dialogs;
+pub mod draft_card; // Draft card rendering components // Dialog/modal rendering components
 
 /// Cache for view-related computations and state
 pub struct ViewCache {

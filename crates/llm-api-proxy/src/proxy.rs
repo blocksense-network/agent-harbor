@@ -5,10 +5,10 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::ProxyConfig,
-    error::{Error, Result},
     converters::{self, ApiFormat},
-    routing::{DynamicRouter, ProviderSelector},
+    error::{Error, Result},
     metrics::MetricsCollector,
+    routing::{DynamicRouter, ProviderSelector},
     scenario::ScenarioPlayer,
 };
 
@@ -95,10 +95,8 @@ impl LlmApiProxy {
 
     /// Handle a scenario playback request
     async fn handle_scenario_request(&self, request: &ProxyRequest) -> Result<ProxyResponse> {
-        let player = self.scenario_player.as_ref().ok_or_else(|| {
-            Error::Scenario {
-                message: "Scenario playback not enabled".to_string(),
-            }
+        let player = self.scenario_player.as_ref().ok_or_else(|| Error::Scenario {
+            message: "Scenario playback not enabled".to_string(),
         })?;
 
         player.play_request(request).await
@@ -123,18 +121,14 @@ impl LlmApiProxy {
                 Ok(request.payload.clone())
             }
             // OpenAI request to OpenAI provider
-            (ApiFormat::OpenAI, ApiFormat::OpenAI) => {
-                Ok(request.payload.clone())
-            }
+            (ApiFormat::OpenAI, ApiFormat::OpenAI) => Ok(request.payload.clone()),
             // OpenAI request to Anthropic provider
             (ApiFormat::OpenAI, ApiFormat::Anthropic) => {
                 // Pass through for now
                 Ok(request.payload.clone())
             }
             // Anthropic request to Anthropic provider
-            (ApiFormat::Anthropic, ApiFormat::Anthropic) => {
-                Ok(request.payload.clone())
-            }
+            (ApiFormat::Anthropic, ApiFormat::Anthropic) => Ok(request.payload.clone()),
         }
     }
 
@@ -152,10 +146,8 @@ impl LlmApiProxy {
         // Default HTTP implementation for other providers
         let url = format!("{}/chat/completions", provider.base_url);
 
-        let mut request_builder = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json");
+        let mut request_builder =
+            self.http_client.post(&url).header("Content-Type", "application/json");
 
         // Add authentication
         if let Some(api_key) = &provider.api_key {
@@ -174,10 +166,7 @@ impl LlmApiProxy {
             request_builder = request_builder.header(key, value);
         }
 
-        let response = request_builder
-            .json(&request)
-            .send()
-            .await?;
+        let response = request_builder.json(&request).send().await?;
 
         let status = response.status();
         let body = response.text().await?;
@@ -205,21 +194,21 @@ impl LlmApiProxy {
     ) -> Result<ProviderResponse> {
         let url = format!("{}/chat/completions", provider.base_url);
 
-        let mut request_builder = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", provider.api_key.as_ref().unwrap_or(&"".to_string())));
+        let mut request_builder =
+            self.http_client.post(&url).header("Content-Type", "application/json").header(
+                "Authorization",
+                format!(
+                    "Bearer {}",
+                    provider.api_key.as_ref().unwrap_or(&"".to_string())
+                ),
+            );
 
         // Add OpenRouter-specific headers
         for (key, value) in &provider.headers {
             request_builder = request_builder.header(key, value);
         }
 
-        let response = request_builder
-            .json(&request)
-            .send()
-            .await?;
+        let response = request_builder.json(&request).send().await?;
 
         let status = response.status();
         let body = response.text().await?;

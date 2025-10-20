@@ -1,7 +1,7 @@
 //! Basic integration tests for the LLM API proxy
 
+use llm_api_proxy::proxy::{ProxyMode, ProxyRequest};
 use llm_api_proxy::{LlmApiProxy, ProxyConfig, converters::ApiFormat};
-use llm_api_proxy::proxy::{ProxyRequest, ProxyMode};
 
 #[tokio::test]
 async fn test_proxy_creation() {
@@ -74,15 +74,23 @@ async fn test_anthropic_to_openrouter_routing() {
 
     // Check that metrics were recorded
     let final_metrics = proxy.metrics().snapshot().await.unwrap();
-    assert_eq!(final_metrics.total_requests, initial_metrics.total_requests + 1);
-    assert_eq!(final_metrics.failed_requests, initial_metrics.failed_requests + 1);
+    assert_eq!(
+        final_metrics.total_requests,
+        initial_metrics.total_requests + 1
+    );
+    assert_eq!(
+        final_metrics.failed_requests,
+        initial_metrics.failed_requests + 1
+    );
     assert!(final_metrics.average_response_time_ms > 0.0);
 
     println!("✅ Anthropic -> OpenRouter routing test passed!");
-    println!("📊 Metrics: {} total requests, {} failed, {:.2}ms avg latency",
-             final_metrics.total_requests,
-             final_metrics.failed_requests,
-             final_metrics.average_response_time_ms);
+    println!(
+        "📊 Metrics: {} total requests, {} failed, {:.2}ms avg latency",
+        final_metrics.total_requests,
+        final_metrics.failed_requests,
+        final_metrics.average_response_time_ms
+    );
 }
 
 #[tokio::test]
@@ -142,7 +150,10 @@ async fn test_full_proxy_workflow() {
     println!("   Failed: {}", metrics.failed_requests);
     println!("   Avg latency: {:.2}ms", metrics.average_response_time_ms);
     println!("   Total prompt tokens: {}", metrics.total_prompt_tokens);
-    println!("   Total completion tokens: {}", metrics.total_completion_tokens);
+    println!(
+        "   Total completion tokens: {}",
+        metrics.total_completion_tokens
+    );
 }
 
 #[tokio::test]

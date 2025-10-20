@@ -1,17 +1,19 @@
 //! Renders draft task cards with textarea and control buttons.
 
-
-use ratatui::{
-    prelude::*,
-    widgets::*,
-};
+use ratatui::{prelude::*, widgets::*};
 
 use super::Theme;
 use crate::view_model::{FocusElement, TaskEntryViewModel};
 
 /// Render a draft card (exact same as main.rs TaskCard::render with state == Draft)
 /// Returns the textarea area for autocomplete positioning
-pub fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) -> Rect {
+pub fn render_draft_card(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    card: &TaskEntryViewModel,
+    theme: &Theme,
+    is_selected: bool,
+) -> Rect {
     // Draft cards have outer border with "New Task" title
     let border_style = if is_selected {
         Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
@@ -39,7 +41,13 @@ pub fn render_draft_card(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryView
 }
 
 /// Render draft card content (exact same as main.rs TaskCard::render_draft_card_content)
-pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskEntryViewModel, theme: &Theme, is_selected: bool) -> Rect {
+pub fn render_draft_card_content(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    card: &TaskEntryViewModel,
+    theme: &Theme,
+    is_selected: bool,
+) -> Rect {
     let content_height = area.height as usize;
 
     // Split the available area between textarea and buttons (exact same as main.rs)
@@ -56,8 +64,8 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
 
     // Add configurable left padding for textarea and buttons
     let textarea_area = Rect {
-        x: area.x + 1, // TEXTAREA_LEFT_PADDING
-        y: area.y + 1, // TEXTAREA_TOP_PADDING
+        x: area.x + 1,                       // TEXTAREA_LEFT_PADDING
+        y: area.y + 1,                       // TEXTAREA_TOP_PADDING
         width: area.width.saturating_sub(2), // Left + right padding
         height: textarea_inner_height,
     };
@@ -149,19 +157,21 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
     let go_button_text = "⏎ Go".to_string();
 
     // Create button spans with focus styling using theme - exactly like main.rs
-    let repo_button = if is_selected && matches!(card.focus_element, FocusElement::RepositorySelector) {
-        Span::styled(format!(" {} ", repo_button_text), theme.focused_style())
-    } else {
-        Span::styled(
-            format!(" {} ", repo_button_text),
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
+    let repo_button =
+        if is_selected && matches!(card.focus_element, FocusElement::RepositorySelector) {
+            Span::styled(format!(" {} ", repo_button_text), theme.focused_style())
+        } else {
+            Span::styled(
+                format!(" {} ", repo_button_text),
+                Style::default()
+                    .fg(theme.primary)
+                    .bg(theme.surface)
+                    .add_modifier(Modifier::BOLD),
+            )
+        };
 
-    let branch_button = if is_selected && matches!(card.focus_element, FocusElement::BranchSelector) {
+    let branch_button = if is_selected && matches!(card.focus_element, FocusElement::BranchSelector)
+    {
         Span::styled(format!(" {} ", branch_button_text), theme.focused_style())
     } else {
         Span::styled(
@@ -173,7 +183,8 @@ pub fn render_draft_card_content(frame: &mut Frame<'_>, area: Rect, card: &TaskE
         )
     };
 
-    let models_button = if is_selected && matches!(card.focus_element, FocusElement::ModelSelector) {
+    let models_button = if is_selected && matches!(card.focus_element, FocusElement::ModelSelector)
+    {
         Span::styled(format!(" {} ", models_button_text), theme.focused_style())
     } else {
         Span::styled(

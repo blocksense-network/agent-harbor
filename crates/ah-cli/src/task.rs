@@ -1,8 +1,8 @@
 use crate::agent::start::WorkingCopyMode;
 use crate::sandbox::{parse_bool_flag, prepare_workspace_with_fallback};
 use ah_core::{
-    devshell_names, edit_content_interactive, parse_push_to_remote_flag, AgentTasks,
-    DatabaseManager, EditorError, PushHandler, PushOptions,
+    AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, devshell_names,
+    edit_content_interactive, parse_push_to_remote_flag,
 };
 use ah_fs_snapshots::PreparedWorkspace;
 use ah_local_db::{FsSnapshotRecord, SessionRecord, TaskRecord};
@@ -94,7 +94,10 @@ impl TestExecutionContext {
         // Initialize git repository using the shared helper
         // Skip git initialization if it fails (for CI environments without git)
         if let Err(e) = ah_repo::test_helpers::initialize_git_repo(&repo_dir) {
-            tracing::warn!("Failed to initialize git repo, continuing without git: {}", e);
+            tracing::warn!(
+                "Failed to initialize git repo, continuing without git: {}",
+                e
+            );
             // Create a basic directory structure instead
             std::fs::create_dir_all(repo_dir.join(".git"))?;
             // Create a minimal git config
@@ -105,13 +108,19 @@ impl TestExecutionContext {
         let recording_path = repo_dir.join("test-recording.ahr");
 
         // Run ah agent record to capture ah agent start with mock agent and checkpoint-cmd
-        let scenario_path = get_workspace_root().join(format!("tests/tools/mock-agent/scenarios/{}.yaml", scenario_name));
+        let scenario_path = get_workspace_root().join(format!(
+            "tests/tools/mock-agent/scenarios/{}.yaml",
+            scenario_name
+        ));
 
         // Get the binary path
         let ah_binary_path = get_ah_binary_path();
         let scenario_path_str = scenario_path.to_str().unwrap();
         let workspace_path_str = repo_dir.to_str().unwrap();
-        let agent_flags_str = format!("--scenario {} --workspace {} --with-snapshots", scenario_path_str, workspace_path_str);
+        let agent_flags_str = format!(
+            "--scenario {} --workspace {} --with-snapshots",
+            scenario_path_str, workspace_path_str
+        );
         let command_args = &[
             "--",
             ah_binary_path.to_str().unwrap(),
@@ -135,12 +144,19 @@ impl TestExecutionContext {
 
         // The recording command should succeed
         if !record_status.success() {
-            anyhow::bail!("Recording failed for scenario '{}': {}", scenario_name, record_stderr);
+            anyhow::bail!(
+                "Recording failed for scenario '{}': {}",
+                scenario_name,
+                record_stderr
+            );
         }
 
         // Verify the recording file was created
         if !recording_path.exists() {
-            anyhow::bail!("Recording file not created for scenario '{}'", scenario_name);
+            anyhow::bail!(
+                "Recording file not created for scenario '{}'",
+                scenario_name
+            );
         }
 
         // Store the scenario data
@@ -423,7 +439,7 @@ impl TaskCreateArgs {
             prompt: task_content.clone(),
             repo_url: None, // TODO: Get from VCS remote URL
             branch: Some(actual_branch_name.clone()),
-            commit: None, // TODO: Get current commit hash
+            commit: None,                         // TODO: Get current commit hash
             delivery: Some("branch".to_string()), // Default delivery method
             instances: Some(1),
             labels: None,
@@ -447,7 +463,9 @@ impl TaskCreateArgs {
         // 3. Associate the snapshot with the session for later time travel
         // 4. Store snapshot metadata in the database
         if !self.non_interactive {
-            println!("Note: Automatic snapshot creation for time travel not yet implemented in this milestone");
+            println!(
+                "Note: Automatic snapshot creation for time travel not yet implemented in this milestone"
+            );
             println!(
                 "When implemented, an initial snapshot will be created here for session '{}'",
                 actual_branch_name
@@ -600,7 +618,9 @@ impl TaskGetArgs {
         let tasks = AgentTasks::new(repo.root()).context("Failed to initialize agent tasks")?;
 
         // Get processed task content with workflows expanded
-        let (processed_text, env_vars, diagnostics) = tasks.agent_prompt_with_env().await
+        let (processed_text, env_vars, diagnostics) = tasks
+            .agent_prompt_with_env()
+            .await
             .context("Failed to process task with workflows")?;
 
         // Display diagnostics if any
@@ -1032,9 +1052,8 @@ mod tests {
 
     // Integration tests that replicate Ruby test_start_task.rb exactly
 
-
-    fn setup_git_repo_integration(
-    ) -> Result<(tempfile::TempDir, tempfile::TempDir, tempfile::TempDir)> {
+    fn setup_git_repo_integration()
+    -> Result<(tempfile::TempDir, tempfile::TempDir, tempfile::TempDir)> {
         use std::process::Command;
 
         // Set HOME to a temporary directory to avoid accessing user git/ssh config
@@ -1876,14 +1895,14 @@ exit {}
             WorkingCopyMode::InPlace,
             None,  // cwd
             false, // sandbox
-            None,                  // sandbox_type
-            None,                  // allow_network
-            None,                  // allow_containers
-            None,                  // allow_kvm
-            None,                  // seccomp
-            None,                  // seccomp_debug
-            &[],                   // mount_rw
-            &[],                   // overlay
+            None,  // sandbox_type
+            None,  // allow_network
+            None,  // allow_containers
+            None,  // allow_kvm
+            None,  // seccomp
+            None,  // seccomp_debug
+            &[],   // mount_rw
+            &[],   // overlay
             Some(ah_home_dir.path()),
             None, // No TUI testing for this test
             &[],  // No agent flags
@@ -1934,7 +1953,8 @@ exit {}
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         // Get the path to the scenario file
-        let scenario_path = get_workspace_root().join("tests/scenarios/agent_start_screenshot_test.yaml");
+        let scenario_path =
+            get_workspace_root().join("tests/scenarios/agent_start_screenshot_test.yaml");
 
         // Verify scenario file exists
         assert!(
@@ -1976,18 +1996,18 @@ exit {}
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_ASKPASS", "echo")
             .env("SSH_ASKPASS", "echo")
-            .env(
-                "PYTHONPATH",
-                {
-                    let mock_agent_src_path = format!("{}/tests/tools/mock-agent/src", get_workspace_root().display());
-                    let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
-                    if current_pythonpath.is_empty() {
-                        mock_agent_src_path
-                    } else {
-                        format!("{}:{}", mock_agent_src_path, current_pythonpath)
-                    }
-                },
-            )
+            .env("PYTHONPATH", {
+                let mock_agent_src_path = format!(
+                    "{}/tests/tools/mock-agent/src",
+                    get_workspace_root().display()
+                );
+                let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+                if current_pythonpath.is_empty() {
+                    mock_agent_src_path
+                } else {
+                    format!("{}:{}", mock_agent_src_path, current_pythonpath)
+                }
+            })
             .spawn()
             .await?;
 
@@ -2061,7 +2081,10 @@ exit {}
             .env("SSH_ASKPASS", "echo");
 
         // Set PYTHONPATH to find the mock agent (append to existing PYTHONPATH)
-        let mock_agent_path = get_workspace_root().join("tests/tools/mock-agent").to_string_lossy().to_string();
+        let mock_agent_path = get_workspace_root()
+            .join("tests/tools/mock-agent")
+            .to_string_lossy()
+            .to_string();
         let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
         let new_pythonpath = if current_pythonpath.is_empty() {
             mock_agent_path
@@ -2190,10 +2213,10 @@ exit {}
         if let Some(items) = branch_points["items"].as_array_mut() {
             items.retain(|item| {
                 if let Some(text) = item["text"].as_str() {
-                    !text.contains("DEBUG:") &&
-                    !text.contains("recorder.sock") &&
-                    !text.contains("AH_RECORDER_IPC_SOCKET") &&
-                    !text.contains("socket:")
+                    !text.contains("DEBUG:")
+                        && !text.contains("recorder.sock")
+                        && !text.contains("AH_RECORDER_IPC_SOCKET")
+                        && !text.contains("socket:")
                 } else {
                     true
                 }
@@ -2201,7 +2224,11 @@ exit {}
         }
 
         // Check if we have any snapshots in the output
-        let has_snapshots = branch_points["items"].as_array().unwrap().iter().any(|item| item["kind"] == "snapshot");
+        let has_snapshots = branch_points["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["kind"] == "snapshot");
         println!("Found snapshots in output: {}", has_snapshots);
 
         // For now, accept that IPC may not be working in test environment
@@ -2228,7 +2255,8 @@ exit {}
 
         // Get the shared test context
         let context = get_test_context();
-        let recording_path = context.get_or_create_ahr_file("recorder_ipc_viewer_integration")?.clone();
+        let recording_path =
+            context.get_or_create_ahr_file("recorder_ipc_viewer_integration")?.clone();
 
         // Set up the replay command with the viewer
         let ah_binary_path = get_ah_binary_path();
@@ -2236,9 +2264,9 @@ exit {}
             .arg("agent")
             .arg("replay")
             .arg(recording_path.to_str().unwrap())
-            .arg("--viewer")  // Interactive viewer mode
-            .width(120)       // Wide terminal for better testing
-            .height(40);      // Tall terminal for scroll testing
+            .arg("--viewer") // Interactive viewer mode
+            .width(120) // Wide terminal for better testing
+            .height(40); // Tall terminal for scroll testing
 
         // Spawn the viewer process
         let mut runner = program.spawn().await.context("Failed to spawn viewer process")?;
@@ -2252,11 +2280,18 @@ exit {}
         // Check that we have content (should have lines from the recorded session)
         let screen = runner.screen();
         let initial_screen_content = screen.contents();
-        println!("Initial screen content length: {}", initial_screen_content.len());
-        assert!(!initial_screen_content.trim().is_empty(), "Viewer should display content");
+        println!(
+            "Initial screen content length: {}",
+            initial_screen_content.len()
+        );
+        assert!(
+            !initial_screen_content.trim().is_empty(),
+            "Viewer should display content"
+        );
 
         // Compare with golden snapshot for initial screen
-        let initial_golden = load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "initial")?;
+        let initial_golden =
+            load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "initial")?;
         compare_with_viewer_golden_snapshot(&initial_screen_content, &initial_golden, "initial")?;
 
         // Simulate pressing up arrow a few times to move the instruction UI
@@ -2270,11 +2305,19 @@ exit {}
         // Read screen after activating instruction overlay
         runner.read_and_parse().await.context("Failed to read screen after 'i' key")?;
         let instruction_overlay_content = runner.screen().contents();
-        println!("Instruction overlay screen content length: {}", instruction_overlay_content.len());
+        println!(
+            "Instruction overlay screen content length: {}",
+            instruction_overlay_content.len()
+        );
 
         // Compare with golden snapshot for instruction overlay
-        let instruction_golden = load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "instruction_overlay")?;
-        compare_with_viewer_golden_snapshot(&instruction_overlay_content, &instruction_golden, "instruction_overlay")?;
+        let instruction_golden =
+            load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "instruction_overlay")?;
+        compare_with_viewer_golden_snapshot(
+            &instruction_overlay_content,
+            &instruction_golden,
+            "instruction_overlay",
+        )?;
 
         // Press up arrow a few times (should move cursor/selection within the overlay)
         // Send ANSI escape sequences for arrow keys
@@ -2285,17 +2328,34 @@ exit {}
         }
 
         // Read the screen again to verify the instruction overlay is active and cursor moved
-        runner.read_and_parse().await.context("Failed to read screen after navigation")?;
+        runner
+            .read_and_parse()
+            .await
+            .context("Failed to read screen after navigation")?;
         let navigation_content = runner.screen().contents();
-        println!("Navigation screen content length: {}", navigation_content.len());
+        println!(
+            "Navigation screen content length: {}",
+            navigation_content.len()
+        );
 
         // Compare with golden snapshot for navigation state
-        let navigation_golden = load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "after_navigation")?;
-        compare_with_viewer_golden_snapshot(&navigation_content, &navigation_golden, "after_navigation")?;
+        let navigation_golden =
+            load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "after_navigation")?;
+        compare_with_viewer_golden_snapshot(
+            &navigation_content,
+            &navigation_golden,
+            "after_navigation",
+        )?;
 
         // Verify the content changed (instruction overlay should be visible and cursor moved)
-        assert_ne!(initial_screen_content, instruction_overlay_content, "Screen content should change when instruction overlay is active");
-        assert_ne!(instruction_overlay_content, navigation_content, "Screen content should change after navigation");
+        assert_ne!(
+            initial_screen_content, instruction_overlay_content,
+            "Screen content should change when instruction overlay is active"
+        );
+        assert_ne!(
+            instruction_overlay_content, navigation_content,
+            "Screen content should change after navigation"
+        );
 
         // Exit the instruction overlay
         runner.send("\x1b").await.context("Failed to send ESC key")?; // ANSI escape for ESC
@@ -2306,7 +2366,8 @@ exit {}
         let after_esc_content = runner.screen().contents();
 
         // Compare with golden snapshot for after ESC state
-        let after_esc_golden = load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "after_esc")?;
+        let after_esc_golden =
+            load_viewer_golden_snapshot("recorder_ipc_viewer_integration", "after_esc")?;
         compare_with_viewer_golden_snapshot(&after_esc_content, &after_esc_golden, "after_esc")?;
 
         // Now send 'q' to quit the application
@@ -2378,7 +2439,11 @@ exit {}
             let new_pythonpath = if current_pythonpath.is_empty() {
                 mock_agent_path.to_string_lossy().to_string()
             } else {
-                format!("{}:{}", mock_agent_path.to_string_lossy(), current_pythonpath)
+                format!(
+                    "{}:{}",
+                    mock_agent_path.to_string_lossy(),
+                    current_pythonpath
+                )
             };
             cmd.env("PYTHONPATH", new_pythonpath);
 
@@ -2407,7 +2472,6 @@ exit {}
         if let Some(cwd_path) = cwd {
             cmd.arg("--cwd").arg(cwd_path);
         }
-
 
         // Add sandbox options if enabled
         if sandbox {
@@ -2467,7 +2531,9 @@ exit {}
             Ok(true)
         } else {
             // Agent didn't run (expected if daemon not available)
-            eprintln!("⚠️  Agent did not execute (likely due to missing daemon), but sandbox execution was attempted");
+            eprintln!(
+                "⚠️  Agent did not execute (likely due to missing daemon), but sandbox execution was attempted"
+            );
             Ok(false)
         }
     }
@@ -2513,7 +2579,9 @@ exit {}
                             "⚠️  Could not verify snapshots (daemon may not be running): {}",
                             e
                         );
-                        eprintln!("✓ Agent execution completed successfully, but snapshot verification skipped");
+                        eprintln!(
+                            "✓ Agent execution completed successfully, but snapshot verification skipped"
+                        );
                     }
                 }
             }
@@ -2623,10 +2691,7 @@ exit {}
     ) -> Result<std::process::Child> {
         use std::process::Command;
 
-        let mock_agent_dir = get_workspace_root()
-            .join("tests")
-            .join("tools")
-            .join("mock-agent");
+        let mock_agent_dir = get_workspace_root().join("tests").join("tools").join("mock-agent");
 
         let playbook_path = mock_agent_dir.join("examples").join("comprehensive_playbook.json");
 
@@ -2789,7 +2854,10 @@ exit {}
                 .arg("snapshots")
                 .current_dir(&repo_dir)
                 .env("AH_HOME", ah_home_dir.path())
-                .env("CODEX_API_BASE", format!("http://127.0.0.1:{}/v1", server_port))
+                .env(
+                    "CODEX_API_BASE",
+                    format!("http://127.0.0.1:{}/v1", server_port),
+                )
                 .env("CODEX_API_KEY", "mock-key")
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
@@ -2813,7 +2881,9 @@ exit {}
             if codex_success {
                 eprintln!("✓ Codex created expected files and content");
             } else {
-                eprintln!("⚠️  Codex execution verification inconclusive (may be expected for external configuration)");
+                eprintln!(
+                    "⚠️  Codex execution verification inconclusive (may be expected for external configuration)"
+                );
             }
 
             Ok(())
@@ -2865,7 +2935,10 @@ exit {}
                 .arg("sandbox")
                 .current_dir(repo_dir.path())
                 .env("AH_HOME", ah_home_dir.path())
-                .env("CODEX_API_BASE", format!("http://127.0.0.1:{}/v1", server_port))
+                .env(
+                    "CODEX_API_BASE",
+                    format!("http://127.0.0.1:{}/v1", server_port),
+                )
                 .env("CODEX_API_KEY", "mock-key")
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
@@ -2889,7 +2962,9 @@ exit {}
             if codex_success {
                 eprintln!("✓ Codex created expected files and content");
             } else {
-                eprintln!("⚠️  Codex execution verification inconclusive (may be expected for external configuration)");
+                eprintln!(
+                    "⚠️  Codex execution verification inconclusive (may be expected for external configuration)"
+                );
             }
 
             Ok(())
@@ -3065,7 +3140,10 @@ exit {}
                 .arg("in-place")
                 .current_dir(repo_dir.path())
                 .env("AH_HOME", ah_home_dir.path())
-                .env("CODEX_API_BASE", format!("http://127.0.0.1:{}/v1", server_port))
+                .env(
+                    "CODEX_API_BASE",
+                    format!("http://127.0.0.1:{}/v1", server_port),
+                )
                 .env("CODEX_API_KEY", "mock-key")
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
@@ -3090,7 +3168,9 @@ exit {}
                 let metadata = std::fs::metadata(&recording_file)?;
                 eprintln!("✓ Recording file size: {} bytes", metadata.len());
             } else {
-                eprintln!("⚠️  Recording file not created (may be expected if Codex not available)");
+                eprintln!(
+                    "⚠️  Recording file not created (may be expected if Codex not available)"
+                );
             }
 
             // Test replay functionality if recording exists
@@ -3164,8 +3244,8 @@ fn run_ah_agent_record_integration(
 ) -> Result<(std::process::ExitStatus, String, String)> {
     use std::process::Command;
 
-        // Build command
-        let binary_path = get_ah_binary_path();
+    // Build command
+    let binary_path = get_ah_binary_path();
 
     let mut cmd = Command::new(&binary_path);
     cmd.args(["agent", "record", "--out-file", output_file])
@@ -3176,39 +3256,43 @@ fn run_ah_agent_record_integration(
         .env("GIT_ASKPASS", "echo")
         .env("SSH_ASKPASS", "echo");
 
-        // Inherit the parent's environment first
-        for (key, value) in std::env::vars() {
-            cmd.env(key, value);
-        }
+    // Inherit the parent's environment first
+    for (key, value) in std::env::vars() {
+        cmd.env(key, value);
+    }
 
-        // Override specific environment variables for the test
-        // Set AH_HOME for database operations
-        cmd.env("AH_HOME", ah_home);
+    // Override specific environment variables for the test
+    // Set AH_HOME for database operations
+    cmd.env("AH_HOME", ah_home);
 
-        // Append to PYTHONPATH for mock agent
-        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent() // crates/
-            .unwrap()
-            .parent() // workspace root
-            .unwrap();
-        let mock_agent_path = workspace_root.join("tests/tools/mock-agent");
-        let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
-        let new_pythonpath = if current_pythonpath.is_empty() {
-            mock_agent_path.to_string_lossy().to_string()
-        } else {
-            format!("{}:{}", mock_agent_path.to_string_lossy(), current_pythonpath)
-        };
-        cmd.env("PYTHONPATH", new_pythonpath);
+    // Append to PYTHONPATH for mock agent
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent() // crates/
+        .unwrap()
+        .parent() // workspace root
+        .unwrap();
+    let mock_agent_path = workspace_root.join("tests/tools/mock-agent");
+    let current_pythonpath = std::env::var("PYTHONPATH").unwrap_or_default();
+    let new_pythonpath = if current_pythonpath.is_empty() {
+        mock_agent_path.to_string_lossy().to_string()
+    } else {
+        format!(
+            "{}:{}",
+            mock_agent_path.to_string_lossy(),
+            current_pythonpath
+        )
+    };
+    cmd.env("PYTHONPATH", new_pythonpath);
 
-        // Set PATH to include the ah binary for checkpoint commands
-        let ah_binary_dir = workspace_root.join("target/debug");
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let new_path = if current_path.is_empty() {
-            ah_binary_dir.to_string_lossy().to_string()
-        } else {
-            format!("{}:{}", ah_binary_dir.to_string_lossy(), current_path)
-        };
-        cmd.env("PATH", new_path);
+    // Set PATH to include the ah binary for checkpoint commands
+    let ah_binary_dir = workspace_root.join("target/debug");
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let new_path = if current_path.is_empty() {
+        ah_binary_dir.to_string_lossy().to_string()
+    } else {
+        format!("{}:{}", ah_binary_dir.to_string_lossy(), current_path)
+    };
+    cmd.env("PATH", new_path);
 
     let output = cmd.output()?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -3293,8 +3377,12 @@ fn load_golden_snapshot(scenario_name: &str) -> Result<serde_json::Value> {
     let content = std::fs::read_to_string(&golden_path)
         .with_context(|| format!("Failed to read golden snapshot: {}", golden_path.display()))?;
 
-    serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse golden snapshot JSON: {}", golden_path.display()))
+    serde_json::from_str(&content).with_context(|| {
+        format!(
+            "Failed to parse golden snapshot JSON: {}",
+            golden_path.display()
+        )
+    })
 }
 
 /// Save golden snapshot for future comparison
@@ -3334,8 +3422,12 @@ fn load_viewer_golden_snapshot(scenario_name: &str, step_name: &str) -> Result<S
         .join("viewer_golden_snapshots")
         .join(format!("{}_{}.txt", scenario_name, step_name));
 
-    std::fs::read_to_string(&golden_path)
-        .with_context(|| format!("Failed to read viewer golden snapshot: {}", golden_path.display()))
+    std::fs::read_to_string(&golden_path).with_context(|| {
+        format!(
+            "Failed to read viewer golden snapshot: {}",
+            golden_path.display()
+        )
+    })
 }
 
 /// Compare actual screen content with golden snapshot, allowing for some flexibility
@@ -3349,8 +3441,13 @@ fn compare_with_viewer_golden_snapshot(actual: &str, golden: &str, step_name: &s
         // Allow some tolerance for dynamic content
         let len_diff = (actual_lines.len() as i32 - golden_lines.len() as i32).abs();
         if len_diff > 5 {
-            anyhow::bail!("Screen line count mismatch for {}: actual={}, golden={}, diff={}",
-                step_name, actual_lines.len(), golden_lines.len(), len_diff);
+            anyhow::bail!(
+                "Screen line count mismatch for {}: actual={}, golden={}, diff={}",
+                step_name,
+                actual_lines.len(),
+                golden_lines.len(),
+                len_diff
+            );
         }
     }
 
@@ -3367,7 +3464,8 @@ fn compare_with_viewer_golden_snapshot(actual: &str, golden: &str, step_name: &s
            golden_line.contains("ion_ah_") || golden_line.contains("_176046") ||
            // Also skip status lines that might have timestamps or dynamic content
            actual_line.contains("Press 'q'") || actual_line.contains("ESC") ||
-           actual_line.contains("Snapshot") && actual_line.contains("at") {
+           actual_line.contains("Snapshot") && actual_line.contains("at")
+        {
             continue;
         }
 
@@ -3408,8 +3506,12 @@ fn save_viewer_golden_snapshot(scenario_name: &str, step_name: &str, content: &s
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(&golden_path, content)
-        .with_context(|| format!("Failed to write viewer golden snapshot: {}", golden_path.display()))?;
+    std::fs::write(&golden_path, content).with_context(|| {
+        format!(
+            "Failed to write viewer golden snapshot: {}",
+            golden_path.display()
+        )
+    })?;
 
     println!("Saved golden snapshot: {}", golden_path.display());
     Ok(())
@@ -3426,13 +3528,22 @@ fn reset_ah_home() -> Result<tempfile::TempDir> {
 }
 
 /// Compare actual output with golden snapshot, allowing for some flexibility
-fn compare_with_golden_snapshot(actual: &serde_json::Value, golden: &serde_json::Value) -> Result<()> {
+fn compare_with_golden_snapshot(
+    actual: &serde_json::Value,
+    golden: &serde_json::Value,
+) -> Result<()> {
     // Basic structure checks
     assert!(actual.is_object(), "Actual output should be an object");
     assert!(golden.is_object(), "Golden snapshot should be an object");
 
-    assert!(actual.get("items").is_some(), "Actual should have items array");
-    assert!(golden.get("items").is_some(), "Golden should have items array");
+    assert!(
+        actual.get("items").is_some(),
+        "Actual should have items array"
+    );
+    assert!(
+        golden.get("items").is_some(),
+        "Golden should have items array"
+    );
 
     let actual_items = actual["items"].as_array().unwrap();
     let golden_items = golden["items"].as_array().unwrap();
@@ -3442,20 +3553,41 @@ fn compare_with_golden_snapshot(actual: &serde_json::Value, golden: &serde_json:
     assert!(!golden_items.is_empty(), "Golden should have items");
 
     // Check that the sequence of item types matches (line/snapshot order)
-    assert_eq!(actual_items.len(), golden_items.len(),
-        "Item count mismatch: actual={}, golden={}", actual_items.len(), golden_items.len());
+    assert_eq!(
+        actual_items.len(),
+        golden_items.len(),
+        "Item count mismatch: actual={}, golden={}",
+        actual_items.len(),
+        golden_items.len()
+    );
 
-    for (i, (actual_item, golden_item)) in actual_items.iter().zip(golden_items.iter()).enumerate() {
+    for (i, (actual_item, golden_item)) in actual_items.iter().zip(golden_items.iter()).enumerate()
+    {
         // The kinds should match in the same order
-        assert_eq!(actual_item["kind"], golden_item["kind"],
-            "Item {} kind mismatch: actual={}, golden={}", i, actual_item["kind"], golden_item["kind"]);
+        assert_eq!(
+            actual_item["kind"], golden_item["kind"],
+            "Item {} kind mismatch: actual={}, golden={}",
+            i, actual_item["kind"], golden_item["kind"]
+        );
 
         // Check that all actual items have the right structure
         if actual_item["kind"] == "snapshot" {
             // Check snapshot has required fields (but don't compare IDs and timestamps as they're runtime-dependent)
-            assert!(actual_item.get("id").is_some(), "Snapshot {} should have id", i);
-            assert!(actual_item.get("anchor_byte").is_some(), "Snapshot {} should have anchor_byte", i);
-            assert!(actual_item.get("ts_ns").is_some(), "Snapshot {} should have ts_ns", i);
+            assert!(
+                actual_item.get("id").is_some(),
+                "Snapshot {} should have id",
+                i
+            );
+            assert!(
+                actual_item.get("anchor_byte").is_some(),
+                "Snapshot {} should have anchor_byte",
+                i
+            );
+            assert!(
+                actual_item.get("ts_ns").is_some(),
+                "Snapshot {} should have ts_ns",
+                i
+            );
 
             // For snapshots, only compare anchor_byte (position) and kind/label, not ID or timestamp
             if golden_item["kind"] == "snapshot" {
@@ -3467,19 +3599,43 @@ fn compare_with_golden_snapshot(actual: &serde_json::Value, golden: &serde_json:
                 } else {
                     golden_anchor - actual_anchor
                 };
-                assert!(diff <= 10, "Snapshot {} anchor_byte difference too large: actual={}, golden={}, diff={}",
-                    i, actual_anchor, golden_anchor, diff);
+                assert!(
+                    diff <= 10,
+                    "Snapshot {} anchor_byte difference too large: actual={}, golden={}, diff={}",
+                    i,
+                    actual_anchor,
+                    golden_anchor,
+                    diff
+                );
 
-                assert_eq!(actual_item.get("label"), golden_item.get("label"),
-                    "Snapshot {} label mismatch: actual={:?}, golden={:?}", i, actual_item.get("label"), golden_item.get("label"));
+                assert_eq!(
+                    actual_item.get("label"),
+                    golden_item.get("label"),
+                    "Snapshot {} label mismatch: actual={:?}, golden={:?}",
+                    i,
+                    actual_item.get("label"),
+                    golden_item.get("label")
+                );
                 // Skip ID and timestamp comparison as they're runtime-dependent
                 continue;
             }
         } else if actual_item["kind"] == "line" {
             // Check line has required fields
-            assert!(actual_item.get("index").is_some(), "Line {} should have index", i);
-            assert!(actual_item.get("text").is_some(), "Line {} should have text", i);
-            assert!(actual_item.get("last_write_byte").is_some(), "Line {} should have last_write_byte", i);
+            assert!(
+                actual_item.get("index").is_some(),
+                "Line {} should have index",
+                i
+            );
+            assert!(
+                actual_item.get("text").is_some(),
+                "Line {} should have text",
+                i
+            );
+            assert!(
+                actual_item.get("last_write_byte").is_some(),
+                "Line {} should have last_write_byte",
+                i
+            );
 
             // Check that line text matches between actual and golden
             let actual_text = actual_item["text"].as_str().unwrap();
@@ -3487,23 +3643,35 @@ fn compare_with_golden_snapshot(actual: &serde_json::Value, golden: &serde_json:
 
             // For lines that are likely to contain runtime-dependent values, skip exact comparison
             // This includes temp directory paths and snapshot names with PIDs/timestamps
-            if actual_text.contains("/var/") || actual_text.contains("/tmp") || actual_text.contains("/nix-shell") ||
-               actual_text.contains("ion_ah_") || actual_text.contains("_176046") ||
-               golden_text.contains("<TEMP_DIR>") || golden_text.contains("<TEMP>") ||
-               golden_text.contains("ion_ah_") || golden_text.contains("_176046") {
+            if actual_text.contains("/var/")
+                || actual_text.contains("/tmp")
+                || actual_text.contains("/nix-shell")
+                || actual_text.contains("ion_ah_")
+                || actual_text.contains("_176046")
+                || golden_text.contains("<TEMP_DIR>")
+                || golden_text.contains("<TEMP>")
+                || golden_text.contains("ion_ah_")
+                || golden_text.contains("_176046")
+            {
                 // Skip exact comparison for lines with runtime-dependent content
                 // The important thing is that the structure is correct and snapshots are present
                 continue;
             } else {
                 // Exact match for lines that should be deterministic
-                assert_eq!(actual_text, golden_text,
-                    "Line {} text mismatch: actual='{}', golden='{}'", i, actual_text, golden_text);
+                assert_eq!(
+                    actual_text, golden_text,
+                    "Line {} text mismatch: actual='{}', golden='{}'",
+                    i, actual_text, golden_text
+                );
             }
         }
     }
 
     // Check total_bytes exists and is reasonable
-    assert!(actual.get("total_bytes").is_some(), "Should have total_bytes");
+    assert!(
+        actual.get("total_bytes").is_some(),
+        "Should have total_bytes"
+    );
     let total_bytes = actual["total_bytes"].as_u64().unwrap();
     assert!(total_bytes > 0, "total_bytes should be > 0");
 
@@ -3512,7 +3680,10 @@ fn compare_with_golden_snapshot(actual: &serde_json::Value, golden: &serde_json:
     for item in actual_items {
         if item["kind"] == "snapshot" {
             let anchor = item["anchor_byte"].as_u64().unwrap();
-            assert!(anchor >= last_anchor, "Snapshot anchor_byte should be monotonically increasing");
+            assert!(
+                anchor >= last_anchor,
+                "Snapshot anchor_byte should be monotonically increasing"
+            );
             last_anchor = anchor;
         }
     }

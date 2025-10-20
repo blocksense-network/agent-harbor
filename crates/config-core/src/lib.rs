@@ -4,17 +4,17 @@
 //! extracting configuration from various sources (files, environment variables, CLI flags).
 //! All operations work on serde_json::Value for field-agnostic processing.
 
-pub mod schema;
-pub mod loader;
-pub mod env;
-pub mod paths;
-pub mod merge;
 pub mod enforcement;
-pub mod provenance;
+pub mod env;
 pub mod extract;
+pub mod loader;
+pub mod merge;
+pub mod paths;
+pub mod provenance;
+pub mod schema;
 
-pub use schema::SchemaRoot;
 pub use provenance::{Scope, Scope::*};
+pub use schema::SchemaRoot;
 
 use anyhow::Result;
 use serde_json::Value as J;
@@ -52,17 +52,25 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
     };
 
     // Load all layers, keeping them alive for the merge process
-    let user_layer = paths.user.exists()
+    let user_layer = paths
+        .user
+        .exists()
         .then(|| loader::read_layer_from_file(&paths.user, User).ok())
         .flatten();
-    let repo_layer = paths.repo.as_ref()
+    let repo_layer = paths
+        .repo
+        .as_ref()
         .and_then(|p| p.exists().then(|| loader::read_layer_from_file(p, Repo).ok()))
         .flatten();
-    let repo_user_layer = paths.repo_user.as_ref()
+    let repo_user_layer = paths
+        .repo_user
+        .as_ref()
         .and_then(|p| p.exists().then(|| loader::read_layer_from_file(p, RepoUser).ok()))
         .flatten();
     let env_layer = env::env_overlay()?;
-    let cli_config_layer = paths.cli_config.as_ref()
+    let cli_config_layer = paths
+        .cli_config
+        .as_ref()
         .and_then(|p| p.exists().then(|| loader::read_layer_from_file(p, CliConfig).ok()))
         .flatten();
     let flags_layer = env::flags_overlay(flag_sets);
@@ -98,16 +106,28 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
     // Mark enforced keys in provenance
     prov.enforced.extend(enforcement.keys.into_iter());
 
-    Ok(Resolved { json, provenance: prov })
+    Ok(Resolved {
+        json,
+        provenance: prov,
+    })
 }
 
 /// Record provenance for all values in a layer
-fn record_layer_provenance(layer: &J, scope: Scope, prov: &mut provenance::Provenance, prefix: &str) {
+fn record_layer_provenance(
+    layer: &J,
+    scope: Scope,
+    prov: &mut provenance::Provenance,
+    prefix: &str,
+) {
     use serde_json::Value::*;
     match layer {
         Object(obj) => {
             for (k, v) in obj {
-                let pfx = if prefix.is_empty() { k.clone() } else { format!("{}.{}", prefix, k) };
+                let pfx = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{}", prefix, k)
+                };
                 record_layer_provenance(v, scope, prov, &pfx);
             }
         }
@@ -227,7 +247,10 @@ mod tests {
         provenance::record_diff(&before, &after, Scope::User, &mut prov, "");
 
         assert_eq!(prov.winner["key"], Scope::User);
-        assert_eq!(prov.changes["key"][0], (Scope::User, serde_json::json!("new")));
+        assert_eq!(
+            prov.changes["key"][0],
+            (Scope::User, serde_json::json!("new"))
+        );
     }
 
     #[test]
@@ -279,8 +302,12 @@ mod tests {
         assert_eq!(ui_root.ui, Some(ah_config_types::ui::Ui::Tui));
         assert_eq!(ui_root.tui_font_style, Some("nerdfont".to_string()));
 
-        let repo_config: ah_config_types::repo::RepoConfig = extract::get_at(&json, "repo").unwrap();
-        assert_eq!(repo_config.supported_agents, Some(ah_config_types::repo::SupportedAgents::All));
+        let repo_config: ah_config_types::repo::RepoConfig =
+            extract::get_at(&json, "repo").unwrap();
+        assert_eq!(
+            repo_config.supported_agents,
+            Some(ah_config_types::repo::SupportedAgents::All)
+        );
         assert_eq!(repo_config.init.task_runner, Some("just".to_string()));
     }
 
@@ -292,19 +319,27 @@ mod tests {
 
         // Create a temporary user config file
         let user_config_path = temp_dir.path().join("user_config.toml");
-        std::fs::write(&user_config_path, r#"
+        std::fs::write(
+            &user_config_path,
+            r#"
             ui = "tui"
             [repo]
             supported-agents = "all"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         // Create a repo config file
         let repo_config_path = repo_root.join(".agents").join("config.toml");
         std::fs::create_dir_all(repo_config_path.parent().unwrap()).unwrap();
-        std::fs::write(&repo_config_path, r#"
+        std::fs::write(
+            &repo_config_path,
+            r#"
             [repo.init]
             task-runner = "just"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
 
         // Create paths manually for testing
         let paths = paths::Paths {
@@ -325,7 +360,13 @@ mod tests {
         // Check provenance
         println!("Provenance winners: {:?}", resolved.provenance.winner);
         assert_eq!(resolved.provenance.winner.get("ui"), Some(&Scope::User));
-        assert_eq!(resolved.provenance.winner.get("repo.supported-agents"), Some(&Scope::User));
-        assert_eq!(resolved.provenance.winner.get("repo.init.task-runner"), Some(&Scope::Repo));
+        assert_eq!(
+            resolved.provenance.winner.get("repo.supported-agents"),
+            Some(&Scope::User)
+        );
+        assert_eq!(
+            resolved.provenance.winner.get("repo.init.task-runner"),
+            Some(&Scope::Repo)
+        );
     }
 }

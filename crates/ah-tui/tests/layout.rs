@@ -1,8 +1,8 @@
 //! Layout rendering tests for the TUI dashboard
 
-use ah_tui::{app::AppState, ViewModel};
-use ratatui::backend::TestBackend;
+use ah_tui::{ViewModel, app::AppState};
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use std::io::Result;
 
 /// Test that the dashboard renders correctly on different terminal sizes

@@ -1,7 +1,7 @@
 use ah_fs_snapshots::{
-    provider_for, FsSnapshotProvider, ProviderCapabilities, SnapshotProviderKind,
+    FsSnapshotProvider, ProviderCapabilities, SnapshotProviderKind, provider_for,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -282,7 +282,13 @@ impl AgentFsCommands {
                 // Check if we're running under `ah agent record` and should notify the recorder
                 if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
                     println!("DEBUG: Notifying recorder at socket: {}", ipc_socket);
-                    match Self::notify_recorder(&ipc_socket, snapshot_ref.id.parse::<u64>().unwrap_or(0), snapshot_ref.label.clone().unwrap_or_default()).await {
+                    match Self::notify_recorder(
+                        &ipc_socket,
+                        snapshot_ref.id.parse::<u64>().unwrap_or(0),
+                        snapshot_ref.label.clone().unwrap_or_default(),
+                    )
+                    .await
+                    {
                         Ok(_) => println!("DEBUG: Successfully notified recorder"),
                         Err(e) => println!("DEBUG: Failed to notify recorder: {}", e),
                     }
@@ -318,7 +324,12 @@ impl AgentFsCommands {
 
         // Check if we're running under `ah agent record` and should notify the recorder
         if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
-            Self::notify_recorder(&ipc_socket, snapshot_ref.id.parse::<u64>().unwrap_or(0), snapshot_ref.label.clone().unwrap_or_default()).await?;
+            Self::notify_recorder(
+                &ipc_socket,
+                snapshot_ref.id.parse::<u64>().unwrap_or(0),
+                snapshot_ref.label.clone().unwrap_or_default(),
+            )
+            .await?;
         }
 
         // Output the snapshot information in a format that the mock agent can parse

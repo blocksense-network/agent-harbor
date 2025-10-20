@@ -30,33 +30,39 @@ impl Default for ProxyConfig {
     fn default() -> Self {
         let mut providers = HashMap::new();
         // Add OpenRouter provider for Anthropic -> OpenRouter routing
-        providers.insert("openrouter".to_string(), ProviderConfig {
-            name: "openrouter".to_string(),
-            base_url: "https://openrouter.ai/api/v1".to_string(),
-            api_key: std::env::var("OPENROUTER_API_KEY").ok(),
-            headers: HashMap::new(),
-            models: vec![
-                "anthropic/claude-3-haiku".to_string(),
-                "anthropic/claude-3-sonnet".to_string(),
-                "anthropic/claude-3-opus".to_string(),
-                "anthropic/claude-3.5-sonnet".to_string(),
-            ],
-            weight: 1,
-            rate_limit_rpm: Some(1000), // OpenRouter rate limit
-            timeout_seconds: Some(60),
-        });
+        providers.insert(
+            "openrouter".to_string(),
+            ProviderConfig {
+                name: "openrouter".to_string(),
+                base_url: "https://openrouter.ai/api/v1".to_string(),
+                api_key: std::env::var("OPENROUTER_API_KEY").ok(),
+                headers: HashMap::new(),
+                models: vec![
+                    "anthropic/claude-3-haiku".to_string(),
+                    "anthropic/claude-3-sonnet".to_string(),
+                    "anthropic/claude-3-opus".to_string(),
+                    "anthropic/claude-3.5-sonnet".to_string(),
+                ],
+                weight: 1,
+                rate_limit_rpm: Some(1000), // OpenRouter rate limit
+                timeout_seconds: Some(60),
+            },
+        );
 
         // Add a default mock provider for testing
-        providers.insert("mock".to_string(), ProviderConfig {
-            name: "mock".to_string(),
-            base_url: "http://mock-provider".to_string(),
-            api_key: None,
-            headers: HashMap::new(),
-            models: vec!["gpt-3.5-turbo".to_string()],
-            weight: 1,
-            rate_limit_rpm: None,
-            timeout_seconds: None,
-        });
+        providers.insert(
+            "mock".to_string(),
+            ProviderConfig {
+                name: "mock".to_string(),
+                base_url: "http://mock-provider".to_string(),
+                api_key: None,
+                headers: HashMap::new(),
+                models: vec!["gpt-3.5-turbo".to_string()],
+                weight: 1,
+                rate_limit_rpm: None,
+                timeout_seconds: None,
+            },
+        );
 
         Self {
             server: ServerConfig::default(),
@@ -94,7 +100,7 @@ impl Default for ServerConfig {
         Self {
             host: "127.0.0.1".to_string(),
             port: 8080,
-            timeout_seconds: 300, // 5 minutes
+            timeout_seconds: 300,            // 5 minutes
             max_body_size: 10 * 1024 * 1024, // 10MB
             cors_enabled: true,
         }

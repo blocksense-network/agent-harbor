@@ -6,9 +6,9 @@
 //! TODO: Integrate with actual Helicone crates when available
 
 use crate::{
-    config::{ProxyConfig, ProviderConfig},
+    config::{ProviderConfig, ProxyConfig},
     error::{Error, Result},
-    proxy::{ProxyRequest, ProviderInfo},
+    proxy::{ProviderInfo, ProxyRequest},
 };
 
 // TODO: Replace with actual Helicone imports when available
@@ -49,11 +49,10 @@ impl DynamicRouter {
         let provider_name = self.select_provider_name(&model, &config).await;
 
         // Get provider configuration
-        let provider_config = config.providers.get(&provider_name).ok_or_else(|| {
-            Error::Routing {
+        let provider_config =
+            config.providers.get(&provider_name).ok_or_else(|| Error::Routing {
                 message: format!("Provider '{}' not found in configuration", provider_name),
-            }
-        })?;
+            })?;
 
         Ok(Self::provider_config_to_info(provider_config))
     }
@@ -69,9 +68,7 @@ impl DynamicRouter {
         for (pattern, provider) in &config.routing.model_routing {
             if pattern.contains('*') {
                 let regex_pattern = pattern.replace('*', ".*");
-                if regex::Regex::new(&regex_pattern)
-                    .map_or(false, |re| re.is_match(model))
-                {
+                if regex::Regex::new(&regex_pattern).map_or(false, |re| re.is_match(model)) {
                     return provider.clone();
                 }
             }

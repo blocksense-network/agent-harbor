@@ -87,8 +87,7 @@ pub struct AhrWriter {
 impl AhrWriter {
     /// Create a new writer with the given file path and config
     pub fn create<P: AsRef<Path>>(path: P, config: WriterConfig) -> Result<Self> {
-        let file = File::create(path.as_ref())
-            .context("Failed to create .ahr file")?;
+        let file = File::create(path.as_ref()).context("Failed to create .ahr file")?;
 
         debug!(
             path = ?path.as_ref(),
@@ -175,9 +174,7 @@ impl AhrWriter {
         // Serialize all records to a buffer
         let mut uncompressed = Vec::with_capacity(self.current_size);
         for record in &self.current_records {
-            record
-                .write_to(&mut uncompressed)
-                .context("Failed to serialize record")?;
+            record.write_to(&mut uncompressed).context("Failed to serialize record")?;
         }
 
         let uncompressed_len = uncompressed.len();
@@ -189,33 +186,23 @@ impl AhrWriter {
             ..Default::default()
         };
 
-        brotli::BrotliCompress(
-            &mut &uncompressed[..],
-            &mut compressed,
-            &params,
-        )
-        .context("Brotli compression failed")?;
+        brotli::BrotliCompress(&mut &uncompressed[..], &mut compressed, &params)
+            .context("Brotli compression failed")?;
 
         let compressed_len = compressed.len();
 
         // Build and write block header
-        let mut header = AhrBlockHeader::new(
-            self.current_start_ts.unwrap(),
-            self.current_start_byte_off,
-        );
+        let mut header =
+            AhrBlockHeader::new(self.current_start_ts.unwrap(), self.current_start_byte_off);
         header.uncompressed_len = uncompressed_len as u32;
         header.compressed_len = compressed_len as u32;
         header.record_count = self.current_records.len() as u32;
         header.set_last_block(is_final);
 
-        header
-            .write_to(&mut self.file)
-            .context("Failed to write block header")?;
+        header.write_to(&mut self.file).context("Failed to write block header")?;
 
         // Write compressed payload
-        self.file
-            .write_all(&compressed)
-            .context("Failed to write compressed block")?;
+        self.file.write_all(&compressed).context("Failed to write compressed block")?;
 
         debug!(
             record_count = header.record_count,
@@ -294,11 +281,7 @@ mod tests {
 
         // Write some records
         let ts = now_ns();
-        writer.append_record(Record::Data(RecData::new(
-            ts,
-            0,
-            b"Hello, world!".to_vec(),
-        )))?;
+        writer.append_record(Record::Data(RecData::new(ts, 0, b"Hello, world!".to_vec())))?;
         writer.append_record(Record::Resize(RecResize::new(ts + 1000, 80, 24)))?;
 
         writer.finalize()?;
@@ -355,11 +338,7 @@ mod tests {
         writer.append_record(Record::Data(RecData::new(ts, 0, b"hello".to_vec())))?;
         assert_eq!(writer.global_byte_off(), 5);
 
-        writer.append_record(Record::Data(RecData::new(
-            ts + 1000,
-            5,
-            b" world".to_vec(),
-        )))?;
+        writer.append_record(Record::Data(RecData::new(ts + 1000, 5, b" world".to_vec())))?;
         assert_eq!(writer.global_byte_off(), 11);
 
         writer.finalize()?;

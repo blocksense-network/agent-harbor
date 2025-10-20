@@ -1,10 +1,10 @@
 //! Database integration for task and session persistence.
 
+use ah_local_db::models::{DraftRecord, DraftStore};
 use ah_local_db::{
     AgentRecord, AgentStore, Database, FsSnapshotRecord, FsSnapshotStore, RepoRecord, RepoStore,
     RuntimeStore, SessionRecord, SessionStore, TaskRecord, TaskStore,
 };
-use ah_local_db::models::{DraftRecord, DraftStore};
 use ah_repo::VcsRepo;
 use std::path::Path;
 
@@ -62,7 +62,9 @@ impl DatabaseManager {
         })?;
 
         let repo_store = RepoStore::new(&conn);
-        repo_store.list().map_err(|e| crate::Error::generic(format!("Failed to list repositories: {}", e)))
+        repo_store
+            .list()
+            .map_err(|e| crate::Error::generic(format!("Failed to list repositories: {}", e)))
     }
 
     /// Get repository by ID.
@@ -72,7 +74,9 @@ impl DatabaseManager {
         })?;
 
         let repo_store = RepoStore::new(&conn);
-        repo_store.get_by_id(id).map_err(|e| crate::Error::generic(format!("Failed to get repository by ID: {}", e)))
+        repo_store
+            .get_by_id(id)
+            .map_err(|e| crate::Error::generic(format!("Failed to get repository by ID: {}", e)))
     }
 
     /// List all draft tasks.
@@ -82,7 +86,9 @@ impl DatabaseManager {
         })?;
 
         let draft_store = DraftStore::new(&conn);
-        draft_store.list().map_err(|e| crate::Error::generic(format!("Failed to list drafts: {}", e)))
+        draft_store
+            .list()
+            .map_err(|e| crate::Error::generic(format!("Failed to list drafts: {}", e)))
     }
 
     /// Get draft by ID.
@@ -92,7 +98,9 @@ impl DatabaseManager {
         })?;
 
         let draft_store = DraftStore::new(&conn);
-        draft_store.get_by_id(id).map_err(|e| crate::Error::generic(format!("Failed to get draft by ID: {}", e)))
+        draft_store
+            .get_by_id(id)
+            .map_err(|e| crate::Error::generic(format!("Failed to get draft by ID: {}", e)))
     }
 
     /// Save a draft task (insert or update).
@@ -106,10 +114,14 @@ impl DatabaseManager {
         // Check if draft already exists
         if draft_store.get_by_id(&record.id)?.is_some() {
             // Update existing draft
-            draft_store.update(record).map_err(|e| crate::Error::generic(format!("Failed to update draft: {}", e)))
+            draft_store
+                .update(record)
+                .map_err(|e| crate::Error::generic(format!("Failed to update draft: {}", e)))
         } else {
             // Insert new draft
-            draft_store.insert(record).map_err(|e| crate::Error::generic(format!("Failed to insert draft: {}", e)))
+            draft_store
+                .insert(record)
+                .map_err(|e| crate::Error::generic(format!("Failed to insert draft: {}", e)))
         }
     }
 
@@ -120,7 +132,9 @@ impl DatabaseManager {
         })?;
 
         let draft_store = DraftStore::new(&conn);
-        draft_store.delete(id).map_err(|e| crate::Error::generic(format!("Failed to delete draft: {}", e)))
+        draft_store
+            .delete(id)
+            .map_err(|e| crate::Error::generic(format!("Failed to delete draft: {}", e)))
     }
 
     /// Get or create agent record.

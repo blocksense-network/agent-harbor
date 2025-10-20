@@ -1,4 +1,4 @@
-use ah_cli::{agent::fs::AgentFsCommands, AgentCommands, Cli, Commands, Parser};
+use ah_cli::{AgentCommands, Cli, Commands, Parser, agent::fs::AgentFsCommands};
 
 #[test]
 fn test_cli_parsing_init_session() {

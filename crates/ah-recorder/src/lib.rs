@@ -14,17 +14,27 @@ pub mod viewer;
 pub mod writer;
 
 // Re-export key types for convenience
-pub use format::{AhrBlockHeader, Record, RecData, RecResize, RecSnapshot, REC_DATA, REC_RESIZE, REC_SNAPSHOT};
-pub use ipc::{IpcClient, IpcCommand, IpcServer, IpcServerConfig, Request as IpcRequest, Response as IpcResponse};
+pub use format::{
+    AhrBlockHeader, REC_DATA, REC_RESIZE, REC_SNAPSHOT, RecData, RecResize, RecSnapshot, Record,
+};
+pub use ipc::{
+    IpcClient, IpcCommand, IpcServer, IpcServerConfig, Request as IpcRequest,
+    Response as IpcResponse,
+};
 pub use pty::{PtyEvent, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalState};
-pub use snapshots::{Snapshot, SnapshotsReader, SnapshotsWriter, SharedSnapshotsWriter, create_shared_writer};
-pub use viewer::{TerminalViewer, ViewerConfig, ViewerEventLoop, InstructionOverlay, SearchState};
+pub use snapshots::{
+    SharedSnapshotsWriter, Snapshot, SnapshotsReader, SnapshotsWriter, create_shared_writer,
+};
+pub use viewer::{InstructionOverlay, SearchState, TerminalViewer, ViewerConfig, ViewerEventLoop};
 pub use writer::{AhrWriter, WriterConfig, now_ns};
 
 pub mod reader;
 pub mod replay;
-pub use reader::{AhrReader, AhrReadEvent};
-pub use replay::{BranchPointsResult, InterleavedItem, ReplayResult, TerminalLine, create_branch_points, replay_ahr_file, interleave_by_position};
+pub use reader::{AhrReadEvent, AhrReader};
+pub use replay::{
+    BranchPointsResult, InterleavedItem, ReplayResult, TerminalLine, create_branch_points,
+    interleave_by_position, replay_ahr_file,
+};
 
 #[cfg(test)]
 mod tests {

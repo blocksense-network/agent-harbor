@@ -57,9 +57,7 @@ pub struct AgentVersion {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
     /// Agent is thinking/reasoning
-    Thinking {
-        content: String,
-    },
+    Thinking { content: String },
 
     /// Agent is using a tool
     ToolUse {
@@ -68,25 +66,16 @@ pub enum AgentEvent {
     },
 
     /// Agent produced a log message
-    Log {
-        level: String,
-        message: String,
-    },
+    Log { level: String, message: String },
 
     /// Agent produced output text
-    Output {
-        content: String,
-    },
+    Output { content: String },
 
     /// Agent encountered an error
-    Error {
-        message: String,
-    },
+    Error { message: String },
 
     /// Agent completed successfully
-    Complete {
-        summary: Option<String>,
-    },
+    Complete { summary: Option<String> },
 }
 
 /// Result type for agent operations
@@ -105,10 +94,7 @@ pub enum AgentError {
     VersionDetectionFailed(String),
 
     #[error("Unsupported agent version: {version} (expected {expected})")]
-    UnsupportedVersion {
-        version: String,
-        expected: String,
-    },
+    UnsupportedVersion { version: String, expected: String },
 
     #[error("Credential copy failed: {0}")]
     CredentialCopyFailed(String),
@@ -148,7 +134,10 @@ pub trait AgentExecutor: Send + Sync {
     /// The returned Command can then be used with `ah agent record` for session recording.
     ///
     /// Returns a configured Command ready to be spawned
-    async fn prepare_launch(&self, config: AgentLaunchConfig) -> AgentResult<tokio::process::Command>;
+    async fn prepare_launch(
+        &self,
+        config: AgentLaunchConfig,
+    ) -> AgentResult<tokio::process::Command>;
 
     /// Launch the agent with the given configuration
     ///
@@ -176,11 +165,7 @@ pub trait AgentExecutor: Send + Sync {
     ///
     /// This allows setting up a custom HOME directory with authentication
     /// credentials copied from the user's actual home directory.
-    async fn copy_credentials(
-        &self,
-        src_home: &Path,
-        dst_home: &Path,
-    ) -> AgentResult<()>;
+    async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()>;
 
     /// Export agent session from HOME directory to compressed archive
     ///
@@ -190,11 +175,7 @@ pub trait AgentExecutor: Send + Sync {
     /// Import agent session from compressed archive to HOME directory
     ///
     /// Extracts archive contents to populate the agent's HOME directory
-    async fn import_session(
-        &self,
-        session_archive: &Path,
-        home_dir: &Path,
-    ) -> AgentResult<()>;
+    async fn import_session(&self, session_archive: &Path, home_dir: &Path) -> AgentResult<()>;
 
     /// Parse raw agent output into normalized API events
     ///

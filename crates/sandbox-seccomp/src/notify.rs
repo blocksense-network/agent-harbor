@@ -1,14 +1,14 @@
 //! Seccomp notification handler with ADDFD injection.
 
+use crate::Result;
 use crate::error::Error;
 use crate::path_resolver::PathResolver;
-use crate::Result;
 use async_trait::async_trait;
 use libseccomp_sys::*;
 use sandbox_proto::{AuditEntry, FilesystemRequest, FilesystemResponse, Message};
 use std::os::unix::io::RawFd;
-use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 /// Supervisor client for communicating filesystem access decisions

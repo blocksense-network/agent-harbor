@@ -3,7 +3,7 @@
 use crate::protocol::{TestCommand, TestResponse};
 use anyhow::{Context, Result};
 use std::time::Duration;
-use tmq::{request, request_reply::RequestSender, AsZmqSocket, Context as TmqContext};
+use tmq::{AsZmqSocket, Context as TmqContext, request, request_reply::RequestSender};
 use tokio::time;
 
 /// Client for communicating with the TUI test runner from child processes

@@ -1,14 +1,14 @@
 //! Session management endpoints
 
+use crate::ServerResult;
 use crate::error::ServerError;
 use crate::models::SessionStore;
 use crate::state::AppState;
-use crate::ServerResult;
 use ah_rest_api_contract::*;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     response::sse::{Event, KeepAlive, Sse},
-    Json,
 };
 use futures::stream::{self, Stream};
 use std::convert::Infallible;

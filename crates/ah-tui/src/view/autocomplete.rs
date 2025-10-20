@@ -2,26 +2,26 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::path::Path;
 
 use crossbeam_channel::{Receiver, Sender};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nucleo::{
-    pattern::{CaseMatching, Normalization, Pattern},
     Config, Matcher, Utf32Str,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 use once_cell::sync::OnceCell;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState},
-    Frame,
 };
 use tui_textarea::TextArea;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -29,7 +29,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use super::{Theme};
+use super::Theme;
 
 const MAX_RESULTS: usize = 50_000; // High ceiling to allow full navigation through large result sets
 const MENU_WIDTH: u16 = 48;
@@ -636,13 +636,7 @@ impl InlineAutocomplete {
             0
         };
 
-        let popup = clip_popup(
-            screen,
-            caret.popup_x,
-            popup_y,
-            menu_width,
-            menu_height,
-        );
+        let popup = clip_popup(screen, caret.popup_x, popup_y, menu_width, menu_height);
 
         // Only render if the popup fits entirely within the screen
         if popup.y + popup.height <= screen.height && popup.x + popup.width <= screen.width {

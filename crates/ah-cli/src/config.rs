@@ -41,20 +41,20 @@ impl ConfigCommands {
             ConfigCommands::Show { key, show_origin } => {
                 show_config(key.as_deref(), show_origin, global_config).await
             }
-            ConfigCommands::Get { key } => {
-                get_config_value(&key, global_config).await
-            }
+            ConfigCommands::Get { key } => get_config_value(&key, global_config).await,
             ConfigCommands::Set { key, value, scope } => {
                 set_config_value(&key, &value, &scope, global_config).await
             }
-            ConfigCommands::Explain { key } => {
-                explain_config(&key, global_config).await
-            }
+            ConfigCommands::Explain { key } => explain_config(&key, global_config).await,
         }
     }
 }
 
-async fn show_config(key_filter: Option<&str>, show_origin: bool, config_file: Option<&str>) -> Result<()> {
+async fn show_config(
+    key_filter: Option<&str>,
+    show_origin: bool,
+    config_file: Option<&str>,
+) -> Result<()> {
     let mut paths = paths::discover_paths(None); // TODO: Get repo root from context
     if let Some(config_path) = config_file {
         paths.cli_config = Some(std::path::PathBuf::from(config_path));
@@ -102,7 +102,12 @@ async fn get_config_value(key: &str, config_file: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-async fn set_config_value(key: &str, value: &str, scope: &str, config_file: Option<&str>) -> Result<()> {
+async fn set_config_value(
+    key: &str,
+    value: &str,
+    scope: &str,
+    config_file: Option<&str>,
+) -> Result<()> {
     let mut paths = paths::discover_paths(None);
     if let Some(config_path) = config_file {
         paths.cli_config = Some(std::path::PathBuf::from(config_path));
@@ -111,13 +116,20 @@ async fn set_config_value(key: &str, value: &str, scope: &str, config_file: Opti
 
     // Check if the key is enforced
     if resolved.provenance.enforced.contains(key) {
-        anyhow::bail!("Cannot set '{}': key is enforced by system configuration", key);
+        anyhow::bail!(
+            "Cannot set '{}': key is enforced by system configuration",
+            key
+        );
     }
 
     // Validate that the key exists in schema by trying to set it in a temp config
     let temp_json = serde_json::json!({});
     let mut test_config = temp_json.clone();
-    config_core::merge::insert_dotted(&mut test_config, key, serde_json::Value::String(value.to_string()));
+    config_core::merge::insert_dotted(
+        &mut test_config,
+        key,
+        serde_json::Value::String(value.to_string()),
+    );
 
     if let Err(e) = config_core::loader::validate_against_schema(&test_config) {
         anyhow::bail!("Invalid configuration: {}", e);
@@ -175,7 +187,11 @@ fn print_json_with_provenance(
     match json {
         serde_json::Value::Object(obj) => {
             for (key, value) in obj {
-                let full_key = if prefix.is_empty() { key.clone() } else { format!("{}.{}", prefix, key) };
+                let full_key = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{}.{}", prefix, key)
+                };
                 print_json_with_provenance(value, &full_key, show_origin, provenance);
             }
         }

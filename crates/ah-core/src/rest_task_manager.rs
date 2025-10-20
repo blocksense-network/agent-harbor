@@ -4,15 +4,15 @@
 //! the real REST API client or a mock client, allowing seamless switching between
 //! production and testing environments.
 
-use ah_domain_types::{Repository as DomainRepository, Branch, TaskInfo, TaskExecution, TaskState, SelectedModel};
+use ah_domain_types::{
+    Branch, Repository as DomainRepository, SelectedModel, TaskExecution, TaskInfo, TaskState,
+};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
 
-use crate::{
-    TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult
-};
-use ah_domain_types::{TaskExecutionStatus, LogLevel, ToolStatus};
+use crate::{SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
+use ah_domain_types::{LogLevel, TaskExecutionStatus, ToolStatus};
 
 /// Trait for REST API clients that can be used with RestTaskManager
 ///
@@ -29,16 +29,41 @@ use ah_domain_types::{TaskExecutionStatus, LogLevel, ToolStatus};
 #[async_trait]
 pub trait RestApiClient: Send + Sync {
     /// Create a new task
-    async fn create_task(&self, request: &ah_rest_api_contract::CreateTaskRequest) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>>;
+    async fn create_task(
+        &self,
+        request: &ah_rest_api_contract::CreateTaskRequest,
+    ) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Stream events for a task
-    async fn stream_session_events(&self, session_id: &str) -> Result<Pin<Box<dyn Stream<Item = Result<ah_rest_api_contract::SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>>;
+    async fn stream_session_events(
+        &self,
+        session_id: &str,
+    ) -> Result<
+        Pin<
+            Box<
+                dyn Stream<
+                        Item = Result<
+                            ah_rest_api_contract::SessionEvent,
+                            Box<dyn std::error::Error + Send + Sync>,
+                        >,
+                    > + Send,
+            >,
+        >,
+        Box<dyn std::error::Error + Send + Sync>,
+    >;
 
     /// List sessions
-    async fn list_sessions(&self, filters: Option<&ah_rest_api_contract::FilterQuery>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>>;
+    async fn list_sessions(
+        &self,
+        filters: Option<&ah_rest_api_contract::FilterQuery>,
+    ) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// List repositories
-    async fn list_repositories(&self, tenant_id: Option<&str>, project_id: Option<&str>) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>;
+    async fn list_repositories(
+        &self,
+        tenant_id: Option<&str>,
+        project_id: Option<&str>,
+    ) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 /// Generic TaskManager implementation for REST API clients
@@ -64,7 +89,6 @@ where
     pub fn client(&self) -> &C {
         &self.client
     }
-
 
     /// Convert REST API event to TaskEvent
     fn convert_session_event(event: ah_rest_api_contract::SessionEvent) -> TaskEvent {
@@ -125,7 +149,9 @@ where
                     TaskEvent::ToolUse {
                         tool_name,
                         tool_args,
-                        tool_execution_id: event.tool_execution_id.unwrap_or_else(|| "unknown".to_string()),
+                        tool_execution_id: event
+                            .tool_execution_id
+                            .unwrap_or_else(|| "unknown".to_string()),
                         status: ToolStatus::Started, // Assume started for tool use events
                         ts: event.ts.into(),
                     }
@@ -144,7 +170,9 @@ where
                     TaskEvent::ToolResult {
                         tool_name,
                         tool_output,
-                        tool_execution_id: event.tool_execution_id.unwrap_or_else(|| "unknown".to_string()),
+                        tool_execution_id: event
+                            .tool_execution_id
+                            .unwrap_or_else(|| "unknown".to_string()),
                         status: ToolStatus::Completed, // Assume completed for tool result events
                         ts: event.ts.into(),
                     }
@@ -200,7 +228,11 @@ where
 
         // Convert parameters to REST API format
         let agent = ah_rest_api_contract::AgentConfig {
-            agent_type: params.models.first().map(|m| m.name.clone()).unwrap_or_else(|| "claude-code".to_string()),
+            agent_type: params
+                .models
+                .first()
+                .map(|m| m.name.clone())
+                .unwrap_or_else(|| "claude-code".to_string()),
             version: "latest".to_string(),
             settings: std::collections::HashMap::new(),
         };
@@ -285,23 +317,40 @@ where
     async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
         match self.client.list_sessions(None).await {
             Ok(response) => {
-                let tasks: Vec<TaskExecution> = response.items.into_iter().map(|session| {
-                    TaskExecution {
-                        id: session.id,
-                        repository: session.vcs.repo_url.unwrap_or_else(|| "unknown".to_string()),
-                        branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
-                        agents: vec![SelectedModel { name: session.agent.agent_type, count: 1 }],
-                        state: match session.status {
-                            ah_rest_api_contract::SessionStatus::Completed => TaskState::Completed,
-                            ah_rest_api_contract::SessionStatus::Failed => TaskState::Completed,
-                            ah_rest_api_contract::SessionStatus::Cancelled => TaskState::Completed,
-                            _ => TaskState::Active,
-                        },
-                        timestamp: session.started_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-                        activity: vec![], // Would need to be populated from session events
-                        delivery_status: vec![], // Would need to be populated from session data
-                    }
-                }).collect();
+                let tasks: Vec<TaskExecution> = response
+                    .items
+                    .into_iter()
+                    .map(|session| {
+                        TaskExecution {
+                            id: session.id,
+                            repository: session
+                                .vcs
+                                .repo_url
+                                .unwrap_or_else(|| "unknown".to_string()),
+                            branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
+                            agents: vec![SelectedModel {
+                                name: session.agent.agent_type,
+                                count: 1,
+                            }],
+                            state: match session.status {
+                                ah_rest_api_contract::SessionStatus::Completed => {
+                                    TaskState::Completed
+                                }
+                                ah_rest_api_contract::SessionStatus::Failed => TaskState::Completed,
+                                ah_rest_api_contract::SessionStatus::Cancelled => {
+                                    TaskState::Completed
+                                }
+                                _ => TaskState::Active,
+                            },
+                            timestamp: session
+                                .started_at
+                                .map(|dt| dt.to_rfc3339())
+                                .unwrap_or_default(),
+                            activity: vec![], // Would need to be populated from session events
+                            delivery_status: vec![], // Would need to be populated from session data
+                        }
+                    })
+                    .collect();
 
                 // For now, return all tasks as completed tasks (drafts would need separate API)
                 (vec![], tasks)
@@ -313,7 +362,14 @@ where
         }
     }
 
-    async fn save_draft_task(&self, draft_id: &str, description: &str, repository: &str, branch: &str, models: &[SelectedModel]) -> SaveDraftResult {
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[SelectedModel],
+    ) -> SaveDraftResult {
         // Note: The current REST API doesn't have draft task persistence
         // This would need to be implemented in the server first
         // For now, we'll simulate success but warn that it's not actually persisted
@@ -323,12 +379,15 @@ where
 
     async fn list_repositories(&self) -> Vec<DomainRepository> {
         match self.client.list_repositories(None, None).await {
-            Ok(repos) => repos.into_iter().map(|repo| ah_domain_types::Repository {
-                id: repo.id,
-                name: repo.display_name,
-                url: repo.remote_url.to_string(),
-                default_branch: repo.default_branch,
-            }).collect(),
+            Ok(repos) => repos
+                .into_iter()
+                .map(|repo| ah_domain_types::Repository {
+                    id: repo.id,
+                    name: repo.display_name,
+                    url: repo.remote_url.to_string(),
+                    default_branch: repo.default_branch,
+                })
+                .collect(),
             Err(e) => {
                 tracing::warn!("Failed to list repositories: {}", e);
                 vec![]
@@ -344,7 +403,8 @@ where
 
         // Try to get repository info to determine default branch
         let default_branch = match self.client.list_repositories(None, None).await {
-            Ok(repos) => repos.into_iter()
+            Ok(repos) => repos
+                .into_iter()
                 .find(|r| r.id == repository_id)
                 .map(|r| r.default_branch)
                 .unwrap_or_else(|| "main".to_string()),
@@ -380,29 +440,57 @@ pub type RestTaskManager = GenericRestTaskManager<Box<dyn RestApiClient>>;
 
 #[async_trait]
 impl RestApiClient for ah_rest_client::RestClient {
-    async fn create_task(&self, request: &ah_rest_api_contract::CreateTaskRequest) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn create_task(
+        &self,
+        request: &ah_rest_api_contract::CreateTaskRequest,
+    ) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>>
+    {
         self.create_task(request)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
-    async fn stream_session_events(&self, session_id: &str) -> Result<Pin<Box<dyn Stream<Item = Result<ah_rest_api_contract::SessionEvent, Box<dyn std::error::Error + Send + Sync>>> + Send>>, Box<dyn std::error::Error + Send + Sync>> {
-        let stream = self.stream_session_events(session_id)
+    async fn stream_session_events(
+        &self,
+        session_id: &str,
+    ) -> Result<
+        Pin<
+            Box<
+                dyn Stream<
+                        Item = Result<
+                            ah_rest_api_contract::SessionEvent,
+                            Box<dyn std::error::Error + Send + Sync>,
+                        >,
+                    > + Send,
+            >,
+        >,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
+        let stream = self
+            .stream_session_events(session_id)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        let mapped_stream = stream.map(|item| {
-            item.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-        });
+        let mapped_stream = stream
+            .map(|item| item.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>));
         Ok(Box::pin(mapped_stream))
     }
 
-    async fn list_sessions(&self, filters: Option<&ah_rest_api_contract::FilterQuery>) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_sessions(
+        &self,
+        filters: Option<&ah_rest_api_contract::FilterQuery>,
+    ) -> Result<ah_rest_api_contract::SessionListResponse, Box<dyn std::error::Error + Send + Sync>>
+    {
         self.list_sessions(filters)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
-    async fn list_repositories(&self, tenant_id: Option<&str>, project_id: Option<&str>) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_repositories(
+        &self,
+        tenant_id: Option<&str>,
+        project_id: Option<&str>,
+    ) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>
+    {
         self.list_repositories(tenant_id, project_id)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

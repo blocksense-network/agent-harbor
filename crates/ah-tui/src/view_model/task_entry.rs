@@ -1,7 +1,7 @@
 //! Task Entry ViewModel - for draft/editable task cards
 
-use ah_domain_types::SelectedModel;
 use super::{ButtonViewModel, DraftSaveState, FocusElement};
+use ah_domain_types::SelectedModel;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskEntryControlsViewModel {
@@ -14,15 +14,15 @@ pub struct TaskEntryControlsViewModel {
 /// ViewModel for draft/editable task entries
 #[derive(Clone)] // Debug and PartialEq removed due to TextArea
 pub struct TaskEntryViewModel {
-    pub id: String, // Unique identifier for the task entry
-    pub repository: String, // Repository name
-    pub branch: String, // Branch name
+    pub id: String,                 // Unique identifier for the task entry
+    pub repository: String,         // Repository name
+    pub branch: String,             // Branch name
     pub models: Vec<SelectedModel>, // Selected models
-    pub created_at: String, // Creation timestamp
+    pub created_at: String,         // Creation timestamp
     pub height: u16,
     pub controls: TaskEntryControlsViewModel,
     pub save_state: DraftSaveState,
     pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
-    pub focus_element: FocusElement, // Current focus within this card
-    pub auto_save_timer: Option<std::time::Instant>, // Timer for auto-save functionality
+    pub focus_element: FocusElement,                  // Current focus within this card
+    pub auto_save_timer: Option<std::time::Instant>,  // Timer for auto-save functionality
 }

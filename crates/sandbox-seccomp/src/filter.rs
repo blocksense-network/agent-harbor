@@ -1,7 +1,7 @@
 //! Seccomp filter builder and management.
 
-use crate::error::Error;
 use crate::Result;
+use crate::error::Error;
 use libseccomp_sys::*;
 use tracing::debug;
 

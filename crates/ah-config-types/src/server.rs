@@ -1,7 +1,7 @@
 //! Server, fleet, and sandbox-related configuration types
 
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -43,4 +43,3 @@ pub struct Sandbox {
     #[serde(rename = "type")]
     pub kind: Option<String>,
 }
-

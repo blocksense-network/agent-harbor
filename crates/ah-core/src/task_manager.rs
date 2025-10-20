@@ -52,7 +52,10 @@
 //! execution details and returns a result that the ViewModel can translate
 //! into domain messages for the Model.
 
-use ah_domain_types::{Repository, Branch, TaskInfo, TaskExecution, SelectedModel, TaskExecutionStatus, LogLevel, ToolStatus};
+use ah_domain_types::{
+    Branch, LogLevel, Repository, SelectedModel, TaskExecution, TaskExecutionStatus, TaskInfo,
+    ToolStatus,
+};
 use ah_local_db::models::DraftRecord;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -215,7 +218,6 @@ pub enum TaskEvent {
     },
 }
 
-
 /// Result of saving a draft task
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveDraftResult {
@@ -255,7 +257,14 @@ pub trait TaskManager: Send + Sync {
     /// Auto-save modifications to a draft task
     ///
     /// Persists changes to a draft task to prevent data loss.
-    async fn save_draft_task(&self, draft_id: &str, description: &str, repository: &str, branch: &str, models: &[SelectedModel]) -> SaveDraftResult;
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[SelectedModel],
+    ) -> SaveDraftResult;
 
     /// List available repositories/projects
     ///
@@ -270,4 +279,3 @@ pub trait TaskManager: Send + Sync {
     /// Get a human-readable description of this task manager
     fn description(&self) -> &str;
 }
-

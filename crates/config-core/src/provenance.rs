@@ -36,13 +36,17 @@ pub fn record_diff(before: &J, after: &J, scope: Scope, out: &mut Provenance, pr
             keys.sort();
             keys.dedup();
             for k in keys {
-                let pfx = if prefix.is_empty() { k.to_string() } else { format!("{prefix}.{k}") };
+                let pfx = if prefix.is_empty() {
+                    k.to_string()
+                } else {
+                    format!("{prefix}.{k}")
+                };
                 record_diff(
                     ao.get(k).unwrap_or(&Null),
                     bo.get(k).unwrap_or(&Null),
                     scope,
                     out,
-                    &pfx
+                    &pfx,
                 );
             }
         }

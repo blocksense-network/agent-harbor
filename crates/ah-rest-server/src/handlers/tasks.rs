@@ -1,10 +1,10 @@
 //! Task management endpoints
 
+use crate::ServerResult;
 use crate::models::SessionStore;
 use crate::state::AppState;
-use crate::ServerResult;
 use ah_rest_api_contract::{CreateTaskRequest, CreateTaskResponse, SessionStatus};
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use std::sync::Arc;
 // use validator::Validate; // Temporarily disabled due to version mismatch
 
@@ -33,8 +33,9 @@ pub async fn create_task(
     drop(session_service); // Release the service
 
     // Verify the session was created by fetching it
-    let session = state.session_store.get_session(&response.id).await?
-        .ok_or_else(|| crate::ServerError::BadRequest("Failed to retrieve created session".to_string()))?;
+    let session = state.session_store.get_session(&response.id).await?.ok_or_else(|| {
+        crate::ServerError::BadRequest("Failed to retrieve created session".to_string())
+    })?;
 
     Ok(Json(response))
 }

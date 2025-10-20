@@ -59,13 +59,19 @@ pub fn validate_uuid(uuid_str: &str) -> Result<(), ApiContractError> {
 pub fn validate_ulid(ulid_str: &str) -> Result<(), ApiContractError> {
     // ULID is 26 characters, base32 encoded
     if ulid_str.len() != 26 {
-        return Err(ApiContractError::InvalidUlid(format!("ULID must be 26 characters, got {}", ulid_str.len())));
+        return Err(ApiContractError::InvalidUlid(format!(
+            "ULID must be 26 characters, got {}",
+            ulid_str.len()
+        )));
     }
     // Basic check for valid base32 characters (ULIDs use Crockford base32)
     // ULIDs allow 0-9 and A-Z (uppercase)
     for c in ulid_str.chars() {
         if !c.is_ascii_uppercase() && !c.is_ascii_digit() {
-            return Err(ApiContractError::InvalidUlid(format!("ULID contains invalid character '{}': {}", c, ulid_str)));
+            return Err(ApiContractError::InvalidUlid(format!(
+                "ULID contains invalid character '{}': {}",
+                c, ulid_str
+            )));
         }
     }
     Ok(())
@@ -79,8 +85,8 @@ pub fn validate_idempotency_key(key: &IdempotencyKey) -> Result<(), ApiContractE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::*;
     use crate::ProblemDetails;
+    use crate::types::*;
     use serde_json;
 
     #[test]
@@ -330,9 +336,10 @@ mod tests {
             title: "Invalid request".to_string(),
             status: Some(400),
             detail: "repo.url must be provided when repo.mode=git".to_string(),
-            errors: std::collections::HashMap::from([
-                ("repo.url".to_string(), vec!["is required".to_string()])
-            ]),
+            errors: std::collections::HashMap::from([(
+                "repo.url".to_string(),
+                vec!["is required".to_string()],
+            )]),
         };
 
         let json = serde_json::to_string(&problem).unwrap();

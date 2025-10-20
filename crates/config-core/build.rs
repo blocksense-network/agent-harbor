@@ -117,7 +117,8 @@ mod schema {
 
 fn main() {
     // Generate schema from SchemaRoot with inlined subschemas for cleaner output
-    let settings = schemars::gen::SchemaSettings::draft2019_09().with(|s| s.inline_subschemas = true);
+    let settings =
+        schemars::gen::SchemaSettings::draft2019_09().with(|s| s.inline_subschemas = true);
     let gen = settings.into_generator();
     let root_schema = gen.into_root_schema_for::<schema::SchemaRoot>();
     let generated = serde_json::to_value(root_schema).unwrap();
@@ -133,10 +134,10 @@ fn main() {
         .join("config.schema.expected.json");
 
     if expected_path.exists() {
-        let expected_str = fs::read_to_string(&expected_path)
-            .expect("Failed to read expected schema file");
-        let expected: serde_json::Value = serde_json::from_str(&expected_str)
-            .expect("Failed to parse expected schema JSON");
+        let expected_str =
+            fs::read_to_string(&expected_path).expect("Failed to read expected schema file");
+        let expected: serde_json::Value =
+            serde_json::from_str(&expected_str).expect("Failed to parse expected schema JSON");
 
         // Canonicalize both for comparison (sort keys, etc.)
         let generated_canonical = canonicalize_json(generated);
@@ -144,25 +145,26 @@ fn main() {
 
         if generated_canonical != expected_canonical {
             // Update the expected schema with the new flattened version
-            let generated_pretty = serde_json::to_string_pretty(&generated_canonical)
-                .unwrap();
-            fs::write(&expected_path, &generated_pretty)
-                .expect("Failed to update expected schema");
+            let generated_pretty = serde_json::to_string_pretty(&generated_canonical).unwrap();
+            fs::write(&expected_path, &generated_pretty).expect("Failed to update expected schema");
 
-            println!("Updated expected schema with new flattened structure: {}", expected_path.display());
+            println!(
+                "Updated expected schema with new flattened structure: {}",
+                expected_path.display()
+            );
         }
     } else {
         // Create expected schema file
         let expected_dir = expected_path.parent().unwrap();
-        fs::create_dir_all(expected_dir)
-            .expect("Failed to create specs directory");
+        fs::create_dir_all(expected_dir).expect("Failed to create specs directory");
 
-        let generated_pretty = serde_json::to_string_pretty(&generated)
-            .unwrap();
-        fs::write(&expected_path, generated_pretty)
-            .expect("Failed to write expected schema");
+        let generated_pretty = serde_json::to_string_pretty(&generated).unwrap();
+        fs::write(&expected_path, generated_pretty).expect("Failed to write expected schema");
 
-        println!("Generated initial expected schema at: {}", expected_path.display());
+        println!(
+            "Generated initial expected schema at: {}",
+            expected_path.display()
+        );
     }
 
     println!("cargo:rerun-if-changed=src/schema.rs");
@@ -175,15 +177,11 @@ fn canonicalize_json(value: serde_json::Value) -> serde_json::Value {
         serde_json::Value::Object(obj) => {
             let mut sorted: Vec<_> = obj.into_iter().collect();
             sorted.sort_by(|a, b| a.0.cmp(&b.0));
-            let sorted_obj = sorted.into_iter()
-                .map(|(k, v)| (k, canonicalize_json(v)))
-                .collect();
+            let sorted_obj = sorted.into_iter().map(|(k, v)| (k, canonicalize_json(v))).collect();
             serde_json::Value::Object(sorted_obj)
         }
         serde_json::Value::Array(arr) => {
-            let canonicalized = arr.into_iter()
-                .map(canonicalize_json)
-                .collect();
+            let canonicalized = arr.into_iter().map(canonicalize_json).collect();
             serde_json::Value::Array(canonicalized)
         }
         _ => value,

@@ -25,5 +25,5 @@ pub trait ClientApi: Send + Sync {
     async fn list_agents(&self) -> ClientApiResult<Vec<AgentCapability>>;
 
     async fn create_task(&self, request: &CreateTaskRequest)
-        -> ClientApiResult<CreateTaskResponse>;
+    -> ClientApiResult<CreateTaskResponse>;
 }

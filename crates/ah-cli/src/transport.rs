@@ -1,5 +1,5 @@
 use agentfs_proto::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use ssz::{Decode, Encode};
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;

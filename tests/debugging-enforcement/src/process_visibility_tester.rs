@@ -41,7 +41,10 @@ fn main() -> anyhow::Result<()> {
     // Now try to attach - this should fail due to namespace isolation
     match ptrace::attach(host_pid) {
         Ok(_) => {
-            error!("Unexpectedly succeeded in attaching to host process {} - this violates namespace isolation!", host_pid);
+            error!(
+                "Unexpectedly succeeded in attaching to host process {} - this violates namespace isolation!",
+                host_pid
+            );
             process::exit(1);
         }
         Err(e) => {

@@ -2022,13 +2022,14 @@ mod tests {
         core.close(&root_pid, h).unwrap();
 
         // Root can do everything
-        assert!(core
-            .rename(
+        assert!(
+            core.rename(
                 &root_pid,
                 "/restricted/subdir/file.txt".as_ref(),
                 "/restricted/subdir/renamed.txt".as_ref()
             )
-            .is_ok());
+            .is_ok()
+        );
         core.unlink(&PID::new(1), "/restricted/subdir/renamed.txt".as_ref()).unwrap();
 
         // Alice cannot list the restricted directory (no r), and cannot traverse it (no x)
@@ -2036,12 +2037,13 @@ mod tests {
         // Traversal to subdir fails due to missing x on /restricted
         assert!(core.open(&alice_pid, "/restricted/subdir/file.txt".as_ref(), &ro()).is_err());
         assert!(core.open(&alice_pid, "/restricted/subdir/file.txt".as_ref(), &ro()).is_err());
-        assert!(core
-            .rename(
+        assert!(
+            core.rename(
                 &alice_pid,
                 "/restricted/subdir/file.txt".as_ref(),
                 "/tmp.txt".as_ref()
             )
-            .is_err());
+            .is_err()
+        );
     }
 }
