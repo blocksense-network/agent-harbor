@@ -305,7 +305,7 @@ fn test_host_process_isolation(sbx_helper: &str) -> (bool, bool) {
 
     // Try to ptrace the host process from within the sandbox
     let test_result = Command::new(sbx_helper)
-        .args(&[
+        .args([
             "--seccomp",
             "--seccomp-debug",
             "../../target/debug/process_visibility_tester",

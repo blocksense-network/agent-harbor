@@ -90,6 +90,7 @@ pub struct RuntimeConfig {
 
 /// Resource limits for runtime execution
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct ResourceLimits {
     pub cpu: u32,
     #[serde(rename = "memoryMiB")]
@@ -98,6 +99,7 @@ pub struct ResourceLimits {
 
 /// Workspace configuration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct WorkspaceConfig {
     #[serde(rename = "snapshotPreference")]
     pub snapshot_preference: Vec<String>,
@@ -107,6 +109,7 @@ pub struct WorkspaceConfig {
 
 /// Agent configuration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct AgentConfig {
     #[serde(rename = "type")]
     pub agent_type: String,
@@ -122,6 +125,7 @@ fn default_version() -> String {
 
 /// Delivery configuration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct DeliveryConfig {
     pub mode: DeliveryMode,
     #[serde(rename = "targetBranch", skip_serializing_if = "Option::is_none")]
@@ -156,6 +160,7 @@ pub struct CreateTaskRequest {
 
 /// Webhook configuration for task events
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct WebhookConfig {
     pub event: String,
     pub url: Url,
@@ -172,6 +177,7 @@ pub struct CreateTaskResponse {
 
 /// Links for task/session resources
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct TaskLinks {
     #[serde(rename = "self")]
     pub self_link: String,
@@ -203,6 +209,7 @@ pub struct Session {
 
 /// Task information within a session
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct TaskInfo {
     pub prompt: String,
     #[serde(skip_serializing_if = "HashMap::is_empty", default)]
@@ -213,6 +220,7 @@ pub struct TaskInfo {
 
 /// Workspace information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct WorkspaceInfo {
     #[serde(rename = "snapshotProvider")]
     pub snapshot_provider: String,
@@ -229,6 +237,7 @@ pub struct WorkspaceInfo {
 
 /// Devcontainer information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct DevcontainerInfo {
     pub image: String,
     #[serde(rename = "containerId")]
@@ -238,6 +247,7 @@ pub struct DevcontainerInfo {
 
 /// VCS information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct VcsInfo {
     pub repo_url: Option<String>,
     pub branch: Option<String>,
@@ -246,6 +256,7 @@ pub struct VcsInfo {
 
 /// Links for session resources
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionLinks {
     #[serde(rename = "self")]
     pub self_link: String,
@@ -255,6 +266,7 @@ pub struct SessionLinks {
 
 /// Session list response
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionListResponse {
     pub items: Vec<Session>,
     #[serde(rename = "nextPage", skip_serializing_if = "Option::is_none")]
@@ -316,6 +328,7 @@ pub struct SessionEvent {
 
 /// Host result for fence operations
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct HostResult {
     pub state: String,
     #[serde(rename = "tookMs")]
@@ -324,6 +337,7 @@ pub struct HostResult {
 
 /// Delivery information for session events
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct DeliveryInfo {
     pub mode: String,
     pub url: String,
@@ -331,6 +345,7 @@ pub struct DeliveryInfo {
 
 /// Log entry for session logs
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct LogEntry {
     pub level: LogLevel,
     pub message: String,
@@ -339,6 +354,7 @@ pub struct LogEntry {
 
 /// Session logs response
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionLogsResponse {
     pub items: Vec<LogEntry>,
     #[serde(rename = "nextPage", skip_serializing_if = "Option::is_none")]
@@ -347,6 +363,7 @@ pub struct SessionLogsResponse {
 
 /// Agent capability information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct AgentCapability {
     #[serde(rename = "type")]
     pub agent_type: String,
@@ -357,6 +374,7 @@ pub struct AgentCapability {
 
 /// Runtime capability information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct RuntimeCapability {
     #[serde(rename = "type")]
     pub runtime_type: RuntimeType,
@@ -374,6 +392,7 @@ pub struct RuntimeCapability {
 
 /// Executor information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct Executor {
     pub id: String,
     pub os: String,
@@ -387,6 +406,7 @@ pub struct Executor {
 
 /// Overlay information for executors
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct OverlayInfo {
     pub provider: String,
     pub address: String,
@@ -397,6 +417,7 @@ pub struct OverlayInfo {
 
 /// Project information
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct Project {
     pub id: String,
     #[serde(rename = "displayName")]
@@ -407,6 +428,7 @@ pub struct Project {
 
 /// Repository information
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct Repository {
     pub id: String,
     #[serde(rename = "displayName")]
@@ -423,6 +445,7 @@ pub struct Repository {
 
 /// Workspace summary
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct Workspace {
     pub id: String,
     pub status: String,
@@ -439,6 +462,7 @@ pub struct Workspace {
 
 /// Session info response
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionInfoResponse {
     pub id: String,
     pub status: SessionStatus,
@@ -448,6 +472,7 @@ pub struct SessionInfoResponse {
 
 /// Fleet information for session
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct FleetInfo {
     pub leader: String,
     pub followers: Vec<FollowerInfo>,
@@ -455,6 +480,7 @@ pub struct FleetInfo {
 
 /// Follower information
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct FollowerInfo {
     pub name: String,
     pub os: String,
@@ -463,12 +489,14 @@ pub struct FollowerInfo {
 
 /// Session endpoints
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionEndpoints {
     pub events: String,
 }
 
 /// Control commands for sessions
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct SessionControlRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -476,6 +504,7 @@ pub struct SessionControlRequest {
 
 /// Pagination query parameters
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct PaginationQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<u32>,
@@ -485,6 +514,7 @@ pub struct PaginationQuery {
 
 /// Filtering query parameters
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct FilterQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
@@ -498,6 +528,7 @@ pub struct FilterQuery {
 
 /// Query parameters for session logs
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct LogQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tail: Option<u32>,
@@ -509,4 +540,5 @@ pub struct LogQuery {
 
 /// Idempotency key for POST requests (ULID format)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct IdempotencyKey(pub String);

@@ -2,8 +2,7 @@ use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, Stdio};
-use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::error::{VcsError, VcsResult};
@@ -173,7 +172,7 @@ impl VcsRepo {
         let output = self.run_command(&cmd)?;
         let branches = output
             .lines()
-            .map(|line| line.trim_start_matches(|c: char| c == '*' || c == ' ').trim().to_string())
+            .map(|line| line.trim_start_matches(['*', ' ']).trim().to_string())
             .filter(|line| !line.is_empty())
             .collect();
         Ok(branches)

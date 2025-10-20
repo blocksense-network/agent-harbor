@@ -1666,7 +1666,7 @@ impl FsCore {
             };
 
             let dir_entry = DirEntry {
-                name: name,
+                name,
                 is_dir,
                 is_symlink,
                 len,

@@ -10,6 +10,7 @@ pub mod validation;
 
 pub use error::*;
 pub use types::*;
+pub use ah_domain_types::LogLevel;
 
 /// Generate OpenAPI schema for the API contract types
 #[cfg(feature = "utoipa")]

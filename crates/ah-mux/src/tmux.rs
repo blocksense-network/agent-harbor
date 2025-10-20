@@ -41,7 +41,7 @@ impl TmuxMultiplexer {
         // Wait for the session to be ready
         for _ in 0..10 {
             if Command::new("tmux")
-                .args(&["has-session", "-t", &session_name])
+                .args(["has-session", "-t", &session_name])
                 .output()
                 .map(|o| o.status.success())
                 .unwrap_or(false)

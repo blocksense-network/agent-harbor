@@ -1,12 +1,9 @@
-/**
- * Agent Harbor GUI Core - Native Addon
- *
- * This Rust crate provides native functionality for the Electron GUI
- * via N-API bindings. It serves as a foundation for process management,
- * file operations, and other native integrations.
- */
-
-#[deny(clippy::all)]
+//! Agent Harbor GUI Core - Native Addon
+//!
+//! This Rust crate provides native functionality for the Electron GUI
+//! via N-API bindings. It serves as a foundation for process management,
+//! file operations, and other native integrations.
+#![deny(clippy::all)]
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;

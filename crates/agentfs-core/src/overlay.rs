@@ -3,11 +3,8 @@
 //! This module provides overlay functionality that allows AgentFS to operate
 //! as an overlay on top of an existing filesystem, with copy-on-write semantics.
 
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
-use std::sync::Arc;
-
 use crate::error::{FsError, FsResult};
 use crate::{Attributes, DirEntry, LowerFs};
 
@@ -73,18 +70,18 @@ impl LowerFs for HostLowerFs {
             is_symlink: file_type.is_symlink(),
             mode_user: crate::FileMode {
                 read: true, // Assume readable for simplicity
-                write: file_type.is_dir() || metadata.permissions().readonly() == false,
-                exec: file_type.is_dir() || true, // Assume executable
+                write: file_type.is_dir() || !metadata.permissions().readonly(),
+                exec: true, // Assume executable
             },
             mode_group: crate::FileMode {
                 read: true,
-                write: file_type.is_dir() || metadata.permissions().readonly() == false,
-                exec: file_type.is_dir() || true,
+                write: file_type.is_dir() || !metadata.permissions().readonly(),
+                exec: true,
             },
             mode_other: crate::FileMode {
                 read: true,
                 write: false, // Conservative for other
-                exec: file_type.is_dir() || false,
+                exec: file_type.is_dir(),
             },
         })
     }

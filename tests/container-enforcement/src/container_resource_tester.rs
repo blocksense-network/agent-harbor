@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
     // Test 1: Run a container that tries to use excessive memory
     info!("Testing memory limits on container...");
     let memory_test = Command::new("podman")
-        .args(&[
+        .args([
             "run",
             "--rm",
             "--memory",
@@ -50,15 +50,13 @@ fn main() -> anyhow::Result<()> {
         Ok(result) => {
             if !result.status.success() {
                 info!("✓ Container memory limit enforced correctly");
+            } else if can_enforce_limits {
+                error!("✗ Container memory limit not enforced - container should have failed");
+                println!("FAIL: Container memory limit not enforced");
+                std::process::exit(1);
             } else {
-                if can_enforce_limits {
-                    error!("✗ Container memory limit not enforced - container should have failed");
-                    println!("FAIL: Container memory limit not enforced");
-                    std::process::exit(1);
-                } else {
-                    info!("⚠️  Container memory limit not enforced (expected in unprivileged environment)");
-                    info!("✓ Memory limit test completed (limit not enforced due to unprivileged mode)");
-                }
+                info!("⚠️  Container memory limit not enforced (expected in unprivileged environment)");
+                info!("✓ Memory limit test completed (limit not enforced due to unprivileged mode)");
             }
         }
         Err(e) => {
@@ -71,7 +69,7 @@ fn main() -> anyhow::Result<()> {
     // Test 2: Run a container that tries to fork excessively
     info!("Testing PID limits on container...");
     let pid_test = Command::new("podman")
-        .args(&[
+        .args([
             "run",
             "--rm",
             "--pids-limit",
@@ -87,17 +85,15 @@ fn main() -> anyhow::Result<()> {
         Ok(result) => {
             if !result.status.success() {
                 info!("✓ Container PID limit enforced correctly");
+            } else if can_enforce_limits {
+                error!("✗ Container PID limit not enforced - container should have failed");
+                println!("FAIL: Container PID limit not enforced");
+                std::process::exit(1);
             } else {
-                if can_enforce_limits {
-                    error!("✗ Container PID limit not enforced - container should have failed");
-                    println!("FAIL: Container PID limit not enforced");
-                    std::process::exit(1);
-                } else {
-                    info!("⚠️  Container PID limit not enforced (expected in unprivileged environment)");
-                    info!(
-                        "✓ PID limit test completed (limit not enforced due to unprivileged mode)"
-                    );
-                }
+                info!("⚠️  Container PID limit not enforced (expected in unprivileged environment)");
+                info!(
+                    "✓ PID limit test completed (limit not enforced due to unprivileged mode)"
+                );
             }
         }
         Err(e) => {
@@ -111,7 +107,7 @@ fn main() -> anyhow::Result<()> {
     info!("Testing CPU limits on container...");
     let start = Instant::now();
     let cpu_test = Command::new("podman")
-        .args(&[
+        .args([
             "run",
             "--rm",
             "--cpus",

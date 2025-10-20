@@ -21,6 +21,7 @@ pub enum TaskState {
 
 /// Task execution status - shared between REST API and local task management
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum TaskExecutionStatus {
     Queued,
@@ -57,6 +58,7 @@ impl std::fmt::Display for TaskExecutionStatus {
 
 /// Log levels for task events
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Debug,
