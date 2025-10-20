@@ -23,7 +23,6 @@
     "test:debug": "playwright test --debug"
   },
   "dependencies": {
-    "@agent-harbor/gui-core": "file:../crates/ah-gui-core",
     "electron-store": "^10.0.0",
     "playwright": "^1.49.0"
   },
