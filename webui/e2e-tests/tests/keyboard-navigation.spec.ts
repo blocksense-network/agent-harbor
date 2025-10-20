@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Keyboard Navigation Tests
- * 
+ *
  * Validates keyboard-driven interface as specified in WebUI-PRD.md:
  * - Arrow key navigation (↑↓) between task cards
  * - Visual selection state for selected task
@@ -28,7 +28,7 @@ test.describe('Keyboard Navigation', () => {
       await taskListNav.focus();
 
       // Check that focus was set
-      const isFocused = await taskListNav.evaluate(el => document.activeElement === el);
+      const isFocused = await taskListNav.evaluate((el) => document.activeElement === el);
       console.log('Task list navigation focused:', isFocused);
 
       // Check that we have cards to work with
@@ -62,8 +62,13 @@ test.describe('Keyboard Navigation', () => {
 
     test('pressing up arrow key moves selection up in task feed', async ({ page }) => {
       // Wait for page to load with data
-      await page.waitForFunction(() => !!document.querySelector('[data-testid="draft-task-card"]'), { timeout: 10000 });
-      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-testid="draft-task-card"]'),
+        { timeout: 10000 }
+      );
+      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+        timeout: 10000,
+      });
 
       // Focus on task list navigation and select second item
       const taskListNav = page.locator('[aria-label="Task list navigation"]');
@@ -95,16 +100,21 @@ test.describe('Keyboard Navigation', () => {
       const sessionCards = page.locator('[data-testid="task-card"]');
 
       // Check if any draft card has the selection class
-      const draftSelected = await draftCards.evaluateAll(cards =>
-        cards.some(card => card.classList.contains('bg-blue-50'))
+      const draftSelected = await draftCards.evaluateAll((cards) =>
+        cards.some((card) => card.classList.contains('bg-blue-50'))
       );
 
       // Check if any session card has the selection class
-      const sessionSelected = await sessionCards.evaluateAll(cards =>
-        cards.some(card => card.classList.contains('ring-2'))
+      const sessionSelected = await sessionCards.evaluateAll((cards) =>
+        cards.some((card) => card.classList.contains('ring-2'))
       );
 
-      console.log('Up arrow test - draftSelected:', draftSelected, 'sessionSelected:', sessionSelected);
+      console.log(
+        'Up arrow test - draftSelected:',
+        draftSelected,
+        'sessionSelected:',
+        sessionSelected
+      );
 
       expect(draftSelected || sessionSelected).toBe(true);
     });
@@ -143,7 +153,9 @@ test.describe('Keyboard Navigation', () => {
   test.describe('Enter Key Navigation', () => {
     test('pressing Enter on selected task navigates to task details page', async ({ page }) => {
       // Wait for page to load with data
-      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+        timeout: 10000,
+      });
 
       // Get the first session's task ID
       const sessionCards = page.locator('[data-testid="task-card"]');
@@ -160,7 +172,9 @@ test.describe('Keyboard Navigation', () => {
 
     test('Esc key returns from task details to task feed', async ({ page }) => {
       // Wait for page to load with data
-      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+        timeout: 10000,
+      });
 
       // Get the first session's task ID and navigate to it
       const sessionCards = page.locator('[data-testid="task-card"]');
@@ -183,7 +197,9 @@ test.describe('Keyboard Navigation', () => {
 
     test('browser back button works after navigation', async ({ page }) => {
       // Wait for page to load with data
-      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+      await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+        timeout: 10000,
+      });
 
       // Get the first session's task ID and navigate to it
       const sessionCards = page.locator('[data-testid="task-card"]');
@@ -208,9 +224,9 @@ test.describe('Keyboard Navigation', () => {
     test('task feed focused shows navigation shortcuts', async ({ page }) => {
       // Focus on task feed (not in draft text area)
       await page.keyboard.press('Tab');
-      
+
       const footer = page.locator('footer');
-      
+
       // Verify footer shows task feed shortcuts
       await expect(footer).toContainText('↑↓ Navigate');
       await expect(footer).toContainText('Enter Select Task');
@@ -221,9 +237,9 @@ test.describe('Keyboard Navigation', () => {
       // Focus on the draft task text area
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.click();
-      
+
       const footer = page.locator('footer');
-      
+
       // Verify footer shows draft task shortcuts
       await expect(footer).toContainText('Enter Launch Agent');
       await expect(footer).toContainText('Shift+Enter New Line');
@@ -233,13 +249,13 @@ test.describe('Keyboard Navigation', () => {
     test('footer shows singular "Agent" when one agent selected', async ({ page }) => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.click();
-      
+
       // Select only one agent
       const modelSelector = page.locator('[data-testid="model-selector"]');
       await modelSelector.click();
       await page.locator('.ts-dropdown-content:has-text("Claude 3.5 Sonnet")').first().click();
       await page.locator('body').click();
-      
+
       // Verify footer shows singular form
       const footer = page.locator('footer');
       await expect(footer).toContainText('Enter Launch Agent'); // singular
@@ -248,7 +264,7 @@ test.describe('Keyboard Navigation', () => {
     test('footer shows plural "Agents" when multiple agents selected', async ({ page }) => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.click();
-      
+
       // Select multiple agents
       const modelSelector = page.locator('[data-testid="model-selector"]');
       await modelSelector.click();
@@ -256,7 +272,7 @@ test.describe('Keyboard Navigation', () => {
       await modelSelector.click();
       await page.locator('.ts-dropdown-content:has-text("GPT-4")').first().click();
       await page.locator('body').click();
-      
+
       // Verify footer shows plural form
       const footer = page.locator('footer');
       await expect(footer).toContainText('Enter Launch Agents'); // plural
@@ -264,23 +280,23 @@ test.describe('Keyboard Navigation', () => {
 
     test('footer dynamically updates when focus changes', async ({ page }) => {
       const footer = page.locator('footer');
-      
+
       // Initial state - task feed focused
       await page.keyboard.press('Tab');
       await expect(footer).toContainText('↑↓ Navigate');
-      
+
       // Change focus to draft text area
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.click();
-      
+
       // Footer should update
       await expect(footer).toContainText('Enter Launch Agent');
       await expect(footer).not.toContainText('↑↓ Navigate');
-      
+
       // Change focus back to task feed
       await page.keyboard.press('Escape');
       await page.keyboard.press('Tab');
-      
+
       // Footer should update again
       await expect(footer).toContainText('↑↓ Navigate');
       await expect(footer).not.toContainText('Enter Launch Agent');
@@ -292,27 +308,27 @@ test.describe('Keyboard Navigation', () => {
       // Fill out a valid draft task
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.fill('Implement feature X');
-      
+
       // Select repository via TOM Select
       const repoSelector = page.locator('[data-testid="repo-selector"]');
       await repoSelector.click();
       await page.locator('.ts-dropdown-content:has-text("agent-harbor-webui")').first().click();
-      
+
       // Select branch
       const branchSelector = page.locator('[data-testid="branch-selector"]');
       await branchSelector.click();
       await page.locator('.ts-dropdown-content:has-text("main")').first().click();
-      
+
       // Select model
       const modelSelector = page.locator('[data-testid="model-selector"]');
       await modelSelector.click();
       await page.locator('.ts-dropdown-content:has-text("Claude 3.5 Sonnet")').first().click();
       await page.locator('body').click(); // Close popup
-      
+
       // Focus back on text area and press Enter
       await draftTextArea.focus();
       await page.keyboard.press('Enter');
-      
+
       // Verify task was created
       await expect(page.locator('[data-testid="task-card"]')).toContainText('Implement feature X');
     });
@@ -320,25 +336,27 @@ test.describe('Keyboard Navigation', () => {
     test('Enter key does nothing if draft task is invalid', async ({ page }) => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.fill('Incomplete task');
-      
+
       // Don't fill other required fields (repo, branch, model)
-      
+
       // Press Enter - should not create task
       await draftTextArea.focus();
       await page.keyboard.press('Enter');
-      
+
       // Verify no new task card appears with this text
-      await expect(page.locator('[data-testid="task-card"]:has-text("Incomplete task")')).not.toBeVisible();
+      await expect(
+        page.locator('[data-testid="task-card"]:has-text("Incomplete task")')
+      ).not.toBeVisible();
     });
 
     test('Shift+Enter creates new line in draft text area', async ({ page }) => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.fill('Line 1');
-      
+
       // Press Shift+Enter to create new line
       await page.keyboard.press('Shift+Enter');
       await page.keyboard.type('Line 2');
-      
+
       // Verify text area contains both lines
       const textContent = await draftTextArea.inputValue();
       expect(textContent).toContain('Line 1');
@@ -349,7 +367,7 @@ test.describe('Keyboard Navigation', () => {
     test('Tab key navigates between draft form fields', async ({ page }) => {
       const draftTextArea = page.locator('[data-testid="draft-task-textarea"]');
       await draftTextArea.focus();
-      
+
       // Tab should move to repository selector input
       await page.keyboard.press('Tab');
       const repoFocused = await page.evaluate(() => {
@@ -384,14 +402,14 @@ test.describe('Keyboard Navigation', () => {
   test.describe('New Task Button Shortcut', () => {
     test('Ctrl+N creates new draft task', async ({ page }) => {
       const initialDraftCount = await page.locator('[data-testid="draft-task-card"]').count();
-      
+
       // Ensure focus is on the document body
       await page.locator('body').click();
 
       // Press Ctrl+N (Cmd+N on macOS)
       const isMac = process.platform === 'darwin';
       await page.keyboard.press(isMac ? 'Meta+KeyN' : 'Control+KeyN');
-      
+
       // Verify new draft task card appears
       const newDraftCount = await page.locator('[data-testid="draft-task-card"]').count();
       expect(newDraftCount).toBe(initialDraftCount + 1);
@@ -399,7 +417,7 @@ test.describe('Keyboard Navigation', () => {
 
     test('New Task button displays platform-specific shortcut', async ({ page }) => {
       const newTaskButton = page.locator('footer button:has-text("New Task")');
-      
+
       // Verify button shows either Ctrl+N or Cmd+N
       const buttonText = await newTaskButton.textContent();
       expect(buttonText).toMatch(/(?:Ctrl|Cmd)\+N/);
@@ -407,15 +425,15 @@ test.describe('Keyboard Navigation', () => {
 
     test('clicking New Task button creates new draft', async ({ page }) => {
       const initialDraftCount = await page.locator('[data-testid="draft-task-card"]').count();
-      
+
       // Click New Task button in footer
       const newTaskButton = page.locator('footer button:has-text("New Task")');
       await newTaskButton.click();
-      
+
       // Verify new draft task card appears
       const newDraftCount = await page.locator('[data-testid="draft-task-card"]').count();
       expect(newDraftCount).toBe(initialDraftCount + 1);
-      
+
       // Verify focus moves to new draft text area
       const newDraftTextArea = page.locator('[data-testid="draft-task-textarea"]').last();
       await expect(newDraftTextArea).toBeFocused();
@@ -427,7 +445,7 @@ test.describe('Keyboard Navigation', () => {
       // Focus and select task
       await page.keyboard.press('Tab');
       await page.keyboard.press('ArrowDown');
-      
+
       // Verify ARIA live region announces selection
       const liveRegion = page.locator('[role="status"][aria-live="polite"]');
       await expect(liveRegion).toContainText(/selected|navigated/i);
@@ -437,17 +455,17 @@ test.describe('Keyboard Navigation', () => {
       await page.keyboard.press('Tab');
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
-      
+
       const selectedCard = page.locator('[data-testid="task-card"][aria-selected="true"]').first();
       await expect(selectedCard).toHaveAttribute('aria-selected', 'true');
     });
 
     test('keyboard shortcuts are accessible to screen readers', async ({ page }) => {
       const footer = page.locator('footer');
-      
+
       // Verify footer has appropriate ARIA role
       await expect(footer).toHaveAttribute('role', /contentinfo|complementary/);
-      
+
       // Verify shortcuts are in accessible format
       const shortcuts = page.locator('footer [aria-label*="shortcut"]');
       expect(await shortcuts.count()).toBeGreaterThan(0);

@@ -27,7 +27,10 @@ test.describe('Draft Persistence & Preferences', () => {
     await expect(descriptionField).toHaveValue('Test draft for server persistence');
   });
 
-  test('Theme preferences persist across browser sessions (if present)', async ({ page, context }) => {
+  test('Theme preferences persist across browser sessions (if present)', async ({
+    page,
+    context,
+  }) => {
     await page.goto('/');
 
     // Wait for client-side JavaScript to load and render
@@ -88,7 +91,10 @@ test.describe('Draft Persistence & Preferences', () => {
     await page.waitForLoadState('networkidle');
 
     // Check that draft prompt was persisted
-    const reloadedDescriptionField = page.locator('[data-testid="draft-task-card"]').first().locator('textarea');
+    const reloadedDescriptionField = page
+      .locator('[data-testid="draft-task-card"]')
+      .first()
+      .locator('textarea');
     // Wait for draft to load and render
     await page.waitForTimeout(500);
     const value = await reloadedDescriptionField.inputValue();

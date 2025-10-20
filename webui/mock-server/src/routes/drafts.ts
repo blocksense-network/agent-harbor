@@ -29,7 +29,7 @@ let mockDrafts: any[] = [
 router.get('/', (req, res) => {
   try {
     logger.log(`[DRAFTS] GET /api/v1/drafts - Returning ${mockDrafts.length} drafts`);
-    mockDrafts.forEach(d => logger.log(`  - ${d.id}: prompt="${d.prompt}"`));
+    mockDrafts.forEach((d) => logger.log(`  - ${d.id}: prompt="${d.prompt}"`));
     // Return all drafts (in a real implementation, this would be filtered by user)
     res.status(200).json({
       items: mockDrafts,

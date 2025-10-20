@@ -59,7 +59,7 @@ test.describe('Layout and Navigation Tests', () => {
     const draftCards = page.locator('[data-testid="draft-task-card"]');
 
     // Should have at least draft cards (always visible) and possibly session cards
-    const totalCards = await taskCards.count() + await draftCards.count();
+    const totalCards = (await taskCards.count()) + (await draftCards.count());
     expect(totalCards).toBeGreaterThan(0);
   });
 
@@ -157,12 +157,14 @@ test.describe('Layout and Navigation Tests', () => {
 
   test('Task details page navigation works correctly', async ({ page }) => {
     // Wait for page to load with data
-    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+      timeout: 10000,
+    });
 
     // Get the first session's task ID
     const sessionCards = page.locator('[data-testid="task-card"]');
     const firstSessionCard = sessionCards.first();
-    const taskId = await firstSessionCard.getAttribute('data-task-id');
+    const _taskId = await firstSessionCard.getAttribute('data-task-id');
 
     // Click on the task title to navigate to details
     const taskTitle = firstSessionCard.locator('[data-testid="task-title-link"]');
@@ -170,20 +172,22 @@ test.describe('Layout and Navigation Tests', () => {
 
     // Verify task details page renders
     await expect(page.locator('[data-testid="task-details"]')).toBeVisible();
-    await expect(page.locator('h2')).toContainText(`Task Details: ${taskId}`);
+    await expect(page.locator('h2')).toContainText(`Task Details: ${_taskId}`);
   });
 
   test('Task details page action buttons work correctly', async ({ page }) => {
     // Wait for page to load with data
-    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+      timeout: 10000,
+    });
 
     // Get the first session's task ID
     const sessionCards = page.locator('[data-testid="task-card"]');
     const firstSessionCard = sessionCards.first();
-    const taskId = await firstSessionCard.getAttribute('data-task-id');
+    const _taskId = await firstSessionCard.getAttribute('data-task-id');
 
     // Navigate to task details
-    await page.goto(`http://localhost:3002/tasks/${taskId}`);
+    await page.goto(`http://localhost:3002/tasks/${_taskId}`);
 
     // Verify action buttons are present
     const stopButton = page.locator('[data-testid="stop-session-btn"]');
@@ -195,12 +199,14 @@ test.describe('Layout and Navigation Tests', () => {
 
   test('Navigation maintains browser history correctly', async ({ page }) => {
     // Wait for page to load with data
-    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), { timeout: 10000 });
+    await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
+      timeout: 10000,
+    });
 
     // Get the first session's task ID
     const sessionCards = page.locator('[data-testid="task-card"]');
     const firstSessionCard = sessionCards.first();
-    const taskId = await firstSessionCard.getAttribute('data-task-id');
+    const _taskId = await firstSessionCard.getAttribute('data-task-id');
 
     // Click on task title to navigate to details
     const taskTitle = firstSessionCard.locator('[data-testid="task-title-link"]');
@@ -243,7 +249,9 @@ test.describe('Layout and Navigation Tests', () => {
     await page.waitForTimeout(2000);
 
     // Find session cards (excluding draft cards)
-    const sessionCards = page.locator('.bg-white.border').filter({ hasNotText: 'Describe what you want the agent to do' });
+    const sessionCards = page
+      .locator('.bg-white.border')
+      .filter({ hasNotText: 'Describe what you want the agent to do' });
 
     if (await sessionCards.first().isVisible()) {
       // Check that session cards are displayed properly
@@ -281,9 +289,9 @@ test.describe('Layout and Navigation Tests', () => {
     await statusFilter.selectOption('running');
     await page.waitForTimeout(300);
 
-    const statusLabels = await page.locator('[data-testid="task-card"] span[aria-label^="Status:"]').evaluateAll((elements) =>
-      elements.map((el) => el.getAttribute('aria-label') || '')
-    );
+    const statusLabels = await page
+      .locator('[data-testid="task-card"] span[aria-label^="Status:"]')
+      .evaluateAll((elements) => elements.map((el) => el.getAttribute('aria-label') || ''));
 
     if (statusLabels.length > 0) {
       for (const label of statusLabels) {

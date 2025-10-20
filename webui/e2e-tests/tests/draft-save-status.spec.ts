@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
-import { setupTestEnvironment, teardownTestEnvironment } from "../utils/test-helpers";
+import { test, expect } from '@playwright/test';
+import { setupTestEnvironment, teardownTestEnvironment } from '../utils/test-helpers';
 
-test.describe("Draft Save Status Algorithm", () => {
+test.describe('Draft Save Status Algorithm', () => {
   let baseURL: string;
 
   test.beforeAll(async () => {
@@ -17,7 +17,7 @@ test.describe("Draft Save Status Algorithm", () => {
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
   });
 
   test("should show 'Unsaved' immediately when typing starts", async ({ page }) => {
@@ -27,12 +27,12 @@ test.describe("Draft Save Status Algorithm", () => {
     const textarea = page.locator('[data-testid="draft-task-textarea"]').first();
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
 
     await textarea.click();
-    await textarea.type("Hello");
+    await textarea.type('Hello');
 
-    await expect(saveStatus).toHaveText("Unsaved");
+    await expect(saveStatus).toHaveText('Unsaved');
   });
 
   test("should transition to 'Saving...' after 500ms of inactivity", async ({ page }) => {
@@ -43,13 +43,13 @@ test.describe("Draft Save Status Algorithm", () => {
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
     await textarea.click();
-    await textarea.fill("Test content");
+    await textarea.fill('Test content');
 
-    await expect(saveStatus).toHaveText("Unsaved");
+    await expect(saveStatus).toHaveText('Unsaved');
 
     await page.waitForTimeout(600);
 
-    await expect(saveStatus).toHaveText("Saving...");
+    await expect(saveStatus).toHaveText('Saving...');
   });
 
   test("should show 'Saved' after successful save", async ({ page }) => {
@@ -60,14 +60,14 @@ test.describe("Draft Save Status Algorithm", () => {
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
     await textarea.click();
-    await textarea.fill("Content to save");
-    await expect(saveStatus).toHaveText("Unsaved");
+    await textarea.fill('Content to save');
+    await expect(saveStatus).toHaveText('Unsaved');
 
     await page.waitForTimeout(1500);
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
   });
 
-  test("should invalidate previous save requests when typing continues", async ({ page }) => {
+  test('should invalidate previous save requests when typing continues', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -75,21 +75,21 @@ test.describe("Draft Save Status Algorithm", () => {
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
     await textarea.click();
-    await textarea.fill("First content");
-    await expect(saveStatus).toHaveText("Unsaved");
+    await textarea.fill('First content');
+    await expect(saveStatus).toHaveText('Unsaved');
 
     await page.waitForTimeout(200);
-    await textarea.type(" and more");
+    await textarea.type(' and more');
 
-    await expect(saveStatus).toHaveText("Unsaved");
+    await expect(saveStatus).toHaveText('Unsaved');
 
     await page.waitForTimeout(1000);
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
 
-    await expect(textarea).toHaveValue("First content and more");
+    await expect(textarea).toHaveValue('First content and more');
   });
 
-  test("should prevent text truncation during concurrent typing", async ({ page }) => {
+  test('should prevent text truncation during concurrent typing', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -98,22 +98,22 @@ test.describe("Draft Save Status Algorithm", () => {
 
     await textarea.click();
 
-    await textarea.fill("Initial text");
-    await expect(saveStatus).toHaveText("Unsaved");
+    await textarea.fill('Initial text');
+    await expect(saveStatus).toHaveText('Unsaved');
 
     await page.waitForTimeout(100);
-    await textarea.type(" continued");
+    await textarea.type(' continued');
 
     await page.waitForTimeout(100);
-    await textarea.type(" and finished");
+    await textarea.type(' and finished');
 
     await page.waitForTimeout(1500);
 
-    await expect(saveStatus).toHaveText("Saved");
-    await expect(textarea).toHaveValue("Initial text continued and finished");
+    await expect(saveStatus).toHaveText('Saved');
+    await expect(textarea).toHaveValue('Initial text continued and finished');
   });
 
-  test("should handle rapid typing sessions without issues", async ({ page }) => {
+  test('should handle rapid typing sessions without issues', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -121,24 +121,24 @@ test.describe("Draft Save Status Algorithm", () => {
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
     const testTexts = [
-      "First draft version",
-      "Second draft with changes",
-      "Third version after review",
-      "Final version ready"
+      'First draft version',
+      'Second draft with changes',
+      'Third version after review',
+      'Final version ready',
     ];
 
     for (const text of testTexts) {
       await textarea.click();
       await textarea.fill(text);
-      await expect(saveStatus).toHaveText("Unsaved");
+      await expect(saveStatus).toHaveText('Unsaved');
 
       await page.waitForTimeout(1000);
-      await expect(saveStatus).toHaveText("Saved");
+      await expect(saveStatus).toHaveText('Saved');
       await expect(textarea).toHaveValue(text);
     }
   });
 
-  test("should maintain status consistency across interactions", async ({ page }) => {
+  test('should maintain status consistency across interactions', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -146,9 +146,9 @@ test.describe("Draft Save Status Algorithm", () => {
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
     await textarea.click();
-    await textarea.fill("Test content for consistency");
+    await textarea.fill('Test content for consistency');
     await page.waitForTimeout(1500);
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
 
     await page.reload();
     await page.waitForSelector('[data-testid="draft-task-card"]');
@@ -156,11 +156,11 @@ test.describe("Draft Save Status Algorithm", () => {
     const newTextarea = page.locator('[data-testid="draft-task-textarea"]').first();
     const newSaveStatus = page.locator('[aria-label*="Save status"]').first();
 
-    await expect(newSaveStatus).toHaveText("Saved");
-    await expect(newTextarea).toHaveValue("Test content for consistency");
+    await expect(newSaveStatus).toHaveText('Saved');
+    await expect(newTextarea).toHaveValue('Test content for consistency');
   });
 
-  test("should show save status with proper ARIA attributes", async ({ page }) => {
+  test('should show save status with proper ARIA attributes', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 

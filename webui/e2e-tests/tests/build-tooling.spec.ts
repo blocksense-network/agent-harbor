@@ -65,11 +65,7 @@ test.describe('Build and Tooling Tests', () => {
   }
 
   test('App SSR server builds successfully with TypeScript strict mode', async () => {
-    await runCommandWithLogging(
-      'cd ../app && npm run build',
-      [],
-      'App SSR server build'
-    );
+    await runCommandWithLogging('cd ../app && npm run build', [], 'App SSR server build');
   });
 
   test('Mock server builds successfully with TypeScript strict mode', async () => {
@@ -77,11 +73,7 @@ test.describe('Build and Tooling Tests', () => {
   });
 
   test('E2E tests build successfully with TypeScript strict mode', async () => {
-    await runCommandWithLogging(
-      'yarn',
-      ['exec', 'tsc', '--noEmit'],
-      'E2E TypeScript compilation'
-    );
+    await runCommandWithLogging('yarn', ['exec', 'tsc', '--noEmit'], 'E2E TypeScript compilation');
   });
 
   test('Prettier configuration works across all projects', async () => {

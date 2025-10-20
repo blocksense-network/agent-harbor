@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import * as YAML from 'yaml';
+import { setTimeout } from 'timers';
 import { logger } from './index.js';
 
 // ES module equivalent of __dirname
@@ -46,30 +47,38 @@ export interface Scenario {
 
 export type TimelineEvent =
   | { think: Array<[number, string]> }
-  | { agentToolUse: {
-      toolName: string;
-      args: Record<string, any>;
-      progress?: Array<[number, string]>;
-      result: string;
-      status: 'ok' | 'error';
-    }}
-  | { agentEdits: {
-      path: string;
-      linesAdded: number;
-      linesRemoved: number;
-    }}
+  | {
+      agentToolUse: {
+        toolName: string;
+        args: Record<string, any>;
+        progress?: Array<[number, string]>;
+        result: string;
+        status: 'ok' | 'error';
+      };
+    }
+  | {
+      agentEdits: {
+        path: string;
+        linesAdded: number;
+        linesRemoved: number;
+      };
+    }
   | { assistant: Array<[number, string]> }
   | { advanceMs: number }
   | { screenshot: string }
   | { assert: Assertion }
   | { userInputs: Array<[number, string]> & { target?: 'tui' | 'webui' | 'cli' } }
-  | { userEdits: {
-      patch: string;
-    }}
-  | { userCommand: {
-      cmd: string;
-      cwd?: string;
-    }}
+  | {
+      userEdits: {
+        patch: string;
+      };
+    }
+  | {
+      userCommand: {
+        cmd: string;
+        cwd?: string;
+      };
+    }
   | { merge: true }
   | { complete: true };
 
@@ -175,7 +184,6 @@ export class ScenarioRunner {
 
         this.scenarios.set(scenario.name, scenario);
         logger.log(`Loaded scenario: ${scenario.name} from ${fullPath}`);
-
       } catch (error) {
         logger.error(`Failed to load scenario ${scenarioFile}:`, error);
       }
@@ -217,7 +225,7 @@ export class ScenarioRunner {
         session.events.push(...scenarioEvents);
 
         // Process each event with appropriate timing
-        for (const scenarioEvent of scenarioEvents) {
+        for (const _scenarioEvent of scenarioEvents) {
           // Add some delay between events to simulate real-time processing
           await this.delay(100);
         }
@@ -241,19 +249,21 @@ export class ScenarioRunner {
         session.status = 'completed';
         logger.log(`Scenario ${session.scenarioName} completed (implicit)`);
       }
-
     } catch (error) {
       session.status = 'failed';
       logger.error(`Scenario ${session.scenarioName} failed:`, error);
     }
   }
 
-  private convertTimelineEventToScenarioEvents(event: TimelineEvent, sessionId: string): ScenarioEvent[] {
+  private convertTimelineEventToScenarioEvents(
+    event: TimelineEvent,
+    sessionId: string
+  ): ScenarioEvent[] {
     const events: ScenarioEvent[] = [];
     const ts = new Date().toISOString();
 
     if ('think' in event) {
-      for (const [delay, thought] of event.think) {
+      for (const [_delay, thought] of event.think) {
         events.push({
           type: 'thinking',
           sessionId,
@@ -275,7 +285,7 @@ export class ScenarioRunner {
 
       // Progress events
       if (progress) {
-        for (const [delay, message] of progress) {
+        for (const [_delay, message] of progress) {
           events.push({
             type: 'tool_execution',
             sessionId,
@@ -306,7 +316,7 @@ export class ScenarioRunner {
         ts,
       });
     } else if ('assistant' in event) {
-      for (const [delay, message] of event.assistant) {
+      for (const [_delay, message] of event.assistant) {
         events.push({
           type: 'log',
           sessionId,
@@ -337,17 +347,17 @@ export class ScenarioRunner {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // Public API methods
   getActiveSessions(): ScenarioSession[] {
-    return Array.from(this.sessions.values()).filter(session => session.status === 'running');
+    return Array.from(this.sessions.values()).filter((session) => session.status === 'running');
   }
 
   getCompletedSessions(): ScenarioSession[] {
-    return Array.from(this.sessions.values()).filter(session =>
-      session.status === 'completed' || session.status === 'failed'
+    return Array.from(this.sessions.values()).filter(
+      (session) => session.status === 'completed' || session.status === 'failed'
     );
   }
 

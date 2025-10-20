@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
-import { setupTestEnvironment, teardownTestEnvironment } from "../utils/test-helpers";
+import { test, expect } from '@playwright/test';
+import { setupTestEnvironment, teardownTestEnvironment } from '../utils/test-helpers';
 
-test.describe("Draft Recursion Prevention", () => {
+test.describe('Draft Recursion Prevention', () => {
   let baseURL: string;
 
   test.beforeAll(async () => {
@@ -12,7 +12,7 @@ test.describe("Draft Recursion Prevention", () => {
     await teardownTestEnvironment();
   });
 
-  test("should not cause infinite recursion when typing rapidly", async ({ page }) => {
+  test('should not cause infinite recursion when typing rapidly', async ({ page }) => {
     // Set up console monitoring to detect recursion
     const consoleMessages: string[] = [];
     const effectRuns: string[] = [];
@@ -32,7 +32,7 @@ test.describe("Draft Recursion Prevention", () => {
 
     // Type rapidly to test for recursion
     await textarea.click();
-    await textarea.fill("Test text for recursion detection");
+    await textarea.fill('Test text for recursion detection');
 
     // Wait a bit for effects to settle
     await page.waitForTimeout(2000);
@@ -55,10 +55,10 @@ test.describe("Draft Recursion Prevention", () => {
 
     // Verify the page is still responsive (no infinite loop blocking UI)
     await expect(textarea).toBeVisible();
-    await expect(textarea).toHaveValue("Test text for recursion detection");
+    await expect(textarea).toHaveValue('Test text for recursion detection');
   });
 
-  test("should handle multiple rapid typing sessions without recursion", async ({ page }) => {
+  test('should handle multiple rapid typing sessions without recursion', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -81,7 +81,7 @@ test.describe("Draft Recursion Prevention", () => {
     await expect(page.locator('[data-testid="draft-task-card"]')).toBeVisible();
   });
 
-  test("should prevent concurrent save operations", async ({ page }) => {
+  test('should prevent concurrent save operations', async ({ page }) => {
     await page.goto(baseURL);
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -89,10 +89,10 @@ test.describe("Draft Recursion Prevention", () => {
 
     // Type and immediately type again to test concurrent save prevention
     await textarea.click();
-    await textarea.fill("First save");
+    await textarea.fill('First save');
     await page.waitForTimeout(200); // Partial debounce time
 
-    await textarea.fill("Second save"); // This should cancel the first save
+    await textarea.fill('Second save'); // This should cancel the first save
 
     // Wait for everything to settle
     await page.waitForTimeout(1500);

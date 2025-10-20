@@ -26,12 +26,12 @@ if (process.env.SERVER_LOG_FILE) {
   const originalStderrWrite = process.stderr.write;
 
   // Redirect stdout and stderr to both original and file
-  process.stdout.write = function(chunk: any, encoding?: any, callback?: any) {
+  process.stdout.write = function (chunk: any, encoding?: any, callback?: any) {
     logStream.write(chunk, encoding, callback);
     return originalStdoutWrite.call(process.stdout, chunk, encoding, callback);
   };
 
-  process.stderr.write = function(chunk: any, encoding?: any, callback?: any) {
+  process.stderr.write = function (chunk: any, encoding?: any, callback?: any) {
     logStream.write(chunk, encoding, callback);
     return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
   };
@@ -66,7 +66,7 @@ export const logger = {
   },
   error: (...args: any[]) => {
     console.error(...args); // Always log errors
-  }
+  },
 };
 
 const app = express();

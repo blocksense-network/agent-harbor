@@ -69,7 +69,13 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       data-toast
       class={`
         ${getToastStyles(props.toast.type)}
-        ${isVisible() ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
+        ${
+          isVisible()
+            ? 'translate-x-0 opacity-100'
+            : `
+          translate-x-full opacity-0
+        `
+        }
       `}
       role="alert"
       aria-live="assertive"
