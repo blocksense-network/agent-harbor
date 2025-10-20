@@ -4,14 +4,14 @@
 //! Agent start command implementation
 
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
-use anyhow::{Context, anyhow};
+use ah_core::agent_types::AgentType;
 use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
 
-/// Supported agent types
+/// CLI-specific agent type enum that derives clap::ValueEnum
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
-pub enum AgentType {
+pub enum CliAgentType {
     /// Mock agent for testing
     Mock,
     /// OpenAI Codex CLI agent
@@ -28,6 +28,21 @@ pub enum AgentType {
     CursorCli,
     /// Goose agent
     Goose,
+}
+
+impl From<CliAgentType> for AgentType {
+    fn from(cli: CliAgentType) -> Self {
+        match cli {
+            CliAgentType::Mock => AgentType::Mock,
+            CliAgentType::Codex => AgentType::Codex,
+            CliAgentType::Claude => AgentType::Claude,
+            CliAgentType::Gemini => AgentType::Gemini,
+            CliAgentType::Opencode => AgentType::Opencode,
+            CliAgentType::Qwen => AgentType::Qwen,
+            CliAgentType::CursorCli => AgentType::CursorCli,
+            CliAgentType::Goose => AgentType::Goose,
+        }
+    }
 }
 
 /// Working copy mode for agent execution
@@ -59,7 +74,7 @@ pub enum OutputFormat {
 pub struct AgentStartArgs {
     /// Agent type to start
     #[arg(long, default_value = "mock")]
-    pub agent: AgentType,
+    pub agent: CliAgentType,
 
     /// Enable non-interactive mode (e.g., codex exec)
     #[arg(long)]
@@ -117,6 +132,22 @@ pub struct AgentStartArgs {
     #[arg(long, value_parser = parse_bool)]
     pub seccomp_debug: Option<bool>,
 
+    /// Allow web search capabilities for agents that support it
+    #[arg(long)]
+    pub allow_web_search: bool,
+
+    /// Model to use for the agent (can be overridden by agent-specific flags)
+    #[arg(long)]
+    pub model: Option<String>,
+
+    /// Model to use specifically for Codex agent (overrides --model)
+    #[arg(long)]
+    pub codex_model: Option<String>,
+
+    /// Model to use specifically for Claude agent (overrides --model)
+    #[arg(long)]
+    pub claude_model: Option<String>,
+
     /// Additional writable paths to bind mount
     #[arg(long)]
     pub mount_rw: Vec<PathBuf>,
@@ -149,13 +180,16 @@ fn parse_bool(s: &str) -> Result<bool, String> {
 impl AgentStartArgs {
     /// Run the agent start command
     pub async fn run(self) -> anyhow::Result<()> {
+        // Convert CLI agent type to core agent type
+        let agent_type: AgentType = self.agent.clone().into();
+
         // Handle mock agent separately (doesn't use abstraction layer)
-        if matches!(self.agent, AgentType::Mock) {
+        if matches!(agent_type, AgentType::Mock) {
             return self.run_mock_agent().await;
         }
 
         // Get the agent executor from the abstraction layer
-        let agent: Box<dyn AgentExecutor> = match self.agent {
+        let agent: Box<dyn AgentExecutor> = match agent_type {
             AgentType::Claude => Box::new(ah_agents::claude()),
             AgentType::Codex => Box::new(ah_agents::codex()),
             // For agents not yet implemented in ah-agents, fall back to old logic
@@ -164,13 +198,13 @@ impl AgentStartArgs {
             | AgentType::Qwen
             | AgentType::CursorCli
             | AgentType::Goose => {
-                return self.run_legacy_agent().await;
+                return self.run_legacy_agent(agent_type).await;
             }
             AgentType::Mock => unreachable!(), // handled above
         };
 
         // Build the launch configuration
-        let config = self.build_agent_config()?;
+        let config = self.build_agent_config(agent_type)?;
 
         // Execute the agent (replace current process)
         agent.exec(config).await?;
@@ -180,10 +214,10 @@ impl AgentStartArgs {
     }
 
     /// Build AgentLaunchConfig from command line arguments
-    fn build_agent_config(&self) -> anyhow::Result<AgentLaunchConfig> {
+    fn build_agent_config(&self, agent_type: AgentType) -> anyhow::Result<AgentLaunchConfig> {
         let mut config = AgentLaunchConfig::new(
             self.prompt.clone().unwrap_or_else(|| "Continue working".to_string()),
-            self.build_home_dir()?,
+            self.build_home_dir(agent_type.clone())?,
         );
 
         // Set interactive mode based on flags
@@ -218,16 +252,50 @@ impl AgentStartArgs {
         // Enable credential copying by default
         config = config.copy_credentials(true);
 
+        // Set unrestricted mode when running in sandbox
+        if self.sandbox {
+            config = config.unrestricted(true);
+        }
+
+        // Enable web search if requested
+        if self.allow_web_search {
+            config = config.web_search(true);
+        }
+
+        // Set model based on agent type and precedence rules
+        let model = match agent_type {
+            AgentType::Codex => {
+                // codex-model takes precedence over model
+                self.codex_model
+                    .clone()
+                    .or_else(|| self.model.clone())
+                    .unwrap_or_else(|| "gpt-5-codex".to_string())
+            }
+            AgentType::Claude => {
+                // claude-model takes precedence over model
+                self.claude_model
+                    .clone()
+                    .or_else(|| self.model.clone())
+                    .unwrap_or_else(|| "sonnet".to_string())
+            }
+            // For other agents, use the general model flag or None
+            _ => self.model.clone().unwrap_or_default(),
+        };
+
+        if !model.is_empty() {
+            config = config.model(model);
+        }
+
         Ok(config)
     }
 
     /// Build the home directory path for the agent
-    fn build_home_dir(&self) -> anyhow::Result<PathBuf> {
+    fn build_home_dir(&self, agent_type: AgentType) -> anyhow::Result<PathBuf> {
         let base_dir = std::env::var("AH_HOME").map(PathBuf::from).unwrap_or_else(|_| {
             dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp")).join(".agent-harbor")
         });
 
-        let agent_name = match self.agent {
+        let agent_name = match agent_type {
             AgentType::Claude => "claude",
             AgentType::Codex => "codex",
             _ => "unknown",
@@ -237,17 +305,14 @@ impl AgentStartArgs {
     }
 
     /// Run legacy agent implementations (not yet migrated to ah-agents)
-    async fn run_legacy_agent(&self) -> anyhow::Result<()> {
-        match self.agent {
+    async fn run_legacy_agent(&self, agent_type: AgentType) -> anyhow::Result<()> {
+        match agent_type {
             AgentType::Gemini => self.run_mock_agent().await,
             AgentType::Opencode => self.run_mock_agent().await,
             AgentType::Qwen => self.run_mock_agent().await,
             AgentType::CursorCli => self.run_mock_agent().await,
             AgentType::Goose => self.run_mock_agent().await,
-            _ => {
-                eprintln!("Agent '{:?}' is not yet implemented.", self.agent);
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 
@@ -265,12 +330,8 @@ impl AgentStartArgs {
         // Handle workspace preparation for snapshots mode
         let actual_cwd = if self.working_copy == WorkingCopyMode::Snapshots {
             // Prepare a snapshot-based workspace
-            eprintln!("Preparing workspace with filesystem snapshots...");
             match crate::sandbox::prepare_workspace_with_fallback(&cwd).await {
-                Ok(prepared_workspace) => {
-                    eprintln!("Workspace prepared at: {:?}", prepared_workspace.exec_path);
-                    prepared_workspace.exec_path
-                }
+                Ok(prepared_workspace) => prepared_workspace.exec_path,
                 Err(e) => {
                     return Err(e.into());
                 }
@@ -347,8 +408,6 @@ impl AgentStartArgs {
         #[cfg(target_os = "linux")]
         {
             use sandbox_core::{ProcessConfig, ProcessManager, Sandbox};
-
-            eprintln!("Running mock agent in sandbox environment...");
 
             // Validate sandbox type
             if self.sandbox_type != "local" {

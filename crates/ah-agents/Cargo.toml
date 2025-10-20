@@ -24,6 +24,7 @@ flate2 = "1.0"
 dirs = "5.0"
 regex = "1.10"
 chrono = "0.4"
+ureq = "2.9"
 
 # Platform-specific credential management
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -38,7 +39,8 @@ windows = { version = "0.52", features = ["Win32_Security_Credentials"] }
 [dev-dependencies]
 tempfile = "3.8"
 ah-repo = { path = "../ah-repo" }
-ureq = "2.9"
+reqwest = { version = "0.12", features = ["json"] }
+llm-api-proxy = { path = "../llm-api-proxy" }
 
 [features]
 default = ["claude", "codex"]
@@ -55,6 +57,8 @@ crush = []
 groq = []
 amp = []
 windsurf = []
+# Feature for Rust proxy tests
+rust-proxy-tests = []
 
 [dependencies.ah-core]
 path = "../ah-core"

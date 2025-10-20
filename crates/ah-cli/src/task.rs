@@ -2692,31 +2692,19 @@ exit {}
         repo_dir: &std::path::Path,
         server_port: u16,
     ) -> Result<std::process::Child> {
-        use std::process::Command;
-
-        let mock_agent_dir = get_workspace_root().join("tests").join("tools").join("mock-agent");
-
-        let playbook_path = mock_agent_dir.join("examples").join("comprehensive_playbook.json");
+        use ah_agents::test_utils::start_mock_llm_api_server;
 
         eprintln!("Starting mock LLM API server on port {}...", server_port);
-        eprintln!("Using playbook: {}", playbook_path.display());
 
-        let mut cmd = Command::new("python3");
-        cmd.arg(mock_agent_dir.join("start_test_server.py"))
-            .arg("--host")
-            .arg("127.0.0.1")
-            .arg("--port")
-            .arg(server_port.to_string())
-            .arg("--playbook")
-            .arg(&playbook_path)
-            .arg("--format")
-            .arg("codex")
-            .current_dir(repo_dir)
-            .env("PYTHONPATH", mock_agent_dir.join("src"))
-            .stdout(std::process::Stdio::null()) // Suppress server output
-            .stderr(std::process::Stdio::null());
-
-        let child = cmd.spawn()?;
+        let agent_binary = ah_core::agent_binary::AgentBinary::from_agent_type(
+            ah_core::agent_types::AgentType::Codex,
+        )
+        .expect("Codex binary not found in PATH");
+        let scenario_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/tools/mock-agent/scenarios/basic_timeline_scenario.yaml"
+        );
+        let mut child = start_mock_llm_api_server(server_port, &agent_binary, scenario_path)?;
         std::thread::sleep(std::time::Duration::from_secs(3)); // Wait for server to start
         Ok(child)
     }

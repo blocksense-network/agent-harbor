@@ -70,6 +70,13 @@ pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
 };
 
+// Re-export core agent types
+pub use ah_core::agent_binary::AgentBinary;
+pub use ah_core::agent_types::AgentType;
+
+// Test utilities
+pub mod test_utils;
+
 // Convenience constructors for each agent
 #[cfg(feature = "claude")]
 pub fn claude() -> claude::ClaudeAgent {

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: test_scenario
+initialPrompt: "Create a test file for the test scenario"
 repo:
   init: true
 timeline:

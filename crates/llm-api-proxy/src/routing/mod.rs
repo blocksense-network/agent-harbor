@@ -8,6 +8,9 @@
 //!
 //! TODO: Integrate with actual Helicone crates when available
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use crate::{
     config::{ProviderConfig, ProxyConfig},
     error::{Error, Result},
@@ -20,6 +23,7 @@ use crate::{
 
 // Placeholder type until Helicone crates are integrated
 #[derive(Debug)]
+#[allow(dead_code)]
 struct HeliconeDynamicRouter;
 
 /// Dynamic router that selects providers based on request characteristics
@@ -27,6 +31,7 @@ pub struct DynamicRouter {
     // TODO: Replace with HeliconeDynamicRouter when available
     // helicone_router: HeliconeDynamicRouter,
     config: std::sync::Arc<tokio::sync::RwLock<ProxyConfig>>,
+    selector: ProviderSelector,
 }
 
 impl DynamicRouter {
@@ -38,6 +43,7 @@ impl DynamicRouter {
         Ok(Self {
             // helicone_router,
             config,
+            selector: ProviderSelector::new(),
         })
     }
 
@@ -51,13 +57,42 @@ impl DynamicRouter {
         // Use routing rules to select provider
         let provider_name = self.select_provider_name(&model, &config).await;
 
-        // Get provider configuration
-        let provider_config =
-            config.providers.get(&provider_name).ok_or_else(|| Error::Routing {
-                message: format!("Provider '{}' not found in configuration", provider_name),
-            })?;
+        let mut candidates: Vec<(ProviderInfo, u32)> = Vec::new();
 
-        Ok(Self::provider_config_to_info(provider_config))
+        // Prefer exact key match first
+        if let Some(provider) = config.providers.get(&provider_name) {
+            candidates.push((
+                Self::provider_config_to_info(provider),
+                provider.weight.max(1),
+            ));
+        }
+
+        // Include providers with matching logical name (for regional replicas)
+        for (key, provider) in &config.providers {
+            if key == &provider_name {
+                continue;
+            }
+            if provider.name == provider_name {
+                candidates.push((
+                    Self::provider_config_to_info(provider),
+                    provider.weight.max(1),
+                ));
+            }
+        }
+
+        if candidates.is_empty() {
+            return Err(Error::Routing {
+                message: format!("Provider '{}' not found in configuration", provider_name),
+            });
+        }
+
+        if candidates.len() == 1 || !config.routing.enable_fallback {
+            return Ok(candidates.remove(0).0);
+        }
+
+        self.selector.select(&provider_name, &candidates).ok_or_else(|| Error::Routing {
+            message: format!("Unable to select provider for '{}'", provider_name),
+        })
     }
 
     /// Select provider name based on model and routing rules
@@ -85,7 +120,8 @@ impl DynamicRouter {
     fn extract_model_from_request(request: &ProxyRequest) -> Result<String> {
         // Try to extract model from the JSON payload based on format
         match request.client_format {
-            crate::converters::ApiFormat::OpenAI => {
+            crate::converters::ApiFormat::OpenAI
+            | crate::converters::ApiFormat::OpenAIResponses => {
                 // OpenAI format: {"model": "..."}
                 if let Some(model) = request.payload.get("model").and_then(|m| m.as_str()) {
                     Ok(model.to_string())
@@ -129,6 +165,7 @@ impl DynamicRouter {
     }
 
     /// Create the underlying Helicone router
+    #[allow(dead_code)]
     async fn create_helicone_router(
         _config: &std::sync::Arc<tokio::sync::RwLock<ProxyConfig>>,
     ) -> Result<HeliconeDynamicRouter> {
@@ -141,26 +178,45 @@ impl DynamicRouter {
 }
 
 /// Provider selector for load balancing
+#[derive(Default)]
 pub struct ProviderSelector {
-    // TODO: Replace with WeightedBalancer when available
-    // balancer: WeightedBalancer,
+    counters: Mutex<HashMap<String, usize>>,
 }
 
 impl ProviderSelector {
     /// Create a new provider selector
     pub fn new() -> Self {
-        // TODO: Initialize with provider weights from config
-        Self {
-            // balancer: WeightedBalancer::new(vec![]), // Placeholder
-        }
+        Self::default()
     }
 
-    /// Select a provider using weighted load balancing
-    pub fn select(&self, _providers: &[ProviderInfo]) -> Result<&ProviderInfo> {
-        // TODO: Implement weighted selection
-        Err(Error::Routing {
-            message: "Weighted provider selection not yet implemented".to_string(),
-        })
+    /// Select a provider using weighted round-robin
+    pub fn select(&self, key: &str, providers: &[(ProviderInfo, u32)]) -> Option<ProviderInfo> {
+        if providers.is_empty() {
+            return None;
+        }
+
+        let total_weight: u32 = providers.iter().map(|(_, weight)| (*weight).max(1)).sum();
+        if total_weight == 0 {
+            return Some(providers[0].0.clone());
+        }
+
+        let index = {
+            let mut guard = self.counters.lock().unwrap();
+            let counter = guard.entry(key.to_string()).or_insert(0);
+            let current = *counter % total_weight as usize;
+            *counter = (*counter + 1) % total_weight as usize;
+            current
+        };
+
+        let mut cumulative: usize = 0;
+        for (info, weight) in providers {
+            cumulative += (*weight as usize).max(1);
+            if index < cumulative {
+                return Some(info.clone());
+            }
+        }
+
+        providers.last().map(|(info, _)| info.clone())
     }
 }
 

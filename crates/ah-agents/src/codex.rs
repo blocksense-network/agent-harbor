@@ -111,8 +111,9 @@ impl AgentExecutor for CodexAgent {
 
         let mut cmd = tokio::process::Command::new(&self.binary_path);
 
-        // Set custom HOME directory
-        cmd.env("HOME", &config.home_dir);
+        // Set custom CODEX_HOME directory (Codex-specific home directory)
+        let codex_home = config.home_dir.join(".codex");
+        cmd.env("CODEX_HOME", &codex_home);
 
         // Set current directory
         cmd.current_dir(&config.working_dir);
@@ -126,16 +127,34 @@ impl AgentExecutor for CodexAgent {
         if let Some(api_server) = &config.api_server {
             cmd.env("OPENAI_API_BASE", api_server);
             cmd.env("OPENAI_BASE_URL", api_server);
+            cmd.env("CODEX_API_BASE", api_server);
         }
 
         // Add API key if specified
         if let Some(api_key) = &config.api_key {
             cmd.env("OPENAI_API_KEY", api_key);
+            cmd.env("CODEX_API_KEY", api_key);
         }
 
         // Add additional environment variables
         for (key, value) in &config.env_vars {
             cmd.env(key, value);
+        }
+
+        // Add security and capability flags
+        if config.unrestricted {
+            cmd.arg("--dangerously-bypass-approvals-and-sandbox");
+        } else {
+            cmd.arg("--full-auto");
+        }
+
+        // Add model specification
+        let model = config.model.as_deref().unwrap_or("gpt-5-codex");
+        cmd.arg("--model");
+        cmd.arg(model);
+
+        if config.web_search {
+            cmd.arg("--search");
         }
 
         // Configure stdio for piped I/O

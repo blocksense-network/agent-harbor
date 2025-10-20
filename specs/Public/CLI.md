@@ -1218,6 +1218,10 @@ OPTIONS:
   --allow-egress <yes|no>            Allow network egress from sandbox (default: no)
   --allow-containers <yes|no>        Permit nested containers (default: no)
   --allow-vms <yes|no>               Permit nested virtualization (default: no)
+  --allow-web-search                 Allow web search capabilities for agents that support it
+  --model <MODEL>                    Model to use for the agent (can be overridden by agent-specific flags)
+  --codex-model <MODEL>              Model to use specifically for Codex agent (default: gpt-5-codex)
+  --claude-model <MODEL>             Model to use specifically for Claude agent (default: sonnet)
   --env <KEY=VALUE>...               Additional environment variables for agent
   --timeout <DURATION>               Maximum execution time before auto-termination
   --record-output <yes|no>           Record agent output with ah agent record (default: yes)

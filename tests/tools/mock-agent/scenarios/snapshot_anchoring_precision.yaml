@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: snapshot_anchoring_precision
+initialPrompt: "Test snapshot anchoring precision"
 description: "Test byte-level anchoring precision for filesystem snapshots in recordings"
 repo:
   init: true
