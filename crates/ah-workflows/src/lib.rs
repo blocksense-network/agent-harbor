@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
-
 /// Information about a workflow command available in the workspace
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkflowCommand {
@@ -35,7 +34,6 @@ pub enum WorkflowCommandSource {
     /// Executable found in system PATH
     Path,
 }
-
 /// Result of processing workflow commands and environment directives
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkflowResult {

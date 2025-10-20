@@ -1,0 +1,18 @@
+name: claude_test_scenario
+initialPrompt: "Create a file for testing Claude functionality"
+repo:
+  init: true
+timeline:
+  - think:
+      - [500, "Processing claude test request"]
+  - agentToolUse:
+      toolName: "writeFile"
+      args:
+        path: "test.txt"
+        content: "Test content for claude"
+      result: "File created"
+      status: "ok"
+  - assistant:
+      - [300, "Completed claude test scenario"]
+expect:
+  exitCode: 0

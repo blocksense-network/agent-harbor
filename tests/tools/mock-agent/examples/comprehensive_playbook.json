@@ -1,14 +1,29 @@
 {
   "rules": [
     {
+      "if_contains": [],
+      "response": {
+        "assistant": "Processing any request",
+        "tool_calls": [
+          {
+            "name": "write_file",
+            "args": {
+              "path": "test.txt",
+              "text": "Test content for any request"
+            }
+          }
+        ]
+      }
+    },
+    {
       "if_contains": ["create", "hello.py"],
       "response": {
         "assistant": "I'll create hello.py with a print statement.",
         "tool_calls": [
           {
-            "name": "write_file", 
+            "name": "write_file",
             "args": {
-              "path": "hello.py", 
+              "path": "hello.py",
               "text": "print('Hello, World!')\n"
             }
           }
@@ -155,7 +170,7 @@
             "args": {"command": "git add ."}
           },
           {
-            "name": "run_command", 
+            "name": "run_command",
             "args": {"command": "git commit -m 'Initial commit: Add calculator, tests, and documentation'"}
           }
         ]
@@ -171,6 +186,21 @@
             "args": {
               "path": "calculator.py",
               "text": "class Calculator:\n    \"\"\"A simple calculator class with basic arithmetic operations.\"\"\"\n    \n    @staticmethod\n    def add(a, b):\n        \"\"\"Add two numbers.\"\"\"\n        return a + b\n    \n    @staticmethod\n    def subtract(a, b):\n        \"\"\"Subtract two numbers.\"\"\"\n        return a - b\n    \n    @staticmethod\n    def multiply(a, b):\n        \"\"\"Multiply two numbers.\"\"\"\n        return a * b\n    \n    @staticmethod\n    def divide(a, b):\n        \"\"\"Divide two numbers.\"\"\"\n        if b == 0:\n            raise ValueError(\"Cannot divide by zero\")\n        return a / b\n    \n    @staticmethod\n    def power(a, b):\n        \"\"\"Raise a to the power of b.\"\"\"\n        return a ** b\n    \n    @staticmethod\n    def sqrt(a):\n        \"\"\"Calculate square root of a number.\"\"\"\n        if a < 0:\n            raise ValueError(\"Cannot calculate square root of negative number\")\n        return a ** 0.5\n\n# Maintain backward compatibility\nadd = Calculator.add\nsubtract = Calculator.subtract\nmultiply = Calculator.multiply\ndivide = Calculator.divide\n\nif __name__ == '__main__':\n    calc = Calculator()\n    print('Enhanced Calculator ready')\n    print('Available functions: add, subtract, multiply, divide, power, sqrt')\n    print('Examples:')\n    print(f'  add(5, 3) = {calc.add(5, 3)}')\n    print(f'  sqrt(16) = {calc.sqrt(16)}')\n    print(f'  power(2, 3) = {calc.power(2, 3)}')\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if_contains": ["codex_file_creation"],
+      "response": {
+        "assistant": "Processing codex_file_creation scenario",
+        "tool_calls": [
+          {
+            "name": "write_file",
+            "args": {
+              "path": "test.txt",
+              "text": "Test content for codex_file_creation"
             }
           }
         ]

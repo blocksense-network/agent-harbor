@@ -4,7 +4,10 @@
 /// Core traits and types for agent abstraction layer
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 use tokio::process::Child;
 
 /// Agent launch configuration
@@ -40,6 +43,19 @@ pub struct AgentLaunchConfig {
     /// Whether to automatically copy credentials from system HOME to custom home_dir
     /// Only applies when home_dir differs from system HOME
     pub copy_credentials: bool,
+
+    /// Whether to bypass security restrictions (dangerous)
+    /// For Codex: enables --dangerously-bypass-approvals-and-sandbox
+    /// For Claude: enables --dangerously-skip-permissions
+    pub unrestricted: bool,
+
+    /// Whether to enable web search capabilities
+    /// For Codex: enables --search flag
+    /// No effect for Claude yet
+    pub web_search: bool,
+
+    /// Model to use for the agent (optional, agent-specific defaults apply)
+    pub model: Option<String>,
 }
 
 /// Agent version information
@@ -159,7 +175,12 @@ pub trait AgentExecutor: Send + Sync {
         let mut cmd = self.prepare_launch(config).await?;
         // Convert tokio command to std command and exec
         use std::os::unix::process::CommandExt;
-        let err = cmd.as_std_mut().exec();
+        let err = cmd
+            .as_std_mut()
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .exec();
         // This should never return on success, but if it does, it's an error
         Err(AgentError::ProcessSpawnFailed(err))
     }
@@ -213,6 +234,9 @@ impl AgentLaunchConfig {
             env_vars: Vec::new(),
             working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             copy_credentials: true, // Default to true for convenience
+            unrestricted: false,
+            web_search: false,
+            model: None,
         }
     }
 
@@ -231,7 +255,19 @@ impl AgentLaunchConfig {
         self
     }
 
+    /// Set a custom LLM API endpoint (alias for api_server)
+    pub fn llm_api(mut self, url: impl Into<String>) -> Self {
+        self.api_server = Some(url.into());
+        self
+    }
+
     pub fn api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = Some(key.into());
+        self
+    }
+
+    /// Set the API key for the custom LLM API (alias for api_key)
+    pub fn llm_api_key(mut self, key: impl Into<String>) -> Self {
         self.api_key = Some(key.into());
         self
     }
@@ -243,6 +279,21 @@ impl AgentLaunchConfig {
 
     pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env_vars.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn unrestricted(mut self, unrestricted: bool) -> Self {
+        self.unrestricted = unrestricted;
+        self
+    }
+
+    pub fn web_search(mut self, web_search: bool) -> Self {
+        self.web_search = web_search;
+        self
+    }
+
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
         self
     }
 

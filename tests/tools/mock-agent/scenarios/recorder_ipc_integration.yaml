@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: recorder_ipc_integration
+initialPrompt: "Test IPC integration with the recorder"
 description: "E2E test for ah agent record IPC integration with ah agent fs snapshot"
 repo:
   init: true
@@ -9,7 +10,7 @@ timeline:
   - think:
       - [500, "I will create a Python file and verify that filesystem snapshots are being captured during recording."]
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: "Write"
       args:
         path: "main.py"
         text: |
@@ -23,7 +24,7 @@ timeline:
   - assistant:
       - [300, "Created main.py. A filesystem snapshot should have been captured via IPC."]
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: "Write"
       args:
         path: "test_main.py"
         text: |
@@ -41,7 +42,7 @@ timeline:
   - assistant:
       - [400, "Created test_main.py. Another snapshot should have been captured."]
   - agentToolUse:
-      toolName: "appendFile"
+      toolName: "Edit"
       args:
         path: "main.py"
         text: |
@@ -53,7 +54,7 @@ timeline:
   - assistant:
       - [300, "Added farewell function to main.py. A third snapshot should be in the recording."]
   - agentToolUse:
-      toolName: "replaceInFile"
+      toolName: "Edit"
       args:
         path: "main.py"
         old_str: 'print(greet("World"))'

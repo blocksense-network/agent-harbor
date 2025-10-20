@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: recorder_error_handling
+initialPrompt: "Test error handling in the recorder"
 description: "Test error handling in recording and IPC communication"
 repo:
   init: true

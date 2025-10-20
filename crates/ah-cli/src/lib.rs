@@ -14,6 +14,9 @@ pub mod tui;
 // Re-export CLI types for testing
 pub use clap::{Parser, Subcommand};
 
+// Re-export agent types for backward compatibility
+pub use agent::start::CliAgentType as AgentType;
+
 #[derive(Parser)]
 #[command(name = "ah")]
 #[command(about = "Agents Workflow CLI")]

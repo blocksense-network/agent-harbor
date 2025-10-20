@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 pub enum ApiFormat {
     /// OpenAI API format
     OpenAI,
+    /// OpenAI Responses API format
+    OpenAIResponses,
     /// Anthropic API format
     Anthropic,
 }

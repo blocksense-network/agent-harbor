@@ -642,59 +642,57 @@ impl ah_core::RestApiClient for MockRestClient {
 
         let sessions = tasks
             .into_iter()
-            .map(|task| {
-                ah_rest_api_contract::Session {
-                    id: task.id.clone(),
-                    tenant_id: None,
-                    project_id: None,
-                    task: ah_rest_api_contract::TaskInfo {
-                        prompt: task.id.clone(), // Use task id as prompt since TaskExecution doesn't have title
-                        attachments: std::collections::HashMap::new(),
-                        labels: std::collections::HashMap::new(),
-                    },
-                    agent: ah_rest_api_contract::AgentConfig {
-                        agent_type: task
-                            .agents
-                            .first()
-                            .map(|m| m.name.clone())
-                            .unwrap_or_else(|| "claude-code".to_string()),
-                        version: "latest".to_string(),
-                        settings: std::collections::HashMap::new(),
-                    },
-                    runtime: ah_rest_api_contract::RuntimeConfig {
-                        runtime_type: ah_rest_api_contract::RuntimeType::Local,
-                        devcontainer_path: None,
-                        resources: None,
-                    },
-                    workspace: ah_rest_api_contract::WorkspaceInfo {
-                        snapshot_provider: "none".to_string(),
-                        mount_path: "/tmp".to_string(),
-                        host: None,
-                        devcontainer_details: None,
-                    },
-                    vcs: ah_rest_api_contract::VcsInfo {
-                        repo_url: Some(task.repository),
-                        branch: Some(task.branch),
-                        commit: None,
-                    },
-                    status: match task.state {
-                        TaskState::Active => ah_rest_api_contract::SessionStatus::Running,
-                        TaskState::Completed => ah_rest_api_contract::SessionStatus::Completed,
-                        TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed, // Map merged to completed
-                        TaskState::Draft => ah_rest_api_contract::SessionStatus::Running,
-                    },
-                    started_at: Some(
-                        chrono::DateTime::parse_from_rfc3339(&task.timestamp)
-                            .unwrap_or_else(|_| chrono::Utc::now().into())
-                            .with_timezone(&chrono::Utc),
-                    ),
-                    ended_at: None,
-                    links: ah_rest_api_contract::SessionLinks {
-                        self_link: format!("/api/v1/sessions/{}", task.id),
-                        events: format!("/api/v1/sessions/{}/events", task.id),
-                        logs: format!("/api/v1/sessions/{}/logs", task.id),
-                    },
-                }
+            .map(|task| ah_rest_api_contract::Session {
+                id: task.id.clone(),
+                tenant_id: None,
+                project_id: None,
+                task: ah_rest_api_contract::TaskInfo {
+                    prompt: task.id.clone(), // Use id as prompt since we don't have separate title field
+                    attachments: std::collections::HashMap::new(),
+                    labels: std::collections::HashMap::new(),
+                },
+                agent: ah_rest_api_contract::AgentConfig {
+                    agent_type: task
+                        .agents
+                        .first()
+                        .map(|m| m.name.clone())
+                        .unwrap_or_else(|| "claude-code".to_string()),
+                    version: "latest".to_string(),
+                    settings: std::collections::HashMap::new(),
+                },
+                runtime: ah_rest_api_contract::RuntimeConfig {
+                    runtime_type: ah_rest_api_contract::RuntimeType::Local,
+                    devcontainer_path: None,
+                    resources: None,
+                },
+                workspace: ah_rest_api_contract::WorkspaceInfo {
+                    snapshot_provider: "none".to_string(),
+                    mount_path: "/tmp".to_string(),
+                    host: None,
+                    devcontainer_details: None,
+                },
+                vcs: ah_rest_api_contract::VcsInfo {
+                    repo_url: Some(task.repository),
+                    branch: Some(task.branch),
+                    commit: None,
+                },
+                status: match task.state {
+                    TaskState::Active => ah_rest_api_contract::SessionStatus::Running,
+                    TaskState::Completed => ah_rest_api_contract::SessionStatus::Completed,
+                    TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed,
+                    TaskState::Draft => ah_rest_api_contract::SessionStatus::Queued,
+                },
+                started_at: Some(
+                    chrono::DateTime::parse_from_rfc3339(&task.timestamp)
+                        .unwrap_or_else(|_| chrono::Utc::now().into())
+                        .with_timezone(&chrono::Utc),
+                ),
+                ended_at: None,
+                links: ah_rest_api_contract::SessionLinks {
+                    self_link: format!("/api/v1/sessions/{}", task.id),
+                    events: format!("/api/v1/sessions/{}/events", task.id),
+                    logs: format!("/api/v1/sessions/{}/logs", task.id),
+                },
             })
             .collect();
 

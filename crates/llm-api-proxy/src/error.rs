@@ -3,8 +3,6 @@
 
 //! Error types for the LLM API proxy
 
-use std::fmt;
-
 /// Result type alias for operations that can fail
 pub type Result<T> = std::result::Result<T, Error>;
 

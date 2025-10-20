@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: feature_implementation_scenario
+initialPrompt: "Create a test.txt file with test content"
 repo:
   init: true
 timeline:

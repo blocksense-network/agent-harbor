@@ -8,10 +8,10 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::ProxyConfig,
-    converters::{self, ApiFormat},
+    converters::ApiFormat,
     error::{Error, Result},
     metrics::MetricsCollector,
-    routing::{DynamicRouter, ProviderSelector},
+    routing::DynamicRouter,
     scenario::ScenarioPlayer,
 };
 
@@ -20,7 +20,7 @@ pub struct LlmApiProxy {
     config: Arc<RwLock<ProxyConfig>>,
     router: Arc<DynamicRouter>,
     metrics: Arc<MetricsCollector>,
-    scenario_player: Option<Arc<ScenarioPlayer>>,
+    scenario_player: Option<Arc<RwLock<ScenarioPlayer>>>,
     http_client: reqwest::Client,
 }
 
@@ -35,7 +35,9 @@ impl LlmApiProxy {
         let metrics = Arc::new(MetricsCollector::new().await?);
 
         let scenario_player = if config.read().await.scenario.enabled {
-            Some(Arc::new(ScenarioPlayer::new(config.clone()).await?))
+            Some(Arc::new(RwLock::new(
+                ScenarioPlayer::new(config.clone()).await?,
+            )))
         } else {
             None
         };
@@ -102,6 +104,13 @@ impl LlmApiProxy {
             message: "Scenario playback not enabled".to_string(),
         })?;
 
+        // Validate tool definitions in client requests (strict tools validation)
+        if let Some(tools) = request.payload.get("tools").and_then(|t| t.as_array()) {
+            let player_guard = player.read().await;
+            player_guard.validate_tool_definitions(tools, &request.payload).await?;
+        }
+
+        let mut player = player.write().await;
         player.play_request(request).await
     }
 
@@ -123,6 +132,7 @@ impl LlmApiProxy {
                 // since OpenRouter supports both formats
                 Ok(request.payload.clone())
             }
+            (ApiFormat::OpenAIResponses, ApiFormat::OpenAI) => Ok(request.payload.clone()),
             // OpenAI request to OpenAI provider
             (ApiFormat::OpenAI, ApiFormat::OpenAI) => Ok(request.payload.clone()),
             // OpenAI request to Anthropic provider
@@ -130,8 +140,11 @@ impl LlmApiProxy {
                 // Pass through for now
                 Ok(request.payload.clone())
             }
+            (ApiFormat::OpenAIResponses, ApiFormat::Anthropic) => Ok(request.payload.clone()),
             // Anthropic request to Anthropic provider
             (ApiFormat::Anthropic, ApiFormat::Anthropic) => Ok(request.payload.clone()),
+            // Default passthrough for other combinations
+            _ => Ok(request.payload.clone()),
         }
     }
 
@@ -155,7 +168,7 @@ impl LlmApiProxy {
         // Add authentication
         if let Some(api_key) = &provider.api_key {
             match provider.api_format {
-                ApiFormat::OpenAI => {
+                ApiFormat::OpenAI | ApiFormat::OpenAIResponses => {
                     request_builder = request_builder.bearer_auth(api_key);
                 }
                 ApiFormat::Anthropic => {
@@ -249,7 +262,7 @@ impl LlmApiProxy {
                     headers: response.headers,
                 })
             }
-            ApiFormat::OpenAI => {
+            ApiFormat::OpenAI | ApiFormat::OpenAIResponses => {
                 // Client expects OpenAI format, provider should return OpenAI format
                 Ok(ProxyResponse {
                     status: response.status,
