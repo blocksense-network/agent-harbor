@@ -66,8 +66,176 @@ use std::collections::HashMap;
 use tokio::sync::mpsc;
 use crate::settings::{KeyboardOperation, KeyboardShortcut, KeyMatcher};
 
+const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
+
 /// Focus control navigation (similar to main.rs)
 impl ViewModel {
+    fn handle_overlay_navigation(&mut self, direction: NavigationDirection) -> bool {
+        if self.handle_modal_navigation(direction) {
+            return true;
+        }
+        self.handle_autocomplete_navigation(direction)
+    }
+
+    fn clear_exit_confirmation(&mut self) {
+        if self.exit_confirmation_armed {
+            self.exit_confirmation_armed = false;
+            self.exit_requested = false;
+            if matches!(
+                self.status_bar.status_message.as_deref(),
+                Some(ESC_CONFIRMATION_MESSAGE)
+            ) {
+                self.status_bar.status_message = None;
+            }
+        }
+    }
+
+    fn handle_dismiss_overlay(&mut self) -> bool {
+        if self.modal_state != ModalState::None {
+            self.close_modal();
+            return true;
+        }
+
+        if self.autocomplete.is_open() {
+            self.autocomplete.close();
+            self.exit_confirmation_armed = false;
+            self.exit_requested = false;
+            if matches!(
+                self.status_bar.status_message.as_deref(),
+                Some(ESC_CONFIRMATION_MESSAGE)
+            ) {
+                self.status_bar.status_message = None;
+            }
+            return true;
+        }
+
+        if self.exit_confirmation_armed {
+            self.exit_confirmation_armed = false;
+            self.exit_requested = true;
+            if matches!(
+                self.status_bar.status_message.as_deref(),
+                Some(ESC_CONFIRMATION_MESSAGE)
+            ) {
+                self.status_bar.status_message = None;
+            }
+            return true;
+        }
+
+        self.exit_confirmation_armed = true;
+        self.exit_requested = false;
+        self.status_bar.status_message = Some(ESC_CONFIRMATION_MESSAGE.to_string());
+        true
+    }
+
+    fn handle_modal_navigation(&mut self, direction: NavigationDirection) -> bool {
+        if self.modal_state == ModalState::None {
+            return false;
+        }
+
+        let Some(modal) = self.active_modal.as_mut() else {
+            return false;
+        };
+
+        match &mut modal.modal_type {
+            ModalType::Search { .. } => {
+                if modal.filtered_options.is_empty() {
+                    return false;
+                }
+                match direction {
+                    NavigationDirection::Next => {
+                        modal.selected_index = (modal.selected_index + 1) % modal.filtered_options.len();
+                    }
+                    NavigationDirection::Previous => {
+                        if modal.selected_index == 0 {
+                            modal.selected_index = modal.filtered_options.len() - 1;
+                        } else {
+                            modal.selected_index -= 1;
+                        }
+                    }
+                }
+                for (idx, option) in modal.filtered_options.iter_mut().enumerate() {
+                    option.1 = idx == modal.selected_index;
+                }
+                self.needs_redraw = true;
+                true
+            }
+            ModalType::ModelSelection { options } => {
+                if options.is_empty() {
+                    return false;
+                }
+                match direction {
+                    NavigationDirection::Next => {
+                        modal.selected_index = (modal.selected_index + 1) % options.len();
+                    }
+                    NavigationDirection::Previous => {
+                        if modal.selected_index == 0 {
+                            modal.selected_index = options.len() - 1;
+                        } else {
+                            modal.selected_index -= 1;
+                        }
+                    }
+                }
+                self.needs_redraw = true;
+                true
+            }
+            ModalType::Settings { fields } => {
+                if fields.is_empty() {
+                    return false;
+                }
+                for field in fields.iter_mut() {
+                    field.is_focused = false;
+                }
+                match direction {
+                    NavigationDirection::Next => {
+                        modal.selected_index = (modal.selected_index + 1) % fields.len();
+                    }
+                    NavigationDirection::Previous => {
+                        if modal.selected_index == 0 {
+                            modal.selected_index = fields.len() - 1;
+                        } else {
+                            modal.selected_index -= 1;
+                        }
+                    }
+                }
+                if let Some(field) = fields.get_mut(modal.selected_index) {
+                    field.is_focused = true;
+                }
+                self.needs_redraw = true;
+                true
+            }
+        }
+    }
+
+    fn handle_autocomplete_navigation(&mut self, direction: NavigationDirection) -> bool {
+        if !self.autocomplete.is_open() {
+            return false;
+        }
+
+        let textarea_active = match self.focus_element {
+            FocusElement::TaskDescription => true,
+            FocusElement::DraftTask(idx) => self
+                .draft_cards
+                .get(idx)
+                .map(|card| card.focus_element == FocusElement::TaskDescription)
+                .unwrap_or(false),
+            _ => false,
+        };
+
+        if !textarea_active {
+            return false;
+        }
+
+        let handled = match direction {
+            NavigationDirection::Next => self.autocomplete.select_next(),
+            NavigationDirection::Previous => self.autocomplete.select_previous(),
+        };
+
+        if handled {
+            self.needs_redraw = true;
+        }
+
+        handled
+    }
     /// Navigate to the next focusable control
     pub fn focus_next_control(&mut self) -> bool {
         // Implement PRD-compliant tab navigation for draft cards
@@ -183,6 +351,7 @@ impl ViewModel {
                         // Feed the character to the textarea widget
                         use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                         let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
+                        self.autocomplete.notify_text_input();
                         card.description.input(key_event);
 
                         // Trigger autocomplete after textarea change
@@ -200,6 +369,7 @@ impl ViewModel {
                             // Feed the character to the textarea widget
                             use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                             let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
+                            self.autocomplete.notify_text_input();
                             card.description.input(key_event);
 
                             // Trigger autocomplete after textarea change
@@ -227,7 +397,10 @@ impl ViewModel {
                     // Feed backspace to the textarea widget
                     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                     let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                    self.autocomplete.notify_text_input();
                     card.description.input(key_event);
+
+                    self.autocomplete.after_textarea_change(&card.description);
 
                     card.save_state = DraftSaveState::Unsaved;
                     // Reset auto-save timer
@@ -242,7 +415,10 @@ impl ViewModel {
                         // Feed backspace to the textarea widget
                         use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                         let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                        self.autocomplete.notify_text_input();
                         card.description.input(key_event);
+
+                        self.autocomplete.after_textarea_change(&card.description);
 
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
@@ -269,7 +445,9 @@ impl ViewModel {
                                 if let Some(card) = self.draft_cards.get_mut(idx) {
                                     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                                     let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+                                    self.autocomplete.notify_text_input();
                                     card.description.input(key_event);
+                                    self.autocomplete.after_textarea_change(&card.description);
                                     card.save_state = DraftSaveState::Unsaved;
                                     card.auto_save_timer = Some(std::time::Instant::now());
                                     return true;
@@ -280,15 +458,15 @@ impl ViewModel {
                             }
                         }
                         FocusElement::RepositorySelector => {
-                            self.modal_state = ModalState::RepositorySearch;
+                            self.open_modal(ModalState::RepositorySearch);
                             return true;
                         }
                         FocusElement::BranchSelector => {
-                            self.modal_state = ModalState::BranchSearch;
+                            self.open_modal(ModalState::BranchSearch);
                             return true;
                         }
                         FocusElement::ModelSelector => {
-                            self.modal_state = ModalState::ModelSearch;
+                            self.open_modal(ModalState::ModelSearch);
                             return true;
                         }
                         FocusElement::GoButton => {
@@ -307,7 +485,9 @@ impl ViewModel {
                         // Feed enter to the textarea widget
                         use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                         let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+                        self.autocomplete.notify_text_input();
                         card.description.input(key_event);
+                        self.autocomplete.after_textarea_change(&card.description);
 
                         card.save_state = DraftSaveState::Unsaved;
                         card.auto_save_timer = Some(std::time::Instant::now());
@@ -323,19 +503,19 @@ impl ViewModel {
                 return self.handle_go_button();
             }
             FocusElement::RepositorySelector => {
-                self.modal_state = ModalState::RepositorySearch;
+                self.open_modal(ModalState::RepositorySearch);
                 return true;
             }
             FocusElement::BranchSelector => {
-                self.modal_state = ModalState::BranchSearch;
+                self.open_modal(ModalState::BranchSearch);
                 return true;
             }
             FocusElement::ModelSelector => {
-                self.modal_state = ModalState::ModelSearch;
+                self.open_modal(ModalState::ModelSearch);
                 return true;
             }
             FocusElement::SettingsButton => {
-                self.modal_state = ModalState::Settings;
+                self.open_modal(ModalState::Settings);
                 return true;
             }
             _ => return false,
@@ -367,30 +547,7 @@ impl ViewModel {
 
     /// Handle escape key
     pub fn handle_escape(&mut self) -> bool {
-        match self.focus_element {
-            FocusElement::DraftTask(idx) => {
-                // When a draft task is focused, return to the text description focus
-                if let Some(card) = self.draft_cards.get_mut(idx) {
-                    card.focus_element = FocusElement::TaskDescription;
-                    return true;
-                }
-            }
-            FocusElement::TaskDescription | FocusElement::RepositorySelector |
-            FocusElement::BranchSelector | FocusElement::ModelSelector | FocusElement::GoButton => {
-                // Return to draft task navigation
-                if !self.draft_cards.is_empty() {
-                    self.focus_element = FocusElement::DraftTask(0);
-                } else {
-                    self.focus_element = FocusElement::SettingsButton;
-                }
-                return true;
-            }
-            _ => {
-                // For other focus elements, escape might exit the application
-                // (handled by main loop)
-            }
-        }
-        false
+        self.handle_dismiss_overlay()
     }
 
     /// Handle Ctrl+N to create new draft task
@@ -563,6 +720,13 @@ pub enum TaskCardTypeEnum {
 }
 
 
+#[derive(Copy, Clone)]
+enum NavigationDirection {
+    Next,
+    Previous,
+}
+
+
 
 
 /// Modal dialog view models
@@ -680,6 +844,10 @@ pub struct ViewModel {
     pub show_autocomplete_border: bool,
     pub status_message: Option<String>,
     pub error_message: Option<String>,
+
+    // Escape handling state
+    pub exit_confirmation_armed: bool,
+    pub exit_requested: bool,
 
     // Loading states (moved from Model)
     pub loading_task_creation: bool,
@@ -802,6 +970,8 @@ impl ViewModel {
             show_autocomplete_border: false,
             status_message: None,
             error_message: None,
+            exit_confirmation_armed: false,
+            exit_requested: false,
 
             // Initialize loading states
             loading_task_creation: false,
@@ -870,7 +1040,7 @@ impl ViewModel {
     /// Translate a KeyEvent to a KeyboardOperation by consulting the user's configured key bindings
     fn key_event_to_operation(&self, key: &KeyEvent) -> Option<KeyboardOperation> {
         use crate::settings::*;
-        use ratatui::crossterm::event::KeyModifiers;
+        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
         // Special hardcoded handling for Ctrl+N (new draft) - bypass keymap
         if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
@@ -898,6 +1068,7 @@ impl ViewModel {
             KeyboardOperation::MoveBackwardOneCharacter, // Left arrow
             KeyboardOperation::DeleteCharacterBackward, // Backspace
             KeyboardOperation::OpenNewLine, // Shift+Enter
+            KeyboardOperation::DismissOverlay, // Escape
         ];
 
         // Find the first operation that matches this key event
@@ -913,7 +1084,11 @@ impl ViewModel {
 
     /// Handle keyboard events by translating to KeyboardOperation and dispatching
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
-        use ratatui::crossterm::event::KeyModifiers;
+        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+
+        if !matches!(key.code, KeyCode::Esc) {
+            self.clear_exit_confirmation();
+        }
 
         // Special handling for Ctrl+N (new draft) - check before keymap lookup
         if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
@@ -928,6 +1103,7 @@ impl ViewModel {
                 match self.autocomplete.handle_key_event(&key, &mut card.description) {
                     AutocompleteKeyResult::Consumed { text_changed } => {
                         if text_changed {
+                            self.autocomplete.notify_text_input();
                             self.autocomplete.after_textarea_change(&card.description);
                         }
                         return true;
@@ -945,13 +1121,9 @@ impl ViewModel {
         }
 
         // Handle special key codes directly
-        use ratatui::crossterm::event::KeyCode;
         match key.code {
             KeyCode::Enter => {
                 return self.handle_enter(key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT));
-            }
-            KeyCode::Esc => {
-                return self.handle_escape();
             }
             _ => {}
         }
@@ -965,15 +1137,29 @@ impl ViewModel {
         false
     }
 
+    pub fn take_exit_request(&mut self) -> bool {
+        if self.exit_requested {
+            self.exit_requested = false;
+            return true;
+        }
+        false
+    }
+
     /// Handle a KeyboardOperation with the original KeyEvent context
-    pub fn handle_keyboard_operation(&mut self, operation: KeyboardOperation, key: &KeyEvent) -> bool {
+    pub fn handle_keyboard_operation(&mut self, operation: KeyboardOperation, _key: &KeyEvent) -> bool {
 
         match operation {
             KeyboardOperation::MoveToNextField => {
+                if self.handle_overlay_navigation(NavigationDirection::Next) {
+                    return true;
+                }
                 // Tab key: move between controls within current focus element
                 self.focus_next_control()
             }
             KeyboardOperation::MoveToPreviousField => {
+                if self.handle_overlay_navigation(NavigationDirection::Previous) {
+                    return true;
+                }
                 // Shift+Tab key: move backward between controls within current focus element
                 self.focus_previous_control()
             }
@@ -983,7 +1169,11 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
+                            let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::Head);
+                            if card.description.cursor() != before {
+                                self.autocomplete.after_textarea_change(&card.description);
+                            }
                             return true;
                         }
                     }
@@ -996,7 +1186,11 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
+                            let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::End);
+                            if card.description.cursor() != before {
+                                self.autocomplete.after_textarea_change(&card.description);
+                            }
                             return true;
                         }
                     }
@@ -1009,7 +1203,11 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
+                            let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::Forward);
+                            if card.description.cursor() != before {
+                                self.autocomplete.after_textarea_change(&card.description);
+                            }
                             return true;
                         }
                     }
@@ -1022,7 +1220,11 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
+                            let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::Back);
+                            if card.description.cursor() != before {
+                                self.autocomplete.after_textarea_change(&card.description);
+                            }
                             return true;
                         }
                     }
@@ -1030,6 +1232,9 @@ impl ViewModel {
                 false
             }
             KeyboardOperation::MoveToPreviousLine => {
+                if self.handle_overlay_navigation(NavigationDirection::Previous) {
+                    return true;
+                }
                 match self.focus_element {
                     FocusElement::DraftTask(idx) => {
                         // First try to move cursor up in the draft card's text area
@@ -1040,6 +1245,7 @@ impl ViewModel {
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
                                 // Cursor moved successfully within text area
+                                self.autocomplete.after_textarea_change(&card.description);
                                 return true;
                             }
                         }
@@ -1050,6 +1256,9 @@ impl ViewModel {
                 }
             }
             KeyboardOperation::MoveToNextLine => {
+                if self.handle_overlay_navigation(NavigationDirection::Next) {
+                    return true;
+                }
                 match self.focus_element {
                     FocusElement::DraftTask(idx) => {
                         // First try to move cursor down in the draft card's text area
@@ -1060,6 +1269,7 @@ impl ViewModel {
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
                                 // Cursor moved successfully within text area
+                                self.autocomplete.after_textarea_change(&card.description);
                                 return true;
                             }
                         }
@@ -1077,6 +1287,7 @@ impl ViewModel {
                 // Shift+Enter
                 self.handle_enter(true)
             }
+            KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
             _ => false, // Other operations not implemented yet
         }
     }
@@ -1084,6 +1295,8 @@ impl ViewModel {
     /// Handle mouse events (similar to main.rs handle_mouse)
     pub fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
         use ratatui::crossterm::event::{MouseEventKind, MouseButton};
+
+        self.clear_exit_confirmation();
 
         let column = mouse.column;
         let row = mouse.row;
@@ -1146,6 +1359,7 @@ impl ViewModel {
 
             // Set cursor position in textarea
             card.description.move_cursor(tui_textarea::CursorMove::Jump(line_index as u16, col_index as u16));
+            self.autocomplete.after_textarea_change(&card.description);
         }
 
         self.needs_redraw = true;
@@ -1156,7 +1370,7 @@ impl ViewModel {
         match action {
             MouseAction::OpenSettings => {
                 self.focus_element = FocusElement::SettingsButton;
-                self.modal_state = ModalState::Settings;
+                self.open_modal(ModalState::Settings);
                 // TODO: Initialize settings form
             }
             MouseAction::SelectCard(idx) => {
@@ -1174,15 +1388,15 @@ impl ViewModel {
             }
             MouseAction::ActivateRepositoryModal => {
                 self.focus_element = FocusElement::RepositoryButton;
-                self.modal_state = ModalState::RepositorySearch;
+                self.open_modal(ModalState::RepositorySearch);
             }
             MouseAction::ActivateBranchModal => {
                 self.focus_element = FocusElement::BranchButton;
-                self.modal_state = ModalState::BranchSearch;
+                self.open_modal(ModalState::BranchSearch);
             }
             MouseAction::ActivateModelModal => {
                 self.focus_element = FocusElement::ModelButton;
-                self.modal_state = ModalState::ModelSearch;
+                self.open_modal(ModalState::ModelSearch);
             }
             MouseAction::LaunchTask => {
                 self.focus_element = FocusElement::GoButton;
@@ -1215,11 +1429,31 @@ impl ViewModel {
     /// Open a modal dialog
     pub fn open_modal(&mut self, modal_state: ModalState) {
         self.modal_state = modal_state;
+        self.active_modal = create_modal_view_model(
+            modal_state,
+            &self.available_repositories,
+            &self.available_branches,
+            &self.available_models,
+            &self.get_focused_draft_card().map(|card| DraftTask {
+                id: card.id.clone(),
+                description: card.description.lines().join("\n"),
+                repository: card.repository.clone(),
+                branch: card.branch.clone(),
+                models: card.models.clone(),
+                created_at: card.created_at.clone(),
+            }),
+            self.settings.activity_rows(),
+            self.word_wrap_enabled,
+            self.show_autocomplete_border,
+        );
+        self.exit_confirmation_armed = false;
     }
 
     /// Close the current modal
     pub fn close_modal(&mut self) {
         self.modal_state = ModalState::None;
+        self.active_modal = None;
+        self.exit_confirmation_armed = false;
     }
 
     /// Select a repository from modal
@@ -2112,9 +2346,122 @@ fn calculate_card_height(task: &TaskExecution, settings: &Settings) -> u16 {
 }
 
 
-fn create_modal_view_model(_modal_state: ModalState, _available_repositories: &[String], _available_branches: &[String], _available_models: &[String], _current_draft: &Option<DraftTask>, _activity_lines_count: usize, _word_wrap_enabled: bool, _show_autocomplete_border: bool) -> Option<ModalViewModel> {
-    // Placeholder implementation
-    None
+fn create_modal_view_model(modal_state: ModalState, available_repositories: &[String], available_branches: &[String], available_models: &[String], current_draft: &Option<DraftTask>, activity_lines_count: usize, word_wrap_enabled: bool, show_autocomplete_border: bool) -> Option<ModalViewModel> {
+    match modal_state {
+        ModalState::None => None,
+        ModalState::RepositorySearch => {
+            let selected_repo = current_draft.as_ref().map(|draft| draft.repository.as_str());
+            let (options, selected_index) = build_modal_options(available_repositories, selected_repo);
+            Some(ModalViewModel {
+                title: "Select repository".to_string(),
+                input_value: String::new(),
+                filtered_options: options,
+                selected_index,
+                modal_type: ModalType::Search {
+                    placeholder: "Filter repositories...".to_string(),
+                },
+            })
+        }
+        ModalState::BranchSearch => {
+            let selected_branch = current_draft.as_ref().map(|draft| draft.branch.as_str());
+            let (options, selected_index) = build_modal_options(available_branches, selected_branch);
+            Some(ModalViewModel {
+                title: "Select branch".to_string(),
+                input_value: String::new(),
+                filtered_options: options,
+                selected_index,
+                modal_type: ModalType::Search {
+                    placeholder: "Filter branches...".to_string(),
+                },
+            })
+        }
+        ModalState::ModelSearch => {
+            let selected_model = current_draft
+                .as_ref()
+                .and_then(|draft| draft.models.first())
+                .map(|model| model.name.as_str());
+            let (options, selected_index) = build_modal_options(available_models, selected_model);
+            Some(ModalViewModel {
+                title: "Select model".to_string(),
+                input_value: String::new(),
+                filtered_options: options,
+                selected_index,
+                modal_type: ModalType::Search {
+                    placeholder: "Filter models...".to_string(),
+                },
+            })
+        }
+        ModalState::Settings => {
+            let mut fields = vec![
+                SettingsFieldViewModel {
+                    label: "Activity rows".to_string(),
+                    value: activity_lines_count.to_string(),
+                    is_focused: true,
+                    field_type: SettingsFieldType::Number,
+                },
+                SettingsFieldViewModel {
+                    label: "Word wrap".to_string(),
+                    value: if word_wrap_enabled { "On" } else { "Off" }.to_string(),
+                    is_focused: false,
+                    field_type: SettingsFieldType::Boolean,
+                },
+                SettingsFieldViewModel {
+                    label: "Autocomplete border".to_string(),
+                    value: if show_autocomplete_border { "On" } else { "Off" }.to_string(),
+                    is_focused: false,
+                    field_type: SettingsFieldType::Boolean,
+                },
+            ];
+
+            if let Some(draft) = current_draft {
+                fields.push(SettingsFieldViewModel {
+                    label: "Current repository".to_string(),
+                    value: draft.repository.clone(),
+                    is_focused: false,
+                    field_type: SettingsFieldType::Selection,
+                });
+                fields.push(SettingsFieldViewModel {
+                    label: "Current branch".to_string(),
+                    value: draft.branch.clone(),
+                    is_focused: false,
+                    field_type: SettingsFieldType::Selection,
+                });
+            }
+
+            Some(ModalViewModel {
+                title: "Settings".to_string(),
+                input_value: String::new(),
+                filtered_options: Vec::new(),
+                selected_index: 0,
+                modal_type: ModalType::Settings { fields },
+            })
+        }
+    }
+}
+
+fn build_modal_options(options: &[String], selected_value: Option<&str>) -> (Vec<(String, bool)>, usize) {
+    if options.is_empty() {
+        return (Vec::new(), 0);
+    }
+
+    let mut selected_index = 0;
+    let filtered_options = options
+        .iter()
+        .enumerate()
+        .map(|(idx, value)| {
+            if selected_value == Some(value.as_str()) {
+                selected_index = idx;
+            }
+            (value.clone(), false)
+        })
+        .collect::<Vec<_>>();
+
+    let mut filtered_options = filtered_options;
+    if let Some(option) = filtered_options.get_mut(selected_index) {
+        option.1 = true;
+    }
+
+    (filtered_options, selected_index)
 }
 
 fn create_footer_view_model(focused_draft: Option<&DraftTask>, focus_element: FocusElement, modal_state: ModalState, _settings: &Settings, _word_wrap_enabled: bool, _show_autocomplete_border: bool) -> FooterViewModel {
@@ -2138,7 +2485,7 @@ fn create_footer_view_model(focused_draft: Option<&DraftTask>, focus_element: Fo
                 vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::DeleteCharacterBackward,
+                KeyboardOperation::DismissOverlay,
                 vec![KeyMatcher::new(KeyCode::Esc, KeyModifiers::empty(), KeyModifiers::empty(), None)]
             ));
         }
@@ -2153,7 +2500,7 @@ fn create_footer_view_model(focused_draft: Option<&DraftTask>, focus_element: Fo
                 vec![KeyMatcher::new(KeyCode::Enter, KeyModifiers::empty(), KeyModifiers::empty(), None)]
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::DeleteCharacterBackward,
+                KeyboardOperation::DismissOverlay,
                 vec![KeyMatcher::new(KeyCode::Esc, KeyModifiers::empty(), KeyModifiers::empty(), None)]
             ));
         }

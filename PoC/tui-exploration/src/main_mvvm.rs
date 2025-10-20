@@ -305,20 +305,22 @@ async fn run_app_mvvm(
                             "Key event received"
                         );
 
-                        // Handle ESC key directly to exit (like main.rs)
-                        if key.code == crossterm::event::KeyCode::Esc {
-                            break;
-                        }
                         // Send key event to ViewModel via message system
                         let msg = tui_exploration::view_model::Msg::Key(key);
                         if let Err(error) = view_model.update(msg) {
                             eprintln!("Error handling key event: {}", error);
+                        }
+                        if view_model.take_exit_request() {
+                            break;
                         }
                     }
                     Event::Mouse(mouse_event) => {
                         // Send mouse event to ViewModel
                         let msg = tui_exploration::view_model::Msg::Mouse(mouse_event);
                         let _ = view_model.update(msg);
+                        if view_model.take_exit_request() {
+                            break;
+                        }
                     }
                     Event::Resize(_width, _height) => {
                         // Handle resize events if needed

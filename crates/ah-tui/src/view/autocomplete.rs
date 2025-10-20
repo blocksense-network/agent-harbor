@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::view::Theme;
 use crate::view_model::autocomplete::{
-    InlineAutocomplete, ScoredMatch, Trigger, MAX_MENU_HEIGHT, MENU_WIDTH,
+    AutocompleteMenuState, ScoredMatch, Trigger, MAX_MENU_HEIGHT, MENU_WIDTH,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -22,14 +22,14 @@ pub struct CaretMetrics {
 }
 
 pub fn render_autocomplete(
-    autocomplete: &InlineAutocomplete,
+    menu_state: Option<AutocompleteMenuState<'_>>,
     frame: &mut Frame<'_>,
     textarea_area: Rect,
     textarea: &TextArea<'_>,
     theme: &Theme,
     background: Color,
 ) {
-    let Some(menu_state) = autocomplete.menu_state() else {
+    let Some(menu_state) = menu_state else {
         return;
     };
 

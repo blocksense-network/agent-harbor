@@ -110,6 +110,7 @@ pub enum KeyboardOperation {
     MoveToNextField,
     MoveToPreviousField,
     DeleteToBeginningOfLine,
+    DismissOverlay,
 
     // Text Transformation
     UppercaseWord,
@@ -187,6 +188,7 @@ impl KeyboardOperation {
             KeyboardOperation::MoveToNextField => "shortcut-move-to-next-field",
             KeyboardOperation::MoveToPreviousField => "shortcut-move-to-previous-field",
             KeyboardOperation::DeleteToBeginningOfLine => "shortcut-delete-to-beginning-of-line",
+            KeyboardOperation::DismissOverlay => "shortcut-dismiss-overlay",
             KeyboardOperation::UppercaseWord => "shortcut-uppercase-word",
             KeyboardOperation::LowercaseWord => "shortcut-lowercase-word",
             KeyboardOperation::CapitalizeWord => "shortcut-capitalize-word",
@@ -254,6 +256,7 @@ impl KeyboardOperation {
             KeyboardOperation::MoveToNextField => "Move to next field",
             KeyboardOperation::MoveToPreviousField => "Move to previous field",
             KeyboardOperation::DeleteToBeginningOfLine => "Delete to beginning of line",
+            KeyboardOperation::DismissOverlay => "Dismiss modal or quit",
             KeyboardOperation::UppercaseWord => "Uppercase word",
             KeyboardOperation::LowercaseWord => "Lowercase word",
             KeyboardOperation::CapitalizeWord => "Capitalize word",
@@ -686,6 +689,11 @@ impl KeymapConfig {
                 vec!["Shift+Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::DismissOverlay,
+                vec!["Esc".to_string()],
+                vec!["Esc".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToPreviousLine,
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
@@ -876,6 +884,7 @@ impl KeymapConfig {
             KeyboardOperation::MoveToNextLine => &self.move_to_next_line,
             KeyboardOperation::MoveToNextField => &self.move_to_next_field,
             KeyboardOperation::MoveToPreviousField => &self.move_to_previous_field,
+            KeyboardOperation::DismissOverlay => &self.dismiss_overlay,
             KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
@@ -955,6 +964,7 @@ impl KeymapConfig {
             KeyboardOperation::MoveToNextLine => self.move_to_next_line.clone().unwrap_or_default(),
             KeyboardOperation::MoveToNextField => self.move_to_next_field.clone().unwrap_or_default(),
             KeyboardOperation::MoveToPreviousField => self.move_to_previous_field.clone().unwrap_or_default(),
+            KeyboardOperation::DismissOverlay => self.dismiss_overlay.clone().unwrap_or_default(),
             KeyboardOperation::SelectWordUnderCursor => self.select_word_under_cursor.clone().unwrap_or_default(),
             KeyboardOperation::MoveToPreviousLine => self.move_to_previous_line.clone().unwrap_or_default(),
             KeyboardOperation::MoveForwardOneWord => self.move_forward_one_word.clone().unwrap_or_default(),
@@ -1042,6 +1052,7 @@ impl Default for KeymapConfig {
             move_to_next_line: None,
             move_to_next_field: None,
             move_to_previous_field: None,
+            dismiss_overlay: None,
             select_word_under_cursor: None,
             move_to_previous_line: None,
             move_forward_one_word: None,
@@ -1120,6 +1131,7 @@ impl Default for KeymapConfig {
                     KeyboardOperation::MoveToNextLine => config.move_to_next_line = Some(matchers),
                     KeyboardOperation::MoveToNextField => config.move_to_next_field = Some(matchers),
                     KeyboardOperation::MoveToPreviousField => config.move_to_previous_field = Some(matchers),
+                    KeyboardOperation::DismissOverlay => config.dismiss_overlay = Some(matchers),
                     KeyboardOperation::SelectWordUnderCursor => config.select_word_under_cursor = Some(matchers),
                     KeyboardOperation::MoveToPreviousLine => config.move_to_previous_line = Some(matchers),
                     KeyboardOperation::MoveForwardOneWord => config.move_forward_one_word = Some(matchers),
@@ -1202,6 +1214,8 @@ pub struct KeymapConfig {
     pub move_to_next_field: Option<Vec<KeyMatcher>>,
     #[serde(rename = "move-to-previous-field")]
     pub move_to_previous_field: Option<Vec<KeyMatcher>>,
+    #[serde(rename = "dismiss-overlay")]
+    pub dismiss_overlay: Option<Vec<KeyMatcher>>,
     #[serde(rename = "select-word-under-cursor")]
     pub select_word_under_cursor: Option<Vec<KeyMatcher>>,
     #[serde(rename = "move-to-previous-line")]
@@ -1377,4 +1391,3 @@ impl Settings {
         self.keymap.clone().unwrap_or_else(KeymapConfig::default)
     }
 }
-

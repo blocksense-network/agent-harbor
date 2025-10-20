@@ -3,6 +3,10 @@
 //! These tests validate PRD-compliant behavior using the ViewModel architecture,
 //! testing draft editing, navigation, task creation, and auto-save functionality.
 
+use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use tui_exploration::settings::KeyboardOperation;
 use tui_exploration::view_model::*;
 use ah_domain_types::{DraftTask, SelectedModel, TaskState, DeliveryStatus, TaskExecution};
 use ah_tui::view_model::{FocusElement, ModalState, DraftSaveState};
@@ -22,6 +26,25 @@ fn create_test_view_model() -> ViewModel {
 /// Helper function to create a test key event
 fn key_event(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent { code, modifiers, kind: crossterm::event::KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() }
+}
+
+fn create_viewmodel_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
+    let mut dir = std::env::temp_dir();
+    dir.push("ah_tui_vm_logs");
+    std::fs::create_dir_all(&dir).expect("create log directory");
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("valid time");
+    let file_name = format!(
+        "{}_{}_{}.log",
+        test_name,
+        std::process::id(),
+        timestamp.as_nanos()
+    );
+    dir.push(file_name);
+    let file = std::fs::File::create(&dir).expect("create log file");
+    (file, dir)
 }
 
 #[cfg(test)]
@@ -305,27 +328,58 @@ mod viewmodel_tests {
     }
 
     #[test]
-    fn viewmodel_escape_returns_to_navigation_mode() {
-        // Test PRD requirement: Esc key returns from editing to navigation mode
+    fn viewmodel_escape_requires_double_press_to_request_exit() {
+        let (mut log, log_path) = create_viewmodel_test_log("escape_double_press");
+        let log_hint = log_path.display().to_string();
+
         let mut vm = create_test_view_model();
+        vm.focus_element = FocusElement::TaskDescription;
 
-        // With the new focus model, draft tasks are always globally focused during editing
-        // Start with draft task focused (global focus) and some internal focus
-        vm.focus_element = FocusElement::DraftTask(0);
+        // First ESC should arm the exit confirmation state
+        assert!(
+            vm.handle_escape(),
+            "first ESC should be handled (log: {log_hint})"
+        );
+        writeln!(
+            log,
+            "After first ESC -> armed {} requested {}",
+            vm.exit_confirmation_armed,
+            vm.exit_requested
+        )
+        .expect("write log");
+        assert!(vm.exit_confirmation_armed, "first ESC arms exit (log: {log_hint})");
+        assert!(!vm.exit_requested, "no exit request after first ESC (log: {log_hint})");
 
-        // Change the card's internal focus to something else (simulating being in a control)
-        if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.focus_element = FocusElement::RepositorySelector;
-        }
+        // Any other key should discharge the confirmation state
+        assert!(
+            vm.handle_keyboard_operation(
+                KeyboardOperation::MoveToNextField,
+                &key_event(KeyCode::Tab, KeyModifiers::empty()),
+            ),
+            "Tab should remain handled (log: {log_hint})"
+        );
+        assert!(
+            !vm.exit_confirmation_armed,
+            "non-ESC key discharges confirmation (log: {log_hint})"
+        );
 
-        // Escape should return the card's internal focus to TaskDescription
-        assert!(vm.handle_escape());
-        // Global focus should remain on the draft task
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
-        // Internal focus should be back on TaskDescription
-        if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
-        }
+        // Press ESC twice without other keys to request exit
+        vm.handle_escape();
+        assert!(vm.exit_confirmation_armed);
+        vm.handle_escape();
+        writeln!(
+            log,
+            "After second ESC -> armed {} requested {}",
+            vm.exit_confirmation_armed,
+            vm.exit_requested
+        )
+        .expect("write log");
+        assert!(vm.exit_requested, "second ESC requests exit (log: {log_hint})");
+        assert!(vm.take_exit_request(), "take_exit_request returns true (log: {log_hint})");
+        assert!(
+            !vm.exit_requested,
+            "exit request clears after take_exit_request (log: {log_hint})"
+        );
     }
 
     #[test]

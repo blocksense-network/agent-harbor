@@ -440,6 +440,43 @@ impl InlineAutocomplete {
         result
     }
 
+    /// Returns true when the menu has open state and at least one result to show
+    pub fn is_open(&self) -> bool {
+        self.vm.open && !self.vm.results.is_empty()
+    }
+
+    /// Move the highlighted selection forward, wrapping to the first item.
+    /// Returns true when a selection change was attempted (even if only one item exists).
+    pub fn select_next(&mut self) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+
+        if self.vm.results.len() > 1 {
+            self.vm.selected = (self.vm.selected + 1) % self.vm.results.len();
+        }
+        self.constrain_selected();
+        true
+    }
+
+    /// Move the highlighted selection backward, wrapping to the last item.
+    /// Returns true when a selection change was attempted (even if only one item exists).
+    pub fn select_previous(&mut self) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+
+        if self.vm.results.len() > 1 {
+            if self.vm.selected == 0 {
+                self.vm.selected = self.vm.results.len() - 1;
+            } else {
+                self.vm.selected -= 1;
+            }
+        }
+        self.constrain_selected();
+        true
+    }
+
     pub fn after_textarea_change(&mut self, textarea: &TextArea<'_>) {
         if self.suspended {
             return;
@@ -579,7 +616,8 @@ impl InlineAutocomplete {
         changed
     }
 
-    fn close(&mut self) {
+    /// Close the autocomplete menu and clear any pending state.
+    pub fn close(&mut self) {
         self.vm.open = false;
         self.vm.trigger = None;
         self.vm.results.clear();

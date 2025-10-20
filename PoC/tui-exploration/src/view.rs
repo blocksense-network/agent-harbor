@@ -378,7 +378,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
     // Render autocomplete menu if textarea area is available
     if let (Some(area), Some(card)) = (view_model.last_textarea_area, view_model.draft_cards.first()) {
         render_autocomplete(
-            &view_model.autocomplete,
+            view_model.autocomplete.menu_state(),
             frame,
             area,
             &card.description,
