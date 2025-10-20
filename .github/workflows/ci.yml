@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Install Nix
         uses: metacraft-labs/nixos-modules/.github/install-nix@main
@@ -41,15 +41,29 @@ jobs:
         run: nix build -L --json .#devShells.x86_64-linux.default
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nixos, x86-64-v3]
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          submodules: "recursive"
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build & activate the Nix Dev Shell
+        run: |
+          nix print-dev-env --accept-flake-config --impure .#devShells.x86_64-linux.default > dev-env.sh || exit 1
+          source dev-env.sh
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
+          echo "NIX_PATH=$NIX_PATH" >> "$GITHUB_ENV"
+          echo "NIX_PROFILES=$NIX_PROFILES" >> "$GITHUB_ENV"
+          echo "NIX_REMOTE=$NIX_REMOTE" >> "$GITHUB_ENV"
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v3
@@ -89,7 +103,7 @@ jobs:
       - name: Install Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2'
+          ruby-version: "3.2"
 
       - name: Install dependencies
         run: |
@@ -106,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Install Nix
         uses: metacraft-labs/nixos-modules/.github/install-nix@main
