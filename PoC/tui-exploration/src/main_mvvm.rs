@@ -386,31 +386,37 @@ fn render_modals(frame: &mut ratatui::Frame, view_model: &ViewModel, area: ratat
             // No modal to render
         }
         ModalState::RepositorySearch => {
-            // Create a placeholder fuzzy search modal for repository selection
-            let modal = ah_tui::view::dialogs::FuzzySearchModal {
-                input: String::new(),
-                options: view_model.available_repositories.clone(),
-                selected_index: 0,
-            };
-            render_fuzzy_modal(frame, &modal, area, theme);
+            // Use the actual modal data from view_model
+            if let Some(modal) = &view_model.active_modal {
+                let fuzzy_modal = ah_tui::view::dialogs::FuzzySearchModal {
+                    input: modal.input_value.clone(),
+                    options: modal.filtered_options.iter().map(|(opt, _)| opt.clone()).collect(),
+                    selected_index: modal.selected_index,
+                };
+                render_fuzzy_modal(frame, &fuzzy_modal, area, theme);
+            }
         }
         ModalState::BranchSearch => {
-            // Create a placeholder fuzzy search modal for branch selection
-            let modal = ah_tui::view::dialogs::FuzzySearchModal {
-                input: String::new(),
-                options: view_model.available_branches.clone(),
-                selected_index: 0,
-            };
-            render_fuzzy_modal(frame, &modal, area, theme);
+            // Use the actual modal data from view_model
+            if let Some(modal) = &view_model.active_modal {
+                let fuzzy_modal = ah_tui::view::dialogs::FuzzySearchModal {
+                    input: modal.input_value.clone(),
+                    options: modal.filtered_options.iter().map(|(opt, _)| opt.clone()).collect(),
+                    selected_index: modal.selected_index,
+                };
+                render_fuzzy_modal(frame, &fuzzy_modal, area, theme);
+            }
         }
         ModalState::ModelSearch => {
-            // Create a placeholder fuzzy search modal for model selection
-            let modal = ah_tui::view::dialogs::FuzzySearchModal {
-                input: String::new(),
-                options: view_model.available_models.clone(),
-                selected_index: 0,
-            };
-            render_fuzzy_modal(frame, &modal, area, theme);
+            // Use the actual modal data from view_model
+            if let Some(modal) = &view_model.active_modal {
+                let fuzzy_modal = ah_tui::view::dialogs::FuzzySearchModal {
+                    input: modal.input_value.clone(),
+                    options: modal.filtered_options.iter().map(|(opt, _)| opt.clone()).collect(),
+                    selected_index: modal.selected_index,
+                };
+                render_fuzzy_modal(frame, &fuzzy_modal, area, theme);
+            }
         }
         ModalState::Settings => {
             render_settings_dialog(frame, area, theme);

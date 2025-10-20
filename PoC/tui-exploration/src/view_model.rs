@@ -236,6 +236,78 @@ impl ViewModel {
 
         handled
     }
+
+    fn update_modal_filtered_options(&mut self, modal: &mut ModalViewModel) {
+        match &modal.modal_type {
+            ModalType::Search { .. } => {
+                // Get all available options based on modal state
+                let all_options = match self.modal_state {
+                    ModalState::RepositorySearch => &self.available_repositories,
+                    ModalState::BranchSearch => &self.available_branches,
+                    ModalState::ModelSearch => &self.available_models,
+                    _ => &Vec::new(),
+                };
+
+                // Filter options based on input value (case-insensitive fuzzy match)
+                let query = modal.input_value.to_lowercase();
+                let mut filtered: Vec<(String, bool)> = all_options
+                    .iter()
+                    .filter(|option| {
+                        if query.is_empty() {
+                            true // Show all options when no query
+                        } else {
+                            option.to_lowercase().contains(&query)
+                        }
+                    })
+                    .cloned()
+                    .map(|opt| (opt, false))
+                    .collect();
+
+                // Reset selected index if it's out of bounds
+                if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                    modal.selected_index = 0;
+                }
+
+                // Mark the selected option
+                if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                    filtered[modal.selected_index].1 = true;
+                }
+
+                modal.filtered_options = filtered;
+            }
+            ModalType::ModelSelection { options } => {
+                // For model selection, filter the available model options
+                let query = modal.input_value.to_lowercase();
+                let mut filtered: Vec<(String, bool)> = options
+                    .iter()
+                    .filter(|option| {
+                        if query.is_empty() {
+                            true // Show all options when no query
+                        } else {
+                            option.name.to_lowercase().contains(&query)
+                        }
+                    })
+                    .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
+                    .collect();
+
+                // Reset selected index if it's out of bounds
+                if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                    modal.selected_index = 0;
+                }
+
+                // Mark the selected option
+                if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                    filtered[modal.selected_index].1 = true;
+                }
+
+                modal.filtered_options = filtered;
+            }
+            ModalType::Settings { .. } => {
+                // Settings don't have filtered options based on input
+                modal.filtered_options = Vec::new();
+            }
+        }
+    }
     /// Navigate to the next focusable control
     pub fn focus_next_control(&mut self) -> bool {
         // Implement PRD-compliant tab navigation for draft cards
@@ -339,6 +411,93 @@ impl ViewModel {
 
     /// Handle character input in focused text areas
     pub fn handle_char_input(&mut self, ch: char) -> bool {
+        // Handle modal input when a modal is active
+        if let Some(ref mut modal) = self.active_modal.as_mut() {
+            match &modal.modal_type {
+                ModalType::Search { .. } => {
+                    // For search modals, add character to input value and update filtering
+                    modal.input_value.push(ch);
+
+                    // Inline filtering logic to avoid double borrow
+                    let all_options = match self.modal_state {
+                        ModalState::RepositorySearch => &self.available_repositories,
+                        ModalState::BranchSearch => &self.available_branches,
+                        ModalState::ModelSearch => &self.available_models,
+                        _ => &Vec::new(),
+                    };
+
+                    let query = modal.input_value.to_lowercase();
+                    let mut filtered: Vec<(String, bool)> = all_options
+                        .iter()
+                        .filter(|option| {
+                            if query.is_empty() {
+                                true // Show all options when no query
+                            } else {
+                                option.to_lowercase().contains(&query)
+                            }
+                        })
+                        .cloned()
+                        .map(|opt| (opt, false))
+                        .collect();
+
+                    // Reset selected index if it's out of bounds
+                    if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                        modal.selected_index = 0;
+                    }
+
+                    // Mark the selected option
+                    if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                        filtered[modal.selected_index].1 = true;
+                    }
+
+                    modal.filtered_options = filtered;
+                    self.needs_redraw = true;
+                    return true;
+                }
+                ModalType::ModelSelection { .. } => {
+                    // Model selection modals use search input similar to search modals
+                    modal.input_value.push(ch);
+
+                    // Inline filtering logic to avoid double borrow
+                    let query = modal.input_value.to_lowercase();
+                    let mut filtered: Vec<(String, bool)> = if let ModalType::ModelSelection { options } = &modal.modal_type {
+                        options
+                            .iter()
+                            .filter(|option| {
+                                if query.is_empty() {
+                                    true // Show all options when no query
+                                } else {
+                                    option.name.to_lowercase().contains(&query)
+                                }
+                            })
+                            .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+
+                    // Reset selected index if it's out of bounds
+                    if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                        modal.selected_index = 0;
+                    }
+
+                    // Mark the selected option
+                    if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                        filtered[modal.selected_index].1 = true;
+                    }
+
+                    modal.filtered_options = filtered;
+                    self.needs_redraw = true;
+                    return true;
+                }
+                ModalType::Settings { .. } => {
+                    // Settings modals may have text input fields - for now, ignore character input
+                    // as settings are handled via navigation and selection
+                    return false;
+                }
+            }
+        }
+
         // Allow text input when focused on draft-related elements
         match self.focus_element {
             FocusElement::TaskDescription | FocusElement::RepositorySelector |
@@ -388,8 +547,98 @@ impl ViewModel {
         false
     }
 
-    /// Handle backspace in focused text areas
+    /// Handle backspace in focused text areas and modals
     pub fn handle_backspace(&mut self) -> bool {
+        // Handle modal backspace when a modal is active
+        if let Some(ref mut modal) = self.active_modal {
+            match &modal.modal_type {
+                ModalType::Search { .. } => {
+                    // For search modals, remove last character from input value
+                    if !modal.input_value.is_empty() {
+                        modal.input_value.pop();
+
+                        // Inline filtering logic to avoid double borrow
+                        let all_options = match self.modal_state {
+                            ModalState::RepositorySearch => &self.available_repositories,
+                            ModalState::BranchSearch => &self.available_branches,
+                            ModalState::ModelSearch => &self.available_models,
+                            _ => &Vec::new(),
+                        };
+
+                        let query = modal.input_value.to_lowercase();
+                        let mut filtered: Vec<(String, bool)> = all_options
+                            .iter()
+                            .filter(|option| {
+                                if query.is_empty() {
+                                    true // Show all options when no query
+                                } else {
+                                    option.to_lowercase().contains(&query)
+                                }
+                            })
+                            .cloned()
+                            .map(|opt| (opt, false))
+                            .collect();
+
+                        // Reset selected index if it's out of bounds
+                        if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                            modal.selected_index = 0;
+                        }
+
+                        // Mark the selected option
+                        if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                            filtered[modal.selected_index].1 = true;
+                        }
+
+                        modal.filtered_options = filtered;
+                        self.needs_redraw = true;
+                        return true;
+                    }
+                }
+                ModalType::ModelSelection { .. } => {
+                    // For model selection modals, remove last character from input value
+                    if !modal.input_value.is_empty() {
+                        modal.input_value.pop();
+
+                        // Inline filtering logic to avoid double borrow
+                        let query = modal.input_value.to_lowercase();
+                        let mut filtered: Vec<(String, bool)> = if let ModalType::ModelSelection { options } = &modal.modal_type {
+                            options
+                                .iter()
+                                .filter(|option| {
+                                    if query.is_empty() {
+                                        true // Show all options when no query
+                                    } else {
+                                        option.name.to_lowercase().contains(&query)
+                                    }
+                                })
+                                .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+
+                        // Reset selected index if it's out of bounds
+                        if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                            modal.selected_index = 0;
+                        }
+
+                        // Mark the selected option
+                        if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                            filtered[modal.selected_index].1 = true;
+                        }
+
+                        modal.filtered_options = filtered;
+                        self.needs_redraw = true;
+                        return true;
+                    }
+                }
+                ModalType::Settings { .. } => {
+                    // Settings modals don't handle backspace
+                    return false;
+                }
+            }
+        }
+
         match self.focus_element {
             FocusElement::TaskDescription => {
                 // Get the first (and currently only) draft card

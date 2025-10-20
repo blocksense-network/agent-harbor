@@ -440,7 +440,11 @@ impl InlineAutocomplete {
             self.vm.trigger = Some(trigger);
             self.vm.token = Some(token);
             self.vm.query = query.clone();
-            self.vm.open = false;
+
+            // Open the menu immediately when a trigger is detected, even before results arrive
+            // This provides immediate visual feedback to the user
+            self.vm.open = true;
+
             self.schedule_query(trigger, query);
         } else {
             self.close();
@@ -466,7 +470,12 @@ impl InlineAutocomplete {
                 && !query.is_empty()
                 && self.vm.results[0].item.label.eq_ignore_ascii_case(query);
 
-            if self.vm.results.is_empty() || only_exact {
+            if self.vm.results.is_empty() && !only_exact {
+                // Keep menu open even with no results if we have a trigger active
+                // This provides immediate feedback that autocomplete is active
+                self.vm.results.clear();
+                // Keep menu open for immediate feedback, but don't close it
+            } else if only_exact {
                 self.vm.results.clear();
                 self.vm.open = false;
             } else {
@@ -536,7 +545,7 @@ impl InlineAutocomplete {
             &self.vm.results[0..0]
         };
 
-        let menu_height = visible_results.len().max(1) as u16;
+        let menu_height = items.len().max(1) as u16;
         let popup = clip_popup(
             screen,
             caret.popup_x,
@@ -547,12 +556,15 @@ impl InlineAutocomplete {
 
         frame.render_widget(Clear, popup);
 
-        if visible_results.is_empty() {
-            return;
-        }
-
-        let items: Vec<ListItem> =
-            visible_results.iter().map(|m| make_list_item(m, theme)).collect();
+        let items: Vec<ListItem> = if visible_results.is_empty() {
+            // Show a "No results" message when menu is open but no results
+            vec![ListItem::new(Line::from(vec![Span::styled(
+                "No suggestions available",
+                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray))
+            )]))]
+        } else {
+            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
+        };
 
         let mut block = Block::default().style(Style::default().bg(background));
         if self.show_border {

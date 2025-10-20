@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::view::Theme;
 use crate::view_model::autocomplete::{
-    AutocompleteMenuState, ScoredMatch, Trigger, MAX_MENU_HEIGHT, MENU_WIDTH,
+    AutocompleteMenuState, MAX_MENU_HEIGHT, MENU_WIDTH, ScoredMatch, Trigger,
 };
 
 #[derive(Debug, Clone, Copy)]
