@@ -7,8 +7,10 @@
 //! managing agent tasks and sessions, including lifecycle management, state
 //! transitions, and coordination with other AH components.
 
+pub mod agent_binary;
 pub mod agent_executor;
 pub mod agent_tasks;
+pub mod agent_types;
 pub mod db;
 pub mod devshell;
 pub mod editor;

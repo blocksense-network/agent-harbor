@@ -6,179 +6,128 @@ Spec: See [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for the sc
 
 Deliver a high-performance LLM API proxy library that can be integrated into `ah webui` to provide API translation, routing, metrics collection, and scenario playback capabilities. The library should translate between OpenAI and Anthropic API formats, route requests to multiple providers (OpenRouter, Anthropic, OpenAI, etc.), collect comprehensive metrics, and support deterministic playback of Scenario-Format scenarios.
 
-## Current Status: ✅ FULLY FUNCTIONAL PROXY
+## Current Status: ✅ Bidirectional proxy with scenario playback and Anthropic API compliance
 
-**Successfully implemented and tested:**
+**Implemented Features:**
+- Bidirectional OpenAI ↔ Anthropic conversion for chat completions, responses API, tool calls, metadata, and streaming deltas
+- Weighted round-robin routing with model-pattern rules, replica weights, and provider fallback selection
+- HTTP client and configuration system with provider management, API key injection, and environment overrides
+- Metrics collection (latency, request counts, token usage) integrated with proxy lifecycle
+- Scenario playback engine aligned with `Scenario-Format.md`, including tool profile validation and request/response logging hooks
+- Clap-based test server wiring converters, routing, and scenario playback for manual and automated runs
+- Unit tests covering converters (bidirectional + streaming), routing selector, scenario playback, and configuration validation
 
-- ✅ Anthropic → OpenRouter routing with HTTP API integration
-- ✅ Basic metrics collection (latency, request counts, token tracking)
-- ✅ Configuration system with provider management
-- ✅ Request/response pipeline with format detection
-- ✅ Comprehensive integration tests passing (6/6 tests pass)
-- ✅ Pass-through API format handling (ready for real API conversions)
-- ✅ Production-ready async architecture with error handling
-- ✅ Real HTTP requests to OpenRouter (when API key provided)
+**Current Limitations / Known Issues:**
+- Multimodal payloads (audio/images) are skipped during conversion with warnings
+- Metrics remain in-memory only (no telemetry export yet)
+- CLI logging refactor is mid-flight; compile errors remain until Option handling / PathBuf formatting is fixed (tracked below)
+- Other assertion types (text, JSON, git) are not yet implemented - only filesystem assertions (fs.exists, fs.notExists) are supported
+- Citations field not yet implemented for Anthropic text content blocks
 
-**Test Results:**
+## Implementation Status
 
-```
-running 6 tests
-✅ test_config_validation ... ok
-✅ test_proxy_creation ... ok
-✅ test_anthropic_to_openrouter_routing ... ok
-✅ test_metrics_collection ... ok
-✅ test_full_proxy_workflow ... ok
-✅ test_provider_routing_logic ... ok
+### ✅ Completed Features
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
-```
-
-**Ready for Production Use:**
-
-- The proxy can route Anthropic requests to OpenRouter
-- Metrics are collected for latency and request statistics
-- Configuration supports multiple providers
-- Tests verify end-to-end functionality
-- Architecture supports future API conversion additions
-
-## Milestones and Tasks
-
-### ✅ Completed (Milestone 1 - Basic Functionality)
-
-1. **Core Infrastructure** ✅
-   - Basic async proxy architecture with request/response handling
-   - Configuration management with YAML support
+1. **Core Infrastructure**
+   - Async proxy architecture with request/response handling
+   - Configuration management with YAML support and env overrides
    - Provider abstraction layer with API key management
-   - HTTP client integration with proper headers/authentication
+   - HTTP client integration with authentication
 
-2. **OpenRouter Integration** ✅
+2. **Routing & Provider Management**
    - HTTP API integration with OpenRouter
-   - OpenRouter provider configuration with model mapping
-   - Bearer token authentication for OpenRouter API
-   - Request forwarding to OpenRouter `/chat/completions` endpoint
+   - Model-pattern routing with weighted round-robin across provider replicas
+   - Configurable fallback selection when logical provider names share replicas
+   - Provider info hydration (base URL, headers, API keys)
 
-3. **Basic Metrics Collection** ✅
-   - Request/response latency tracking (microsecond precision)
-   - Request count statistics (total, successful, failed)
-   - Token usage extraction from OpenAI-compatible responses
-   - Active request monitoring for concurrency tracking
-   - Thread-safe atomic counters for high performance
+3. **Bidirectional API Conversion**
+   - OpenAI → Anthropic translations (system/developer/user messages, tool calls, metadata, streaming deltas)
+   - Anthropic → OpenAI translations (tool_calls, finish reasons, usage accounting)
+   - Stream chunk translation in both directions with delta reconciliation and warning surfacing
 
-4. **Routing Logic** ✅
-   - Model-based provider selection (Anthropic models → OpenRouter)
-   - Format-aware routing (Anthropic requests to OpenAI providers)
-   - Default provider fallback configuration
-   - Provider validation and error handling
+4. **Metrics & Observability**
+   - Request/response latency tracking
+   - Request count statistics with success/failure tallies
+   - Token usage extraction from provider responses
+   - Thread-safe counters shared across async tasks
 
-### 🔄 Future Enhancements
+5. **Test Server & Logging**
+   - Clap-based `llm-api-proxy test-server` command with scenario selection
+   - Axum routes for OpenAI `/chat/completions`, `/responses`, and Anthropic `/messages`
+   - Request/response logging toggles controlled via env/CLI switches
+   - ✅ Configurable JSON log formatting (pretty-print by default, minimize with `--minimize-logs`)
 
-5. **API Translation Layer** 🔄
-   - Implement bidirectional OpenAI↔Anthropic conversion
-   - Support streaming responses for both formats
-   - Handle tool calls, function calls, and content blocks correctly
-   - Include proper error mapping between API formats
-   - **Current Status**: Framework in place, conversion logic needs API compatibility fixes
+6. **Scenario Playback**
+   - Timeline event processing following Scenario-Format semantics
+   - Tool validation profiles with FORCE_TOOLS_VALIDATION_FAILURE capture path
+   - Request/response log emission for regression tracking
+   - ✅ Filesystem assertion events (`fs.exists`, `fs.notExists`) executed before next response
+   - ✅ Initial prompt detection - waits for meaningful requests before starting scenario playback
+   - ✅ Anthropic API response format compliance with required fields (`stop_sequence`, proper usage structure)
 
-6. **Advanced Provider Routing** 🔄
-   - Support multiple providers: OpenRouter, Anthropic, OpenAI, and others
-   - Implement fallback routing for reliability
-   - Add custom routing logic based on request characteristics (model, tokens, tools)
-   - Load balancing across provider instances
+### 🔄 Outstanding Tasks
 
-7. **Enhanced Metrics and Telemetry** 🔄
-   - Advanced metrics collection and reporting
-   - Track request/response latency, token usage, error rates
-   - Implement custom metrics for scenario playback
-   - Support OpenTelemetry export for observability
+1. **CLI + Logging Refinement**
+   - Resolve Clap/Option compile errors (PathBuf display, Option moves)
+   - Ensure `manual-test-agent-start.py` forwards default logging flags to the server binary
+   - Add regression tests for logging env propagation
 
-8. **Scenario Playback Engine** 🔄
-   - Implement timeline-based scenario execution based on existing `server.py` mock server
-   - Support all Scenario-Format event types: llmResponse, userInputs, assertions, screenshots
-   - Integrate with filesystem operations for deterministic testing
-   - Provide HTTP API for scenario control and monitoring
+2. **Enhanced Provider Support**
+   - Integrate direct Anthropic and OpenAI provider clients alongside OpenRouter
+   - Surface provider health metrics and fallback decisions
+   - Replace stubbed Helicone router with real implementation when crates land
 
-9. **WebUI Integration Points** 🔄
-   - Design clean library API suitable for `ah webui` integration
-   - Support both proxy mode (live requests) and playback mode (scenarios)
-   - Provide configuration system for provider credentials and routing rules
-   - Ensure thread-safety for concurrent web requests
+3. **Advanced Metrics & Telemetry**
+   - Expand metrics to include per-provider error rates and streaming counters
+   - Add OpenTelemetry export / scrape endpoints
+   - Scenario playback metrics (timeline latency, validation outcomes)
 
-10. **Load Balancing and Resilience** 🔄
-    - Implement retry logic with exponential backoff
-    - Add circuit breaker patterns for failing providers
-    - Support health checks and automatic failover
-    - Rate limiting and abuse protection
+4. **Complete Scenario Playback**
+   - ✅ Implement remaining Scenario-Format events (filesystem assertions implemented, workspace mirroring pending)
+   - Restore deterministic workspace orchestration from legacy Python mock
+   - Provide HTTP control hooks for scenario load/reset/status
 
-11. **Security and Authentication** 🔄
-    - Enhanced API key management for multiple providers
-    - Support request authentication and authorization
-    - Ensure secure credential storage and rotation
-    - Comprehensive security measures
+5. **WebUI Integration**
+   - Document and harden the public API surface for `ah webui`
+   - Offer concurrency-safe session management utilities
+   - Add configuration loaders aligned with webui deployment environment
 
-12. **Testing and Validation** 🔄
-    - Comprehensive unit tests for API conversions
-    - Integration tests with real provider APIs (when safe)
-    - Scenario playback validation against golden files
-    - Performance benchmarks for high-throughput scenarios
+6. **Production Hardening**
+   - Implement retry, backoff, and circuit breaker policies per provider
+   - Add rate limiting and abuse protection layers
+   - Integrate secure credential storage / rotation flows
 
-## Test Plan (precise)
+7. **Testing & Benchmarks**
+   - Golden tests covering conversion edge cases (multimodal, refusal blocks, tool deltas)
+   - Integration tests for routing fallback and multi-provider failover
+   - Performance/load benchmarks for high-concurrency streaming sessions
 
-Harness components
+## Testing
 
-- Rust integration tests using `tokio::test` and mocked HTTP clients
-- Scenario playback tests using deterministic timelines
-- API conversion tests with golden input/output samples
-- Performance benchmarks for concurrent requests
+### Current Test Coverage
 
-Fixtures
+- Unit tests for core functionality (converter/routing/scenario modules) — blocked until CLI compile fixes land
+- HTTP client and routing logic tests
+- Configuration validation tests
+- Metrics collection tests
+- Converter-specific streaming tests (`tests/converter_tests.rs`)
 
-- Mock HTTP servers for each supported provider
-- Deterministic scenario timelines with known inputs/outputs
-- Golden files for API conversion validation
+### Test Server Validation
 
-Scenarios
+The test server enables manual integration testing with:
+- Real HTTP request/response cycles
+- Configurable logging for debugging
+- Scenario playback validation
+- Provider compatibility testing
 
-1. API Translation Accuracy
+### Future Test Expansion
 
-- OpenAI→Anthropic conversion preserves all fields correctly
-- Anthropic→OpenAI conversion handles tool calls and content blocks
-- Streaming responses are properly translated in real-time
-
-2. Provider Routing
-
-- Requests are routed to correct providers based on model names
-- Fallback routing works when primary provider fails
-- Load balancing distributes requests across provider instances
-
-3. Scenario Playback
-
-- Timeline events execute in correct order with proper timing
-- User inputs and assertions work as expected
-- Filesystem state matches expected snapshots
-
-4. Metrics Collection
-
-- Request/response metrics are captured accurately
-- Token usage is tracked for both input and output
-- Error rates and latency percentiles are calculated
-
-5. Concurrent Load
-
-- Multiple concurrent requests are handled correctly
-- Streaming responses don't interfere with each other
-- Metrics remain accurate under load
-
-CI wiring
-
-- GitHub Actions matrix: `ubuntu-latest` (primary), `macos-latest`, `windows-latest`
-- Run unit/integration tests; run scenario playback tests; publish metrics on performance regressions
-
-Exit criteria
-
-- All API translations pass golden file validation
-- Scenario playback produces deterministic results
-- Performance benchmarks meet latency and throughput targets
-- Metrics collection is comprehensive and accurate
+When additional features are implemented:
+- API conversion accuracy tests (with golden files)
+- Advanced scenario playback validation
+- Performance benchmarks
+- Multi-provider failover testing
+- Concurrent load testing
 
 ## Implementation Details
 
@@ -189,29 +138,14 @@ llm-api-proxy/
 ├── src/
 │   ├── lib.rs                 # Main library interface
 │   ├── config.rs              # Configuration management
-│   ├── proxy.rs               # Core proxy logic
-│   ├── converters/            # API format converters
-│   │   ├── openai_to_anthropic.rs
-│   │   ├── anthropic_to_openai.rs
-│   │   └── mod.rs
+│   ├── proxy.rs               # Core proxy logic & routing
+│   ├── converters/            # Bidirectional OpenAI ↔ Anthropic converters
 │   ├── routing/               # Provider routing logic
-│   │   ├── dynamic_router.rs
-│   │   ├── load_balancer.rs
-│   │   └── mod.rs
-│   ├── metrics/               # Telemetry integration
-│   │   ├── collector.rs
-│   │   └── mod.rs
+│   ├── metrics/               # Basic telemetry
 │   ├── scenario/              # Scenario playback engine
-│   │   ├── player.rs
-│   │   ├── timeline.rs
-│   │   └── mod.rs
 │   └── error.rs               # Error types and handling
-├── tests/
-│   ├── api_conversion.rs      # API translation tests
-│   ├── routing.rs             # Provider routing tests
-│   ├── scenario_playback.rs   # Scenario tests
-│   └── integration.rs         # Full integration tests
-└── Cargo.toml
+├── tests/                     # Unit tests
+└── README.md                  # User documentation
 ```
 
 ### Key Dependencies
@@ -220,40 +154,32 @@ llm-api-proxy/
 - `reqwest` - HTTP client for provider requests
 - `serde` - Serialization/deserialization
 - `tokio` - Async runtime
-- `async-openai` - OpenAI API client
-- `anthropic-ai-sdk` - Anthropic API client
+- `clap` - Command-line argument parsing
 
-### WebUI Integration API
+### Library API
 
 ```rust
-pub struct LlmApiProxy {
-    config: ProxyConfig,
-    router: DynamicRouter,
-    metrics: MetricsCollector,
-    scenario_player: Option<ScenarioPlayer>,
-}
+pub struct LlmApiProxy { /* ... */ }
 
 impl LlmApiProxy {
-    pub async fn new(config: ProxyConfig) -> Result<Self> { ... }
-
-    // Main proxy method for live requests
-    pub async fn proxy_request(&self, request: ProxyRequest) -> Result<ProxyResponse> { ... }
-
-    // Scenario playback mode
-    pub async fn play_scenario(&self, scenario: Scenario, workspace: PathBuf) -> Result<ScenarioResult> { ... }
-
-    // Metrics and monitoring
-    pub fn metrics(&self) -> &MetricsCollector { ... }
+    pub async fn new(config: ProxyConfig) -> Result<Self>;
+    pub async fn proxy_request(&self, request: ProxyRequest) -> Result<ProxyResponse>;
 }
 ```
 
 ## Success Criteria
 
+### Current Phase Goals
+- **Core Functionality**: HTTP proxy with provider routing and basic metrics
+- **Test Server**: Functional CLI for integration testing with logging
+- **Scenario Playback**: Basic timeline execution framework
+- **Library API**: Usable interface for external integration
+
+### Future Phase Goals
 - **API Translation**: Bidirectional OpenAI↔Anthropic conversion with 100% field preservation
-- **Provider Support**: Routing to OpenRouter, Anthropic, OpenAI, and custom endpoints
-- **Metrics**: Comprehensive telemetry collection with latency, token usage, and error tracking
-- **Scenario Playback**: Deterministic execution of Scenario-Format timelines
+- **Advanced Routing**: Multi-provider support with load balancing and failover
+- **Enhanced Metrics**: Comprehensive telemetry with OpenTelemetry export
+- **Complete Scenario Playback**: Full Scenario-Format support with deterministic execution
+- **Production Features**: Retry logic, circuit breakers, rate limiting
+- **Security**: Enhanced authentication and credential management
 - **Performance**: Sub-100ms latency for API translation, support for 1000+ concurrent requests
-- **Reliability**: Automatic failover, retry logic, and graceful degradation
-- **Security**: Secure credential management and request authentication
-- **Integration**: Clean library API suitable for `ah webui` embedding

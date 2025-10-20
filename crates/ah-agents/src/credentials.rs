@@ -104,24 +104,14 @@ fn copy_directory_impl<'a>(
 
 /// Platform-specific credential paths for Claude Code
 pub fn claude_credential_paths() -> Vec<PathBuf> {
-    vec![
-        // Main config directory
-        PathBuf::from(".claude/config.json"),
-        PathBuf::from(".claude/cli_config.json"),
-        // Authentication tokens
-        PathBuf::from(".claude/auth.json"),
-        // User preferences
-        PathBuf::from(".claude/preferences.json"),
-    ]
+    vec![PathBuf::from(".claude/.credentials.json")]
 }
 
 /// Platform-specific credential paths for Codex CLI
 pub fn codex_credential_paths() -> Vec<PathBuf> {
     vec![
-        // Main config directory
-        PathBuf::from(".config/codex/config.toml"),
-        // Authentication
-        PathBuf::from(".config/codex/auth.toml"),
+        // Authentication file (as defined in Codex Rust code)
+        PathBuf::from(".codex/auth.json"),
     ]
 }
 

@@ -323,39 +323,27 @@ where
                 let tasks: Vec<TaskExecution> = response
                     .items
                     .into_iter()
-                    .map(|session| {
-                        TaskExecution {
-                            id: session.id,
-                            repository: session
-                                .vcs
-                                .repo_url
-                                .unwrap_or_else(|| "unknown".to_string()),
-                            branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
-                            agents: vec![SelectedModel {
-                                name: session.agent.agent_type,
-                                count: 1,
-                            }],
-                            state: match session.status {
-                                ah_rest_api_contract::SessionStatus::Completed => {
-                                    TaskState::Completed
-                                }
-                                ah_rest_api_contract::SessionStatus::Failed => TaskState::Completed,
-                                ah_rest_api_contract::SessionStatus::Cancelled => {
-                                    TaskState::Completed
-                                }
-                                _ => TaskState::Active,
-                            },
-                            timestamp: session
-                                .started_at
-                                .map(|dt| dt.to_rfc3339())
-                                .unwrap_or_default(),
-                            activity: vec![], // Would need to be populated from session events
-                            delivery_status: vec![], // Would need to be populated from session data
-                        }
+                    .map(|session| TaskExecution {
+                        id: session.id,
+                        repository: session.vcs.repo_url.unwrap_or_else(|| "unknown".to_string()),
+                        branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
+                        agents: vec![SelectedModel {
+                            name: session.agent.agent_type,
+                            count: 1,
+                        }],
+                        state: match session.status {
+                            ah_rest_api_contract::SessionStatus::Completed => TaskState::Completed,
+                            ah_rest_api_contract::SessionStatus::Failed => TaskState::Active, // Map to Active for now
+                            ah_rest_api_contract::SessionStatus::Cancelled => TaskState::Active, // Map to Active for now
+                            _ => TaskState::Active,
+                        },
+                        timestamp: session.started_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        activity: vec![session.task.prompt.clone()],
+                        delivery_status: vec![], // TODO: populate from session data if available
                     })
                     .collect();
 
-                // For now, return all tasks as completed tasks (drafts would need separate API)
+                // For now, return empty drafts and all tasks as executions (drafts would need separate API)
                 (vec![], tasks)
             }
             Err(e) => {

@@ -2,20 +2,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: basic_timeline_scenario
+initialPrompt: "Create a test.py file that prints 'Hello from basic timeline scenario'"
 repo:
   init: true
 timeline:
-  - think:
-      - [500, "Processing request for basic_timeline_scenario"]
-  - agentToolUse:
-      toolName: "writeFile"
-      args:
-        path: "test.py"
-        text: "print('Hello, timeline!')"
-      result: "File created"
-      status: "ok"
-  - assistant:
-      - [300, "Completed basic_timeline_scenario scenario"]
+  - llmResponse:
+      - think:
+          - [500, "Processing request for basic_timeline_scenario"]
+      - assistant:
+          - [300, "Completed basic_timeline_scenario scenario"]
 expect:
   exitCode: 0
   artifacts:

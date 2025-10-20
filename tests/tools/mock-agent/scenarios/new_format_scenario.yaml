@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: new_format_scenario
+initialPrompt: "Test the new scenario format"
 repo:
   init: true
 timeline:

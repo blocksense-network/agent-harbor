@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: realistic_development_scenario
+initialPrompt: "Add proper division by zero handling to the calculator.py file"
 repo:
   init: true
   files:
@@ -91,23 +92,23 @@ timeline:
           cd /workspace && python -c "
           # First, let's modify the divide function to handle division by zero
           import re
-          
+
           with open('calculator.py', 'r') as f:
               content = f.read()
-          
+
           # Replace the divide function
           new_divide = '''def divide(a, b):
               if b == 0:
                   raise ValueError(\"Cannot divide by zero\")
               return a / b'''
-          
+
           # Use regex to replace the function
           pattern = r'def divide\(a, b\):\s*return a / b'
           content = re.sub(pattern, new_divide, content, flags=re.MULTILINE | re.DOTALL)
-          
+
           with open('calculator.py', 'w') as f:
               f.write(content)
-          
+
           print('Modified divide function to handle division by zero')
           "
         cwd: "."
@@ -138,23 +139,23 @@ timeline:
         command: |
           cd /workspace && python -c "
           import calculator
-          
+
           # Test all functions
           print('Testing all calculator functions...')
           print('add(5, 3) =', calculator.add(5, 3))
           print('subtract(10, 4) =', calculator.subtract(10, 4))
           print('multiply(6, 7) =', calculator.multiply(6, 7))
           print('divide(15, 3) =', calculator.divide(15, 3))
-          
+
           # Test edge cases
           print('divide(10, 2) =', calculator.divide(10, 2))
-          
+
           # Test error case
           try:
               calculator.divide(10, 0)
           except ValueError as e:
               print('Error handling works:', str(e))
-          
+
           print('All tests passed!')
           "
         cwd: "."
@@ -211,17 +212,6 @@ timeline:
       result: "All tests passed!"
       status: "ok"
 
-  # Agent announces task completion
+  # Keep the session open for interactive use
   - assistant:
-      - [2000, "Perfect! I've successfully added division by zero handling to the calculator application."]
-      - [1500, "The divide function now raises a clear ValueError when attempting to divide by zero."]
-      - [1200, "I've also created comprehensive tests to verify all functionality works correctly."]
-      - [800, "The task is now complete with proper error handling and full test coverage."]
-
-expect:
-  exitCode: 0
-  artifacts:
-    - type: "taskFile"
-      pattern: "calculator.py"
-    - type: "taskFile"
-      pattern: "test_calculator.py"
+      - [1000, "Great! I've completed the task. What would you like to do next?"]

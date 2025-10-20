@@ -77,214 +77,222 @@
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760600550987640000
+      "ts_ns": 1760887118933632000
     },
     {
-      "anchor_byte": 589,
-      "id": 0,
-      "kind": "snapshot",
-      "label": "checkpoint",
-      "ts_ns": 1760600551174513000
+      "index": 14,
+      "kind": "line",
+      "last_write_byte": 730,
+      "text": "[checkpoint] stdout: Snapshot created: AH_test_zfs"
+    },
+    {
+      "index": 15,
+      "kind": "line",
+      "last_write_byte": 730,
+      "text": "/test_dataset@ah_session_ah_37413_1760887118882014"
+    },
+    {
+      "index": 16,
+      "kind": "line",
+      "last_write_byte": 730,
+      "text": "000_0"
+    },
+    {
+      "index": 17,
+      "kind": "line",
+      "last_write_byte": 730,
+      "text": "Provider: Zfs"
     },
     {
       "index": 18,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+      "last_write_byte": 730,
+      "text": "Label: checkpoint"
     },
     {
       "index": 19,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "ion_ah_19991_1760600550926624000_0"
+      "last_write_byte": 794,
+      "text": "[checkpoint] Executed checkpoint command: ah agent"
     },
     {
       "index": 20,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "Provider: Zfs"
+      "last_write_byte": 794,
+      "text": " fs snapshot"
     },
     {
       "index": 21,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "Label: checkpoint"
+      "last_write_byte": 889,
+      "text": "[assistant] [300ms] Created main.py. A filesystem "
     },
     {
       "index": 22,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+      "last_write_byte": 889,
+      "text": "snapshot should have been captured via IPC."
     },
     {
       "index": 23,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "ion_ah_19991_1760600551134149000_1"
+      "last_write_byte": 1170,
+      "text": "[tool] writeFile({'path': 'test_main.py', 'text': "
     },
     {
       "index": 24,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "Provider: Zfs"
+      "last_write_byte": 1170,
+      "text": "'import main\\n\\ndef test_greet():\\n    assert main"
     },
     {
       "index": 25,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "Label: checkpoint"
+      "last_write_byte": 1170,
+      "text": ".greet(\"Alice\") == \"Hello, Alice!\"\\n    assert mai"
     },
     {
       "index": 26,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": "[checkpoint] Executed checkpoint command: ah agent"
+      "last_write_byte": 1170,
+      "text": "n.greet(\"Bob\") == \"Hello, Bob!\"\\n    print(\"All te"
     },
     {
       "index": 27,
       "kind": "line",
-      "last_write_byte": 1082,
-      "text": " fs snapshot"
+      "last_write_byte": 1170,
+      "text": "sts passed!\")\\n\\nif __name__ == \"__main__\":\\n    t"
     },
     {
       "index": 28,
       "kind": "line",
-      "last_write_byte": 1177,
-      "text": "[assistant] [300ms] Created main.py. A filesystem "
+      "last_write_byte": 1170,
+      "text": "est_greet()\\n'}) -> executing"
     },
     {
       "index": 29,
       "kind": "line",
-      "last_write_byte": 1177,
-      "text": "snapshot should have been captured via IPC."
-    },
-    {
-      "index": 30,
-      "kind": "line",
-      "last_write_byte": 1458,
-      "text": "[tool] writeFile({'path': 'test_main.py', 'text': "
+      "last_write_byte": 1221,
+      "text": "[tool] writeFile -> error Unknown tool: writeFile"
     },
     {
       "index": 31,
       "kind": "line",
-      "last_write_byte": 1458,
-      "text": "'import main\\n\\ndef test_greet():\\n    assert main"
+      "last_write_byte": 1357,
+      "text": "olders/7x/vkgqhwz90f5fm8rf6blm_n940000gn/T/nix-she"
     },
     {
-      "index": 32,
-      "kind": "line",
-      "last_write_byte": 1458,
-      "text": ".greet(\"Alice\") == \"Hello, Alice!\"\\n    assert mai"
+      "anchor_byte": 1357,
+      "id": 0,
+      "kind": "snapshot",
+      "label": "checkpoint",
+      "ts_ns": 1760887119549130000
     },
     {
       "index": 33,
       "kind": "line",
-      "last_write_byte": 1458,
-      "text": "n.greet(\"Bob\") == \"Hello, Bob!\"\\n    print(\"All te"
+      "last_write_byte": 1562,
+      "text": "[checkpoint] stdout: Snapshot created: AH_test_zfs"
     },
     {
       "index": 34,
       "kind": "line",
-      "last_write_byte": 1458,
-      "text": "sts passed!\")\\n\\nif __name__ == \"__main__\":\\n    t"
+      "last_write_byte": 1562,
+      "text": "/test_dataset@ah_session_ah_41523_1760887119457194"
     },
     {
       "index": 35,
       "kind": "line",
-      "last_write_byte": 1458,
-      "text": "est_greet()\\n'}) -> executing"
+      "last_write_byte": 1562,
+      "text": "000_0"
     },
     {
       "index": 36,
       "kind": "line",
-      "last_write_byte": 1509,
-      "text": "[tool] writeFile -> error Unknown tool: writeFile"
+      "last_write_byte": 1562,
+      "text": "Provider: Zfs"
+    },
+    {
+      "index": 37,
+      "kind": "line",
+      "last_write_byte": 1562,
+      "text": "Label: checkpoint"
     },
     {
       "index": 38,
       "kind": "line",
-      "last_write_byte": 1645,
-      "text": "olders/7x/vkgqhwz90f5fm8rf6blm_n940000gn/T/nix-she"
+      "last_write_byte": 1562,
+      "text": "[checkpoint] Executed checkpoint command: ah agent"
     },
     {
-      "anchor_byte": 1645,
-      "id": 0,
-      "kind": "snapshot",
-      "label": "checkpoint",
-      "ts_ns": 1760600551684117000
+      "index": 39,
+      "kind": "line",
+      "last_write_byte": 1562,
+      "text": " fs snapshot"
     },
     {
-      "anchor_byte": 1645,
-      "id": 0,
-      "kind": "snapshot",
-      "label": "checkpoint",
-      "ts_ns": 1760600551872239000
+      "index": 40,
+      "kind": "line",
+      "last_write_byte": 1649,
+      "text": "[assistant] [400ms] Created test_main.py. Another "
+    },
+    {
+      "index": 41,
+      "kind": "line",
+      "last_write_byte": 1649,
+      "text": "snapshot should have been captured."
+    },
+    {
+      "index": 42,
+      "kind": "line",
+      "last_write_byte": 1769,
+      "text": "[tool] appendFile({'path': 'main.py', 'text': '\\nd"
+    },
+    {
+      "index": 43,
+      "kind": "line",
+      "last_write_byte": 1769,
+      "text": "ef farewell(name):\\n    return f\"Goodbye, {name}!\""
     },
     {
       "index": 44,
       "kind": "line",
-      "last_write_byte": 2138,
-      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+      "last_write_byte": 1769,
+      "text": "\\n'}) -> executing"
     },
     {
       "index": 45,
       "kind": "line",
-      "last_write_byte": 2138,
-      "text": "ion_ah_21422_1760600551630357000_0"
+      "last_write_byte": 1822,
+      "text": "[tool] appendFile -> error Unknown tool: appendFil"
     },
     {
       "index": 46,
       "kind": "line",
-      "last_write_byte": 2138,
-      "text": "Provider: Zfs"
-    },
-    {
-      "index": 47,
-      "kind": "line",
-      "last_write_byte": 2138,
-      "text": "Label: checkpoint"
+      "last_write_byte": 1822,
+      "text": "e"
     },
     {
       "index": 48,
       "kind": "line",
-      "last_write_byte": 2138,
-      "text": "Snapshot created: AH_test_zfs/test_dataset@ah_sess"
+      "last_write_byte": 1958,
+      "text": "olders/7x/vkgqhwz90f5fm8rf6blm_n940000gn/T/nix-she"
     },
     {
-      "index": 49,
-      "kind": "line",
-      "last_write_byte": 2138,
-      "text": "ion_ah_21422_1760600551834604000_1"
-    },
-    {
-      "anchor_byte": 2534,
+      "anchor_byte": 1958,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760600552448284000
+      "ts_ns": 1760887120270165000
     },
     {
-      "anchor_byte": 2534,
+      "anchor_byte": 2620,
       "id": 0,
       "kind": "snapshot",
       "label": "checkpoint",
-      "ts_ns": 1760600552617040000
-    },
-    {
-      "anchor_byte": 3484,
-      "id": 0,
-      "kind": "snapshot",
-      "label": "checkpoint",
-      "ts_ns": 1760600553097753000
-    },
-    {
-      "anchor_byte": 3484,
-      "id": 0,
-      "kind": "snapshot",
-      "label": "checkpoint",
-      "ts_ns": 1760600553266881000
+      "ts_ns": 1760887120993976000
     }
   ],
-  "total_bytes": 4433
+  "total_bytes": 3281
 }
 

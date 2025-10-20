@@ -2,24 +2,137 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /// Claude Code agent implementation
-use crate::credentials::{claude_credential_paths, copy_files};
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Claude Code agent executor
 pub struct ClaudeAgent {
     binary_path: String,
 }
 
+/// Claude Code OAuth credentials structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeCredentials {
+    pub claude_ai_oauth: ClaudeAiOauth,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeAiOauth {
+    pub access_token: String,
+    #[serde(rename = "refreshToken")]
+    pub refresh_token: String,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: u64,
+    pub scopes: Vec<String>,
+    #[serde(rename = "subscriptionType")]
+    pub subscription_type: Option<String>,
+}
+
 impl ClaudeAgent {
     pub fn new() -> Self {
         Self {
             binary_path: "claude".to_string(),
+        }
+    }
+
+    /// Retrieve Claude Code credentials from platform-specific sources
+    ///
+    /// On macOS: executes `security find-generic-password -s "Claude Code-credentials" -w`
+    /// On Linux: reads from `~/.claude/.credentials.json`
+    async fn retrieve_credentials(&self) -> AgentResult<Option<String>> {
+        #[cfg(target_os = "macos")]
+        {
+            debug!("Retrieving Claude credentials from macOS Keychain");
+            match Command::new("security")
+                .args([
+                    "find-generic-password",
+                    "-s",
+                    "Claude Code-credentials",
+                    "-w",
+                ])
+                .output()
+                .await
+            {
+                Ok(output) => {
+                    if output.status.success() {
+                        let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        debug!("Retrieved credentials from Keychain");
+                        Ok(Some(json_str))
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        warn!("Failed to retrieve credentials from Keychain: {}", stderr);
+                        Ok(None)
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to execute security command: {}", e);
+                    Ok(None)
+                }
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            debug!("Retrieving Claude credentials from Linux credentials file");
+            if let Some(home_dir) = dirs::home_dir() {
+                let credentials_path = home_dir.join(".claude").join(".credentials.json");
+                match tokio::fs::read_to_string(&credentials_path).await {
+                    Ok(json_str) => {
+                        debug!("Retrieved credentials from file: {:?}", credentials_path);
+                        Ok(Some(json_str))
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to read credentials file {:?}: {}",
+                            credentials_path, e
+                        );
+                        Ok(None)
+                    }
+                }
+            } else {
+                warn!("Could not determine home directory for Linux credentials");
+                Ok(None)
+            }
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            warn!("Credential retrieval not implemented for this platform");
+            Ok(None)
+        }
+    }
+
+    /// Extract access token from Claude credentials JSON
+    fn extract_access_token(&self, credentials_json: &str) -> AgentResult<Option<String>> {
+        match serde_json::from_str::<ClaudeCredentials>(credentials_json) {
+            Ok(credentials) => {
+                debug!("Successfully parsed Claude credentials");
+                Ok(Some(credentials.claude_ai_oauth.access_token))
+            }
+            Err(e) => {
+                warn!("Failed to parse Claude credentials JSON: {}", e);
+                // Try to extract accessToken directly from JSON in case the structure is different
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(credentials_json) {
+                    if let Some(claude_ai_oauth) = value.get("claudeAiOauth") {
+                        if let Some(access_token) = claude_ai_oauth.get("accessToken") {
+                            if let Some(token_str) = access_token.as_str() {
+                                debug!("Extracted access token from raw JSON");
+                                return Ok(Some(token_str.to_string()));
+                            }
+                        }
+                    }
+                }
+                Err(AgentError::CredentialCopyFailed(format!(
+                    "Failed to extract access token from credentials: {}",
+                    e
+                )))
+            }
         }
     }
 
@@ -107,7 +220,7 @@ impl ClaudeAgent {
                     "enabledMcpjsonServers": [],
                     "disabledMcpjsonServers": [],
                     "hasTrustDialogAccepted": true,
-                    "projectOnboardingSeenCount": 0,
+                    "projectOnboardingSeenCount": 1,
                     "hasClaudeMdExternalIncludesApproved": true,
                     "hasClaudeMdExternalIncludesWarningShown": true,
                     "hasCompletedProjectOnboarding": true,
@@ -135,7 +248,9 @@ impl ClaudeAgent {
             "hasIdeOnboardingBeenShown": {
                 "cursor": true
             },
-            "isQualifiedForDataSharing": false
+            "isQualifiedForDataSharing": false,
+            "fallbackAvailableWarningThreshold": 0.5,
+            "bypassPermissionsModeAccepted": true
         });
 
         // Write .claude.json configuration file
@@ -246,6 +361,14 @@ impl AgentExecutor for ClaudeAgent {
         // Add API key if specified
         if let Some(api_key) = &config.api_key {
             cmd.env("ANTHROPIC_API_KEY", api_key);
+        } else {
+            // Set CLAUDE_CODE_OAUTH_TOKEN if we can retrieve credentials
+            if let Some(credentials_json) = self.retrieve_credentials().await? {
+                if let Some(access_token) = self.extract_access_token(&credentials_json)? {
+                    debug!("Setting CLAUDE_CODE_OAUTH_TOKEN environment variable");
+                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", access_token);
+                }
+            }
         }
 
         // Add additional environment variables
@@ -253,11 +376,33 @@ impl AgentExecutor for ClaudeAgent {
             cmd.env(key, value);
         }
 
-        // Configure stdio for piped I/O
+        // Configure stdio - inherit from parent for interactive mode, pipe for non-interactive
         use std::process::Stdio;
-        cmd.stdin(Stdio::piped());
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+        if config.interactive {
+            cmd.stdin(Stdio::inherit());
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+        } else {
+            cmd.stdin(Stdio::piped());
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+        }
+
+        // Add flags for non-interactive or permission bypassing
+        if !config.interactive {
+            cmd.arg("--print");
+        }
+
+        if config.unrestricted {
+            // For interactive mode with unrestricted flag, bypass permission prompts
+            cmd.arg("--dangerously-skip-permissions");
+        }
+
+        // Add model specification if provided
+        if let Some(model) = &config.model {
+            cmd.arg("--model");
+            cmd.arg(model);
+        }
 
         // Add the prompt as argument
         if !config.prompt.is_empty() {
@@ -282,16 +427,9 @@ impl AgentExecutor for ClaudeAgent {
         Ok(child)
     }
 
-    async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()> {
-        info!(
-            "Copying Claude Code credentials from {:?} to {:?}",
-            src_home, dst_home
-        );
-
-        let paths = claude_credential_paths();
-        copy_files(&paths, src_home, dst_home).await?;
-
-        debug!("Claude Code credentials copied successfully");
+    async fn copy_credentials(&self, _src_home: &Path, _dst_home: &Path) -> AgentResult<()> {
+        // Claude Code credentials are obtained dynamically in the launch functions
+        // and set as environment variables, so no file copying is needed
         Ok(())
     }
 
@@ -374,5 +512,29 @@ mod tests {
         let home = PathBuf::from("/home/user");
         let config = agent.config_dir(&home);
         assert_eq!(config, PathBuf::from("/home/user/.claude"));
+    }
+
+    #[tokio::test]
+    async fn test_extract_access_token() {
+        let agent = ClaudeAgent::new();
+
+        // Test with the expected JSON structure
+        let credentials_json = r#"{"claudeAiOauth":{"accessToken":"test_access_token_123","refreshToken":"refresh_123","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+        let result = agent.extract_access_token(credentials_json);
+        assert!(result.is_ok());
+        let token = result.unwrap();
+        assert_eq!(token, Some("test_access_token_123".to_string()));
+
+        // Test with direct accessToken field (fallback)
+        let credentials_json_direct = r#"{"claudeAiOauth":{"accessToken":"direct_token_456"}}"#;
+        let result_direct = agent.extract_access_token(credentials_json_direct);
+        assert!(result_direct.is_ok());
+        let token_direct = result_direct.unwrap();
+        assert_eq!(token_direct, Some("direct_token_456".to_string()));
+
+        // Test with invalid JSON
+        let invalid_json = r#"{"invalid": "json"}"#;
+        let result_invalid = agent.extract_access_token(invalid_json);
+        assert!(result_invalid.is_err());
     }
 }

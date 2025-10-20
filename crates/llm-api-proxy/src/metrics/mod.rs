@@ -8,7 +8,6 @@
 //!
 //! TODO: Integrate with actual Helicone telemetry when available
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 // TODO: Uncomment when telemetry crate is available

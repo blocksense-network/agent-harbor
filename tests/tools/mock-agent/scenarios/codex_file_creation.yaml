@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: codex_file_creation
+initialPrompt: "Create a test.txt file with content for Codex file creation"
 repo:
   init: true
 timeline:

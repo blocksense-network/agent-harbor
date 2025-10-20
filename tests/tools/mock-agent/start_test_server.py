@@ -34,8 +34,7 @@ def main():
     parser = argparse.ArgumentParser(description="Start mock API server for testing")
     parser.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=18080, help="Server port (default: 18080)")
-    parser.add_argument("--playbook", help="Playbook JSON file")
-    parser.add_argument("--scenario", help="Scenario YAML file")
+    parser.add_argument("--scenario", required=True, help="Scenario YAML file (required)")
     parser.add_argument("--format", choices=["codex", "claude"], default="codex",
                        help="Session file format (default: codex)")
     parser.add_argument("--session-dir", help="Directory for session files (default: temp dir)")
@@ -53,30 +52,11 @@ def main():
     # Set up signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Determine playbook or scenario path
-    playbook_path = None
-    scenario_path = None
-
-    if args.playbook and args.scenario:
-        print("Error: Cannot specify both --playbook and --scenario")
+    # Scenario file is required
+    scenario_path = args.scenario
+    if not os.path.exists(scenario_path):
+        print(f"Error: Scenario file not found: {scenario_path}")
         return 1
-    elif args.playbook:
-        playbook_path = args.playbook
-        if not os.path.exists(playbook_path):
-            print(f"Error: Playbook file not found: {playbook_path}")
-            return 1
-    elif args.scenario:
-        scenario_path = args.scenario
-        if not os.path.exists(scenario_path):
-            print(f"Error: Scenario file not found: {scenario_path}")
-            return 1
-    else:
-        # Default to comprehensive playbook
-        script_dir = os.path.dirname(__file__)
-        playbook_path = os.path.join(script_dir, "examples", "comprehensive_playbook.json")
-        if not os.path.exists(playbook_path):
-            print(f"Error: Default playbook file not found: {playbook_path}")
-            return 1
 
     # Determine session directory
     if args.session_dir:
@@ -89,10 +69,7 @@ def main():
     print(f"Starting mock API server...")
     print(f"  Host: {args.host}")
     print(f"  Port: {args.port}")
-    if playbook_path:
-        print(f"  Playbook: {playbook_path}")
-    if scenario_path:
-        print(f"  Scenario: {scenario_path}")
+    print(f"  Scenario: {scenario_path}")
     print(f"  Format: {args.format}")
     print(f"  Session dir: {session_dir}")
     print()
@@ -122,7 +99,6 @@ def main():
         server.serve(
             host=args.host,
             port=args.port,
-            playbook=playbook_path,
             scenario=scenario_path,
             codex_home=session_dir,
             format=args.format,

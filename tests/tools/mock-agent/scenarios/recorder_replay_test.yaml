@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: recorder_replay_test
+initialPrompt: "Test replay functionality of the recorder"
 description: "E2E test for ah agent record and ah agent replay integration"
 repo:
   init: true

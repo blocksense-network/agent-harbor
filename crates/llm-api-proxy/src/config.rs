@@ -281,11 +281,26 @@ pub struct ScenarioConfig {
     /// Enable scenario playback mode
     pub enabled: bool,
 
-    /// Directory containing scenario files
+    /// Directory containing scenario files (for loading multiple scenarios)
     pub scenario_dir: Option<String>,
+
+    /// Single scenario file to load (for testing)
+    pub scenario_file: Option<String>,
+
+    /// Agent type for tool validation (claude, codex, etc.)
+    pub agent_type: Option<String>,
+
+    /// Agent version for tool changes tracking
+    pub agent_version: Option<String>,
 
     /// Workspace directory for scenario execution
     pub workspace_dir: Option<String>,
+
+    /// Enable strict tools validation mode
+    pub strict_tools_validation: bool,
+
+    /// Minimize JSON logs (default: false, pretty-print by default)
+    pub minimize_logs: bool,
 }
 
 impl Default for ScenarioConfig {
@@ -293,7 +308,12 @@ impl Default for ScenarioConfig {
         Self {
             enabled: false,
             scenario_dir: None,
+            scenario_file: None,
+            agent_type: None,
+            agent_version: None,
             workspace_dir: None,
+            strict_tools_validation: false,
+            minimize_logs: false,
         }
     }
 }

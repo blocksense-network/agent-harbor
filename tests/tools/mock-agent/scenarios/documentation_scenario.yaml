@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: documentation_scenario
+initialPrompt: "Add documentation to the project"
 repo:
   init: true
 timeline:

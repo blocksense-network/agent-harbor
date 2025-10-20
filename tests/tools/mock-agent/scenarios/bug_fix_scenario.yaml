@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: bug_fix_scenario
+initialPrompt: "Fix the bug in the application"
 repo:
   init: true
 timeline:

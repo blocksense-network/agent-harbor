@@ -289,27 +289,11 @@ class MockAPIHandler(BaseHTTPRequestHandler):
     def _respond_with(self, user_text: str, provider: str, api_key: str = "default"):
         executed_tools = []  # Track executed tools for response
 
-        if hasattr(self.server, 'playbook') and self.server.playbook:
-            pb: Playbook = self.server.playbook
-            resp = pb.match(user_text)
-            assistant_text = resp.get("assistant", "")
-            tool_calls = resp.get("tool_calls", [])
-        elif hasattr(self.server, 'scenario_path') and self.server.scenario_path:
-            # Scenario-based response following the timeline algorithm
-            session = self.server._get_session(api_key)
-            if session:
-                # Follow the algorithm: skip non-response events, collect response parts
-                response_parts = self._collect_response_parts(session)
-                assistant_text, tool_calls = self._process_response_parts(response_parts, provider)
-            else:
-                # Fall back to simple mock response if no session available
-                resp = {"assistant": f"Mock response for: {user_text}", "tool_calls": []}
-                assistant_text = resp.get("assistant", "")
-                tool_calls = resp.get("tool_calls", [])
-        else:
-            resp = {"assistant": f"Mock response for: {user_text}", "tool_calls": []}
-            assistant_text = resp.get("assistant", "")
-            tool_calls = resp.get("tool_calls", [])
+        # Scenario-based response following the timeline algorithm (required)
+        session = self.server._get_session(api_key)
+        # Follow the algorithm: skip non-response events, collect response parts
+        response_parts = self._collect_response_parts(session)
+        assistant_text, tool_calls = self._process_response_parts(response_parts, provider)
 
         return assistant_text, tool_calls, executed_tools
 
@@ -327,7 +311,7 @@ class MockAPIHandler(BaseHTTPRequestHandler):
             if event_type in ["complete", "merge", "advanceMs", "userInputs", "userCommands", "userEdits"]:
                 # Skip non-response-generating events (handled by test harness)
                 continue
-            elif event_type in ["think", "runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand", "agentEdits", "assistant"]:
+            elif event_type in ["think", "runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand", "agentEdits", "agentToolUse", "assistant"]:
                 # Individual response event
                 response_parts.append(current_event)
                 break
@@ -389,6 +373,18 @@ class MockAPIHandler(BaseHTTPRequestHandler):
                     "name": "edit_file",
                     "args": event_data if isinstance(event_data, dict) else {}
                 })
+            elif event_type == "agentToolUse":
+                # Generic tool use - extract toolName and args from event data
+                if isinstance(event_data, dict) and "toolName" in event_data:
+                    tool_name = event_data["toolName"]
+                    tool_args = event_data.get("args", {})
+                    tool_call = self.server._map_tool_call(tool_name, tool_args)
+                    if tool_call:
+                        tool_calls.append({
+                            "id": f"call_{len(tool_calls)}",
+                            "name": tool_call["name"],
+                            "args": tool_call["args"]
+                        })
 
         return assistant_text, tool_calls
 
@@ -572,10 +568,9 @@ class MockAPIHandler(BaseHTTPRequestHandler):
         self._send_json(200, obj)
 
 class MockAPIServer(HTTPServer):
-    def __init__(self, server_address, RequestHandlerClass, codex_home, playbook_path=None, scenario_path=None, workspace=None, tools_profile=None, strict_tools_validation=False, agent_version=None, request_log_template=None):
+    def __init__(self, server_address, RequestHandlerClass, codex_home, scenario_path, workspace=None, tools_profile=None, strict_tools_validation=False, agent_version=None, request_log_template=None):
         super().__init__(server_address, RequestHandlerClass)
         self.codex_home = codex_home
-        self.playbook = None
         self.scenario = None
         self.scenario_path = scenario_path  # Store scenario path for session creation
         self.tools_profile = tools_profile or "codex"  # Default to codex if not specified
@@ -583,13 +578,11 @@ class MockAPIServer(HTTPServer):
         self.agent_version = agent_version or "unknown"
         self.request_log_template = request_log_template
 
-        if playbook_path:
-            self.playbook = Playbook(playbook_path)
-        elif scenario_path:
-            try:
-                self.scenario = Scenario(scenario_path)
-            except ImportError:
-                raise ImportError("Scenario support requires PyYAML. Install with: pip install pyyaml")
+        # Load scenario (required)
+        try:
+            self.scenario = Scenario(scenario_path)
+        except ImportError:
+            raise ImportError("Scenario support requires PyYAML. Install with: pip install pyyaml")
 
         self.recorder = RolloutRecorder(codex_home=codex_home, originator="mock-api-server")
         self.workspace = workspace
@@ -603,15 +596,11 @@ class MockAPIServer(HTTPServer):
     def _get_session(self, api_key: str) -> Scenario:
         """Get or create a scenario session for the given API key."""
         if api_key not in self.sessions:
-            if self.scenario_path:
-                # Create a fresh scenario instance for this session
-                try:
-                    self.sessions[api_key] = Scenario(self.scenario_path)
-                except ImportError:
-                    raise ImportError("Scenario support requires PyYAML. Install with: pip install pyyaml")
-            else:
-                # No scenario loaded, return None
-                return None
+            # Create a fresh scenario instance for this session
+            try:
+                self.sessions[api_key] = Scenario(self.scenario_path)
+            except ImportError:
+                raise ImportError("Scenario support requires PyYAML. Install with: pip install pyyaml")
         return self.sessions[api_key]
 
     def _load_tools_profile(self):
@@ -691,6 +680,10 @@ class MockAPIServer(HTTPServer):
                         "bashOutput": {"name": "BashOutput", "direct": True, "args_map": {"bash_id": "bash_id", "filter": "filter"}},
                         "killShell": {"name": "KillShell", "direct": True, "args_map": {"shell_id": "shell_id"}},
                         "slashCommand": {"name": "SlashCommand", "direct": True, "args_map": {"command": "command"}},
+
+                        # Direct mappings for agent tool names (for scenarios that use them directly)
+                        "Write": {"name": "Write", "direct": True, "args_map": {"path": "file_path", "text": "content"}},
+                        "Edit": {"name": "Edit", "direct": True, "args_map": {"path": "file_path", "old_string": "old_string", "new_string": "new_string"}},
 
                         # Backward compatibility mappings for old playbook tool names (snake_case)
                         "write_file": {"name": "Write", "direct": True, "args_map": {"path": "file_path", "text": "content"}},
@@ -847,8 +840,8 @@ class MockAPIServer(HTTPServer):
                 "args": mapped_args
             }
 
-def serve(host: str, port: int, playbook: str = None, scenario: str = None, codex_home: str = None, format: str = "codex", workspace: str = None, tools_profile: str = None, strict_tools_validation: bool = False, agent_version: str = None, request_log_template: str = None):
-    httpd = MockAPIServer((host, port), MockAPIHandler, codex_home=codex_home, playbook_path=playbook, scenario_path=scenario, workspace=workspace, tools_profile=tools_profile, strict_tools_validation=strict_tools_validation, agent_version=agent_version, request_log_template=request_log_template)
+def serve(host: str, port: int, scenario: str, codex_home: str = None, format: str = "codex", workspace: str = None, tools_profile: str = None, strict_tools_validation: bool = False, agent_version: str = None, request_log_template: str = None):
+    httpd = MockAPIServer((host, port), MockAPIHandler, codex_home=codex_home, scenario_path=scenario, workspace=workspace, tools_profile=tools_profile, strict_tools_validation=strict_tools_validation, agent_version=agent_version, request_log_template=request_log_template)
     print(f"Mock API server listening on http://{host}:{port}")
     print(f"Tools profile: {httpd.tools_profile}")
     print(f"Strict tools validation: {httpd.strict_tools_validation}")

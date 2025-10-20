@@ -33,6 +33,7 @@ terminalRef: 'configs/terminal/default-100x30.json'
 compat:
   allowInlineTerminal: true
   allowTypeSteps: true
+initialPrompt: "Create a hello.py file that prints 'Hello, World!'"
 repo:
   init: true
   branch: 'feature/test'
@@ -52,10 +53,10 @@ timeline:
       - [500, "Analyzing the user's request"]
       - [800, 'I need to create a hello.py file']
   - agentToolUse:
-      toolName: 'run_command'
+      toolName: "runCmd"
       args:
-        command: 'python hello.py'
-        cwd: '.'
+        cmd: "python hello.py"
+        cwd: "."
       progress:
         - [300, 'Running Python script...']
         - [100, 'Script executed successfully']
@@ -87,6 +88,7 @@ expect:
 - **name**: Scenario identifier (string).
 - **tags**: Array of labels to filter/select scenarios in runners.
 - **terminalRef**: Optional path to a terminal configuration file describing size and rendering options. See [Terminal-Config.md](Terminal-Config.md). When omitted, runners use their defaults.
+- **initialPrompt**: The initial prompt text that will be given to the agent when the scenario starts.
 - **repo**:
   - `init`: Whether to initialize a temporary git repo.
   - `branch`: Optional branch to start on or create.
@@ -147,6 +149,8 @@ expect:
 
 ### Assertions
 
+Assertions verify that the expected outcomes of previous responses have been met. They execute **before the next response is returned** only in the mock LLM server in order to ensure filesystem state and other conditions are validated after the expected actions of the agent in handling a previous llmResponse.
+
 - `assert.fs.exists[]`: Paths that must exist.
 - `assert.fs.notExists[]`: Paths that must not exist.
 - `assert.text.contains[]`: Strings expected in terminal buffer (normalized).
@@ -167,8 +171,7 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 ### Event Execution by Component
 
 **Mock-Agent Execution:**
-
-- **`agentToolUse`** events with `toolName: "run_command"` are actually executed by the mock-agent
+- **`agentToolUse`** events with `toolName: "runCmd"` are actually executed by the mock-agent
 - **`agentEdits`** events are carried out by the mock-agent (file modifications happen in the test workspace)
 - When the `--checkpoint-cmd` option is provided, the mock-agent must automatically execute the specified command after each `agentEdits` and `agentToolUse` event completes (after the edits are carried out and the tool execution finishes). The typical command to use is `ah agent fs snapshot` which captures the filesystem state changes for time travel functionality. By default, no checkpoint commands are executed.
 
@@ -206,10 +209,10 @@ timeline:
           - [500, 'I need to examine the current code first'] # 500ms
           - [300, 'Let me check what functions exist...'] # 300ms, total: 800ms
       - agentToolUse:
-          toolName: 'run_command'
+          toolName: "runCmd"
           args:
-            command: "grep -n 'def' main.py"
-            cwd: '.'
+            cmd: "grep -n 'def' main.py"
+            cwd: "."
           progress:
             - [200, 'Searching for function definitions...']
           result: 'main.py:1:def main():'
