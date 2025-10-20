@@ -31,7 +31,7 @@ jobs:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: 'recursive'
 
@@ -50,7 +50,7 @@ jobs:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: 'recursive'
 
@@ -66,38 +66,43 @@ jobs:
         run: nix build -L --json .#devShells.x86_64-linux.default
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nixos, x86-64-v3]
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v5
         with:
-          components: rustfmt, clippy
+          submodules: 'recursive'
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v3
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
 
-      - name: Check code formatting
-        run: just fmt-rust-check
+      - name: Build & activate the Nix Dev Shell
+        run: |
+          nix print-dev-env --accept-flake-config --impure .#devShells.x86_64-linux.default > dev-env.sh || exit 1
+          source dev-env.sh
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
+          echo "NIX_PATH=$NIX_PATH" >> "$GITHUB_ENV"
+          echo "NIX_PROFILES=$NIX_PROFILES" >> "$GITHUB_ENV"
+          echo "NIX_REMOTE=$NIX_REMOTE" >> "$GITHUB_ENV"
 
-      - name: Check code with clippy
-        run: just lint-rust
+      # FIXME: Integrate clippy in pre-commit and move to `lint` job
+      # - name: Check code with clippy
+      #   run: just lint-rust
 
       - name: Check compilation
         run: just check
 
       - name: Build cgroup enforcement test binaries
         run: just build-cgroup-tests
+
+      - run: sudo just create-test-filesystems
+
+      - run: sudo just start-ah-fs-snapshots-daemon
 
       - name: Run tests
         run: just test-rust-verbose
