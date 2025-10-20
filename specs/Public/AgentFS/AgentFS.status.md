@@ -1019,6 +1019,73 @@ Notes:
   - Control messages: `fd.open` (with `FORWARDING_UNAVAILABLE` error), `fd.dup`, `path.op`, `interpose.set/get`.
   - Policy: allowlist per bundle/pid; secure handshake; `interpose.max_copy_bytes`, `interpose.require_reflink`.
   - Tests: I5, T7, T8; mmap correctness; delete-on-close; share-mode parity; read-after-write visibility.
+- **Sub-milestones**:
+  - **M24.a - DYLD interposer skeleton and handshake**
+    - Goal: Build a minimal dylib that loads via `DYLD_INSERT_LIBRARIES`, establishes a UNIX-domain socket session to the AgentFS server, and advertises a process allow-list guard (developer-only).
+    - Hooks implemented: none yet (loader plus guard only).
+    - Automated tests:
+      - Launch a small test app with `DYLD_INSERT_LIBRARIES=<shim>.dylib`, assert shim banner in stderr/log and successful socket handshake (PING/PONG).
+      - Verify allow-list guard: a process that is not on the list runs unmodified (no handshake performed).
+    - Rationale: sets up the safe, non-intrusive scaffolding and reentrancy guard needed for later hooks.
+  - **M24.b - Open and creation forwarding (minimal path set)**
+    - Goal: Interpose `open`, `openat`, `creat`, and their `_INODE64` variants along with the `fopen` and `freopen` wrappers. Forward opens through the AgentFS `fd_open` control path and receive kernel file descriptors via `SCM_RIGHTS`, keeping data paths zero-copy.
+    - Automated tests:
+      - Open small and large files, read bytes, and verify content equality with the lower root.
+      - Assert no adapter data callbacks trigger for large I/O to confirm zero-copy behavior.
+      - Ensure both base and `_INODE64` symbols are hooked by calling the specific aliases.
+    - Spec refs: interpose must-hook list for open-family functions, `_INODE64` coverage, zero-overhead intent.
+  - **M24.c - Path traversal and directory enumeration**
+    - Goal: Interpose directory functions so the overlay namespace stays authoritative even when data I/O bypasses the adapter.
+    - Hooks: `opendir`, `fdopendir`, `readdir`, `closedir`, `scandir`, `readlink`, and `readlinkat`.
+    - Automated tests:
+      - Create, rename, unlink, and `mkdir` in one process; enumerate in another and verify overlay results plus whiteouts/merges through `readdir`.
+      - Validate link and symlink handling via `readlink` behavior.
+    - Spec refs: directory traversal hook requirements and rationale.
+  - **M24.d - Metadata and time operations (path and fd variants)**
+    - Goal: Interpose metadata-changing operations so overlay semantics remain correct even when the application holds real kernel file descriptors.
+    - Hooks: `stat`, `lstat`, `fstat`, `fstatat`, `chmod`, `fchmod`, `fchmodat`, `chown`, `lchown`, `fchown`, `fchownat`, `utimes`, `futimes`, `utimensat`, `futimens`, `truncate`, `ftruncate`, `statfs`, and `fstatfs`.
+    - Automated tests:
+      - On lower-only files, `chmod`, `chown`, and `utimens` imply copy-up before mutation; assert overlay metadata and directory listings reflect changes.
+      - Ensure `fstat` and `fchmod` return overlay-consistent values rather than raw backstore results.
+    - Spec refs: metadata interpose requirements and fd-based variants guidance.
+  - **M24.e - Rename, link, delete, and directory creation**
+    - Goal: Handle namespace-mutating operations via AgentFS so copy-up, whiteouts, and branch rules apply.
+    - Hooks: `rename`, `renameat`, `renameatx_np`, `link`, `linkat`, `symlink`, `symlinkat`, `unlink`, `unlinkat`, `remove`, `mkdir`, and `mkdirat`.
+    - Automated tests:
+      - Exercise `rename` across directories (including `RENAME_SWAP` via `renameatx_np`), link/unlink, and `mkdir`/`rmdir` flows.
+      - Validate whiteout behavior after `unlink` and overlay directory merges.
+    - Spec refs: namespace mutation coverage for interpose.
+  - **M24.f - Eager upperization policy and fallbacks**
+    - Goal: Implement and verify the eager-upperize policy for interposed opens along with fallback behavior when forwarding is declined.
+    - Enforcement details: prefer `reflink`/clone; otherwise perform bounded copy within `interpose.max_copy_bytes`; if the request exceeds bounds or `interpose.require_reflink=true`, decline and fall back to the mounted volume (KBP path).
+    - Automated tests:
+      - Matrix over reflink availability and file size versus `max_copy_bytes`, combined with `require_reflink` true/false, asserting success via reflink, success via bounded copy, and `FORWARDING_UNAVAILABLE` fallbacks.
+      - `ah agent fs interpose set/get` round-trips policy knobs.
+    - Spec refs: eager-upperize behavior, `fd_open` semantics, configuration knobs, and CLI coverage.
+  - **M24.g - Extended attributes, ACLs, and flags (optional but recommended)**
+    - Goal: Interpose extended attribute and ACL/flags operations required for Finder and IDE fidelity.
+    - Hooks: xattr family plus ACL/flags APIs as listed in sections E and F of the interpose spec.
+    - Automated tests:
+      - Round-trip set/get of extended attributes and confirm Finder or IDE behavior on overlay paths matches expectations.
+    - Spec refs: Finder/IDE fidelity guidance and must-hook list for xattrs and ACLs when enabled.
+  - **M24.h - Watcher translation (FSEvents lane)**
+    - Goal: Ensure path-based watchers still receive events when I/O bypasses the adapter.
+    - Implementation: Translate FSEvents registrations from overlay paths to backstore paths; fd-based watchers (kqueue/kevent) require no changes.
+    - Automated tests:
+      - Register FSEvents on an overlay path, write via forwarded file descriptors, and assert event delivery.
+    - Spec refs: watcher translation rules and FSEvents guidance.
+  - **M24.i - Negative matrix and no-leak invariants**
+    - Goal: Hard-fail with the expected errors and never leak backstore paths.
+    - Automated tests:
+      - Validate `ENOENT`, `EEXIST`, `EISDIR`, `ENOTDIR`, `ENOTEMPTY`, and `EPERM` cases across interposed opens and metadata operations, verifying exact errno mapping.
+      - Confirm `realpath` and `F_GETPATH` always return overlay paths.
+    - Spec refs: negative matrix expectations and path leak invariants.
+  - **M24.j - Performance sanity and regression guard**
+    - Goal: Preserve zero-copy performance wins and catch regressions early.
+    - Automated tests:
+      - Measure throughput for large sequential read/write on forwarded descriptors versus native and alert if below threshold (configurable).
+      - Confirm the `mmap` path remains untouched by the shim (no hooks triggered).
+    - Spec refs: zero-copy intent and regression guard guidance.
 - **Success criteria**:
   - Target app I/O bypasses adapter with identical AgentFS semantics; no handle leaks; failure falls back to KBP.
   - Read-after-write visibility: RO reader sees writes from other processes without reopening.
