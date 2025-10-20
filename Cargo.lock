@@ -115,6 +115,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentfs-interpose-shim"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
+ "hex",
+ "libc",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "agentfs-proto"
 version = "0.1.0"
 dependencies = [

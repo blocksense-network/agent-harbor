@@ -69,6 +69,7 @@ members = [
   "tests/debugging-enforcement",
   "tests/container-enforcement",
   "tests/vm-enforcement",
+  "crates/agentfs-interpose-shim",
 ]
 exclude = ["vendor", "PoC"]
 resolver = "2"

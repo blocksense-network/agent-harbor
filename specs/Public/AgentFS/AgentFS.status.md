@@ -415,6 +415,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - **Mock infrastructure** using Mockall for `LowerFs` and `Backstore` traits
 - **Configuration extensions** added to `FsConfig` with backward compatibility
 - **Cross-crate compatibility** fixes applied to all crates using `FsConfig`
+- **M24.a shim bootstrap** implemented in `crates/agentfs-interpose-shim` with DYLD handshake and allow-list guard tests
 
 **Key Source Files:**
 
