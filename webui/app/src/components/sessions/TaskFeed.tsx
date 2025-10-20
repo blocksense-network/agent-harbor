@@ -542,7 +542,14 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
               </ul>
 
               {/* ARIA live region for keyboard navigation announcements */}
-              <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">
+              <div
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                class={`
+                sr-only
+              `}
+              >
                 {(() => {
                   const idx = keyboardSelectedIndex();
                   const draftCount = drafts().length;
@@ -559,7 +566,14 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
               </div>
 
               {/* ARIA live region for dynamic content updates */}
-              <div role="status" aria-live="polite" aria-atomic="false" class="sr-only">
+              <div
+                role="status"
+                aria-live="polite"
+                aria-atomic="false"
+                class={`
+                sr-only
+              `}
+              >
                 {liveAnnouncements().join('. ')}
               </div>
 

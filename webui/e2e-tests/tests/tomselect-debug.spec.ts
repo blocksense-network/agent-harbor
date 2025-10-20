@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Tom Select Debugging Test
- * 
+ *
  * Identifies why Tom Select dropdowns aren't appearing.
  */
 
@@ -17,28 +17,28 @@ test('Debug Tom Select elements', async ({ page }) => {
   const repoSelector = draftCard.locator('[data-testid="repo-selector"]');
   const repoExists = await repoSelector.count();
   console.log(`Repo selector count: ${repoExists}`);
-  
+
   if (repoExists > 0) {
     const innerHTML = await repoSelector.innerHTML();
     console.log('Repo selector HTML:', innerHTML.substring(0, 200));
-    
+
     // Check for .ts-control
     const tsControl = repoSelector.locator('.ts-control');
     const tsControlCount = await tsControl.count();
     console.log(`ts-control count: ${tsControlCount}`);
-    
+
     if (tsControlCount > 0) {
       const controlHTML = await tsControl.innerHTML();
       console.log('ts-control HTML:', controlHTML.substring(0, 200));
-      
+
       // Try clicking it
       await tsControl.click();
       await page.waitForTimeout(500);
-      
+
       // Check all .ts-dropdown elements on the page
       const allDropdowns = await page.locator('.ts-dropdown').all();
       console.log(`Total .ts-dropdown elements: ${allDropdowns.length}`);
-      
+
       for (let i = 0; i < allDropdowns.length; i++) {
         const dd = allDropdowns[i];
         const isVisible = await dd.isVisible();
@@ -47,11 +47,11 @@ test('Debug Tom Select elements', async ({ page }) => {
       }
     }
   }
-  
+
   // Check for regular select elements
   const selectElements = await draftCard.locator('select').all();
   console.log(`Select elements: ${selectElements.length}`);
-  
+
   for (let i = 0; i < selectElements.length; i++) {
     const select = selectElements[i];
     const id = await select.getAttribute('id');

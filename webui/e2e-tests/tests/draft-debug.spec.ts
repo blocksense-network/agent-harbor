@@ -36,7 +36,7 @@ test.describe('Draft Card Debug', () => {
     // Extract SSR data from HTML
     const ssrData = await page.evaluate(() => {
       const scripts = Array.from(document.querySelectorAll('script'));
-      const ssrScript = scripts.find(s => s.textContent?.includes('_$HY.r['));
+      const ssrScript = scripts.find((s) => s.textContent?.includes('_$HY.r['));
       return ssrScript?.textContent || '';
     });
 
@@ -54,7 +54,7 @@ test.describe('Draft Card Debug', () => {
     console.log('Network Requests to /api/v1/drafts:');
     console.log(JSON.stringify(networkRequests, null, 2));
     console.log('\nConsole Logs:');
-    consoleLogs.forEach(log => console.log(log));
+    consoleLogs.forEach((log) => console.log(log));
     console.log('\nDraft Cards Found:', draftsCount);
     console.log('Textareas Found:', textareas);
     console.log('\nHTML Contains "draft-task-card":', html.includes('draft-task-card'));

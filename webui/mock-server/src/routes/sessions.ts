@@ -3,7 +3,7 @@ import { mockSessions } from './tasks.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { setInterval, clearInterval } from 'timers';
+import { setInterval, clearInterval, setTimeout, clearTimeout } from 'timers';
 import { logger } from '../index.js';
 import { scenarioRunner } from '../index.js';
 
@@ -245,7 +245,7 @@ router.get('/', (req, res) => {
 
   // Add scenario sessions if scenario runner is active
   if (scenarioRunner) {
-    const scenarioSessions = scenarioRunner.getActiveSessions().map(session => ({
+    const scenarioSessions = scenarioRunner.getActiveSessions().map((session) => ({
       id: session.id,
       tenantId: 'scenario',
       projectId: 'scenario-project',
@@ -264,9 +264,10 @@ router.get('/', (req, res) => {
     }));
 
     // Add completed sessions if they should be merged
-    const completedSessions = scenarioRunner.getCompletedSessions()
-      .filter(session => session.status === 'completed' && session.merged)
-      .map(session => ({
+    const completedSessions = scenarioRunner
+      .getCompletedSessions()
+      .filter((session) => session.status === 'completed' && session.merged)
+      .map((session) => ({
         id: session.id,
         tenantId: 'scenario',
         projectId: 'scenario-project',
@@ -492,7 +493,10 @@ router.get('/:id/events', (req, res) => {
 
       // Check if session completed
       const currentSession = scenarioRunner.getSessionById(sessionId);
-      if (currentSession && (currentSession.status === 'completed' || currentSession.status === 'failed')) {
+      if (
+        currentSession &&
+        (currentSession.status === 'completed' || currentSession.status === 'failed')
+      ) {
         sendEvent('status', {
           sessionId: currentSession.id,
           status: currentSession.status,
@@ -513,7 +517,11 @@ router.get('/:id/events', (req, res) => {
 
   // For regular sessions, continue with existing logic
   // For completed sessions, just send initial status and close
-  if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
+  if (
+    session.status === 'completed' ||
+    session.status === 'failed' ||
+    session.status === 'cancelled'
+  ) {
     sendEvent('status', {
       sessionId: session.id,
       status: session.status,
@@ -543,27 +551,44 @@ router.get('/:id/events', (req, res) => {
     'Reviewing related code sections',
   ];
   const toolExecutions = [
-    { 
-      name: 'read_file', 
-      args: { path: 'src/auth.ts' }, 
-      lastLines: ['Opening file...', 'Reading contents...', 'Parsing TypeScript...', 'Analyzing imports...', 'Done'],
-      output: 'File read successfully (142 lines)' 
+    {
+      name: 'read_file',
+      args: { path: 'src/auth.ts' },
+      lastLines: [
+        'Opening file...',
+        'Reading contents...',
+        'Parsing TypeScript...',
+        'Analyzing imports...',
+        'Done',
+      ],
+      output: 'File read successfully (142 lines)',
     },
-    { 
-      name: 'search_codebase', 
-      args: { query: 'password validation' }, 
-      lastLines: ['Searching files...', 'Scanning src/...', 'Scanning tests/...', 'Found 3 matches in 2 files', 'Analyzing results...'],
-      output: 'Found 3 matches' 
+    {
+      name: 'search_codebase',
+      args: { query: 'password validation' },
+      lastLines: [
+        'Searching files...',
+        'Scanning src/...',
+        'Scanning tests/...',
+        'Found 3 matches in 2 files',
+        'Analyzing results...',
+      ],
+      output: 'Found 3 matches',
     },
-    { 
-      name: 'grep', 
-      args: { pattern: 'export.*function' }, 
-      lastLines: ['Scanning repository...', 'Processing src/...', 'Processing lib/...', 'Found 24 exported functions'],
-      output: 'Search complete' 
+    {
+      name: 'grep',
+      args: { pattern: 'export.*function' },
+      lastLines: [
+        'Scanning repository...',
+        'Processing src/...',
+        'Processing lib/...',
+        'Found 24 exported functions',
+      ],
+      output: 'Search complete',
     },
-    { 
-      name: 'run_terminal_cmd', 
-      args: { command: 'npm test' }, 
+    {
+      name: 'run_terminal_cmd',
+      args: { command: 'npm test' },
       lastLines: [
         'Starting test suite...',
         '> Running tests with Jest',
@@ -573,20 +598,35 @@ router.get('/:id/events', (req, res) => {
         'Running 15 tests...',
         'Test Suites: 3 passed, 3 total',
         'Tests:       15 passed, 15 total',
-        'All tests passed'
+        'All tests passed',
       ],
-      output: '15 tests passed' 
+      output: '15 tests passed',
     },
   ];
   const fileEdits = [
-    { path: 'src/auth.ts', linesAdded: 5, linesRemoved: 3, preview: '+  validatePassword(password);' },
-    { path: 'src/utils/validation.ts', linesAdded: 12, linesRemoved: 0, preview: '+ export function validatePassword(pwd: string) {' },
-    { path: 'tests/auth.test.ts', linesAdded: 8, linesRemoved: 2, preview: '+  it("validates password strength", () => {' },
+    {
+      path: 'src/auth.ts',
+      linesAdded: 5,
+      linesRemoved: 3,
+      preview: '+  validatePassword(password);',
+    },
+    {
+      path: 'src/utils/validation.ts',
+      linesAdded: 12,
+      linesRemoved: 0,
+      preview: '+ export function validatePassword(pwd: string) {',
+    },
+    {
+      path: 'tests/auth.test.ts',
+      linesAdded: 8,
+      linesRemoved: 2,
+      preview: '+  it("validates password strength", () => {',
+    },
   ];
-  
+
   // Track tool execution state for multi-event sequences
   let currentToolExecution: { tool: any; lastLineIndex: number } | null = null;
-  let timeoutId: NodeJS.Timeout;
+  let timeoutId: ReturnType<typeof setTimeout>;
 
   const sendNextEvent = () => {
     if (eventCount >= maxEvents) {
@@ -616,7 +656,7 @@ router.get('/:id/events', (req, res) => {
       // If we have a tool execution in progress, continue it
       if (currentToolExecution) {
         const { tool, lastLineIndex } = currentToolExecution;
-        
+
         if (lastLineIndex < tool.lastLines.length) {
           // Send next last_line update (IN PLACE update) - RAPID FIRE
           sendEvent('tool_execution', {
@@ -651,10 +691,10 @@ router.get('/:id/events', (req, res) => {
             });
             break;
 
-          case 'tool_execution':
+          case 'tool_execution': {
             // Start a new tool execution sequence
             const tool = toolExecutions[Math.floor(Math.random() * toolExecutions.length)];
-            
+
             // Send tool start event (tool_name only, no last_line or output)
             sendEvent('tool_execution', {
               sessionId: session.id,
@@ -662,12 +702,13 @@ router.get('/:id/events', (req, res) => {
               tool_args: tool.args,
               ts: new Date().toISOString(),
             });
-            
+
             // Start tracking this tool execution
             currentToolExecution = { tool, lastLineIndex: 0 };
             break;
+          }
 
-          case 'file_edit':
+          case 'file_edit': {
             const edit = fileEdits[Math.floor(Math.random() * fileEdits.length)];
             sendEvent('file_edit', {
               sessionId: session.id,
@@ -678,12 +719,20 @@ router.get('/:id/events', (req, res) => {
               ts: new Date().toISOString(),
             });
             break;
+          }
 
           case 'status':
             sendEvent('progress', {
               sessionId: session.id,
               progress: Math.min(100, eventCount * 2),
-              stage: eventCount < 25 ? 'analyzing' : eventCount < 50 ? 'implementing' : eventCount < 75 ? 'testing' : 'finalizing',
+              stage:
+                eventCount < 25
+                  ? 'analyzing'
+                  : eventCount < 50
+                    ? 'implementing'
+                    : eventCount < 75
+                      ? 'testing'
+                      : 'finalizing',
               ts: new Date().toISOString(),
             });
             break;
@@ -808,82 +857,82 @@ router.get('/:id/logs', (req, res) => {
     // Generate logs based on the session's assigned scenario (existing logic)
     const scenario = scenarioReplayer.getScenarioForSession(session.id);
 
-  if (scenario && scenario.turns) {
-    // Generate logs from scenario turns
-    let timestamp = Date.now() - 300000; // Start 5 minutes ago
-    logs.push({
-      level: 'info',
-      message: 'Session started',
-      ts: new Date(timestamp).toISOString(),
-    });
-
-    timestamp += 50000; // 50 seconds later
-    logs.push({
-      level: 'info',
-      message: 'Agent initialized',
-      ts: new Date(timestamp).toISOString(),
-    });
-
-    // Add logs for each scenario turn
-    for (let i = 0; i < scenario.turns.length; i++) {
-      const turn = scenario.turns[i];
-      timestamp += 30000; // 30 seconds between turns
-
-      if (turn.user) {
-        logs.push({
-          level: 'info',
-          message: `User: ${turn.user}`,
-          ts: new Date(timestamp).toISOString(),
-        });
-      }
-
-      if (turn.think) {
-        timestamp += 10000; // 10 seconds for thinking
-        logs.push({
-          level: 'info',
-          message: `Thinking: ${turn.think}`,
-          ts: new Date(timestamp).toISOString(),
-        });
-      }
-
-      if (turn.tool) {
-        timestamp += 5000; // 5 seconds for tool execution
-        logs.push({
-          level: 'info',
-          message: `Tool: ${turn.tool.name}(${JSON.stringify(turn.tool.args)})`,
-          ts: new Date(timestamp).toISOString(),
-        });
-      }
-
-      if (turn.assistant) {
-        timestamp += 15000; // 15 seconds for response
-        logs.push({
-          level: 'info',
-          message: `Assistant: ${turn.assistant}`,
-          ts: new Date(timestamp).toISOString(),
-        });
-      }
-    }
-  } else {
-    // Fallback logs if no scenario available
-    logs.push(
-      {
+    if (scenario && scenario.turns) {
+      // Generate logs from scenario turns
+      let timestamp = Date.now() - 300000; // Start 5 minutes ago
+      logs.push({
         level: 'info',
         message: 'Session started',
-        ts: new Date(Date.now() - 300000).toISOString(),
-      },
-      {
+        ts: new Date(timestamp).toISOString(),
+      });
+
+      timestamp += 50000; // 50 seconds later
+      logs.push({
         level: 'info',
         message: 'Agent initialized',
-        ts: new Date(Date.now() - 250000).toISOString(),
-      },
-      {
-        level: 'info',
-        message: 'Task execution in progress',
-        ts: new Date(Date.now() - 200000).toISOString(),
+        ts: new Date(timestamp).toISOString(),
+      });
+
+      // Add logs for each scenario turn
+      for (let i = 0; i < scenario.turns.length; i++) {
+        const turn = scenario.turns[i];
+        timestamp += 30000; // 30 seconds between turns
+
+        if (turn.user) {
+          logs.push({
+            level: 'info',
+            message: `User: ${turn.user}`,
+            ts: new Date(timestamp).toISOString(),
+          });
+        }
+
+        if (turn.think) {
+          timestamp += 10000; // 10 seconds for thinking
+          logs.push({
+            level: 'info',
+            message: `Thinking: ${turn.think}`,
+            ts: new Date(timestamp).toISOString(),
+          });
+        }
+
+        if (turn.tool) {
+          timestamp += 5000; // 5 seconds for tool execution
+          logs.push({
+            level: 'info',
+            message: `Tool: ${turn.tool.name}(${JSON.stringify(turn.tool.args)})`,
+            ts: new Date(timestamp).toISOString(),
+          });
+        }
+
+        if (turn.assistant) {
+          timestamp += 15000; // 15 seconds for response
+          logs.push({
+            level: 'info',
+            message: `Assistant: ${turn.assistant}`,
+            ts: new Date(timestamp).toISOString(),
+          });
+        }
       }
-    );
-  }
+    } else {
+      // Fallback logs if no scenario available
+      logs.push(
+        {
+          level: 'info',
+          message: 'Session started',
+          ts: new Date(Date.now() - 300000).toISOString(),
+        },
+        {
+          level: 'info',
+          message: 'Agent initialized',
+          ts: new Date(Date.now() - 250000).toISOString(),
+        },
+        {
+          level: 'info',
+          message: 'Task execution in progress',
+          ts: new Date(Date.now() - 200000).toISOString(),
+        }
+      );
+    }
   }
 
   // Apply tail parameter if provided

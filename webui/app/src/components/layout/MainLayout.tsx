@@ -93,7 +93,7 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
           </div>
 
           {/* Centered Breadcrumbs */}
-          <div class="flex-1 flex justify-center">
+          <div class="flex flex-1 justify-center">
             {breadcrumbs().length > 0 && (
               <nav
                 class="flex items-center space-x-1 text-xs text-gray-500"
@@ -106,19 +106,25 @@ export const MainLayout: Component<MainLayoutProps> = (props) => {
                       {crumb.href ? (
                         <A
                           href={crumb.href}
-                          class="hover:text-blue-600 hover:underline transition-colors"
+                          class={`
+                            transition-colors
+                            hover:text-blue-600 hover:underline
+                          `}
                         >
                           {crumb.label}
                         </A>
                       ) : crumb.onClick ? (
                         <button
                           onClick={crumb.onClick}
-                          class="hover:text-blue-600 hover:underline transition-colors"
+                          class={`
+                            transition-colors
+                            hover:text-blue-600 hover:underline
+                          `}
                         >
                           {crumb.label}
                         </button>
                       ) : (
-                        <span class="text-gray-700 font-medium">{crumb.label}</span>
+                        <span class="font-medium text-gray-700">{crumb.label}</span>
                       )}
                     </>
                   )}

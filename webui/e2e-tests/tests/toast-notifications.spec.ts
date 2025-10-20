@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
-import { setupTestEnvironment, teardownTestEnvironment } from "../utils/test-helpers";
+import { test, expect } from '@playwright/test';
+import { setupTestEnvironment, teardownTestEnvironment } from '../utils/test-helpers';
 
-test.describe("Toast Notifications", () => {
+test.describe('Toast Notifications', () => {
   let baseURL: string;
 
   test.beforeAll(async () => {
@@ -12,14 +12,18 @@ test.describe("Toast Notifications", () => {
     await teardownTestEnvironment();
   });
 
-  test("should display error toast for failed session stop", async ({ page }) => {
+  test('should display error toast for failed session stop', async ({ page }) => {
     await page.goto(baseURL);
 
     // Wait for the page to load
     await page.waitForSelector('[data-testid="task-card"]');
 
     // Find a running session and click the stop button
-    const stopButton = page.locator('[data-testid="task-card"]').first().locator('button:has-text("Stop")').first();
+    const stopButton = page
+      .locator('[data-testid="task-card"]')
+      .first()
+      .locator('button:has-text("Stop")')
+      .first();
     await stopButton.click();
 
     // Check that an error toast appears
@@ -33,17 +37,21 @@ test.describe("Toast Notifications", () => {
     await expect(toast).toBeHidden({ timeout: 6000 });
   });
 
-  test("should display error toast for failed session cancel", async ({ page }) => {
+  test('should display error toast for failed session cancel', async ({ page }) => {
     await page.goto(baseURL);
 
     // Wait for the page to load
     await page.waitForSelector('[data-testid="task-card"]');
 
     // Find a session and click the cancel button, then confirm
-    const cancelButton = page.locator('[data-testid="task-card"]').first().locator('button:has-text("Cancel")').first();
+    const cancelButton = page
+      .locator('[data-testid="task-card"]')
+      .first()
+      .locator('button:has-text("Cancel")')
+      .first();
 
     // Mock the confirm dialog to return true
-    page.on('dialog', async dialog => {
+    page.on('dialog', async (dialog) => {
       expect(dialog.type()).toBe('confirm');
       await dialog.accept();
     });
@@ -58,14 +66,18 @@ test.describe("Toast Notifications", () => {
     await expect(toast).toHaveClass(/bg-red-100/);
   });
 
-  test("should allow manual dismissal of toasts", async ({ page }) => {
+  test('should allow manual dismissal of toasts', async ({ page }) => {
     await page.goto(baseURL);
 
     // Wait for the page to load and trigger an error
     await page.waitForSelector('[data-testid="task-card"]');
 
     // Trigger an error by clicking stop on a session
-    const stopButton = page.locator('[data-testid="task-card"]').first().locator('button:has-text("Stop")').first();
+    const stopButton = page
+      .locator('[data-testid="task-card"]')
+      .first()
+      .locator('button:has-text("Stop")')
+      .first();
     await stopButton.click();
 
     // Wait for toast to appear
@@ -80,14 +92,18 @@ test.describe("Toast Notifications", () => {
     await expect(toast).toBeHidden();
   });
 
-  test("should display toasts in top-right corner", async ({ page }) => {
+  test('should display toasts in top-right corner', async ({ page }) => {
     await page.goto(baseURL);
 
     // Wait for the page to load and trigger an error
     await page.waitForSelector('[data-testid="task-card"]');
 
     // Trigger an error
-    const stopButton = page.locator('[data-testid="task-card"]').first().locator('button:has-text("Stop")').first();
+    const stopButton = page
+      .locator('[data-testid="task-card"]')
+      .first()
+      .locator('button:has-text("Stop")')
+      .first();
     await stopButton.click();
 
     // Check toast positioning
@@ -97,14 +113,18 @@ test.describe("Toast Notifications", () => {
     await expect(toastContainer).toHaveClass(/right-4/);
   });
 
-  test("should announce toasts to screen readers", async ({ page }) => {
+  test('should announce toasts to screen readers', async ({ page }) => {
     await page.goto(baseURL);
 
     // Wait for the page to load and trigger an error
     await page.waitForSelector('[data-testid="task-card"]');
 
     // Trigger an error
-    const stopButton = page.locator('[data-testid="task-card"]').first().locator('button:has-text("Stop")').first();
+    const stopButton = page
+      .locator('[data-testid="task-card"]')
+      .first()
+      .locator('button:has-text("Stop")')
+      .first();
     await stopButton.click();
 
     // Check that toast has proper ARIA attributes

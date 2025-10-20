@@ -316,7 +316,7 @@ const highlightSyntax = (code: string) => {
           } else if (token.startsWith("'") && token.endsWith("'")) {
             return <span class="text-green-600">{token}</span>;
           } else if (token.startsWith('//')) {
-            return <span class="italic text-gray-500">{token}</span>;
+            return <span class="text-gray-500 italic">{token}</span>;
           } else if (/^[{}();,.=<>!+\-*/&|?:[\]]+$/.test(token)) {
             return <span class="text-blue-500">{token}</span>;
           } else {
@@ -390,8 +390,13 @@ const DiffViewer: Component<{ content: string }> = (props) => {
           };
 
           return (
-            <div class={`flex ${lineClasses[line.type]}`}>
-              <div class="w-12 text-right pr-2 text-gray-500 select-none">
+            <div
+              class={`
+                flex
+                ${lineClasses[line.type]}
+              `}
+            >
+              <div class="w-12 pr-2 text-right text-gray-500 select-none">
                 {line.lineNumber || ''}
               </div>
               <div class="flex-1 pl-2">
@@ -565,7 +570,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
         {/* Two-Panel Layout */}
         <div class="flex h-[calc(100vh-80px)]">
           {/* Left Panel (30% width) */}
-          <div class="w-3/10 flex flex-col border-r border-gray-200 bg-white">
+          <div class="flex w-3/10 flex-col border-r border-gray-200 bg-white">
             {/* Modified Files Panel (top 40% of left panel) */}
             <div class="h-2/5 border-b border-gray-200 p-4">
               <h3 class="mb-3 text-sm font-semibold text-gray-900">Modified Files</h3>
@@ -575,47 +580,75 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                 <input
                   type="text"
                   placeholder="Search files..."
-                  class="w-full px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  class={`
+                    w-full rounded-md border border-gray-300 px-3 py-1 text-sm
+                    focus:border-transparent focus:ring-2 focus:ring-blue-500
+                    focus:outline-none
+                  `}
                   value={searchQuery()}
                   onInput={(e) => setSearchQuery(e.currentTarget.value)}
                 />
                 <div class="flex space-x-1">
                   <button
-                    class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === 'all'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    class={`
+                      rounded-md px-2 py-1 text-xs transition-colors
+                      ${
+                        statusFilter() === 'all'
+                          ? 'border border-blue-200 bg-blue-100 text-blue-800'
+                          : `
+                            bg-gray-100 text-gray-600
+                            hover:bg-gray-200
+                          `
+                      }
+                    `}
                     onClick={() => setStatusFilter('all')}
                   >
                     All
                   </button>
                   <button
-                    class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === 'modified'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    class={`
+                      rounded-md px-2 py-1 text-xs transition-colors
+                      ${
+                        statusFilter() === 'modified'
+                          ? 'border border-blue-200 bg-blue-100 text-blue-800'
+                          : `
+                            bg-gray-100 text-gray-600
+                            hover:bg-gray-200
+                          `
+                      }
+                    `}
                     onClick={() => setStatusFilter('modified')}
                   >
                     Modified
                   </button>
                   <button
-                    class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === 'added'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    class={`
+                      rounded-md px-2 py-1 text-xs transition-colors
+                      ${
+                        statusFilter() === 'added'
+                          ? 'border border-blue-200 bg-blue-100 text-blue-800'
+                          : `
+                            bg-gray-100 text-gray-600
+                            hover:bg-gray-200
+                          `
+                      }
+                    `}
                     onClick={() => setStatusFilter('added')}
                   >
                     Added
                   </button>
                   <button
-                    class={`px-2 py-1 text-xs rounded-md transition-colors ${
-                      statusFilter() === 'deleted'
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    class={`
+                      rounded-md px-2 py-1 text-xs transition-colors
+                      ${
+                        statusFilter() === 'deleted'
+                          ? 'border border-blue-200 bg-blue-100 text-blue-800'
+                          : `
+                            bg-gray-100 text-gray-600
+                            hover:bg-gray-200
+                          `
+                      }
+                    `}
                     onClick={() => setStatusFilter('deleted')}
                   >
                     Deleted
@@ -623,26 +656,36 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                 </div>
               </div>
 
-              <div class="space-y-2 max-h-48 overflow-y-auto">
+              <div class="max-h-48 space-y-2 overflow-y-auto">
                 <For each={filteredModifiedFiles()}>
                   {(file, _index) => {
                     const badge = getStatusBadge(file.status);
                     return (
                       <div
-                        class="flex items-center justify-between p-2 rounded cursor-pointer hover:bg-gray-50"
+                        class={`
+                          flex cursor-pointer items-center justify-between
+                          rounded p-2
+                          hover:bg-gray-50
+                        `}
                         onClick={() => handleFileClick(file.path)}
                       >
-                        <div class="flex items-center space-x-2 flex-1 min-w-0">
+                        <div class="flex min-w-0 flex-1 items-center space-x-2">
                           <span
-                            class={`inline-flex items-center px-1.5 py-1 text-xs font-medium rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}
+                            class={`
+                              inline-flex items-center rounded-full border
+                              px-1.5 py-1 text-xs font-medium
+                              ${badge.bg}
+                              ${badge.text}
+                              ${badge.border}
+                            `}
                           >
                             {badge.icon}
                           </span>
-                          <span class="text-sm text-gray-900 truncate" title={file.path}>
+                          <span class="truncate text-sm text-gray-900" title={file.path}>
                             {file.path}
                           </span>
                         </div>
-                        <div class="text-xs text-gray-500 flex-shrink-0">
+                        <div class="flex-shrink-0 text-xs text-gray-500">
                           +{file.linesAdded} -{file.linesRemoved}
                         </div>
                       </div>
@@ -650,7 +693,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                   }}
                 </For>
                 <Show when={filteredModifiedFiles().length === 0}>
-                  <div class="text-center py-4 text-gray-500 text-sm">
+                  <div class="py-4 text-center text-sm text-gray-500">
                     No files match the current filters
                   </div>
                 </Show>
@@ -658,16 +701,16 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
             </div>
 
             {/* Agent Activity Panel (middle 60% of left panel) */}
-            <div class="h-3/5 p-4 flex flex-col">
+            <div class="flex h-3/5 flex-col p-4">
               <h3 class="mb-3 text-sm font-semibold text-gray-900">Agent Activity</h3>
               <div class="flex-1 space-y-2 overflow-y-auto">
                 <For each={mockAgentEvents}>
                   {(event) => (
                     <div class="flex space-x-3">
-                      <span class="text-xs text-gray-500 flex-shrink-0 w-16">
+                      <span class="w-16 flex-shrink-0 text-xs text-gray-500">
                         {event.timestamp}
                       </span>
-                      <div class="flex-1 min-w-0">
+                      <div class="min-w-0 flex-1">
                         {event.type === 'thinking' && (
                           <div class="text-sm text-gray-700">
                             <span class="font-medium">💭 </span>
@@ -679,7 +722,11 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                             <span class="font-medium">🔧 </span>
                             {event.content}
                             {event.lastLine && (
-                              <div class="text-xs text-gray-600 mt-1 pl-4 font-mono">
+                              <div
+                                class={`
+                                  mt-1 pl-4 font-mono text-xs text-gray-600
+                                `}
+                              >
                                 {event.lastLine}
                               </div>
                             )}
@@ -700,28 +747,37 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
             {/* Chat Box (bottom 20% of left panel) */}
             <div class="h-1/5 border-t border-gray-200 p-3">
-              <div class="h-full flex flex-col">
+              <div class="flex h-full flex-col">
                 {/* Message Composer */}
-                <div class="flex-1 flex flex-col">
+                <div class="flex flex-1 flex-col">
                   {/* Message Input with Integrated Controls */}
-                  <div class="flex-1 relative">
+                  <div class="relative flex-1">
                     {/* Toolbar above input */}
-                    <div class="flex items-center justify-between mb-1 px-1">
+                    <div class="mb-1 flex items-center justify-between px-1">
                       <div class="flex items-center space-x-1">
                         <button
-                          class="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded text-sm"
+                          class={`
+                            rounded p-1 text-sm text-gray-500
+                            hover:bg-gray-100 hover:text-gray-700
+                          `}
                           title="Add file context"
                         >
                           📁
                         </button>
                         <button
-                          class="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded text-sm"
+                          class={`
+                            rounded p-1 text-sm text-gray-500
+                            hover:bg-gray-100 hover:text-gray-700
+                          `}
                           title="Configure tools"
                         >
                           🔧
                         </button>
                         <button
-                          class="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded text-sm"
+                          class={`
+                            rounded p-1 text-sm text-gray-500
+                            hover:bg-gray-100 hover:text-gray-700
+                          `}
                           title="Add attachments"
                         >
                           📎
@@ -730,15 +786,31 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
                       <div class="flex items-center space-x-2">
                         {/* Subtle context window indicator */}
-                        <div class="flex items-center space-x-1 text-xs text-gray-400">
+                        <div
+                          class={`
+                            flex items-center space-x-1 text-xs text-gray-400
+                          `}
+                        >
                           <div
-                            class="w-2 h-2 bg-green-400 rounded-full"
+                            class="h-2 w-2 rounded-full bg-green-400"
                             title="Context: 2.3K tokens | TPS: 45 | Cost: $0.02"
-                          ></div>
-                          <span class="hidden sm:inline">2.3K</span>
+                          />
+                          <span
+                            class={`
+                              hidden
+                              sm:inline
+                            `}
+                          >
+                            2.3K
+                          </span>
                         </div>
 
-                        <select class="text-xs bg-transparent border-0 text-gray-500 focus:outline-none focus:text-gray-700">
+                        <select
+                          class={`
+                            border-0 bg-transparent text-xs text-gray-500
+                            focus:text-gray-700 focus:outline-none
+                          `}
+                        >
                           <option>GPT-4</option>
                           <option>Claude-3</option>
                           <option>Gemini Pro</option>
@@ -749,11 +821,22 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                     {/* Message Input with Send Button */}
                     <div class="flex">
                       <textarea
-                        class="flex-1 resize-none border border-gray-300 rounded-l px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        class={`
+                          flex-1 resize-none rounded-l border border-gray-300
+                          px-3 py-2 text-sm
+                          focus:border-transparent focus:ring-2
+                          focus:ring-blue-500 focus:outline-none
+                        `}
                         placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
                         rows="2"
-                      ></textarea>
-                      <button class="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      />
+                      <button
+                        class={`
+                          rounded-r bg-blue-600 px-4 py-2 text-white
+                          hover:bg-blue-700
+                          focus:ring-2 focus:ring-blue-500 focus:outline-none
+                        `}
+                      >
                         Send
                       </button>
                     </div>
@@ -770,22 +853,43 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                 {(file, index) => {
                   const anchorId = file.path.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
                   return (
-                    <div id={anchorId} class="border-b border-gray-200 last:border-b-0">
+                    <div
+                      id={anchorId}
+                      class={`
+                        border-b border-gray-200
+                        last:border-b-0
+                      `}
+                    >
                       {/* File Header */}
-                      <div class="sticky top-0 bg-white border-b border-gray-300 p-4 z-10">
+                      <div
+                        class={`
+                          sticky top-0 z-10 border-b border-gray-300 bg-white
+                          p-4
+                        `}
+                      >
                         <div class="flex items-center justify-between">
                           <div class="flex items-center space-x-3">
                             {(() => {
                               const badge = getStatusBadge(file.status);
                               return (
                                 <span
-                                  class={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}
+                                  class={`
+                                    inline-flex items-center rounded-full border
+                                    px-2 py-1 text-xs font-medium
+                                    ${badge.bg}
+                                    ${badge.text}
+                                    ${badge.border}
+                                  `}
                                 >
                                   {badge.icon} {badge.label}
                                 </span>
                               );
                             })()}
-                            <h3 class="text-lg font-semibold text-gray-900 font-mono">
+                            <h3
+                              class={`
+                                font-mono text-lg font-semibold text-gray-900
+                              `}
+                            >
                               {file.path}
                             </h3>
                             <span class="text-sm text-gray-600">
@@ -793,18 +897,31 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                             </span>
                           </div>
                           <div class="flex space-x-2">
-                            <button class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">
+                            <button
+                              class={`
+                                rounded bg-gray-100 px-3 py-1 text-sm
+                                hover:bg-gray-200
+                              `}
+                            >
                               Load Full File
                             </button>
                             <button
-                              class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                              class={`
+                                rounded bg-gray-100 px-3 py-1 text-sm
+                                hover:bg-gray-200
+                                disabled:cursor-not-allowed disabled:opacity-50
+                              `}
                               disabled={index() === 0}
                               onClick={() => handleNavigateToFile('prev', index())}
                             >
                               Previous
                             </button>
                             <button
-                              class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                              class={`
+                                rounded bg-gray-100 px-3 py-1 text-sm
+                                hover:bg-gray-200
+                                disabled:cursor-not-allowed disabled:opacity-50
+                              `}
                               disabled={index() === mockModifiedFiles.length - 1}
                               onClick={() => handleNavigateToFile('next', index())}
                             >
@@ -816,7 +933,12 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
                       {/* Diff Content */}
                       <div class="p-4">
-                        <div class="bg-white border border-gray-200 rounded-lg overflow-x-auto">
+                        <div
+                          class={`
+                            overflow-x-auto rounded-lg border border-gray-200
+                            bg-white
+                          `}
+                        >
                           <DiffViewer content={getDiffContentForFile(file.path)} />
                         </div>
                       </div>

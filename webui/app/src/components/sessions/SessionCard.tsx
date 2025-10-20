@@ -332,7 +332,12 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           >
             <span aria-hidden="true">{statusInfo().icon}</span>
           </span>
-          <h3 id={`session-heading-${session().id}`} class="min-w-0 flex-1 text-sm font-semibold">
+          <h3
+            id={`session-heading-${session().id}`}
+            class={`
+            min-w-0 flex-1 text-sm font-semibold
+          `}
+          >
             <A
               href={`/tasks/${session().id}`}
               data-testid="task-title-link"

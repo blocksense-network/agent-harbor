@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from '@playwright/test';
 
-test.describe("Draft Save Status Debug Tests", () => {
-  test("debug - check initial state and component structure", async ({ page }) => {
+test.describe('Draft Save Status Debug Tests', () => {
+  test('debug - check initial state and component structure', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -20,14 +20,16 @@ test.describe("Draft Save Status Debug Tests", () => {
     // Log initial state
     const initialStatusText = await saveStatus.textContent();
     const initialTextareaValue = await textarea.inputValue();
-    console.log(`Initial status: "${initialStatusText}", textarea value: "${initialTextareaValue}"`);
+    console.log(
+      `Initial status: "${initialStatusText}", textarea value: "${initialTextareaValue}"`
+    );
 
     // Check initial visual styling
     await expect(saveStatus).toHaveClass(/text-green-600/);
     await expect(saveStatus).toHaveClass(/bg-green-50/);
   });
 
-  test("debug - monitor status changes during typing", async ({ page }) => {
+  test('debug - monitor status changes during typing', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -35,27 +37,29 @@ test.describe("Draft Save Status Debug Tests", () => {
     const saveStatus = page.locator('[aria-label*="Save status"]').first();
 
     // Initial state
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
 
     // Start typing and monitor changes
     await textarea.click();
 
     // Type one character at a time and check status
     for (let i = 0; i < 5; i++) {
-      await textarea.type("a");
+      await textarea.type('a');
       const currentStatus = await saveStatus.textContent();
       const currentClasses = await saveStatus.getAttribute('class');
-      console.log(`After typing char ${i + 1}: status="${currentStatus}", classes="${currentClasses}"`);
+      console.log(
+        `After typing char ${i + 1}: status="${currentStatus}", classes="${currentClasses}"`
+      );
       await page.waitForTimeout(50); // Small delay to see changes
     }
 
     // Check final state
     const finalStatus = await saveStatus.textContent();
     console.log(`Final status after typing: "${finalStatus}"`);
-    await expect(saveStatus).toHaveText("Unsaved");
+    await expect(saveStatus).toHaveText('Unsaved');
   });
 
-  test("debug - check save status visual changes", async ({ page }) => {
+  test('debug - check save status visual changes', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -65,16 +69,16 @@ test.describe("Draft Save Status Debug Tests", () => {
     // Initial state should be green "Saved"
     await expect(saveStatus).toHaveClass(/text-green-600/);
     await expect(saveStatus).toHaveClass(/bg-green-50/);
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
 
     // Type something
     await textarea.click();
-    await textarea.fill("Test content for visual check");
+    await textarea.fill('Test content for visual check');
 
     // Should change to gray "Unsaved"
     await expect(saveStatus).toHaveClass(/text-gray-500/);
     await expect(saveStatus).toHaveClass(/bg-gray-50/);
-    await expect(saveStatus).toHaveText("Unsaved");
+    await expect(saveStatus).toHaveText('Unsaved');
 
     // Wait for save to start
     await page.waitForTimeout(600);
@@ -82,7 +86,7 @@ test.describe("Draft Save Status Debug Tests", () => {
     // Should change to orange "Saving..."
     await expect(saveStatus).toHaveClass(/text-orange-600/);
     await expect(saveStatus).toHaveClass(/bg-orange-50/);
-    await expect(saveStatus).toHaveText("Saving...");
+    await expect(saveStatus).toHaveText('Saving...');
 
     // Wait for save to complete
     await page.waitForTimeout(1000);
@@ -90,10 +94,10 @@ test.describe("Draft Save Status Debug Tests", () => {
     // Should change back to green "Saved"
     await expect(saveStatus).toHaveClass(/text-green-600/);
     await expect(saveStatus).toHaveClass(/bg-green-50/);
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
   });
 
-  test("debug - focus behavior during typing", async ({ page }) => {
+  test('debug - focus behavior during typing', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -105,18 +109,18 @@ test.describe("Draft Save Status Debug Tests", () => {
 
     // Type and check focus is maintained
     for (let i = 0; i < 10; i++) {
-      await textarea.type("x");
+      await textarea.type('x');
       await expect(textarea).toBeFocused(); // Should still be focused
       await page.waitForTimeout(50);
     }
 
     // Check final value
     const finalValue = await textarea.inputValue();
-    expect(finalValue).toBe("xxxxxxxxxx");
+    expect(finalValue).toBe('xxxxxxxxxx');
     await expect(textarea).toBeFocused();
   });
 
-  test("debug - rapid typing and status transitions", async ({ page }) => {
+  test('debug - rapid typing and status transitions', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -136,8 +140,9 @@ test.describe("Draft Save Status Debug Tests", () => {
 
     // Type rapidly and check status periodically
     for (let i = 0; i < 20; i++) {
-      await textarea.type("x");
-      if (i % 5 === 0) { // Check every 5 characters
+      await textarea.type('x');
+      if (i % 5 === 0) {
+        // Check every 5 characters
         await checkStatus();
       }
       await page.waitForTimeout(10);
@@ -147,14 +152,14 @@ test.describe("Draft Save Status Debug Tests", () => {
     await page.waitForTimeout(1500);
     await checkStatus();
 
-    console.log("Status changes during rapid typing:", statusChanges);
+    console.log('Status changes during rapid typing:', statusChanges);
 
     // Should end with "Saved"
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
     expect(statusChanges.length).toBeGreaterThan(0);
   });
 
-  test("debug - check for console errors during save operations", async ({ page }) => {
+  test('debug - check for console errors during save operations', async ({ page }) => {
     const consoleMessages: string[] = [];
     const errors: string[] = [];
 
@@ -177,7 +182,7 @@ test.describe("Draft Save Status Debug Tests", () => {
 
     // Perform save operations
     await textarea.click();
-    await textarea.fill("Test content");
+    await textarea.fill('Test content');
     await page.waitForTimeout(2000); // Wait for save cycle
 
     // Check for errors
@@ -187,17 +192,17 @@ test.describe("Draft Save Status Debug Tests", () => {
     }
 
     // Check for relevant console messages
-    const saveRelatedMessages = consoleMessages.filter(msg =>
-      msg.includes('save') || msg.includes('Save') || msg.includes('update')
+    const saveRelatedMessages = consoleMessages.filter(
+      (msg) => msg.includes('save') || msg.includes('Save') || msg.includes('update')
     );
 
     console.log('Save-related console messages:', saveRelatedMessages);
 
     // Should have completed successfully
-    await expect(saveStatus).toHaveText("Saved");
+    await expect(saveStatus).toHaveText('Saved');
   });
 
-  test("debug - check DOM structure and reactivity", async ({ page }) => {
+  test('debug - check DOM structure and reactivity', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="draft-task-card"]');
 
@@ -210,7 +215,7 @@ test.describe("Draft Save Status Debug Tests", () => {
 
     // Type and check DOM changes
     await textarea.click();
-    await textarea.fill("test");
+    await textarea.fill('test');
 
     // Wait a bit for reactivity
     await page.waitForTimeout(100);
@@ -222,6 +227,6 @@ test.describe("Draft Save Status Debug Tests", () => {
     expect(initialHtml).not.toBe(afterTypingHtml);
 
     // Should show "Unsaved"
-    await expect(saveStatus).toHaveText("Unsaved");
+    await expect(saveStatus).toHaveText('Unsaved');
   });
 });
