@@ -57,7 +57,7 @@ use crate::Settings;
 use ah_core::task_manager::{TaskManager, TaskLaunchParams, TaskLaunchResult, TaskEvent, SaveDraftResult};
 use crate::workspace_files::WorkspaceFiles;
 use ah_workflows::WorkspaceWorkflowsEnumerator;
-use ah_tui::view::autocomplete::{InlineAutocomplete, AutocompleteKeyResult};
+use ah_tui::view_model::autocomplete::{InlineAutocomplete, AutocompleteKeyResult};
 use ah_domain_types::task::ToolStatus;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent, KeyCode, KeyModifiers};
 use futures::stream::StreamExt;
@@ -2229,4 +2229,3 @@ fn create_status_bar_view_model(status_message: Option<&String>, error_message: 
         status_message: status_message.cloned(),
     }
 }
-

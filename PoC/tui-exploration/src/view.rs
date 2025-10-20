@@ -41,6 +41,7 @@ use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, DraftSaveSt
 use ah_tui::view_model::{AgentActivityRow};
 use ah_tui::view_model::{FocusElement, TaskCardType};
 use ah_tui::view::{ViewCache, Theme};
+use ah_tui::view::autocomplete::render_autocomplete;
 use ah_tui::view::draft_card;
 use ah_core::task_manager::TaskEvent;
 use ah_core::TaskStatus;
@@ -375,13 +376,14 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
     }
 
     // Render autocomplete menu if textarea area is available
-    if let Some(area) = view_model.last_textarea_area {
-        view_model.autocomplete.render(
+    if let (Some(area), Some(card)) = (view_model.last_textarea_area, view_model.draft_cards.first()) {
+        render_autocomplete(
+            &view_model.autocomplete,
             frame,
             area,
-            &view_model.draft_cards.first().unwrap().description,
+            &card.description,
             &theme,
-            theme.surface, // Use surface color for autocomplete background
+            theme.surface,
         );
     }
 }

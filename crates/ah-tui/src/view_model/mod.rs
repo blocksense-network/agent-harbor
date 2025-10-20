@@ -52,10 +52,12 @@
 //! - **Testability**: Fully headless testing with mocked external APIs
 //!                    and simulated time
 
+pub mod autocomplete;
 pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
+pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, Provider, Trigger};
 pub use task_entry::{TaskEntryControlsViewModel, TaskEntryViewModel};
 pub use task_execution::{
     AgentActivityRow, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
