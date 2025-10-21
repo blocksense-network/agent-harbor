@@ -13,25 +13,25 @@ echo
 
 # Function to check if a command exists
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
 # Check prerequisites
 echo "Checking prerequisites..."
 
 if ! command_exists clang; then
-    echo "ERROR: clang not found. Please install Xcode command line tools."
-    exit 1
+  echo "ERROR: clang not found. Please install Xcode command line tools."
+  exit 1
 fi
 
 if ! command_exists cargo; then
-    echo "ERROR: cargo not found. Please install Rust."
-    exit 1
+  echo "ERROR: cargo not found. Please install Rust."
+  exit 1
 fi
 
 if ! command_exists curl; then
-    echo "ERROR: curl not found. Please install curl."
-    exit 1
+  echo "ERROR: curl not found. Please install curl."
+  exit 1
 fi
 
 echo "Prerequisites OK"
@@ -87,19 +87,19 @@ echo "=== Test 4: Loopback Address Isolation Test ==="
 echo "Testing if different loopback addresses provide true port isolation..."
 
 # Start first server on 127.0.0.1:9999
-timeout 5 nc -l 127.0.0.1 9999 < /dev/null > /dev/null 2>&1 &
+timeout 5 nc -l 127.0.0.1 9999 </dev/null >/dev/null 2>&1 &
 NC1_PID=$!
 sleep 1
 
 # Try to start second server on 127.0.0.2:9999
-if timeout 2 nc -l 127.0.0.2 9999 < /dev/null > /dev/null 2>&1; then
-    echo "✓ PASS: Loopback addresses provide port isolation"
-    echo "   -> Multiple sandboxes can use same ports on different addresses"
-    ISOLATION_WORKS=true
+if timeout 2 nc -l 127.0.0.2 9999 </dev/null >/dev/null 2>&1; then
+  echo "✓ PASS: Loopback addresses provide port isolation"
+  echo "   -> Multiple sandboxes can use same ports on different addresses"
+  ISOLATION_WORKS=true
 else
-    echo "! INFO: Loopback addresses are aliases (same port conflicts)"
-    echo "   -> Strategy B device rewriting limited to different port combinations"
-    ISOLATION_WORKS=false
+  echo "! INFO: Loopback addresses are aliases (same port conflicts)"
+  echo "   -> Strategy B device rewriting limited to different port combinations"
+  ISOLATION_WORKS=false
 fi
 
 kill $NC1_PID 2>/dev/null
@@ -110,10 +110,10 @@ echo "=== Test 5: Library Loading Verification ==="
 echo "Testing that the library loads and initializes correctly..."
 OUTPUT=$("$INJECTOR" -l "$LIB_DIR/network-interpose.dylib" echo "test" 2>&1)
 if echo "$OUTPUT" | grep -q "NETWORK-INTERPOSE.*Initialized"; then
-    echo "✓ PASS: Library loaded and initialized successfully"
+  echo "✓ PASS: Library loaded and initialized successfully"
 else
-    echo "✗ FAIL: Library initialization not detected"
-    echo "Output: $OUTPUT"
+  echo "✗ FAIL: Library initialization not detected"
+  echo "Output: $OUTPUT"
 fi
 echo
 
@@ -121,9 +121,9 @@ echo "=== All network isolation tests completed! ==="
 echo "✓ Strategy A (fail): Port blocking interception works"
 echo "✓ Strategy B (rewrite_device): Device rewriting interception works"
 if [ "$ISOLATION_WORKS" = true ]; then
-    echo "✓ Loopback isolation: Addresses provide true port separation"
+  echo "✓ Loopback isolation: Addresses provide true port separation"
 else
-    echo "! Loopback aliases: Same ports conflict across addresses"
+  echo "! Loopback aliases: Same ports conflict across addresses"
 fi
 echo "✓ Strategy C (rewrite_port): Port rewriting interception works"
 echo "✓ Library loading: Network interposition library loads correctly"

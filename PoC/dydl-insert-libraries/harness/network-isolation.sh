@@ -14,25 +14,25 @@ echo
 
 # Function to check if a command exists
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
 # Check prerequisites
 echo "Checking prerequisites..."
 
 if ! command_exists clang; then
-    echo "ERROR: clang not found. Please install Xcode command line tools."
-    exit 1
+  echo "ERROR: clang not found. Please install Xcode command line tools."
+  exit 1
 fi
 
 if ! command_exists cargo; then
-    echo "ERROR: cargo not found. Please install Rust."
-    exit 1
+  echo "ERROR: cargo not found. Please install Rust."
+  exit 1
 fi
 
 if ! command_exists curl; then
-    echo "ERROR: curl not found. Please install curl."
-    exit 1
+  echo "ERROR: curl not found. Please install curl."
+  exit 1
 fi
 
 echo "Prerequisites OK"
@@ -55,15 +55,15 @@ echo
 
 # Simple test function to demonstrate interception
 test_interception() {
-    local strategy=$1
-    local description=$2
-    shift 2
+  local strategy=$1
+  local description=$2
+  shift 2
 
-    echo "Testing $description..."
-    export NETWORK_STRATEGY="$strategy"
-    "$@"
-    echo "✓ $description test completed"
-    echo
+  echo "Testing $description..."
+  export NETWORK_STRATEGY="$strategy"
+  "$@"
+  echo "✓ $description test completed"
+  echo
 }
 
 # Test 1: Strategy A - Fail with error for non-allowed ports
@@ -79,8 +79,8 @@ echo "Testing allowed port (8080) - should work..."
 
 echo "Testing blocked port (8081) - should fail..."
 "$INJECTOR" -l "$LIB_DIR/network-interpose.dylib" curl -s --connect-timeout 2 http://127.0.0.1:8081/ && {
-    echo "ERROR: Connection to blocked port succeeded when it should have failed"
-    exit 1
+  echo "ERROR: Connection to blocked port succeeded when it should have failed"
+  exit 1
 } || echo "✓ PASS: Connection to blocked port correctly failed"
 
 echo
@@ -108,27 +108,27 @@ echo
 echo "=== Test 4: Integration with real network tools ==="
 
 if command_exists nc && command_exists timeout; then
-    echo "Testing with netcat client..."
+  echo "Testing with netcat client..."
 
-    # Start a server to test against
-    echo "Starting test server on 127.0.0.1:9999..."
-    echo "Hello from test server" | nc -l 127.0.0.1 9999 &
-    SERVER_PID=$!
-    sleep 1
+  # Start a server to test against
+  echo "Starting test server on 127.0.0.1:9999..."
+  echo "Hello from test server" | nc -l 127.0.0.1 9999 &
+  SERVER_PID=$!
+  sleep 1
 
-    echo "Testing direct connection (should work)..."
-    timeout 2 nc 127.0.0.1 9999 || echo "Direct connection failed"
+  echo "Testing direct connection (should work)..."
+  timeout 2 nc 127.0.0.1 9999 || echo "Direct connection failed"
 
-    echo "Testing with Strategy A blocking..."
-    export NETWORK_STRATEGY="fail"
-    export LISTENING_BASE_PORT="8000"
-    export LISTENING_PORT_COUNT="1000"  # Allow 8000-8999
+  echo "Testing with Strategy A blocking..."
+  export NETWORK_STRATEGY="fail"
+  export LISTENING_BASE_PORT="8000"
+  export LISTENING_PORT_COUNT="1000" # Allow 8000-8999
 
-    timeout 2 "$INJECTOR" -l "$LIB_DIR/network-interpose.dylib" nc 127.0.0.1 9999 || echo "Blocked connection failed as expected"
+  timeout 2 "$INJECTOR" -l "$LIB_DIR/network-interpose.dylib" nc 127.0.0.1 9999 || echo "Blocked connection failed as expected"
 
-    kill $SERVER_PID 2>/dev/null || true
+  kill $SERVER_PID 2>/dev/null || true
 else
-    echo "Skipping netcat integration test (nc or timeout not available)"
+  echo "Skipping netcat integration test (nc or timeout not available)"
 fi
 
 echo

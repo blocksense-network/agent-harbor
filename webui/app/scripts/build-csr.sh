@@ -48,7 +48,7 @@ cp .output/public/_build/.vite/manifest.json dist/client/.vite/manifest.json
 # Create manifest loader JS file (external file to avoid CSP issues)
 # Transform Vite manifest format to match what the client code expects
 echo "📝 Generating manifest loader script..."
-node << 'NODESCRIPT'
+node <<'NODESCRIPT'
 const fs = require('fs');
 const viteManifest = JSON.parse(fs.readFileSync('dist/client/.vite/manifest.json', 'utf-8'));
 
@@ -74,7 +74,7 @@ NODESCRIPT
 
 # Create index.html with correct asset paths from manifest
 echo "📝 Generating index.html..."
-node << 'NODESCRIPT'
+node <<'NODESCRIPT'
 const fs = require('fs');
 const viteManifest = JSON.parse(fs.readFileSync('dist/client/.vite/manifest.json', 'utf-8'));
 
