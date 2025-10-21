@@ -87,7 +87,7 @@
           prettier-md = {
             enable = false;
             name = "prettier --write (Markdown)";
-            entry = "prettier --loglevel warn --write";
+            entry = "prettier --log-level warn --write";
             language = "system";
             pass_filenames = true;
             files = "\\.md$";
