@@ -139,7 +139,7 @@
             entry = "cspell --no-progress --cache --config .cspell.json --exclude .obsidian/**";
             language = "system";
             pass_filenames = true;
-            files = "\\.(md|rb|rake|ya?ml|toml|json)$";
+            files = "\\.(md)$";
           };
 
           # Ruby formatting/linting (safe auto-correct)
