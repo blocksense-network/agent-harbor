@@ -21,6 +21,7 @@ Amp is Sourcegraph's autonomous AI coding agent, launched in July 2025 as the of
 Amp provides multiple access methods:
 
 1. **CLI mode**:
+
    ```bash
    amp
    ```
@@ -50,11 +51,13 @@ Amp does not document per-step hooks in available materials. Investigation neede
 **Status: TO BE DETERMINED**
 
 Amp likely requires:
+
 - Sourcegraph account or authentication
 - API keys or tokens
 - Configuration for first launch
 
 Methods to investigate:
+
 - Environment variables
 - Configuration files
 - Command-line authentication flags
@@ -82,6 +85,7 @@ The thread model suggests strong session persistence capabilities.
 **Status: UNKNOWN**
 
 Likely locations:
+
 - **Linux/macOS**: `~/.amp/` or `~/.config/amp/`
 - **Windows**: `%APPDATA%\amp\` or `%LOCALAPPDATA%\amp\`
 
@@ -104,11 +108,13 @@ MCP support not documented in available materials. As a modern AI agent, MCP sup
 Amp authentication:
 
 **Requirements:**
+
 - Sourcegraph account (likely)
 - Team configuration for shared threads
 - API keys or tokens
 
 **Storage locations (to be confirmed):**
+
 - Configuration directory: `~/.amp/` or similar
 - Credentials stored via Sourcegraph authentication
 
@@ -128,6 +134,7 @@ Amp authentication:
 ## Capabilities
 
 Amp can perform complex autonomous tasks:
+
 - Read entire repositories
 - Generate test files
 - Refactor large modules

@@ -73,11 +73,11 @@ M3. Seatbelt profile hardening (SBPL) ✅ COMPLETED (3–5d)
   - `apply_profile` and `apply_builder`: safe wrappers over `libsandbox` (`sandbox_init`/`sandbox_free_error`).
 - Added thin launcher `crates/ah-macos-launcher/` that performs optional `chroot` → `chdir` → apply Seatbelt → `exec(2)` of the workload.
 - Workspace wiring in `Cargo.toml`; builds on non‑macOS via stubs.
- - Defaults aligned with cross‑strategy requirements:
-   - Network egress is OFF by default (egress‑off baseline); enable explicitly via `--allow-network`.
-  - Filesystem writes are denied by default except for explicitly allowed sub-paths (e.g., `/tmp`).
-   - Process hardening (process‑info restrictions and signal policy) is optional and disabled by default; fine‑grained rules will be enforced in ES milestones (M5).
- - Launcher CLI parsing expects the workload after `--` (e.g., `ah-macos-launcher ... -- sh -c 'echo hi'`).
+- Defaults aligned with cross‑strategy requirements:
+  - Network egress is OFF by default (egress‑off baseline); enable explicitly via `--allow-network`.
+- Filesystem writes are denied by default except for explicitly allowed sub-paths (e.g., `/tmp`).
+- Process hardening (process‑info restrictions and signal policy) is optional and disabled by default; fine‑grained rules will be enforced in ES milestones (M5).
+- Launcher CLI parsing expects the workload after `--` (e.g., `ah-macos-launcher ... -- sh -c 'echo hi'`).
 
 — Key source files —
 

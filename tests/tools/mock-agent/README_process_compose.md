@@ -46,6 +46,7 @@ The script supports configuration of the mock LLM API server behavior:
 - `--tui-port PORT`: Port for TUI testing IPC (default: 5555)
 
 #### Agent Configuration
+
 - `--agent-type TYPE`: Agent type - `mock`, `codex`, `claude`, `gemini`, `opencode`, `qwen`, `cursor-cli`, `goose` (default: codex)
 - `--non-interactive`: Enable non-interactive mode (`--non-interactive` flag)
 - `--output-format FORMAT`: Output format - `text`, `text-normalized`, `json`, `json-normalized` (default: json)
@@ -53,13 +54,16 @@ The script supports configuration of the mock LLM API server behavior:
 - `--llm-api-key KEY`: API key for custom LLM API
 
 #### Working Directory
+
 - `--working-dir PATH`: Custom working directory (default: auto-generated from scenario name)
 
 #### TUI Testing
+
 - `--enable-tui-testing`: Enable TUI testing integration
 - `--tui-command CMD`: TUI command to send (default: "exit:0")
 
 #### Process Compose
+
 - `--config-only`: Only generate config, don't run process-compose
 - `--config-file FILE`: Save config to specific file
 
@@ -207,18 +211,21 @@ Run `python3 scripts/agent-test-run.py --playbook` to see available playbooks:
 The script generates a process-compose YAML configuration with the following processes:
 
 ### mock-server
+
 - Runs the mock LLM API server
 - Waits for health check before starting dependent processes
 - Configured with selected scenario/playbook
 - Only sets mock API environment variables when `--llm-api` is NOT specified
 
 ### ah-agent
+
 - Runs `ah agent start` with specified options
 - Depends on mock-server being healthy
 - Runs in isolated working directory with `repo/` and `user-home/` subdirectories
 - Configured with environment variables for API connection and workspace isolation
 
 ### tui-testing (optional)
+
 - Runs TUI testing commands
 - Only included when `--enable-tui-testing` is specified
 - Depends on ah-agent being started
@@ -227,12 +234,14 @@ The script generates a process-compose YAML configuration with the following pro
 
 The script sets the following environment variables for the ah-agent process:
 
-### Always Set:
+### Always Set
+
 - `HOME`: Points to the `user-home/` subdirectory
 - `AH_HOME`: Isolated home directory for Agent Harbor (within user-home)
 - `TUI_TESTING_URI`: IPC endpoint for TUI testing (when enabled)
 
-### Agent-Specific API Variables:
+### Agent-Specific API Variables
+
 - **Codex**: `CODEX_API_BASE`, `CODEX_API_KEY`
 - **Claude**: `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`
 - **Gemini**: `GOOGLE_AI_BASE_URL`, `GOOGLE_API_KEY`
@@ -241,7 +250,8 @@ The script sets the following environment variables for the ah-agent process:
 - **Cursor CLI**: `CURSOR_API_BASE`, `CURSOR_API_KEY`
 - **Goose**: `GOOSE_API_BASE`, `GOOSE_API_KEY`
 
-### Mock Server Integration:
+### Mock Server Integration
+
 When `--llm-api` is NOT specified, the script automatically configures the agent to use the mock server by setting the appropriate API base URL and key (typically "mock-key").
 
 ## Troubleshooting
@@ -304,6 +314,7 @@ Note: YAML is optional - you can still use JSON playbooks without PyYAML.
 ### Custom LLM API Issues
 
 When using `--llm-api` and `--llm-api-key`, make sure:
+
 - The API endpoint is accessible
 - The API key is valid
 - The agent type supports the API format you're connecting to
@@ -361,10 +372,10 @@ The new `llmResponse` event allows grouping multiple response elements into sing
 
 ```yaml
 timeline:
-  - llmResponse:        # Single API response containing:
-      - think: [[500, "Analyzing..."]]     # Thinking content
-      - agentToolUse: {...}                # Tool suggestions
-      - assistant: [[200, "Done!"]]        # Final response
+  - llmResponse: # Single API response containing:
+      - think: [[500, 'Analyzing...']] # Thinking content
+      - agentToolUse: { ... } # Tool suggestions
+      - assistant: [[200, 'Done!']] # Final response
 ```
 
 This creates **realistic LLM behavior** where thinking, tool use, and text can appear in a single API response, unlike the previous separate-query-per-event approach.
@@ -396,6 +407,7 @@ test-{scenario-name}/
 ```
 
 This approach ensures:
+
 - **Isolation**: Each test run has its own clean environment
 - **Realism**: LLM responses match actual API behavior with proper coalescing
 - **Flexibility**: Support for both scenario-driven repo setup and custom LLM APIs

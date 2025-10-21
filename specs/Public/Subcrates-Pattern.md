@@ -16,6 +16,7 @@ This pattern is particularly effective when creating **abstract interfaces** tha
 - **Sandboxing backends**: Linux namespaces, Docker, Podman, etc.
 
 The pattern allows us to:
+
 - **Abstract over differences** between third-party tools while maintaining a consistent interface
 - **Isolate platform/tool-specific code** in dedicated subcrates
 - **Support optional compilation** of only needed backends
@@ -72,6 +73,7 @@ ah-fs-snapshots-btrfs = "0.1"   # Enables "btrfs" feature on monolith
 ```
 
 Cargo resolves this to:
+
 ```toml
 ah-fs-snapshots = { features = ["zfs", "btrfs"] }  # Automatically determined
 ```

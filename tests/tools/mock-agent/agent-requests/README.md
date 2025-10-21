@@ -39,8 +39,8 @@ Each `request.json` file contains the **exact raw JSON request** sent by the age
         "parameters": {
           "type": "object",
           "properties": {
-            "command": {"type": "string", "description": "The command to execute"},
-            "cwd": {"type": "string", "description": "Working directory"}
+            "command": { "type": "string", "description": "The command to execute" },
+            "cwd": { "type": "string", "description": "Working directory" }
           },
           "required": ["command"]
         }
@@ -78,6 +78,7 @@ python3 scripts/agent-test-run.py --agent-type claude --strict-tools-validation
 ```
 
 The `FORCE_TOOLS_VALIDATION_FAILURE=1` environment variable causes the mock server to:
+
 - Treat all tools as invalid (forcing validation failures)
 - Save the complete request JSON when validation fails
 - Capture the exact API requests sent by real coding agents
@@ -101,6 +102,7 @@ Versions are extracted using regex pattern `(\d+\.\d+\.\d+)` from command output
 Files are automatically created when tool validation fails in strict mode (`--strict-tools-validation`) with `FORCE_TOOLS_VALIDATION_FAILURE=1` set.
 
 To capture requests for a specific agent:
+
 1. Set `FORCE_TOOLS_VALIDATION_FAILURE=1` in your environment
 2. Run `agent-test-run.py --agent-type {agent} --strict-tools-validation`
 3. The agent will make requests that fail validation

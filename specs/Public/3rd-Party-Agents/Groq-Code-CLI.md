@@ -13,6 +13,7 @@ Groq Code CLI is a lightweight, open-source command-line AI coding assistant pow
 ## Design Philosophy
 
 Groq Code CLI deliberately goes in the opposite direction from feature-heavy AI tools:
+
 - **Lightweight**: Minimal, simple codebase
 - **Fast**: Leverages Groq's ultra-fast inference
 - **Customizable**: Designed as a blueprint/framework for user extensions
@@ -23,17 +24,20 @@ Groq Code CLI deliberately goes in the opposite direction from feature-heavy AI 
 Groq Code CLI provides simple command-line interaction:
 
 1. **Start interactive chat**:
+
    ```bash
    groq
    ```
 
 2. **With temperature parameter**:
+
    ```bash
    groq -t 0.7
    groq --temperature 0.7
    ```
 
 3. **With custom system message**:
+
    ```bash
    groq -s "You are a Python expert"
    groq --system "You are a Python expert"
@@ -56,12 +60,15 @@ Groq Code CLI provides simple command-line interaction:
 ### In-session Commands
 
 **Model management:**
+
 - `/model`: View and select different language models available on Groq platform
 
 **Authentication:**
+
 - `/login`: Set API key (alternative to environment variable)
 
 **Session management:**
+
 - `/clear`: Clear chat history and context
 
 ### Support for custom hooks
@@ -69,6 +76,7 @@ Groq Code CLI provides simple command-line interaction:
 **Status: NO built-in hooks**
 
 Groq Code CLI is intentionally minimal and does not provide hook mechanisms. As an open-source project, hooks could be added through customization:
+
 - Fork and modify the codebase
 - Add hook execution points in the code
 - Contribute upstream if hooks are useful to community
@@ -80,6 +88,7 @@ The lightweight design makes it easier to add custom features compared to larger
 **Authentication methods:**
 
 1. **Environment variable** (recommended for automation):
+
    ```bash
    export GROQ_API_KEY=your-key
    groq
@@ -116,6 +125,7 @@ Investigation needed to determine if sessions persist across restarts.
 **Status: UNKNOWN**
 
 Likely locations if sessions are persisted:
+
 - **Linux/macOS**: `~/.groq/` or `~/.config/groq-code-cli/`
 - **Windows**: `%APPDATA%\groq\` or `%LOCALAPPDATA%\groq-code-cli\`
 
@@ -133,6 +143,7 @@ As an open-source project, session format can be determined by reviewing the cod
 **Status: NOT SUPPORTED**
 
 Groq Code CLI is intentionally minimal and does not document MCP server support. Adding MCP support would require:
+
 - Forking the repository
 - Implementing MCP protocol handling
 - Contributing back to upstream
@@ -142,13 +153,16 @@ Groq Code CLI is intentionally minimal and does not document MCP server support.
 Groq Code CLI authentication:
 
 **API Key requirement:**
+
 - Groq API key (from <https://console.groq.com>)
 
 **Configuration methods:**
+
 1. Environment variable: `GROQ_API_KEY`
 2. In-session command: `/login`
 
 **Storage:**
+
 - Environment variable (no storage needed)
 - Configuration file location to be determined if `/login` persists keys
 
@@ -185,6 +199,7 @@ groq
 ## Groq Platform
 
 **Groq advantages:**
+
 - Ultra-fast inference (significantly faster than typical cloud APIs)
 - Multiple model support
 - Developer-friendly API
@@ -213,11 +228,13 @@ This document requires hands-on testing. Key next steps:
 **Binary name**: `groq`
 
 **Recommended for:**
+
 - Fast experimentation
 - Custom tool development (fork and modify)
 - Groq API testing
 
 **Limitations for Agent Time Travel:**
+
 - No built-in hooks (requires customization)
 - Minimal session management
 - Would need forking to add snapshot capabilities

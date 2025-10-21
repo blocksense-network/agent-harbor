@@ -64,38 +64,46 @@ AgentFS implements the necessary filesystem snapshot and per-process mounting ca
 - **Branch Isolation**: Per-process branch binding allows different processes to see different filesystem branches concurrently
 
 ### Overlay & Pass-through (clarified)
+
 - AgentFS operates as an **overlay**: unmodified paths are served from the **lower** (real) filesystem via **pass-through reads**; on first mutation AgentFS performs **copy-up** into the **upper** backstore.
 - **Pass-through reads are platform-optimized** but semantically identical across OS's. The adapter must not materialize an upper object for pure reads.
 - On the first upper object materialization, **permissions/ownership/ACLs are initialized from the lower** (with policy knobs for umask/override).
 
 ### Copy-up Triggers & Whiteouts
+
 - **Data writes** (`write`, `truncate>0`, `fallocate(punch)`) trigger **copy-up**:
-  1) materialize an upper node with **metadata initialized from lower** (owner, group, mode, times, xattrs);
-  2) allocate backing storage per `FsConfig.backstore`; and
-  3) perform the write against the new upper data stream.
+  1. materialize an upper node with **metadata initialized from lower** (owner, group, mode, times, xattrs);
+  2. allocate backing storage per `FsConfig.backstore`; and
+  3. perform the write against the new upper data stream.
 - **Metadata-only changes** (chmod/chown/utimens/xattr set) create a **metadata overlay** entry without copying file data. Subsequent reads of file data continue to pass through to lower until the first data write occurs.
 - **Deletes** create a **whiteout** upper marker that hides the lower entry. Unlink/rename-over follow POSIX rules; open-unlinked handles remain valid until close.
 
 ### Branch Isolation Guarantees
+
 - The only exception is the base underlying filesystem: if no branch has overridden a file, they all see the same underlying content.
 - **Overlay rule:** When a path has no upper entry in the active branch, lookups/stat/readdir/readlink read **directly from the lower layer** via the LowerFS provider. No branch state is created by reads alone.
 
 ### Kernel-Backstore Proxy (KBP) vs Interpose modes
+
 - **KBP (default, portable):** adapters service read/write/mmap callbacks but fulfill them using hidden **host-FS handles** into the backstore, leveraging kernel cache and readahead. Heavy I/O still crosses the adapter on cache miss/write-back.
 - **Interpose / FD-Forwarding (optional, zero-overhead data path):** a per-process shim asks AgentFS to **open** and then receives a **real OS handle/FD** (SCM_RIGHTS / DuplicateHandle). Data I/O bypasses the adapter entirely; path-level ops still route to AgentFS for overlay semantics.
 - **Windows open-redirect (experimental):** for eligible opens, the WinFsp adapter may return **STATUS_REPARSE** to a backstore path so the I/O manager completes the open directly on NTFS. Guarded by policy; semantics caveats documented below.
 
 ### Capability negotiation
+
 At mount time AgentFS detects and records:
 `cap.backstore={none|hostfs|ramdisk(native-snapshots|none)}`
 `cap.fd_forwarding={off|shim|shim+reparse(win)}`
 Adapters consult these to choose optimal paths; correctness is invariant to capability.
 
 ### Backstore
+
 `FsConfig.backstore`: `{ mode: "InMemory" | "HostFs", root?: "<absolute host path>", prefer_native_snapshots: bool }`
+
 - When `HostFs`, adapters use **KBP** against `root`. The core still governs overlay/branch/snapshot semantics.
 
 ### Interpose
+
 `InterposeConfig` (optional component): handshake sockets, policy (allowlist of pids/bundles), default branch binding. Disabled by default.
 
 ## Current Implementation Approach
@@ -117,18 +125,22 @@ Unlike traditional overlay filesystems or mount namespace simulation, AgentFS im
 - **Windows reparse fast-path (experimental):** may be used for open() when policy allows; handle-based rename/delete semantics risks are documented; disabled by default.
 
 ## Security and Access Control
+
 On copy-up, initial **mode/owner/ACLs** are cloned from the lower entry. Policy can alter:
+
 - `copyup.mode_strategy={clone|clone&umask|fixed}`
 - `copyup.acl_strategy={clone|drop|map-basic}`
-Interpose mode inherits kernel enforcement for the returned OS handle; AgentFS still validates path-level ops in the control plane.
+  Interpose mode inherits kernel enforcement for the returned OS handle; AgentFS still validates path-level ops in the control plane.
 
 ### Metadata Initialization in Overlay Mode
+
 - When an upper entry is created by **copy-up**, AgentFS initializes:
   - `owner_uid`, `owner_gid`, `mode`, all timestamps, and selected xattrs **from the lower object** (subject to platform mapping), then applies the operation's requested changes (e.g., chmod target, utimens values).
 - For **newly created** paths (no lower entry), initialize `owner_uid/gid` from the caller identity and `mode` from `(create_mode & ~umask)`.
 - **Access checks** on unmodified paths use **lower metadata**. Once a metadata overlay (chmod/chown/utimens/xattr set) exists, checks consult the **upper metadata** even if data still passes through from lower.
 
 ### Platform Notes
+
 - **Windows**: On copy-up, attempt to synthesize a Security Descriptor from lower (owner SID + DACL) or map to POSIX bits when `enable_windows_acl_compat=false`. Later changes via SetSecurity are stored in the upper entry and enforced by the adapter.
 
 ## Performance

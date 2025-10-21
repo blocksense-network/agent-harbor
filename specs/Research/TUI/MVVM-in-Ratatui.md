@@ -197,7 +197,6 @@ fn renders_selection_correctly() -> anyhow::Result<()> {
 # Why this works well
 
 - **Separation of concerns:**
-
   - **Model** = business state & rules.
   - **ViewModel** = “what the view needs,” derived and formatted.
   - **View** = pure Ratatui rendering that depends only on `&ViewModel`.

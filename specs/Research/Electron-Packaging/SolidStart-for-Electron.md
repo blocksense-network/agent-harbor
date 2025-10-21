@@ -9,33 +9,33 @@ For desktop apps you usually don’t need SSR. Configure SolidStart to emit a st
 **`app.config.ts`**
 
 ```ts
-import { defineConfig } from "@solidjs/start/config";
-import electron from "vite-plugin-electron/simple";
+import { defineConfig } from '@solidjs/start/config';
+import electron from 'vite-plugin-electron/simple';
 
 export default defineConfig({
   // Produce static output in .output/public (no server functions/API routes)
-  server: { preset: "static" }, // CSR/SSG build
+  server: { preset: 'static' }, // CSR/SSG build
   // Hook into the client router's Vite build and add the Electron plugin
   vite({ router }) {
-    if (router === "client") {
+    if (router === 'client') {
       return {
         plugins: [
           electron({
-            main:   { entry: "electron/main.ts" },
-            preload:{ input: { preload: "electron/preload.ts" } },
+            main: { entry: 'electron/main.ts' },
+            preload: { input: { preload: 'electron/preload.ts' } },
             // renderer: {} // optional: enable Node API in renderer via preload
-          })
-        ]
+          }),
+        ],
       };
     }
     return {};
-  }
+  },
 });
 ```
 
-* `server: { preset: "static" }` tells SolidStart/Vinxi/Nitro to pre-render and put files in `.output/public`. ([Answer Overflow][1])
-* Attaching plugins per “router” (here, only the **client** build gets the Electron plugin) is the documented SolidStart way to customize Vite per build. ([docs.solidjs.com][2])
-* `vite-plugin-electron/simple` is the straightforward integration—its default dev behavior provides `process.env.VITE_DEV_SERVER_URL` and builds main/preload into `dist-electron` for production. ([GitHub][3])
+- `server: { preset: "static" }` tells SolidStart/Vinxi/Nitro to pre-render and put files in `.output/public`. ([Answer Overflow][1])
+- Attaching plugins per “router” (here, only the **client** build gets the Electron plugin) is the documented SolidStart way to customize Vite per build. ([docs.solidjs.com][2])
+- `vite-plugin-electron/simple` is the straightforward integration—its default dev behavior provides `process.env.VITE_DEV_SERVER_URL` and builds main/preload into `dist-electron` for production. ([GitHub][3])
 
 ---
 
@@ -46,8 +46,8 @@ Create an `electron/` folder with your main & preload:
 **`electron/main.ts`**
 
 ```ts
-import { app, BrowserWindow } from "electron";
-import path from "node:path";
+import { app, BrowserWindow } from 'electron';
+import path from 'node:path';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
@@ -56,10 +56,10 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, "preload.mjs"),
+      preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
-      nodeIntegration: false
-    }
+      nodeIntegration: false,
+    },
   });
 
   if (isDev) {
@@ -67,22 +67,24 @@ function createWindow() {
     win.loadURL(process.env.VITE_DEV_SERVER_URL!);
   } else {
     // In production, load the static SolidStart build (see step 3)
-    const indexHtml = path.join(process.resourcesPath, ".output/public/index.html");
+    const indexHtml = path.join(process.resourcesPath, '.output/public/index.html');
     win.loadFile(indexHtml);
   }
 }
 
 app.whenReady().then(createWindow);
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
 ```
 
 **`electron/preload.ts`**
 
 ```ts
-import { contextBridge } from "electron";
+import { contextBridge } from 'electron';
 
-contextBridge.exposeInMainWorld("api", {
-  ping: () => "pong"
+contextBridge.exposeInMainWorld('api', {
+  ping: () => 'pong',
 });
 ```
 
@@ -98,16 +100,16 @@ By default, SolidStart’s static output lives in `.output/public`. Include it (
 
 ```json5
 {
-  "appId": "com.yourco.yourapp",
-  "productName": "YourApp",
-  "directories": { "output": "release/${version}" },
-  "files": [
-    ".output/public",        // SolidStart client build (index.html + assets)
-    "dist-electron"          // vite-plugin-electron output (main/preload)
+  appId: 'com.yourco.yourapp',
+  productName: 'YourApp',
+  directories: { output: 'release/${version}' },
+  files: [
+    '.output/public', // SolidStart client build (index.html + assets)
+    'dist-electron', // vite-plugin-electron output (main/preload)
   ],
-  "win":   { "target": [{ "target": "nsis", "arch": ["x64"] }] },
-  "mac":   { "target": ["dmg"] },
-  "linux": { "target": ["AppImage"] }
+  win: { target: [{ target: 'nsis', arch: ['x64'] }] },
+  mac: { target: ['dmg'] },
+  linux: { target: ['AppImage'] },
 }
 ```
 
@@ -124,9 +126,9 @@ This mirrors the typical “include renderer + `dist-electron`” pattern used i
   "main": "dist-electron/main.mjs",
   "scripts": {
     "dev": "pnpm run dev:app",
-    "dev:app": "vinxi dev",             // SolidStart dev; plugin boots Electron
-    "build": "vinxi build",             // SolidStart build (.output/public)
-    "build:electron": "vite build",     // ensures dist-electron is built
+    "dev:app": "vinxi dev", // SolidStart dev; plugin boots Electron
+    "build": "vinxi build", // SolidStart build (.output/public)
+    "build:electron": "vite build", // ensures dist-electron is built
     "pack": "pnpm build && pnpm build:electron && electron-builder"
   },
   "devDependencies": {
@@ -136,8 +138,8 @@ This mirrors the typical “include renderer + `dist-electron`” pattern used i
 }
 ```
 
-* Running `pnpm dev` gives HMR for the renderer and auto-restarts main/preload via the plugin. ([GitHub][3])
-* `pnpm pack` creates installers using electron-builder’s standard config. ([electron-vite.github.io][4])
+- Running `pnpm dev` gives HMR for the renderer and auto-restarts main/preload via the plugin. ([GitHub][3])
+- `pnpm pack` creates installers using electron-builder’s standard config. ([electron-vite.github.io][4])
 
 ---
 
@@ -145,7 +147,7 @@ This mirrors the typical “include renderer + `dist-electron`” pattern used i
 
 Because you’re loading files from disk in production, deep-linked routes like `app://…/settings` don’t exist on the filesystem. Use a small helper to always fall back to `index.html`:
 
-* Easiest: add **electron-serve** to serve your static folder with history-fallback, then `win.loadURL(serve.url())`. ([GitHub][5])
+- Easiest: add **electron-serve** to serve your static folder with history-fallback, then `win.loadURL(serve.url())`. ([GitHub][5])
 
 (Alternatively, make sure users always land on `index.html` and navigate in-app.)
 
@@ -155,7 +157,7 @@ Because you’re loading files from disk in production, deep-linked routes like 
 
 If you truly need SolidStart SSR inside Electron:
 
-* Build with the default (node) preset so Nitro outputs a Node server entry at `.output/server/index.mjs`, then spawn it from Electron and point your `BrowserWindow` at `http://127.0.0.1:<port>`. Nitro’s “node_server” preset produces a ready-to-run server entry. ([nitro.build][6])
+- Build with the default (node) preset so Nitro outputs a Node server entry at `.output/server/index.mjs`, then spawn it from Electron and point your `BrowserWindow` at `http://127.0.0.1:<port>`. Nitro’s “node_server” preset produces a ready-to-run server entry. ([nitro.build][6])
 
 > Most desktop apps don’t need SSR; the static route is simpler and avoids a background server process.
 
@@ -163,19 +165,19 @@ If you truly need SolidStart SSR inside Electron:
 
 ## Common gotchas
 
-* **Where’s my `index.html`?** If you see `.output/server/index.mjs` but no HTML, you’re on an SSR build; switch to a static/CSR preset so files appear in `.output/public`. ([Microsoft Learn][7])
-* **Plugin placement:** Add `vite-plugin-electron` only to the **client** router’s Vite config (as shown), not the server builds. ([docs.solidjs.com][2])
-* **SolidStart internals:** SolidStart uses **Vinxi** (Vite) for builds and **Nitro** for the production server—handy to know when you see `.output/…` paths. ([docs.solidjs.com][8])
+- **Where’s my `index.html`?** If you see `.output/server/index.mjs` but no HTML, you’re on an SSR build; switch to a static/CSR preset so files appear in `.output/public`. ([Microsoft Learn][7])
+- **Plugin placement:** Add `vite-plugin-electron` only to the **client** router’s Vite config (as shown), not the server builds. ([docs.solidjs.com][2])
+- **SolidStart internals:** SolidStart uses **Vinxi** (Vite) for builds and **Nitro** for the production server—handy to know when you see `.output/…` paths. ([docs.solidjs.com][8])
 
 ---
 
 If you paste your repo’s scripts/config, I can adapt the exact paths (e.g., if you prefer `dist/` instead of `.output/public`) and give you a drop-in `electron-builder.json5`.
 
-[1]: https://www.answeroverflow.com/m/1231881686808002591?utm_source=chatgpt.com "Build process with solidstart - SolidJS"
-[2]: https://docs.solidjs.com/solid-start/reference/config/define-config?utm_source=chatgpt.com "defineConfig - SolidStart Docs"
-[3]: https://github.com/electron-vite/vite-plugin-electron "GitHub - electron-vite/vite-plugin-electron: :electron: Electron⚡️Vite core repo"
-[4]: https://electron-vite.github.io/build/electron-builder.html "electron-builder | Electron⚡️Vite"
-[5]: https://github.com/sindresorhus/electron-serve?utm_source=chatgpt.com "Static file serving for Electron apps - GitHub"
-[6]: https://nitro.build/deploy/runtimes/node?utm_source=chatgpt.com "Node.js - Nitro - UnJS"
-[7]: https://learn.microsoft.com/en-us/answers/questions/4370675/static-web-app-with-solidstart?utm_source=chatgpt.com "Static Web App with SolidStart? - Microsoft Q&A"
-[8]: https://docs.solidjs.com/solid-start/getting-started?utm_source=chatgpt.com "Getting started - SolidStart Docs"
+[1]: https://www.answeroverflow.com/m/1231881686808002591?utm_source=chatgpt.com 'Build process with solidstart - SolidJS'
+[2]: https://docs.solidjs.com/solid-start/reference/config/define-config?utm_source=chatgpt.com 'defineConfig - SolidStart Docs'
+[3]: https://github.com/electron-vite/vite-plugin-electron 'GitHub - electron-vite/vite-plugin-electron: :electron: Electron⚡️Vite core repo'
+[4]: https://electron-vite.github.io/build/electron-builder.html 'electron-builder | Electron⚡️Vite'
+[5]: https://github.com/sindresorhus/electron-serve?utm_source=chatgpt.com 'Static file serving for Electron apps - GitHub'
+[6]: https://nitro.build/deploy/runtimes/node?utm_source=chatgpt.com 'Node.js - Nitro - UnJS'
+[7]: https://learn.microsoft.com/en-us/answers/questions/4370675/static-web-app-with-solidstart?utm_source=chatgpt.com 'Static Web App with SolidStart? - Microsoft Q&A'
+[8]: https://docs.solidjs.com/solid-start/getting-started?utm_source=chatgpt.com 'Getting started - SolidStart Docs'

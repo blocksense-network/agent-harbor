@@ -1,6 +1,6 @@
 ## Can I use the node.js bundled with Electron for running command-line node.js programs?
 
-Short answer: kinda—Electron does bundle a Node.js runtime, and you *can* run scripts with it, but it’s not meant to replace a normal `node` binary for CLI work. Electron embeds a specific Node/V8 inside the Electron executable, not as a standalone `node` program. ([Electron][1])
+Short answer: kinda—Electron does bundle a Node.js runtime, and you _can_ run scripts with it, but it’s not meant to replace a normal `node` binary for CLI work. Electron embeds a specific Node/V8 inside the Electron executable, not as a standalone `node` program. ([Electron][1])
 
 # If you still want to do it
 
@@ -22,10 +22,10 @@ That environment variable tells Electron to act like Node for that process. In t
 
 # Why it’s usually a bad idea for general CLI use
 
-* **Pinned/odd versioning:** Electron’s Node version is tied to its Chromium/V8 version, which may lag or jump independently of the official Node release line. ([Electron][1])
-* **Native module ABI mismatch:** Any native addons must be rebuilt for Electron’s ABI; binaries compiled for regular Node won’t load. ([GitHub][3])
-* **Feature differences:** Some Node flags are disabled under Electron’s crypto stack (see above). ([Electron][2])
-* **May be disabled:** Packaged apps can (and increasingly do) ship with `runAsNode` turned off for security. ([Electron][4])
+- **Pinned/odd versioning:** Electron’s Node version is tied to its Chromium/V8 version, which may lag or jump independently of the official Node release line. ([Electron][1])
+- **Native module ABI mismatch:** Any native addons must be rebuilt for Electron’s ABI; binaries compiled for regular Node won’t load. ([GitHub][3])
+- **Feature differences:** Some Node flags are disabled under Electron’s crypto stack (see above). ([Electron][2])
+- **May be disabled:** Packaged apps can (and increasingly do) ship with `runAsNode` turned off for security. ([Electron][4])
 
 # Recommended instead
 
@@ -33,7 +33,8 @@ Install a standard Node.js runtime (e.g., via nvm/asdf) for CLI tools, and reser
 
 If you tell me your OS and what CLI you want to run, I can show the exact setup.
 
-[1]: https://www.electronjs.org/docs/latest?utm_source=chatgpt.com "Introduction | Electron"
-[2]: https://www.electronjs.org/docs/latest/api/environment-variables?utm_source=chatgpt.com "Environment Variables - Electron"
-[3]: https://github.com/electron/electron/blob/main/docs/tutorial/using-native-node-modules.md?utm_source=chatgpt.com "electron/docs/tutorial/using-native-node-modules.md at main - GitHub"
+[1]: https://www.electronjs.org/docs/latest?utm_source=chatgpt.com 'Introduction | Electron'
+[2]: https://www.electronjs.org/docs/latest/api/environment-variables?utm_source=chatgpt.com 'Environment Variables - Electron'
+[3]: https://github.com/electron/electron/blob/main/docs/tutorial/using-native-node-modules.md?utm_source=chatgpt.com 'electron/docs/tutorial/using-native-node-modules.md at main - GitHub'
+
 [4]: https://www.electronjs.org/blog/statement-run-as-node-cves?utm_source=chatgpt.com "Statement regarding \"runAsNode\" CVEs - Electron"

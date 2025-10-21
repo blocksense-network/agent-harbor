@@ -40,6 +40,7 @@ Each line in a Claude session file is a JSON object representing a single conver
 
 All session entries share these common fields:
 
+<!-- prettier-ignore -->
 ```typescript
 interface SessionEntry {
   parentUuid: string | null;     // UUID of parent message (conversation threading)
@@ -53,7 +54,7 @@ interface SessionEntry {
   uuid: string;                  // Unique identifier for this entry
   timestamp: string;             // ISO 8601 timestamp with milliseconds
   message?: MessageContent;      // Message content (for conversation entries)
-  
+
   // Optional fields for specific entry types
   isMeta?: boolean;              // Metadata entries
   isApiErrorMessage?: boolean;   // API error indicators

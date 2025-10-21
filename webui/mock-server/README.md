@@ -163,16 +163,16 @@ The mock server supports deterministic scenario replay for testing complex inter
 name: basic_task_completion
 timeline:
   - think:
-      - [1000, "Analyzing user request"]
+      - [1000, 'Analyzing user request']
   - agentToolUse:
-      toolName: "run_command"
+      toolName: 'run_command'
       args:
         command: "echo 'Hello World'"
-        cwd: "."
-      result: "Hello World"
-      status: "ok"
-  - complete: true  # Mark task as completed
-  - merge: true     # Keep this session in listings after completion
+        cwd: '.'
+      result: 'Hello World'
+      status: 'ok'
+  - complete: true # Mark task as completed
+  - merge: true # Keep this session in listings after completion
 ```
 
 See the `test_scenarios/` directory for examples and the [Scenario Format](../../specs/Public/Scenario-Format.md) specification for complete documentation.

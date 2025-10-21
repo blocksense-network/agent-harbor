@@ -46,6 +46,7 @@ This allows you to:
 For testing Agent Time-Travel functionality with real Claude Code, the integration tests automatically configure hooks in temporary directories to avoid polluting your home folder.
 
 **Test Configuration**:
+
 - Claude Code hooks are configured in a temporary `~/.claude/settings.json` within the test environment
 - The `HOME` environment variable is set to point to a temporary directory during test execution
 - This ensures your real `~/.claude` directory remains untouched
@@ -54,6 +55,7 @@ For testing Agent Time-Travel functionality with real Claude Code, the integrati
 If you need to manually configure Claude Code hooks, create the settings files:
 
 **Project-specific hooks** (`.claude/settings.json`):
+
 ```json
 {
   "hooks": {
@@ -74,6 +76,7 @@ If you need to manually configure Claude Code hooks, create the settings files:
 ```
 
 **Global hooks** (`~/.claude/settings.json`):
+
 ```json
 {
   "hooks": {
@@ -99,6 +102,7 @@ The hook script will be executed after each file operation, allowing you to test
 For testing Agent Time-Travel functionality with real Codex CLI, the integration tests automatically configure hooks and verify execution.
 
 **Test Configuration**:
+
 - Codex CLI hooks are configured using the `--rollout-hook` command-line option
 - The `CODEX_HOME` environment variable is set to point to a temporary directory during test execution
 - Hook execution is verified through evidence files created during testing
@@ -118,6 +122,7 @@ codex --rollout-hook "my-hook-script.sh" "arg1" "arg2" "Create hello.py"
 The hook command receives the JSON rollout entry as its last argument. The hook script should process this JSON to extract tool information and create filesystem snapshots.
 
 **Example Hook Script**:
+
 ```bash
 #!/bin/bash
 # Last argument is the JSON rollout entry
@@ -180,11 +185,13 @@ Fast mode (`--fast-mode`) optimizes execution for speed by:
 4. **Maintaining event dependencies** while eliminating timing delays
 
 This is useful for:
+
 - **CI/CD pipelines** where fast execution is preferred
 - **Bulk scenario testing** where timing accuracy is less important
 - **Development workflows** where you want quick feedback
 
 **Example:**
+
 ```bash
 # Normal execution with timing
 python -m src.cli run --scenario scenario.json --workspace /tmp/ws
@@ -210,6 +217,7 @@ python -m src.cli run --scenario scenario.json --workspace /tmp/ws \
 ```
 
 This is particularly useful for:
+
 - **Filesystem snapshots** for time travel functionality
 - **Audit logging** of tool executions
 - **Custom post-processing** after agent actions
@@ -381,7 +389,6 @@ See [Codex Session File Format](../../../specs/Research/Codex-Session-File-Forma
 
 Scenarios use a YAML-based format for defining agent interactions. See the [Scenario Format Specification](../../specs/Public/Scenario-Format.md) for complete details on structure, events, timing, and configuration options.
 
-
 ## Hooks Support
 
 The mock agent supports hooks similar to Claude Code hooks, enabling testing of Agent Time-Travel functionality and filesystem snapshot integration.
@@ -411,10 +418,12 @@ Hooks are configured in scenario JSON files under the `hooks` key. The configura
 ```
 
 **Supported Hook Events:**
+
 - `PostToolUse`: Executed after successful or failed tool execution
 
 **Hook Input Format:**
 Hooks receive JSON input via stdin containing:
+
 ```json
 {
   "session_id": "test-session-123",
@@ -422,8 +431,8 @@ Hooks receive JSON input via stdin containing:
   "cwd": "/workspace/path",
   "hook_event_name": "PostToolUse",
   "tool_name": "write_file",
-  "tool_input": {"path": "file.txt", "text": "content"},
-  "tool_response": {"success": true}
+  "tool_input": { "path": "file.txt", "text": "content" },
+  "tool_response": { "success": true }
 }
 ```
 
@@ -442,6 +451,7 @@ cat /tmp/snapshot-test/.ah/snapshots/evidence.log
 ```
 
 **Current Status**: Hook verification infrastructure is complete:
+
 - ✅ **Codex CLI**: Hooks are enabled and verified in integration tests using `--rollout-hook`
 - ⚠️ **Claude Code**: Hooks work in interactive mode but are bypassed in API client mode
 - 🏗️ **Infrastructure**: Complete hook execution verification with evidence logging
@@ -449,13 +459,14 @@ cat /tmp/snapshot-test/.ah/snapshots/evidence.log
 
 **Evidence File Format:**
 Each snapshot creates a JSON line in the evidence file:
+
 ```json
 {
   "timestamp": "2025-09-22T10:30:45.123456",
   "session_id": "test-session-snapshots-123",
   "tool_name": "write_file",
-  "tool_input": {"path": "hello.py", "text": "..."},
-  "tool_response": {"success": true},
+  "tool_input": { "path": "hello.py", "text": "..." },
+  "tool_response": { "success": true },
   "event": "PostToolUse",
   "snapshot_id": "snapshot-2025-09-22T10-30-45-123456",
   "provider": "mock-fs-snapshot"
@@ -493,11 +504,7 @@ Interactive tests use predefined JSON scenarios that describe the complete user 
   "steps": [
     {
       "type": "expect",
-      "patterns": [
-        "Do you want to use this API key\\?",
-        "Enter to confirm",
-        "TIMEOUT"
-      ],
+      "patterns": ["Do you want to use this API key\\?", "Enter to confirm", "TIMEOUT"],
       "timeout": 5,
       "description": "Wait for API key confirmation dialog"
     },

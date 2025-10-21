@@ -1,6 +1,7 @@
 Yes, here's a sketched solution using DYLD_INSERT_LIBRARIES to inject a custom dylib that interposes both bind() and connect() syscalls. This allows runtime remapping of IPs (e.g., redirecting binds/connections from 127.0.0.1 to 127.0.0.2) or ports (e.g., shifting a specific port to another) without modifying the original executable. The interposition happens transparently when the process calls these functions.
 
 This assumes:
+
 - The target processes are not hardened against dyld injection (i.e., they lack the hardened runtime or have the `com.apple.security.cs.allow-dyld-environment-variables` entitlement).
 - You've configured loopback aliases (e.g., `sudo ifconfig lo0 alias 127.0.0.2 up`).
 - For simplicity, the sketch focuses on IPv4 (AF_INET); extend to IPv6 (AF_INET6) by checking `sin6_family` and modifying `sin6_addr` similarly.
@@ -19,6 +20,7 @@ This assumes:
    - Sign: `codesign -f -s - remap.dylib` (ad-hoc signing is fine for local use).
 
    Here's the code sketch for `remap.c`:
+
    ```
    #include <sys/types.h>
    #include <sys/socket.h>

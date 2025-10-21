@@ -36,6 +36,7 @@ Crush can be started with various invocations:
 **Status: UNKNOWN**
 
 Crush does not appear to have documented support for per-step custom hooks in the available materials. However, as an open-source project, it may be possible to:
+
 - Contribute hook functionality
 - Use MCP servers for extensibility
 - Monitor log files for step-by-step tracking
@@ -47,6 +48,7 @@ Investigation required to determine if hooks can be implemented for Agent Time T
 **Status: TO BE DETERMINED**
 
 As Crush uses configuration files, likely approaches:
+
 - Pre-create configuration JSON in expected locations
 - Set environment variables for API keys
 - Use command-line flags (to be documented from `--help`)
@@ -67,6 +69,7 @@ Further testing needed.
 **Status: TO BE DETERMINED**
 
 Session management capabilities need to be investigated by:
+
 - Examining configuration directory structure
 - Testing session persistence across restarts
 - Reviewing source code if needed
@@ -76,10 +79,12 @@ Session management capabilities need to be investigated by:
 Based on typical Charmbracelet application patterns:
 
 **Likely locations:**
+
 - **Linux/macOS**: `~/.config/crush/` or `~/.local/share/crush/`
 - **Windows**: `%APPDATA%\crush\` or `%LOCALAPPDATA%\crush\`
 
 Crush stores logs locally in project directories:
+
 - `./.crush/logs/crush.log` (per-project logs)
 
 Investigation required to confirm session storage paths.
@@ -112,11 +117,13 @@ Crush supports Model Context Protocol (MCP) through three transport types:
 **Configuration method:**
 
 MCP servers are configured via JSON configuration files. The exact structure and location need to be documented by:
+
 1. Running `crush --help` to find config file paths
 2. Examining example configuration files from the repository
 3. Testing MCP server integration
 
 **Example configuration pattern** (to be confirmed):
+
 ```json
 {
   "mcp_servers": [
@@ -134,6 +141,7 @@ MCP servers are configured via JSON configuration files. The exact structure and
 Crush supports multiple AI provider authentication:
 
 **Supported providers:**
+
 - Anthropic
 - OpenAI
 - Gemini (Google)
@@ -145,6 +153,7 @@ Crush supports multiple AI provider authentication:
 **Configuration storage:**
 
 Credentials and settings are stored in JSON configuration files:
+
 - **Linux/macOS**: `~/.config/crush/config.json` (likely)
 - **Windows**: `%APPDATA%\crush\config.json` (likely)
 
@@ -168,6 +177,7 @@ Credentials and settings are stored in JSON configuration files:
 ## Installation Methods
 
 **Package managers:**
+
 ```bash
 # Homebrew
 brew install charmbracelet/tap/crush

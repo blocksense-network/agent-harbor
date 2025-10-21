@@ -22,7 +22,7 @@ Python packages are typically added to the Nix flake.
 Node.js packages are managed with yarn in PnP mode. One exception is the Playwright package, for which we manage the browsers through the nix flake.
 Rust packages are managed with Cargo, while Rust itself is pinned in the nix flake.
 Feel free to add any additional software that is needed for the project goals by expanding the nix flake.
-After addign new dependencies, always make sure that you are adding a recent version. You can run `just outdated` to search for outdated packages.
+After adding new dependencies, always make sure that you are adding a recent version. You can run `just outdated` to search for outdated packages.
 When you are facing issues with a dependency, make sure to study its implementation files that you can find in the local nix store, the local cargo cache, the local yarn cache, etc.
 
 ## Code quality guidelines

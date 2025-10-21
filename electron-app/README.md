@@ -52,6 +52,7 @@ yarn dev
 ### Development Mode
 
 The `yarn dev` command starts Vite with the Electron plugin, which:
+
 - Compiles TypeScript for main and renderer processes
 - Launches Electron automatically
 - Watches for file changes and hot-reloads
@@ -68,6 +69,7 @@ yarn build
 ```
 
 This creates installers in `release/` directory:
+
 - macOS: .dmg and .pkg
 - Windows: .exe (NSIS) and .msi
 - Linux: .AppImage, .deb, .rpm
@@ -98,11 +100,12 @@ yarn type-check
 
 To verify Rust native addon integration:
 
+<!-- prettier-ignore -->
 ```typescript
 // In main process
 import addon from './path/to/ah-gui-core';
-console.log(addon.helloFromRust());  // Should output: "Hello from Agent Harbor GUI Core (Rust)!"
-console.log(addon.getPlatform());    // Should output: "darwin", "linux", or "win32"
+console.log(addon.helloFromRust()); // Should output: "Hello from Agent Harbor GUI Core (Rust)!"
+console.log(addon.getPlatform());   // Should output: "darwin", "linux", or "win32"
 ```
 
 ## Milestone Status

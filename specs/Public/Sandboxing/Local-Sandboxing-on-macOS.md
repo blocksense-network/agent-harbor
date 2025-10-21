@@ -133,9 +133,10 @@ TODO: This also looks like part of the shared normative spec.
   - The supervisor/launcher assigns and manages the port map per session (aligned with the session’s allocated port window). ES audits outcomes.
 
 Notes:
-  - Strategies B/C are mutually exclusive with A; they can be toggled via CLI/config.
-  - Loopback device aliases (e.g., `lo0` alias `127.0.0.2`) must be preconfigured by the launcher when device‑based isolation is enabled.
-  - For outbound non‑localhost traffic, ES default‑deny with user approvals (domain/IP caching) still applies when egress is enabled.
+
+- Strategies B/C are mutually exclusive with A; they can be toggled via CLI/config.
+- Loopback device aliases (e.g., `lo0` alias `127.0.0.2`) must be preconfigured by the launcher when device‑based isolation is enabled.
+- For outbound non‑localhost traffic, ES default‑deny with user approvals (domain/IP caching) still applies when egress is enabled.
 
 ---
 
@@ -327,5 +328,3 @@ Timeouts yield default‑deny with a clear UI message; all decisions are audited
 - Structured logs (JSON) for launcher, ES extension, and supervisor including session id, pid, op, path/addr, decision, latency.
 
 - Metrics: ES decision rates, cache hit rates, prompt counts, resource usage; exposed to the CLI and UI.
-
-

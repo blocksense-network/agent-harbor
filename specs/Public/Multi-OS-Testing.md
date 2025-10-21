@@ -107,11 +107,11 @@ ah agent followers run --host win-12 -- lint
 
 This is done through the `ah agent followers slurp` command which takes a list of file sets. Each file set has the following properties:
 
-* name: string (consisting of alphanumeric characters, dashes and underscores)
-* include: array of paths and blobs (in URL-encoded form can be repeated)
-* exclude: array of paths and blobs to exclude (filtered from the selection of included files)
-* required: optional boolean (yes|no|true|false|1|0)
-* dest: destination folder path where the downloaded files will appear
+- name: string (consisting of alphanumeric characters, dashes and underscores)
+- include: array of paths and blobs (in URL-encoded form can be repeated)
+- exclude: array of paths and blobs to exclude (filtered from the selection of included files)
+- required: optional boolean (yes|no|true|false|1|0)
+- dest: destination folder path where the downloaded files will appear
 
 `--fileset-data=<data>` accept a fileset in URL-encoded form
 `--fileset <name>` expects the fileset to be registered by name in the configuration files
@@ -134,7 +134,6 @@ All metadata (host, mtime, checksum) is recorded in the session timeline so REST
 The execution of tests can be accelerated by adding more followers.
 
 `ah agent followers run` accepts multiple `--command` entries and shards them across all matching executors. The scheduler builds a job queue and assigns tasks round-robin while respecting per-host concurrency=1 to avoid oversubscription. Each command is scheduled on exactly one executor per operating system. All outputs are collected before being returned to the agent.
-
 
 ## Connectivity Layer — QUIC Control + SSH over CONNECT
 

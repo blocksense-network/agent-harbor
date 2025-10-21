@@ -60,6 +60,7 @@ When using Nix flakes for development environment management, integrating Xcode'
 ### System Requirements
 
 1. **Install Full Xcode**:
+
    ```bash
    # Install from Mac App Store or developer portal
    sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
@@ -89,13 +90,16 @@ When using Nix flakes for development environment management, integrating Xcode'
 ### Troubleshooting
 
 **Error: "tool 'xcodebuild' requires Xcode"**
+
 - Solution: Ensure full Xcode is installed and selected with `xcode-select`
 
 **Error: SDK not found**
+
 - Solution: Add required frameworks to `nativeBuildInputs`
 - Common frameworks: CoreFoundation, Security, AppKit, UIKit
 
 **Build fails with missing headers**
+
 - Solution: Check that `apple_sdk.frameworks` includes required SDK components
 
 ### Alternative Approaches

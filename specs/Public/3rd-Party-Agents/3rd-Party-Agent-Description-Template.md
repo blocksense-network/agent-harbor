@@ -2,25 +2,25 @@ This template defines the information we collect for each agentic coding tool su
 
 We'll aim to collect the following information for all agent types supported by Agent Harbor:
 
-* Codex CLI
-* Claude Code
-* Cursor CLI
-* Gemini CLI
-* Cursor VS Code Extension
-* GitHub Copilot CLI
-* GitHub Copilot VS Code Extension
-* OpenCode
-* Windsurf
-* Cline CLI
-* Cline VS Code Extension
-* Crush
-* Goose
-* Kilo Code
-* Roo Code
-* Qwen Code
-* OpenHands
-* Amp
-* Groq Code CLI
+- Codex CLI
+- Claude Code
+- Cursor CLI
+- Gemini CLI
+- Cursor VS Code Extension
+- GitHub Copilot CLI
+- GitHub Copilot VS Code Extension
+- OpenCode
+- Windsurf
+- Cline CLI
+- Cline VS Code Extension
+- Crush
+- Goose
+- Kilo Code
+- Roo Code
+- Qwen Code
+- OpenHands
+- Amp
+- Groq Code CLI
 
 # <Agent Tool> — Integration Notes
 

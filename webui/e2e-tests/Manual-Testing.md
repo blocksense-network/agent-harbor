@@ -34,6 +34,7 @@ yarn workspace ah-webui-e2e-tests run test:ui
 ```
 
 This opens a GUI where you can:
+
 - Click individual tests to run them
 - See test code alongside browser
 - Step through tests interactively

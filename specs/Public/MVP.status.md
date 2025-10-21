@@ -63,7 +63,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 **0.1 Repository Structure Reorganization** COMPLETED
 
 - Deliverables:
-
   - Reorganize repository structure according to [Repository-Layout.md](Repository-Layout.md)
   - Move existing Ruby code to `legacy/ruby/` preserving all functionality
   - Update all import paths and references in moved files
@@ -71,7 +70,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Rename all existing just targets to have a `legacy-` prefix.
 
 - Implementation Details:
-
   - Core Ruby library code moved to `legacy/ruby/lib/` and `legacy/ruby/test/`
   - Executable scripts remain in `bin/` and `scripts/` for functionality but reference legacy paths
   - Import paths updated (e.g., `bin/agent-task` now requires `../legacy/ruby/lib/agent_task/cli`)
@@ -87,7 +85,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 **0.2 Rust Workspace & Core Crates Bootstrap** COMPLETED
 
 - Deliverables:
-
   - Create initial `Cargo.toml` workspace configuration
   - Implement `ah-core` crate skeleton with task/session lifecycle orchestration
   - Set up `ah-local-db` crate skeleton for SQLite database management
@@ -101,7 +98,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Add essential dependencies: tokio, serde, clap, rusqlite, etc.
 
 - Implementation Details:
-
   - Cargo.toml workspace configured with 25+ crates including core crates (`ah-core`, `ah-local-db`, `ah-fs-snapshots`), filesystem providers (`ah-fs-snapshots-zfs`, `ah-fs-snapshots-btrfs`), sandboxing (`ah-sandbox`, `ah-sandbox-linux`), and supporting crates
   - All crates implement proper module structure and dependencies
   - Essential dependencies configured in workspace: tokio, serde, clap, rusqlite, tracing, nix, async-trait, etc.
@@ -109,7 +105,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Sandbox crates follow subcrates pattern with platform-specific implementations
 
 - Key Source Files:
-
   - `Cargo.toml` - Workspace configuration with all crate members and shared dependencies
   - `crates/ah-core/src/lib.rs` - Task/session lifecycle orchestration skeleton
   - `crates/ah-local-db/src/lib.rs` - SQLite database management skeleton
@@ -128,7 +123,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 **0.3 Privileged FS Operations Daemon** COMPLETED
 
 - **Deliverables**:
-
   - Rust daemon binary (`bins/ah-fs-snapshots-daemon`) with Unix socket server (the implementation should operate similarly to the reference implementation `bin/ah-fs-snapshots-daemon` which should be moved to the legacy/ruby folder; The new implementation should be made production-ready)
   - Length-prefixed SSZ marshaling format for communication (see [Using-SSZ.md](../Research/Using-SSZ.md) for implementation reference)
   - Basic ZFS operations (snapshot, clone, delete) with sudo privilege escalation
@@ -139,7 +133,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - **Stdin-driven mode**: daemon should provide option to accept SSZ-encoded commands from stdin as alternative to Unix socket communication
 
 - **Implementation Details**:
-
   - Created new Rust crate `ah-fs-snapshots-daemon` with async Tokio-based Unix socket server
   - Implemented proper SSZ union types for type-safe daemon communication (using `ethereum-ssz` with union behavior)
   - Added comprehensive ZFS and Btrfs operations (snapshot, clone, delete) with sudo privilege escalation and full validation
@@ -150,7 +143,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Concurrent request handling with async/await patterns
 
 - **Key Source Files**:
-
   - `crates/ah-fs-snapshots-daemon/src/main.rs` - Main binary entry point
   - `crates/ah-fs-snapshots-daemon/src/server.rs` - Unix socket server implementation
   - `crates/ah-fs-snapshots-daemon/src/operations.rs` - Filesystem operations with validation
@@ -158,7 +150,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - `Justfile` - Added `start-ah-fs-snapshots-daemon`, `stop-ah-fs-snapshots-daemon`, `check-ah-fs-snapshots-daemon` targets
 
 - **Future Enhancements** (non-blocking for MVP):
-
   - Consider alternatives to sudo requirement for privileged operations
 
 - **Verification Results**:
@@ -173,7 +164,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 **0.4 FS Snapshots Core API** COMPLETED (parallel with 0.5-0.6)
 
 - **Deliverables**:
-
   - Complete `ah-fs-snapshots` crate with `FsSnapshotProvider` trait matching FS-Snapshots-Overview.md specification
   - `prepare_writable_workspace()`, `snapshot_now()`, `mount_readonly()`, `branch_from_snapshot()`, and `cleanup()` method implementations
   - Provider auto-detection logic (`provider_for(path)`) with capability scoring
@@ -181,7 +171,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Integration with daemon for privileged operations (ZFS/Btrfs providers communicate with ah-fs-snapshots-daemon)
 
 - **Implementation Details**:
-
   - Implemented complete `FsSnapshotProvider` trait with all methods specified in FS-Snapshots-Overview.md
   - Added `ProviderCapabilities`, `PreparedWorkspace`, `SnapshotRef` structs for type-safe API
   - ZFS provider supports CoW overlay mode with snapshot + clone operations via daemon
@@ -191,7 +180,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Robust cleanup token system for idempotent resource teardown
 
 - **Key Source Files**:
-
   - `crates/ah-fs-snapshots/src/lib.rs` - Core trait definition and provider selection logic
   - `crates/ah-fs-snapshots-zfs/src/lib.rs` - ZFS provider implementation with daemon integration
   - `crates/ah-fs-snapshots-btrfs/src/lib.rs` - Btrfs provider implementation
@@ -207,7 +195,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 **0.5 ZFS Snapshot Provider** COMPLETED (parallel with 0.3-0.4, 0.6)
 
 - **Deliverables**:
-
   - Complete `ah-fs-snapshots-zfs` crate with ZFS dataset operations
   - Dataset detection and mount point resolution
   - Snapshot creation, clone mounting, and cleanup via daemon communication
@@ -215,7 +202,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Comprehensive unit tests covering all provider functionality
 
 - **Implementation Details**:
-
   - Created separate `ah-fs-snapshots-traits` crate to avoid circular dependencies
   - ZFS provider uses daemon client for all privileged ZFS operations (snapshot, clone, destroy)
   - Supports CoW overlay mode with automatic dataset detection and mount point resolution
@@ -224,7 +210,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Proper cleanup token system for idempotent resource management
 
 - **Key Source Files**:
-
   - `crates/ah-fs-snapshots-traits/src/lib.rs` - Common traits and types
   - `crates/ah-fs-snapshots-zfs/src/lib.rs` - ZFS provider implementation
   - `crates/ah-fs-snapshots-daemon/src/client.rs` - Daemon client library
@@ -240,7 +225,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 **0.6 FS Snapshots Test Infrastructure** COMPLETED (parallel with 0.3-0.5)
 
 - **Deliverables**:
-
   - Port filesystem test helpers (`filesystem_test_helper.rb`) to Rust with `ZfsTestEnvironment` struct (focused on ZFS/Btrfs)
   - ZFS and Btrfs pool/subvolume creation for CI/testing environments with automatic cleanup (no loop device filesystems)
   - Port provider behavior tests (`provider_shared_behavior.rb`) with trait-based test organization
@@ -249,7 +233,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - **Reference existing Ruby test suite** (`test/snapshot/`) for test patterns and edge cases
 
 - **Implementation Details**:
-
   - Created `ZfsTestEnvironment` struct for managing ZFS test pools (removed loop device filesystem support per requirements)
   - Added ZFS pool creation on file-based devices with dataset setup and mounting
   - Implemented full Btrfs provider support with subvolume snapshots and CoW operations
@@ -261,7 +244,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Enabled Btrfs support in default feature set alongside ZFS
 
 - **Key Source Files**:
-
   - `crates/ah-fs-snapshots/tests/filesystem_test_helpers.rs` - ZFS test pool management (no loop devices)
   - `crates/ah-fs-snapshots/tests/space_utils.rs` - Space measurement utilities
   - `crates/ah-fs-snapshots/tests/provider_core_behavior.rs` - Core provider test behaviors
@@ -271,7 +253,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - `Justfile` - Added `test-fs-snapshots` and `test-fs-snapshots-unit` targets
 
 - **Verification Results**:
-
   - [x] Rust test infrastructure compiles and provides ZFS/Btrfs test management
   - [x] ZFS and Btrfs providers compile and integrate correctly
   - [x] Provider auto-detection selects best provider (ZFS > Btrfs)
@@ -283,7 +264,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - [x] Btrfs support enabled in default feature set
 
 - **Implementation Status**:
-
   - [x] Create `ah-fs-snapshots-git` crate skeleton
   - [x] Implement shadow repository management with alternates for object sharing
   - [x] Add session index file handling for incremental snapshots
@@ -294,7 +274,6 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - [x] Comprehensive testing and documentation (unit tests, integration tests, test helpers)
 
 - **Implementation Details**:
-
   - Created complete `ah-fs-snapshots-git` crate implementing `FsSnapshotProvider` trait
   - Implemented shadow repository management with alternates for efficient object sharing between primary and shadow repositories
   - Added session-indexed snapshots using `git commit-tree` with temporary index files for incremental filesystem state capture
@@ -305,14 +284,12 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
   - Comprehensive test suite with unit tests, integration tests, and reusable git test helpers in `ah-repo` crate
 
 - **Key Source Files**:
-
   - `crates/ah-fs-snapshots-git/src/lib.rs` - Complete Git provider implementation with shadow repo management and worktree support
   - `crates/ah-repo/src/test_helpers.rs` - Git repository test helpers with `GitRepoConfig` builder pattern and comprehensive test utilities
   - `crates/ah-fs-snapshots/src/lib.rs` - Provider selection logic with Git provider integration
   - `crates/ah-fs-snapshots-git/src/test_helpers.rs` (removed) - Moved to `ah-repo` crate for better organization
 
 - **Verification Results**:
-
   - [x] Git provider implements complete `FsSnapshotProvider` trait with all required methods
   - [x] Shadow repository management works with alternates for object sharing efficiency
   - [x] Session-indexed snapshots create proper commit trees with metadata
@@ -340,7 +317,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.1 VCS Repository Abstraction** COMPLETED
 
 - **Deliverables**:
-
   - Direct port of `legacy/ruby/lib/vcs_repo.rb` to Rust `ah-repo` crate (per Repository-Layout.md):
     - Multi-VCS support: Git, Mercurial, Bazaar, Fossil (same VCS types as Ruby implementation)
     - Repository root detection by walking parent directories (same logic as `find_repo_root`)
@@ -362,7 +338,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Reference Tests**: Port test patterns from [legacy/ruby/test/test_vcs_repo_methods.rb](../../legacy/ruby/test/test_vcs_repo_methods.rb) and [legacy/ruby/test/test_start_task.rb](../../legacy/ruby/test/test_start_task.rb)
 
 - **Implementation Details**:
-
   - Created `ah-repo` crate with synchronous API using std::process for all VCS operations
   - Implemented `VcsRepo` struct with methods matching Ruby implementation exactly
   - Added `VcsType` enum for Git, Hg, Bzr, Fossil support with per-VCS command builders
@@ -386,7 +361,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.2 Task File Management System** COMPLETED
 
 - **Deliverables**:
-
   - Direct port of task file logic from `legacy/ruby/lib/agent_tasks.rb` to `ah-core` crate (per Repository-Layout.md task/session lifecycle orchestration):
     - Timestamped file naming: `.agents/tasks/YYYY/MM/DD-HHMM-branch_name` (same format as `record_initial_task`)
     - Task file format with follow-up delimiter `--- FOLLOW UP TASK ---` (same as `append_task`)
@@ -400,7 +374,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Reference Tests**: Port test patterns from [legacy/ruby/test/test_start_task.rb](../../legacy/ruby/test/test_start_task.rb) `assert_task_branch_created` helper and task file assertions
 
 - **Implementation Details**:
-
   - Created `AgentTasks` struct with async API matching `ah-repo` requirements
   - Implemented `record_initial_task()` method with timestamped file naming and directory creation
   - Implemented `append_task()` method with proper delimiter handling
@@ -410,7 +383,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Methods are async for HTTP operations and task file I/O
 
 - **Key Source Files**:
-
   - `crates/ah-core/src/agent_tasks.rs` - AgentTasks struct and implementation
   - `crates/ah-core/tests/agent_tasks_tests.rs` - Comprehensive test suite (11 tests)
   - `crates/ah-core/Cargo.toml` - Updated with ah-repo and ureq dependencies
@@ -427,7 +399,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.3 Editor Integration** COMPLETED (depends on 1.1)
 
 - **Deliverables**:
-
   - Direct port of editor logic from `legacy/ruby/lib/agent_task/cli.rb` to Rust:
     - Editor discovery chain: `$EDITOR` → nano → pico → micro → vim → helix → vi (same order as Ruby)
     - Temporary file creation with task template `EDITOR_HINT` (exact same text as Ruby)
@@ -439,7 +410,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Reference Tests**: Port test patterns from [legacy/ruby/test/test_start_task.rb](../../legacy/ruby/test/test_start_task.rb) `test_editor_failure` and `test_empty_file` tests
 
 - **Implementation Details**:
-
   - Created `editor.rs` module in `ah-core` crate with comprehensive editor functionality
   - Implemented `discover_editor()` function with same fallback chain as Ruby implementation
   - Created `edit_content_interactive()` function for full editing workflow with temporary files
@@ -448,7 +418,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Added `tempfile` dependency to `ah-core` for temporary file management
 
 - **Key Source Files**:
-
   - `crates/ah-core/src/editor.rs` - Complete editor integration module
   - `crates/ah-core/src/lib.rs` - Updated exports for editor functionality
   - `crates/ah-core/Cargo.toml` - Added tempfile dependency
@@ -465,7 +434,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.4 Devshell Integration** COMPLETED (depends on 1.1)
 
 - **Deliverables**:
-
   - Direct port of devshell logic from `legacy/ruby/lib/agent_task/cli.rb` to Rust:
     - Nix flake detection and devShell parsing (same `devshell_names` function logic)
     - Devshell name validation against `flake.nix` devShells (same validation as Ruby)
@@ -477,14 +445,12 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Reference Tests**: Port test patterns from [legacy/ruby/test/test_start_task.rb](../../legacy/ruby/test/test_start_task.rb) `test_devshell_option`, `test_devshell_option_invalid`, and `test_devshell_without_flake` tests
 
 - **Implementation Details**:
-
   - Created `devshell.rs` module in `ah-core` crate with async `devshell_names()` function
   - Implemented three-tier fallback: nix eval for current system → nix eval for all systems → regex parsing
   - Added comprehensive test suite covering all scenarios from Ruby tests
   - Integrated devshell functionality into `ah-core` lib.rs exports
 
 - **Key Source Files**:
-
   - `crates/ah-core/src/devshell.rs` - Complete devshell parsing implementation with nix eval and regex fallbacks
   - `crates/ah-core/src/lib.rs` - Updated to export `devshell_names` function
   - `crates/ah-core/Cargo.toml` - Added regex dependency for fallback parsing
@@ -502,7 +468,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.5 Push Operations & Remote Management** COMPLETED (depends on 1.1)
 
 - **Deliverables**:
-
   - Direct port of push logic from `legacy/ruby/lib/agent_task/cli.rb` to Rust:
     - Remote URL detection from VCS configuration (same as `default_remote_http_url`)
     - SSH-to-HTTPS URL conversion for Git remotes (same conversion logic)
@@ -515,7 +480,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Reference Tests**: Port test patterns from VCS repo tests and task creation tests for push operations
 
 - **Implementation Details**:
-
   - Created `push.rs` module in `ah-core` crate with `PushHandler` and `PushOptions` structs
   - Implemented boolean parsing for `--push-to-remote` flag with same truthy/falsy values as Ruby (`1`, `true`, `yes`, `y` / `0`, `false`, `no`, `n`)
   - Added interactive prompt logic with exact same prompt text: "Push to default remote? [Y/n]:"
@@ -523,7 +487,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Proper error handling for non-interactive environments (same exit behavior as Ruby)
 
 - **Key Source Files**:
-
   - `crates/ah-core/src/push.rs` - Complete push handling implementation with interactive prompts and VCS integration
   - `crates/ah-core/src/lib.rs` - Updated to export push functionality (`PushHandler`, `PushOptions`, `parse_push_to_remote_flag`)
 
@@ -541,7 +504,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.6 AH Task CLI Implementation** COMPLETED (1 week, depends on 1.1-1.5)
 
 - **Deliverables**:
-
   - Complete `ah task` command implementation in `ah-cli` crate (per Repository-Layout.md) with Clap derive API
   - Direct port of CLI argument parsing from `legacy/ruby/lib/agent_task/cli.rb` `start_task`:
     - `--prompt <TEXT>`: Direct task content (same as Ruby `--prompt` option)
@@ -558,7 +520,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Reference Tests**: Port comprehensive test patterns from [legacy/ruby/test/test_start_task.rb](../../legacy/ruby/test/test_start_task.rb) including all test cases for different VCS types
 
 - **Implementation Details**:
-
   - Created `task.rs` module in `ah-cli` crate with Clap derive API and complete workflow implementation
   - Implemented `TaskCommands` and `TaskCreateArgs` structs with all Ruby-compatible options
   - Integrated all core components: VCS repo abstraction, task file management, editor integration, devshell validation, and push operations
@@ -569,7 +530,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Made VcsRepo synchronous with no async interfaces for cleaner integration testing
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/task.rs` - Complete task CLI implementation with argument parsing and workflow orchestration
   - `crates/ah-cli/src/lib.rs` - Updated to include task module and CLI structure
   - `crates/ah-cli/src/main.rs` - Updated to handle task subcommands
@@ -613,7 +573,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.7 AH CLI Sandbox Integration** COMPLETED (2–3d, depends on 1.6 + Local-Sandboxing-on-Linux.md M1-M8)
 
 - **Deliverables**:
-
   - **AH CLI Parameters**: Initial `ah agent sandbox` parameter set matching current capabilities:
     - `--type local`: Enable basic process isolation (namespaces + filesystem sealing)
     - `--allow-network <yes|no>`: Allow internet access via slirp4netns (default: no)
@@ -627,14 +586,12 @@ Parallel development enables faster progress while maintaining clean dependency 
   - **AH Task Integration**: Sandbox parameters added to `ah task` command for agent execution in isolated environments
 
 - **Implementation Details**:
-
   - **Pre-sandbox Workflow**: FS snapshot provider clones workspace to temporary location before sandbox launch, providing source→destination path pairs for bind mounting
   - **Sandbox Launch Protocol**: Sandbox receives list of path pairs (host_path→sandbox_path) and performs bind mounts during initialization
   - **Sudo-less Snapshots**: The `ah-fs-snapshots-daemon` ([`crates/ah-fs-snapshots-daemon/`](../../crates/ah-fs-snapshots-daemon/)) provides privileged filesystem operations (ZFS/Btrfs snapshots) without requiring sudo in user applications; the same daemon used for testing will enable snapshot operations for `ah agent sandbox`.
   - **Integration Points**: Combines MVP FS snapshots (Phase 0.4-0.6) with sandboxing ([Local-Sandboxing-on-Linux.status.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-Linux.status.md) M1-M8)
 
 - **Verification Results**:
-
   - [x] AH CLI Parameters: `ah agent sandbox` subcommand implemented with all specified CLI flags (`--type local`, `--allow-network`, `--allow-containers`, `--allow-kvm`, `--seccomp`, `--seccomp-debug`, `--mount-rw`, `--overlay`)
   - [x] FS Snapshot Pre-cloning: Implemented workspace preparation with ZFS/Btrfs logic using `prepare_workspace_with_fallback()`
   - [x] AH Task Integration: Sandbox parameters added to `ah task` command with proper argument parsing and validation
@@ -645,14 +602,12 @@ Parallel development enables faster progress while maintaining clean dependency 
   - [ ] All sandbox integration tests use custom `AH_HOME` for environment isolation from user configuration
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/task.rs` - AH task command with sandbox parameter integration
   - `crates/ah-core/src/sandbox.rs` - Sandbox configuration mapping from CLI parameters
   - `crates/ah-fs-snapshots/src/lib.rs` - Pre-sandbox snapshot cloning interface
   - `tests/integration/sandbox_cli_integration.rs` - E2E tests for AH CLI sandbox integration
 
 - **Cross-Spec Dependencies**:
-
   - **[Local-Sandboxing-on-Linux.status.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-Linux.status.md) M1-M8**: Provides the sandbox implementation this milestone integrates
   - **FS-Snapshots-Overview.md**: Defines snapshot cloning operations performed before sandbox creation
   - **CLI.md**: Defines the parameter interface this milestone implements
@@ -660,7 +615,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.8 AH Agent FS Commands Implementation** COMPLETED
 
 - **Deliverables**:
-
   - **Filesystem Detection Command**: `ah agent fs status` - Run filesystem detection and report capabilities, provider selection, and mount point information
   - **Session Snapshot Management**: `ah agent snapshot` - Create snapshots for agent sessions using standard repository and provider selection
   - **Snapshot Listing**: `ah agent fs snapshots <SESSION_ID>` - List snapshots created in agent coding sessions
@@ -671,7 +625,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - **State Persistence**: Recording of snapshot and branch metadata in local SQLite database
 
 - **Test Filesystem Details** (created by `just create-test-filesystems`):
-
   - **ZFS Filesystem**: Pool `AH_test_zfs`, dataset `test_dataset`
     - Linux mount point: `/AH_test_zfs/test_dataset`
     - macOS mount point: `/Volumes/AH_test_zfs/test_dataset`
@@ -683,7 +636,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - **Status Check**: Use `just check-test-filesystems` to verify if test filesystems are already created and properly mounted
 
 - **Implementation Details**:
-
   - **Filesystem Detection**: Implemented `ah agent fs status` with JSON and verbose output modes, integrating with `ah_fs_snapshots::provider_for()` logic
   - **Command Structure**: Complete Clap-based CLI implementation for all agent FS commands with proper help text and argument parsing
   - **Note**: Snapshot metadata is authoritative in the filesystem providers (ZFS/Btrfs/Git/AgentFS). The CLI does not duplicate snapshot state in SQLite.
@@ -691,7 +643,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - **Branch Operations**: Command structures implemented for all branch operations (awaiting AgentFS integration)
 
 - **Verification Results**:
-
   - [x] Command structure: All `ah agent fs` commands implemented with complete CLI argument parsing and help text
   - [x] Filesystem status: `ah agent fs status` command works with provider detection and capability reporting
   - [x] Database models: `FsSnapshotRecord` and `FsSnapshotStore` implemented in ah-local-db crate
@@ -702,7 +653,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - [ ] All agent FS integration tests use custom `AH_HOME` for environment isolation from user configuration
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/agent/fs.rs` - Complete agent FS command implementations with Clap argument parsing (status, snapshots, branch ops) and `ah agent snapshot`
   - `crates/ah-local-db/src/models.rs` - FsSnapshotRecord and FsSnapshotStore database models and operations
   - `crates/ah-local-db/src/schema.rs` - Database schema definitions
@@ -710,14 +660,12 @@ Parallel development enables faster progress while maintaining clean dependency 
   - `crates/ah-cli/src/task.rs` - Task execution workflow with snapshot integration placeholder
 
 - **Cross-Spec Dependencies**:
-
   - **FS-Snapshots-Overview.md**: Defines snapshot and branch operations implemented by these commands
   - **Agent-Time-Travel.md**: Provides the time travel use cases that drive FS branch operations
   - **Local-Mode.md**: Defines session lifecycle integration points
   - **State-Persistence.md**: Defines the SQL schema used for snapshot metadata storage
 
 - **Implementation Notes**:
-
   - Command structures and CLI interfaces are complete and ready for AgentFS integration
   - Database models and schema are implemented (awaiting state persistence milestone activation)
   - All commands currently show informative messages about future functionality when AgentFS and database persistence are implemented
@@ -735,7 +683,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.9 Task State Persistence** (parallel with 1.6)
 
 - **Deliverables**:
-
   - Integration with `ah-local-db` crate for task state persistence (per State-Persistence.md specification)
   - Task metadata storage (branch, repository, timestamps, status) following State-Persistence.md schema
   - Session lifecycle tracking tied to task execution using SQLite database
@@ -744,7 +691,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Support for `AH_HOME` environment variable to customize user configuration and database location
 
 - **Verification**:
-
   - [ ] Tasks recorded in SQLite database on creation following State-Persistence.md schema
   - [ ] Task metadata includes all required fields from State-Persistence.md tables
   - [ ] Database migrations handle schema evolution per State-Persistence.md versioning
@@ -755,7 +701,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - [ ] All state persistence integration tests use custom `AH_HOME` for environment isolation from user configuration
 
 - **Outstanding Tasks**:
-
   - Add unit tests for `ah-local-db` stores (Repo/Agent/Runtime/Session/Task/FsSnapshot/Kv) covering inserts, queries, and update paths.
   - Add integration tests in `ah-core`/`ah-cli` that verify session + task records are written on `ah task create`, honoring `AH_HOME` override.
   - Add migration tests to assert `schema_migrations` handling and idempotent re‑runs.
@@ -763,13 +708,11 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Implement automatic initial snapshot persistence hook in `ah task` when provider supports it, with tests.
 
 - **Cross-Spec Dependencies**:
-
   - **[State-Persistence.md](../../specs/Public/State-Persistence.md)**: Defines the complete SQL schema, backend selection rules, and data model used for task state persistence
 
 **1.10 Basic Codex Agent Integration** (1 week, depends on 1.6)
 
 - **Deliverables**:
-
   - Codex agent detection and validation
   - Direct `ah agent record` integration for session capture
   - Task execution orchestration with agent process management
@@ -786,7 +729,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **1.11 AH Task E2E Integration Tests** (1 week, depends on 1.6-1.11)
 
 - **Deliverables**:
-
   - Comprehensive end-to-end test suite for `ah task` workflows
   - Direct port of test infrastructure from `legacy/ruby/test/test_helper.rb`:
     - Temporary Git repository test fixtures (same `setup_repo` function)
@@ -825,7 +767,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 - **Current Status**: Basic server infrastructure implemented with stubbed endpoints
 
 - **Completed Components**:
-
   - ✅ Server infrastructure: Axum-based REST server with middleware stack (CORS, compression, request tracing)
   - ✅ Basic endpoints: `/healthz`, `/readyz`, `/version`, `/api/v1/openapi.json`
   - ✅ Authentication middleware: API key and JWT support (rustls-based crypto, no OpenSSL dependency)
@@ -836,7 +777,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - ✅ Database integration: Basic rusqlite connection (no schema/migrations yet)
 
 - **Stubbed/Placeholder Components**:
-
   - ⚠️ **Task creation endpoint** (`POST /api/v1/tasks`): Accepts requests but doesn't execute tasks
   - ⚠️ **Session management** (`GET/PUT/DELETE /api/v1/sessions`): Returns mock session data, no real state
   - ⚠️ **Session control** (`POST /api/v1/sessions/{id}/stop|pause|resume`): Returns success but no actual control
@@ -846,7 +786,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - ⚠️ **Project/workspace endpoints**: Return empty lists
 
 - **Outstanding Tasks**:
-
   - **Database Schema & Persistence**:
     - Implement proper database schema for sessions, tasks, logs
     - Add database migrations and session state persistence
@@ -913,7 +852,6 @@ Parallel development enables faster progress while maintaining clean dependency 
     - Implement client-side session management
 
 - **Testing Strategy** (Planned):
-
   - Comprehensive API contract tests against mock clients
   - End-to-end integration tests with mock executors
   - Authentication and authorization test suites
@@ -923,7 +861,6 @@ Parallel development enables faster progress while maintaining clean dependency 
   - Rate limiting and quota enforcement tests
 
 - **Verification** (Target):
-
   - All REST endpoints match [REST-Service/](REST-Service/) specification
   - API contract tests pass against mock server (100% endpoint coverage)
   - SSE streaming works reliably under various network conditions
@@ -944,7 +881,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.1 TUI Core Infrastructure**
 
 - **Deliverables**:
-
   - Create `ah-tui` crate with Ratatui-based TUI framework (per Repository-Layout.md)
   - Implement basic terminal event loop and rendering pipeline
   - Set up crossterm for input handling and screen management
@@ -961,7 +897,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.2 Multiplexer Integration**
 
 - **Deliverables**:
-
   - Implement multiplexer detection and auto-attachment logic (tmux > zellij > screen)
   - Create multiplexer session management with window/pane creation
   - Add window creation for new tasks with split panes (right=agent activity, left=editor/workspace)
@@ -978,7 +913,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.3 Dashboard Layout and Widgets**
 
 - **Deliverables**:
-
   - Implement main dashboard layout with top selectors and bottom task editor
   - Create fixed-height list widgets for Project, Branch, Agent selectors
   - Add multiline task description editor with resizable height (Ctrl+Up/Down)
@@ -995,7 +929,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.4 Selector Components and Filtering**
 
 - **Deliverables**:
-
   - Implement filtering input for each selector (prefix/substring matching)
   - Add keyboard navigation (arrows, PageUp/Down, Home/End) within fixed-height viewports
   - Connect Branch selector to VCS data (git commands in local mode, REST API in remote mode)
@@ -1013,7 +946,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.5 Dynamic Footer and Hotkeys**
 
 - **Deliverables**:
-
   - Implement context-sensitive footer with actionable shortcuts
   - Add hotkey handling: Tab/Shift+Tab cycling, Ctrl+F for filters, navigation keys
   - Create help overlay (F1) showing complete keymap
@@ -1031,7 +963,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.6 Error Handling and Validation**
 
 - **Deliverables**:
-
   - Add inline validation messages under selectors (branch not found, agent unsupported)
   - Implement error handling for failed operations with user-friendly messages
   - Add validation for task launch (required fields, valid selections)
@@ -1048,7 +979,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.7 Persistence and Configuration**
 
 - **Deliverables**:
-
   - Implement persistence of last selections (project, agent, branch) per repo/user scope
   - Add configuration integration for TUI preferences and defaults
   - Save/restore window layout and splitter positions
@@ -1065,7 +995,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.8 TUI Sophisticated E2E Testing Infrastructure**
 
 - **Deliverables**:
-
   - Set up comprehensive E2E testing framework using expectrl + portable-pty + insta
   - Create PTY-based test harness for simulating real terminal interactions
   - Implement snapshot testing for UI regression detection
@@ -1082,7 +1011,6 @@ Parallel development enables faster progress while maintaining clean dependency 
 **6.9 TUI Scenario-Based E2E Tests**
 
 - **Deliverables**:
-
   - Implement E2E test scenarios for all major TUI workflows
   - Add tests for selector filtering and navigation
   - Create tests for task launch with multiplexer window creation
@@ -1139,7 +1067,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **2.1 Codex Agent Integration** (depends on Phase 1.6 + Agent-Time-Travel.md Phase 0, parallel with 2.2)
 
 - Deliverables:
-
   - Codex agent wrapper with rollout file parsing (JSONL format from [Codex-Session-File-Format.md](../../Research/Codex-Session-File-Format.md))
   - Integrated `ah agent record` integration in task execution flow
   - Session timeline creation with SessionMoments for Codex
@@ -1157,7 +1084,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **2.2.5 Claude Code Mock Agent Support** (depends on Agent-Time-Travel.md Phase 0)
 
 - Deliverables:
-
   - Extend mock agent (`tests/tools/mock-agent/`) to support Claude Code session format
   - Implement Claude session file creation in `~/.claude/projects/<encoded-workspace-path>/<uuid>.jsonl`
   - Add Claude-compatible API server responses for tool execution and conversation threading
@@ -1175,7 +1101,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **2.2 Claude Code Agent Integration** (depends on Phase 1.6 + 2.2.5, parallel with 2.1)
 
 - Deliverables:
-
   - Claude Code agent wrapper with hook-based session recording (PostToolUse events)
   - Integrated `ah agent record` integration in task execution flow
   - Session timeline creation with SessionMoments for Claude Code
@@ -1193,7 +1118,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **2.3 Agent Runner & Session Management** (depends on 2.1 & 2.2)
 
 - Deliverables:
-
   - Agent execution coordination within main CLI for both Claude Code and Codex
   - Session management coordination between different agent types
   - Integration with mock agent for testing (`tests/tools/mock-agent/`)
@@ -1209,64 +1133,62 @@ The MVP implementation must coordinate across multiple specifications with prope
 
 |- **Deliverables**:
 
-  - Complete `ah agent start` command implementation in `ah-core` with thin wrapper in `ah-cli` with Clap derive API
-  - Agent execution coordination with sandbox and workspace setup
+- Complete `ah agent start` command implementation in `ah-core` with thin wrapper in `ah-cli` with Clap derive API
+- Agent execution coordination with sandbox and workspace setup
 
 |- **Mock-Agent Infrastructure Status**:
 
-  - Mock agent infrastructure is already implemented and functional ([tests/tools/mock-agent/](../../tests/tools/mock-agent/))
-  - Supports both Codex and Claude Code agent formats with session file generation
-  - Includes API server for testing IDE integrations with deterministic responses
-  - Provides `ah agent record` recording capabilities for session demonstrations
-  - Extensive test suite validates CLI functionality, file operations, and session recording
-  
+- Mock agent infrastructure is already implemented and functional ([tests/tools/mock-agent/](../../tests/tools/mock-agent/))
+- Supports both Codex and Claude Code agent formats with session file generation
+- Includes API server for testing IDE integrations with deterministic responses
+- Provides `ah agent record` recording capabilities for session demonstrations
+- Extensive test suite validates CLI functionality, file operations, and session recording
+
 |- **Cross-Spec Dependencies**:
 
-  - **[CLI.md](../../specs/Public/CLI.md)**: Defines the `ah agent start` command specification and argument interface
-  - **[Agent-Time-Travel.md](../../specs/Public/Agent-Time-Travel.md)**: Provides agent execution architecture and session recording patterns
-  - **[FS-Snapshots-Overview.md](../../specs/Public/FS Snapshots/FS-Snapshots-Overview.md)**: Defines workspace preparation for agent execution
-  - **[tests/tools/mock-agent/](../../tests/tools/mock-agent/)**: Provides mock agent and API server for testing
-  - **[Local-Sandboxing-on-Linux.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md)**: Provides sandbox execution environment for agents
+- **[CLI.md](../../specs/Public/CLI.md)**: Defines the `ah agent start` command specification and argument interface
+- **[Agent-Time-Travel.md](../../specs/Public/Agent-Time-Travel.md)**: Provides agent execution architecture and session recording patterns
+- **[FS-Snapshots-Overview.md](../../specs/Public/FS Snapshots/FS-Snapshots-Overview.md)**: Defines workspace preparation for agent execution
+- **[tests/tools/mock-agent/](../../tests/tools/mock-agent/)**: Provides mock agent and API server for testing
+- **[Local-Sandboxing-on-Linux.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md)**: Provides sandbox execution environment for agents
 
 **2.4.1 AH Agent Start In-Place Mode E2E Tests** ✅ COMPLETED
 
 |- **Deliverables**:
 
-  - E2E test scenarios validating `ah agent start` in in-place working copy mode
-  - Shared repo setup code with existing `ah task` integration tests
-  - Test repo created in temporary folder with predefined state
-  - Verification that expected side effects from scenarios occur correctly
+- E2E test scenarios validating `ah agent start` in in-place working copy mode
+- Shared repo setup code with existing `ah task` integration tests
+- Test repo created in temporary folder with predefined state
+- Verification that expected side effects from scenarios occur correctly
 
 |- **Testing Strategy**:
 
-  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
-  - Scenarios define repo initialization, agent execution, and expected outcomes
-  - Share repository setup utilities from existing `ah task` E2E tests
-  - Run scenarios in isolated temporary directories
+- Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+- Scenarios define repo initialization, agent execution, and expected outcomes
+- Share repository setup utilities from existing `ah task` E2E tests
+- Run scenarios in isolated temporary directories
 
 |- **Implementation Details**:
 
-  - **TUI Testing Framework**: Created new `tui-testing` crate providing ZeroMQ-based IPC for screenshot capture during test execution
-  - **Mock Agent Integration**: Added `--tui-testing-uri` parameter to mock-agent with ZeroMQ REQ/REP client for synchronous screenshot requests
-  - **CLI Integration**: Enhanced `ah agent start` command with `--agent-flags` parameter to pass testing configuration to agents
-  - **E2E Test Suite**: Created comprehensive integration tests validating argument parsing, IPC communication, and scenario execution
-  - **Scenario Expansion**: Added new scenario with screenshot events and userCommand events demonstrating TUI testing workflow
-  - **Framework Architecture**:
-    - `TuiTestRunner`: Manages test execution and ZeroMQ REP server for screenshot requests
-    - `TuiTestClient`: Used by child processes to request screenshots synchronously
-    - JSON protocol for IPC communication with screenshot metadata support
-    - Graceful degradation when ZeroMQ is unavailable
-  - **Test Infrastructure**: Shared repository setup utilities from existing `ah task` integration tests, tests run in isolated temporary directories with proper cleanup
+- **TUI Testing Framework**: Created new `tui-testing` crate providing ZeroMQ-based IPC for screenshot capture during test execution
+- **Mock Agent Integration**: Added `--tui-testing-uri` parameter to mock-agent with ZeroMQ REQ/REP client for synchronous screenshot requests
+- **CLI Integration**: Enhanced `ah agent start` command with `--agent-flags` parameter to pass testing configuration to agents
+- **E2E Test Suite**: Created comprehensive integration tests validating argument parsing, IPC communication, and scenario execution
+- **Scenario Expansion**: Added new scenario with screenshot events and userCommand events demonstrating TUI testing workflow
+- **Framework Architecture**:
+  - `TuiTestRunner`: Manages test execution and ZeroMQ REP server for screenshot requests
+  - `TuiTestClient`: Used by child processes to request screenshots synchronously
+  - JSON protocol for IPC communication with screenshot metadata support
+  - Graceful degradation when ZeroMQ is unavailable
+- **Test Infrastructure**: Shared repository setup utilities from existing `ah task` integration tests, tests run in isolated temporary directories with proper cleanup
 
 - **Verification Results**:
-
   - [x] Scenarios execute successfully in in-place mode
   - [x] File system side effects match scenario expectations
   - [x] Agent execution completes without workspace isolation issues
   - [x] Test repo cleanup works properly after scenario completion
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/agent/start.rs` - Agent start command implementation with argument parsing
   - `crates/ah-cli/src/task.rs` - Integration tests for agent start E2E scenarios
   - `crates/ah-cli/src/lib.rs` - CLI structure updates for agent start command
@@ -1275,69 +1197,67 @@ The MVP implementation must coordinate across multiple specifications with prope
 
 |- **Deliverables**:
 
-  - E2E test scenarios validating `ah agent start` with FS snapshots enabled
-  - Use test filesystem infrastructure from FS snapshot tests (ZFS/Btrfs test pools)
-  - Sandbox disabled to isolate filesystem snapshot behavior
-  - Verification that workspace snapshots work correctly during agent execution
+- E2E test scenarios validating `ah agent start` with FS snapshots enabled
+- Use test filesystem infrastructure from FS snapshot tests (ZFS/Btrfs test pools)
+- Sandbox disabled to isolate filesystem snapshot behavior
+- Verification that workspace snapshots work correctly during agent execution
 
 |- **Testing Strategy**:
 
-  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
-  - Scenarios configure FS snapshot provider (ZFS/Btrfs) and working copy mode
-  - Test filesystem setup via `just create-test-filesystems` and `just check-test-filesystems`
-  - Validate snapshot creation and cleanup during agent execution
+- Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+- Scenarios configure FS snapshot provider (ZFS/Btrfs) and working copy mode
+- Test filesystem setup via `just create-test-filesystems` and `just check-test-filesystems`
+- Validate snapshot creation and cleanup during agent execution
 
 |- **Implementation Details**:
 
-  - **Agent Start Command Enhancement**: Modified `run_mock_agent()` in `ah-cli/src/agent/start.rs` to handle `WorkingCopyMode::Snapshots` by calling `prepare_workspace_with_fallback()`
-  - **Workspace Preparation**: Added logic to prepare ZFS-based workspaces before agent execution, using the same infrastructure as task CLI sandbox integration
-  - **Integration Test**: Created `integration_test_agent_start_fs_snapshots()` that validates agent execution with snapshot mode enabled
-  - **Test Infrastructure**: Test creates repository on ZFS test filesystem (`/Volumes/AH_test_zfs/test_dataset`) to ensure ZFS provider selection
-  - **FS Snapshot Command**: Implemented `ah agent fs snapshot` command that creates snapshots by communicating with the FS snapshot daemon
-  - **Mock Agent Integration**: Enhanced mock agent to support `--checkpoint-cmd` parameter for executing commands after each tool use
-  - **Snapshot Verification**: Test verifies that exactly 2 snapshots are created during agent execution (one per agentToolUse step in demo scenario)
-  - **Cross-Platform ZFS Detection**: Fixed ZFS filesystem detection to work on macOS by implementing fallback mount-based detection when Linux stat syntax fails
+- **Agent Start Command Enhancement**: Modified `run_mock_agent()` in `ah-cli/src/agent/start.rs` to handle `WorkingCopyMode::Snapshots` by calling `prepare_workspace_with_fallback()`
+- **Workspace Preparation**: Added logic to prepare ZFS-based workspaces before agent execution, using the same infrastructure as task CLI sandbox integration
+- **Integration Test**: Created `integration_test_agent_start_fs_snapshots()` that validates agent execution with snapshot mode enabled
+- **Test Infrastructure**: Test creates repository on ZFS test filesystem (`/Volumes/AH_test_zfs/test_dataset`) to ensure ZFS provider selection
+- **FS Snapshot Command**: Implemented `ah agent fs snapshot` command that creates snapshots by communicating with the FS snapshot daemon
+- **Mock Agent Integration**: Enhanced mock agent to support `--checkpoint-cmd` parameter for executing commands after each tool use
+- **Snapshot Verification**: Test verifies that exactly 2 snapshots are created during agent execution (one per agentToolUse step in demo scenario)
+- **Cross-Platform ZFS Detection**: Fixed ZFS filesystem detection to work on macOS by implementing fallback mount-based detection when Linux stat syntax fails
 
 |- **Verification Results**:
 
-  - [x] Agent start command accepts `--working-copy snapshots` parameter
-  - [x] Workspace preparation logic integrates with FS snapshot providers
-  - [x] Test infrastructure creates repositories on ZFS test filesystem
-  - [x] Agent execution completes successfully in snapshot mode (basic functionality)
-  - [x] FS snapshots created at appropriate points during agent execution
-  - [x] Workspace isolation works correctly with snapshot providers
-  - [x] Agent execution completes successfully in snapshotted environment
-  - [x] Basic snapshot verification implemented (ZFS snapshot presence checked after agent execution)
-  - [ ] Snapshots are correctly produced at the expected moments in the scenario and each snapshot can be restored with the expected state of the working copy files. (advanced verification - nice to have)
-  - [ ] Snapshot cleanup happens properly after scenario completion (advanced verification - nice to have)
-  - [ ] No conflicts between multiple concurrent agent executions (advanced verification - nice to have)
+- [x] Agent start command accepts `--working-copy snapshots` parameter
+- [x] Workspace preparation logic integrates with FS snapshot providers
+- [x] Test infrastructure creates repositories on ZFS test filesystem
+- [x] Agent execution completes successfully in snapshot mode (basic functionality)
+- [x] FS snapshots created at appropriate points during agent execution
+- [x] Workspace isolation works correctly with snapshot providers
+- [x] Agent execution completes successfully in snapshotted environment
+- [x] Basic snapshot verification implemented (ZFS snapshot presence checked after agent execution)
+- [ ] Snapshots are correctly produced at the expected moments in the scenario and each snapshot can be restored with the expected state of the working copy files. (advanced verification - nice to have)
+- [ ] Snapshot cleanup happens properly after scenario completion (advanced verification - nice to have)
+- [ ] No conflicts between multiple concurrent agent executions (advanced verification - nice to have)
 
 |- **Outstanding Tasks** (Advanced Verification - Nice to Have):
-  - [x] Implement detailed snapshot verification in test (check that snapshots were actually created with expected naming and timing)
-  - Add snapshot restoration testing to validate workspace state preservation across different points in time
-  - Test concurrent agent executions to ensure no conflicts between snapshots
-  - Add automated cleanup verification to ensure snapshots are properly removed after scenario completion
 
-  **Note**: Basic snapshot functionality is working correctly. The detailed snapshot verification has been implemented, confirming that snapshots are created at the correct points during agent execution with proper naming and metadata. The remaining items represent additional advanced verification features that would be valuable for production but are not blocking for the core milestone completion.
+- [x] Implement detailed snapshot verification in test (check that snapshots were actually created with expected naming and timing)
+- Add snapshot restoration testing to validate workspace state preservation across different points in time
+- Test concurrent agent executions to ensure no conflicts between snapshots
+- Add automated cleanup verification to ensure snapshots are properly removed after scenario completion
+
+**Note**: Basic snapshot functionality is working correctly. The detailed snapshot verification has been implemented, confirming that snapshots are created at the correct points during agent execution with proper naming and metadata. The remaining items represent additional advanced verification features that would be valuable for production but are not blocking for the core milestone completion.
 
 **2.4.3 AH Agent Start Sandbox Mode E2E Tests** ✅ COMPLETED (depends on 2.4.2)
 
 - **Deliverables**:
-
   - E2E test scenarios validating `ah agent start` with both FS snapshots and sandbox enabled
   - Combine test filesystem infrastructure with sandbox execution
   - Full agent isolation including filesystem snapshots and process sandboxing
   - Verification that sandboxed agent execution produces correct side effects
 
 - **Testing Strategy**:
-
   - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
   - Scenarios configure both FS snapshot provider and sandbox profile
   - Test filesystem + sandbox setup ensures complete agent isolation
   - Validate that sandbox restrictions don't interfere with agent functionality
 
 - **Implementation Details**:
-
   - **Sandbox Launching Logic**: Enhanced `ah agent start` command to support sandbox parameters (`--sandbox-type`, `--allow-network`, `--allow-containers`, `--allow-kvm`, `--seccomp`, `--seccomp-debug`, `--mount-rw`, `--overlay`) with workspace preparation using FS snapshots before sandbox execution
   - **Agent Start Sandbox Integration**: Modified `run_mock_agent()` function to conditionally launch agents within sandbox environment using `run_mock_agent_in_sandbox()` when `--sandbox` flag is provided
   - **Cross-Platform Compatibility**: Added graceful handling for non-Linux platforms where sandbox functionality is not available, allowing tests to pass on macOS with appropriate skip messages
@@ -1345,14 +1265,12 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **Verification Helpers**: Extracted common verification logic into shared functions (`verify_agent_execution`, `verify_sandbox_attempted`, `verify_snapshots_if_available`) to ensure DRY testing patterns and consistent validation across all agent start test scenarios
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/agent/start.rs` - Agent start command implementation with sandbox launching logic and argument parsing
   - `crates/ah-cli/src/sandbox.rs` - Sandbox configuration mapping and CLI parameter handling
   - `crates/ah-cli/src/task.rs` - Integration tests including `integration_test_agent_start_fs_snapshots_sandbox()` and shared verification helpers
   - `crates/ah-fs-snapshots/src/lib.rs` - Workspace preparation interface used before sandbox execution
 
 - **Verification Results**:
-
   - [x] Agent execution works correctly within sandbox environment (Linux platforms)
   - [x] FS snapshots integrate properly with sandboxed workspace preparation
   - [x] Sandbox resource limits don't break agent functionality (basic functionality verified)
@@ -1364,10 +1282,9 @@ The MVP implementation must coordinate across multiple specifications with prope
 
 **2.5 AH Agent Record Command Implementation** (depends on 2.4.3, immediate next milestone) - **COMPLETED** ✅
 
-*Full agent recording implementation with live viewer, IPC integration, and replay functionality completed. Core recording functionality enables time-travel debugging and agent instruction workflows.*
+_Full agent recording implementation with live viewer, IPC integration, and replay functionality completed. Core recording functionality enables time-travel debugging and agent instruction workflows._
 
 - **Deliverables**:
-
   - Complete `ah agent record` command implementation in `ah-cli` crate with PTY byte capture, vt100 parsing, and live Ratatui viewer
   - Brotli-compressed `.ahr` file format with timestamped PTY output blocks following [ah-agent-record.md](../../specs/Public/ah-agent-record.md) specification
   - Live Ratatui TUI viewer rendering directly from vt100 model with instruction overlay support
@@ -1377,7 +1294,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - TUI testing framework integration for comprehensive E2E verification
 
 - **Implementation Details**:
-
   - **PTY Management**: Use `portable-pty` crate to spawn target command under PTY, capture raw bytes, and forward input transparently
   - **vt100 Parser Integration**: Stream PTY bytes through `vt100` crate parser for faithful terminal state tracking, handling `\r` carriage returns and line overwrites
   - **Recording Format**: Implement `.ahr` file format with Brotli-compressed blocks containing timestamped records (DATA, RESIZE, INPUT, MARK) as specified in ah-agent-record.md
@@ -1388,12 +1304,10 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **TUI Testing**: Integrate with existing `tui-testing` crate for screenshot capture and UI regression testing during agent execution
 
 - **Testing Strategy** (Two-Phase Approach):
-
   - **Phase 1: Recording Verification**: Create initial test scenarios using [Scenario-Format.md](../../specs/Public/Scenario-Format.md) to run mock-agent sessions through `ah agent record`. Verify that produced snapshot interleaving files match golden snapshots for deterministic output validation.
   - **Phase 2: UI Instruction Injection**: Later tests focus on driving the TUI interface for injecting instructions, validating overlay and annotation functionality through automated UI testing.
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/agent/record.rs` - Main `ah agent record` command implementation with PTY management and recording logic ✅
   - `crates/ah-cli/src/agent/record/branch_points.rs` - `ah agent branch-points` command for interleaved terminal output and snapshot extraction ✅
   - `crates/ah-cli/src/agent/replay.rs` - `ah agent replay` command for export and interleaved report generation ✅
@@ -1415,7 +1329,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 - **Implementation Status**:
 
   **✅ Completed Core Components:**
-
   - **ah-recorder crate**: Created as library-first implementation following Repository-Layout.md specification
   - **.ahr File Format** (`format.rs`): Complete implementation with 48-byte block headers, four record types (DATA, RESIZE, INPUT, MARK), little-endian serialization, and comprehensive serialization/deserialization tests
   - **Block Writer** (`writer.rs`): Brotli-compressed writer with configurable quality (default q=4), automatic block flushing at 256KB/250ms thresholds, crash-safe independent blocks, global byte offset tracking, and finalization support
@@ -1434,7 +1347,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **Testing**: 14 unit tests passing covering format serialization, block writing, PTY byte offset tracking, terminal state updates, snapshot storage/querying, and branch points interleaving logic
 
   **Architecture Decisions:**
-
   - **Library-first design**: Core functionality in `ah-recorder` crate, thin CLI wrapper in `ah-cli`
   - **Crash safety**: Independent blocks enable partial recovery from incomplete writes
   - **Byte-perfect fidelity**: Raw PTY bytes preserved with vt100 state reconstruction
@@ -1444,7 +1356,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **IPC-driven snapshots**: Filesystem snapshots are recorded via IPC notifications rather than embedded hooks, enabling clean separation between recording and snapshot management
 
 - **Implementation Details**:
-
   - **Live Ratatui Viewer**: TerminalViewer struct manages vt100 parser state, row metadata tracking, scroll offset, and instruction overlays. Renders directly from vt100 model with real-time updates, preserving original terminal viewport size within bordered frames.
   - **IPC Server Implementation**: Unix domain socket server using tokio::net::UnixListener with length-prefixed SSZ marshaling. Handles snapshot notifications from `ah agent fs snapshot` command, writing REC_SNAPSHOT records to .ahr files with proper anchor byte positioning.
   - **REC_SNAPSHOT Records**: New record type extends the .ahr format with snapshot_id (u64), anchor_byte (u64), and optional UTF-8 label. Records are written immediately upon IPC notification receipt.
@@ -1453,19 +1364,16 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **Multi-Scenario Test Context**: TestExecutionContext supports multiple recording scenarios with isolated environments, enabling parallel test execution without conflicts.
 
 - **Known Limitations**:
-
   - **Cross-platform testing**: PTY support verified on macOS but requires validation on Linux/Windows platforms
   - **Performance targets**: Frame latency <30ms and write path <1ms targets not yet measured or validated
   - **Error recovery**: Truncated block detection implemented but graceful handling of corrupted .ahr files not fully tested
 
 - **Outstanding Tasks**:
-
   - **Cross-platform Testing**: Verify PTY support on Linux/macOS/Windows via portable-pty
   - **Performance Validation**: Measure and validate <30ms frame latency and sub-1ms write path targets
   - **Error Recovery**: Implement and test truncated block detection and graceful handling
 
 - **Verification Results**:
-
   - [x] PTY byte capture works correctly with transparent input forwarding (implemented via portable-pty)
   - [x] vt100 parser handles terminal state faithfully including `\r` line overwrites (vt100::Parser integration)
   - [x] `.ahr` files created with proper Brotli-compressed blocks and timestamped records (format + writer tests passing)
@@ -1492,7 +1400,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - [ ] Cross-platform compatibility: Linux/macOS/Windows PTY support via portable-pty
 
 - **Cross-Spec Dependencies**:
-
   - **[ah-agent-record.md](../../specs/Public/ah-agent-record.md)**: Complete specification for recording format, CLI interface, and runtime architecture
   - **[Using-SSZ.md](../../specs/Research/Using-SSZ.md)**: IPC protocol specification for instruction injection
   - **[Scenario-Format.md](../../specs/Public/Scenario-Format.md)**: Test scenario definitions for comprehensive E2E testing
@@ -1502,20 +1409,17 @@ The MVP implementation must coordinate across multiple specifications with prope
 **2.4.4 AH Agent Start Codex Integration E2E Tests** ✅ COMPLETED (depends on 2.4.3)
 
 - **Deliverables**:
-
   - All previous test scenarios (2.4.1-2.4.3) executed with real Codex CLI instead of mock agent
   - Codex CLI backed by mock LLM API server for deterministic testing
   - Full integration testing of real agent binary with workspace isolation
 
 - **Testing Strategy**:
-
   - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
   - Configure Codex to use mock API server from `tests/tools/mock-agent/`
   - Run all E2E scenarios (in-place, FS snapshots, sandbox) with real Codex binary
   - Validate that real agent behavior matches mock agent expectations
 
 - **Verification Results**:
-
   - [x] Codex CLI integration works with in-place workspace mode (basic functionality test implemented)
   - [x] FS snapshots mode integration test implemented for Codex CLI
   - [x] Sandbox mode integration test implemented for Codex CLI
@@ -1527,41 +1431,40 @@ The MVP implementation must coordinate across multiple specifications with prope
 
 |- **Deliverables**:
 
-  - Session recording validation for both mock agent and real Codex CLI
-  - `ah agent record` recording integration with `ah agent record` command
-  - Session file generation in appropriate formats (Codex/Claude)
-  - Session timeline creation for time travel functionality
-  - Recording verification across all workspace modes (in-place, snapshots, sandbox)
+- Session recording validation for both mock agent and real Codex CLI
+- `ah agent record` recording integration with `ah agent record` command
+- Session file generation in appropriate formats (Codex/Claude)
+- Session timeline creation for time travel functionality
+- Recording verification across all workspace modes (in-place, snapshots, sandbox)
 
 |- **Testing Strategy**:
 
-  - Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
-  - Validate session recordings are created correctly during agent execution
-  - Test both mock agent recordings and real Codex CLI recordings
-  - Verify `ah agent record` format and playback capability
-  - Ensure session files match expected formats for time travel integration
+- Use [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for test definitions
+- Validate session recordings are created correctly during agent execution
+- Test both mock agent recordings and real Codex CLI recordings
+- Verify `ah agent record` format and playback capability
+- Ensure session files match expected formats for time travel integration
 
 |- **Implementation Details**:
 
-  - **Mock Agent Recording Tests**: Created `integration_test_session_recording_mock_agent()` that runs `ah agent record` with mock agent execution, validates recording creation, and tests replay/branch-points functionality
-  - **Codex CLI Recording Tests**: Created `integration_test_session_recording_codex()` that runs `ah agent record` with real Codex CLI backed by mock API server, validates recording creation and playback
-  - **Recording Validation**: Tests verify .ahr files are created with proper size, replay functionality works, and branch-points extraction produces valid JSON output
-  - **Cross-Agent Compatibility**: Both mock agent and real Codex CLI recordings are validated to ensure consistent behavior and format compatibility
+- **Mock Agent Recording Tests**: Created `integration_test_session_recording_mock_agent()` that runs `ah agent record` with mock agent execution, validates recording creation, and tests replay/branch-points functionality
+- **Codex CLI Recording Tests**: Created `integration_test_session_recording_codex()` that runs `ah agent record` with real Codex CLI backed by mock API server, validates recording creation and playback
+- **Recording Validation**: Tests verify .ahr files are created with proper size, replay functionality works, and branch-points extraction produces valid JSON output
+- **Cross-Agent Compatibility**: Both mock agent and real Codex CLI recordings are validated to ensure consistent behavior and format compatibility
 
 |- **Verification Results**:
 
-  - [x] Mock agent session recording works correctly with `ah agent record` (integration test implemented and compiles)
-  - [x] Session files generated in proper Codex/Claude formats (recording validation implemented)
-  - [x] Session timeline data captured for time travel functionality (replay and branch-points extraction tested)
-  - [x] Real Codex CLI session recording matches mock agent behavior (Codex integration test implemented)
-  - [x] Session recordings work across all workspace modes (in-place mode tested, extensible to others)
-  - [x] Recording cleanup and storage works properly (test directory cleanup implemented)
-  - [x] Session playback and inspection capabilities verified (replay --print-meta and branch-points commands tested)
+- [x] Mock agent session recording works correctly with `ah agent record` (integration test implemented and compiles)
+- [x] Session files generated in proper Codex/Claude formats (recording validation implemented)
+- [x] Session timeline data captured for time travel functionality (replay and branch-points extraction tested)
+- [x] Real Codex CLI session recording matches mock agent behavior (Codex integration test implemented)
+- [x] Session recordings work across all workspace modes (in-place mode tested, extensible to others)
+- [x] Recording cleanup and storage works properly (test directory cleanup implemented)
+- [x] Session playback and inspection capabilities verified (replay --print-meta and branch-points commands tested)
 
 **2.6 Agent Abstraction Layer** COMPLETED (depends on 2.5, parallel with 2.2.2.5)
 
 - **Deliverables**:
-
   - Create `ah-agents` monolith crate following [Subcrates-Pattern.md](../../specs/Public/Subcrates-Pattern.md) with `AgentExecutor` trait for common agent operations
   - Implement feature-gated agent backends: `claude`, `codex`, `gemini`, `opencode`, `qwen`, `cursor-cli`, `goose` (initial MVP focus on local CLI agents)
   - Create optional facade subcrates: `ah-agent-claude`, `ah-agent-codex`, etc. for users needing only specific agents
@@ -1581,7 +1484,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 - **Reference Implementation**: Follow [Subcrates-Pattern.md](../../specs/Public/Subcrates-Pattern.md) structure with monolith + facades approach
 
 - **Implementation Details**:
-
   - **Trait Design**: `AgentExecutor` trait defines common interface, each agent type implements concrete behavior
   - **Version Detection**: Each agent implementation must include version detection logic (e.g., `agent --version` or parsing installed package metadata) to determine the exact version of the agent software
   - **Version-Aware Behavior**: Based on detected version, implementations must adjust command flags, configuration options, environment variables, and output parsing to match version-specific behavior changes
@@ -1593,7 +1495,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **Testing**: Integration tests executed with the help of the mock LLM API server from [tests/tools/mock-agent/](../../tests/tools/mock-agent/). The developed code base in this folder provides an example of Claude Code HOME directory setup that skips onboarding screens.
 
 - **Key Source Files**:
-
   - `crates/ah-agents/src/lib.rs` - Core `AgentExecutor` trait and provider selection logic
   - `crates/ah-agents/src/traits.rs` - `AgentExecutor` trait definition and common types
   - `crates/ah-agents/src/claude.rs` - Claude Code agent implementation (#[cfg(feature = "claude")])
@@ -1606,7 +1507,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - `crates/ah-agent-codex/src/lib.rs` - Optional facade crate for Codex-only usage
 
 - **Implementation Details**:
-
   - **AgentExecutor Trait**: Comprehensive trait design with `prepare_launch()`, `launch()`, `exec()`, `detect_version()`, `copy_credentials()`, `export_session()`, `import_session()`, `parse_output()`, `config_dir()`, and `state_dir()` methods for full agent lifecycle management
   - **AgentLaunchConfig**: Complete configuration struct supporting API keys, environment variables, home directory isolation, credential copying, and MCP server configuration
   - **Claude Code Integration**: Full agent implementation with version detection via regex parsing, onboarding skip via comprehensive `.claude.json` configuration, credential management, and session persistence
@@ -1619,7 +1519,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **Comprehensive Testing**: Integration tests for version detection, configuration management, and end-to-end mock server testing with real agent binaries
 
 - **Implementation Status**:
-
   - [x] Create `ah-agents` monolith crate skeleton with comprehensive trait definitions
   - [x] Implement Claude Code agent backend (primary MVP focus) with version detection and onboarding skip
   - [x] Implement Codex CLI agent backend (primary MVP focus) with version detection and credential management
@@ -1630,7 +1529,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - [x] Create optional facade subcrates for individual agents
 
 - **Verification Results**:
-
   - [x] `cargo check --workspace` succeeds with all agent features
   - [x] `cargo test --workspace` passes for ah-agents crate integration tests
   - [x] Claude Code agent launches with custom HOME directory (skipping onboarding via comprehensive `.claude.json` configuration)
@@ -1645,7 +1543,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - [ ] Performance benchmarks meet targets (<500ms launch time, <100ms credential copy) (not measured)
 
 - **Outstanding Tasks**:
-
   - [x] Design `AgentExecutor` trait covering all core operations (prepare_launch, launch, exec, detect_version, copy_credentials, export_session, import_session)
   - [x] Implement version detection for Claude and Codex agents using regex parsing
   - [ ] Implement version-aware behavior adaptation for command flags, config options, and output parsing (future enhancement)
@@ -1657,7 +1554,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - [ ] Create documentation and examples for each agent integration (future enhancement)
 
 - **Cross-Spec Dependencies**:
-
   - **[Subcrates-Pattern.md](../../specs/Public/Subcrates-Pattern.md)**: Defines the monolith + facades approach for agent abstraction
   - **[3rd-Party-Agents/](../../specs/Public/3rd-Party-Agents/)**: Documents each agent's specific requirements and behaviors
   - **[REST-Service/API.md](../../specs/Public/REST-Service/API.md)**: Defines the normalized event format for output parsing
@@ -1667,7 +1563,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **2.7 AH Agent Start Command Refactor** COMPLETED (depends on 2.6, parallel with 2.2.2.5)
 
 - **Deliverables**:
-
   - Refactor `ah agent start` command to use new `ah-agents` abstraction layer
   - Replace hardcoded per-agent methods with unified `AgentExecutor` trait calls
   - Add session management integration with automatic session file export/import
@@ -1675,7 +1570,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - Add credential management workflow with automatic workspace HOME setup
 
 - **Implementation Details**:
-
   - **Abstraction Layer Integration**: Refactored `ah agent start` command to use `ah-agents` crate instead of hardcoded per-agent logic
   - **Unified Agent Interface**: Replaced separate Claude/Codex implementations with polymorphic `AgentExecutor` trait objects
   - **Process Replacement**: Added `exec()` method to `AgentExecutor` trait for process replacement, enabling `ah agent start` to replace current process with agent
@@ -1687,7 +1581,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - **Home Directory Isolation**: Automatic creation and population of isolated HOME directories for agent execution
 
 - **Key Source Files**:
-
   - `crates/ah-cli/src/agent/start.rs` - Refactored to use `ah-agents` abstraction layer with polymorphic agent execution
   - `crates/ah-agents/src/traits.rs` - Added `exec()` method and `api_key` field to `AgentLaunchConfig`
   - `crates/ah-agents/src/claude.rs` - Updated Claude agent to support API key configuration
@@ -1695,7 +1588,6 @@ The MVP implementation must coordinate across multiple specifications with prope
   - `crates/ah-cli/Cargo.toml` - Added `ah-agents` dependency
 
 - **Verification Results**:
-
   - [x] `ah agent start --agent claude` uses `ah-agents` abstraction layer instead of hardcoded logic
   - [x] `ah agent start --agent codex` uses `ah-agents` abstraction layer instead of hardcoded logic
   - [x] Process replacement works correctly via `exec()` method for both agents
@@ -1710,7 +1602,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **3.1 Session Timeline Infrastructure**
 
 - Deliverables:
-
   - Session timeline data structures and storage in SQLite
   - SessionMoment creation and indexing for both Claude Code and Codex
   - Timeline navigation and seeking APIs
@@ -1726,7 +1617,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **3.2 Time Travel Commands & UI** (depends on 3.1)
 
 - Deliverables:
-
   - Read-only snapshot mounting for inspection at specific moments
   - Session branching with injected messages
   - Transcript/rollout trimming for precise time travel resumption
@@ -1762,7 +1652,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **5.1 TUI Dashboard Implementation**
 
 - Deliverables:
-
   - Ratatui-based TUI implementation following [TUI-PRD.md](TUI-PRD.md)
   - Project/Branch/Agent selectors with filtering
   - Task description editor and launch workflow
@@ -1781,7 +1670,6 @@ The MVP implementation must coordinate across multiple specifications with prope
 **6.1 Final Integration & Documentation**
 
 - Deliverables:
-
   - Complete CLI command surface for MVP features
   - Man pages and shell completions
   - User documentation and examples

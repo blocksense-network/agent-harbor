@@ -32,6 +32,7 @@ OpenHands provides multiple ways to launch:
 4. **GitHub Action integration**: Can run on tagged issues automatically
 
 **Interactive vs non-interactive**:
+
 - CLI mode: Command-line interaction
 - GUI mode: Web interface at localhost:3000
 - Headless mode: Automation without UI
@@ -47,6 +48,7 @@ OpenHands provides multiple ways to launch:
 **Status: UNKNOWN**
 
 OpenHands does not document per-step hooks in available materials. As an open-source platform, investigation needed to determine:
+
 - Whether hooks can be implemented
 - Extension points in the codebase
 - MCP server integration for extensibility
@@ -58,11 +60,13 @@ Further testing required.
 **Status: TO BE DETERMINED**
 
 OpenHands requires:
+
 - Python 3.12
 - LLM provider selection and configuration
 - API keys for chosen provider
 
 Likely approaches for automation:
+
 - Environment variables for API keys
 - Configuration files for provider settings
 - Command-line flags (to be documented)
@@ -85,6 +89,7 @@ Investigation required to determine if checkpointing is supported.
 **Status: TO BE DETERMINED**
 
 OpenHands likely supports session persistence given its multi-mode architecture. Investigation needed to document:
+
 - How sessions are stored
 - Resumption commands/procedures
 - What context is preserved
@@ -94,6 +99,7 @@ OpenHands likely supports session persistence given its multi-mode architecture.
 **Status: UNKNOWN**
 
 Likely locations based on Python application patterns:
+
 - **Linux/macOS**: `~/.openhands/` or `~/.local/share/openhands/`
 - **Windows**: `%APPDATA%\openhands\` or `%LOCALAPPDATA%\openhands\`
 
@@ -122,6 +128,7 @@ Session format needs investigation. As OpenHands is open-source, reviewing the c
 **Status: UNKNOWN**
 
 OpenHands documentation does not specify MCP server configuration in available materials. Investigation needed to determine:
+
 - Whether MCP is supported
 - Configuration file format
 - Command-line options for MCP
@@ -133,11 +140,13 @@ As an open-source project, MCP support may be possible to add if not present.
 OpenHands authentication with LLM providers:
 
 **Required configuration:**
+
 - LLM provider selection (Anthropic, OpenAI, etc.)
 - API keys for chosen provider
 - Recommended: Anthropic Claude Sonnet 4.5
 
 **Storage locations (to be confirmed):**
+
 - Configuration likely in `~/.openhands/` or similar
 - API keys via environment variables or config files
 
@@ -181,6 +190,7 @@ This document requires extensive hands-on testing. Key next steps:
 ## Installation Notes
 
 **Prerequisites:**
+
 ```bash
 # Install uv (Python package runner)
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -190,6 +200,7 @@ uvx --python 3.12 --from openhands-ai openhands
 ```
 
 **Alternative - GUI server:**
+
 ```bash
 uvx --python 3.12 --from openhands-ai openhands serve
 ```

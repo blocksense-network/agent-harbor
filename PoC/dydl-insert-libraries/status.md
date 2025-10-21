@@ -22,13 +22,11 @@ All components target macOS with standard C ABI. Libraries are built as dynamic 
 **M1. Basic injection harness and library loading** COMPLETED (1–2d)
 
 - **Deliverables:**
-
   - Rust injector binary that can set `DYLD_INSERT_LIBRARIES` for child processes
   - Minimal test library that logs when loaded into target processes
   - Shell script demonstrating injection works for processes launched by a specific parent
 
 - **Verification:**
-
   - [x] Injector can launch `sleep 1` with library injection and library logs successful loading
   - [x] Library is loaded only in child processes, not in parent injector
   - [x] Constructor functions execute and print verification messages with process PIDs
@@ -70,7 +68,6 @@ All components target macOS with standard C ABI. Libraries are built as dynamic 
 **M2. Network API interception and localhost isolation** COMPLETED (3–4d)
 
 - **Deliverables:**
-
   - `lib/network-interpose.dylib` implementing the three localhost strategies from macOS sandboxing spec:
     - Strategy A: Fail with error for non-allowed ports/devices
     - Strategy B: Rewrite to alternative loopback device (e.g., 127.0.0.2)
@@ -79,7 +76,6 @@ All components target macOS with standard C ABI. Libraries are built as dynamic 
   - Environment variable configuration for allowed ports/devices
 
 - **Verification:**
-
   - [x] Network interposition library loads and initializes with environment variables
   - [x] Strategy A blocks bind() calls to disallowed ports (server-side binding)
   - [x] Strategy B rewrites connect() calls to alternative loopback devices
@@ -115,6 +111,7 @@ All components target macOS with standard C ABI. Libraries are built as dynamic 
 **Important Network Architecture Finding:**
 
 Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interface** on macOS. This means:
+
 - A process listening on port X on 127.0.0.1 prevents other processes from listening on port X on 127.0.0.2
 - **Strategy B implications**: Device rewriting provides limited isolation - primarily useful for routing traffic to different services rather than true sandbox separation
 - **Strategy C sufficiency**: Port rewriting alone provides effective sandbox isolation without needing device rewriting
@@ -123,7 +120,6 @@ Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interf
 **M3. Filesystem API redirection to AgentFS RPC with dual protocol support** COMPLETED (5–7d)
 
 - **Deliverables:**
-
   - `agentfs-server` - Dual-protocol Rust server supporting both JSON (.json socket) and SSZ (.ssz socket) RPC
   - `lib/fs-interpose.dylib` - C implementation using JSON protocol on .json socket
   - `rust-client/librust_client.dylib` - Rust implementation using SSZ protocol on .ssz socket
@@ -133,7 +129,6 @@ Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interf
   - Integration tests validating both protocols work simultaneously with shared AgentFS backend
 
 - **Verification:**
-
   - [x] File creation/open operations redirected to AgentFS RPC for both protocols
   - [x] Read/write operations flow through AgentFS instead of host filesystem for both clients
   - [x] Directory operations (readdir, mkdir, rmdir) work via RPC for both protocols
@@ -152,7 +147,7 @@ Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interf
 - **Filesystem Interposition**: Two protocol-specific implementations:
   - **C Implementation**: Uses JSON protocol on `.json` socket with `DYLD_INTERPOSE` macros
   - **Rust Implementation**: Uses SSZ protocol on `.ssz` socket with `redhook` for safe function hooking
-- **RPC Protocols**: 
+- **RPC Protocols**:
   - JSON socket: Length-prefixed JSON messages for backward compatibility
   - SSZ socket: Length-prefixed SSZ messages for efficient binary serialization
 - **Client Implementation**: Protocol-specific synchronous clients that handle message serialization
@@ -182,7 +177,7 @@ Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interf
 
 **Dynamic Library Dependencies:**
 
-*Dependencies discovered via `otool -L` on macOS:*
+_Dependencies discovered via `otool -L` on macOS:_
 
 - **C Library (`fs-interpose.dylib`):**
   - `/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration`

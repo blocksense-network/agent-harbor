@@ -146,6 +146,7 @@ NEVER add **custom semantic classes** that are used only for component identific
 ```
 
 **Benefits:**
+
 - ✅ No ESLint exceptions required
 - ✅ Clean separation of styling vs. identification
 - ✅ Better for E2E testing (`[data-component]` selectors)
@@ -164,6 +165,7 @@ Use data attribute selectors in your Playwright tests:
 // E2E test selector
 const toast = page.locator('[data-toast]');
 ```
+
 **Remember:** The ignore list should be minimal and only contain truly unavoidable third-party classes. Everything else should use data attributes!
 
 ## Contributing

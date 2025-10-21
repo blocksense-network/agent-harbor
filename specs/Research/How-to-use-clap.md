@@ -444,6 +444,7 @@ Add `propagate_version = true` (already shown in the quickstart) so `-V/--versio
 Wire a dedicated command group for shell completions, matching `ah shell-completion script [shell]` behavior in the CLI spec (plus `install` and `complete`).
 
 Note:
+
 - The helper functions shown below (`detect_shell`, `install_to_default`, `read_shell_line_and_cursor`, `compute_dynamic_suggestions`) are application-provided utilities. They are not part of `clap`/`clap_complete`.
 - `clap_complete` generates static scripts by default. To support dynamic, runtime suggestions, you must customize the installed completion script to call back into your binary (e.g., invoke `ah shell-completion complete ...`) using shell-specific mechanisms (bash `complete -C`, zsh functions, fish `complete --command` with a wrapper function).
 
@@ -677,6 +678,7 @@ fn compute_dynamic_suggestions(line: &str, cursor: usize) -> Vec<String> {
 ```
 
 This section focuses on wiring. See the CLI spec for the specific dynamic sources (e.g., branch names, workspaces) to return.
+
 ```
 
 ### Environment variable prefix strategy
@@ -684,3 +686,4 @@ This section focuses on wiring. See the CLI spec for the specific dynamic source
 - Clap supports per-argument environment variables via `#[arg(env = "NAME")]` or builder `.env("NAME")`.
 - It does not auto-apply an env prefix across all args; define env vars per arg using a consistent `AH_` prefix (e.g., `AH_REPO`, `AH_JSON`).
 - If you prefer centralization, set env names programmatically using the builder API via `Cli::command()` and updating each `Arg`.
+```

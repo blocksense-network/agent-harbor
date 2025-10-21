@@ -60,22 +60,26 @@ Cursor CLI can be started with a specific task prompt in several ways:
    ```
 
 **Interactive vs non-interactive**:
+
 - Default: Interactive TUI mode
 - `--print` flag: Non-interactive mode for scripts and automation
 - Supports both `cursor-agent [prompt]` for quick tasks and `cursor-agent` alone for interactive sessions
 
 **Machine-readable output**:
+
 - `--output-format text | json | stream-json` (default: stream-json)
 - Works only with `--print` mode
 - Enables CI/CD integration and scripting
 
 **Session resumption**:
+
 - `--resume [chatId]`: Resume specific chat
 - `cursor-agent resume`: Resume latest session
 - `cursor-agent ls`: List available chats
 - `cursor-agent create-chat`: Create new empty chat
 
 **Model specification**:
+
 - `--model <model>`: Specify model (gpt-5, sonnet-4, sonnet-4-thinking)
 - Can be changed within interactive session via UI
 
@@ -86,6 +90,7 @@ Cursor CLI can be started with a specific task prompt in several ways:
 Cursor CLI does not appear to have documented support for custom hooks executed after every agent step. The CLI is designed for interactive use and automation via `--print` mode, but does not provide hook mechanisms similar to Claude Code's PostToolUse hooks.
 
 Potential workarounds for Agent Time Travel:
+
 - Monitor filesystem changes externally during `--print` mode execution
 - Parse JSON output in `stream-json` mode to track tool executions
 - Use MCP servers for some extensibility (though not true per-step hooks)
@@ -97,17 +102,20 @@ Investigation shows no equivalent to Claude Code hooks for Time Travel integrati
 Cursor CLI provides several authentication methods:
 
 1. **Environment variable**:
+
    ```bash
    export CURSOR_API_KEY=your-api-key
    cursor-agent --print "task description"
    ```
 
 2. **Command-line flag**:
+
    ```bash
    cursor-agent --api-key your-key "task description"
    ```
 
 3. **Pre-authenticate via login command**:
+
    ```bash
    cursor-agent login
    # Then use cursor-agent normally
@@ -140,11 +148,13 @@ Cursor CLI supports session management:
 ### Where are chat sessions stored?
 
 **Confirmed locations:**
+
 - **Linux/macOS**: `~/.cursor/` (verified through testing)
 - **Windows**: `%USERPROFILE%\.cursor\` or `%APPDATA%\cursor\`
 - **Project-local**: `.cursor/` in project directory
 
 **Configuration files created:**
+
 - `~/.cursor/cli-config.json`: CLI configuration (vim mode, permissions, network settings)
 - `.cursor/mcp.json` or `~/.cursor/mcp.json`: MCP server configurations
 
@@ -155,6 +165,7 @@ Cursor CLI supports session management:
 **Status: UNKNOWN**
 
 Session format not documented. Investigation required to determine:
+
 - Serialization format (JSON/JSONL/binary)
 - Structure and fields
 - Whether trimming to specific points is feasible
@@ -174,6 +185,7 @@ Session format not documented. Investigation required to determine:
 Cursor CLI supports MCP (Model Context Protocol) servers through configuration files:
 
 **Configuration locations:**
+
 - Project-scoped: `.cursor/mcp.json` (in project directory)
 - Global: `~/.cursor/mcp.json` (user home directory)
 
@@ -196,12 +208,14 @@ cursor-agent mcp disable <identifier>
 **Configuration file format** (`.cursor/mcp.json` or `~/.cursor/mcp.json`):
 
 The exact JSON structure needs to be documented through testing, but likely includes:
+
 - Server identifiers
 - Connection details (stdio command, URL, etc.)
 - Authentication settings
 - Tool configurations
 
 **Usage pattern:**
+
 1. Create MCP configuration file in `.cursor/mcp.json` or `~/.cursor/mcp.json`
 2. Authenticate if needed: `cursor-agent mcp login <identifier>`
 3. List tools: `cursor-agent mcp list-tools <identifier>`
@@ -214,21 +228,25 @@ Further investigation needed to document the exact JSON configuration format.
 Cursor CLI authentication methods:
 
 **Primary authentication:**
+
 - `cursor-agent login`: Interactive authentication with Cursor account
 - `cursor-agent logout`: Sign out and clear stored authentication
 - `cursor-agent status`: Check authentication status
 
 **API key authentication:**
+
 - `--api-key <key>`: Command-line flag
 - `CURSOR_API_KEY`: Environment variable
 
 **Storage locations:**
+
 - **Configuration directory**: `~/.cursor/` (Linux/macOS)
 - **Windows**: `%USERPROFILE%\.cursor\` or `%APPDATA%\cursor\`
 - Credentials stored after `cursor-agent login`
 - MCP server configs: `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global)
 
 **Settings files:**
+
 - `~/.cursor/mcp.json`: MCP server configurations
 - Other configuration files likely in `~/.cursor/` directory
 
@@ -248,18 +266,21 @@ Cursor CLI authentication methods:
 ## Additional Commands
 
 **Shell integration:**
+
 ```bash
 cursor-agent install-shell-integration    # Add to ~/.zshrc
 cursor-agent uninstall-shell-integration  # Remove from ~/.zshrc
 ```
 
 **Updates:**
+
 ```bash
 cursor-agent update     # Update to latest version
 cursor-agent upgrade    # Alias for update
 ```
 
 **Session management:**
+
 ```bash
 cursor-agent create-chat        # Create new empty chat, returns ID
 cursor-agent ls                 # List available chats
@@ -274,12 +295,14 @@ cursor-agent --resume <chatId>  # Resume specific chat
 **Binary name**: `cursor-agent`
 
 **Recommended for testing**:
+
 - Use `--print` mode for non-interactive testing
 - Use `--output-format json` for parsing
 - Set `CURSOR_API_KEY` for automated authentication
 - Monitor filesystem changes externally (no built-in hooks)
 
 **Limitations for Agent Time Travel**:
+
 - No per-step hooks like Claude Code
 - Requires external monitoring for filesystem snapshots
 - Can parse JSON output to track tool executions

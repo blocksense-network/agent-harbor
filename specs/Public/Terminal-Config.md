@@ -42,5 +42,3 @@ Provide reusable terminal profiles decoupled from scenario content. Profiles inf
 
 - Recommended location for shared profiles: `specs/Profiles/terminal/*.json` or a similar `configs/terminal/` directory in the test harness repo.
 - Snapshot/log path composition uses `name` when present; otherwise `<width>x<height>`.
-
-

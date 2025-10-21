@@ -32,6 +32,7 @@ Workspace:
 The existing `agentfs-ffi` crate already follows the umbrella pattern:
 
 1. **Cargo.toml Configuration**:
+
    ```toml
    [package]
    name = "agentfs-ffi"
@@ -46,12 +47,14 @@ The existing `agentfs-ffi` crate already follows the umbrella pattern:
    ```
 
 2. **Build Process**:
+
    ```bash
    cargo build --package agentfs-ffi --release --target aarch64-apple-darwin
    # Produces: target/aarch64-apple-darwin/release/libagentfs_ffi.a
    ```
 
 3. **Universal Binary Creation**:
+
    ```bash
    # Build for both architectures
    cargo build --package agentfs-ffi --release --target aarch64-apple-darwin
@@ -85,13 +88,14 @@ The existing `agentfs-ffi` crate already follows the umbrella pattern:
 ### Best Practices
 
 - Keep FFI crate thin - just wrappers around core functionality
-- Use opaque pointers (*mut SomeType) for complex Rust types
+- Use opaque pointers (\*mut SomeType) for complex Rust types
 - Handle memory management carefully (Box::into_raw, Box::from_raw)
 - Generate bindings with tools like `uniffi` for better Swift ergonomics
 
 ## Alternative: Multiple Static Libraries
 
 While technically possible, this approach is discouraged due to:
+
 - Potential symbol duplication
 - Complex linker configuration
 - Increased maintenance burden

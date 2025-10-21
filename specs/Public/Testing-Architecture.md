@@ -13,7 +13,7 @@ This architecture complements and reuses the testing foundations from the TUI wo
 - **Scenario Files (Shared YAML)**: Drive inputs (flags, env, repo state), mock‑agent steps, snapshot labels, and expected artifacts. Shared across CLI E2E, TUI tests, WebUI tests, and mock API server (see [Scenario-Format.md](Scenario-Format.md)).
 - **Terminal Capture Harness**: vt100 parser + insta golden snapshots reused from TUI tests to record human‑readable "terminal screenshots" at labeled moments.
 - **Test‑Executor with RPC (test‑only)**: The test entry point - a process that sets up the terminal capture harness, launches ah task with the mock agent, provides an RPC endpoint which the mock-agent uses to notify the text-executor when a certain event in the scenario is reached. Once an event of interest is reached, the executor can verify the state of the file system (or other expected side-effects from the session), it can take a snapshot of the UI and compare it with a golden reference snapshot, etc.
-The test executor knows how to handle different scenario regimes such as "mock remote server", "mock local agent", "mock LLM API server with real agent software", etc.
+  The test executor knows how to handle different scenario regimes such as "mock remote server", "mock local agent", "mock LLM API server with real agent software", etc.
 - **Mock API Server (optional, TA‑3)**: Used to exercise remote mode and REST contracts during CLI tests. See `webui/mock-server` documentation ([README](../webui/mock-server/README.md)).
 - **Logs and Artifacts**: Unique per‑run log directory, golden snapshots, and a structured summary JSON emitted by the runner.
 
@@ -26,20 +26,20 @@ The test executor knows how to handle different scenario regimes such as "mock r
 
 ### Building Blocks
 
-1) Mock Agent Integration
+1. Mock Agent Integration
 
 - Hidden agent type for test harnesses: `--agent=mock` (intentionally undocumented in help screens) launches the mock agent instead of real agents.
 - Pass‑through flags to agent binaries: `--agent-flags "..."` forwards additional parameters verbatim to the agent process, enabling scenario/behavior selection without polluting the AH flag space.
 - Test coverage uses the mock agent’s capabilities documented in `tests/tools/mock-agent/AGENTS.md` (see [AGENTS.md](../../tests/tools/mock-agent/AGENTS.md)).
 
-2) Terminal Capture and Golden Snapshots
+2. Terminal Capture and Golden Snapshots
 
 - Reuse the vt100 parser + insta golden snapshot setup from TUI testing to capture stable, human‑readable "terminal screenshots" during CLI E2E runs.
 - Introduce a lightweight test‑executor RPC that the mock agent can call at key moments to request snapshot capture from the test harness. Requests include a semantic label (e.g., `after_branch_created`, `after_task_file_written`, `error_prompt_shown`).
   - Minimal shape (local test runner): `POST /snapshot { label: string }` → stores a labeled vt100 snapshot and returns `{ path }`.
   - The RPC is only available in test builds and is not part of the shipping product.
 
-3) Scenario Format (Shared)
+3. Scenario Format (Shared)
 
 - Use a shared, file‑based scenario format (YAML) to orchestrate inputs and expected events across (see [Scenario-Format.md](Scenario-Format.md)):
   - Mock Agent (steps, pauses, outputs)
@@ -135,5 +135,3 @@ Milestone TA‑3 — Remote Mode Surface with Mock API
 - Mock agent test guide: [AGENTS.md](../../tests/tools/mock-agent/AGENTS.md)
 - Snapshot providers overview: [FS-Snapshots-Overview](FS-Snapshots/FS-Snapshots-Overview.md)
 - REST service contract (for TA‑3 scope): [REST-Service/API.md](REST-Service/API.md)
-
-

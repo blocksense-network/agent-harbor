@@ -39,6 +39,7 @@ Validates mock server implements [REST-Service/API.md](REST-Service/API.md) spec
 - ✅ 404 errors for non-existent sessions
 
 **Updated Requirements**:
+
 - Mock server must return exactly 5 sessions (3 completed, 2 active)
 - Active sessions must have continuous SSE event streams
 - SSE streams must include thinking traces, tool executions, and file edits
@@ -76,6 +77,7 @@ Validates simplified task-centric layout:
 Validates keyboard-driven interface:
 
 #### Arrow Key Navigation
+
 - [ ] ↑ key moves selection up in task feed
 - [ ] ↓ key moves selection down in task feed
 - [ ] Visual indicator shows selected task (border/background highlight)
@@ -84,6 +86,7 @@ Validates keyboard-driven interface:
 - [ ] Esc key returns to task feed from details page
 
 #### Context-Sensitive Shortcuts
+
 - [ ] **Task feed focused**: Footer shows "↑↓ Navigate • Enter Select Task • Ctrl+N New Task"
 - [ ] **New task text area focused**: Footer shows "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
 - [ ] **Modal open**: Footer shows "Esc Cancel • Tab Next • Shift+Tab Previous"
@@ -91,12 +94,14 @@ Validates keyboard-driven interface:
 - [ ] "Agent(s)" adjusts to singular/plural based on selection
 
 #### Draft Task Shortcuts
+
 - [ ] Enter key in draft text area launches task (if valid)
 - [ ] Shift+Enter creates new line in draft text area
 - [ ] Tab key navigates between draft form fields
 - [ ] Ctrl+N (Cmd+N on macOS) creates new draft task
 
 #### Shortcut Footer Button
+
 - [ ] "New Task" button visible in footer
 - [ ] Button shows platform-specific shortcut (Ctrl+N or Cmd+N)
 - [ ] Clicking button creates new draft task
@@ -107,6 +112,7 @@ Validates keyboard-driven interface:
 Validates TOM Select widgets for repository, branch, and model selection:
 
 #### Repository Selector
+
 - [ ] TOM Select widget renders with placeholder "Repository"
 - [ ] Dropdown opens on click/focus
 - [ ] Fuzzy search filters repository list
@@ -115,6 +121,7 @@ Validates TOM Select widgets for repository, branch, and model selection:
 - [ ] Widget integrates with TOM Select library correctly
 
 #### Branch Selector
+
 - [ ] TOM Select widget renders with placeholder "Branch"
 - [ ] Dropdown shows available branches
 - [ ] Fuzzy search filters branch list
@@ -122,6 +129,7 @@ Validates TOM Select widgets for repository, branch, and model selection:
 - [ ] Widget loads branches from API (or mock data)
 
 #### Model Selector (Multi-Select)
+
 - [ ] TOM Select multi-select renders with instance counters
 - [ ] Clicking opens model selection popup
 - [ ] +/- buttons adjust instance count for each model
@@ -131,6 +139,7 @@ Validates TOM Select widgets for repository, branch, and model selection:
 - [ ] Zero instances removes model from selection
 
 #### TOM Select Features
+
 - [ ] Fuzzy search works across all selectors
 - [ ] Keyboard navigation works in dropdowns (arrow keys, Enter, Esc)
 - [ ] Popup positioning works correctly (doesn't overflow viewport)
@@ -207,41 +216,42 @@ Validates client-side state persistence:
 The mock server must be updated to match these specifications:
 
 ### Session Data
+
 ```typescript
 // Mock server must return exactly 5 sessions:
 const mockSessions = [
   // 3 completed sessions
   {
-    id: "session-01",
-    status: "completed",
-    prompt: "Implement user authentication",
+    id: 'session-01',
+    status: 'completed',
+    prompt: 'Implement user authentication',
     // ... full session object
   },
   {
-    id: "session-02",
-    status: "completed",
-    prompt: "Add payment integration",
+    id: 'session-02',
+    status: 'completed',
+    prompt: 'Add payment integration',
     // ...
   },
   {
-    id: "session-03",
-    status: "completed",
-    prompt: "Fix responsive layout bug",
+    id: 'session-03',
+    status: 'completed',
+    prompt: 'Fix responsive layout bug',
     // ...
   },
   // 2 active sessions with SSE streams
   {
-    id: "session-04",
-    status: "running",
-    prompt: "Refactor database queries",
+    id: 'session-04',
+    status: 'running',
+    prompt: 'Refactor database queries',
     // ... SSE stream active
   },
   {
-    id: "session-05",
-    status: "running",
-    prompt: "Write E2E tests",
+    id: 'session-05',
+    status: 'running',
+    prompt: 'Write E2E tests',
     // ... SSE stream active
-  }
+  },
 ];
 ```
 
@@ -258,13 +268,13 @@ interface SSEEvent {
   data: {
     // Thinking event
     thought?: string;
-    
+
     // Tool execution event
     tool_name?: string;
     tool_args?: Record<string, any>;
     tool_output?: string; // Last line shown live
     tool_status?: 'running' | 'success' | 'error';
-    
+
     // File edit event
     file_path?: string;
     diff_preview?: string;
@@ -275,6 +285,7 @@ interface SSEEvent {
 ```
 
 Example SSE stream sequence:
+
 1. Thinking: "I need to analyze the authentication flow"
 2. Tool execution: read_file("auth.ts") - show output live
 3. Tool execution: search_codebase("password validation")
@@ -293,7 +304,7 @@ export async function render(url: string, API_BASE_URL: string) {
   // Fetch sessions data during SSR
   const sessionsResponse = await fetch(`${API_BASE_URL}/api/v1/sessions`);
   const sessionsData = await sessionsResponse.json();
-  
+
   // Render page with data
   return renderToString(() => (
     <App initialSessions={sessionsData.items} />
@@ -302,6 +313,7 @@ export async function render(url: string, API_BASE_URL: string) {
 ```
 
 This ensures:
+
 - Users without JavaScript see complete session data
 - Initial page load is fully populated
 - Progressive enhancement works correctly
@@ -309,6 +321,7 @@ This ensures:
 ## Test Execution Strategy
 
 ### Local Development
+
 ```bash
 # Start mock server
 just webui-mock-server
@@ -321,6 +334,7 @@ just webui-test
 ```
 
 ### CI/CD Pipeline
+
 ```bash
 # Run all WebUI checks
 just webui-check

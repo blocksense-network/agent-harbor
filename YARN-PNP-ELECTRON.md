@@ -16,6 +16,7 @@ Source path: .yarn/unplugged/electron-npm-*/node_modules/electron/main
 ### 2. Native Addons in Playwright Tests
 
 When running Playwright tests, native Node addons (like `@agent-harbor/gui-core`) cannot be resolved through PnP because:
+
 - Playwright strips `NODE_OPTIONS`, preventing PnP loader activation
 - Passing `--import` for the PnP loader doesn't work with Playwright's Electron launcher
 - Preloading PnP in the source doesn't work (ESM imports are resolved before top-level await)
@@ -95,6 +96,7 @@ yarn node -e "import('electron').then(() => console.log('✅ Works'))"
 If you get Electron path errors:
 
 1. **Clean reinstall:**
+
    ```bash
    rm -rf .yarn/cache .yarn/unplugged .pnp.cjs .pnp.loader.mjs
    yarn install
@@ -111,12 +113,14 @@ If you get Electron path errors:
 If Playwright tests fail with "Cannot find package '@agent-harbor/gui-core'":
 
 1. **Verify native addon is built:**
+
    ```bash
    ls -la crates/ah-gui-core/ah-gui-core.*.node
    # Should show the .node binary file
    ```
 
 2. **Run the copy script manually:**
+
    ```bash
    cd electron-app
    bash scripts/copy-native-addon.sh
@@ -151,6 +155,7 @@ We tried several approaches that **did not work**:
 ### Why Copying Works
 
 By copying the native addon to `dist-electron/node_modules/`, we:
+
 - Use standard Node.js module resolution (no PnP needed)
 - Keep development workflow using PnP (DRY principle)
 - Only copy for testing/production builds (development uses PnP normally)
