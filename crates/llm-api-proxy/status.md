@@ -1,6 +1,6 @@
 # LLM API Proxy — Status and Plan
 
-Spec: See [Scenario-Format.md](../specs/Public/Scenario-Format.md) for the scenario playback requirements. This file tracks the implementation plan, success criteria, and an automated test strategy per specs/AGENTS.md.
+Spec: See [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for the scenario playback requirements. This file tracks the implementation plan, success criteria, and an automated test strategy per specs/AGENTS.md.
 
 ## Goal
 

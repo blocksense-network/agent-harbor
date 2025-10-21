@@ -387,7 +387,7 @@ See [Codex Session File Format](../../../specs/Research/Codex-Session-File-Forma
 
 ## Scenario Format
 
-Scenarios use a YAML-based format for defining agent interactions. See the [Scenario Format Specification](../../specs/Public/Scenario-Format.md) for complete details on structure, events, timing, and configuration options.
+Scenarios use a YAML-based format for defining agent interactions. See the [Scenario Format Specification](../../../specs/Public/Scenario-Format.md) for complete details on structure, events, timing, and configuration options.
 
 ## Hooks Support
 

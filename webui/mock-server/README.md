@@ -4,7 +4,7 @@ Express.js mock REST API server for the Agent Harbor WebUI development and testi
 
 ## Overview
 
-This mock server implements the [REST-Service.md](../../specs/Public/REST-Service.md) specification to provide a complete API for developing and testing the agent-harbor WebUI and TUI applications. It serves as a development and testing backend that mimics the behavior of the production REST service.
+This mock server implements the [REST-Service.md](../../specs/Public/REST-Service/API.md) specification to provide a complete API for developing and testing the agent-harbor WebUI and TUI applications. It serves as a development and testing backend that mimics the behavior of the production REST service.
 
 ## Quick Start
 
@@ -64,7 +64,7 @@ See [Scenario Format](../../specs/Public/Scenario-Format.md) for details on scen
 
 ## API Endpoints
 
-The mock server implements all endpoints defined in [REST-Service.md](../../specs/Public/REST-Service.md):
+The mock server implements all endpoints defined in [REST-Service.md](../../specs/Public/REST-Service/API.md):
 
 ### Core Endpoints
 
@@ -204,7 +204,7 @@ The server runs on port 3001 by default. You can modify the configuration in `sr
 When adding new endpoints or modifying existing ones:
 
 1. Update the corresponding route file in `src/routes/`
-2. Ensure the implementation matches [REST-Service.md](../../specs/Public/REST-Service.md)
+2. Ensure the implementation matches [REST-Service.md](../../specs/Public/REST-Service/API.md)
 3. Add appropriate mock data and error scenarios
 4. Update this README if adding new functionality
 5. Test against both WebUI and TUI applications

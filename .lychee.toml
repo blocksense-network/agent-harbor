@@ -1,5 +1,7 @@
 include = ["specs/**/*.md"]
 exclude = [
+  # Vendor directory (external dependencies, not our code)
+  ".*/vendor/.*",
   # External blog tends to fail TLS/cert checks intermittently
   "https://www.trio.so/.*",
   # Absolute, site-scoped doc paths used as examples in specs
@@ -58,6 +60,12 @@ exclude = [
   "https://www.microsoft.com/.*",
   "https://fruty.medium.com/.*",
   "https://openai.com/codex",
+  "https://www.freedesktop.org/.*",
+  "https://linux.die.net/.*",
+  "https://news.ycombinator.com/.*",
+  "http://man7.org/.*",
+  "https://man7.org/.*",
+  "https://formulae.brew.sh/.*",
 ]
 max_concurrency = 8
 timeout = 20
