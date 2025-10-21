@@ -144,7 +144,7 @@
 
           # Ruby formatting/linting (safe auto-correct)
           rubocop-autocorrect = {
-            enable = true;
+            enable = false;
             name = "rubocop --safe-auto-correct";
             entry = "rubocop -A --force-exclusion";
             language = "system";
