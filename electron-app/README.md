@@ -112,7 +112,7 @@ console.log(addon.getPlatform());   // Should output: "darwin", "linux", or "win
 
 **M0.2 Electron Project Scaffolding & Build Infrastructure**: ✅ In Progress
 
-See [specs/Public/Agent-Harbor-GUI.status.md](../../specs/Public/Agent-Harbor-GUI.status.md) for detailed milestone tracking.
+See [specs/Public/Agent-Harbor-GUI.status.md](../specs/Public/Agent-Harbor-GUI.status.md) for detailed milestone tracking.
 
 ## Next Steps
 
@@ -124,10 +124,10 @@ See [specs/Public/Agent-Harbor-GUI.status.md](../../specs/Public/Agent-Harbor-GU
 
 ## Documentation
 
-- [Architecture Overview](../../specs/Public/Agent-Harbor-GUI.status.md)
-- [Repository Layout](../../specs/Public/Repository-Layout.md)
-- [Browser Automation](../../specs/Public/Browser-Automation/)
-- [Electron Packaging Research](../../specs/Research/Electron-Packaging/)
+- [Architecture Overview](../specs/Public/Agent-Harbor-GUI.status.md)
+- [Repository Layout](../specs/Public/Repository-Layout.md)
+- [Browser Automation](../specs/Public/Browser-Automation/README.md)
+- [Electron Packaging Research](../specs/Research/Electron-Packaging/)
 
 ## License
 

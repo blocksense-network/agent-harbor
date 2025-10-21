@@ -214,7 +214,7 @@ _Dependencies discovered via `otool -L` on macOS:_
 - **AgentFS Process Registration**: Client processes need to be registered with AgentFS core for proper operation (currently using hardcoded client PID 1000, but may need dynamic registration) - [agentfs-server/src/main.rs](agentfs-server/src/main.rs#L106-L108)
 - **AgentFS Branch Binding**: Ensure processes are properly bound to the correct filesystem branch (currently using DEFAULT branch, but may need explicit binding per client) - [agentfs-server/src/main.rs](agentfs-server/src/main.rs#L112-L115)
 - **Integration Test Socket Path Mismatch**: Fix socket path mismatch in `agentfs-integration.sh` (server starts on `/tmp/agentfs-test.sock` but client expects `/tmp/agentfs.sock`) - [harness/agentfs-integration.sh](harness/agentfs-integration.sh#L65-L93)
-- **AgentFS Root Directory Access**: Verify that AgentFS core properly provides access to root directory for operations like `ls /agentfs/` - [agentfs-server/src/main.rs](agentfs-server/src/main.rs#L156-L178) and [crates/agentfs-core/src/lib.rs](crates/agentfs-core/src/lib.rs#L315-L350)
+- **AgentFS Root Directory Access**: Verify that AgentFS core properly provides access to root directory for operations like `ls /agentfs/` - [agentfs-server/src/main.rs](agentfs-server/src/main.rs#L156-L178) and [crates/agentfs-core/src/lib.rs](../../crates/agentfs-core/src/lib.rs#L315-L350)
 
 ### Risks & mitigations
 
@@ -232,6 +232,6 @@ _Dependencies discovered via `otool -L` on macOS:_
 
 ### References
 
-- See [Local-Sandboxing-on-macOS.md](../specs/Public/Sandboxing/Local-Sandboxing-on-macOS.md) for localhost isolation strategies
-- See [AgentFS Core.md](../specs/Public/AgentFS/AgentFS-Core.md) for RPC protocol details
-- Reference code in [Using-DYLD_INSERT_LIBRARIES-for-Sandboxing.md](../specs/Research/Sandbox/macOS/Using-DYLD_INSERT_LIBRARIES-for-Sandboxing.md)
+- See [Local-Sandboxing-on-macOS.md](../../specs/Public/Sandboxing/Local-Sandboxing-on-macOS.md) for localhost isolation strategies
+- See [AgentFS Core.md](../../specs/Public/AgentFS/AgentFS-Core.md) for RPC protocol details
+- Reference code in [Using-DYLD_INSERT_LIBRARIES-for-Sandboxing.md](../../specs/Research/Sandbox/macOS/Using-DYLD_INSERT_LIBRARIES-for-Sandboxing.md)
