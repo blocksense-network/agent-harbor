@@ -181,5 +181,5 @@ M9. Security review, performance, and fault injection (4–6d)
 ### References
 
 - [AgentFS status](AgentFS/AgentFS.status.md)
-- [Sandboxing Strategies](Sandboxing/agent-harbor-Sandboxing-Strategies.md)
+- [Sandboxing Strategies](Sandboxing/Agent-Harbor-Sandboxing-Strategies.md)
 - [Local Sandboxing on Linux (status)](Sandboxing/Local-Sandboxing-on-Linux.status.md)

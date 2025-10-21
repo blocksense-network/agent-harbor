@@ -15,7 +15,7 @@ Goals: determinism, reuse, and clarity across products.
 The testing infrastructure consists of several components working together:
 
 - **Mock-Agent**: A deterministic agent implementation that executes scenarios and modifies the test workspace
-- **Mock API Server**: Implements the [Agent Harbor REST API](../REST-Service/API.md) for CLI/WebUI/TUI testing
+- **Mock API Server**: Implements the [Agent Harbor REST API](REST-Service/API.md) for CLI/WebUI/TUI testing
 - **Mock LLM API Server**: Simulates external LLM services (Anthropic, OpenAI, etc.) that coding agents communicate with
 - **Test Executor**: Orchestrates scenario execution and handles user interactions
 
@@ -172,7 +172,7 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 - When the `--checkpoint-cmd` option is provided, the mock-agent must automatically execute the specified command after each `agentEdits` and `agentToolUse` event completes (after the edits are carried out and the tool execution finishes). The typical command to use is `ah agent fs snapshot` which captures the filesystem state changes for time travel functionality. By default, no checkpoint commands are executed.
 
 **Mock API Server (Agent Harbor REST API):**
-- Implements the [Agent Harbor REST API](../REST-Service/API.md) for CLI/WebUI/TUI integration testing
+- Implements the [Agent Harbor REST API](REST-Service/API.md) for CLI/WebUI/TUI integration testing
 - Receives task creation requests and returns session IDs
 - Streams session events and status updates
 - Uses **`agentToolUse.progress`** events to simulate command execution without executing them

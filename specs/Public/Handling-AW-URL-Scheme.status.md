@@ -1,6 +1,6 @@
 ### Overview
 
-This document tracks the implementation status of the [Handling-AH-URL-Scheme](Handling-AH-URL-Scheme.md) functionality.
+This document tracks the implementation status of the [Handling-AW-URL-Scheme](Handling-AW-URL-Scheme.md) functionality.
 
 Goal: Implement a secure, cross‑platform URL scheme handler that opens tasks and (optionally) creates tasks with an explicit confirmation dialog. Support TUI reuse when a task is already followed in an existing terminal window.
 

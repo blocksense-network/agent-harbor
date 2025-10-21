@@ -11,7 +11,7 @@ Total estimated timeline: 17-21 weeks (phased with parallel development tracks)
 
 ### Key Design Principles
 
-Per [Agent-Workflow-GUI.md](Agent-Workflow-GUI.md), the GUI is a **thin native wrapper** that:
+Per [Agent-Harbor-GUI.md](Agent-Harbor-GUI.md), the GUI is a **thin native wrapper** that:
 - Embeds and manages the existing WebUI (already functional with 23/162 E2E tests passing)
 - Delegates all workflow functionality to the underlying WebUI
 - Provides native OS integration (system tray, notifications, URL scheme handling)
@@ -557,7 +557,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 
 - **Cross-Spec Dependencies**:
   - **[Handling-AH-URL-Scheme.status.md](Handling-AW-URL-Scheme.status.md)**: Standalone handler for headless systems
-  - **[Handling-AH-URL-Scheme.md](Handling-AH-URL-Scheme.md)**: Protocol specification
+  - **[Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md)**: Protocol specification
 
 - **Implementation Strategy**:
   - Use Electron's protocol handling APIs (cross-platform)
@@ -1085,7 +1085,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - URL handler binary shared between headless and GUI modes
 
 **URL Scheme Integration:**
-- Implements [Handling-AH-URL-Scheme.md](Handling-AH-URL-Scheme.md) specification
+- Implements [Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md) specification
 - Electron's built-in protocol handling APIs
 - electron-builder configures protocol registration in installers
 - Single-instance lock prevents multiple GUI instances
