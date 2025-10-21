@@ -545,6 +545,16 @@ impl InlineAutocomplete {
             &self.vm.results[0..0]
         };
 
+        let items: Vec<ListItem> = if visible_results.is_empty() {
+            // Show a "No results" message when menu is open but no results
+            vec![ListItem::new(Line::from(vec![Span::styled(
+                "No suggestions available",
+                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray))
+            )]))]
+        } else {
+            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
+        };
+
         let menu_height = items.len().max(1) as u16;
         let popup = clip_popup(
             screen,
@@ -555,16 +565,6 @@ impl InlineAutocomplete {
         );
 
         frame.render_widget(Clear, popup);
-
-        let items: Vec<ListItem> = if visible_results.is_empty() {
-            // Show a "No results" message when menu is open but no results
-            vec![ListItem::new(Line::from(vec![Span::styled(
-                "No suggestions available",
-                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray))
-            )]))]
-        } else {
-            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
-        };
 
         let mut block = Block::default().style(Style::default().bg(background));
         if self.show_border {
