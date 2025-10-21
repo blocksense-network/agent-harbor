@@ -5,28 +5,27 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
 ## TL;DR (highest‑risk issues first)
 
 1. **Caller identity is wrong in almost every FSKit operation.**
-   Nearly all path/handle ops pass a PID/UID/GID derived from the **extension’s** process (`getpid()/getuid()/getgid()`), not the client that invoked the FSKit call. Your own TODO acknowledges this is a placeholder: “TODO: Implement proper audit token extraction from FSKit operation context.” That means permission checks inside AgentFS Core are being evaluated for the extension’s identity, not the actual caller — a correctness and security bug. Fix by pulling the caller’s audit token / effective credentials from FSKit’s per‑call context and caching a mapping to your “registered PID.” Then propagate that identity in **every** FFI call. 
+   Nearly all path/handle ops pass a PID/UID/GID derived from the **extension’s** process (`getpid()/getuid()/getgid()`), not the client that invoked the FSKit call. Your own TODO acknowledges this is a placeholder: “TODO: Implement proper audit token extraction from FSKit operation context.” That means permission checks inside AgentFS Core are being evaluated for the extension’s identity, not the actual caller — a correctness and security bug. Fix by pulling the caller’s audit token / effective credentials from FSKit’s per‑call context and caching a mapping to your “registered PID.” Then propagate that identity in **every** FFI call.
 
 2. **Name handling violates FSKit’s byte‑level contract for file names.**
    FSKit’s `FSFileName` is explicitly “the name of a file, expressed as a data buffer.” Treating names as UTF‑8 strings is not safe. Yet many code paths convert `FSFileName` to Swift `String` (or assume directory listings are UTF‑8) when building paths, creating symlinks, enumerating directories, and packing entries. This will break on non‑UTF‑8 names and diverges from FSKit guidance. Use `FSFileName.data` end‑to‑end and the byte‑oriented FFI you already exposed (`af_create_child_by_id`). Specific hot spots:
-
-   * Building paths: `constructPath(for:in:)` uses `name.string ?? ""`. Replace with a byte‑safe path join, or (better) operate by ID wherever possible. 
-   * `lookupItem`, `renameItem`, `removeItem`, etc., build C strings from `.string`.  
-   * Directory enumeration assumes “buffer contains null‑terminated UTF‑8 strings” and creates `FSFileName(string: entryName)`. Either decode with a lossless byte container or expose a byte‑preserving path.  
-   * Symlink target paths rely on `FSFileName.string`. Prefer bytes or explicitly reject non‑UTF‑8 with a clear error if the core mandates UTF‑8.
-     FSKit doc anchor for the byte contract: **FSFileName – “data buffer.”** 
+   - Building paths: `constructPath(for:in:)` uses `name.string ?? ""`. Replace with a byte‑safe path join, or (better) operate by ID wherever possible.
+   - `lookupItem`, `renameItem`, `removeItem`, etc., build C strings from `.string`.
+   - Directory enumeration assumes “buffer contains null‑terminated UTF‑8 strings” and creates `FSFileName(string: entryName)`. Either decode with a lossless byte container or expose a byte‑preserving path.
+   - Symlink target paths rely on `FSFileName.string`. Prefer bytes or explicitly reject non‑UTF‑8 with a clear error if the core mandates UTF‑8.
+     FSKit doc anchor for the byte contract: **FSFileName – “data buffer.”**
 
 3. **Open/close semantics: implementation is “single‑handle per item,” which breaks multiple concurrent opens.**
-   `openItem` bails out if `userData` is already set (“item already has handle”), and `closeItem` clears that single handle. FSKit’s **OpenCloseOperations** are per‑open; you can receive multiple opens for the same item (from one or many processes). Track opens per `(FSItem, open‑instance)` (e.g., reference count or a small struct keyed by a generated open ID) rather than one global handle on the item.  
+   `openItem` bails out if `userData` is already set (“item already has handle”), and `closeItem` clears that single handle. FSKit’s **OpenCloseOperations** are per‑open; you can receive multiple opens for the same item (from one or many processes). Track opens per `(FSItem, open‑instance)` (e.g., reference count or a small struct keyed by a generated open ID) rather than one global handle on the item.
 
 4. **Read/write require a pre‑opened handle; they fail (`EIO`) if `openItem` wasn’t called.**
-   The code throws if `agentItem.userData` is nil. Your own mapping document says reads should open ephemerally if needed (“open if no handle”), then close (transient). Implement that fallback to match FSKit expectations and to avoid edge‑case failures.  
+   The code throws if `agentItem.userData` is nil. Your own mapping document says reads should open ephemerally if needed (“open if no handle”), then close (transient). Implement that fallback to match FSKit expectations and to avoid edge‑case failures.
 
 5. **Extended attributes: declared limits don’t match implementation; reading is not ERANGE‑safe.**
-   `maximumXattrSize` returns `Int.max`, but `xattr(named:)` and `xattrs(of:)` use a fixed 4096‑byte buffer and don’t grow on `ERANGE`. Either report a realistic maximum or implement the standard “size‑discovery then allocate” pattern. As is, large xattrs will truncate or fail unexpectedly, and the PathConf claim is misleading.  
+   `maximumXattrSize` returns `Int.max`, but `xattr(named:)` and `xattrs(of:)` use a fixed 4096‑byte buffer and don’t grow on `ERANGE`. Either report a realistic maximum or implement the standard “size‑discovery then allocate” pattern. As is, large xattrs will truncate or fail unexpectedly, and the PathConf claim is misleading.
 
 6. **Rename semantics ignore `overItem`.**
-   FSKit provides an `overItem` parameter to indicate destination replacement; the code calls `af_rename` unconditionally without checking or relaying “replace vs. no‑replace.” Plumb explicit “replace” semantics (e.g., `EEXIST` when not replacing, or a core flag to replace) so behavior matches **FSVolume.RenameOperations** expectations.  
+   FSKit provides an `overItem` parameter to indicate destination replacement; the code calls `af_rename` unconditionally without checking or relaying “replace vs. no‑replace.” Plumb explicit “replace” semantics (e.g., `EEXIST` when not replacing, or a core flag to replace) so behavior matches **FSVolume.RenameOperations** expectations.
 
 ---
 
@@ -34,127 +33,122 @@ Below is a focused FSKit‑API review of the AgentFS adapter. I went API by API 
 
 ### FSUnaryFileSystem & FSUnaryFileSystemOperations
 
-* **`probeResource` returns `.usable` for “any resource” with a constant `containerID`.**
-  Best practice is to return a deterministic container identifier for the *actual* resource (e.g., derived from an intrinsic ID), and to be conservative with `.usable` vs. `.recognized`. A constant `containerID` for all resources will confuse the system’s resource tracking, and advertising `.usable` without lightweight validation increases the chance of spurious mounts. Consider `.recognized` unless you validated backing store invariants, and compute a stable `FSContainerIdentifier` from the provided `FSResource`. 
+- **`probeResource` returns `.usable` for “any resource” with a constant `containerID`.**
+  Best practice is to return a deterministic container identifier for the _actual_ resource (e.g., derived from an intrinsic ID), and to be conservative with `.usable` vs. `.recognized`. A constant `containerID` for all resources will confuse the system’s resource tracking, and advertising `.usable` without lightweight validation increases the chance of spurious mounts. Consider `.recognized` unless you validated backing store invariants, and compute a stable `FSContainerIdentifier` from the provided `FSResource`.
 
-* **`containerStatus = .ready` set by the module.**
-  FSKit generally manages container lifecycle; setting this eagerly in `loadResource` risks getting out of sync with FSKit’s state machine (especially if initialization later fails). Consider letting FSKit drive the status; return errors using FSKit error helpers consistently (see next item). 
+- **`containerStatus = .ready` set by the module.**
+  FSKit generally manages container lifecycle; setting this eagerly in `loadResource` risks getting out of sync with FSKit’s state machine (especially if initialization later fails). Consider letting FSKit drive the status; return errors using FSKit error helpers consistently (see next item).
 
-* **Error mapping inconsistency in `loadResource`.**
-  On failure you reply with a bare `NSError(domain:"AgentFS", …)`, while the rest of the adapter maps to `fs_errorForPOSIXError`. Prefer consistent FSKit error mapping everywhere for predictable user‑space error surfaces.  
+- **Error mapping inconsistency in `loadResource`.**
+  On failure you reply with a bare `NSError(domain:"AgentFS", …)`, while the rest of the adapter maps to `fs_errorForPOSIXError`. Prefer consistent FSKit error mapping everywhere for predictable user‑space error surfaces.
 
 ### FSVolume.PathConfOperations
 
-* **Name and xattr limits.**
-  Returning `-1` for `maximumNameLength` and `Int.max` for `maximumXattrSize` suggests “unbounded,” but the implementation clearly has limits (e.g., 4096‑byte xattr buffer). Return realistic values or implement true unbounded behavior (dynamic buffers). Discrepancies here mislead the kernel and can lead to unnecessary retries or truncation.  
+- **Name and xattr limits.**
+  Returning `-1` for `maximumNameLength` and `Int.max` for `maximumXattrSize` suggests “unbounded,” but the implementation clearly has limits (e.g., 4096‑byte xattr buffer). Return realistic values or implement true unbounded behavior (dynamic buffers). Discrepancies here mislead the kernel and can lead to unnecessary retries or truncation.
 
 ### FSVolume.Operations
 
-* **Lookup / path construction** relies on `FSFileName.string`.
-  Use `FSFileName.data` when forming C paths, or — even better — operate by ID using `af_resolve_id`/`af_open_by_id` (which you already do in `openItem`). This keeps behavior correct for non‑UTF‑8 names and matches FSKit’s “data buffer” contract.  
+- **Lookup / path construction** relies on `FSFileName.string`.
+  Use `FSFileName.data` when forming C paths, or — even better — operate by ID using `af_resolve_id`/`af_open_by_id` (which you already do in `openItem`). This keeps behavior correct for non‑UTF‑8 names and matches FSKit’s “data buffer” contract.
 
-* **Create**: 👍 You correctly use the byte‑safe `af_create_child_by_id` with `FSFileName.data`. Keep that pattern for all create/rename/remove flows to avoid lossy conversions. 
+- **Create**: 👍 You correctly use the byte‑safe `af_create_child_by_id` with `FSFileName.data`. Keep that pattern for all create/rename/remove flows to avoid lossy conversions.
 
-* **Remove**: Path built from `FSFileName.string`. Same concern; prefer byte‑safe lookup by ID. 
+- **Remove**: Path built from `FSFileName.string`. Same concern; prefer byte‑safe lookup by ID.
 
-* **Rename**: See “must‑fix” list — wire `overItem`/replace policy. 
+- **Rename**: See “must‑fix” list — wire `overItem`/replace policy.
 
-* **Read symbolic links**: Implemented (good); still uses `UTF‑8` decoding. If your core allows non‑UTF‑8 link targets, consider passing raw bytes up as `FSFileName(data:)` rather than a `String`. 
+- **Read symbolic links**: Implemented (good); still uses `UTF‑8` decoding. If your core allows non‑UTF‑8 link targets, consider passing raw bytes up as `FSFileName(data:)` rather than a `String`.
 
-* **Directory enumeration**:
+- **Directory enumeration**:
+  - The parser assumes UTF‑8 names — not guaranteed. Preserve bytes when turning entries into `FSFileName`.
+  - The directory **verifier** is a simple hash of `(path, entry_count)`. A verifier should change when _contents_ change; just hashing count can produce false negatives. Consider a stable generation counter or combining inode numbers + names (or surface the core’s directory change token if available).
 
-  * The parser assumes UTF‑8 names — not guaranteed. Preserve bytes when turning entries into `FSFileName`. 
-  * The directory **verifier** is a simple hash of `(path, entry_count)`. A verifier should change when *contents* change; just hashing count can produce false negatives. Consider a stable generation counter or combining inode numbers + names (or surface the core’s directory change token if available).
+- **Item reclamation**: Closing a handle on reclaim is fine, but it depends on the single‑handle model (see “Open/close”). Be sure reclamation only affects the correct open instance.
 
-* **Item reclamation**: Closing a handle on reclaim is fine, but it depends on the single‑handle model (see “Open/close”). Be sure reclamation only affects the correct open instance. 
+- **`supportedVolumeCapabilities`**: Setting `supportsSymbolicLinks = true` is appropriate now that `readSymbolicLink`/`createSymbolicLink` exist. Ensure symlink creation accepts byte targets or intentionally enforces UTF‑8 (with clear errors) for consistency.
 
-* **`supportedVolumeCapabilities`**: Setting `supportsSymbolicLinks = true` is appropriate now that `readSymbolicLink`/`createSymbolicLink` exist. Ensure symlink creation accepts byte targets or intentionally enforces UTF‑8 (with clear errors) for consistency. 
-
-* **`volumeStatistics`**: The “defaults” path reports a 4 GiB volume. You later added a more realistic branch that converts AgentFS stats. Ensure the default doesn’t mislead (e.g., 0 when unknown) and that stat fields always self‑consist (block size × blocks align with totals).  
+- **`volumeStatistics`**: The “defaults” path reports a 4 GiB volume. You later added a more realistic branch that converts AgentFS stats. Ensure the default doesn’t mislead (e.g., 0 when unknown) and that stat fields always self‑consist (block size × blocks align with totals).
 
 ### FSVolume.OpenCloseOperations
 
-* **Per‑open tracking**: Replace the single `userData` handle with a small structure keyed by open instance (e.g., a dictionary from an `FSOpenID` you create to `{handle, pid}` plus a refcount on the item). Multiple opens from different processes must be independent. 
+- **Per‑open tracking**: Replace the single `userData` handle with a small structure keyed by open instance (e.g., a dictionary from an `FSOpenID` you create to `{handle, pid}` plus a refcount on the item). Multiple opens from different processes must be independent.
 
-* **Modes mapping**: You ignore `.truncate` and `.create` intents in `openItem`. FSKit may deliver O_TRUNC semantics through open modes; honor them (or wire them to a separate truncate path consistent with FSKit). 
+- **Modes mapping**: You ignore `.truncate` and `.create` intents in `openItem`. FSKit may deliver O_TRUNC semantics through open modes; honor them (or wire them to a separate truncate path consistent with FSKit).
 
 ### FSVolume.ReadWriteOperations
 
-* **Lazy open**: Add the documented transient‑open fallback your mapping calls for. This aligns with FSKit behavior when the framework performs implicit I/O without explicit opens. 
+- **Lazy open**: Add the documented transient‑open fallback your mapping calls for. This aligns with FSKit behavior when the framework performs implicit I/O without explicit opens.
 
-* **Attribute refresh after write**: You refresh attributes post‑write (good), but prefer a cheap size/time update path (if your core can return updated size/mtime from `write`) to avoid extra round‑trips. 
+- **Attribute refresh after write**: You refresh attributes post‑write (good), but prefer a cheap size/time update path (if your core can return updated size/mtime from `write`) to avoid extra round‑trips.
 
 ### FSVolume.XattrOperations
 
-* **Two‑pass / dynamic size**: Grow the buffer when `af_xattr_get` returns the needed size (or retry with `outLen`). Align your `maximumXattrSize` to the real cap.  
+- **Two‑pass / dynamic size**: Grow the buffer when `af_xattr_get` returns the needed size (or retry with `outLen`). Align your `maximumXattrSize` to the real cap.
 
-* **Name encoding**: You decode xattr names as UTF‑8; that’s generally OK on macOS (extended attribute names are ASCII‑ish), but be consistent with your FS policy and handle unexpected bytes defensively. 
+- **Name encoding**: You decode xattr names as UTF‑8; that’s generally OK on macOS (extended attribute names are ASCII‑ish), but be consistent with your FS policy and handle unexpected bytes defensively.
 
 ---
 
 ## Concrete, bite‑size fixes
 
-* **Use FSKit caller context everywhere.** Replace `getCallingProcessInfo()` with a helper that extracts the caller’s audit token / effective creds from FSKit’s operation context (the FSKit sample pattern), then update every call site that currently uses `getCallingPid()` or the fallback. Your own TODO already marks the spot. 
+- **Use FSKit caller context everywhere.** Replace `getCallingProcessInfo()` with a helper that extracts the caller’s audit token / effective creds from FSKit’s operation context (the FSKit sample pattern), then update every call site that currently uses `getCallingPid()` or the fallback. Your own TODO already marks the spot.
 
-* **Make names byte‑safe end‑to‑end.**
+- **Make names byte‑safe end‑to‑end.**
+  - Keep using `af_open_by_id`/`af_create_child_by_id` (👍).
+  - Replace `constructPath(for:in:)` with an ID‑first strategy. If you must build a path, round‑trip bytes safely (no `String` fallback).
+  - In `enumerateDirectory`, build `FSFileName` from the raw byte slice (up to NUL), not from a `String`.
 
-  * Keep using `af_open_by_id`/`af_create_child_by_id` (👍).
-  * Replace `constructPath(for:in:)` with an ID‑first strategy. If you must build a path, round‑trip bytes safely (no `String` fallback).
-  * In `enumerateDirectory`, build `FSFileName` from the raw byte slice (up to NUL), not from a `String`.
+- **Per‑open handles.** Replace `FSItem.userData` with a map `{openKey → (handle, pid)}` and track refcounts. Update `read/write/close` accordingly.
 
-* **Per‑open handles.** Replace `FSItem.userData` with a map `{openKey → (handle, pid)}` and track refcounts. Update `read/write/close` accordingly. 
+- **Implement ephemeral open in reads/writes.** If no open exists for the item, `af_open_by_id` (read‑only or write) → `af_read/af_write` → `af_close`. This matches your mapping doc.
 
-* **Implement ephemeral open in reads/writes.** If no open exists for the item, `af_open_by_id` (read‑only or write) → `af_read/af_write` → `af_close`. This matches your mapping doc. 
+- **Xattr robustness.**
+  - First call `af_xattr_get` with `buffer = nil` to get size, then allocate and call again.
+  - Return a realistic `maximumXattrSize` to FSKit.
 
-* **Xattr robustness.**
+- **Rename semantics.** Respect `overItem` by passing a “replace” flag (or by first unlinking the target when `overItem != nil`), and surface `EEXIST` when replace is not requested.
 
-  * First call `af_xattr_get` with `buffer = nil` to get size, then allocate and call again.
-  * Return a realistic `maximumXattrSize` to FSKit.  
+- **Errors: standardize on FSKit helpers.** Replace ad‑hoc `NSError` with `fs_errorForPOSIXError` (or an FSKit error) so the system can present consistent messages.
 
-* **Rename semantics.** Respect `overItem` by passing a “replace” flag (or by first unlinking the target when `overItem != nil`), and surface `EEXIST` when replace is not requested. 
+- **Directory verifier.** Prefer a content‑sensitive token (e.g., hash of entry IDs + a directory generation from core) rather than `(path, count)` to reduce false negatives.
 
-* **Errors: standardize on FSKit helpers.** Replace ad‑hoc `NSError` with `fs_errorForPOSIXError` (or an FSKit error) so the system can present consistent messages.  
-
-* **Directory verifier.** Prefer a content‑sensitive token (e.g., hash of entry IDs + a directory generation from core) rather than `(path, count)` to reduce false negatives. 
-
-* **Probe result & container ID.** Compute a per‑resource `FSContainerIdentifier` and consider returning `.recognized` unless you validated the resource is immediately mountable. 
+- **Probe result & container ID.** Compute a per‑resource `FSContainerIdentifier` and consider returning `.recognized` unless you validated the resource is immediately mountable.
 
 ---
 
 ## API‑by‑API checklist
 
-* **FSUnaryFileSystemOperations**
+- **FSUnaryFileSystemOperations**
+  - `probeResource` — too permissive, constant container ID.
+  - `loadResource` — manual `containerStatus`, custom `NSError`.
+  - `unloadResource` — fine (cleans up core).
 
-  * `probeResource` — too permissive, constant container ID.
-  * `loadResource` — manual `containerStatus`, custom `NSError`.
-  * `unloadResource` — fine (cleans up core).
+- **FSVolume.PathConfOperations** — Unbounded values don’t match implementation; fix `maximumXattrSize` and, ideally, `maximumNameLength`.
 
-* **FSVolume.PathConfOperations** — Unbounded values don’t match implementation; fix `maximumXattrSize` and, ideally, `maximumNameLength`. 
+- **FSVolume.Operations**
+  - `activate/deactivate/mount/unmount/synchronize` — stubs are OK at this stage.
+  - `lookupItem` — builds paths from `FSFileName.string`; switch to bytes/ID.
+  - `createItem` — good: uses byte‑safe `af_create_child_by_id`.
+  - `removeItem` — path from string; same name‑safety fix needed.
+  - `renameItem` — ignores `overItem` semantics.
+  - `enumerateDirectory` — UTF‑8 assumption & weak verifier.
+  - `readSymbolicLink` — implemented; consider byte‑level target handling.
+  - `setAttributes` — relies on `getCallingPid()`; fix caller identity.
 
-* **FSVolume.Operations**
+- **FSVolume.OpenCloseOperations** — single handle per item isn’t FSKit‑correct; implement per‑open tracking and support `.truncate/.create` intents where delivered.
 
-  * `activate/deactivate/mount/unmount/synchronize` — stubs are OK at this stage. 
-  * `lookupItem` — builds paths from `FSFileName.string`; switch to bytes/ID.
-  * `createItem` — good: uses byte‑safe `af_create_child_by_id`.
-  * `removeItem` — path from string; same name‑safety fix needed.
-  * `renameItem` — ignores `overItem` semantics.
-  * `enumerateDirectory` — UTF‑8 assumption & weak verifier.
-  * `readSymbolicLink` — implemented; consider byte‑level target handling.
-  * `setAttributes` — relies on `getCallingPid()`; fix caller identity.
+- **FSVolume.ReadWriteOperations** — add lazy open; avoid hard failure when no handle yet.
 
-* **FSVolume.OpenCloseOperations** — single handle per item isn’t FSKit‑correct; implement per‑open tracking and support `.truncate/.create` intents where delivered. 
-
-* **FSVolume.ReadWriteOperations** — add lazy open; avoid hard failure when no handle yet.  
-
-* **FSVolume.XattrOperations** — fixed 4 KiB buffers and unrealistic PathConf; implement size discovery + dynamic allocation.  
+- **FSVolume.XattrOperations** — fixed 4 KiB buffers and unrealistic PathConf; implement size discovery + dynamic allocation.
 
 ---
 
 ## Why I’m confident in these calls
 
-* The FSKit docs embedded in your repo make clear that `FSFileName` is a **data buffer** (not a string), and they enumerate which operations are **required** vs **optional** along with their semantics; I cross‑checked your conformance against those docs. 
-* Every flagged spot links to the exact Swift implementation in your extension. (See the citations throughout — e.g., open/close, read/write, xattrs, rename, directory enumeration.)     
-* Your own mapping notes and TODOs reinforce the intended behavior (e.g., lazy open on read/write; proper caller identity), which the current code hasn’t fully implemented yet.  
+- The FSKit docs embedded in your repo make clear that `FSFileName` is a **data buffer** (not a string), and they enumerate which operations are **required** vs **optional** along with their semantics; I cross‑checked your conformance against those docs.
+- Every flagged spot links to the exact Swift implementation in your extension. (See the citations throughout — e.g., open/close, read/write, xattrs, rename, directory enumeration.)
+- Your own mapping notes and TODOs reinforce the intended behavior (e.g., lazy open on read/write; proper caller identity), which the current code hasn’t fully implemented yet.
 
 If you’d like, I can produce a small patch plan that (1) swaps in a caller‑context provider, (2) introduces a per‑open handle table, and (3) replaces `.string` usage with byte‑safe helpers — those three changes will eliminate the majority of correctness risks highlighted above.
 
@@ -183,10 +177,10 @@ index 9f0b7aa..67a40db 100644
  //
  //  Created by AgentFS on 2025-01-22.
  //
- 
+
  @preconcurrency import Foundation
  import FSKit
- 
+
  @available(macOS 15.4, *)
  final class AgentFsItem: FSItem {
 @@
@@ -196,7 +190,7 @@ index 9f0b7aa..67a40db 100644
 +    var pathBytes: Data
 +    /// Debug-only path string (may be lossy). Never use for FFI.
 +    var path: String
- 
+
      var attributes = FSItem.Attributes()
      var xattrs: [FSFileName: Data] = [:]
 @@
@@ -307,7 +301,7 @@ index 5c46d9a..9a6fd2e 100644
 -    }
 +    var maximumFileSize: UInt64 { UInt64.max }
  }
- 
+
  @available(macOS 15.4, *)
  extension AgentFsVolume: FSVolume.Operations {
 @@
@@ -361,7 +355,7 @@ index 5c46d9a..9a6fd2e 100644
 @@
  @available(macOS 15.4, *)
  extension AgentFsVolume: FSVolume.OpenCloseOperations {
- 
+
      func openItem(_ item: FSItem, modes: FSVolume.OpenModes) async throws {
 @@
 -        // If already has a handle, don't open again
@@ -370,14 +364,14 @@ index 5c46d9a..9a6fd2e 100644
 -            return
 -        }
 +        // FSKit may open the same item multiple times; track all opens.
- 
+
          // Get calling process information and register it
          let callingPid: UInt32
 @@
          let wantsCreate = false
          let wantsTruncate = false
          let optionsJson = "{\"read\":\(wantsRead),\"write\":\(wantsWrite),\"create\":\(wantsCreate),\"truncate\":\(wantsTruncate)}"
- 
+
 -        let result = coreQueue.sync { () -> Int32 in
 -            return optionsJson.withCString { options_cstr in
 -                // Prefer opening by node ID to avoid path decoding issues
@@ -406,7 +400,7 @@ index 5c46d9a..9a6fd2e 100644
 +        opensLock.unlock()
          logger.debug("open: opened handle \(handle) for id=\(agentItem.attributes.fileID.rawValue) with PID \(callingPid)")
      }
- 
+
      func closeItem(_ item: FSItem, modes: FSVolume.OpenModes) async throws {
 @@
 -        // Get and clear the handle
@@ -439,7 +433,7 @@ index 5c46d9a..9a6fd2e 100644
          logger.debug("close: closed handle \(handle)")
      }
  }
- 
+
  @available(macOS 15.4, *)
  extension AgentFsVolume: FSVolume.ReadWriteOperations {
 @@
@@ -544,14 +538,14 @@ index 5c46d9a..9a6fd2e 100644
          return written
      }
  }
- 
+
  @available(macOS 15.4, *)
  extension AgentFsVolume: FSVolume.XattrOperations {
 @@
 -    func xattr(named name: FSFileName, of item: FSItem) async throws -> Data {
 +    func xattr(named name: FSFileName, of item: FSItem) async throws -> Data {
          logger.debug("xattr: \(item) - \(name.string ?? "NA")")
- 
+
 -        guard let agentItem = item as? AgentFsItem, let key = name.string else {
 +        guard let agentItem = item as? AgentFsItem, let key = name.string else {
              throw fs_errorForPOSIXError(POSIXError.EINVAL.rawValue)
@@ -828,7 +822,7 @@ index 5c46d9a..9a6fd2e 100644
 +            if let error = afResultToFSKitError(result) { throw error }
 +            throw fs_errorForPOSIXError(POSIXError.EIO.rawValue)
          }
- 
+
          return destinationName
      }
 @@
@@ -859,11 +853,11 @@ index 5c46d9a..9a6fd2e 100644
 
 **Why (high‑level):**
 
-* **Byte‑safe everywhere**: all FFI path calls now use `withNullTerminatedCStr(agentItem.pathBytes)` or `constructPathBytes`—no `.string` conversions that could corrupt names.
-* **Per‑open handle tracking**: replaces single `userData` handle with `opensByItem` so multiple opens are handled correctly and closes remove only one handle.
-* **Lazy I/O**: `read` / `write` transparently open a **transient** handle if the item has no open handles (common when kernel bypasses `open` for readahead or cached I/O).
-* **Xattr dynamic sizing**: two‑phase growth loop (honoring `out_len`) replaces the fixed 4K buffer; avoids truncation and aligns with typical macOS patterns.
-* **`rename` with `overItem`**: if `overItem == nil`, proactively fail with `EEXIST` when the destination exists; if `overItem != nil`, do a best‑effort non‑atomic unlink‑then‑rename fallback when the core doesn’t replace in place (until FFI offers an atomic replace).
+- **Byte‑safe everywhere**: all FFI path calls now use `withNullTerminatedCStr(agentItem.pathBytes)` or `constructPathBytes`—no `.string` conversions that could corrupt names.
+- **Per‑open handle tracking**: replaces single `userData` handle with `opensByItem` so multiple opens are handled correctly and closes remove only one handle.
+- **Lazy I/O**: `read` / `write` transparently open a **transient** handle if the item has no open handles (common when kernel bypasses `open` for readahead or cached I/O).
+- **Xattr dynamic sizing**: two‑phase growth loop (honoring `out_len`) replaces the fixed 4K buffer; avoids truncation and aligns with typical macOS patterns.
+- **`rename` with `overItem`**: if `overItem == nil`, proactively fail with `EEXIST` when the destination exists; if `overItem != nil`, do a best‑effort non‑atomic unlink‑then‑rename fallback when the core doesn’t replace in place (until FFI offers an atomic replace).
 
 ---
 
@@ -912,61 +906,55 @@ index 9a6fd2e..e3d0c12 100644
 # What each change fixes (mapped to the review)
 
 1. **Stop using `.string` for FS names / paths**
-
-   * **Changes:** introduce `pathBytes`, `constructPathBytes`, `withNullTerminatedCStr`, replace string `.withCString` call sites.
-   * **Why:** FSKit’s `FSFileName` is byte‑oriented; `.string` is lossy and violates adapter guidance; your code relied on `String` for many FFI calls (lookup/enum/xattr/rename).
+   - **Changes:** introduce `pathBytes`, `constructPathBytes`, `withNullTerminatedCStr`, replace string `.withCString` call sites.
+   - **Why:** FSKit’s `FSFileName` is byte‑oriented; `.string` is lossy and violates adapter guidance; your code relied on `String` for many FFI calls (lookup/enum/xattr/rename).
 
 2. **Per‑open handle table (FSVolume.OpenCloseOperations)**
-
-   * **Changes:** `opensByItem` + `opensLock`; `openItem` appends; `closeItem` pops; `userData` kept only for legacy code paths.
-   * **Why:** FSKit may issue multiple opens per item; current single `userData` breaks semantics and can double‑close.
+   - **Changes:** `opensByItem` + `opensLock`; `openItem` appends; `closeItem` pops; `userData` kept only for legacy code paths.
+   - **Why:** FSKit may issue multiple opens per item; current single `userData` breaks semantics and can double‑close.
 
 3. **Lazy (transient) open in `read`/`write`**
-
-   * **Changes:** resolve existing handle or `af_open_by_id` on the fly; close it after the I/O.
-   * **Why:** FSKit read/write aren’t guaranteed to be preceded by `open`; your current `read`/`write` hard‑require `userData` and throw EIO otherwise. The adapter spec even calls out the “open/if none, open transient” pattern.
+   - **Changes:** resolve existing handle or `af_open_by_id` on the fly; close it after the I/O.
+   - **Why:** FSKit read/write aren’t guaranteed to be preceded by `open`; your current `read`/`write` hard‑require `userData` and throw EIO otherwise. The adapter spec even calls out the “open/if none, open transient” pattern.
 
 4. **Xattr two‑phase sizing**
-
-   * **Changes:** grow buffer to `out_len`, both for `get` and `list`.
-   * **Why:** fixed 4 KiB is brittle and contradicts FSKit/Xattr best practice; your code hard‑codes 4096; the C bridge enforces a non‑nil buffer, so we loop and resize.
+   - **Changes:** grow buffer to `out_len`, both for `get` and `list`.
+   - **Why:** fixed 4 KiB is brittle and contradicts FSKit/Xattr best practice; your code hard‑codes 4096; the C bridge enforces a non‑nil buffer, so we loop and resize.
 
 5. **`rename` honors `overItem` semantics**
-
-   * **Changes:** pre‑check dest and return `EEXIST` when `overItem == nil`; best‑effort unlink+rename when `overItem != nil` and core doesn’t replace.
-   * **Why:** Existing code ignores `overItem` entirely. Until the FFI exposes an atomic replace, this at least matches FSKit’s API contract for most cases.
+   - **Changes:** pre‑check dest and return `EEXIST` when `overItem == nil`; best‑effort unlink+rename when `overItem != nil` and core doesn’t replace.
+   - **Why:** Existing code ignores `overItem` entirely. Until the FFI exposes an atomic replace, this at least matches FSKit’s API contract for most cases.
 
 6. **PathConf stops claiming “unlimited”**
-
-   * **Changes:** finite `maximumNameLength` (255), finite `maximumXattrSize` (64 KiB).
-   * **Why:** Advertised `-1`/`Int.max` violates Apple’s expectations and can confuse upper layers; your file currently reports `-1`/`Int.max`.
+   - **Changes:** finite `maximumNameLength` (255), finite `maximumXattrSize` (64 KiB).
+   - **Why:** Advertised `-1`/`Int.max` violates Apple’s expectations and can confuse upper layers; your file currently reports `-1`/`Int.max`.
 
 ---
 
 ## Notes & follow‑ups
 
-* **Caller identity (audit token)**: I left `getCallingProcessInfo()` as a fallback to the extension process (the current code already does this). FSKit’s per‑op context that exposes the audit token isn’t surfaced in your code; when you wire that in, simply plumb it through `getRegisteredPid(...)`. The handle PID cache (`handleToPid`) continues to ensure consistent identity for existing opens.
-* **Atomic replace for rename**: If/when you add `af_rename_replace(fs, pid, src, dst)` (atomic) to the FFI, you can gate on `overItem != nil` and call that instead of the unlink‑then‑rename fallback.
-* **Directory verifier**: I didn’t change your verifier logic (hash of path + count), but once byte‑paths are everywhere you can include e.g. a directory mtime or a cookie from core for stronger stability.
-* **Remaining `.path` call sites**: I converted the hot paths in this patch. If you keep seeing non‑UTF‑8 filenames, do a quick sweep for `.path.withCString` and switch those to `withNullTerminatedCStr(item.pathBytes)`.
+- **Caller identity (audit token)**: I left `getCallingProcessInfo()` as a fallback to the extension process (the current code already does this). FSKit’s per‑op context that exposes the audit token isn’t surfaced in your code; when you wire that in, simply plumb it through `getRegisteredPid(...)`. The handle PID cache (`handleToPid`) continues to ensure consistent identity for existing opens.
+- **Atomic replace for rename**: If/when you add `af_rename_replace(fs, pid, src, dst)` (atomic) to the FFI, you can gate on `overItem != nil` and call that instead of the unlink‑then‑rename fallback.
+- **Directory verifier**: I didn’t change your verifier logic (hash of path + count), but once byte‑paths are everywhere you can include e.g. a directory mtime or a cookie from core for stronger stability.
+- **Remaining `.path` call sites**: I converted the hot paths in this patch. If you keep seeing non‑UTF‑8 filenames, do a quick sweep for `.path.withCString` and switch those to `withNullTerminatedCStr(item.pathBytes)`.
 
 ---
 
 ## Where the problems were in your tree
 
-* Single‑handle per item (`userData`) and handle‑required I/O: see `OpenCloseOperations` and `ReadWriteOperations` implementations.
-* Path building via `String` (lossy): see lookup, enumerate, xattrs, symlink, remove, rename callsites.
-* PathConf advertising unlimiteds: see `maximumNameLength = -1`, `maximumXattrSize = Int.max`.
+- Single‑handle per item (`userData`) and handle‑required I/O: see `OpenCloseOperations` and `ReadWriteOperations` implementations.
+- Path building via `String` (lossy): see lookup, enumerate, xattrs, symlink, remove, rename callsites.
+- PathConf advertising unlimiteds: see `maximumNameLength = -1`, `maximumXattrSize = Int.max`.
 
 ---
 
 ### Build & test checklist
 
-* Rebuild the extension target; Swift compiler will guide you to any remaining `.path.withCString` call sites (replace with `withNullTerminatedCStr`).
-* Exercise non‑UTF‑8 names (e.g., create via your core or with raw bytes), verify that `ls`, `cp`, Xcode, and Finder don’t crash when listing.
-* Validate `cat`/`dd` on files **without** a prior `open` (kernel readahead path) to confirm the transient open path works.
-* Test `xattr -w com.apple.quarantine x y` and `xattr -l` on files larger/smaller than 4 KiB payloads to confirm dynamic sizing.
-* Test `mv` over an existing file and over a non‑existing target to ensure `overItem` semantics are honored.
+- Rebuild the extension target; Swift compiler will guide you to any remaining `.path.withCString` call sites (replace with `withNullTerminatedCStr`).
+- Exercise non‑UTF‑8 names (e.g., create via your core or with raw bytes), verify that `ls`, `cp`, Xcode, and Finder don’t crash when listing.
+- Validate `cat`/`dd` on files **without** a prior `open` (kernel readahead path) to confirm the transient open path works.
+- Test `xattr -w com.apple.quarantine x y` and `xattr -l` on files larger/smaller than 4 KiB payloads to confirm dynamic sizing.
+- Test `mv` over an existing file and over a non‑existing target to ensure `overItem` semantics are honored.
 
 ---
 

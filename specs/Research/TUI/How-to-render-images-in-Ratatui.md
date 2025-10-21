@@ -111,8 +111,8 @@ This follows the crate’s “Quick start” pattern: create a `Picker`, decode 
 
 If you want, tell me your target terminal (Kitty, iTerm2, WezTerm, etc.) and how big your images are—I can tailor the code to your exact setup (e.g., async pipeline, cropping/fit behavior).
 
-[1]: https://docs.rs/ratatui-image/latest/ratatui_image/index.html "ratatui_image - Rust"
-[2]: https://github.com/benjajaja/ratatui-image "GitHub - benjajaja/ratatui-image: Ratatui widget for rendering image graphics in terminals that support it"
-[3]: https://github.com/orhun/ratatui-splash-screen?utm_source=chatgpt.com "GitHub - orhun/ratatui-splash-screen: A Ratatui widget to turn any ..."
-[4]: https://ratatui.rs/showcase/third-party-widgets/?utm_source=chatgpt.com "Third Party Widgets Showcase - Ratatui"
-[5]: https://ratatui.rs/concepts/rendering/under-the-hood/?utm_source=chatgpt.com "Rendering under the hood - Ratatui"
+[1]: https://docs.rs/ratatui-image/latest/ratatui_image/index.html 'ratatui_image - Rust'
+[2]: https://github.com/benjajaja/ratatui-image 'GitHub - benjajaja/ratatui-image: Ratatui widget for rendering image graphics in terminals that support it'
+[3]: https://github.com/orhun/ratatui-splash-screen?utm_source=chatgpt.com 'GitHub - orhun/ratatui-splash-screen: A Ratatui widget to turn any ...'
+[4]: https://ratatui.rs/showcase/third-party-widgets/?utm_source=chatgpt.com 'Third Party Widgets Showcase - Ratatui'
+[5]: https://ratatui.rs/concepts/rendering/under-the-hood/?utm_source=chatgpt.com 'Rendering under the hood - Ratatui'

@@ -23,13 +23,11 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 **M1. Project Bootstrap** COMPLETED (1–2d)
 
 - **Deliverables**:
-
   - Initialize Cargo workspace and scaffolding for `agentfs-core`, `agentfs-proto`, adapter crates, and tests.
   - Set up CI: build + test on Linux/macOS/Windows; clippy, rustfmt, coverage (grcov/llvm-cov).
   - Success criteria: CI runs `cargo build` and a minimal `cargo test` on all platforms, with lints and formatting enforced.
 
 - **Implementation Details**:
-
   - Created Cargo workspace structure with 5 AgentFS crates: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`
   - Implemented core type definitions from [AgentFS Core.md](AgentFS-Core.md): `FsConfig`, `FsError`, `CaseSensitivity`, `MemoryPolicy`, `FsLimits`, `CachePolicy`, `Attributes`, `FileTimes`, etc.
   - Added basic control plane message types in `agentfs-proto` crate based on [AgentFS Control Messages.md](AgentFS-Control-Messages.md)
@@ -39,7 +37,6 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
   - All crates compile successfully with `cargo check` and pass `cargo test`, `cargo clippy`, and `cargo fmt`
 
 - **Key Source Files**:
-
   - `crates/agentfs-core/src/lib.rs` - Main library interface and re-exports
   - `crates/agentfs-core/src/config.rs` - Configuration types and policies
   - `crates/agentfs-core/src/error.rs` - Error type definitions
@@ -389,8 +386,8 @@ All crates target stable Rust. Platform‑specific hosts are conditionally compi
 - **Core Unit Test Plan: M24 Interpose (FD-Forwarding) Control Plane**
   - **U18. `fd_open` Control Plane Logic**:
     - **Reflink Success**: Mock a backstore that supports reflink. `fd_open` on a lower-only path should succeed and call the backstore's `reflink()` method.
-    - **Bounded Copy Success**: Mock a backstore without reflink support. `fd_open` on a lower-only file *smaller* than `interpose.max_copy_bytes` should succeed and trigger a full copy.
-    - **Forwarding Declined (Too Large)**: Mock a backstore without reflink. `fd_open` on a lower-only file *larger* than `interpose.max_copy_bytes` must fail with a `FORWARDING_UNAVAILABLE` error.
+    - **Bounded Copy Success**: Mock a backstore without reflink support. `fd_open` on a lower-only file _smaller_ than `interpose.max_copy_bytes` should succeed and trigger a full copy.
+    - **Forwarding Declined (Too Large)**: Mock a backstore without reflink. `fd_open` on a lower-only file _larger_ than `interpose.max_copy_bytes` must fail with a `FORWARDING_UNAVAILABLE` error.
     - **Forwarding Declined (Policy)**: Configure `interpose.require_reflink = true`. `fd_open` on a lower-only path without reflink support must fail with `FORWARDING_UNAVAILABLE`, regardless of file size.
 
 Acceptance checklist (M-Core.Advanced-Features)
@@ -420,6 +417,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - **Cross-crate compatibility** fixes applied to all crates using `FsConfig`
 
 **Key Source Files:**
+
 - `crates/agentfs-core/src/lib.rs` - Complete U10-U18 unit test implementations
 - `crates/agentfs-core/src/vfs.rs` - FsCore overlay/backstore integration and deadlock fixes
 - `crates/agentfs-core/src/storage.rs` - HostFsBackend disk persistence implementation
@@ -428,6 +426,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - `crates/agentfs-core/src/config.rs` - Extended configuration structures
 
 **Technical Highlights:**
+
 - **Thread-safe implementation** with proper Mutex usage patterns
 - **Comprehensive test coverage** including edge cases (whiteouts, copy-up, directory merging)
 - **Platform-agnostic design** using trait-based abstractions
@@ -832,7 +831,6 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
 - Goal: Implement an in‑app, user‑friendly approval flow for required system extensions (FSKit file system module; optional Endpoint Security), using OSSystemExtensionManager with deep‑links to System Settings panes.
 
 - Deliverables:
-
   - App launch flow that submits activation requests via `OSSystemExtensionManager` for the FSKit extension (and ES extension if present).
   - Delegate implementation handling: `requestNeedsUserApproval`, `didFinishWithResult`, `didFailWithError`, and replacement action.
   - UI prompt that explains why approval is needed and provides a button to open System Settings to the precise pane using `x-apple.systempreferences:` URLs:
@@ -843,7 +841,6 @@ M21. Real Filesystem Integration Tests (4-5d) - COMPLETED
   - Just targets to assist local testing: `systemextensions-devmode-and-status`, `install-AgentHarbor-app`, `register-fskit-extension` (already added) referenced from docs. <!-- cspell:ignore systempreferences systemextensions devmode AgentHarbor -->
 
 - Success criteria:
-
   - On a clean machine with extensions not yet approved, app shows approval prompt, opens System Settings to the correct pane, and after enabling the extension the delegate receives `.completed` (or functionality succeeds) without requiring app restart.
   - On subsequent launches with extensions already approved, no prompt is shown and activation completes silently.
   - Fallback path documented for older macOS if needed.
@@ -896,15 +893,14 @@ Acceptance checklist (M21.8)
 References: See `specs/Research/AgentFS/Implementing-System-Extension-Approval-Pattern-on-macOS.md` for details on identifiers, delegate patterns, and deep links.
 
 **M22. macOS FSKit E2E Mount and Read/Write (SIP/AMFI disabled)** PLANNED (3–4d)
+
 <!-- cspell:ignore AMFI csrutil nvram amfi prereqs -->
 
 - Pre‑requisites:
-
   - The test machine has System Integrity Protection (SIP) and Apple Mobile File Integrity (AMFI) disabled. This is a hard requirement for loading unsigned FSKit extensions in the current developer setup. The E2E suite will detect these pre‑requisites and skip with a clear message if they are not met.
   - Xcode toolchain and FSKit extension build are functional per M18–M21.
 
 - Deliverables:
-
   - A Just recipe `verify-macos-fskit-prereqs` that performs best‑effort checks for SIP and AMFI disabled, returning a non‑zero exit code if requirements are not met. Example checks:
     - `csrutil status` contains "disabled".
     - `nvram boot-args` contains any of: `amfi_get_out_of_my_way=1`, `amfi_allow_any_signature=1`, or other AMFI‑disabling flags used in local setup.
@@ -921,7 +917,6 @@ References: See `specs/Research/AgentFS/Implementing-System-Extension-Approval-P
   - Test logs written to unique files per run (path printed on failure) following our test log policy.
 
 - Success criteria (E2E tests):
-
   - End‑to‑end mount → I/O → unmount cycle completes without errors.
   - File content round‑trip validated via checksum; metadata checks pass.
   - The test cleanly unmounts and leaves no background processes/mounts.
@@ -996,6 +991,7 @@ Notes:
   - Snapshot of a typical small change set completes within a constant bound vs working set size (native snapshots used when available).
 
 **M22. Kernel-Backstore Proxy (KBP) for overlay** (5–8d)
+
 - **Deliverables**:
   - Adapter support for **lower-RO handle** and **upper backstore handle** lifecycles.
   - Core triggers for **copy-up** and **whiteouts** wired to adapters.
@@ -1006,13 +1002,15 @@ Notes:
   - Copy-up preserves lower; metadata initialized from lower; whiteouts hide lower entries.
 
 **M23. Host-FS backstore snapshots** (6–10d)
+
 - **Deliverables**:
-  - Prefer host-FS native snapshots when supported; else copy the *upper change-set*.
+  - Prefer host-FS native snapshots when supported; else copy the _upper change-set_.
   - Snapshot create/list/restore work with HostFs backstore.
 - **Success criteria**:
-  - Snapshot time scales with *changed set* (or native snapshot constant time).
+  - Snapshot time scales with _changed set_ (or native snapshot constant time).
 
 **M24. Interpose (FD-forwarding) – Zero-overhead path** (8–12d)
+
 - **Deliverables**:
   - **Eager upperization**: Core always creates upper entries for interposed opens (never returns lower handles).
   - **Reflink/copy logic**: Use reflink when available, bounded copy when size ≤ threshold, decline forwarding otherwise.
@@ -1027,6 +1025,7 @@ Notes:
   - Large file handling: Files above threshold fall back gracefully when no reflink available.
 
 **M25. Windows open-redirect (experimental)** (5–7d)
+
 - **Deliverables**:
   - Return STATUS_REPARSE to backstore on eligible opens; blocked by policy by default.
   - Document caveats for handle-based rename/delete.

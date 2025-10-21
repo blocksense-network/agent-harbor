@@ -9,6 +9,7 @@ This is a fully interactive implementation that demonstrates the complete Agent 
 ## Key Improvements
 
 ### 🎨 **Charm-Inspired Theme**
+
 - **Catppuccin Mocha Colors**: Dark theme with cohesive color palette (base background, surface, text, primary/accent colors)
 - **Rounded Borders**: `BorderType::Rounded` for modern Charm aesthetic
 - **Graphical Logo**: PNG logo rendering with ASCII fallback using `ratatui-image`
@@ -17,12 +18,14 @@ This is a fully interactive implementation that demonstrates the complete Agent 
 - **Background Fills**: Theme-colored backgrounds for visual consistency
 
 ### 🎯 **Direct Text Editing**
+
 - **Immediate Typing**: No need to press Enter first - just navigate to the description area and start typing
 - **Cursor Management**: Proper cursor positioning and text insertion
 - **Visual Feedback**: Blue highlighting when description area is focused
 - **Line Breaks**: Shift+Enter for multi-line input
 
 ### ⚡ **Real-Time Activity Simulation**
+
 - **Timer-Based Updates**: Every 2-5 seconds (randomized for realism)
 - **Live Activity Feed**: Active tasks show continuous agent progress
 - **Diverse Activities**: Thoughts, tool usage, file edits, command execution
@@ -31,6 +34,7 @@ This is a fully interactive implementation that demonstrates the complete Agent 
 ## Features Implemented
 
 ### Interactive Keyboard Navigation
+
 - **Arrow Keys**: Navigate between task cards (↑↓)
 - **Tab/Shift+Tab**: Navigate between controls in draft cards
 - **Enter**: Select cards, activate buttons, launch tasks
@@ -38,18 +42,21 @@ This is a fully interactive implementation that demonstrates the complete Agent 
 - **Visual Focus**: Selected cards and buttons highlighted with color changes
 
 ### Editable Task Description
+
 - **Text Input**: Full text editing with cursor movement (←→)
 - **Line Breaks**: Shift+Enter for new lines
 - **Backspace**: Delete characters
 - **Visual Feedback**: Blue background when focused
 
 ### Single-Line Controls Layout (PRD Compliant)
+
 - **Repository Button**: Shows current selection, activates fuzzy search modal
 - **Branch Button**: Shows current selection, activates fuzzy search modal
 - **Model Button**: Shows current selection, activates fuzzy search modal
 - **Go Button**: Launches task when description is filled
 
 ### Fuzzy Search Modals
+
 - **Repository Selection**: Search through available repositories
 - **Branch Selection**: Search through repository branches
 - **Model Selection**: Search through available AI models
@@ -58,24 +65,28 @@ This is a fully interactive implementation that demonstrates the complete Agent 
 - **Centered Overlay**: Modal appears over main interface
 
 ### Simulated Agent Activity
+
 - **Live Updates**: Active tasks show simulated agent activity every 3 seconds
 - **Activity Types**: Thoughts, tool usage, file edits, status updates
 - **3-Line Display**: Always shows exactly 3 most recent activities
 - **Realistic Content**: Matches patterns from mock server scenarios
 
 ### Header
+
 - **Agent Harbor Branding**: ASCII art logo with cyan coloring
 - **Image Support Placeholder**: Ready for `ratatui-image` integration
 
 ### Task Cards
 
 #### Draft Task Cards (Interactive)
+
 - **Editable Description**: Full text input area with placeholder
 - **Single-Line Controls**: Repository | Branch | Model | Go buttons
 - **Button Focus**: Visual highlighting when navigating with Tab
 - **Border Styling**: Cyan borders with focus indicators
 
 #### Active Task Cards (Live Activity)
+
 - **Status Indicator**: Yellow "●" bullet with bold styling
 - **Live Activity Feed**: 3 fixed-height rows with scrolling updates
 - **Simulated Actions**: Random activity every 3 seconds
@@ -85,17 +96,20 @@ This is a fully interactive implementation that demonstrates the complete Agent 
   - File edits: "src/main.rs (+5 -2)"
 
 #### Completed/Merged Task Cards (Static)
+
 - **Status Indicator**: Green "✓" checkmark with bold styling
 - **Delivery Indicators**: Unicode symbols (⎇ br ✓ ok)
 - **Metadata**: Repository, branch, agent, timestamp
 
 ### Context-Sensitive Footer
+
 - **Task Card Focus**: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
 - **Description Focus**: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
 - **Button Focus**: "↑↓ Navigate • Enter Select • Esc Back"
 - **Go Button Focus**: "Enter Launch Task • Esc Back"
 
 ### Visual Design
+
 - **Ratatui Styling**: Proper use of `Style`, `Color`, `Modifier` for visual hierarchy
 - **Bordered Cards**: Rounded borders with state-appropriate colors
 - **Typography**: Bold text for status indicators and buttons
@@ -105,17 +119,20 @@ This is a fully interactive implementation that demonstrates the complete Agent 
 ## Technical Implementation
 
 ### Dependencies
+
 - `ratatui = "0.29"` - Modern Rust TUI framework
 - `crossterm = "0.27"` - Cross-platform terminal handling
 - `ratatui-image = "8"` - Image rendering support (placeholder for future use)
 
 ### Architecture
+
 - **TaskCard Struct**: Encapsulates all task data and rendering logic
 - **TaskState Enum**: Draft, Active, Completed states with associated behaviors
 - **Layout System**: Ratatui's Layout and Constraint system for responsive design
 - **State-Aware Rendering**: Each card type renders differently based on its state
 
 ### Code Structure
+
 ```
 src/
 ├── main.rs              # Main application logic and sample data
@@ -137,12 +154,14 @@ cargo run --release
 ## Interactive Usage Guide
 
 ### Basic Navigation
+
 - **↑↓**: Navigate between task cards
 - **Enter**: Select a task card or activate focused button
 - **Esc**: Exit application or close modals
 - **Tab/Shift+Tab**: Navigate between controls in draft cards
 
 ### Task Creation Workflow
+
 1. **Navigate to draft card**: Use ↑↓ to select the first (draft) task card
 2. **Enter description**: Press Enter to focus the text area, then **start typing immediately**
 3. **Edit text**: Use ←→ for cursor movement, Backspace to delete, Shift+Enter for new lines
@@ -151,17 +170,20 @@ cargo run --release
 6. **Launch task**: Use Tab to reach Go button, press Enter to launch
 
 ### Fuzzy Search Modals
+
 - **Type to filter**: Start typing to filter options in real-time
 - **Navigate options**: Use ↑↓ to move through filtered results
 - **Select option**: Press Enter to choose the highlighted option
 - **Cancel**: Press Esc to close modal without selecting
 
 ### Live Activity Observation
+
 - **Active tasks**: Watch the second task card for simulated agent activity
 - **Activity updates**: New activities appear every 3 seconds
 - **Activity types**: Thoughts, tool usage, and file edits are simulated
 
 ### Visual Feedback
+
 - **Graphical Logo**: PNG rendering with automatic ASCII fallback
 - **Selected cards**: Theme-colored border with rounded corners
 - **Focused text area**: Blue highlighting with Charm-style borders

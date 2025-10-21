@@ -20,12 +20,12 @@ The foundation of any Electron project is a standard Node.js package structure. 
 
 The project can be scaffolded by creating a new directory and running npm init or yarn init.4 This command prompts for essential project metadata such as the package name, version, description, and author, all of which will be used by electron-builder to populate the metadata of the final application installers.3 It is crucial to define the main entry point, which should point to the JavaScript file that runs Electron's main process (e.g., main.js).4
 
-Once the package.json is created, the core dependencies must be installed. The two essential packages for this workflow are electron and electron-builder. Both should be installed as development dependencies (devDependencies) using the command npm install electron electron-builder \--save-dev.5 The Electron package itself is classified as a devDependency because the Electron binary, which contains all the necessary runtime APIs, is bundled into the final application during the packaging phase. It is not a library that needs to be included in the production node\_modules folder, as the packager handles its inclusion directly.4
+Once the package.json is created, the core dependencies must be installed. The two essential packages for this workflow are electron and electron-builder. Both should be installed as development dependencies (devDependencies) using the command npm install electron electron-builder \--save-dev.5 The Electron package itself is classified as a devDependency because the Electron binary, which contains all the necessary runtime APIs, is bundled into the final application during the packaging phase. It is not a library that needs to be included in the production node_modules folder, as the packager handles its inclusion directly.4
 
 With the dependencies installed, basic scripts should be added to the scripts section of package.json to streamline development and building. A typical setup includes:
 
-* A start script to run the application in development mode: "start": "electron.".4
-* A dist script to trigger the packaging process for all configured platforms: "dist": "electron-builder".3
+- A start script to run the application in development mode: "start": "electron.".4
+- A dist script to trigger the packaging process for all configured platforms: "dist": "electron-builder".3
 
 This simple setup provides the necessary framework to begin development and to later execute the complex, cross-platform build configurations that will be defined.
 
@@ -40,10 +40,10 @@ The electron-builder.yml file is structured with a set of top-level properties t
 Top-Level Properties:
 These properties define the core identity and structure of the application across all platforms.
 
-* appId: A unique identifier for the application, typically in reverse domain-name notation (e.g., com.mycompany.myapp). This is a critical field, as it is used as the CFBundleIdentifier on macOS and the Application User Model ID (AUMID) on Windows, ensuring application identity is consistent.6
-* productName: The user-facing name of the application.
-* copyright: The copyright notice, often in the format Copyright © year ${author}.8
-* directories: An object specifying output paths. The output key defines where the final installers will be placed (e.g., release/), and buildResources specifies the location of assets like icons and installer scripts (e.g., build/).8
+- appId: A unique identifier for the application, typically in reverse domain-name notation (e.g., com.mycompany.myapp). This is a critical field, as it is used as the CFBundleIdentifier on macOS and the Application User Model ID (AUMID) on Windows, ensuring application identity is consistent.6
+- productName: The user-facing name of the application.
+- copyright: The copyright notice, often in the format Copyright © year ${author}.8
+- directories: An object specifying output paths. The output key defines where the final installers will be placed (e.g., release/), and buildResources specifies the location of assets like icons and installer scripts (e.g., build/).8
 
 Platform-Specific Blocks:
 The power of the unified configuration lies in the mac, win, and linux top-level keys. These blocks contain all the settings specific to each target operating system, allowing for tailored configurations while keeping everything within a single, coherent file.6 Subsequent parts of this report will delve into the specific options required within each of these blocks.
@@ -55,16 +55,16 @@ appId: com.mycompany.myapp
 productName: MyApp
 copyright: Copyright © 2024 ${author}
 directories:
-  output: release/
-  buildResources: build/
+output: release/
+buildResources: build/
 
 \# Platform-specific configurations will be added here
 mac:
-  \# macOS configuration
+\# macOS configuration
 win:
-  \# Windows configuration
+\# Windows configuration
 linux:
-  \# Linux configuration
+\# Linux configuration
 
 This structure provides a clean and scalable foundation for managing the distinct requirements of each platform.
 
@@ -72,7 +72,7 @@ This structure provides a clean and scalable foundation for managing the distinc
 
 Effectively managing which files are included in the final application package is crucial for both functionality and security. electron-builder provides three primary configuration keys for this purpose: files, extraResources, and extraFiles. Each serves a distinct purpose in composing the application's contents.
 
-The files property is an array of glob patterns that explicitly defines which files and directories should be included in the application's app.asar archive (or app directory if ASAR packing is disabled).9 electron-builder is intelligent by default; it automatically includes all production dependencies from package.json and excludes development dependencies, so there is no need to explicitly ignore node\_modules or devDependencies.3 A common practice is to start with a broad pattern like \*\*/\* and then add negative patterns to exclude source files, build scripts, or other artifacts that are not needed at runtime.
+The files property is an array of glob patterns that explicitly defines which files and directories should be included in the application's app.asar archive (or app directory if ASAR packing is disabled).9 electron-builder is intelligent by default; it automatically includes all production dependencies from package.json and excludes development dependencies, so there is no need to explicitly ignore node_modules or devDependencies.3 A common practice is to start with a broad pattern like `**/*` and then add negative patterns to exclude source files, build scripts, or other artifacts that are not needed at runtime.
 
 The extraResources property is used to copy files and directories into the application's resources folder. On macOS, this corresponds to the Contents/Resources directory within the .app bundle; on Windows and Linux, it is a resources directory alongside the application executable.9 This is the ideal location for platform-agnostic assets that the application needs to access at runtime, such as databases, configuration files, or pre-trained machine learning models. These files are not packed into the app.asar archive and can be accessed programmatically using the process.resourcesPath property in Electron.11
 
@@ -103,10 +103,10 @@ As established in Part I, the .systemextension bundle must reside at a precise l
 YAML
 
 mac:
-  \#... other mac configurations
-  extraFiles:
-    \- from: build/extensions/MyExtension.systemextension
-      to: Library/SystemExtensions/MyExtension.systemextension
+\#... other mac configurations
+extraFiles:
+\- from: build/extensions/MyExtension.systemextension
+to: Library/SystemExtensions/MyExtension.systemextension
 
 This directive instructs electron-builder to copy the extension into the correct subdirectory within the .app bundle during the packaging phase, making it available for subsequent signing and activation.9
 
@@ -117,11 +117,11 @@ The default build target for macOS in electron-builder is .dmg. To comply with A
 YAML
 
 mac:
-  target:
-    \- target: pkg
-      arch:
-        \- x64
-        \- arm64
+target:
+\- target: pkg
+arch:
+\- x64
+\- arm64
 
 This configuration specifies that electron-builder should produce a .pkg installer as its output. It is also configured to create a universal binary supporting both Intel (x64) and Apple Silicon (arm64) architectures, which is standard practice for modern macOS applications.17
 
@@ -139,8 +139,8 @@ Before any code can be signed, a developer must establish their identity with Ap
 
 1. **Enroll in the Apple Developer Program:** This is a mandatory first step and requires an annual fee. Enrollment provides access to the necessary certificates, identifiers, and profiles portal.18
 2. **Understand Certificate Types:** For distributing an application outside the Mac App Store, two specific certificates are required:
-   * **Developer ID Application:** Used to sign the .app bundle and all executable code within it, including frameworks, helper apps, and the system extension.19
-   * **Developer ID Installer:** Used exclusively to sign the final .pkg installer package.21
+   - **Developer ID Application:** Used to sign the .app bundle and all executable code within it, including frameworks, helper apps, and the system extension.19
+   - **Developer ID Installer:** Used exclusively to sign the final .pkg installer package.21
 3. **Generate a Certificate Signing Request (CSR):** On a macOS machine, open the **Keychain Access** application. From the menu, select Keychain Access \> Certificate Assistant \> Request a Certificate From a Certificate Authority.... Fill in the required information and choose "Saved to disk" to generate a .certSigningRequest file.23
 4. **Create the Certificates:** Log in to the Apple Developer Portal, navigate to "Certificates, Identifiers & Profiles," and create a new certificate. Select the appropriate type ("Developer ID Application" or "Developer ID Installer"), and upload the CSR file generated in the previous step. Repeat the process for both certificate types.24
 5. **Install the Certificates:** Download the generated .cer files from the Developer Portal and double-click them. This will install them into the login keychain on the local machine, making them available to code signing tools.24
@@ -152,26 +152,27 @@ Notarization by Apple requires that the application is built with the Hardened R
 1. **Enable Hardened Runtime:** In electron-builder.yml, add the following key to the mac configuration:
    YAML
    mac:
-     hardenedRuntime: true
+   hardenedRuntime: true
 
    25
+
 2. **Create Entitlement Files:** The Hardened Runtime restricts the application's capabilities by default. To allow necessary operations, such as just-in-time (JIT) compilation used by Electron's V8 JavaScript engine, specific permissions, known as entitlements, must be granted. These are defined in .plist (Property List) XML files. Two files are required in the build directory:
-   * build/entitlements.mac.plist: This file defines the entitlements for the main application bundle.
-   * build/entitlements.mac.inherit.plist: This file is used for all child processes and binaries, ensuring they inherit the necessary permissions.27
+   - build/entitlements.mac.plist: This file defines the entitlements for the main application bundle.
+   - build/entitlements.mac.inherit.plist: This file is used for all child processes and binaries, ensuring they inherit the necessary permissions.27
 
 The content of these files will be nearly identical and must include standard entitlements for Electron to function correctly, as well as the specific entitlement required to manage system extensions.XML
 \<?xml version="1.0" encoding="UTF-8"?\>
 \<\!DOCTYPE **plist** **PUBLIC** "-//Apple//DTD PLIST 1.0//EN" "<https://www.apple.com/DTDs/PropertyList-1.0.dtd"\>>>>
 \<plist version\="1.0"\>
 \<dict\>
-    \<key\>com.apple.security.cs.allow-jit\</key\>
-    \<true/\>
-    \<key\>com.apple.security.cs.allow-unsigned-executable-memory\</key\>
-    \<true/\>
-    \<key\>com.apple.security.cs.disable-library-validation\</key\>
-    \<true/\>
-    \<key\>com.apple.developer.system-extension.install\</key\>
-    \<true/\>
+\<key\>com.apple.security.cs.allow-jit\</key\>
+\<true/\>
+\<key\>com.apple.security.cs.allow-unsigned-executable-memory\</key\>
+\<true/\>
+\<key\>com.apple.security.cs.disable-library-validation\</key\>
+\<true/\>
+\<key\>com.apple.developer.system-extension.install\</key\>
+\<true/\>
 \</dict\>
 \</plist\>
 29
@@ -179,34 +180,34 @@ The content of these files will be nearly identical and must include standard en
 3. **Configure electron-builder:** Point electron-builder to these files in the mac configuration:
    YAML
    mac:
-     hardenedRuntime: true
-     entitlements: build/entitlements.mac.plist
-     entitlementsInherit: build/entitlements.mac.inherit.plist
+   hardenedRuntime: true
+   entitlements: build/entitlements.mac.plist
+   entitlementsInherit: build/entitlements.mac.inherit.plist
 
    28
 
 The following table summarizes the essential entitlement keys for an Electron application deploying a system extension.
 
-| Entitlement Key | Purpose | Target |
-| :---- | :---- | :---- |
-| com.apple.security.cs.allow-jit | Allows the V8 JavaScript engine to generate and execute machine code. | Main App & Inherit |
-| com.apple.security.cs.allow-unsigned-executable-memory | Allows writing to executable memory pages, required by V8. | Main App & Inherit |
-| com.apple.security.cs.disable-library-validation | Allows the app to load libraries and plugins that are not signed by Apple or with the same Team ID. Required for many native Node.js modules. | Main App & Inherit |
-| com.apple.developer.system-extension.install | Grants the application permission to submit activation and deactivation requests for system extensions. | Main App |
-| com.apple.developer.endpoint-security.client | *Example:* Grants an Endpoint Security extension permission to monitor system events. | System Extension |
+| Entitlement Key                                        | Purpose                                                                                                                                       | Target             |
+| :----------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- | :----------------- |
+| com.apple.security.cs.allow-jit                        | Allows the V8 JavaScript engine to generate and execute machine code.                                                                         | Main App & Inherit |
+| com.apple.security.cs.allow-unsigned-executable-memory | Allows writing to executable memory pages, required by V8.                                                                                    | Main App & Inherit |
+| com.apple.security.cs.disable-library-validation       | Allows the app to load libraries and plugins that are not signed by Apple or with the same Team ID. Required for many native Node.js modules. | Main App & Inherit |
+| com.apple.developer.system-extension.install           | Grants the application permission to submit activation and deactivation requests for system extensions.                                       | Main App           |
+| com.apple.developer.endpoint-security.client           | _Example:_ Grants an Endpoint Security extension permission to monitor system events.                                                         | System Extension   |
 
 #### **Step 2.3.3: Signing All Binaries, Including the System Extension**
 
 While electron-builder automatically signs the main application executable and its bundled frameworks, it is not aware of arbitrary binaries added via extraFiles. The .systemextension is a separate executable bundle and must be explicitly signed. Failure to do so will result in immediate rejection by the notarization service.
 
-The mac.binaries configuration option is used for this purpose. It takes an array of paths to additional executables that need to be signed. The path should point to the location of the binary *within the packaged application structure*.
+The mac.binaries configuration option is used for this purpose. It takes an array of paths to additional executables that need to be signed. The path should point to the location of the binary _within the packaged application structure_.
 
 YAML
 
 mac:
-  \#... other mac configurations
-  binaries:
-    \- "dist/mac/MyApp.app/Contents/Library/SystemExtensions/MyExtension.systemextension"
+\#... other mac configurations
+binaries:
+\- "dist/mac/MyApp.app/Contents/Library/SystemExtensions/MyExtension.systemextension"
 
 This configuration ensures that during the signing phase, electron-builder will locate the system extension bundle and apply the correct Developer ID Application signature and entitlements to it before sealing the main .app bundle.25
 
@@ -221,40 +222,41 @@ Notarization is the process where the signed application is uploaded to Apple's 
    const { notarize } \= require('@electron/notarize');
 
    exports.default \= async function notarizing(context) {
-     const { electronPlatformName, appOutDir } \= context;
-     if (electronPlatformName\!== 'darwin') {
-       return;
-     }
+   const { electronPlatformName, appOutDir } \= context;
+   if (electronPlatformName\!== 'darwin') {
+   return;
+   }
 
-     if (\!process.env.APPLE\_ID ||\!process.env.APPLE\_APP\_SPECIFIC\_PASSWORD ||\!process.env.APPLE\_TEAM\_ID) {
-       console.warn('Skipping notarization: Apple credentials not provided in environment variables.');
-       return;
-     }
+   if (\!process.env.APPLE_ID ||\!process.env.APPLE_APP_SPECIFIC_PASSWORD ||\!process.env.APPLE_TEAM_ID) {
+   console.warn('Skipping notarization: Apple credentials not provided in environment variables.');
+   return;
+   }
 
-     const appName \= context.packager.appInfo.productFilename;
-     const appPath \= \`${appOutDir}/${appName}.app\`;
-     const appBundleId \= context.packager.appInfo.id;
+   const appName \= context.packager.appInfo.productFilename;
+   const appPath \= \`${appOutDir}/${appName}.app\`;
+   const appBundleId \= context.packager.appInfo.id;
 
-     console.log(\`Starting notarization for ${appBundleId} at ${appPath}\`);
+   console.log(\`Starting notarization for ${appBundleId} at ${appPath}\`);
 
-     try {
-       await notarize({
-         tool: 'notarytool',
-         appBundleId: appBundleId,
-         appPath: appPath,
-         appleId: process.env.APPLE\_ID,
-         appleIdPassword: process.env.APPLE\_APP\_SPECIFIC\_PASSWORD,
-         teamId: process.env.APPLE\_TEAM\_ID,
-       });
-       console.log('Notarization completed successfully.');
-     } catch (error) {
-       console.error('Notarization failed:', error);
-       throw error; // Fail the build
-     }
+   try {
+   await notarize({
+   tool: 'notarytool',
+   appBundleId: appBundleId,
+   appPath: appPath,
+   appleId: process.env.APPLE_ID,
+   appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+   teamId: process.env.APPLE_TEAM_ID,
+   });
+   console.log('Notarization completed successfully.');
+   } catch (error) {
+   console.error('Notarization failed:', error);
+   throw error; // Fail the build
+   }
    };
 
    31
-   This script correctly identifies the platform, constructs the path to the signed .app, and calls the notarize function using the modern notarytool method. It requires an APPLE\_ID (your developer account email), an APPLE\_APP\_SPECIFIC\_PASSWORD (which must be generated at appleid.apple.com), and your APPLE\_TEAM\_ID.40
+   This script correctly identifies the platform, constructs the path to the signed .app, and calls the notarize function using the modern notarytool method. It requires an APPLE_ID (your developer account email), an APPLE_APP_SPECIFIC_PASSWORD (which must be generated at appleid.apple.com), and your APPLE_TEAM_ID.40
+
 3. **Configure the Hook in electron-builder.yml:** Finally, link this script in the top-level build configuration:
    YAML
    afterSign: build/notarize.js
@@ -271,26 +273,26 @@ The Microsoft Installer (MSI) format is the standard for software installation, 
 
 The configuration for the MSI installer resides within the win block of electron-builder.yml, under an msi key.42 Key options include:
 
-* oneClick: A boolean that determines the installer's user interface. When true (the default), it creates a streamlined, one-click installation process. When false, it provides a more traditional, multi-page "assisted" installer wizard.42
-* perMachine: A boolean that controls the installation scope. If false (the default), the application is installed only for the current user. If true, the installer will request administrator privileges to install the application for all users on the system.42
-* createDesktopShortcut and createStartMenuShortcut: Booleans that control the creation of common application shortcuts.42
-* upgradeCode: A specific GUID (Globally Unique Identifier) that identifies the application family. It is crucial to set this value and keep it consistent across all versions of the application. The upgradeCode allows the Windows Installer service to correctly handle upgrades, ensuring that installing a new version properly replaces the old one.42 If not specified, electron-builder generates one based on the appId, but explicitly defining it is a best practice.
+- oneClick: A boolean that determines the installer's user interface. When true (the default), it creates a streamlined, one-click installation process. When false, it provides a more traditional, multi-page "assisted" installer wizard.42
+- perMachine: A boolean that controls the installation scope. If false (the default), the application is installed only for the current user. If true, the installer will request administrator privileges to install the application for all users on the system.42
+- createDesktopShortcut and createStartMenuShortcut: Booleans that control the creation of common application shortcuts.42
+- upgradeCode: A specific GUID (Globally Unique Identifier) that identifies the application family. It is crucial to set this value and keep it consistent across all versions of the application. The upgradeCode allows the Windows Installer service to correctly handle upgrades, ensuring that installing a new version properly replaces the old one.42 If not specified, electron-builder generates one based on the appId, but explicitly defining it is a best practice.
 
 An example configuration for an MSI target might look like this:
 
 YAML
 
 win:
-  target:
-    \- target: msi
-      arch:
-        \- x64
-  msi:
-    oneClick: false
-    perMachine: true
-    createDesktopShortcut: true
-    createStartMenuShortcut: true
-    upgradeCode: 'YOUR-GUID-HERE' \# Generate a GUID once and keep it
+target:
+\- target: msi
+arch:
+\- x64
+msi:
+oneClick: false
+perMachine: true
+createDesktopShortcut: true
+createStartMenuShortcut: true
+upgradeCode: 'YOUR-GUID-HERE' \# Generate a GUID once and keep it
 
 ### **3.2 The NSIS Alternative: A Comparative Overview**
 
@@ -298,9 +300,9 @@ While MSI is the enterprise standard, electron-builder's default and often more 
 
 NSIS provides several key advantages:
 
-* **Advanced Customization:** NSIS is fully scriptable. electron-builder allows for extensive customization by providing a custom installer.nsh script. This enables developers to add custom pages to the installer, execute specific commands during installation or uninstallation, or modify system settings.43
-* **Web Installers:** electron-builder supports an nsis-web target. This creates a small initial installer executable that, when run, downloads the main application package from a web server. This results in a much smaller initial download for the user and is ideal for applications distributed over the internet.43
-* **Unified Multi-Arch Installer:** When building for both 32-bit (ia32) and 64-bit (x64) architectures, NSIS can produce a single installer executable that automatically detects the user's operating system and installs the correct version.43
+- **Advanced Customization:** NSIS is fully scriptable. electron-builder allows for extensive customization by providing a custom installer.nsh script. This enables developers to add custom pages to the installer, execute specific commands during installation or uninstallation, or modify system settings.43
+- **Web Installers:** electron-builder supports an nsis-web target. This creates a small initial installer executable that, when run, downloads the main application package from a web server. This results in a much smaller initial download for the user and is ideal for applications distributed over the internet.43
+- **Unified Multi-Arch Installer:** When building for both 32-bit (ia32) and 64-bit (x64) architectures, NSIS can produce a single installer executable that automatically detects the user's operating system and installs the correct version.43
 
 The choice between MSI and NSIS depends on the target audience. For applications intended for deployment in managed corporate environments, MSI is often the mandatory choice. For consumer-facing applications distributed directly to users, NSIS generally provides a superior and more customizable installation experience.
 
@@ -312,8 +314,8 @@ Code signing on Windows is essential. Unsigned applications will trigger the int
 
 Authenticode certificates must be purchased from a trusted Certificate Authority (CA). There are two primary types:
 
-* **Organization Validation (OV):** This certificate requires the CA to perform a basic vetting of the organization's identity. It will prevent the most severe SmartScreen warnings, but a new application may still show a warning until it builds a reputation with Microsoft's services.46
-* **Extended Validation (EV):** This certificate involves a much more rigorous and lengthy validation process by the CA. In return, applications signed with an EV certificate are immediately trusted by Microsoft SmartScreen, eliminating the "reputation-building" period. EV certificates are more expensive and have stricter handling requirements.46
+- **Organization Validation (OV):** This certificate requires the CA to perform a basic vetting of the organization's identity. It will prevent the most severe SmartScreen warnings, but a new application may still show a warning until it builds a reputation with Microsoft's services.46
+- **Extended Validation (EV):** This certificate involves a much more rigorous and lengthy validation process by the CA. In return, applications signed with an EV certificate are immediately trusted by Microsoft SmartScreen, eliminating the "reputation-building" period. EV certificates are more expensive and have stricter handling requirements.46
 
 Leading CAs for Authenticode certificates include DigiCert and Sectigo. The purchasing process typically involves selecting the certificate type, providing organizational details for validation, and completing a payment.47
 
@@ -331,9 +333,10 @@ For signing on a local development machine, the process is as follows:
 3. **Configure electron-builder:** With the hardware token plugged in and its drivers installed, the code signing certificate will appear in the Windows Certificate Store. Instead of using the certificateFile and certificatePassword options in electron-builder.yml, the configuration must now identify the certificate by its subject name or SHA1 thumbprint.
    YAML
    win:
-     certificateSubjectName: "Your Company Name, Inc."
+   certificateSubjectName: "Your Company Name, Inc."
 
    50
+
 4. **Execute the Build:** When electron-builder runs, it will invoke signtool.exe. signtool.exe will find the specified certificate in the certificate store and communicate with the hardware token. The token's client software will then display a dialog box prompting the user to enter the token's PIN. Upon successful PIN entry, the hardware token performs the cryptographic signing operation and returns the signature to signtool.exe, which embeds it into the application file.
 
 This workflow, while secure, presents a significant challenge for automation. The requirement for a physically present USB token and a manual PIN entry is fundamentally incompatible with ephemeral, non-interactive CI/CD environments like GitHub-hosted runners. This has effectively bifurcated the Windows signing process into a local, manual workflow and a separate, automated workflow.
@@ -359,23 +362,23 @@ To enable AppImage as a build target, it should be added to the target array wit
 YAML
 
 linux:
-  target:
-    \- AppImage
-  category: Utility \# Specifies the application category for desktop menus
-  appImage:
-    license: license.txt \# Path to the license file to be included
-    desktop:
-      Name: MyApp
-      Comment: An amazing cross-platform application.
-      Icon: build/icon.png
+target:
+\- AppImage
+category: Utility \# Specifies the application category for desktop menus
+appImage:
+license: license.txt \# Path to the license file to be included
+desktop:
+Name: MyApp
+Comment: An amazing cross-platform application.
+Icon: build/icon.png
 
 Key configuration options include:
 
-* target: An array of desired output formats. For this use case, it is set to \['AppImage'\]. Other options like deb or rpm could be included to generate distribution-specific packages as well.3
-* category: Specifies the application category according to the FreeDesktop.org standard, which helps desktop environments organize the application in their menus (e.g., Utility, Development, Game).57
-* appImage: A dedicated object for AppImage-specific settings.57
-  * license: The path to a license file (e.g., LICENSE.txt) that will be embedded within the AppImage.
-  * desktop: An object that allows for the customization of the .desktop file, which is used by desktop environments to create menu entries and shortcuts. This includes keys like Name, Comment, and Icon.
+- target: An array of desired output formats. For this use case, it is set to \['AppImage'\]. Other options like deb or rpm could be included to generate distribution-specific packages as well.3
+- category: Specifies the application category according to the FreeDesktop.org standard, which helps desktop environments organize the application in their menus (e.g., Utility, Development, Game).57
+- appImage: A dedicated object for AppImage-specific settings.57
+  - license: The path to a license file (e.g., LICENSE.txt) that will be embedded within the AppImage.
+  - desktop: An object that allows for the customization of the .desktop file, which is used by desktop environments to create menu entries and shortcuts. This includes keys like Name, Comment, and Icon.
 
 ### **4.2 Desktop Integration and Best Practices**
 
@@ -404,13 +407,13 @@ YAML
 name: Build and Release
 
 on:
-  push:
-    tags:
-      \- 'v\*.\*.\*' \# Trigger workflow on tag pushes like v1.0.0
+push:
+tags:
+\- 'v\*.\*.\*' \# Trigger workflow on tag pushes like v1.0.0
 
 jobs:
-  release:
-    runs-on: ${{ matrix.os }}
+release:
+runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
@@ -459,21 +462,21 @@ GitHub Actions provides a secure solution for this problem through **Repository 
 The workflow involves:
 
 1. **Preparing the Secrets:**
-   * For macOS, the .p12 file containing the Developer ID Application and Installer certificates and their private keys must be Base64 encoded into a single string. On macOS, this can be done with the command: base64 \-i certs.p12 \-o encoded.txt. The contents of encoded.txt become a secret.19
-   * Passwords, API keys, and other string-based credentials can be copied directly.
-2. **Creating the Secrets in GitHub:** For each piece of sensitive information, a new repository secret is created. The names should be descriptive (e.g., MAC\_CERTS\_P12\_BASE64, APPLE\_APP\_SPECIFIC\_PASSWORD).
-3. **Mapping Secrets to Environment Variables:** In the GitHub Actions workflow file, the env block is used to map these secrets to the specific environment variable names that electron-builder expects. For example, the MAC\_CERTS\_P12\_BASE64 secret is mapped to the CSC\_LINK environment variable.19 This mapping is the critical link that securely provides the necessary credentials to the build tool at runtime.
+   - For macOS, the .p12 file containing the Developer ID Application and Installer certificates and their private keys must be Base64 encoded into a single string. On macOS, this can be done with the command: base64 \-i certs.p12 \-o encoded.txt. The contents of encoded.txt become a secret.19
+   - Passwords, API keys, and other string-based credentials can be copied directly.
+2. **Creating the Secrets in GitHub:** For each piece of sensitive information, a new repository secret is created. The names should be descriptive (e.g., MAC_CERTS_P12_BASE64, APPLE_APP_SPECIFIC_PASSWORD).
+3. **Mapping Secrets to Environment Variables:** In the GitHub Actions workflow file, the env block is used to map these secrets to the specific environment variable names that electron-builder expects. For example, the MAC_CERTS_P12_BASE64 secret is mapped to the CSC_LINK environment variable.19 This mapping is the critical link that securely provides the necessary credentials to the build tool at runtime.
 
 The following table serves as a practical checklist for the essential environment variables required for a fully automated, cross-platform signing process in a CI/CD environment.
 
-| Purpose | Environment Variable | GitHub Secret Example | Notes |
-| :---- | :---- | :---- | :---- |
-| macOS Certificate File | CSC\_LINK | MAC\_CERTS\_P12\_BASE64 | The Base64-encoded content of the .p12 file containing both Developer ID Application and Installer certificates. |
-| macOS Certificate Password | CSC\_KEY\_PASSWORD | MAC\_CERTS\_PASSWORD | The password used to encrypt the .p12 file. |
-| macOS Notarization (Apple ID) | APPLE\_ID | APPLE\_ID | The email address of the Apple Developer account. |
-| macOS Notarization (Password) | APPLE\_APP\_SPECIFIC\_PASSWORD | APPLE\_APP\_SPECIFIC\_PASSWORD | An app-specific password generated from the Apple ID account page. |
-| macOS Notarization (Team ID) | APPLE\_TEAM\_ID | APPLE\_TEAM\_ID | The Team ID from the Apple Developer Portal. |
-| Windows Signing (Cloud HSM) | *Custom* | AZURE\_CLIENT\_ID, etc. | These variables are not directly used by electron-builder but are passed to a custom signing script (win.sign) that interacts with a cloud HSM service like Azure Key Vault. |
+| Purpose                       | Environment Variable        | GitHub Secret Example       | Notes                                                                                                                                                                        |
+| :---------------------------- | :-------------------------- | :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS Certificate File        | CSC_LINK                    | MAC_CERTS_P12_BASE64        | The Base64-encoded content of the .p12 file containing both Developer ID Application and Installer certificates.                                                             |
+| macOS Certificate Password    | CSC_KEY_PASSWORD            | MAC_CERTS_PASSWORD          | The password used to encrypt the .p12 file.                                                                                                                                  |
+| macOS Notarization (Apple ID) | APPLE_ID                    | APPLE_ID                    | The email address of the Apple Developer account.                                                                                                                            |
+| macOS Notarization (Password) | APPLE_APP_SPECIFIC_PASSWORD | APPLE_APP_SPECIFIC_PASSWORD | An app-specific password generated from the Apple ID account page.                                                                                                           |
+| macOS Notarization (Team ID)  | APPLE_TEAM_ID               | APPLE_TEAM_ID               | The Team ID from the Apple Developer Portal.                                                                                                                                 |
+| Windows Signing (Cloud HSM)   | _Custom_                    | AZURE_CLIENT_ID, etc.       | These variables are not directly used by electron-builder but are passed to a custom signing script (win.sign) that interacts with a cloud HSM service like Azure Key Vault. |
 
 ### **5.3 Publishing Releases to GitHub**
 
@@ -483,13 +486,13 @@ The final step of the automated pipeline is to publish the generated installers 
 2. **Configuring the publish Provider:** In electron-builder.yml, the publish property should be configured to use the github provider. Often, this can be auto-detected from the repository's package.json or Git configuration, but explicit configuration is a good practice.62
    YAML
    publish:
-     provider: github
+   provider: github
 
 3. **Executing the Publish Command:** The build command in the workflow file includes the \--publish always flag (npm run dist \-- \--publish always). This tells electron-builder that, after a successful build, it should proceed with the publishing step.
-4. **Automatic Release Creation:** When running in a GitHub Actions environment, electron-builder automatically uses the GITHUB\_TOKEN secret, which is provided by the runner and has permissions to interact with the repository. It will:
-   * Look for a draft release corresponding to the Git tag. If one exists, it will upload the artifacts to it. If not, it will create a new draft release.
-   * Upload all generated installer files (.pkg, .msi, .AppImage) to the release.
-   * Generate and upload platform-specific update manifest files (e.g., latest-mac.yml, latest.yml), which are essential for the electron-updater module to automatically detect and download new versions.62
+4. **Automatic Release Creation:** When running in a GitHub Actions environment, electron-builder automatically uses the GITHUB_TOKEN secret, which is provided by the runner and has permissions to interact with the repository. It will:
+   - Look for a draft release corresponding to the Git tag. If one exists, it will upload the artifacts to it. If not, it will create a new draft release.
+   - Upload all generated installer files (.pkg, .msi, .AppImage) to the release.
+   - Generate and upload platform-specific update manifest files (e.g., latest-mac.yml, latest.yml), which are essential for the electron-updater module to automatically detect and download new versions.62
 
 By combining a matrix build strategy, secure credential management with GitHub Secrets, and electron-builder's integrated publishing capabilities, this workflow provides a fully automated, "push-to-release" pipeline for a complex, cross-platform Electron application.
 
@@ -543,7 +546,7 @@ Ultimately, managing this multifaceted complexity at scale is only feasible thro
 34. Sign electron app with packaged prebuilt binaries \[closed\] \- Stack Overflow, accessed October 14, 2025, [https://stackoverflow.com/questions/79755524/sign-electron-app-with-packaged-prebuilt-binaries](https://stackoverflow.com/questions/79755524/sign-electron-app-with-packaged-prebuilt-binaries)
 35. Build Hooks \- electron-builder, accessed October 14, 2025, [https://www.electron.build/hooks.html](https://www.electron.build/hooks.html)
 36. How I sign and notarize my Electron app on MacOS \- Ayron's Blog, accessed October 14, 2025, [https://www.funtoimagine.com/blog/electron-mac-sign-and-notarize/](https://www.funtoimagine.com/blog/electron-mac-sign-and-notarize/)
-37. Need help: code signing mac electron app. : r/electronjs \- Reddit, accessed October 14, 2025, [https://www.reddit.com/r/electronjs/comments/1exwnkm/need\_help\_code\_signing\_mac\_electron\_app/](https://www.reddit.com/r/electronjs/comments/1exwnkm/need_help_code_signing_mac_electron_app/)
+37. Need help: code signing mac electron app. : r/electronjs \- Reddit, accessed October 14, 2025, [https://www.reddit.com/r/electronjs/comments/1exwnkm/need_help_code_signing_mac_electron_app/](https://www.reddit.com/r/electronjs/comments/1exwnkm/need_help_code_signing_mac_electron_app/)
 38. Top 10 Examples of electron-notarize code in Javascript \- CloudDefense.AI, accessed October 14, 2025, [https://www.clouddefense.ai/code/javascript/example/electron-notarize](https://www.clouddefense.ai/code/javascript/example/electron-notarize)
 39. Notarizing my macOS Electron app using vite-electron-builder | YY-EN40P BLOG, accessed October 14, 2025, [https://yy-en40p.com/blog/notarizing-my-macos-electron-app-using-vite-electron-builder/](https://yy-en40p.com/blog/notarizing-my-macos-electron-app-using-vite-electron-builder/)
 40. omkarcloud/macos-code-signing-example: Learn how to sign and notarize an Electron app for Mac OS and automate the process using GitHub Actions., accessed October 14, 2025, [https://github.com/omkarcloud/macos-code-signing-example](https://github.com/omkarcloud/macos-code-signing-example)
@@ -559,7 +562,7 @@ Ultimately, managing this multifaceted complexity at scale is only feasible thro
 50. How to Sign a Windows App in Electron Builder \- Code Signing Store, accessed October 14, 2025, [https://codesigningstore.com/how-to-sign-a-windows-app-in-electron-builder](https://codesigningstore.com/how-to-sign-a-windows-app-in-electron-builder)
 51. EV Authenticode® Program Signing & Timestamping Using SignTool, accessed October 14, 2025, [https://knowledge.digicert.com/tutorials/ev-authenticode-using-signtool](https://knowledge.digicert.com/tutorials/ev-authenticode-using-signtool)
 52. electron/windows-sign: Codesign Electron apps for Windows \- GitHub, accessed October 14, 2025, [https://github.com/electron/windows-sign](https://github.com/electron/windows-sign)
-53. Signing electron app for windows with an EV certificate in CI : r/electronjs \- Reddit, accessed October 14, 2025, [https://www.reddit.com/r/electronjs/comments/16sgb3u/signing\_electron\_app\_for\_windows\_with\_an\_ev/](https://www.reddit.com/r/electronjs/comments/16sgb3u/signing_electron_app_for_windows_with_an_ev/)
+53. Signing electron app for windows with an EV certificate in CI : r/electronjs \- Reddit, accessed October 14, 2025, [https://www.reddit.com/r/electronjs/comments/16sgb3u/signing_electron_app_for_windows_with_an_ev/](https://www.reddit.com/r/electronjs/comments/16sgb3u/signing_electron_app_for_windows_with_an_ev/)
 54. Custom sign is called but all files are signed anyway · Issue \#8884 · electron-userland/electron-builder \- GitHub, accessed October 14, 2025, [https://github.com/electron-userland/electron-builder/issues/8884](https://github.com/electron-userland/electron-builder/issues/8884)
 55. Sign executables with Electron builder using KSP library \- DigiCert documentation, accessed October 14, 2025, [https://docs.digicert.com/en/digicert-keylocker/code-signing/sign-with-third-party-signing-tools/windows-applications/sign-executables-with-electron-builder-using-ksp-library.html](https://docs.digicert.com/en/digicert-keylocker/code-signing/sign-with-third-party-signing-tools/windows-applications/sign-executables-with-electron-builder-using-ksp-library.html)
 56. How to programmatically sign .exe with Electron-Builder? \- Stack Overflow, accessed October 14, 2025, [https://stackoverflow.com/questions/78541645/how-to-programmatically-sign-exe-with-electron-builder](https://stackoverflow.com/questions/78541645/how-to-programmatically-sign-exe-with-electron-builder)
@@ -570,4 +573,3 @@ Ultimately, managing this multifaceted complexity at scale is only feasible thro
 61. Setup \- electron-builder, accessed October 14, 2025, [https://www.electron.build/code-signing.html](https://www.electron.build/code-signing.html)
 62. Publish \- electron-builder, accessed October 14, 2025, [https://www.electron.build/publish.html](https://www.electron.build/publish.html)
 63. Generate the corresponding latest.yml file according to the architecture \#6372 \- GitHub, accessed October 14, 2025, [https://github.com/electron-userland/electron-builder/issues/6372](https://github.com/electron-userland/electron-builder/issues/6372)
-

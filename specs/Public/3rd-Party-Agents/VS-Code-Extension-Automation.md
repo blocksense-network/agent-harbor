@@ -38,6 +38,7 @@ code --inspect-brk-extensions=<port>
 ```
 
 **Key automation flags:**
+
 - `--wait`: Blocks until window closes (useful for CI/CD)
 - `--goto`: Open file at specific location
 - `--inspect-extensions`: Enable debugging protocol for extensions (connects to Chrome DevTools Protocol)
@@ -48,6 +49,7 @@ code --inspect-brk-extensions=<port>
 Extensions can expose commands that are callable programmatically:
 
 **Via Extension API (within VS Code):**
+
 ```javascript
 // Execute any registered command
 await vscode.commands.executeCommand('commandId', ...args);
@@ -57,6 +59,7 @@ await vscode.commands.executeCommand('cline.startTask', 'Implement feature X');
 ```
 
 **Via External Automation:**
+
 ```javascript
 // Node.js script automating VS Code
 const { exec } = require('child_process');
@@ -80,18 +83,20 @@ code --inspect-extensions=9229
 ```
 
 **Automation via CDP:**
+
 - Use Puppeteer or Playwright to connect to debugging port
 - Execute commands through CDP
 - Monitor extension state
 - Capture events and responses
 
 **Example with Puppeteer:**
+
 ```javascript
 const puppeteer = require('puppeteer');
 
 // Connect to VS Code's extension host
 const browser = await puppeteer.connect({
-  browserURL: 'http://localhost:9229'
+  browserURL: 'http://localhost:9229',
 });
 
 // Execute extension commands
@@ -103,12 +108,14 @@ const browser = await puppeteer.connect({
 Create a custom extension or wrapper that accepts external commands:
 
 **Architecture:**
+
 1. VS Code extension runs HTTP/WebSocket server
 2. External scripts send commands as JSON
 3. Extension executes commands via `vscode.commands.executeCommand`
 4. Results returned to external script
 
 **Example Extension Code:**
+
 ```javascript
 // In extension.ts
 const express = require('express');
@@ -128,6 +135,7 @@ app.listen(3000);
 ```
 
 **External Script:**
+
 ```bash
 curl -X POST http://localhost:3000/execute \
   -H "Content-Type: application/json" \
@@ -139,11 +147,12 @@ curl -X POST http://localhost:3000/execute \
 Use filesystem as communication channel:
 
 **Extension watches for command files:**
+
 ```javascript
 // Extension code
 const watcher = vscode.workspace.createFileSystemWatcher('**/.vscode/commands/*.json');
 
-watcher.onDidCreate(async (uri) => {
+watcher.onDidCreate(async uri => {
   const content = await vscode.workspace.fs.readFile(uri);
   const { command, args } = JSON.parse(content.toString());
   await vscode.commands.executeCommand(command, ...args);
@@ -153,6 +162,7 @@ watcher.onDidCreate(async (uri) => {
 ```
 
 **External script writes command:**
+
 ```bash
 # Trigger Cline task
 echo '{"command": "cline.startTask", "args": ["Fix bug in auth.ts"]}' > .vscode/commands/task-$(date +%s).json
@@ -200,16 +210,19 @@ cline.api.addFile
 ### Strategy 1: VS Code CLI Wrapper (Simplest)
 
 **Pros:**
+
 - No extension modifications needed
 - Works with installed extensions
 - Standard VS Code automation
 
 **Cons:**
+
 - Requires VS Code GUI to be running
 - Limited control over extension state
 - Depends on extension exposing commands
 
 **Implementation:**
+
 ```bash
 #!/bin/bash
 # Launch VS Code with project
@@ -222,23 +235,26 @@ code --command cline.startTask "Implement feature X"
 ### Strategy 2: Extension Host Debugging (Advanced)
 
 **Pros:**
+
 - Full programmatic control
 - Can inspect extension state
 - Works with any extension
 
 **Cons:**
+
 - Complex CDP protocol
 - Requires debugging enabled
 - May be fragile across versions
 
 **Implementation:**
+
 ```javascript
 // Use Puppeteer/Playwright to connect to extension host
 const puppeteer = require('puppeteer');
 
 async function automateVSCodeExtension() {
   const browser = await puppeteer.connect({
-    browserURL: 'http://localhost:9229'
+    browserURL: 'http://localhost:9229',
   });
 
   // Execute extension commands via CDP
@@ -249,16 +265,19 @@ async function automateVSCodeExtension() {
 ### Strategy 3: Custom Automation Extension (Most Robust)
 
 **Pros:**
+
 - Full control over automation
 - Clean API for external scripts
 - Can wrap any extension
 
 **Cons:**
+
 - Requires custom extension development
 - Maintenance overhead
 - Extension marketplace approval (if public)
 
 **Implementation:**
+
 1. Create "Agent Harbor VS Code Bridge" extension
 2. Expose HTTP/WebSocket API
 3. Forward commands to target extensions (Cline, Kilo, Roo)
@@ -267,16 +286,19 @@ async function automateVSCodeExtension() {
 ### Strategy 4: File Watcher Bridge (No Extension Mod)
 
 **Pros:**
+
 - No extension modifications
 - Simple protocol (files)
 - Works across platforms
 
 **Cons:**
+
 - Polling overhead
 - Race conditions possible
 - Requires extension file watcher support
 
 **Implementation:**
+
 ```bash
 # Agent Harbor writes command
 echo '{"command": "cline.startTask", "args": ["..."]}' > .vscode/ah-commands/cmd-$$.json
@@ -392,6 +414,7 @@ curl -X POST http://localhost:3000/execute \
 - ✅ **File Watcher Bridge** (simple, polling-based)
 
 The best approach depends on:
+
 - Required control level
 - Maintenance resources
 - Extension cooperation

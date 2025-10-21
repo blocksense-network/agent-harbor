@@ -9,6 +9,7 @@ Deliver a high-performance LLM API proxy library that can be integrated into `ah
 ## Current Status: ✅ FULLY FUNCTIONAL PROXY
 
 **Successfully implemented and tested:**
+
 - ✅ Anthropic → OpenRouter routing with HTTP API integration
 - ✅ Basic metrics collection (latency, request counts, token tracking)
 - ✅ Configuration system with provider management
@@ -19,6 +20,7 @@ Deliver a high-performance LLM API proxy library that can be integrated into `ah
 - ✅ Real HTTP requests to OpenRouter (when API key provided)
 
 **Test Results:**
+
 ```
 running 6 tests
 ✅ test_config_validation ... ok
@@ -32,6 +34,7 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 **Ready for Production Use:**
+
 - The proxy can route Anthropic requests to OpenRouter
 - Metrics are collected for latency and request statistics
 - Configuration supports multiple providers

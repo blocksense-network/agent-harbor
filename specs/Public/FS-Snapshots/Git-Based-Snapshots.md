@@ -48,17 +48,17 @@ The provider uses the session’s shadow index file to avoid touching the primar
 
 First snapshot of a session (tracked changes only):
 
-1) Resolve repo root and ensure no in‑progress operations (`rebase`, `merge`, `bisect`) that would cause ambiguous state.
-2) Ensure the shadow repo exists and the session index path `<shadow>/index-<sid>` is created.
-3) Seed the session index from HEAD: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> read-tree -m <primary-HEAD>`.
-4) Overlay staged+unstaged tracked changes efficiently:
+1. Resolve repo root and ensure no in‑progress operations (`rebase`, `merge`, `bisect`) that would cause ambiguous state.
+2. Ensure the shadow repo exists and the session index path `<shadow>/index-<sid>` is created.
+3. Seed the session index from HEAD: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> read-tree -m <primary-HEAD>`.
+4. Overlay staged+unstaged tracked changes efficiently:
    - Fast path: enumerate changed tracked files: `git -C <primary> ls-files -m -z`.
    - For each path, compute blob OIDs in the primary: `git -C <primary> hash-object -w -- <path>` (batch with `--stdin-paths`).
    - Update the shadow index entries directly: `git -C <shadow> update-index --index-info` (lines: `MODE OID\tPATH`).
    - Simpler (slower) alternative: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <primary> add -A`.
-5) Write a tree: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> write-tree` → `TREE_OID`.
-6) Create a commit object parented to `<primary-HEAD>`: `git -C <shadow> commit-tree TREE_OID -p <primary-HEAD> -m "ah: snapshot <sid>/<n> <label?> <ts>"` → `COMMIT_OID`.
-7) Atomically set the session ref: `git -C <shadow> update-ref --create-reflog refs/ah/sessions/<sid>/snapshots/<n> COMMIT_OID`.
+5. Write a tree: `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> write-tree` → `TREE_OID`.
+6. Create a commit object parented to `<primary-HEAD>`: `git -C <shadow> commit-tree TREE_OID -p <primary-HEAD> -m "ah: snapshot <sid>/<n> <label?> <ts>"` → `COMMIT_OID`.
+7. Atomically set the session ref: `git -C <shadow> update-ref --create-reflog refs/ah/sessions/<sid>/snapshots/<n> COMMIT_OID`.
 
 Including untracked files (opt‑in):
 
@@ -73,19 +73,19 @@ Properties:
 
 Subsequent snapshots in the same session (incremental):
 
-1) Seed index from the last session snapshot tree instead of `<primary-HEAD>`:
+1. Seed index from the last session snapshot tree instead of `<primary-HEAD>`:
    - Read last commit: `PREV=$(git -C <shadow> rev-parse --verify refs/ah/sessions/<sid>/snapshots/<n-1>)`
    - `GIT_INDEX_FILE=<shadow>/index-<sid> git -C <shadow> read-tree -m $PREV^{tree}`
-2) Overlay only changed tracked files since the last capture (same as steps above, but the set to update is still computed vs the primary working copy). This minimizes re‑hashing unchanged paths.
-3) Continue with write‑tree, commit (parent to PREV), and update the snapshot ref `<n>`.
+2. Overlay only changed tracked files since the last capture (same as steps above, but the set to update is still computed vs the primary working copy). This minimizes re‑hashing unchanged paths.
+3. Continue with write‑tree, commit (parent to PREV), and update the snapshot ref `<n>`.
 
 ## Writable Workspaces (Session Branches)
 
-1) Create a namespaced branch from a snapshot commit: `git branch --force refs/ah/branches/<sid>/<name> <COMMIT_OID>`.
-2) Materialize a worktree: `git worktree add --detach <worktrees_dir>/<sid>/<name> <COMMIT_OID>`.
+1. Create a namespaced branch from a snapshot commit: `git branch --force refs/ah/branches/<sid>/<name> <COMMIT_OID>`.
+2. Materialize a worktree: `git worktree add --detach <worktrees_dir>/<sid>/<name> <COMMIT_OID>`.
    - Optionally check out the branch instead of detached HEAD: `git worktree add <dir> refs/ah/branches/<sid>/<name>`.
-3) Return `exec_path = <dir>` when `WorkingCopyMode::Worktree`.
-4) Cow‑overlay is not supported by the Git provider. If cow‑overlay is requested, the orchestrator SHALL select a provider that supports it (ZFS/Btrfs on Linux, AgentFS on macOS/Windows) or fall back to Worktree with a diagnostic.
+3. Return `exec_path = <dir>` when `WorkingCopyMode::Worktree`.
+4. Cow‑overlay is not supported by the Git provider. If cow‑overlay is requested, the orchestrator SHALL select a provider that supports it (ZFS/Btrfs on Linux, AgentFS on macOS/Windows) or fall back to Worktree with a diagnostic.
 
 In‑Place compatibility:
 
@@ -121,7 +121,7 @@ When a session ends or `cleanup(token)` is invoked:
 - Unmerged entries: Abort snapshot with a clear error when index contains conflicts (or capture the current index as‑is on opt‑in).
 - Line ending filters and smudge/clean: The temporary index respects repository attributes, matching the behavior of a real commit.
 - Permissions: Executable bit captured per Git semantics; xattrs are not represented.
- - LFS: Untracked inclusion may store large binaries as loose objects; default `includeUntracked = false`. Future work: LFS‑aware capture.
+- LFS: Untracked inclusion may store large binaries as loose objects; default `includeUntracked = false`. Future work: LFS‑aware capture.
 
 ## Configuration Keys (Provider‑specific)
 

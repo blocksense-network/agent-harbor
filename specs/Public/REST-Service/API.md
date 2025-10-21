@@ -112,9 +112,7 @@ Request:
     "targetBranch": "main"
   },
   "labels": { "priority": "p2" },
-  "webhooks": [
-    { "event": "session.completed", "url": "https://hooks.acme.dev/agents" }
-  ]
+  "webhooks": [{ "event": "session.completed", "url": "https://hooks.acme.dev/agents" }]
 }
 ```
 
@@ -177,6 +175,7 @@ Response `200 OK` includes array of sessions and pagination metadata.
 **Session Object Structure:**
 
 Each session object includes:
+
 - `id`, `status`, `prompt`, `repo`, `runtime`, `agent`, `delivery`, `createdAt`, `updatedAt`
 - `recent_events`: Array of the last 3 events for active sessions (for SSR pre-population)
   - Only included for active sessions (`running`, `queued`, `provisioning`, `paused`)
@@ -184,6 +183,7 @@ Each session object includes:
   - Format matches SSE event structure (see Event Types below)
 
 Example session with recent events:
+
 ```json
 {
   "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -209,6 +209,7 @@ Example session with recent events:
 - `GET /api/v1/sessions/{id}` → session details including current status, workspace summary, recent events, and change statistics.
 
   **Response includes change statistics for completed sessions:**
+
   ```json
   {
     "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -305,6 +306,7 @@ Additional event types for agent activity:
 **Tool Execution ID (`tool_execution_id`)**: A unique identifier assigned to each tool execution, used to correlate `tool_use`, `tool_result`, and related `log` events when multiple tools are running concurrently. This field is optional for `log` events (set to `null` when the log is not associated with a specific tool execution).
 
 Query parameters for events endpoint:
+
 - `type`: Filter by event types (comma-separated: `thought,tool_use,file_edit,log,status`)
 - `level`: Filter by log level (`debug`, `info`, `warn`, `error`)
 - `since`, `until`: Time range filtering (ISO 8601 timestamps)
@@ -318,6 +320,7 @@ Endpoints for TaskDetails page file browsing and diff viewing:
 - `GET /api/v1/sessions/{id}/files` → List all files modified during the session.
 
   Response `200 OK`:
+
   ```json
   {
     "items": [
@@ -352,6 +355,7 @@ Endpoints for TaskDetails page file browsing and diff viewing:
 - `GET /api/v1/sessions/{id}/files/{filePath}` → Get detailed file information and metadata.
 
   Response `200 OK`:
+
   ```json
   {
     "path": "src/auth.ts",
@@ -376,6 +380,7 @@ Endpoints for TaskDetails page file browsing and diff viewing:
 - `GET /api/v1/sessions/{id}/diff/{filePath}?context=3&full=false` → Get file diff with configurable context.
 
   Response `200 OK`:
+
   ```json
   {
     "path": "src/auth.ts",
@@ -406,6 +411,7 @@ Endpoints for TaskDetails page file browsing and diff viewing:
 - `GET /api/v1/sessions/{id}/diff?files=src/auth.ts,tests/auth.test.ts&format=html` → Get diffs for multiple files.
 
   Response `200 OK`:
+
   ```json
   {
     "files": [
@@ -442,6 +448,7 @@ Endpoints for TaskDetails page file browsing and diff viewing:
 - `GET /api/v1/sessions/{id}/workspace/files?path=src&recursive=true` → Browse workspace file tree.
 
   Response `200 OK`:
+
   ```json
   {
     "path": "src",
@@ -475,6 +482,7 @@ Endpoints for interactive chat interface with agents:
 - `GET /api/v1/sessions/{id}/chat` → Get chat history for the session.
 
   Response `200 OK`:
+
   ```json
   {
     "messages": [
@@ -517,6 +525,7 @@ Endpoints for interactive chat interface with agents:
 - `POST /api/v1/sessions/{id}/chat/messages` → Send a message to the agent.
 
   Request:
+
   ```json
   {
     "content": "Please review and fix the authentication logic",
@@ -534,6 +543,7 @@ Endpoints for interactive chat interface with agents:
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -550,6 +560,7 @@ Endpoints for interactive chat interface with agents:
 - `GET /api/v1/sessions/{id}/context` → Get current context window usage and configuration.
 
   Response `200 OK`:
+
   ```json
   {
     "context_window": {
@@ -585,6 +596,7 @@ Endpoints for interactive chat interface with agents:
 - `PUT /api/v1/sessions/{id}/context` → Update context configuration.
 
   Request:
+
   ```json
   {
     "add_files": ["src/utils.ts"],
@@ -596,6 +608,7 @@ Endpoints for interactive chat interface with agents:
   ```
 
   Response `200 OK`:
+
   ```json
   {
     "context_window": { ... },
@@ -608,6 +621,7 @@ Endpoints for interactive chat interface with agents:
 - `GET /api/v1/sessions/{id}/models` → Get available models and their capabilities.
 
   Response `200 OK`:
+
   ```json
   {
     "models": [
@@ -638,6 +652,7 @@ Endpoints for interactive chat interface with agents:
 - `POST /api/v1/sessions/{id}/chat/messages/{messageId}/retry` → Retry a failed message or regenerate response.
 
   Response `200 OK`:
+
   ```json
   {
     "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
@@ -660,6 +675,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `GET /api/v1/sessions/{id}/workspace/search/files?q={query}&type={type}&limit={limit}` → Search and autocomplete file paths in workspace.
 
   Response `200 OK`:
+
   ```json
   {
     "query": "src/auth",
@@ -705,6 +721,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `GET /api/v1/sessions/{id}/files/{filePath}/preview` → Get file content preview for attachment consideration.
 
   Response `200 OK`:
+
   ```json
   {
     "path": "src/auth.ts",
@@ -725,6 +742,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `POST /api/v1/sessions/{id}/chat/messages/{messageId}/attachments` → Add file attachments to an existing message.
 
   Request:
+
   ```json
   {
     "attachments": [
@@ -744,6 +762,7 @@ Additional endpoints for sophisticated chat interface functionality:
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -763,6 +782,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `GET /api/v1/sessions/{id}/chat/messages/{messageId}/attachments/{attachmentId}` → Get specific attachment content.
 
   Response `200 OK`:
+
   ```json
   {
     "id": "att-01HVZ6K9T1N8S6M3V3Q3F0X5B8",
@@ -782,6 +802,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `PUT /api/v1/sessions/{id}/chat/messages/{messageId}` → Edit an existing message.
 
   Request:
+
   ```json
   {
     "content": "Updated message content",
@@ -796,6 +817,7 @@ Additional endpoints for sophisticated chat interface functionality:
   ```
 
   Response `200 OK`:
+
   ```json
   {
     "id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -808,6 +830,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `GET /api/v1/sessions/{id}/chat/threads` → Get conversation threads for branching discussions.
 
   Response `200 OK`:
+
   ```json
   {
     "threads": [
@@ -827,6 +850,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `POST /api/v1/sessions/{id}/chat/threads` → Create a new conversation thread.
 
   Request:
+
   ```json
   {
     "title": "Database optimization",
@@ -838,6 +862,7 @@ Additional endpoints for sophisticated chat interface functionality:
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "thread-01HVZ6K9T1N8S6M3V3Q3F0X5B9",
@@ -850,6 +875,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `GET /api/v1/sessions/{id}/chat/suggestions` → Get contextual suggestions for chat input.
 
   Response `200 OK`:
+
   ```json
   {
     "context_suggestions": [
@@ -890,12 +916,14 @@ Additional endpoints for sophisticated chat interface functionality:
 - `POST /api/v1/sessions/{id}/chat/stream` → Stream chat response in real-time (alternative to polling).
 
   Headers:
+
   ```
   Content-Type: application/json
   Accept: text/event-stream
   ```
 
   Request:
+
   ```json
   {
     "content": "Please analyze this code",
@@ -906,6 +934,7 @@ Additional endpoints for sophisticated chat interface functionality:
   ```
 
   SSE Response:
+
   ```
   event: message_start
   data: {"id": "msg-01HVZ6K9T1N8S6M3V3Q3F0X5B7", "timestamp": "2025-01-01T12:00:00Z"}
@@ -926,6 +955,7 @@ Additional endpoints for sophisticated chat interface functionality:
 - `GET /api/v1/sessions/{id}/files/search` → Advanced file search for context inclusion.
 
   Response `200 OK`:
+
   ```json
   {
     "results": [
@@ -944,9 +974,9 @@ Additional endpoints for sophisticated chat interface functionality:
       }
     ],
     "facets": {
-      "languages": {"typescript": 15, "javascript": 8, "json": 3},
-      "file_types": {".ts": 15, ".js": 8, ".json": 3},
-      "directories": {"src": 20, "tests": 6}
+      "languages": { "typescript": 15, "javascript": 8, "json": 3 },
+      "file_types": { ".ts": 15, ".js": 8, ".json": 3 },
+      "directories": { "src": 20, "tests": 6 }
     },
     "total": 26
   }
@@ -968,6 +998,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `GET /api/v1/sessions/{id}/timeline` → Get session timeline with moments and snapshots for time-travel navigation.
 
   Response `200 OK`:
+
   ```json
   {
     "sessionId": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -1030,6 +1061,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `POST /api/v1/sessions/{id}/fs-snapshots` → Create a manual filesystem snapshot at current time.
 
   Request:
+
   ```json
   {
     "label": "manual-snapshot",
@@ -1038,6 +1070,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "s3",
@@ -1055,6 +1088,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `POST /api/v1/sessions/{id}/moments` → Create a manual session moment at current time.
 
   Request:
+
   ```json
   {
     "label": "checkpoint",
@@ -1064,6 +1098,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "m3",
@@ -1077,6 +1112,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `POST /api/v1/sessions/{id}/seek` → Seek session player to a specific timestamp or snapshot for inspection.
 
   Request:
+
   ```json
   {
     "ts": 45.67,
@@ -1087,6 +1123,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
   ```
 
   Response `200 OK`:
+
   ```json
   {
     "seekTime": 45.67,
@@ -1100,6 +1137,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `POST /api/v1/sessions/{id}/session-branch` → Create a new session branch from a timestamp or snapshot.
 
   Request:
+
   ```json
   {
     "fromTs": 45.67,
@@ -1111,6 +1149,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B8",
@@ -1127,6 +1166,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `GET /api/v1/sessions/{id}/fs-snapshots` → List all filesystem snapshots for the session.
 
   Response `200 OK`:
+
   ```json
   {
     "snapshots": [
@@ -1156,6 +1196,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `POST /api/v1/sessions/{id}/summarize` → Generate a short summary name for a session or branch.
 
   Request:
+
   ```json
   {
     "prompt": "Fix authentication logic using JWT tokens instead of sessions",
@@ -1165,21 +1206,19 @@ Endpoints for session history navigation, branching, and time-travel functionali
   ```
 
   Response `200 OK`:
+
   ```json
   {
     "summary": "jwt-auth-refactor",
     "confidence": 0.85,
-    "alternatives": [
-      "fix-jwt-auth",
-      "jwt-authentication",
-      "auth-jwt-migration"
-    ]
+    "alternatives": ["fix-jwt-auth", "jwt-authentication", "auth-jwt-migration"]
   }
   ```
 
 - `GET /api/v1/sessions/{id}/branches` → List all session branches (sub-sessions).
 
   Response `200 OK`:
+
   ```json
   {
     "branches": [
@@ -1201,6 +1240,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `GET /api/v1/sessions/{id}/recording?startTime=0&endTime=100` → Get session recording data for playback.
 
   Response `200 OK`:
+
   ```json
   {
     "format": "cast",
@@ -1229,6 +1269,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `GET /api/v1/sessions/{id}/files/{filePath}/content` → Get full file content for diff viewer.
 
   Response `200 OK`:
+
   ```json
   {
     "path": "src/auth.ts",
@@ -1243,6 +1284,7 @@ Endpoints for session history navigation, branching, and time-travel functionali
 - `GET /api/v1/sessions/{id}/workspace/info` → Get workspace summary and metadata.
 
   Response `200 OK`:
+
   ```json
   {
     "id": "ws-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -1333,6 +1375,7 @@ Drafts allow users to save incomplete task configurations for later completion a
 - `POST /api/v1/drafts` → Create a new draft task
 
   Request:
+
   ```json
   {
     "prompt": "Implement user authentication...",
@@ -1355,6 +1398,7 @@ Drafts allow users to save incomplete task configurations for later completion a
   ```
 
   Response `201 Created`:
+
   ```json
   {
     "id": "draft-01HVZ6K9T1N8S6M3V3Q3F0X5B7",
@@ -1366,6 +1410,7 @@ Drafts allow users to save incomplete task configurations for later completion a
 - `GET /api/v1/drafts` → List user's draft tasks
 
   Response `200 OK`:
+
   ```json
   {
     "items": [

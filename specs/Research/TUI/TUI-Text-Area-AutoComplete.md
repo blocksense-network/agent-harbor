@@ -6,7 +6,7 @@ This guide shows exactly how to implement auto-completion-style, inline autocomp
 
 ## 0) Overview
 
-- **Goal**: caret-anchored, inline suggestion list rendered *inside the editor rect*; editor keeps focus at all times.
+- **Goal**: caret-anchored, inline suggestion list rendered _inside the editor rect_; editor keeps focus at all times.
 - **Trigger tokens**: `/` (workflows), `@` (files/resources).
 - **Matcher**: `nucleo` in a background task; returns top-K with match indices for highlighting.
 - **Testing**: golden buffer tests @ 80×24 & 120×40; unit tests for coordinate mapping and insertion.
@@ -16,6 +16,7 @@ This guide shows exactly how to implement auto-completion-style, inline autocomp
 ## 1) Dependencies
 
 **Cargo.toml (workspace members that render the TUI):**
+
 ```toml
 [dependencies]
 ratatui = "0.27"
@@ -31,7 +32,7 @@ fuzzy-matcher = { version = "0.3", optional = true }
 [features]
 default = []
 inline-autocomplete = ["tui-textarea", "nucleo"]
-````
+```
 
 > The fork should be a minimal delta **only** adding:
 >
@@ -221,9 +222,9 @@ pub fn draw_editor_and_menu(f: &mut Frame, area: Rect, textarea: &TextArea, vm: 
 
 ### 6.1 Query pipeline
 
-* Debounce keystrokes (60–100ms).
-* Attach a **request_id** to each query; matcher echoes it back.
-* On response: if `id < vm.request_id`, drop it (stale).
+- Debounce keystrokes (60–100ms).
+- Attach a **request_id** to each query; matcher echoes it back.
+- On response: if `id < vm.request_id`, drop it (stale).
 
 ```rust
 enum QueryMsg { New(u64 /*id*/, Trigger, String) }
@@ -287,31 +288,30 @@ fn insert_completion(vm: &InlineMenuVM, ta: &mut TextArea) {
 
 ## 8) Edge Cases & Clipping
 
-* **Near bottom/right**: `clip_popup` ensures the menu shrinks and remains within editor bounds.
-* **Horizontal scroll**: fork getters make column mapping exact.
-* **Tabs**: ensure editor and coordinate mapper use the same tab width (e.g., 4).
-* **Wide graphemes**: prefer grapheme-awareness in both editor cursor math and highlight spans.
+- **Near bottom/right**: `clip_popup` ensures the menu shrinks and remains within editor bounds.
+- **Horizontal scroll**: fork getters make column mapping exact.
+- **Tabs**: ensure editor and coordinate mapper use the same tab width (e.g., 4).
+- **Wide graphemes**: prefer grapheme-awareness in both editor cursor math and highlight spans.
 
 ---
 
 ## 9) Testing (must-have)
 
 1. **Golden Snapshots** `crates/ah-tui/tests/golden_inline_menu.rs`
+   - `golden_inline_{80x24,120x40}_caret_anchor_ok`
+   - `golden_inline_high_contrast_visible`
+   - `golden_inline_right_bottom_clipping_ok`
 
-   * `golden_inline_{80x24,120x40}_caret_anchor_ok`
-   * `golden_inline_high_contrast_visible`
-   * `golden_inline_right_bottom_clipping_ok`
 2. **Unit** `crates/ah-tui/tests/coord_map.rs`
+   - `coord_map_with_scroll_and_gutter_ok`
+   - `coord_map_tabs_and_wide_graphemes_ok`
 
-   * `coord_map_with_scroll_and_gutter_ok`
-   * `coord_map_tabs_and_wide_graphemes_ok`
 3. **Behavior** `crates/ah-tui/tests/behavior_autocomplete.rs`
+   - `keystroke_passthrough_and_nav_ok`
+   - `insert_and_restore_focus_ok`
 
-   * `keystroke_passthrough_and_nav_ok`
-   * `insert_and_restore_focus_ok`
 4. **Perf (sanity)** `crates/ah-tui/tests/perf_matcher.rs`
-
-   * `topk_on_10k_items_sub_budget`
+   - `topk_on_10k_items_sub_budget`
 
 Make snapshots deterministic (fixed terminal size, theme, corpus, and fake time). Use `insta` or equivalent for golden buffers.
 
@@ -319,32 +319,32 @@ Make snapshots deterministic (fixed terminal size, theme, corpus, and fake time)
 
 ## 10) CI & Feature Flag
 
-* Gate the entire feature behind `inline-autocomplete`.
-* CI matrix:
+- Gate the entire feature behind `inline-autocomplete`.
+- CI matrix:
+  - `--features inline-autocomplete` (with fork)
+  - base build (without the fork)
 
-  * `--features inline-autocomplete` (with fork)
-  * base build (without the fork)
-* Optional job to compare fork’s public API surface vs upstream (alert-only).
+- Optional job to compare fork’s public API surface vs upstream (alert-only).
 
 ---
 
 ## 11) Upstreaming
 
-* Open a PR to upstream `tui-textarea` with the two getters + docstrings.
-* Keep our branch rebased; avoid behavior changes in the fork.
+- Open a PR to upstream `tui-textarea` with the two getters + docstrings.
+- Keep our branch rebased; avoid behavior changes in the fork.
 
 ---
 
 ## 12) Implementation Checklist
 
-* [ ] Add fork dependency + `inline-autocomplete` feature.
-* [ ] Implement `Provider` for `/` workflows and `@` files/resources.
-* [ ] Implement `Matcher` using `nucleo`.
-* [ ] Build `InlineMenuVM`, debounce, and request-ID wiring.
-* [ ] Add coordinate mapper using fork getters; add clipping.
-* [ ] Render inside editor rect: editor → `Clear(popup)` → `List`.
-* [ ] Insert semantics; caret restore.
-* [ ] Golden/unit/perf tests; CI matrix.
-* [ ] Prepare upstream PR with getters.
+- [ ] Add fork dependency + `inline-autocomplete` feature.
+- [ ] Implement `Provider` for `/` workflows and `@` files/resources.
+- [ ] Implement `Matcher` using `nucleo`.
+- [ ] Build `InlineMenuVM`, debounce, and request-ID wiring.
+- [ ] Add coordinate mapper using fork getters; add clipping.
+- [ ] Render inside editor rect: editor → `Clear(popup)` → `List`.
+- [ ] Insert semantics; caret restore.
+- [ ] Golden/unit/perf tests; CI matrix.
+- [ ] Prepare upstream PR with getters.
 
 ---

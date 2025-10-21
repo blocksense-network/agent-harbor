@@ -22,31 +22,38 @@ This will build all components and run the basic injection tests.
 ## Components
 
 ### Injector (`injector/`)
+
 Rust binary that sets `DYLD_INSERT_LIBRARIES` for child processes.
 
 **Usage:**
+
 ```bash
 ./injector/target/release/dyld-injector -l /path/to/library.dylib command [args...]
 ```
 
 Multiple libraries can be specified with colon separation:
+
 ```bash
 ./injector/target/release/dyld-injector -l "lib1.dylib:lib2.dylib" command
 ```
 
 ### Test Library (`lib/`)
+
 Minimal C library with logging constructor for testing injection.
 
 **Build:**
+
 ```bash
 cd lib
 ./build-test-lib.sh
 ```
 
 ### Test Harness (`harness/`)
+
 Automated test scripts validating injection functionality.
 
 **Run basic tests:**
+
 ```bash
 ./harness/basic-injection.sh
 ```
@@ -64,21 +71,25 @@ Automated test scripts validating injection functionality.
 The PoC uses multiple layers of verification to ensure libraries are properly loaded:
 
 ### 1. Constructor Function Execution
+
 - Libraries define `__attribute__((constructor))` functions that run when loaded
 - Constructor prints verification messages to stderr with process PID
 - Test harness counts messages to ensure library loads exactly once per child process
 
 ### 2. Symbol Accessibility Verification
+
 - Libraries export a test function (`dyld_test_verify_loaded()`) that returns a known value
 - Constructor uses `dlopen(NULL)` and `dlsym()` to verify the library's own symbols are accessible
 - Confirms the library is fully loaded and functional, not just mapped into memory
 
 ### 3. System-Level Verification (Optional)
+
 - Uses macOS `vmmap` tool to check if library appears in process memory maps
 - Provides additional confidence that injection worked at the system level
 - Skipped if process exits before verification can run
 
 ### 4. Process Isolation Verification
+
 - Ensures libraries load only in child processes, not in the injector parent
 - Verifies that `DYLD_INSERT_LIBRARIES` environment variable only affects launched processes
 

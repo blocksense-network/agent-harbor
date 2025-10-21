@@ -149,6 +149,7 @@ agent-harbor/
 The `electron-app/` directory contains the **Agent Harbor GUI** - a cross-platform Electron application that provides the primary graphical interface for Agent Harbor on macOS, Windows, and Linux. This GUI embeds the WebUI, manages browser automation for cloud agents, and provides native OS integrations.
 
 #### GUI Responsibilities
+
 - **WebUI Process Management**: Launches and monitors the `ah webui` process
   - **Key Optimization**: WebUI server runs via Electron's bundled Node.js using `ELECTRON_RUN_AS_NODE=1`
   - Eliminates need for separate Node.js installation (~50-80MB saved)
@@ -157,6 +158,7 @@ The `electron-app/` directory contains the **Agent Harbor GUI** - a cross-platfo
 - **CLI Bundling**: Packages complete AH CLI toolchain for unified installation
 
 #### Key Architecture Decisions
+
 - **Electron + TypeScript**: Cross-platform GUI framework with Node.js main process
 - **Bundled Chromium**: Provides consistent browser automation environment via Playwright
 - **Rust Native Addons**: Process management and core logic via N-API/neon-bindings
@@ -169,24 +171,28 @@ The `electron-app/` directory contains the **Agent Harbor GUI** - a cross-platfo
 The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host application** required by Apple for system extension registration. This is distinct from the Electron GUI and serves a specific macOS-only purpose.
 
 #### Host App Responsibilities (macOS-specific)
+
 - **Extension Hosting**: Contains and manages system extensions (AgentFSKitExtension)
 - **Extension Registration**: Handles PlugInKit registration with macOS System Extensions framework
 - **Lifecycle Management**: Manages extension loading, unloading, and system approval workflows
 - **Minimal UI**: Provides basic UI for extension status monitoring and approval
 
 #### Relationship to Electron GUI
+
 - **Separate Applications**: Host app and Electron GUI are independent macOS applications
 - **Distinct Purposes**: Host app for system extensions only; Electron GUI for main user interface
 - **Optional IPC**: Electron GUI can communicate with system extension via IPC when needed
 - **Distribution**: Can be bundled together or distributed separately
 
 #### Extension Architecture
+
 - **AgentFSKitExtension**: FSKit-based filesystem extension for user-space AgentFS implementation
 - **Extension Sources**: Extension source code is developed in `adapters/macos/xcode/AgentFSKitExtension/`
 - **Built Extensions**: Compiled extensions are embedded in the host app's `PlugIns/` directory
 - **Future Extensions**: Additional system extensions (network filters, device drivers, etc.) will follow the same pattern
 
 #### Build and Distribution
+
 - Built as a standard macOS application bundle with embedded appex (extension) bundles
 - Requires code signing and notarization for system extension approval
 - Distributed as a single `.app` bundle containing all extensions

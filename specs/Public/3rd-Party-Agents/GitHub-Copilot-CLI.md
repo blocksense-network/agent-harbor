@@ -15,11 +15,13 @@ GitHub Copilot CLI is GitHub's command-line interface that brings AI-powered cod
 GitHub Copilot CLI provides agentic coding assistance (verified from --help):
 
 1. **Launch interactive session**:
+
    ```bash
    copilot
    ```
 
 2. **Start with specific model**:
+
    ```bash
    copilot --model gpt-5
    copilot --model claude-sonnet-4
@@ -27,11 +29,13 @@ GitHub Copilot CLI provides agentic coding assistance (verified from --help):
    ```
 
 3. **Execute prompt directly** (non-interactive):
+
    ```bash
    copilot -p "Fix the bug in main.js" --allow-all-tools
    ```
 
 4. **Resume sessions**:
+
    ```bash
    copilot --resume              # Resume latest session
    copilot --resume session-id   # Resume specific session
@@ -39,6 +43,7 @@ GitHub Copilot CLI provides agentic coding assistance (verified from --help):
    ```
 
 5. **Authentication**:
+
    ```bash
    export GH_TOKEN=ghp_...  # or GITHUB_TOKEN
    export GITHUB_TOKEN=ghp_...
@@ -46,12 +51,14 @@ GitHub Copilot CLI provides agentic coding assistance (verified from --help):
    ```
 
 6. **Path permissions**:
+
    ```bash
    copilot --add-dir ~/workspace --add-dir /tmp
    copilot --allow-all-paths  # Disable path verification
    ```
 
 7. **Tool permissions**:
+
    ```bash
    copilot --allow-all-tools  # Auto-approve all tools (required for non-interactive)
    copilot --allow-tool 'shell(git:*)' --deny-tool 'shell(git push)'
@@ -66,6 +73,7 @@ GitHub Copilot CLI provides agentic coding assistance (verified from --help):
    ```
 
 **Interactive vs non-interactive**:
+
 - Default: Interactive TUI mode
 - `-p` flag: Direct prompt execution (non-interactive)
 - `--allow-all-tools` required for non-interactive mode
@@ -75,6 +83,7 @@ GitHub Copilot CLI provides agentic coding assistance (verified from --help):
 **Session resumption**: Full session management with `--resume` and `--continue` options.
 
 **Model specification**:
+
 - Default: `claude-sonnet-4.5`
 - Options: `gpt-5`, `claude-sonnet-4`, `claude-sonnet-4.5`
 - Set via `--model` flag or `COPILOT_MODEL` env var
@@ -110,6 +119,7 @@ copilot -p "task description" --allow-all-tools
 ```
 
 **Environment variables for automation** (from help):
+
 - `GH_TOKEN` or `GITHUB_TOKEN`: Authentication token
 - `COPILOT_ALLOW_ALL`: Set to "true" to auto-approve tools
 - `COPILOT_MODEL`: Set default model (gpt-5, claude-sonnet-4, claude-sonnet-4.5)
@@ -131,6 +141,7 @@ copilot -p "task description" --allow-all-tools
 **Status: TO BE DETERMINED**
 
 Session management needs investigation through:
+
 - Running the CLI and examining created files
 - Reviewing help documentation
 - Testing persistence across invocations
@@ -177,17 +188,20 @@ MCP server support not documented in available materials. Investigation required
 GitHub Copilot CLI uses GitHub authentication:
 
 **Authentication methods:**
+
 - GitHub account with Copilot subscription
 - OAuth flow through browser
 - Token-based authentication (possibly)
 
 **Storage locations (to be confirmed):**
+
 - Uses GitHub CLI authentication infrastructure
 - Likely shares credentials with `gh` CLI tool
 - **Linux/macOS**: `~/.config/gh/` or dedicated Copilot config directory
 - **Windows**: `%APPDATA%\GitHub CLI\` or dedicated directory
 
 **Prerequisites:**
+
 - Active GitHub Copilot subscription
 - GitHub CLI installed and authenticated (possibly)
 
@@ -204,6 +218,7 @@ GitHub Copilot CLI uses GitHub authentication:
 ## Important Transition Note
 
 **Legacy vs New CLI:**
+
 - **OLD**: `gh extension install github/gh-copilot` (deprecated Oct 25, 2025)
 - **NEW**: Standalone `copilot` CLI tool (current, in public preview)
 

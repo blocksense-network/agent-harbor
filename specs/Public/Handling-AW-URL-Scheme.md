@@ -82,19 +82,19 @@ If you use the main Electron app:
 
 ```js
 // main.js
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow } = require('electron');
 
 // Register as default protocol client (packaged apps)
 if (process.defaultApp) {
   // Dev mode on Windows requires exe + args
-  const path = require("node:path");
+  const path = require('node:path');
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("agent-harbor", process.execPath, [
+    app.setAsDefaultProtocolClient('agent-harbor', process.execPath, [
       path.resolve(process.argv[1]),
     ]);
   }
 } else {
-  app.setAsDefaultProtocolClient("agent-harbor");
+  app.setAsDefaultProtocolClient('agent-harbor');
 }
 
 // Keep a single instance to funnel deep links into one process
@@ -106,8 +106,8 @@ function handleDeepLink(url) {
   // Validate/normalize the URL, then ensure WebUI → open route
 }
 
-app.on("second-instance", (event, argv) => {
-  const urlArg = argv.find((a) => a.startsWith("agent-harbor://"));
+app.on('second-instance', (event, argv) => {
+  const urlArg = argv.find(a => a.startsWith('agent-harbor://'));
   if (urlArg) handleDeepLink(urlArg);
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -116,7 +116,7 @@ app.on("second-instance", (event, argv) => {
 });
 
 // macOS specific deep link event
-app.on("open-url", (event, url) => {
+app.on('open-url', (event, url) => {
   event.preventDefault();
   handleDeepLink(url);
 });
@@ -192,8 +192,8 @@ flowchart TD
 \$1**Electron (any OS)**
 
 ```js
-const { shell } = require("electron");
-await shell.openExternal("http://127.0.0.1:8787/tasks/1234");
+const { shell } = require('electron');
+await shell.openExternal('http://127.0.0.1:8787/tasks/1234');
 ```
 
 Your handler often needs to open a local WebUI route like `http://127.0.0.1:8787/tasks/<id>`.

@@ -7,27 +7,35 @@
 - Ensure POSIX/NT semantics (configurable case sensitivity, xattrs/ADS, locking, share modes) with high concurrency and memory‑efficient CoW.
 
 ## Backstore Manager
+
 The core exposes a `Backstore` abstraction with implementations:
 `InMemoryUpper`, `HostFsUpper{root: Path}` (mostly platform-agnostic logic, but reliant on platform-specific setup), `RamdiskUpper{mount: Path, fs: FsKind, supports_native_snapshots: bool}` (platform-specific).
 Responsibilities:
+
 1. **Provisioning**: `create_ramdisk(cfg)`, `attach_hostfs(root)`, `fallback_inmem()`.
 2. **Handles**: open RO **lower** and RW **upper** host handles used by adapters.
 3. **Metadata seeding**: `seed_metadata_from_lower(lower_meta) -> UpperMetaInit`.
 4. **Snapshot/export**: `snapshot_native(label)` if supported; else `snapshot_copy(active_set)`.
 
 ### Lower (read-through) path
+
 `vfs.lookup(path)` returns a **lower view** unless an upper entry exists. `read(path, off, len)`:
-1) If `upper.exists`: read via upper handle.
-2) Else: read via **lower handle** (no upper materialization).
+
+1. If `upper.exists`: read via upper handle.
+2. Else: read via **lower handle** (no upper materialization).
 
 ### Copy-up & metadata initialization
+
 On first mutation (`create`, `write`, `setattr`, etc.), core:
-1) Creates an upper node and copies data lazily/greedily per file policy.
-2) Initializes mode/uid/gid/acl/xattrs from lower via `Backstore.seed_metadata_from_lower`.
-3) Records whiteouts for deletes.
+
+1. Creates an upper node and copies data lazily/greedily per file policy.
+2. Initializes mode/uid/gid/acl/xattrs from lower via `Backstore.seed_metadata_from_lower`.
+3. Records whiteouts for deletes.
 
 ### Interpose / FD forwarding control-plane
+
 Core provides `fd_open(req)` which **always materializes an upper entry** for interposed processes:
+
 - On first interposed open of a path—even if O_RDONLY—AgentFS creates an upper entry via:
   - **reflink/clone** (O(metadata) cost) when supported by the backstore filesystem
   - **bounded copy** (up to `interpose-max-copy-bytes`) when reflink unavailable but file size ≤ threshold
@@ -36,9 +44,10 @@ Core provides `fd_open(req)` which **always materializes an upper entry** for in
   - Unix: sent via `SCM_RIGHTS` to shim.
   - Windows: duplicated via `DuplicateHandle` to shim process.
 - **Fallback**: When forwarding unavailable, shim falls back to KBP (mounted volume) for that process/file.
-Core maintains path ↔ handle bookkeeping for snapshots/branch isolation and validates path ops (`rename/unlink/chmod/...`) via control messages.
+  Core maintains path ↔ handle bookkeeping for snapshots/branch isolation and validates path ops (`rename/unlink/chmod/...`) via control messages.
 
 ### Snapshot semantics with backstore
+
 If `supports_native_snapshots==true`, `snapshot_native(label)` maps branch roots to native snapshot IDs and records cross-mapping. Otherwise core computes the **active set** (upper objects/metadata) and materializes a copy in a snapshot store (efficient for typical small active sets).
 
 ### High‑Level Architecture

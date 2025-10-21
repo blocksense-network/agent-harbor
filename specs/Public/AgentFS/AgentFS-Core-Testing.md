@@ -8,6 +8,7 @@
 - Prove robustness under concurrency, failure injection, and resource pressure (memory spill, ENOSPC).
 
 ### I/O path characterization
+
 **T1. Lower pass-through read:** Read a 1 GiB file never touched by upper; assert no upper node exists post-read; measure throughput.
 **T2. Copy-up metadata seeding:** Touch for write; assert upper mode/uid/gid/ACL/xattrs cloned from lower per policy.
 **T3. KBP cache-warm throughput:** Re-read same 1 GiB; expect ≥ 90% of host-FS direct read.
@@ -70,16 +71,19 @@ The following plans are the authoritative, step-by-step procedures. Sections bel
 4. For share modes (component test via adapter): open first handle with deny-write; attempt second open with write access; expect adapter to reject per share admission.
 
 #### U7. Overlay pass-through read (unit)
+
 1. Configure `FsConfig.lower.root` to a temp directory with file `/x` containing "L".
 2. In a fresh branch with no upper entries, `read("/x")` returns "L" without creating an upper entry.
 3. `stat("/x")` reflects lower metadata.
 
 #### U8. Copy-up on first write (unit)
+
 1. Same setup as U7. `write("/x", "U")` triggers `copy_up("/x")`.
 2. Subsequent `read("/x")` returns "U"; lower `/x` remains "L".
 3. Upper metadata initialized from lower, then mtime updated per write.
 
 #### U9. Metadata overlay without data copy (unit)
+
 1. Call `chmod("/x", 0600)` on an unmodified `/x` → creates metadata overlay only.
 2. `stat("/x")` reports `0600`, but `read("/x")` continues to pass through to lower until first data write.
 
@@ -120,6 +124,7 @@ Prerequisite: WinFsp installed; adapter built.
 5. Use DeviceIoControl to send `snapshot.create/list` and `branch.create/bind`; verify behavior per IDs.
 
 #### I4. Adapter passthrough (integration)
+
 1. Mount with `FsConfig.lower.root`.
 2. Read large file without prior writes; verify throughput ≈ reading the same file from the lower path directly.
 3. Write; verify copy-up occurs and subsequent I/O hits backstore.

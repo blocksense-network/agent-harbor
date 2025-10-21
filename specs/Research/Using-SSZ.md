@@ -120,6 +120,7 @@ fn main() {
 The `ethereum-ssz` library supports SSZ unions through its derive macros in the companion `ethereum-ssz-derive` crate. Specifically, you can define an enum and apply the `#[ssz(enum_behaviour = "union")]` attribute to treat it as an SSZ union, where each variant is encoded with a one-byte selector (indicating the variant index) followed by the serialized data of that variant. This aligns with the SSZ specification for unions, which are tagged variants without field names.
 
 #### Key Details
+
 - **Requirements**: The enum must derive `Encode` and `Decode` from `ethereum-ssz-derive`. Variants should be newtype-style (e.g., `Foo(T)`) or unit, but not structs with named fields, as SSZ unions serialize only the inner data.
 - **Selector**: The first byte is the variant index (starting from 0). The library enforces a maximum selector value (typically 127 for extensions).
 - **Encoding/Decoding**: Use the standard `as_ssz_bytes()` for encoding and `from_ssz_bytes(&bytes)` for decoding, just like other SSZ types. Invalid selectors or malformed data will return a `DecodeError`.

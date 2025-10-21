@@ -12,6 +12,7 @@ Total estimated timeline: 17-21 weeks (phased with parallel development tracks)
 ### Key Design Principles
 
 Per [Agent-Harbor-GUI.md](Agent-Harbor-GUI.md), the GUI is a **thin native wrapper** that:
+
 - Embeds and manages the existing WebUI (already functional with 23/162 E2E tests passing)
 - Delegates all workflow functionality to the underlying WebUI
 - Provides native OS integration (system tray, notifications, URL scheme handling)
@@ -21,6 +22,7 @@ Per [Agent-Harbor-GUI.md](Agent-Harbor-GUI.md), the GUI is a **thin native wrapp
 ### Architecture Overview
 
 **Component Separation:**
+
 - **Electron GUI Shell**: Handles window management, native OS integrations, and WebUI process lifecycle
 - **Embedded Chromium**: Provides browser automation capabilities for cloud agent integrations (Codex, etc.)
 - **WebUI Process**: Existing SolidJS/SolidStart application serving the main UI (reused as-is)
@@ -30,6 +32,7 @@ Per [Agent-Harbor-GUI.md](Agent-Harbor-GUI.md), the GUI is a **thin native wrapp
 - **URL Scheme Handler**: Rust binary handling `agent-harbor://` protocol (shared with headless systems)
 
 **Technology Stack:**
+
 - **GUI Framework**: Electron (cross-platform with Chromium)
   - **Critical Rationale**: Browser automation capability required for cloud agent integrations
     - See [Browser-Automation/](Browser-Automation/) specs for Codex and other cloud platforms
@@ -876,12 +879,14 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Overall Success Criteria
 
 **Performance Targets:**
+
 - Application launch time < 3s p95 on macOS/Windows/Linux default hardware
 - WebUI spawn and ready < 2s p95 after health check
 - Memory footprint < 150MB (GUI + WebUI combined) at idle
 - CPU usage < 5% at idle, < 20% during active task monitoring
 
 **Functionality Requirements:**
+
 - All platforms: Window management, system tray, native notifications work
 - All platforms: WebUI embedding displays functional UI
 - All platforms: URL scheme handler opens tasks and creates tasks with confirmation
@@ -889,6 +894,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - All platforms: Clean install and uninstall without residue
 
 **Quality Metrics:**
+
 - Test coverage: > 80% of GUI code paths
 - CI test pass rate: > 95% (< 5% flake rate)
 - Security: No high/critical vulnerabilities
@@ -898,16 +904,19 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Test Strategy & Tooling
 
 **Unit Testing:**
+
 - Rust crates: `cargo test` for process management and shared logic
 - Platform-specific: XCTest (macOS), xUnit/.NET tests (Windows), Rust/C tests (Linux)
 
 **Integration Testing:**
+
 - E2E framework per platform (XCTest, WinAppDriver, dogtail)
 - Mock WebUI server for isolated GUI testing
 - IPC communication tests between components
 - URL scheme handler integration tests
 
 **System Testing:**
+
 - Full installation → usage → uninstallation flows
 - Multi-platform CI matrix: macOS 13+, Windows 10/11, Ubuntu/Fedora/Arch
 - Performance benchmarking suite
@@ -915,12 +924,14 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - Crash recovery and resilience tests
 
 **Security Testing:**
+
 - Static analysis (Clippy, platform-specific linters)
 - Dependency vulnerability scanning (cargo-audit, Snyk)
 - Input fuzzing for URL scheme handler
 - Penetration testing scenarios
 
 **Accessibility Testing:**
+
 - Keyboard navigation verification
 - Screen reader compatibility (VoiceOver, NVDA, Orca)
 - Color contrast and visual accessibility checks
@@ -929,6 +940,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Deliverables
 
 **Software Artifacts:**
+
 - Electron GUI application for macOS, Windows, Linux
 - Bundled Chromium for browser automation (via Electron)
 - Integrated Playwright for cloud agent automation (Codex, Claude, etc.)
@@ -941,10 +953,12 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - Update manifests for electron-updater
 
 **Key Optimization:**
+
 - WebUI server reuses Electron's bundled Node.js runtime (saves ~50-80MB installer size)
 - No separate Node.js installation required on user systems
 
 **Documentation:**
+
 - Installation guides per platform
 - User manual with screenshots and tutorials
 - Browser automation guide for cloud agents
@@ -956,6 +970,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - Security audit report
 
 **Infrastructure:**
+
 - CI/CD pipelines for automated building, testing, signing, and releasing
 - Cross-platform build matrix (macOS/Windows/Linux)
 - Package manager manifests (Homebrew, winget)
@@ -965,30 +980,37 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Risks & Mitigations
 
 **Browser Automation Stability:**
+
 - Risk: Cloud platform UI changes break automation
 - Mitigation: Use stable selectors (role/aria); fail fast with diagnostics; screenshot on error; version-specific selector strategies
 
 **Chromium Version Compatibility:**
+
 - Risk: Electron's Chromium version differs from Playwright expectations
 - Mitigation: Use Playwright's chromium channel matching Electron version; test automation against Electron's Chromium in CI
 
 **Code Signing Complexity:**
+
 - Risk: Signing workflows differ significantly across platforms
 - Mitigation: Detailed documentation in [Agent-Harbor-Electron-Packaging.md](../../specs/Research/Electron-Packaging/Agent-Harbor-Electron-Packaging.md); automate in CI; use GitHub Secrets for credentials
 
 **Update Mechanism Reliability:**
+
 - Risk: Auto-updates fail and leave app in broken state
 - Mitigation: Implement robust rollback mechanism; extensive testing; phased rollout
 
 **URL Scheme Security:**
+
 - Risk: Malicious URLs exploit GUI or WebUI
 - Mitigation: Strict input validation; confirmation dialogs for sensitive actions; security audit
 
 **Performance Overhead:**
+
 - Risk: Electron + WebUI + Browser automation create large application footprint
 - Mitigation: Code splitting; lazy-load automation code; asar compression; performance benchmarking
 
 **Electron Application Size:**
+
 - Risk: Bundled Chromium makes installer large (150-200MB+)
 - Mitigation:
   - Reuse Electron's Node.js for WebUI server (saves ~50-80MB by not bundling separate Node.js)
@@ -997,6 +1019,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
   - Consider separate "lite" version without automation
 
 **ELECTRON_RUN_AS_NODE Compatibility:**
+
 - Risk: WebUI server may not run correctly under Electron's Node.js
 - Mitigation:
   - Test WebUI server thoroughly with `ELECTRON_RUN_AS_NODE=1`
@@ -1007,30 +1030,36 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Parallelization Notes
 
 **Phase 0 (Foundation):**
+
 - M0.1 ✅ completed (Electron architecture decision)
 - M0.2 (Electron scaffolding) can proceed immediately
 - M0.2.5 (WebUI embedding evaluation) depends on M0.2, evaluates static vs server process approach
 - M0.3 (WebUI management) depends on M0.2.5 decision
 
 **Phase 1 (Core GUI):**
+
 - M1.1 (Main window) starts after M0.3
 - M1.2 (System tray) and M1.3 (Notifications) can proceed in parallel with M1.1
 
 **Phase 2 (Browser Automation):**
+
 - M2.1 (Playwright integration) can start after M0.2 (parallel with M0.3)
 - M2.2 (Codex automation) depends on M2.1
 - M2.3 (URL scheme) and M2.4 (Shortcuts) can proceed in parallel with M2.2
 
 **Phase 3 (CLI Bundling):**
+
 - M3.1 (Packaging), M3.2 (PATH), M3.3 (Versioning) are sequential with some parallelism
 - M3.4 (Installers) depends on M3.1-M3.2 but platforms can be built in parallel
 
 **Phase 4 (Testing):**
+
 - Proceeds in parallel with all other phases
 - M4.1 (Testing framework) should start early to enable other milestone testing
 - M4.2 (Integration tests) and M4.3 (Security) can overlap
 
 **Phase 5 (Release):**
+
 - M5.1 (Documentation) proceeds throughout implementation
 - M5.2 (Packaging) depends on all previous work
 - M5.3 (Auto-update) can proceed in parallel with documentation and testing
@@ -1038,34 +1067,40 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Status Tracking
 
 **Phase 0: Foundation & Architecture** ✅ **COMPLETE**
+
 - M0.1: ✅ **COMPLETED** - Architecture decision (Electron)
 - M0.2: ✅ **COMPLETED** - Project scaffolding
 - M0.2.5: ✅ **COMPLETED** - WebUI embedding strategy evaluation (Subprocess delegation architecture selected)
 - M0.3: ✅ **COMPLETED** - Mock API Server Extension for Static Build (9/9 tests passing)
 
 **Phase 1: Core GUI Functionality** 🚧 **IN PROGRESS**
+
 - M1.1: 📋 **NEXT** - Main Window & WebUI Embedding (Real `ah webui` subprocess integration)
 - M1.2: 📋 Pending - System tray integration
 - M1.3: 📋 Pending - Native notifications
 
 **Phase 2: Browser Automation & Cloud Agent Support**
+
 - M2.1: 📋 Pending - Playwright Integration & Browser Profile Management
 - M2.2: 📋 Pending - Codex Browser Automation
 - M2.3: 📋 Pending - URL scheme handler integration
 - M2.4: 📋 Pending - Global keyboard shortcuts
 
 **Phase 3: CLI Bundling & Distribution**
+
 - M3.1: 📋 Pending - CLI tool packaging
 - M3.2: 📋 Pending - PATH integration
 - M3.3: 📋 Pending - CLI version synchronization
 - M3.4: 📋 Pending - Installer creation
 
 **Phase 4: Testing & Quality Assurance**
+
 - M4.1: 📋 Pending - Native UI testing framework
 - M4.2: 📋 Pending - Cross-platform integration tests
 - M4.3: 📋 Pending - Security audit
 
 **Phase 5: Documentation & Release**
+
 - M5.1: 📋 Pending - User documentation
 - M5.2: 📋 Pending - Release packaging
 - M5.3: 📋 Pending - Auto-update implementation
@@ -1073,30 +1108,35 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Integration with Other Components
 
 **WebUI Integration:**
+
 - GUI embeds existing WebUI application (see [WebUI.status.md](WebUI.status.md))
 - WebUI continues independent development with E2E test suite
 - GUI consumes WebUI as HTTP server on localhost
 - No changes required to WebUI for GUI embedding
 
 **CLI Integration:**
+
 - Bundles all CLI binaries from Rust workspace
 - Shares configuration files (`~/.config/agent-harbor/` or `AH_HOME`)
 - CLI and GUI coordinate via shared state files
 - URL handler binary shared between headless and GUI modes
 
 **URL Scheme Integration:**
+
 - Implements [Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md) specification
 - Electron's built-in protocol handling APIs
 - electron-builder configures protocol registration in installers
 - Single-instance lock prevents multiple GUI instances
 
 **Browser Automation Integration:**
+
 - Implements [Browser-Automation/](Browser-Automation/) specifications
 - Playwright uses Electron's bundled Chromium
 - Agent browser profiles stored in user data directory
 - IPC API exposes automation to WebUI and CLI
 
 **System Extension Integration (macOS):**
+
 - Electron GUI and native `apps/macos/AgentHarbor/` are separate applications
 - Native host app required by Apple for system extension registration
 - Electron GUI can optionally communicate with system extension via IPC
@@ -1106,6 +1146,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Future Enhancements (Post-MVP)
 
 **Advanced Features (not in initial scope):**
+
 - Multiple window mode for different sessions
 - Custom themes and UI customization
 - Advanced notification filtering and grouping
@@ -1116,11 +1157,13 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - Cloud sync for preferences and window states
 
 **Platform-Specific Features:**
+
 - macOS: Touch Bar support, Mission Control integration
 - Windows: Jump lists, taskbar progress indicators, Fluent Design
 - Linux: Wayland native support, additional desktop environments
 
 **Distribution Enhancements:**
+
 - Microsoft Store (Windows)
 - Mac App Store (macOS, requires sandboxing)
 - Flathub (Linux)
@@ -1130,6 +1173,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 ### Notes on Electron Decision
 
 **Why Electron:**
+
 - **Browser Automation is Critical**: Cloud agent support requires reliable browser automation
   - Codex, Claude, and other cloud platforms need programmatic interaction
   - Playwright requires stable Chromium binary for consistent automation
@@ -1140,12 +1184,14 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - **Well-Established Patterns**: electron-builder provides proven packaging and distribution
 
 **macOS System Extension Integration:**
+
 - Electron GUI and native `apps/macos/AgentHarbor/` host app coexist as separate applications
 - System extension remains in native AppKit/SwiftUI host (required by Apple)
 - Electron GUI can communicate with system extension via IPC when available
 - Both apps can be distributed together or independently
 
 **Trade-offs:**
+
 - **Application Size**: Electron apps are larger (150-200MB) due to bundled Chromium
   - Mitigation: Document download size; delta updates; consider compression
 - **Memory Footprint**: Chromium process uses more memory than native web views
@@ -1154,6 +1200,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
   - Mitigation: Use native window chrome where appropriate; follow platform conventions
 
 **Alternative Considered: Tauri**
+
 - Tauri uses system web views (WebKit/WebView2) instead of bundled Chromium
 - **Rejected** because: System web views don't provide reliable automation environment
   - Browser automation requires consistent Chromium version
@@ -1161,6 +1208,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
   - Playwright automation targets specific Chromium versions
 
 **Reference Research:**
+
 - See [Agent-Harbor-Electron-Packaging.md](../../specs/Research/Electron-Packaging/Agent-Harbor-Electron-Packaging.md) for comprehensive packaging research
 - Research directly applicable to Electron implementation
 - Detailed guides on code signing, notarization, and cross-platform distribution

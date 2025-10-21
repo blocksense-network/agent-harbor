@@ -53,6 +53,7 @@ No documentation found for per-step hooks. Investigation required.
 ### How to skip the initial onboarding screens on first launch of the agent?
 
 **Authentication via environment variables:**
+
 - `SRC_ENDPOINT`: Endpoint URL
 - `SRC_ACCESS_TOKEN`: Access token
 
@@ -91,10 +92,12 @@ MCP support not documented for Cody CLI.
 ### Credentials
 
 **Authentication methods:**
+
 - `cody auth login`: Interactive authentication
 - Environment variables: `SRC_ENDPOINT`, `SRC_ACCESS_TOKEN`
 
 **Storage:**
+
 - Secure OS storage (keychain/keyring) for tokens
 - Configuration in OS-specific app data directories
 
@@ -113,6 +116,7 @@ MCP support not documented for Cody CLI.
 **IMPORTANT**: Given the deprecation timeline and migration to Amp, this agent may not be a high priority for Agent Harbor integration.
 
 This document is incomplete and requires:
+
 1. Installation and `--help` documentation
 2. Testing of core features
 3. Session management investigation
@@ -123,6 +127,7 @@ This document is incomplete and requires:
 ## Recommendation
 
 Given the July 2025 deprecation for non-Enterprise plans, Agent Harbor should:
+
 1. Evaluate Amp as potential alternative
 2. Prioritize other CLI agents (Claude Code, Cursor, Codex, etc.)
 3. Consider Cody CLI only if Enterprise Sourcegraph integration is required

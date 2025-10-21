@@ -3,6 +3,7 @@
 This document addresses the comprehensive FSKit API review feedback provided by a senior developer experienced with macOS filesystem extensions. The review identified six critical correctness and security issues in the current FSKit adapter implementation that violate FSKit contracts and could cause data corruption or security vulnerabilities.
 
 **Key Issues Identified:**
+
 1. Caller identity using extension process instead of actual caller (security/correctness bug)
 2. Name handling violating byte-level FSKit contract (potential data corruption)
 3. Single-handle per item instead of per-open instance tracking (breaks concurrent access)
@@ -31,11 +32,13 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] Round-trip create/list/delete works for files with names containing null bytes or invalid UTF-8 sequences
 
 **Implementation Details:**
+
 - Follow reviewer's Patch 1: Add `pathBytes` field alongside existing `path` string (kept for debug logging only)
 - Implement byte-safe path construction without intermediate String conversions
 - Update all FFI calls to use `withNullTerminatedCStr(pathBytes)` instead of `path.withCString`
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsItem.swift` - Add pathBytes field
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - Path helpers and conversion
 
@@ -54,11 +57,13 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] Handle reference counting prevents premature cleanup
 
 **Implementation Details:**
+
 - Follow reviewer's Patch 2: Add `opensByItem` with NSLock protection
 - Track multiple handles per FSItem instead of single userData slot
 - Update reclaim logic to clean up specific handles from arrays
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - Handle tracking implementation
 
 **M-Review.3. Implement Lazy I/O Opens** (2–3d)
@@ -76,11 +81,13 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] No handle leaks from transient opens (validate with handle counting)
 
 **Implementation Details:**
+
 - Follow reviewer's Patch 2: Add transient handle resolution in read/write operations
 - Check existing handles first, fall back to `af_open_by_id` with appropriate flags
 - Ensure transient handles are closed even on error paths
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - Lazy open implementation in ReadWriteOperations
 
 **M-Review.4. Fix Extended Attributes Implementation** (2–3d)
@@ -98,11 +105,13 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] Finder metadata attributes work correctly
 
 **Implementation Details:**
+
 - Follow reviewer's Patch 2: Replace fixed 4K buffers with dynamic sizing loops
 - First call with NULL buffer to get size, then allocate and retry
 - Update PathConf to finite limits matching macOS conventions
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - Xattr operations and PathConf
 
 **M-Review.5. Fix Rename with overItem Semantics** (2–3d)
@@ -120,11 +129,13 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] Atomicity preserved where possible (no partial rename states)
 
 **Implementation Details:**
+
 - Follow reviewer's Patch 2: Add overItem checking and EEXIST handling
 - Implement unlink-then-rename fallback for replace operations
 - Note: Future FFI enhancement (`af_rename_replace`) could make this fully atomic
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - Rename operation implementation
 
 **M-Review.6. Update PathConf Realistic Limits** (1–2d)
@@ -141,10 +152,12 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] No spurious retries or failures due to mismatched expectations
 
 **Implementation Details:**
+
 - Follow reviewer's Patch 2: Replace unlimited (-1) values with conservative finite limits
 - Values chosen to match typical macOS filesystem behavior
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - PathConf property implementations
 
 **M-Review.7. Implement Proper Caller Identity (Audit Token)** (4–5d)
@@ -162,11 +175,13 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] Audit logs show operations attributed to correct processes
 
 **Implementation Details:**
+
 - Extract audit token from FSKit's per-operation context (reviewer's note about missing this in current code)
 - Implement mapping from audit tokens to registered PIDs
 - Update `getCallingPid()` and related functions throughout adapter
 
 **Key Source Files:**
+
 - `adapters/macos/xcode/AgentFSKitExtension/AgentFSKitExtension/AgentFsVolume.swift` - Caller identity extraction and mapping
 
 **M-Review.8. Integration Testing Suite for Review Fixes** (3–4d)
@@ -184,12 +199,14 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] Tests integrate with existing CI pipeline
 
 **Implementation Details:**
+
 - Extend existing `tests/tools/e2e_macos_fskit/` with additional test scenarios
 - Add non-UTF-8 filename generation and validation
 - Test concurrent access patterns and lazy I/O scenarios
 - Validate xattr operations with various sizes and Finder metadata
 
 **Key Source Files:**
+
 - `tests/tools/e2e_macos_fskit/` - Enhanced test suite
 - `scripts/e2e-fskit.sh` - Updated test runner
 
@@ -208,6 +225,7 @@ This document addresses the comprehensive FSKit API review feedback provided by 
   - [ ] All existing functionality continues to work
 
 **Implementation Details:**
+
 - Benchmark path construction performance (bytes vs strings)
 - Memory profiling of handle tracking under load
 - Regression test suite covering all existing operations

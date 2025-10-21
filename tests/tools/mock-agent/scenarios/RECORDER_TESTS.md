@@ -9,6 +9,7 @@ This directory contains end-to-end test scenarios for the `ah agent record` comm
 **Purpose**: Validate IPC communication between `ah agent record` and `ah agent fs snapshot`.
 
 **Tests**:
+
 - IPC server initialization when recording starts
 - Snapshot notifications sent via Unix domain socket
 - `REC_SNAPSHOT` records written to .ahr file
@@ -16,12 +17,14 @@ This directory contains end-to-end test scenarios for the `ah agent record` comm
 - Proper byte offset anchoring for each snapshot
 
 **Expected Outcomes**:
+
 - 4 snapshots created (write, write, append, replace)
 - Each snapshot has a corresponding REC_SNAPSHOT record
 - Byte offsets are monotonically increasing
 - .snapshots.jsonl contains all 4 snapshot entries
 
 **Running**:
+
 ```bash
 # With mock agent
 ah agent record -- python -m src.cli run \
@@ -38,6 +41,7 @@ ah agent replay recording-*.ahr --fast
 **Purpose**: Validate recording format integrity and replay functionality.
 
 **Tests**:
+
 - PTY byte capture with transparent input forwarding
 - Brotli block compression and writing
 - vt100 terminal state tracking
@@ -45,6 +49,7 @@ ah agent replay recording-*.ahr --fast
 - Snapshot records interleaved with data records
 
 **Expected Outcomes**:
+
 - .ahr file created with valid block headers
 - At least 1 Brotli-compressed block
 - Data records for PTY output
@@ -52,6 +57,7 @@ ah agent replay recording-*.ahr --fast
 - Replay produces identical output
 
 **Running**:
+
 ```bash
 # Record session
 ah agent record --out-file test.ahr -- python -m src.cli run \
@@ -71,18 +77,21 @@ ah agent replay test.ahr --print-meta
 **Purpose**: Validate byte-level anchoring precision for snapshots.
 
 **Tests**:
+
 - Precise byte offset tracking for each snapshot
 - Monotonic byte offset progression
 - Temporal ordering of snapshot anchors
 - Correlation between PTY output and snapshot timing
 
 **Expected Outcomes**:
+
 - 4 snapshots with distinct byte offsets
 - Each snapshot anchor_byte > previous snapshot's anchor_byte
 - Timestamp spacing matches scenario timing (>= 50ms)
 - No anchor collisions or out-of-order anchors
 
 **Running**:
+
 ```bash
 # Record with detailed logging
 RUST_LOG=ah_recorder=debug ah agent record -- python -m src.cli run \
@@ -99,18 +108,21 @@ jq '.anchor_byte' recording-*.snapshots.jsonl | sort -n
 **Purpose**: Validate error handling and resilience in recording system.
 
 **Tests**:
+
 - Graceful handling of IPC connection failures
 - Continued recording when snapshot notifications fail
 - Non-blocking snapshot operations
 - Recovery from transient errors
 
 **Expected Outcomes**:
+
 - Recording continues even if IPC fails
 - All file operations complete successfully
 - .ahr file remains valid and replayable
 - Warning logs for IPC failures (not errors)
 
 **Running**:
+
 ```bash
 # Test with simulated IPC failures (remove socket mid-recording)
 ah agent record -- bash -c 'python -m src.cli run --scenario scenarios/recorder_error_handling.yaml --workspace /tmp/test-ws --fast-mode & sleep 1 && rm -f /tmp/*.sock'
@@ -156,18 +168,21 @@ When running under `ah agent record`, the checkpoint command detects the `AH_REC
 ### Manual Verification Steps
 
 1. **Check .ahr file structure**:
+
    ```bash
    hexdump -C recording-*.ahr | head -20
    # Should see: 41 48 52 43 (AHRC magic bytes)
    ```
 
 2. **Verify snapshot records**:
+
    ```bash
    # Count REC_SNAPSHOT records (tag=0x04)
    ah agent replay recording-*.ahr --print-meta | grep -c "REC_SNAPSHOT"
    ```
 
 3. **Check .snapshots.jsonl sidecar**:
+
    ```bash
    cat recording-*.snapshots.jsonl | jq '.id, .anchor_byte, .label'
    ```

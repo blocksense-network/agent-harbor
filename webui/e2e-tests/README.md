@@ -7,6 +7,7 @@ This directory contains comprehensive end-to-end tests for the agent-harbor WebU
 ### Phase 1: Foundation (W1.5-W2) ✅ COMPLETED
 
 #### Infrastructure Tests
+
 - SSR sidecar serves HTML correctly
 - Health endpoint functionality
 - API proxy forwards requests
@@ -15,6 +16,7 @@ This directory contains comprehensive end-to-end tests for the agent-harbor WebU
 - 404 error handling
 
 #### API Contract Tests
+
 - GET /api/v1/agents returns correct schema
 - GET /api/v1/runtimes returns correct schema
 - GET /api/v1/executors returns correct schema
@@ -28,6 +30,7 @@ This directory contains comprehensive end-to-end tests for the agent-harbor WebU
 - Error handling and validation
 
 #### Build and Tooling Tests
+
 - All projects compile successfully with TypeScript strict mode
 - ESLint configuration works across all projects
 - Prettier configuration works across all projects
@@ -36,6 +39,7 @@ This directory contains comprehensive end-to-end tests for the agent-harbor WebU
 - Playwright configuration validation
 
 #### Layout and Navigation Tests
+
 - Three-pane layout renders correctly on desktop
 - Navigation links work and highlight active routes
 - Collapsible panes work correctly
@@ -45,6 +49,7 @@ This directory contains comprehensive end-to-end tests for the agent-harbor WebU
 - Browser back/forward navigation
 
 #### Accessibility Tests
+
 - WCAG AA compliance checks with axe-core
 - Keyboard navigation works on main pages
 - ARIA landmarks are present
@@ -53,6 +58,7 @@ This directory contains comprehensive end-to-end tests for the agent-harbor WebU
 - Focus indicators are visible
 
 #### localStorage Persistence Tests
+
 - UI preferences persist across browser sessions
 - Global search preferences are saved
 - Theme preferences persist
@@ -78,12 +84,14 @@ tests/
 ### Prerequisites
 
 1. **Enter Nix Development Environment** (recommended):
+
 ```bash
 # From the webui directory
 cd webui && nix develop
 ```
 
 2. Install dependencies for all WebUI projects:
+
 ```bash
 # From webui/ directory (still in nix develop shell)
 yarn workspace ah-webui-mock-server install
@@ -176,6 +184,7 @@ The tests are organized into different Playwright projects:
 ## Test Results
 
 After running tests, view the HTML report:
+
 ```bash
 yarn workspace ah-webui-e2e-tests run report
 ```
@@ -193,15 +202,18 @@ These tests are designed to run in CI/CD pipelines with the following workflow:
 ## Future Enhancements
 
 ### Phase 2: Core Functionality (W3-W4)
+
 - Form validation tests
 - Session CRUD operations
 - Real-time SSE event testing
 
 ### Phase 3: Advanced Features (W5-W6)
+
 - IDE integration tests
 - Governance and RBAC tests
 
 ### Phase 4: Production Readiness (W7-W8)
+
 - Complete user journey E2E tests
 - Performance regression tests
 - Visual regression testing
@@ -220,6 +232,7 @@ These tests are designed to run in CI/CD pipelines with the following workflow:
 ### Debug Mode
 
 Run tests in debug mode:
+
 ```bash
 yarn workspace ah-webui-e2e-tests run test:debug -- --project=api-tests
 ```
@@ -227,6 +240,7 @@ yarn workspace ah-webui-e2e-tests run test:debug -- --project=api-tests
 ### Verbose Output
 
 For detailed test execution:
+
 ```bash
 DEBUG=pw:api yarn workspace ah-webui-e2e-tests run test -- --project=api-tests
 ```

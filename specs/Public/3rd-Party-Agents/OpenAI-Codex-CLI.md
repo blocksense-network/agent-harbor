@@ -49,6 +49,7 @@ Codex CLI can be started with a specific task prompt in several ways:
 To bypass Codex CLI's initial setup and authentication prompts for automated testing and programmatic integration:
 
 1. **Create `.config/codex/config.toml` file** in HOME directory:
+
    ```toml
    [user]
    id = "test-user-id"
@@ -58,12 +59,14 @@ To bypass Codex CLI's initial setup and authentication prompts for automated tes
    ```
 
 2. **Set environment variables** for API access:
+
    ```bash
    export OPENAI_API_KEY="your-api-key"
    export OPENAI_BASE_URL="https://api.openai.com/v1"  # or custom server
    ```
 
 3. **For custom HOME directory** (useful for isolated testing):
+
    ```bash
    export HOME=/path/to/custom/home
    # Create .config/codex/config.toml as above
@@ -76,6 +79,7 @@ To bypass Codex CLI's initial setup and authentication prompts for automated tes
    ```
 
 **Key commands for automation:**
+
 - `codex exec`: Non-interactive execution mode
 - `--skip-git-repo-check`: Skip git repository verification (required for temporary workspaces)
 - `--yes` or `-y`: Auto-confirm prompts (if supported by the version)

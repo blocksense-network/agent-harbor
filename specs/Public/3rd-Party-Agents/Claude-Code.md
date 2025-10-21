@@ -47,6 +47,7 @@ Claude Code can be started with a specific task prompt in several ways:
 To bypass Claude Code's initial onboarding and authentication prompts (essential for automated testing and programmatic integration), you need to set up a minimal configuration in the agent's HOME directory:
 
 1. **Create `.claude.json` file** in HOME directory with comprehensive configuration to skip onboarding:
+
    ```json
    {
      "numStartups": 2,
@@ -66,10 +67,12 @@ To bypass Claude Code's initial onboarding and authentication prompts (essential
      "projects": {
        "/path/to/project": {
          "allowedTools": [],
-         "history": [{
-           "display": "print the current time",
-           "pastedContents": {}
-         }],
+         "history": [
+           {
+             "display": "print the current time",
+             "pastedContents": {}
+           }
+         ],
          "mcpContextUris": [],
          "mcpServers": {},
          "enabledMcpjsonServers": [],
@@ -108,6 +111,7 @@ To bypass Claude Code's initial onboarding and authentication prompts (essential
    ```
 
 2. **Set environment variables** to provide API credentials and skip interactive prompts:
+
    ```bash
    export ANTHROPIC_API_KEY="your-api-key"
    export ANTHROPIC_BASE_URL="http://127.0.0.1:18080"  # For custom API server
@@ -118,6 +122,7 @@ To bypass Claude Code's initial onboarding and authentication prompts (essential
    ```
 
 **Key flags for automation:**
+
 - `--dangerously-skip-permissions`: Bypass file operation permission prompts
 - `--print`: Non-interactive output mode (prints results without TUI)
 - `--yes`: Automatically confirm prompts (when supported)

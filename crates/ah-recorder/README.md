@@ -23,10 +23,12 @@ The `.ahr` format consists of a sequence of independent Brotli-compressed blocks
 ```
 
 Each block contains:
+
 - **Block Header** (48 bytes): Magic, version, timestamps, byte offsets, compression info
 - **Compressed Records**: Brotli-compressed sequence of timestamped records
 
 Record types:
+
 - `REC_DATA` (0): PTY output bytes with byte offset anchoring
 - `REC_RESIZE` (1): Terminal resize events
 - `REC_INPUT` (2): Input keystrokes (optional)
@@ -116,6 +118,7 @@ cargo test -p ah-recorder
 ```
 
 Tests cover:
+
 - File format serialization/deserialization
 - Block header validation
 - Brotli compression/decompression

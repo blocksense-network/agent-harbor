@@ -116,6 +116,7 @@ See [VS-Code-Extension-Automation.md](./VS-Code-Extension-Automation.md) for det
 ### High Priority (Standalone CLI)
 
 These have standalone CLI tools - immediate integration:
+
 - ✅ **Claude Code** (in nixpkgs)
 - ✅ **Cursor CLI** (in nixpkgs-unstable)
 - ✅ **Codex CLI** (custom flake)
@@ -133,6 +134,7 @@ These have standalone CLI tools - immediate integration:
 ### Medium Priority (VS Code Extensions via Automation)
 
 These can be integrated through VS Code automation:
+
 - 🔄 **Cline** - VS Code extension, automation via CDP/bridge extension
 - 🔄 **Kilo Code** - VS Code extension, automation via CDP/bridge extension
 - 🔄 **Roo Code** - VS Code extension, automation via CDP/bridge extension
@@ -146,11 +148,13 @@ These can be integrated through VS Code automation:
 ## Summary
 
 **Of the original agent types listed:**
+
 - **12** have standalone CLI interfaces (all in Agent Harbor flake.nix)
 - **3** are VS Code extensions that CAN be automated via VS Code's programmatic APIs
 - **1** is deprecated (Cody CLI → replaced by Amp)
 
 **Integration Status:**
+
 - ✅ **Immediate use**: 12 CLI agents in flake.nix
 - 🔄 **Automation possible**: 3 VS Code extensions (Cline, Kilo, Roo)
 - 📋 **Future work**: Develop VS Code Bridge extension for robust automation
@@ -158,6 +162,7 @@ These can be integrated through VS Code automation:
 **Key Finding**: VS Code extensions are NOT blocked from integration - they require a different approach using VS Code's automation capabilities (CDP, command API, custom bridge extension).
 
 For Agent Harbor:
+
 1. **Short term**: Use the 12 CLI agents already integrated
 2. **Medium term**: Prototype VS Code automation with existing tools
 3. **Long term**: Develop Agent Harbor VS Code Bridge for robust extension control

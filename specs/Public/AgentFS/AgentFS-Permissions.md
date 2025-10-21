@@ -31,13 +31,11 @@ AgentFS defaults to POSIX-like behavior. A Windows-compatibility mode is availab
 Assuming `enforce_posix_permissions = true`:
 
 - Regular files
-
   - Read requires r in the chosen access class
   - Write requires w in the chosen access class
   - Execute (if implemented) requires x in the chosen access class
 
 - Directories
-
   - Traverse a directory component in a path: requires x on that directory
   - List entries (readdir): requires r and x on that directory
   - Create/Remove/Rename an entry within a directory: requires w and x on that directory
@@ -49,7 +47,6 @@ Assuming `enforce_posix_permissions = true`:
 ### Ownership and Mode Changes
 
 - `set_owner(path, uid, gid)`
-
   - Only `uid == 0` (root) may change the owner uid
   - The owner may change the group gid only to a group they belong to (primary or supplementary); otherwise AccessDenied
   - Changing owner or group updates `ctime`
@@ -70,13 +67,11 @@ Assuming `enforce_posix_permissions = true`:
 ### Unlink, Rename, and Open Semantics
 
 - Unlink (remove name)
-
   - Requires w and x on the parent directory
   - The file's own permissions do not control unlink
   - POSIX behavior: after unlink, existing open handles remain valid until last close (delete-on-close)
 
 - Rename
-
   - Within a directory: requires w and x on that directory
   - Across directories: requires w and x on both source and destination directories; replacing an existing destination entry requires permission to delete within destination directory
 
@@ -87,23 +82,19 @@ Assuming `enforce_posix_permissions = true`:
 ### ACL Extensions (Optional)
 
 - Model
-
   - Objects may have an ordered list of Access Control Entries (ACEs): `(principal, allow|deny, rights, inheritance_flags)`.
   - Principals cover users/groups (UID/GID) and well-known identities (e.g., owner@, group@, everyone@).
   - Rights include: read, write, execute/traverse, delete, change_acl (WRITE_DAC), change_owner (WRITE_OWNER), read_attrs.
 
 - Evaluation
-
   - Deny/allow are evaluated in ACE order; the first matching deny for a requested right blocks access; otherwise, a matching allow grants it (Windows/NFSv4 semantics).
   - For POSIX ACLs, only allow entries are used; a mask (if present) limits effective rights of group-class entries.
 
 - Interaction with mode bits
-
   - If no ACL is present, owner/group/other mode bits define access.
   - If ACLs are enabled, AgentFS may operate in dual-mode (recommended): owner@/group@/everyone@ ACEs stay in sync with mode bits; chmod updates those ACEs; setting ACLs updates the summarized mode view. Implementations may alternatively treat ACLs as authoritative when present.
 
 - Inheritance
-
   - ACEs can be marked to inherit to new children (files and/or directories) or be inherit-only. POSIX default ACLs map to inheritable ACEs on directories.
 
 - Administration
@@ -112,12 +103,10 @@ Assuming `enforce_posix_permissions = true`:
 ### Error Semantics
 
 - AccessDenied
-
   - Missing required permission bits on the target object
   - Missing execute (search) permission on any directory component used to traverse the path (prefer AccessDenied over NotFound to avoid information leaks)
 
 - NotFound
-
   - Target path component does not exist
 
 - NotADirectory / IsADirectory / AlreadyExists

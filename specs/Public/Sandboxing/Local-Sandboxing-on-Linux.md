@@ -245,7 +245,6 @@
 
 5. **Net ns**: `unshare(CLONE_NEWNET)`; bring up `lo`. If `--allow-network`, start **slirp4netns** attached to the target PID; optional port‑forwards.
 
-
 6. **/proc**: mount a **new procfs** inside the child (which still holds CAP_SYS_ADMIN as PID 1 in the user namespace). This is needed for correct `ps/kill`. Use `hidepid=2,subset=pid` if supported.
 
 7. **devpts & /dev**: Similarly, mount **devpts** in the child (`newinstance,gid=tty,mode=0620,ptmxmode=0666`); mount a minimal **/dev** (tmpfs) and populate required nodes (`null,zero,urandom,tty,ptmx,pts/*`).

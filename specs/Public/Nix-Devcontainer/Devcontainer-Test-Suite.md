@@ -20,7 +20,7 @@ Assumptions for all scenarios:
 - Base images are available locally or via GHCR: `ghcr.io/blocksense/agent-harbor-nix-base:latest` and `ghcr.io/blocksense/agent-harbor-agents-base:latest`.
 - `devcontainer.json` defines named volumes for caches as in the reference spec.
 
-1) Cold → Warm Install
+1. Cold → Warm Install
 
 Preconditions:
 
@@ -86,7 +86,7 @@ Expected results:
 - Network fetches are reduced or eliminated where offline caches apply (pnpm prefer-offline, cargo local index reuse).
 - No errors; cache directories exist under the named volumes.
 
-2) Lockfile Change Invalidation
+2. Lockfile Change Invalidation
 
 Preconditions:
 
@@ -123,7 +123,7 @@ Expected results:
 - Dependency graphs update correctly; builds succeed.
 - Caches do not force stale results; new artifacts are produced as needed.
 
-3) Toolchain Change
+3. Toolchain Change
 
 Preconditions:
 
@@ -148,7 +148,7 @@ Expected results:
 
 - ABI/toolchain changes cause appropriate invalidation; rebuild completes from caches where compatible and recompiles where not.
 
-4) Concurrent Builds
+4. Concurrent Builds
 
 Preconditions:
 
@@ -171,7 +171,7 @@ Expected results:
 
 - Both builds succeed; no cache corruption; subsequent builds are still fast in either container.
 
-5) Security Hygiene
+5. Security Hygiene
 
 Preconditions:
 
@@ -199,7 +199,7 @@ Expected results:
 
 - No secrets are found in caches by pattern scan; cache ownership aligns with the non‑root user; permissions are sane.
 
-6) Offline Build (warm caches)
+6. Offline Build (warm caches)
 
 Preconditions:
 
@@ -223,7 +223,7 @@ Expected results:
 
 - Builds succeed without network when caches permit; unsupported cases are documented per manager.
 
-9) Bazel: Host→Guest local caches (disk/repo)
+9. Bazel: Host→Guest local caches (disk/repo)
 
 Preconditions:
 
@@ -249,7 +249,7 @@ Expected results:
 
 - Build completes faster vs cold baseline; logs indicate cache hits.
 
-10) Buck2: Host→Guest dir cache
+10. Buck2: Host→Guest dir cache
 
 Preconditions:
 
@@ -278,7 +278,7 @@ Expected results:
 
 - Build completes faster vs cold baseline; cache is consulted with hits.
 
-7) Nix: Host→Guest cache reuse via local binary cache (Linux host)
+7. Nix: Host→Guest cache reuse via local binary cache (Linux host)
 
 Preconditions:
 
@@ -327,7 +327,7 @@ Notes:
 
 - This scenario is Linux‑only due to OS/ABI differences; on macOS/Windows, prefer remote caches (Cachix) or container‑persistent volumes.
 
-8) Cache compatibility gating (multi‑manager)
+8. Cache compatibility gating (multi‑manager)
 
 Preconditions:
 

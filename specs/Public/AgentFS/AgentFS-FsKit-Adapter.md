@@ -18,11 +18,9 @@ Describe a thin adapter that maps Apple FSKit file system operations to AgentFS 
 ### FSUnaryFileSystemOperations Mapping
 
 - probeResource(resource, reply)
-
   - Determine supportability; reply with `.usable` result. No direct core call needed.
 
 - loadResource(resource, options, reply)
-
   - Initialize `FsCore` with `FsConfig` and return `AgentFsVolume` instance.
 
 - unloadResource(resource, options, reply)
@@ -33,35 +31,28 @@ Describe a thin adapter that maps Apple FSKit file system operations to AgentFS 
 Implement FSKit’s volume operations by delegating to `FsCore`. Concrete method names depend on FSKit SDK; based on the sample hierarchy, the following mappings apply:
 
 - activate(options) -> FSItem (root)
-
   - Build an FSItem representing `/` using `FsCore::getattr("/")`.
 
 - lookupItem(named: inDirectory:) -> FSItem
-
   - Resolve child path; use `FsCore::getattr(path)` to populate attributes; return item or error.
 
 - createItem(named: type: inDirectory: ...) -> FSItem
-
   - If type directory: `FsCore::mkdir(path, mode)`
   - If type file: `FsCore::create(path, &OpenOptions{create:true})`, then close handle; return new FSItem.
   - If symlink: `FsCore::symlink(target, linkpath)`.
 
 - removeItem(item:named:...) -> void
-
   - For file: `FsCore::unlink(path)`.
   - For dir: `FsCore::rmdir(path)`.
 
 - enumerateDirectory(directory, ...) -> entries
-
   - `FsCore::readdir(path)`; return as FSKit directory entries with attributes when requested.
 
 - Read/Write operations (FSVolume.ReadWriteOperations)
-
   - read(from:item:at:offset:length:buffer) → `FsCore::open` (if no handle), `FsCore::read`, `FsCore::close` (if transient).
   - write(contents:to:item:at:offset) → `FsCore::write` on an open handle; handle truncation when needed via `FsCore::truncate`.
 
 - Xattrs (FSVolume.XattrOperations)
-
   - xattr(named:of:) → `FsCore::xattr_get`
   - setXattr(named:to:...) → `FsCore::xattr_set`
   - xattrs(of:) → `FsCore::xattr_list`
@@ -71,14 +62,16 @@ Implement FSKit’s volume operations by delegating to `FsCore`. Concrete method
   - utimens → `FsCore::set_times` with `FileTimes`.
 
 ### FSVolume Read/Write Mapping (KBP behavior)
+
 - **Read**:
   - If no upper entry, open **lower RO** handle and service reads; **do not** create upper node.
   - If an upper entry exists, read via **upper backstore** handle.
 - **Write**:
   - On first mutation, perform **copy-up**, open **upper RW** handle, then write.
-**Note:** FSKit does **not** support cross-FS handle splicing; data page-ins/page-outs still traverse this adapter.
+    **Note:** FSKit does **not** support cross-FS handle splicing; data page-ins/page-outs still traverse this adapter.
 
 ### Metadata initialization
+
 - On copy-up, initialize mode/uid/gid/ACL/xattrs from the **lower** entry per `copyup.*` policy; apply umask if configured.
 
 ### Case Sensitivity and Names

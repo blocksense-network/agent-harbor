@@ -304,8 +304,8 @@ Example (minimal) profile:
 (allow process-info-setcontrol (target self))
 ```
 
-* The `signal` semantics (including `target self | same-group | others`) are documented in Apple's "Apple Sandbox Guide" (reversed from seatbelt), with examples of denying signals to "others." ([Reverse Engineering][1])
-* macOS profiles commonly restrict _process-info_ operations (e.g., `process-info-listpids`), and you can selectively re-allow for `self` as WebKit's own profile does. This keeps a sandboxed `ps`/`killall` from listing global PIDs freely.
+- The `signal` semantics (including `target self | same-group | others`) are documented in Apple's "Apple Sandbox Guide" (reversed from seatbelt), with examples of denying signals to "others." ([Reverse Engineering][1])
+- macOS profiles commonly restrict _process-info_ operations (e.g., `process-info-listpids`), and you can selectively re-allow for `self` as WebKit's own profile does. This keeps a sandboxed `ps`/`killall` from listing global PIDs freely.
 
 ### How to use it
 
@@ -317,12 +317,12 @@ If you truly need "only processes that belong to _my_ isolated set," Seatbelt al
 
 ## Caveats
 
-* `sandbox-exec`/SBPL are not first-class public APIs (Apple treats them as internal/deprecated), but they remain widely used (Chromium, Nix) and current profiles still work on modern macOS. Test on the exact OS you target. ([zameermanji.com][4])
-* Some tools bypass libc wrappers; denial happens at the kernel policy layer, but for best UX you may also want to hide global PIDs via the `process-info*` denies so commands don’t “see” things they can’t signal. ([Apple Developer][5])
+- `sandbox-exec`/SBPL are not first-class public APIs (Apple treats them as internal/deprecated), but they remain widely used (Chromium, Nix) and current profiles still work on modern macOS. Test on the exact OS you target. ([zameermanji.com][4])
+- Some tools bypass libc wrappers; denial happens at the kernel policy layer, but for best UX you may also want to hide global PIDs via the `process-info*` denies so commands don’t “see” things they can’t signal. ([Apple Developer][5])
 
 If you want, I can sketch a tiny launcher + profile that creates the process group and runs your workload + a sandboxed `killall` so it only succeeds against that cohort.
 
-[1]: https://reverse.put.as/wp-content/uploads/2011/09/Apple-Sandbox-Guide-v1.0.pdf?utm_source=chatgpt.com "Apple Sandbox Guide v1.0 - Reverse Engineering"
-[3]: https://docs.developer.apple.com/documentation/endpointsecurity/es_event_type_auth_signal?utm_source=chatgpt.com "ES_EVENT_TYPE_AUTH_SIGNAL | Apple Developer Documentation"
-[4]: https://zameermanji.com/blog/2025/4/1/sandboxing-subprocesses-in-python-on-macos/?utm_source=chatgpt.com "Sandboxing subprocesses in Python on macOS - Zameer Manji"
-[5]: https://developer.apple.com/forums/thread/661372?utm_source=chatgpt.com "Sandbox violation for process-info… | Apple Developer Forums"
+[1]: https://reverse.put.as/wp-content/uploads/2011/09/Apple-Sandbox-Guide-v1.0.pdf?utm_source=chatgpt.com 'Apple Sandbox Guide v1.0 - Reverse Engineering'
+[3]: https://docs.developer.apple.com/documentation/endpointsecurity/es_event_type_auth_signal?utm_source=chatgpt.com 'ES_EVENT_TYPE_AUTH_SIGNAL | Apple Developer Documentation'
+[4]: https://zameermanji.com/blog/2025/4/1/sandboxing-subprocesses-in-python-on-macos/?utm_source=chatgpt.com 'Sandboxing subprocesses in Python on macOS - Zameer Manji'
+[5]: https://developer.apple.com/forums/thread/661372?utm_source=chatgpt.com 'Sandbox violation for process-info… | Apple Developer Forums'

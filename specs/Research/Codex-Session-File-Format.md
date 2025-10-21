@@ -12,6 +12,7 @@ Both formats use JSON Lines (JSONL) format where each line is a valid JSON objec
 ## 1. Rollout Files (Core Session Persistence)
 
 ### Rollout File Location and Naming
+
 ```
 ~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-<uuid>.jsonl
 ```
@@ -35,6 +36,7 @@ Each line in a rollout file is a JSON object with this structure:
 ### Data Types
 
 #### RolloutLine (Root Structure)
+
 ```rust
 pub struct RolloutLine {
     pub timestamp: String,  // ISO 8601 timestamp with milliseconds
@@ -48,6 +50,7 @@ pub struct RolloutLine {
 Rollout files contain these types of items:
 
 ##### 1. SessionMeta (Session Metadata)
+
 **Purpose**: Stores session initialization information
 **Frequency**: First line of every rollout file
 
@@ -74,6 +77,7 @@ Rollout files contain these types of items:
 ```
 
 **Fields**:
+
 - `meta.id`: UUID of the conversation session
 - `meta.timestamp`: When the session was created
 - `meta.cwd`: Working directory path
@@ -83,6 +87,7 @@ Rollout files contain these types of items:
 - `git`: Git repository information (optional)
 
 ##### 2. ResponseItem (Conversation Content)
+
 **Purpose**: Stores all conversation messages, tool calls, and responses
 **Frequency**: Multiple times throughout session
 
@@ -105,6 +110,7 @@ Rollout files contain these types of items:
 **ResponseItem Variants**:
 
 ###### Message
+
 ```json
 {
   "type": "message",
@@ -119,6 +125,7 @@ Rollout files contain these types of items:
 ```
 
 ###### LocalShellCall (Command Execution)
+
 ```json
 {
   "type": "local_shell_call",
@@ -127,12 +134,13 @@ Rollout files contain these types of items:
   "action": {
     "command": "ls -la",
     "cwd": "/path/to/dir",
-    "env": {"KEY": "value"}
+    "env": { "KEY": "value" }
   }
 }
 ```
 
 ###### FunctionCall (Tool Usage)
+
 ```json
 {
   "type": "function_call",
@@ -143,6 +151,7 @@ Rollout files contain these types of items:
 ```
 
 ###### Reasoning (AI Thought Process)
+
 ```json
 {
   "type": "reasoning",
@@ -157,6 +166,7 @@ Rollout files contain these types of items:
 ```
 
 ##### 3. EventMsg (Protocol Events)
+
 **Purpose**: Records protocol-level events during conversation
 **Frequency**: Throughout session as events occur
 
@@ -172,6 +182,7 @@ Rollout files contain these types of items:
 ```
 
 **Common EventMsg Types**:
+
 - `session_configured`: Session initialization
 - `agent_message`: AI responses
 - `user_message`: User inputs
@@ -180,6 +191,7 @@ Rollout files contain these types of items:
 - `token_count`: Usage statistics
 
 ##### 4. CompactedItem (Conversation Summarization)
+
 **Purpose**: Summarized conversation content for context management
 **Frequency**: When conversations are compacted to save tokens
 
@@ -194,6 +206,7 @@ Rollout files contain these types of items:
 ```
 
 ##### 5. TurnContextItem (Turn Metadata)
+
 **Purpose**: Context information for each conversational turn
 **Frequency**: At the start of each turn
 
@@ -215,6 +228,7 @@ Rollout files contain these types of items:
 ## 2. Session Log Files (UI Interaction Logs)
 
 ### Session Log File Location and Naming
+
 ```
 ~/.codex/logs/session-YYYYMMDDTHHMMSSZ.jsonl
 ```
@@ -239,6 +253,7 @@ Each line is a JSON object with this structure:
 ### Session Log Event Types
 
 #### Meta Events
+
 ```json
 // Session start
 {
@@ -259,6 +274,7 @@ Each line is a JSON object with this structure:
 ```
 
 #### UI Events (to_tui)
+
 ```json
 // Codex protocol events
 {
@@ -294,6 +310,7 @@ Each line is a JSON object with this structure:
 ```
 
 #### User Actions (from_tui)
+
 ```json
 // User operations
 {
@@ -321,12 +338,14 @@ pub struct RolloutRecorder {
 ```
 
 **Key Methods**:
+
 - `new()`: Creates new recorder or resumes existing
 - `record_items()`: Queues items for writing
 - `flush()`: Ensures all writes are committed
 - `shutdown()`: Cleans up resources
 
 **Async Architecture**:
+
 - Uses Tokio channels for non-blocking I/O
 - Dedicated writer task handles file operations
 - Bounded channel prevents memory issues
@@ -342,6 +361,7 @@ struct SessionLogger {
 ```
 
 **Key Features**:
+
 - Optional logging (environment variable controlled)
 - Thread-safe file operations
 - Structured JSON logging
@@ -350,11 +370,13 @@ struct SessionLogger {
 ## 4. File Format Evolution
 
 ### Version Compatibility
+
 - Files are forward-compatible within major versions
 - New event types can be added without breaking old parsers
 - Unknown event types are safely ignored
 
 ### Migration Strategy
+
 - Old files remain readable
 - New features add new event types
 - Breaking changes require version bumps
@@ -362,6 +384,7 @@ struct SessionLogger {
 ## 5. Usage Examples
 
 ### Inspecting Rollout Files
+
 ```bash
 # Pretty print with jq
 jq -C . ~/.codex/sessions/2025/08/10/rollout-2025-08-10T03-12-26-8f7c4ac2.jsonl
@@ -371,6 +394,7 @@ fx ~/.codex/sessions/2025/08/10/rollout-2025-08-10T03-12-26-8f7c4ac2.jsonl
 ```
 
 ### Analyzing Session Logs
+
 ```bash
 # Count events by type
 jq -r '.kind' ~/.codex/logs/session-20250810T031226Z.jsonl | sort | uniq -c
@@ -380,6 +404,7 @@ jq 'select(.dir == "from_tui" and .kind == "op" and .payload.type == "send_messa
 ```
 
 ### Programmatic Access
+
 ```rust
 // Load conversation history
 let history = RolloutRecorder::get_rollout_history(&path)?;
@@ -391,11 +416,13 @@ let page = RolloutRecorder::list_conversations(&codex_home, 10, None)?;
 ## 6. Security Considerations
 
 ### File Permissions
+
 - Session files created with restrictive permissions (0o600 on Unix)
 - Contains potentially sensitive conversation data
 - Should be encrypted for sensitive deployments
 
 ### Data Sanitization
+
 - Command outputs may contain sensitive information
 - File paths may reveal project structure
 - Consider data classification for enterprise use
@@ -403,16 +430,19 @@ let page = RolloutRecorder::list_conversations(&codex_home, 10, None)?;
 ## 7. Performance Characteristics
 
 ### Storage Efficiency
+
 - JSONL format is compact and streamable
 - No redundant metadata per line
 - Efficient for large conversation histories
 
 ### I/O Patterns
+
 - Append-only writes for reliability
 - Async I/O prevents UI blocking
 - Buffered writes with explicit flushing
 
 ### Memory Usage
+
 - Bounded async channels prevent memory leaks
 - Lazy initialization of loggers
 - Efficient serialization of complex objects

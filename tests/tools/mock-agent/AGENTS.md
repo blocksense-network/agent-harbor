@@ -479,6 +479,7 @@ The integration tests include infrastructure for **filesystem snapshot hook veri
 - **Multi-Agent Support**: Supports both Claude Code (PostToolUse hooks) and Codex CLI (`--rollout-hook`)
 
 **Current Status**: Hook verification varies by agent and mode:
+
 - ✅ **Codex hooks**: Enabled and working in API mode - hooks are called and execution evidence is verified
 - ❌ **Claude Code hooks**: Do not work in API client mode (with ANTHROPIC_BASE_URL set) - hooks are bypassed
 - 🔍 **Confirmed**: Claude hooks work in interactive mode but are bypassed when running as API client
@@ -487,6 +488,7 @@ The integration tests include infrastructure for **filesystem snapshot hook veri
 **Evidence Files** (when hooks are active):
 
 **Hook Execution Log** (`hook_executions.log`):
+
 ```json
 {
   "timestamp": "2025-09-23T00:04:15.052273",
@@ -500,13 +502,14 @@ The integration tests include infrastructure for **filesystem snapshot hook veri
 ```
 
 **Snapshot Evidence** (`evidence.log`) - for Agent Time-Travel compatibility:
+
 ```json
 {
   "timestamp": "2025-09-23T00:04:15.052273",
   "session_id": "session-123",
   "tool_name": "hook_execution",
   "tool_input": {},
-  "tool_response": {"success": true},
+  "tool_response": { "success": true },
   "event": "claude_posttool|codex_rollout",
   "snapshot_id": "snapshot-2025-09-23T00-04-15-052273",
   "provider": "integration-test-fs-snapshot",

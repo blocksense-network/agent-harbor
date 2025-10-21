@@ -17,43 +17,43 @@ This CLI is integrated as subcommands of the main `ah` CLI. It controls the runn
 ### Command Overview
 
 ah agent fs snapshot create [--name <NAME>] --mount <MOUNT>
-  Create a new snapshot of the current branch state.
+Create a new snapshot of the current branch state.
 
 ah agent fs snapshot list --mount <MOUNT>
-  List all snapshots for the volume.
+List all snapshots for the volume.
 
 ah agent fs branch create --from <SNAPSHOT_ID> [--name <NAME>] --mount <MOUNT>
-  Create a new writable branch from the specified snapshot.
+Create a new writable branch from the specified snapshot.
 
 ah agent fs branch bind --branch <BRANCH_ID> --mount <MOUNT> [--pid <PID>]
-  Bind the current (or specified) process to a branch view.
+Bind the current (or specified) process to a branch view.
 
 ah agent fs branch exec --branch <BRANCH_ID> --mount <MOUNT> -- <COMMAND> [ARGS...]
-  Execute a command in the context of the specified branch.
+Execute a command in the context of the specified branch.
 
 ah agent fs backstore create-ramdisk --fs <FS> --size <MB> --mount <MOUNT>
-  Create a RAM disk with the specified filesystem and attach as backstore.
+Create a RAM disk with the specified filesystem and attach as backstore.
 
 ah agent fs backstore attach --root <PATH> --mount <MOUNT>
-  Attach an existing host directory as the backstore root.
+Attach an existing host directory as the backstore root.
 
 ah agent fs policy set --windows-open-redirect=<on|off> --mount <MOUNT>
-  Enable/disable Windows experimental open-redirect fast-path.
+Enable/disable Windows experimental open-redirect fast-path.
 
 ah agent fs backstore status --mount <MOUNT>
-  Query the current backstore configuration and capabilities.
+Query the current backstore configuration and capabilities.
 
 ah agent fs interpose set --forwarding=<eager_upperize|disabled> [--max-copy-bytes <BYTES>] [--require-reflink=<true|false>] --mount <MOUNT>
-  Configure interpose/FD-forwarding policy for the volume.
+Configure interpose/FD-forwarding policy for the volume.
 
 ah agent fs interpose get --mount <MOUNT>
-  Query the current interpose/FD-forwarding configuration.
+Query the current interpose/FD-forwarding configuration.
 
 ah agent fs policy get --mount <MOUNT>
-  Query the current policy settings for the volume.
+Query the current policy settings for the volume.
 
 ah agent fs snapshot copy-active --label <LABEL> --mount <MOUNT>
-  Create a snapshot by copying active upper entries (fallback for non-native backstores).
+Create a snapshot by copying active upper entries (fallback for non-native backstores).
 
 Notes:
 

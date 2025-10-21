@@ -68,18 +68,15 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M1. Project bootstrap** ✅ COMPLETED (1–2d)
 
 - Deliverables:
-
   - Scaffolding for crates, workspace, linting (clippy), formatting (rustfmt), CI (GitHub Actions, Ubuntu runners). See [Repository Layout](../Repository-Layout.md) for reference.
   - Smoke test: cargo build + unit test skeletons.
 
 - Verification:
-
   - `cargo check --workspace` succeeds for all sandbox-related crates
   - `cargo test --workspace` runs successfully (may have empty test suites)
   - CI pipeline runs successfully on push/PR for sandbox crates
 
 - Implementation details:
-
   - Created 7 sandbox crates with modular architecture for different isolation concerns
   - Added Linux-specific compilation gates using `#[cfg(target_os = "linux")]` attributes for cross-platform compatibility
   - Configured consistent development tooling: `rust-toolchain.toml`, `rustfmt.toml`, and `clippy.toml`
@@ -87,7 +84,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - All crates include basic unit test skeletons and pass `cargo clippy` linting
 
 - Key Source Files:
-
   - `crates/sandbox-core/src/lib.rs` - Main sandbox orchestration API
   - `crates/sandbox-fs/src/lib.rs` - Filesystem isolation management
   - `crates/sandbox-seccomp/src/lib.rs` - Seccomp filtering framework
@@ -108,21 +104,18 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M2. Minimal sandbox run (namespaces + RO sealing)** ✅ COMPLETED (3–5d)
 
 - Deliverables:
-
   - Implement userns + mount ns + pid ns + uts/ipc/time (opt).
   - Implement RO sealing using mount_setattr(AT_RECURSIVE, MS_RDONLY) or bind‑remount fallback.
   - Bind RW carve‑outs for working dir and caches.
   - Exec entrypoint as PID 1 with correct /proc mount.
 
 - Verification:
-
   - E2E test that inside sandbox cannot write to `/etc` (returns EROFS or EACCES)
   - E2E test that inside sandbox can write to project directory
   - E2E test that inside sandbox sees isolated PIDs (different from host)
   - Unit tests for namespace creation and cleanup
 
 - Implementation details:
-
   - **`NamespaceManager`** (`crates/sandbox-core/src/namespaces/mod.rs`): Comprehensive Linux namespace management supporting user, mount, PID, UTS, IPC, and time namespaces with automatic UID/GID mapping for user namespaces
   - **`FilesystemManager`** (`crates/sandbox-fs/src/lib.rs`): Bind-mount based read-only sealing with configurable RW carve-outs for working directories; graceful fallback for test environments
   - **`ProcessManager`** (`crates/sandbox-core/src/process/mod.rs`): PID 1 execution with proper `/proc` filesystem mounting and signal handling
@@ -132,7 +125,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **Test environment compatibility**: All privileged operations handle permission failures gracefully in CI/test environments
 
 - Key Source Files:
-
   - `crates/sandbox-core/src/lib.rs` - Main `Sandbox` struct and public API
   - `crates/sandbox-core/src/namespaces/mod.rs` - Namespace creation and management
   - `crates/sandbox-core/src/process/mod.rs` - Process execution and PID 1 handling
@@ -150,19 +142,16 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M3. Cgroups v2 limits** ✅ COMPLETED (2–3d)
 
 - Deliverables:
-
   - Create per‑session subtree; set pids.max, memory.high/max, cpu.max.
   - Metrics sampling (read files under cgroupfs).
 
 - Verification:
-
   - ✅ **Integration test: cgroup subtree created and cleaned up properly** (implemented)
   - ✅ **E2E test: fork-bomb process containment** - Orchestrator launches sandbox with fork-bomb process and verifies PID limits are enforced (implemented with safety mechanism)
   - ✅ **E2E test: memory OOM kill enforcement** - Orchestrator launches sandbox with memory-hog process and verifies OOM kill occurs at limit (implemented with safety mechanism)
   - ✅ **E2E test: CPU throttling enforcement** - Orchestrator launches sandbox with CPU-burner process and verifies throttling at limit (implemented with safety mechanism)
 
 - Implementation details:
-
   - **`sandbox-cgroups` crate**: New crate providing cgroup v2 management with configurable resource limits and metrics collection
   - **Resource limits**: PID limits (pids.max, default 1024), memory limits (memory.high/memory.max, defaults 1GB/2GB), CPU limits (cpu.max, default 80% of one core)
   - **Metrics collection**: Real-time monitoring of PID count, memory usage, CPU usage, and OOM events from cgroup filesystem
@@ -171,7 +160,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **E2E testing**: Test orchestrator with resource-abusive programs (fork_bomb, memory_hog, cpu_burner) protected by SANDBOX_TEST_MODE environment variable for safe development
 
 - Key Source Files:
-
   - `crates/sandbox-cgroups/src/lib.rs` - Core cgroup management API and resource control
   - `crates/sandbox-core/src/lib.rs` - Cgroups integration with optional feature flag
   - `crates/sbx-helper/src/main.rs` - Default cgroups enablement and SANDBOX_TEST_MODE environment variable
@@ -179,7 +167,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - `tests/cgroup-enforcement/src/` - E2E test programs (fork_bomb, memory_hog, cpu_burner) and orchestrator
 
 - Test Coverage:
-
   - **Unit tests** (5 tests): Configuration validation, manager lifecycle, metrics collection
   - **Integration tests** (5 tests): Cgroups in sandbox lifecycle, metrics during operation, direct manager usage, E2E enforcement verification
   - **E2E tests** (3 test programs + orchestrator): fork_bomb, memory_hog, cpu_burner with safety mechanisms and automated verification
@@ -199,12 +186,10 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M4. Overlays + static mode** ✅ COMPLETED (3–4d)
 
 - Deliverables:
-
   - Overlay planner for selected paths; upper/work dirs under session state dir.
   - Static mode switch: blacklist + overlays without dynamic prompts.
 
 - Verification:
-
   - ✅ **E2E test: modifying a blacklisted path fails with appropriate error** - Implemented with `blacklist_tester` binary and orchestrator
   - ✅ **E2E test: overlay path persists changes to upperdir across sandbox restarts** - Implemented with `overlay_writer` binary
   - ✅ **E2E test: clean teardown removes overlay upper/work directories** - Implemented in cleanup logic (requires root privileges for full cleanup)
@@ -212,7 +197,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - ✅ **Integration tests: overlays work with corrected user namespace mapping** - Fixed `--map-root-user` equivalent mapping (current_uid -> 0 instead of current_uid -> current_uid)
 
 - Implementation details:
-
   - **`FilesystemConfig` extension**: Added `overlay_paths`, `blacklist_paths`, `session_state_dir`, and `static_mode` fields
   - **`FilesystemManager` enhancements**: Overlay mounting with proper upperdir/workdir management, static mode filesystem sealing, blacklist enforcement
   - **Session state management**: Auto-creates temporary directories for overlay storage under `/tmp/sandbox-session-<pid>/`
@@ -220,7 +204,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **Test infrastructure**: Complete E2E test suite with `overlay-enforcement-tests` package and justfile integration
 
 - Key Source Files:
-
   - `crates/sandbox-fs/src/lib.rs` - Core overlay implementation and filesystem management
   - `tests/overlay-enforcement/src/` - E2E test binaries (`blacklist_tester`, `overlay_writer`, `test_orchestrator`)
   - `Justfile` - Build commands for overlay test binaries (`build-overlay-tests`)
@@ -233,14 +216,12 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M5. Dynamic read allow‑list (seccomp notify)** ✅ COMPLETED (5–6d)
 
 - Deliverables:
-
   - Build seccomp filters for open*/stat*/access/execve\*; install with NO_NEW_PRIVS.
   - Implement canonical path resolution via openat2() with RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS|RESOLVE_IN_ROOT.
   - Implement ADDFD injection path for proxy opens; allow/deny replies.
   - JSON protocol: `event.fs_request` + approve/deny + audit emission.
 
 - Verification:
-
   - Unit tests: path resolution handles symlinks, .. traversal, and absolute paths correctly
   - E2E test: blocked read unblocks on approve via supervisor protocol
   - E2E test: denied read returns EACCES to sandboxed process
@@ -248,7 +229,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - Integration tests: JSON protocol messages parsed and handled correctly
 
 - Implementation details:
-
   - **`SeccompManager`** (`crates/sandbox-seccomp/src/lib.rs`): Main seccomp orchestration with configurable supervisor communication and path resolution
   - **`FilterBuilder`** (`crates/sandbox-seccomp/src/filter.rs`): Seccomp filter construction blocking filesystem syscalls (open, stat, access, execve) with notify actions, allowing basic operations and configurable debug mode
   - **`PathResolver`** (`crates/sandbox-seccomp/src/path_resolver.rs`): Secure path canonicalization using openat2 syscall with RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS|RESOLVE_IN_ROOT flags to prevent path traversal attacks
@@ -258,7 +238,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **CLI Integration**: Added `--seccomp` and `--seccomp-debug` flags to `sbx-helper` for enabling dynamic filesystem access control
 
 - Key Source Files:
-
   - `crates/sandbox-seccomp/src/lib.rs` - Main seccomp manager API and configuration
   - `crates/sandbox-seccomp/src/filter.rs` - Seccomp filter building and installation
   - `crates/sandbox-seccomp/src/path_resolver.rs` - Secure path resolution using openat2
@@ -267,7 +246,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - `crates/sbx-helper/src/main.rs` - CLI options and seccomp enablement
 
 - Test Coverage:
-
   - **Unit tests** (8 tests): Seccomp manager creation, filter building, path resolution, notification handling
   - **Integration tests** (3 tests): Sandbox lifecycle with seccomp, async filter installation
   - **Feature-gated testing**: Separate test runs with `--features seccomp` for optional functionality
@@ -283,19 +261,16 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M6. Networking** ✅ COMPLETED (4–5d)
 
 - Deliverables:
-
   - Default loopback only; `--allow-network` starts slirp4netns tied to target PID.
   - Optional privileged veth/bridge codepath (guarded; teardown on exit).
 
 - Verification:
-
   - ✅ **E2E test: inside sandbox `curl 1.1.1.1` fails by default (network unreachable)** - Implemented with `curl_tester` binary and orchestrator
   - ✅ **E2E test: inside sandbox `curl 1.1.1.1` succeeds with `--allow-network` flag** - Implemented with slirp4netns integration and PID targeting
   - ✅ **E2E test: same-port binds do not collide with host processes** - Implemented with `port_collision_tester` binary
   - ✅ **Unit tests: slirp4netns process lifecycle managed correctly** - 3 unit tests covering NetworkManager functionality
 
 - Implementation details:
-
   - **`NetworkManager`** (`crates/sandbox-net/src/lib.rs`): Core networking orchestration with loopback setup, slirp4netns integration, and process lifecycle management
   - **`NetworkConfig`** (`crates/sandbox-net/src/lib.rs`): Comprehensive configuration for network isolation with internet access options, MTU settings, and CIDR configuration
   - **slirp4netns integration**: User-mode networking stack providing internet access through TAP interface with sandbox and seccomp security hardening
@@ -304,7 +279,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **Security-first design**: Network isolation by default, explicit opt-in for internet access, graceful degradation in unprivileged environments
 
 - Key Source Files:
-
   - `crates/sandbox-net/src/lib.rs` - Core NetworkManager implementation and NetworkConfig
   - `crates/sandbox-net/src/error.rs` - Network-specific error types
   - `crates/sandbox-core/src/lib.rs` - Network integration with optional feature flag
@@ -312,7 +286,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - `tests/network-enforcement/src/` - E2E test binaries (`curl_tester`, `port_collision_tester`, `network_test_orchestrator`)
 
 - Test Coverage:
-
   - **Unit tests** (3 tests): NetworkManager creation, loopback setup, and process lifecycle
   - **Integration tests** (2 tests): Sandbox lifecycle with network features, feature-gated testing
   - **E2E tests** (3 test programs + orchestrator): curl connectivity testing, port collision verification, and comprehensive network orchestration
@@ -320,7 +293,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **CI integration**: All tests pass in `cargo test --workspace` pipeline
 
 - Verification Commands:
-
   - `just build-network-tests` - Build all network test binaries
   - `just test-networks` - Run E2E network enforcement tests
   - `cargo test -p sandbox-net` - Run unit tests for network functionality
@@ -337,11 +309,9 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M7. Debugging toggles** ⚠️ PARTIAL PROGRESS - Test Infrastructure Ready, E2E Tests Require Privileges
 
 - Deliverables:
-
   - Default deny ptrace/process*vm*\*; debug mode enables ptrace within sandbox only.
 
 - Verification:
-
   - ✅ **Unit tests: seccomp filter rules applied correctly in debug vs normal modes** - Added comprehensive unit tests for FilterBuilder debug mode
   - ⚠️ **E2E test: gdb attach inside sandbox works in debug mode** - Test infrastructure exists but SKIPPED due to insufficient privileges (requires elevated permissions to create sandbox)
   - ⚠️ **E2E test: gdb attach inside sandbox fails in normal mode (EPERM)** - Test infrastructure exists but SKIPPED due to insufficient privileges (requires elevated permissions to create sandbox)
@@ -357,21 +327,18 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 - **Production Deployment:** Sandbox can be deployed with elevated privileges to enable full debugging functionality, or run unprivileged for basic process isolation with reduced debugging capabilities.
 
 - Implementation details:
-
   - **`FilterBuilder::set_debug_mode()`** (`crates/sandbox-seccomp/src/filter.rs`): Configurable ptrace syscall handling - allows in debug mode, blocks with EPERM in normal mode
   - **CLI integration**: `--seccomp-debug` flag in `sbx-helper` enables ptrace operations within sandbox
   - **Test infrastructure**: Complete E2E test suite with `debugging-enforcement` package including `ptrace_tester`, `process_visibility_tester`, and `debugging_test_orchestrator`
   - **Security-first design**: Default deny policy for debugging operations, explicit opt-in via debug mode flag
 
 - Key Source Files:
-
   - `crates/sandbox-seccomp/src/filter.rs` - Seccomp filter debug mode implementation
   - `crates/sbx-helper/src/main.rs` - CLI debug mode flag integration
   - `tests/debugging-enforcement/src/` - Complete E2E test suite for debugging functionality
   - `Justfile` - Build and test commands for debugging enforcement
 
 - Test Coverage:
-
   - **Unit tests** (3 tests): Filter builder debug mode configuration and rule application
   - **E2E tests** (3 test programs + orchestrator): ptrace functionality testing, process isolation verification, comprehensive test orchestration
   - **Feature-gated testing**: Separate test runs with debugging enforcement package
@@ -386,13 +353,11 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M8. Containers/VMs inside sandbox** ✅ COMPLETED (5–7d)
 
 - Deliverables:
-
   - ✅ **Containers**: `/dev/fuse` access, delegated cgroup subtree, pre-allowed storage dirs (`/tmp`, `/var/tmp`, `/home`), prohibit host Docker socket (`/var/run/docker.sock`, `/run/docker.sock`)
   - ✅ **VMs**: QEMU user-net by default, optional `/dev/kvm` pass-through via `--allow-kvm` flag
   - ✅ **Device management**: Configurable allowlists/prohibitions, container storage directory management, fuse device access for overlay filesystems
 
 - Verification:
-
   - ✅ **E2E test: run rootless podman busybox container inside sandbox** - Implemented with `podman_container_tester` binary running "Hello World" busybox container
   - ✅ **E2E test: run qemu VM inside sandbox** - Implemented with `qemu_vm_tester` binary testing KVM device access
   - ✅ **E2E test: verify resource caps applied to containers/VMs within sandbox** - Implemented with `container_resource_tester` handling unprivileged environment constraints
@@ -400,7 +365,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - ✅ **Unit tests: device allowlists and prohibitions work correctly** - 4 unit tests in `sandbox-devices` crate covering configuration and access control
 
 - Implementation details:
-
   - **`sandbox-devices` crate**: New crate providing device access control with `DeviceConfig`, `DeviceManager`, and configurable allowlists/prohibitions
   - **Container support**: `/dev/fuse` enabled for overlay filesystems, cgroup delegation, storage directories automatically configured, Docker socket access blocked by default
   - **VM support**: QEMU user-net networking, optional KVM device access via `--allow-kvm` flag, device access control with security-first defaults
@@ -409,7 +373,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **Security-first design**: Device access denied by default, explicit opt-in required, comprehensive allowlist/prohibition system
 
 - Key Source Files:
-
   - `crates/sandbox-devices/src/lib.rs` - Core device management API and DeviceConfig/DeviceManager
   - `crates/sandbox-devices/src/error.rs` - Device-specific error types and handling
   - `crates/sandbox-core/src/lib.rs` - Device integration with optional feature flag
@@ -419,7 +382,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - `flake.nix` - Added podman to development environment for testing
 
 - Test Coverage:
-
   - **Unit tests** (4 tests): Device configuration validation, manager lifecycle, access control logic
   - **Integration tests** (2 tests): Sandbox lifecycle with device features, feature-gated testing
   - **Container E2E tests** (4 test programs + orchestrator): podman busybox execution, resource limit verification, Docker socket prohibition, comprehensive container orchestration
@@ -450,7 +412,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M9. Supervisor integration + policy persistence** (3–5d)
 
 - Deliverables:
-
   - Implement `sandbox-proto` and Ruby supervisor adapter; write policies to user/project/org stores; append‑only audit log.
   - CLI UX: progress prompts for approvals; non‑interactive default‑deny.
 
@@ -463,7 +424,6 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
 **M10. CLI integration & acceptance** (3–5d)
 
 - Deliverables:
-
   - Emit sandbox audit events consumable via `ah session audit` (local) and the REST service (remote).
   - Map config keys: terminal.editor.command (passed to left pane), tui.recording.scope, sandbox.default.
   - Acceptance suite runs: mount, seccomp, network, cgroups, overlays, debug toggles.

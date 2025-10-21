@@ -795,7 +795,7 @@ The production server task lifecycle has been fully implemented with comprehensi
 
 ### Deliverables
 
-- [ ] WebUI SSR server proxies /api/v1/\* to access point daemon
+- [ ] WebUI SSR server proxies `/api/v1/*` to access point daemon
 - [ ] Request forwarding with header preservation
 - [ ] SSE stream proxying with proper connection handling
 - [ ] User access policies and security controls

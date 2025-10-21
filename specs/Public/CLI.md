@@ -220,11 +220,12 @@ The `ah task` command preserves and extends the core functionality of the existi
   1. Resolve the user’s preferred comment prefix. By default we use `#` followed by a space. When `task-editor.use-vcs-comment-string` (config option, default `true`) is enabled and we are inside a Git repository, pull the value from `git config core.commentString` so the hint matches local tooling.
 
   2. If the configuration option `task-template` is not specified, insert a blank line (no prefix) where the user will type the prompt.
+     If the option is specified, treat it as a file path. The configuration system ensures that relative file path are resolved in relation to the file where they appear (or the working dir when supplied from the command-line).
 
-  If the option is specified, treat it as a file path. The configuration system ensures that relative file path are resolved in relation to the file where they appear (or the working dir when supplied from the command-line).
   3. Render a block with: a reminder that comment lines are ignored, and mentioning how the task creation operation can be aborted (by entering a blank description). End with an explanation that saving the file and exiting the editor will result in the agent work being delivered according the configured delivery method (the explanation should point out the concrete method by inserting a different string depending on the active configuration options).
 
   4. When the user saves, strip every line that starts with the resolved comment prefix and trim trailing whitespace; collapse multiple blank lines into a single newline before validation.
+
   5. If the resulting content is empty, abort with “Task prompt aborted (no content after removing comments).”
 
 - **Empty Task Validation**: Prevents creation of empty tasks with clear error messages
@@ -373,7 +374,6 @@ Behavior:
 - Follow‑up tasks: If currently on an agent task branch and `--branch` is NOT provided, the CLI MUST append a follow‑up task to the existing task file.
 - Task file path (when task files are enabled): `.agents/tasks/YYYY/MM/DD-HHMM-<branch>` (UTC time, zero‑padded month/day/hour/minute). The file MUST be created if this is the initial task for the branch; follow‑ups MUST append to the same file separated by the delimiter line `--- FOLLOW UP TASK ---`.
 - Initial commit message (first task commit on a branch) MUST include the following lines:
-
   - `Start-Agent-Branch: <branch>`
   - `Target-Remote: <url>` (only when a default remote URL is discoverable)
   - `Dev-Shell: <name>` (only when `--devshell` is provided)
@@ -513,13 +513,11 @@ See the implementation roadmap in [Cloud-Automation.status.md](Cloud-Automation.
 When tasks complete:
 
 1. **Wrapper Notification**: The thin wrapper process emits OS notifications with:
-
    - Task completion status
    - Custom `agent-harbor://` links to results
    - Platform-specific notification actions
 
 2. **WebUI Integration**: Clicking notification links:
-
    - Checks if AH WebUI server is running
    - Auto-launches WebUI server if needed
    - Opens the specific task results page
@@ -641,7 +639,6 @@ BEHAVIOR:
 - Shows snapshot metadata including size, creation time, and usability for branching
 - Provides detailed information for snapshot management and cleanup
 ```
-
 
 Defaults: When `<SESSION_ID>` is omitted from `logs`, `attach`, `pause`, `resume`, `cancel`, `files`, `diff`, and `snapshots`, the CLI targets the most recently launched session.
 
@@ -1162,7 +1159,6 @@ The `ah agent sandbox` command provides a seamless workflow for launching the TU
 **Sandbox Entry and TUI Launch:**
 
 4. **Sandbox Environment Setup**: Launches the process within the configured sandbox profile:
-
    - **Namespace isolation**: User, mount, PID, UTS, IPC, and time namespaces
    - **Filesystem controls**: Bind mounts the pre-created snapshots, applies read-only sealing, and sets up overlay filesystems
    - **Network isolation**: Loopback-only by default with optional slirp4netns integration

@@ -28,58 +28,58 @@ The testing infrastructure consists of several components working together:
 
 ```yaml
 name: task_creation_happy_path
-tags: ["cli", "tui", "local"]
-terminalRef: "configs/terminal/default-100x30.json"
+tags: ['cli', 'tui', 'local']
+terminalRef: 'configs/terminal/default-100x30.json'
 compat:
   allowInlineTerminal: true
   allowTypeSteps: true
 repo:
   init: true
-  branch: "feature/test"
-  dir: "./repo"
+  branch: 'feature/test'
+  dir: './repo'
   files:
-    - path: "README.md"
-      contents: "hello"
+    - path: 'README.md'
+      contents: 'hello'
 ah:
-  cmd: "task"
-  flags: ["--agent=mock", "--working-copy", "in-place"]
+  cmd: 'task'
+  flags: ['--agent=mock', '--working-copy', 'in-place']
   env:
-    AH_LOG: "debug"
+    AH_LOG: 'debug'
 server:
-  mode: "none"
+  mode: 'none'
 timeline:
   - think:
       - [500, "Analyzing the user's request"]
-      - [800, "I need to create a hello.py file"]
+      - [800, 'I need to create a hello.py file']
   - agentToolUse:
-      toolName: "run_command"
+      toolName: 'run_command'
       args:
-        command: "python hello.py"
-        cwd: "."
+        command: 'python hello.py'
+        cwd: '.'
       progress:
-        - [300, "Running Python script..."]
-        - [100, "Script executed successfully"]
-      result: "Hello, World!"
-      status: "ok"
+        - [300, 'Running Python script...']
+        - [100, 'Script executed successfully']
+      result: 'Hello, World!'
+      status: 'ok'
   - agentEdits:
-      path: "hello.py"
+      path: 'hello.py'
       linesAdded: 1
       linesRemoved: 0
-  - screenshot: "after_task_file_written"
+  - screenshot: 'after_task_file_written'
   - advanceMs: 50
   - assert:
       fs:
-        exists: [".agents/tasks"]
-  - screenshot: "after_commit"
+        exists: ['.agents/tasks']
+  - screenshot: 'after_commit'
   - applyPatch:
-      path: "./patches/add_file.patch"
+      path: './patches/add_file.patch'
       commit: true
-      message: "Apply scenario patch"
+      message: 'Apply scenario patch'
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: ".agents/tasks/*"
+    - type: 'taskFile'
+      pattern: '.agents/tasks/*'
 ```
 
 ### Sections
@@ -136,11 +136,11 @@ expect:
   - `complete`: Event indicating that the scenario task has completed successfully. This marks the session status as completed and triggers any completion logic.
   - `merge`: Event indicating that this scenario session should be merged into the session list upon completion. When present, the scenario session will be marked as completed but remain visible in session listings. When omitted, completed scenarios are not shown in session listings.
 
-
   **Legacy support**: Individual `think`, `agentToolUse`, `agentEdits`, and `assistant` events at the top level are treated as single-element `llmResponse` groups for backward compatibility.
-  
+
   Compatibility with existing scenarios (type‑based events):
   - Runners MUST also accept timeline of the form `{ "type": "advanceMs", "ms": 50 }`, `{ "type": "screenshot", "name": "..." }`, `{ "type": "userInputs", "inputs": [[100, "text"]] }`, `{ "type": "assertVm", ... }` as used in `test_scenarios/basic_navigation.yaml`.
+
 - **expect**:
   - `exitCode`: Expected process exit code.
   - `artifacts[]`: File/glob expectations after run.
@@ -167,11 +167,13 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 ### Event Execution by Component
 
 **Mock-Agent Execution:**
+
 - **`agentToolUse`** events with `toolName: "run_command"` are actually executed by the mock-agent
 - **`agentEdits`** events are carried out by the mock-agent (file modifications happen in the test workspace)
 - When the `--checkpoint-cmd` option is provided, the mock-agent must automatically execute the specified command after each `agentEdits` and `agentToolUse` event completes (after the edits are carried out and the tool execution finishes). The typical command to use is `ah agent fs snapshot` which captures the filesystem state changes for time travel functionality. By default, no checkpoint commands are executed.
 
 **Mock API Server (Agent Harbor REST API):**
+
 - Implements the [Agent Harbor REST API](REST-Service/API.md) for CLI/WebUI/TUI integration testing
 - Receives task creation requests and returns session IDs
 - Streams session events and status updates
@@ -179,6 +181,7 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 - Reports/simulates **`agentEdits`** events
 
 **Mock LLM API Server (External LLM Services):**
+
 - Simulates external LLM APIs (Anthropic, OpenAI, GitHub Copilot, etc.) that coding agents communicate with
 - **Started with a specific tools profile** (server startup option) that defines valid tool schemas for the target coding agent (Codex, Claude, Gemini, etc.)
 - Groups **`llmResponse`** events into single API responses with appropriate coalescing based on `llmApiStyle`
@@ -188,40 +191,43 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 - Instructs the coding agent via mock LLM API responses to perform tool invocations
 
 **Test Executor:**
+
 - **`userInputs`** are carried out in all testing modes (TUI, WebUI, CLI)
 - **`userEdits`** are carried out by the test executor in all modes except WebUI testing with mock API server (where they can be ignored)
 - **`userCommand`** events are executed by the test executor as shell commands
 
 **Example Timeline:**
+
 ```yaml
 timeline:
   # Single LLM response combining thinking + tool use (realistic)
   - llmResponse:
       - think:
-          - [500, "I need to examine the current code first"]      # 500ms
-          - [300, "Let me check what functions exist..."]          # 300ms, total: 800ms
+          - [500, 'I need to examine the current code first'] # 500ms
+          - [300, 'Let me check what functions exist...'] # 300ms, total: 800ms
       - agentToolUse:
-          toolName: "run_command"
+          toolName: 'run_command'
           args:
             command: "grep -n 'def' main.py"
-            cwd: "."
+            cwd: '.'
           progress:
-            - [200, "Searching for function definitions..."]
-          result: "main.py:1:def main():"
-          status: "ok"  # 200ms total
+            - [200, 'Searching for function definitions...']
+          result: 'main.py:1:def main():'
+          status: 'ok' # 200ms total
 
   # Test harness events (handled separately from API responses)
   - userInputs:
-      - [200, "some input"]   # 200ms
-      - [400, "more input"]   # 400ms, total: 600ms, concurrent with agent
-    target: "tui"
+      - [200, 'some input'] # 200ms
+      - [400, 'more input'] # 400ms, total: 600ms, concurrent with agent
+    target: 'tui'
   - assert:
       fs:
-        exists: ["main.py"]
-  - advanceMs: 1000  # Must be >= max(1000ms agent, 600ms user) = 1000ms
+        exists: ['main.py']
+  - advanceMs: 1000 # Must be >= max(1000ms agent, 600ms user) = 1000ms
 ```
 
 **Timing Rules:**
+
 - Agent events never overlap (sequential execution)
 - User and test events can execute concurrently with agent events
 - `advanceMs` ensures proper synchronization: `advanceMs >= max(time_from_concurrent_events)`
@@ -259,5 +265,5 @@ timeline:
 - CLI behaviors and flow: [CLI.md](CLI.md)
 - TUI testing approach: [TUI-Testing-Architecture.md](TUI-Testing-Architecture.md)
 - CLI E2E plan: [Testing-Architecture.md](Testing-Architecture.md)
- - Terminal config format: [Terminal-Config.md](Terminal-Config.md)
- - Existing example scenario: `tests/tools/mock-agent/scenarios/realistic_development_scenario.yaml` (comprehensive timeline-based scenario with ~30-second execution)
+- Terminal config format: [Terminal-Config.md](Terminal-Config.md)
+- Existing example scenario: `tests/tools/mock-agent/scenarios/realistic_development_scenario.yaml` (comprehensive timeline-based scenario with ~30-second execution)

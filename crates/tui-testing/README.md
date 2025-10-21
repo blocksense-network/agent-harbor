@@ -8,7 +8,7 @@ The TUI testing framework enables deterministic testing of terminal applications
 
 - Running child processes (TUIs) in controlled environments
 - Simulating user input in response to events
-- Capturing screenshots at specific moments and comparing them against known good values (golden files) 
+- Capturing screenshots at specific moments and comparing them against known good values (golden files)
 - Tools for streamlined reviewing, approving and updating of the golden after changes in the implementation
 
 ## Architecture
@@ -122,9 +122,11 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 ### TestedTerminalProgram Methods
 
 #### Constructors
+
 - `new(program: impl Into<String>) -> Self` - Create a builder for the specified program
 
 #### Configuration
+
 - `arg(arg: impl Into<String>) -> Self` - Add a command-line argument
 - `args<I, S>(args: I) -> Self` - Add multiple command-line arguments where I: IntoIterator<Item = S>, S: Into<String>
 - `width(width: u16) -> Self` - Set terminal width in characters (default: 80)
@@ -137,6 +139,7 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 - `stdin(cfg: Stdio) -> Self` - Configure stdin handling (default: inherit)
 
 #### Execution
+
 - `spawn() -> impl Future<Output = Result<TuiTestRunner>>` - Spawn the program and return an active test runner
 - `status() -> impl Future<Output = Result<ExitStatus>>` - Execute and return exit status
 - `output() -> impl Future<Output = Result<Output>>` - Execute and capture output
@@ -144,6 +147,7 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 ### TuiTestRunner Methods
 
 #### Interaction
+
 - `send(s: &str) -> impl Future<Output = Result<()>>` - Send a string to the spawned program
 - `send_control(c: char) -> impl Future<Output = Result<()>>` - Send a control character
 - `expect(pattern: &str) -> impl Future<Output = Result<()>>` - Wait for a pattern in output
@@ -151,6 +155,7 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 - `wait() -> impl Future<Output = Result<()>>` - Wait for the spawned process to complete
 
 #### Screen Access
+
 - `screen_contents() -> String` - Get current screen as formatted text
 - `screen() -> &vt100::Screen` - Get raw screen access
 - `endpoint_uri() -> &str` - Get ZMQ endpoint for screenshot IPC
@@ -160,9 +165,11 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 ### TuiTestClient Methods
 
 #### Connection
+
 - `connect(uri: &str) -> impl Future<Output = Result<Self>>` - Connect to test runner
 
 #### Screenshot and Control Requests
+
 - `request_screenshot(label: &str) -> impl Future<Output = Result<()>>` - Request a screenshot
 - `request_exit(exit_code: i32) -> impl Future<Output = Result<()>>` - Request program termination
 - `ping() -> impl Future<Output = Result<()>>` - Test connectivity
@@ -170,12 +177,14 @@ async fn test_interactive_tui() -> anyhow::Result<()> {
 ### CLI Tools
 
 #### tui-testing-cmd
+
 ```bash
 tui-testing-cmd --uri <URI> --cmd "screenshot:<LABEL>" [--timeout <SECONDS>]
 tui-testing-cmd --uri <URI> --cmd "exit:<EXIT_CODE>" [--timeout <SECONDS>]
 ```
 
 #### test-guest
+
 ```bash
 test-guest --uri <URI> --method <METHOD> --labels <LABELS> [--delay-ms <MILLIS>]
 ```
@@ -319,6 +328,7 @@ tui-testing-cmd --uri tcp://127.0.0.1:5555 --cmd "screenshot:help_screen" --time
 ```
 
 This is useful for:
+
 - Manual testing during development
 - Integration with scripts and CI/CD pipelines
 - Debugging TUI test setups
@@ -386,6 +396,7 @@ Use the following just commands to manage golden files:
 - `just insta-check` - Check if snapshots are up to date
 
 For package-specific commands:
+
 - `just insta-test-pkg tui-testing` - Test snapshots for the tui-testing crate
 - `just insta-accept-pkg tui-testing` - Accept snapshots for the tui-testing crate
 
