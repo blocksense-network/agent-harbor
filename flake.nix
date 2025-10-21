@@ -83,9 +83,9 @@
       preCommit = git-hooks.lib.${system}.run {
         src = ./.;
         hooks = {
-          # Markdown formatting (run first) - DISABLED due to code block whitespace issues
+          # Markdown formatting (run first)
           prettier-md = {
-            enable = false;
+            enable = true;
             name = "prettier --write (Markdown)";
             entry = "prettier --log-level warn --write";
             language = "system";
