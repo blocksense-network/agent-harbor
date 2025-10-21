@@ -475,7 +475,7 @@ The `ah task` command returns the following exit codes:
 #### Notifications System
 
 The `--notifications` option (default: "yes") controls whether OS-level notifications are emitted when tasks complete.
-The behavior is defined in the [Handling-AW-URL-Scheme](Handling-AW-URL-Scheme.md) document.
+The behavior is defined in the [Handling-AH-URL-Scheme](Handling-AH-URL-Scheme.md) document.
 
 #### Agent Execution Architecture
 
