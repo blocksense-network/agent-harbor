@@ -37,3 +37,5 @@ config:
     br_spaces: 2
     list_item_empty_lines: true
     strict: false
+  # Allow duplicate headers. Common for status md files
+  MD024: false
