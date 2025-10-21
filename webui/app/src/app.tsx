@@ -29,10 +29,7 @@ export default function App() {
           <DraftProvider>
             <FocusProvider>
               <BreadcrumbProvider>
-                <Router
-                  url={initialUrl}
-                  root={(props) => <MainLayout>{props.children}</MainLayout>}
-                >
+                <Router url={initialUrl} root={props => <MainLayout>{props.children}</MainLayout>}>
                   <FileRoutes />
                 </Router>
               </BreadcrumbProvider>

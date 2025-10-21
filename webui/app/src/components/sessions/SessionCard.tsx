@@ -83,7 +83,7 @@ const getRepoName = (url?: string) => {
   }
 };
 
-export const SessionCard: Component<SessionCardProps> = (props) => {
+export const SessionCard: Component<SessionCardProps> = props => {
   const session = () => props.session;
 
   // Convert recent_events from session to ActivityRow[] format
@@ -174,7 +174,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         setLiveActivity({ ...current, rows: newRows });
         if (!import.meta.env.PROD) {
           console.log(
-            `[SessionCard ${session().id}] Added thinking row, total rows: ${newRows.length}`
+            `[SessionCard ${session().id}] Added thinking row, total rows: ${newRows.length}`,
           );
         }
       }
@@ -186,14 +186,14 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         setLiveActivity({ rows: newRows, currentTool: event.tool_name });
         if (!import.meta.env.PROD) {
           console.log(
-            `[SessionCard ${session().id}] Added tool start row: ${event.tool_name}, total rows: ${newRows.length}`
+            `[SessionCard ${session().id}] Added tool start row: ${event.tool_name}, total rows: ${newRows.length}`,
           );
         }
       }
 
       // Tool last_line - updates current tool row IN PLACE, no scroll
       else if (event.type === 'tool_execution' && event.last_line) {
-        const newRows = current.rows.map((row) => {
+        const newRows = current.rows.map(row => {
           if (row.type === 'tool' && row.name === current.currentTool) {
             return { ...row, lastLine: event.last_line };
           }
@@ -202,14 +202,14 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         setLiveActivity({ ...current, rows: newRows } as LiveActivityState);
         if (!import.meta.env.PROD) {
           console.log(
-            `[SessionCard ${session().id}] Updated tool last_line IN PLACE for: ${current.currentTool}`
+            `[SessionCard ${session().id}] Updated tool last_line IN PLACE for: ${current.currentTool}`,
           );
         }
       }
 
       // Tool complete - replaces tool row with completion, clears currentTool
       else if (event.type === 'tool_execution' && event.tool_output) {
-        const newRows = current.rows.map((row) => {
+        const newRows = current.rows.map(row => {
           if (row.type === 'tool' && row.name === current.currentTool) {
             return {
               type: 'tool' as const,
@@ -226,7 +226,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         } as LiveActivityState);
         if (!import.meta.env.PROD) {
           console.log(
-            `[SessionCard ${session().id}] Tool completed: ${event.tool_name}, cleared currentTool`
+            `[SessionCard ${session().id}] Tool completed: ${event.tool_name}, cleared currentTool`,
           );
         }
       }
@@ -243,7 +243,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         setLiveActivity({ ...current, rows: newRows });
         if (!import.meta.env.PROD) {
           console.log(
-            `[SessionCard ${session().id}] Added file edit row, total rows: ${newRows.length}`
+            `[SessionCard ${session().id}] Added file edit row, total rows: ${newRows.length}`,
           );
         }
       }
@@ -251,7 +251,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
       if (!import.meta.env.PROD) {
         console.log(
           `[SessionCard ${session().id}] Live activity rows:`,
-          liveActivity().rows.length
+          liveActivity().rows.length,
         );
       }
     });
@@ -348,7 +348,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
                 focus-visible:ring-offset-2
               `}
               title={session().prompt}
-              onClick={(e) => {
+              onClick={e => {
                 // Stop propagation to prevent parent handlers
                 e.stopPropagation();
               }}
@@ -363,7 +363,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
         <div class="flex space-x-1">
           <Show when={canStop()}>
             <button
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 props.onStop?.();
               }}
@@ -381,7 +381,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
           </Show>
           <Show when={canCancel()}>
             <button
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 props.onCancel?.();
               }}
@@ -432,7 +432,7 @@ export const SessionCard: Component<SessionCardProps> = (props) => {
       {/* Lines 3-5: ALWAYS exactly 3 fixed-height activity rows (ONLY for active sessions) */}
       <Show
         when={['running', 'queued', 'provisioning', 'paused', 'resuming', 'stopping'].includes(
-          sessionStatus()
+          sessionStatus(),
         )}
       >
         <div class="space-y-0.5">

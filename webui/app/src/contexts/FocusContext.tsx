@@ -19,7 +19,7 @@ interface FocusContextValue {
 
 const FocusContext = createContext<FocusContextValue>();
 
-export const FocusProvider: Component<{ children: JSX.Element }> = (props) => {
+export const FocusProvider: Component<{ children: JSX.Element }> = props => {
   const [focusState, setFocusState] = createSignal<FocusState>({
     focusedElement: 'none',
   });
@@ -58,7 +58,7 @@ export const FocusProvider: Component<{ children: JSX.Element }> = (props) => {
   };
 
   const updateDraftAgentCount = (draftId: string, agentCount: number) => {
-    setFocusState((prev) => {
+    setFocusState(prev => {
       if (prev.focusedElement === 'draft-textarea' && prev.focusedDraftId === draftId) {
         return {
           ...prev,

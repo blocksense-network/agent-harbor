@@ -27,7 +27,7 @@ interface DraftTaskCardProps {
   onTaskCreated?: (taskId: string) => void;
 }
 
-export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
+export const DraftTaskCard: Component<DraftTaskCardProps> = props => {
   // Debug effect for selection changes
   createEffect(() => {
     if (props.onDebug) {
@@ -226,7 +226,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
     setModelSelections(selections);
     updateDraftAgentCount(props.draft.id, computeAgentCount(selections));
     // Convert model selections to agent format
-    const agents = selections.map((sel) => {
+    const agents = selections.map(sel => {
       const [type, ...versionParts] = sel.model.toLowerCase().split(' ');
       return {
         type: type || 'unknown',
@@ -296,7 +296,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
   onMount(() => {
     // Initialize model selections from draft agents if available
     if (props.draft.agents && props.draft.agents.length > 0) {
-      const initialSelections = props.draft.agents.map((agent) => ({
+      const initialSelections = props.draft.agents.map(agent => ({
         model: `${
           agent.type.charAt(0).toUpperCase() + agent.type.slice(1)
         } ${agent.version.replace(/-/g, ' ')}`,
@@ -313,7 +313,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
       return;
     }
 
-    const selections = agents.map((agent) => ({
+    const selections = agents.map(agent => ({
       model: `${
         agent.type.charAt(0).toUpperCase() + agent.type.slice(1)
       } ${agent.version.replace(/-/g, ' ')}`,
@@ -359,7 +359,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
           ref={textareaRef}
           data-testid="draft-task-textarea"
           value={prompt()}
-          onInput={(e) => {
+          onInput={e => {
             setLocalPrompt(e.currentTarget.value);
             scheduleAutoSave();
           }}
@@ -416,9 +416,9 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
             items={['main', 'develop', 'feature/new-ui', 'hotfix/bug-fix']}
             selectedItem={selectedBranch()}
             onSelect={setSelectedBranch}
-            getDisplayText={(branch) => branch}
-            getKey={(branch) => branch}
-            getSearchTokens={(branch) => [branch.replace(/[^a-z0-9]/gi, '')]}
+            getDisplayText={branch => branch}
+            getKey={branch => branch}
+            getSearchTokens={branch => [branch.replace(/[^a-z0-9]/gi, '')]}
             placeholder="Branch"
             class="w-32"
             testId="branch-selector"
@@ -452,7 +452,7 @@ export const DraftTaskCard: Component<DraftTaskCardProps> = (props) => {
               'bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 cursor-pointer':
                 Boolean(canSubmit() && !isSubmitting()),
               'bg-slate-300 text-slate-500 cursor-not-allowed': Boolean(
-                !canSubmit() || isSubmitting()
+                !canSubmit() || isSubmitting(),
               ),
             }}
             aria-label="Create task"

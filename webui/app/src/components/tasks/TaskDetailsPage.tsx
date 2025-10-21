@@ -301,7 +301,7 @@ const highlightSyntax = (code: string) => {
   // Split code into tokens while preserving whitespace and indentation
   const tokens = code
     .split(/(\s+|[{}();,.=<>!+\-*/&|?:[\]]|\w+|"[^"]*"|'[^']*'|\/\/.*)/g)
-    .filter((t) => t !== undefined && t !== '');
+    .filter(t => t !== undefined && t !== '');
 
   return (
     <span style={{ 'white-space': 'pre', 'tab-size': '4' }}>
@@ -329,7 +329,7 @@ const highlightSyntax = (code: string) => {
 };
 
 // Component to render syntax-highlighted diff
-const DiffViewer: Component<{ content: string }> = (props) => {
+const DiffViewer: Component<{ content: string }> = props => {
   const parseDiff = (diffContent: string) => {
     const lines = diffContent.split('\n');
     const result: Array<{
@@ -414,7 +414,7 @@ const DiffViewer: Component<{ content: string }> = (props) => {
   );
 };
 
-export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
+export const TaskDetailsPage: Component<TaskDetailsPageProps> = props => {
   const params = useParams();
   const navigate = useNavigate();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -425,7 +425,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
   const [statusFilter, setStatusFilter] = createSignal<string>('all');
 
   // Load task details from API
-  const [taskData] = createResource(taskId, async (id) => {
+  const [taskData] = createResource(taskId, async id => {
     if (!id) return null;
     try {
       const result = await apiClient.getSession(id);
@@ -487,7 +487,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
 
   // Filter files based on search query and status
   const filteredModifiedFiles = () => {
-    return mockModifiedFiles.filter((file) => {
+    return mockModifiedFiles.filter(file => {
       const matchesSearch =
         searchQuery() === '' || file.path.toLowerCase().includes(searchQuery().toLowerCase());
       const matchesStatus = statusFilter() === 'all' || file.status === statusFilter();
@@ -586,7 +586,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
                     focus:outline-none
                   `}
                   value={searchQuery()}
-                  onInput={(e) => setSearchQuery(e.currentTarget.value)}
+                  onInput={e => setSearchQuery(e.currentTarget.value)}
                 />
                 <div class="flex space-x-1">
                   <button
@@ -705,7 +705,7 @@ export const TaskDetailsPage: Component<TaskDetailsPageProps> = (props) => {
               <h3 class="mb-3 text-sm font-semibold text-gray-900">Agent Activity</h3>
               <div class="flex-1 space-y-2 overflow-y-auto">
                 <For each={mockAgentEvents}>
-                  {(event) => (
+                  {event => (
                     <div class="flex space-x-3">
                       <span class="w-16 flex-shrink-0 text-xs text-gray-500">
                         {event.timestamp}

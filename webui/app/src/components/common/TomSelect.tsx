@@ -71,7 +71,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
         };
       },
       onChange: (value: string) => {
-        const item = props.items.find((item) => props.getKey(item) === value);
+        const item = props.items.find(item => props.getKey(item) === value);
         props.onSelect(item || null);
       },
     });
@@ -96,7 +96,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
     if (tomSelectInstance && typeof window !== 'undefined') {
       tomSelectInstance!.clearOptions();
 
-      props.items.forEach((item) => {
+      props.items.forEach(item => {
         const displayText = props.getDisplayText(item);
         const normalizedText = normalize(displayText);
         const tokens = props.getSearchTokens ? props.getSearchTokens(item) : [];
@@ -104,7 +104,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
           value: props.getKey(item),
           text: displayText,
           normalizedText,
-          searchTokens: tokens.map((token) => token.toLowerCase()).join(' '),
+          searchTokens: tokens.map(token => token.toLowerCase()).join(' '),
         });
       });
 
@@ -131,7 +131,7 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
       <select ref={selectRef} id={props.id} class="tom-select-input" aria-label={props.placeholder}>
         <option value="">{props.placeholder || 'Select...'}</option>
         <For each={props.items}>
-          {(item) => <option value={props.getKey(item)}>{props.getDisplayText(item)}</option>}
+          {item => <option value={props.getKey(item)}>{props.getDisplayText(item)}</option>}
         </For>
       </select>
     </div>

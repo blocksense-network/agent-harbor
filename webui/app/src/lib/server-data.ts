@@ -82,7 +82,7 @@ export const getSessions = cache(
       };
     }
   },
-  'sessions'
+  'sessions',
 );
 
 /**

@@ -23,7 +23,7 @@ interface DraftProviderProps {
   onDraftChanged?: () => void; // Optional callback when drafts change
 }
 
-export const DraftProvider: Component<DraftProviderProps> = (props) => {
+export const DraftProvider: Component<DraftProviderProps> = props => {
   const [error, setError] = createSignal<string | null>(null);
 
   const createDraft = async (draft: DraftCreate): Promise<DraftTask | null> => {

@@ -21,7 +21,7 @@ interface ToastItemProps {
   onRemove: (id: string) => void;
 }
 
-const ToastItem: Component<ToastItemProps> = (props) => {
+const ToastItem: Component<ToastItemProps> = props => {
   const [isVisible, setIsVisible] = createSignal(true);
 
   onMount(() => {
@@ -88,7 +88,7 @@ const ToastItem: Component<ToastItemProps> = (props) => {
       <div class="flex-1 font-medium">{props.toast.message}</div>
       <div class="ml-3 flex items-center space-x-2">
         <For each={props.toast.actions}>
-          {(action) => {
+          {action => {
             const variant = action.variant ?? 'primary';
             const baseClasses =
               'rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2';
@@ -138,11 +138,11 @@ interface ToastContainerProps {
   onRemove: (id: string) => void;
 }
 
-export const ToastContainer: Component<ToastContainerProps> = (props) => {
+export const ToastContainer: Component<ToastContainerProps> = props => {
   return (
     <div class="fixed top-4 right-4 z-50 max-w-sm" role="region" aria-label="Notifications">
       <For each={props.toasts}>
-        {(toast) => <ToastItem toast={toast} onRemove={props.onRemove} />}
+        {toast => <ToastItem toast={toast} onRemove={props.onRemove} />}
       </For>
     </div>
   );

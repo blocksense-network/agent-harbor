@@ -8,7 +8,7 @@ interface ToastContextValue {
     type: ToastType,
     message: string,
     actions?: ToastAction[],
-    duration?: number
+    duration?: number,
   ) => void;
   removeToast: (id: string) => void;
 }
@@ -27,7 +27,7 @@ interface ToastProviderProps {
   children: JSX.Element;
 }
 
-export const ToastProvider: Component<ToastProviderProps> = (props) => {
+export const ToastProvider: Component<ToastProviderProps> = props => {
   const [toasts, setToasts] = createSignal<Toast[]>([]);
 
   const addToast = (type: ToastType, message: string, duration?: number) => {
@@ -38,14 +38,14 @@ export const ToastProvider: Component<ToastProviderProps> = (props) => {
       message,
       ...(duration !== undefined && { duration }),
     };
-    setToasts((prev) => [...prev, toast]);
+    setToasts(prev => [...prev, toast]);
   };
 
   const addToastWithActions = (
     type: ToastType,
     message: string,
     actions?: ToastAction[],
-    duration?: number
+    duration?: number,
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
     const toast: Toast = {
@@ -55,11 +55,11 @@ export const ToastProvider: Component<ToastProviderProps> = (props) => {
       ...(duration !== undefined && { duration }),
       ...(actions !== undefined && { actions }),
     };
-    setToasts((prev) => [...prev, toast]);
+    setToasts(prev => [...prev, toast]);
   };
 
   const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   const value: ToastContextValue = {

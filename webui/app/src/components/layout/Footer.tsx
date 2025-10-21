@@ -15,9 +15,9 @@ export interface FooterProps {
   };
 }
 
-export const Footer: Component<FooterProps> = (props) => {
+export const Footer: Component<FooterProps> = props => {
   const resolvedAgentCount = createMemo(
-    () => props.agentCount ?? props.focusState?.focusedDraftAgentCount
+    () => props.agentCount ?? props.focusState?.focusedDraftAgentCount,
   );
 
   const computedProps = createMemo<Partial<KeyboardShortcutsFooterProps>>(() => {
