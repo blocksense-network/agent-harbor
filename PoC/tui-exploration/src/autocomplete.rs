@@ -619,10 +619,14 @@ impl InlineAutocomplete {
         };
 
         let items: Vec<ListItem> = if visible_results.is_empty() {
-            // Show a "No results" message when menu is open but no results
+            // Show loading or "No results" message when menu is open but no results
+            let message = match trigger {
+                Trigger::At => "Loading files...",
+                Trigger::Slash => "Loading workflows...",
+            };
             vec![ListItem::new(Line::from(vec![Span::styled(
-                "No suggestions available",
-                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray))
+                message,
+                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray)),
             )]))]
         } else {
             visible_results.iter().map(|m| make_list_item(m, theme)).collect()
@@ -639,34 +643,6 @@ impl InlineAutocomplete {
 
         frame.render_widget(Clear, popup);
 
-<<<<<<< HEAD
-||||||| parent of 8ceb61c (feat(tui-exploration): New approach to mouse hit zones; Better test coverage)
-        let items: Vec<ListItem> = if visible_results.is_empty() {
-            // Show a "No results" message when menu is open but no results
-            vec![ListItem::new(Line::from(vec![Span::styled(
-                "No suggestions available",
-                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray))
-            )]))]
-        } else {
-            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
-        };
-
-=======
-        let items: Vec<ListItem> = if visible_results.is_empty() {
-            // Show loading or "No results" message when menu is open but no results
-            let message = match trigger {
-                Trigger::At => "Loading files...",
-                Trigger::Slash => "Loading workflows...",
-            };
-            vec![ListItem::new(Line::from(vec![Span::styled(
-                message,
-                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray)),
-            )]))]
-        } else {
-            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
-        };
-
->>>>>>> 8ceb61c (feat(tui-exploration): New approach to mouse hit zones; Better test coverage)
         let mut block = Block::default().style(Style::default().bg(background));
         if self.show_border {
             block = block
