@@ -14,25 +14,25 @@ echo
 
 # Function to check if a command exists
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
 # Check prerequisites
 echo "Checking prerequisites..."
 
 if ! command_exists clang; then
-    echo "ERROR: clang not found. Please install Xcode command line tools."
-    exit 1
+  echo "ERROR: clang not found. Please install Xcode command line tools."
+  exit 1
 fi
 
 if ! command_exists cargo; then
-    echo "ERROR: cargo not found. Please install Rust."
-    exit 1
+  echo "ERROR: cargo not found. Please install Rust."
+  exit 1
 fi
 
 if ! command_exists curl; then
-    echo "ERROR: curl not found. Please install curl."
-    exit 1
+  echo "ERROR: curl not found. Please install curl."
+  exit 1
 fi
 
 echo "Prerequisites OK"
@@ -66,12 +66,12 @@ SOCKET_PATH="/tmp/agentfs-test.sock"
 echo "Starting AgentFS server on $SOCKET_PATH..."
 $AGENTFS_SERVER &
 SERVER_PID=$!
-sleep 2  # Give server time to start
+sleep 2 # Give server time to start
 
 # Verify server is running
 if ! kill -0 $SERVER_PID 2>/dev/null; then
-    echo "ERROR: AgentFS server failed to start"
-    exit 1
+  echo "ERROR: AgentFS server failed to start"
+  exit 1
 fi
 
 echo "AgentFS server started with PID $SERVER_PID"
@@ -79,9 +79,9 @@ echo
 
 # Clean up function
 cleanup() {
-    echo "Cleaning up..."
-    kill $SERVER_PID 2>/dev/null || true
-    rm -f "$SOCKET_PATH"
+  echo "Cleaning up..."
+  kill $SERVER_PID 2>/dev/null || true
+  rm -f "$SOCKET_PATH"
 }
 trap cleanup EXIT
 

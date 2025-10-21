@@ -23,7 +23,7 @@ indent_size = 4
 
 # Shell scripts
 [*.{sh,bash,zsh}]
-indent_size = 4
+indent_size = 2
 
 # Ruby
 [*.{rb,rake}]

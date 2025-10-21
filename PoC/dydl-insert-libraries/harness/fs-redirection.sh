@@ -13,20 +13,20 @@ echo
 
 # Function to check if a command exists
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+  command -v "$1" >/dev/null 2>&1
 }
 
 # Check prerequisites
 echo "Checking prerequisites..."
 
 if ! command -v clang; then
-    echo "ERROR: clang not found. Please install Xcode command line tools."
-    exit 1
+  echo "ERROR: clang not found. Please install Xcode command line tools."
+  exit 1
 fi
 
 if ! command -v cargo; then
-    echo "ERROR: cargo not found. Please install Rust."
-    exit 1
+  echo "ERROR: cargo not found. Please install Rust."
+  exit 1
 fi
 
 echo "Prerequisites OK"

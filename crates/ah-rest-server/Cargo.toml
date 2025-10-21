@@ -7,10 +7,21 @@ authors = ["Agent Harbor Team"]
 
 [dependencies]
 # Axum web framework
-axum = { version = "0.7", features = ["macros", "tokio", "http2", "matched-path"] }
+axum = { version = "0.7", features = [
+  "macros",
+  "tokio",
+  "http2",
+  "matched-path",
+] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "request-id", "util"] }
+tower-http = { version = "0.6", features = [
+  "cors",
+  "trace",
+  "compression-gzip",
+  "request-id",
+  "util",
+] }
 hyper = "1.5"
 
 # Async runtime
@@ -29,7 +40,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 # Authentication
-jsonwebtoken = { version = "10.0", default-features = false, features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.0", default-features = false, features = [
+  "rust_crypto",
+] }
 base64 = { workspace = true }
 
 # Database
@@ -74,7 +87,10 @@ async-trait = { workspace = true }
 clap = { workspace = true }
 
 # HTTP client for internal calls
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

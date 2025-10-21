@@ -9,7 +9,9 @@ license = "MIT OR Apache-2.0"
 serde.workspace = true
 serde_json.workspace = true
 schemars = { version = "0.8", features = ["preserve_order"] }
-jsonschema = { version = "0.17", default-features = false, features = ["draft202012"] }
+jsonschema = { version = "0.17", default-features = false, features = [
+  "draft202012",
+] }
 toml.workspace = true
 config = "0.14"
 anyhow.workspace = true

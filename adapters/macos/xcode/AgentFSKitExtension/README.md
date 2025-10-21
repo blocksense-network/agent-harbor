@@ -48,7 +48,6 @@ cp ../../../target/release/libagentfs_fskit_bridge.a libs/
 ## Installation
 
 1. Enable the extension in System Settings:
-
    - Go to System Settings > General > Login Items & Extensions > File System Extensions
    - Enable "AgentFSKitExtension"
 
