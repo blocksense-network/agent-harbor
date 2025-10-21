@@ -625,7 +625,7 @@ The TUI implementation provides these core capabilities:
 The TUI implementation supports two complementary testing approaches for comprehensive validation:
 
 ### Strategy 1: Mock API Server Testing (WebUI Infrastructure)
-**Infrastructure**: Use the existing WebUI mock server that implements the complete [REST-Service.md](REST-Service.md) specification.
+**Infrastructure**: Use the existing WebUI mock server that implements the complete [REST-Service/API.md](REST-Service/API.md) specification.
 
 **Key Files**:
 - `webui/mock-server/README.md` - Setup and usage instructions

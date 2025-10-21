@@ -698,7 +698,7 @@ The production server task lifecycle has been fully implemented with comprehensi
 ### Verification
 
 - [ ] `ah webui` starts access point daemon successfully
-- [ ] WebUI accessible at http://127.0.0.1:PORT
+- [ ] WebUI accessible at <http://127.0.0.1:PORT>
 - [ ] Server uses configured bind address and port
 - [ ] Port conflict detected and reported clearly
 - [ ] Ctrl-C shuts down both daemon and WebUI cleanly
@@ -795,7 +795,7 @@ The production server task lifecycle has been fully implemented with comprehensi
 
 ### Deliverables
 
-- [ ] WebUI SSR server proxies /api/v1/* to access point daemon
+- [ ] WebUI SSR server proxies /api/v1/\* to access point daemon
 - [ ] Request forwarding with header preservation
 - [ ] SSE stream proxying with proper connection handling
 - [ ] User access policies and security controls
@@ -870,6 +870,7 @@ The production server task lifecycle has been fully implemented with comprehensi
 8. End-to-end testing (18) throughout, but comprehensive suite at end
 
 **Key Dependencies:**
+
 - Milestones 3 and 4 both depend on Milestones 1 and 2
 - Milestone 3 (mock client) enables TUI development to continue independently
 - Milestone 4 (production client) tests against existing webui/mock-server (may identify needed improvements)

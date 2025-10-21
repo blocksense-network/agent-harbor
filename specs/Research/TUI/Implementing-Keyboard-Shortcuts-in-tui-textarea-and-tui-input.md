@@ -350,6 +350,9 @@ If you want the “source of truth” list in one place, the docs’ **Methods**
 
 [1]: https://docs.rs/tui-textarea/latest/tui_textarea/struct.TextArea.html "TextArea in tui_textarea - Rust"
 [2]: https://github.com/rhysd/tui-textarea/issues/51?utm_source=chatgpt.com "Remove Emacs-like shortcuts from `TextArea::input` · Issue #51 - GitHub"
+[3]: https://docs.rs/crossterm/latest/crossterm/ "Crossterm - Rust"
+[4]: https://docs.rs/tui-textarea/latest/tui_textarea/ "tui-textarea - Rust"
+[5]: https://github.com/sayanarijit/tui-input "GitHub - tui-input"
 
 ### Single-line input like `<input>` in HTML
 
