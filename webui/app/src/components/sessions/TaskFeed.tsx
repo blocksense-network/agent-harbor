@@ -19,7 +19,7 @@ interface TaskFeedProps {
 
 type StatusFilter = Session['status'] | '';
 
-export const TaskFeed: Component<TaskFeedProps> = (props) => {
+export const TaskFeed: Component<TaskFeedProps> = props => {
   const navigate = useNavigate();
   const { selectedSessionId, setSelectedSessionId } = useSession();
   const draftOps = useDrafts(); // Get CRUD operations from context
@@ -116,7 +116,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     props.initialSessions || {
       items: [],
       pagination: { page: 1, perPage: 50, total: 0, totalPages: 0 },
-    }
+    },
   );
 
   // Simple accessor that works synchronously during SSR
@@ -126,7 +126,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     return {
       ...data,
       items: [...data.items].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       ),
     };
   };
@@ -138,7 +138,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
     if (!filter) {
       return sessions;
     }
-    return sessions.filter((session) => session.status === filter);
+    return sessions.filter(session => session.status === filter);
   });
 
   // Refetch function for client-side updates (refreshing)
@@ -188,7 +188,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
         'drafts:',
         draftsList.length,
         'sessions:',
-        sessions.length
+        sessions.length,
       );
     }
 
@@ -311,7 +311,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   // Auto-refresh sessions every 30 seconds and setup draft creation listeners
   onMount(() => {
     const interval = setInterval(() => {
-      setRefreshTrigger((prev) => prev + 1);
+      setRefreshTrigger(prev => prev + 1);
     }, 30000);
 
     // Listen for draft creation events (client-side only)
@@ -320,7 +320,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
         if (!import.meta.env.PROD) {
           console.log('[TaskFeed] Draft created, refetching...');
         }
-        setDraftsRefreshTrigger((prev) => prev + 1);
+        setDraftsRefreshTrigger(prev => prev + 1);
       };
       window.addEventListener('draft-created', handleDraftCreated);
 
@@ -336,7 +336,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
   const handleStopSession = async (sessionId: string) => {
     try {
       await apiClient.stopSession(sessionId);
-      setRefreshTrigger((prev) => prev + 1); // Refresh the list
+      setRefreshTrigger(prev => prev + 1); // Refresh the list
     } catch (error) {
       console.error('Failed to stop session:', error);
       addToast('error', 'Failed to stop session. Please try again.');
@@ -351,7 +351,7 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
         onClick: async () => {
           try {
             await apiClient.cancelSession(sessionId);
-            setRefreshTrigger((prev) => prev + 1); // Refresh the list
+            setRefreshTrigger(prev => prev + 1); // Refresh the list
             addToast('success', 'Session cancelled successfully');
           } catch (error) {
             console.error('Failed to cancel session:', error);
@@ -414,12 +414,12 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
               `}
               aria-label="Filter sessions by status"
               value={statusFilter()}
-              onInput={(event) => {
+              onInput={event => {
                 setStatusFilter(event.currentTarget.value as StatusFilter);
               }}
             >
               <For each={statusOptions}>
-                {(option) => <option value={option.value}>{option.label}</option>}
+                {option => <option value={option.value}>{option.label}</option>}
               </For>
             </select>
           </div>
@@ -454,17 +454,17 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                               'keyboardIndex:',
                               keyboardSelectedIndex(),
                               'globalIndex:',
-                              globalIndex
+                              globalIndex,
                             );
                           }
                         }}
-                        onUpdate={async (updates) => {
+                        onUpdate={async updates => {
                           const success = await draftOps.updateDraft(draft.id, updates);
                           if (success) {
                             // Update local draft list optimistically
-                            setClientDrafts((prev) =>
+                            setClientDrafts(prev =>
                               prev
-                                .map((d) =>
+                                .map(d =>
                                   d.id === draft.id
                                     ? ({
                                         ...d,
@@ -478,9 +478,9 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                                             }
                                           : d.repo,
                                       } as DraftTask)
-                                    : d
+                                    : d,
                                 )
-                                .map((d) => d as DraftTask)
+                                .map(d => d as DraftTask),
                             );
                           }
                         }}
@@ -488,16 +488,16 @@ export const TaskFeed: Component<TaskFeedProps> = (props) => {
                           const success = await draftOps.removeDraft(draft.id);
                           if (success) {
                             // Update local draft list
-                            setClientDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+                            setClientDrafts(prev => prev.filter(d => d.id !== draft.id));
                           }
                         }}
-                        onTaskCreated={async (taskId) => {
+                        onTaskCreated={async taskId => {
                           // Refresh the session list after creating a task
                           refetch();
                           // Remove the draft after creating the task
                           const success = await draftOps.removeDraft(draft.id);
                           if (success) {
-                            setClientDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+                            setClientDrafts(prev => prev.filter(d => d.id !== draft.id));
                           }
                           props.onDraftTaskCreated?.(taskId);
                         }}

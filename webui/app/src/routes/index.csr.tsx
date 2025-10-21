@@ -48,7 +48,7 @@ export default function Dashboard() {
         <TaskFeed
           initialSessions={sessionsData()!}
           initialDrafts={draftsData()!}
-          onDraftTaskCreated={(taskId) => {
+          onDraftTaskCreated={taskId => {
             console.log(`Task created: ${taskId}`);
             // Could add announcement here if needed
           }}

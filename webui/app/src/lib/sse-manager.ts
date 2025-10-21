@@ -35,11 +35,11 @@ export function subscribeToSession(sessionId: string, callback: EventCallback): 
   if (!subscription) {
     // No existing connection - create new one
     console.log(`[SSEManager] Creating NEW EventSource for session ${sessionId}`);
-    const eventSource = apiClient.subscribeToSessionEvents(sessionId, (event) => {
+    const eventSource = apiClient.subscribeToSessionEvents(sessionId, event => {
       // Notify all callbacks interested in this session
       const sub = activeConnections.get(sessionId);
       if (sub) {
-        sub.callbacks.forEach((cb) => cb(event));
+        sub.callbacks.forEach(cb => cb(event));
       }
     });
 
@@ -56,7 +56,7 @@ export function subscribeToSession(sessionId: string, callback: EventCallback): 
   // Add this callback to the set
   subscription.callbacks.add(callback);
   console.log(
-    `[SSEManager] Session ${sessionId} now has ${subscription.callbacks.size} subscribers`
+    `[SSEManager] Session ${sessionId} now has ${subscription.callbacks.size} subscribers`,
   );
 
   // Return unsubscribe function
@@ -70,7 +70,7 @@ export function subscribeToSession(sessionId: string, callback: EventCallback): 
       // If no more callbacks, close the EventSource
       if (sub.callbacks.size === 0) {
         console.log(
-          `[SSEManager] No more subscribers for session ${sessionId} - closing EventSource`
+          `[SSEManager] No more subscribers for session ${sessionId} - closing EventSource`,
         );
         sub.eventSource.close();
         activeConnections.delete(sessionId);
@@ -85,7 +85,7 @@ export function subscribeToSession(sessionId: string, callback: EventCallback): 
 export function getConnectionStats() {
   return {
     activeSessions: activeConnections.size,
-    sessions: Array.from(activeConnections.keys()).map((sessionId) => ({
+    sessions: Array.from(activeConnections.keys()).map(sessionId => ({
       sessionId,
       subscriberCount: activeConnections.get(sessionId)?.callbacks.size || 0,
     })),

@@ -14,7 +14,7 @@ interface BreadcrumbContextValue {
 
 const BreadcrumbContext = createContext<BreadcrumbContextValue>();
 
-export const BreadcrumbProvider: Component<{ children: JSX.Element }> = (props) => {
+export const BreadcrumbProvider: Component<{ children: JSX.Element }> = props => {
   const [breadcrumbs, setBreadcrumbs] = createSignal<BreadcrumbItem[]>([]);
 
   const clearBreadcrumbs = () => setBreadcrumbs([]);

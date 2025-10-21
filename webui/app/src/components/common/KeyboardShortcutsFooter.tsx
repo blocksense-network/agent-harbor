@@ -13,7 +13,7 @@ export interface KeyboardShortcutsFooterProps {
   };
 }
 
-export const KeyboardShortcutsFooter: Component<KeyboardShortcutsFooterProps> = (props) => {
+export const KeyboardShortcutsFooter: Component<KeyboardShortcutsFooterProps> = props => {
   const [isMac, setIsMac] = createSignal(false);
 
   // Detect platform for keyboard shortcut display

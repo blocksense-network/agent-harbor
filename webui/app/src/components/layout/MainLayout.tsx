@@ -11,7 +11,7 @@ interface MainLayoutProps {
   onNewDraft?: () => void;
 }
 
-export const MainLayout: Component<MainLayoutProps> = (props) => {
+export const MainLayout: Component<MainLayoutProps> = props => {
   const location = useLocation();
   const { focusState } = useFocus();
   const { breadcrumbs } = useBreadcrumbs();

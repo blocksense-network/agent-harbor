@@ -47,7 +47,7 @@ declare module 'tom-select' {
   }
 }
 
-export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
+export const ModelMultiSelect: Component<ModelMultiSelectProps> = props => {
   let selectRef: HTMLSelectElement | undefined;
   let tomSelect: TomSelect | undefined;
   let dropdownClickHandler: ((event: MouseEvent) => void) | undefined;
@@ -123,7 +123,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
 
   const commitCounts = (
     nextCounts: CountsMap,
-    options: { notifyParent?: boolean; manageSelection?: boolean } = {}
+    options: { notifyParent?: boolean; manageSelection?: boolean } = {},
   ) => {
     externalSyncKey = JSON.stringify(nextCounts);
     setCounts(nextCounts);
@@ -135,7 +135,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       }
 
       if (options.manageSelection !== false) {
-        const selectedValues = models().filter((model) => (nextCounts[model] ?? 0) > 0);
+        const selectedValues = models().filter(model => (nextCounts[model] ?? 0) > 0);
 
         for (const value of [...tomSelect.items]) {
           if (!selectedValues.includes(value)) {
@@ -170,7 +170,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
       min?: number;
       notifyParent?: boolean;
       manageSelection?: boolean;
-    } = {}
+    } = {},
   ) => {
     const current = counts();
     const min = options.min ?? 0;
@@ -305,12 +305,12 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
     setCounts(initialCounts);
 
     tomSelect = new TomSelect(selectRef!, {
-      options: models().map((model) => ({
+      options: models().map(model => ({
         value: model,
         label: model,
         count: initialCounts[model] ?? 0,
       })),
-      items: models().filter((model) => (initialCounts[model] ?? 0) > 0),
+      items: models().filter(model => (initialCounts[model] ?? 0) > 0),
       placeholder: props.placeholder ?? 'Models',
       valueField: 'value',
       labelField: 'label',
@@ -478,7 +478,7 @@ export const ModelMultiSelect: Component<ModelMultiSelectProps> = (props) => {
   return (
     <div data-testid={props.testId} class={containerClass()}>
       <select ref={selectRef} multiple class="tom-select-input">
-        <For each={models()}>{(model) => <option value={model}>{model}</option>}</For>
+        <For each={models()}>{model => <option value={model}>{model}</option>}</For>
       </select>
     </div>
   );

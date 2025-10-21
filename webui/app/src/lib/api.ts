@@ -357,7 +357,7 @@ class ApiClient {
     // Fallback for generic messages
     eventSource.onmessage = handleEvent;
 
-    eventSource.onerror = (error) => {
+    eventSource.onerror = error => {
       console.error('SSE connection error:', error);
     };
 
