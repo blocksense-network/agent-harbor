@@ -15,8 +15,10 @@ fn main() {
     let binding_result = KeyBinding::from_string("Ctrl+A");
     match binding_result {
         Ok(binding) => {
-            println!("Parsed Ctrl+A: ctrl={}, alt={}, shift={}, super={}, key='{}'",
-                    binding.ctrl, binding.alt, binding.shift, binding.super_key, binding.key);
+            println!(
+                "Parsed Ctrl+A: ctrl={}, alt={}, shift={}, super={}, key='{}'",
+                binding.ctrl, binding.alt, binding.shift, binding.super_key, binding.key
+            );
 
             // Test matcher creation
             let matcher = binding.to_matcher().unwrap();
@@ -48,10 +50,13 @@ fn main() {
     let shortcut = KeyboardShortcut::new(KeyboardOperation::MoveToBeginningOfLine, matchers);
     let event = crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Char('a'),
-        crossterm::event::KeyModifiers::CONTROL
+        crossterm::event::KeyModifiers::CONTROL,
     );
 
-    println!("Shortcut matches Ctrl+A event: {}", shortcut.matches(&event));
+    println!(
+        "Shortcut matches Ctrl+A event: {}",
+        shortcut.matches(&event)
+    );
     println!("Display strings: {:?}", shortcut.display_strings());
 
     // Test localization

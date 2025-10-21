@@ -442,7 +442,21 @@ impl InlineAutocomplete {
 
     /// Returns true when the menu has open state and at least one result to show
     pub fn is_open(&self) -> bool {
-        self.vm.open && !self.vm.results.is_empty()
+        self.vm.open
+    }
+
+    pub fn get_query(&self) -> &str {
+        &self.vm.query
+    }
+
+    /// Set autocomplete state for testing purposes
+    pub fn set_test_state(&mut self, open: bool, query: &str, results: Vec<ScoredMatch>) {
+        self.vm.open = open;
+        self.vm.query = query.to_string();
+        self.vm.results = results;
+        // For testing, we need to set the trigger based on the query
+        // Assume '/' trigger for testing purposes since our tests use '/'
+        self.vm.trigger = Some(Trigger::Slash);
     }
 
     /// Move the highlighted selection forward, wrapping to the first item.
@@ -483,18 +497,19 @@ impl InlineAutocomplete {
         }
         if let Some((trigger, token, query)) = extract_token(textarea) {
             let same_trigger = self.vm.trigger == Some(trigger);
-            let same_token = self.vm.token.as_ref() == Some(&token);
-            let same_query = self.vm.query == query;
 
-            if same_trigger && same_token && same_query {
-                // No textual change – keep the menu visible without rescheduling work
-                self.vm.open = !self.vm.results.is_empty();
+            if same_trigger {
+                // Same trigger – keep the menu visible without rescheduling work
+                // This handles cursor movement within the same token (e.g., "/te" vs "/t")
+                // Keep the menu open if it was already open (for loading states), otherwise open if we have results
+                self.vm.open = self.vm.open || !self.vm.results.is_empty();
+                self.vm.token = Some(token);
+                self.vm.query = query.clone(); // Update query as cursor moves
                 return;
             }
 
-            if !same_trigger || !same_token || !same_query {
-                self.vm.selected = 0;
-            }
+            // New trigger context - reset selection
+            self.vm.selected = 0;
             self.vm.trigger = Some(trigger);
             self.vm.token = Some(token);
             self.vm.query = query.clone();

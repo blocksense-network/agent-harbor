@@ -63,6 +63,11 @@ pub use task_execution::{
     AgentActivityRow, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
 };
 
+// Filter bar types are defined in this module, no need to re-export them
+
+// External dependencies
+use ratatui::style::Color;
+
 // Common UI types used across view models
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FocusElement {
@@ -83,7 +88,7 @@ pub enum FocusElement {
     BranchButton,
     ModelButton,
     StopButton(usize),
-    Filter(usize),
+    Filter(FilterControl),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -168,4 +173,66 @@ pub enum AutoSaveState {
     Saving,
     Unsaved,
     Error(String),
+}
+
+/// Filter control types for task filtering
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FilterControl {
+    Repository,
+    Status,
+    Creator,
+}
+
+impl FilterControl {
+    pub fn index(self) -> usize {
+        match self {
+            FilterControl::Repository => 0,
+            FilterControl::Status => 1,
+            FilterControl::Creator => 2,
+        }
+    }
+}
+
+/// Filter bar view model containing all state needed for rendering
+#[derive(Debug, Clone)]
+pub struct FilterBarViewModel {
+    pub repository_value: String,
+    pub status_value: String,
+    pub creator_value: String,
+    pub focused_element: Option<FilterControl>,
+    pub filter_bar_focused: bool,
+}
+
+impl Default for FilterBarViewModel {
+    fn default() -> Self {
+        Self {
+            repository_value: "All".to_string(),
+            status_value: "All".to_string(),
+            creator_value: "All".to_string(),
+            focused_element: None,
+            filter_bar_focused: false,
+        }
+    }
+}
+
+/// Theme for filter bar styling
+#[derive(Debug, Clone)]
+pub struct FilterBarTheme {
+    pub border: Color,
+    pub border_focused: Color,
+    pub text: Color,
+    pub muted: Color,
+    pub primary: Color,
+}
+
+impl Default for FilterBarTheme {
+    fn default() -> Self {
+        Self {
+            border: Color::Blue,
+            border_focused: Color::Cyan,
+            text: Color::White,
+            muted: Color::Gray,
+            primary: Color::Blue,
+        }
+    }
 }

@@ -4,54 +4,54 @@
 //! with clean separation between Model (business logic), ViewModel (UI logic),
 //! and View (rendering).
 
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
+use crossbeam_channel as chan;
 use crossterm::{
+    ExecutableCommand,
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event,
-        KeyEventKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-        KeyboardEnhancementFlags,
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind,
+        KeyboardEnhancementFlags, MouseButton, MouseEventKind, PopKeyboardEnhancementFlags,
+        PushKeyboardEnhancementFlags,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
 };
-use std::{
-    io::stdout,
-    time::Duration,
-    sync::atomic::{AtomicBool, Ordering},
-    sync::Arc,
-    thread,
-    panic,
-    fs::OpenOptions,
-};
-use tracing::{trace};
-use tracing_subscriber;
 use futures::StreamExt;
-use crossbeam_channel as chan;
+use ratatui::{Terminal, backend::CrosstermBackend};
+use std::{
+    fs::OpenOptions,
+    io::stdout,
+    panic,
+    sync::Arc,
+    sync::atomic::{AtomicBool, Ordering},
+    thread,
+    time::Duration,
+};
+use tracing::trace;
+use tracing_subscriber;
 
 use tui_exploration::{
-    view_model::ViewModel,
-    view,
-    TaskManager,
-    ViewCache,
+    ModalState, TaskManager, TaskState, ViewCache,
     settings::Settings,
-    TaskState,
-    ModalState,
+    view,
+    view_model::{MouseAction, Msg as ViewModelMsg, ViewModel},
 };
 
-use tui_exploration::workspace_files::GitWorkspaceFiles;
-use ah_workflows::{WorkflowProcessor, WorkflowConfig};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::Theme;
+use ah_tui::view::HitTestRegistry;
+use ah_workflows::{WorkflowConfig, WorkflowProcessor};
 use image::GenericImageView;
+use tui_exploration::workspace_files::GitWorkspaceFiles;
 
 /// Initialize logo rendering components (Picker and StatefulProtocol)
-fn initialize_logo_rendering(bg_color: ratatui::style::Color) -> (Option<ratatui_image::picker::Picker>, Option<ratatui_image::protocol::StatefulProtocol>) {
+fn initialize_logo_rendering(
+    bg_color: ratatui::style::Color,
+) -> (
+    Option<ratatui_image::picker::Picker>,
+    Option<ratatui_image::protocol::StatefulProtocol>,
+) {
+    use image::{DynamicImage, ImageReader};
     use ratatui_image::picker::Picker;
     use ratatui_image::protocol::StatefulProtocol;
-    use image::{DynamicImage, ImageReader};
 
     // Try to create a picker that detects terminal graphics capabilities
     let picker = match Picker::from_query_stdio() {
@@ -95,7 +95,10 @@ fn color_to_rgb_components(color: ratatui::style::Color) -> (u8, u8, u8) {
 }
 
 /// Blend the transparent regions of the logo onto the TUI background color before rendering.
-fn precompose_on_background(image: image::DynamicImage, bg_color: ratatui::style::Color) -> image::DynamicImage {
+fn precompose_on_background(
+    image: image::DynamicImage,
+    bg_color: ratatui::style::Color,
+) -> image::DynamicImage {
     let (r, g, b) = color_to_rgb_components(bg_color);
     let rgba_logo = image.to_rgba8();
     let (width, height) = rgba_logo.dimensions();
@@ -123,14 +126,15 @@ fn pad_to_cell_width(
 
     let pad_width = cell_width - remainder;
     let (r, g, b) = color_to_rgb_components(bg_color);
-    let mut canvas = image::RgbaImage::from_pixel(width + pad_width, height, image::Rgba([r, g, b, 255]));
+    let mut canvas =
+        image::RgbaImage::from_pixel(width + pad_width, height, image::Rgba([r, g, b, 255]));
     image::imageops::overlay(&mut canvas, &image.to_rgba8(), 0, 0);
     image::DynamicImage::ImageRgba8(canvas)
 }
 
 // Simple render function for performance testing
 fn simple_render(frame: &mut ratatui::Frame<'_>, view_model: &mut ViewModel) {
-    use ratatui::{widgets::Paragraph, style::Style};
+    use ratatui::{style::Style, widgets::Paragraph};
 
     let area = frame.area();
     let text = format!(
@@ -182,7 +186,7 @@ fn setup_terminal(enable_raw_mode: bool) -> Result<(), Box<dyn std::error::Error
         KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
             | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
             | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
     ))?;
     KB_FLAGS_PUSHED.store(true, Ordering::SeqCst);
 
@@ -247,12 +251,13 @@ async fn run_app_mvvm(
     let config = WorkflowConfig::default();
     let workspace_workflows = Box::new(
         WorkflowProcessor::for_repo(config, &workspace_dir)
-            .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default()))
+            .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default())),
     );
     let task_manager = Box::new(MockRestClient::with_mock_data());
 
     let settings = Settings::default();
-    let mut view_model = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
+    let mut view_model =
+        ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
 
     // Initialize view cache with image rendering components
     let theme = Theme::default();
@@ -260,6 +265,7 @@ async fn run_app_mvvm(
     let mut view_cache = ViewCache::new();
     view_cache.picker = picker;
     view_cache.logo_protocol = logo_protocol;
+    let mut hit_registry: HitTestRegistry<MouseAction> = HitTestRegistry::new();
 
     // Load initial mock tasks to populate the UI
     view_model.load_initial_tasks().await?;
@@ -306,7 +312,7 @@ async fn run_app_mvvm(
                         );
 
                         // Send key event to ViewModel via message system
-                        let msg = tui_exploration::view_model::Msg::Key(key);
+                        let msg = ViewModelMsg::Key(key);
                         if let Err(error) = view_model.update(msg) {
                             eprintln!("Error handling key event: {}", error);
                         }
@@ -315,9 +321,29 @@ async fn run_app_mvvm(
                         }
                     }
                     Event::Mouse(mouse_event) => {
-                        // Send mouse event to ViewModel
-                        let msg = tui_exploration::view_model::Msg::Mouse(mouse_event);
-                        let _ = view_model.update(msg);
+                        match mouse_event.kind {
+                            MouseEventKind::Down(MouseButton::Left) => {
+                                if let Some(hit) = hit_registry.hit_test(mouse_event.column, mouse_event.row) {
+                                    let msg = ViewModelMsg::MouseClick {
+                                        action: hit.action,
+                                        column: mouse_event.column,
+                                        row: mouse_event.row,
+                                        bounds: hit.rect,
+                                    };
+                                    if let Err(error) = view_model.update(msg) {
+                                        eprintln!("Error handling mouse click: {}", error);
+                                    }
+                                }
+                            }
+                            MouseEventKind::ScrollUp => {
+                                let _ = view_model.update(ViewModelMsg::MouseScrollUp);
+                            }
+                            MouseEventKind::ScrollDown => {
+                                let _ = view_model.update(ViewModelMsg::MouseScrollDown);
+                            }
+                            _ => {}
+                        }
+
                         if view_model.take_exit_request() {
                             break;
                         }
@@ -340,7 +366,7 @@ async fn run_app_mvvm(
                         let size = frame.area();
                         // Use full render for production
                         // simple_render(frame, &mut view_model);
-                        view::render(frame, &mut view_model, &mut view_cache);
+                        view::render(frame, &mut view_model, &mut view_cache, &mut hit_registry);
 
                         // Render modals on top of main UI
                         render_modals(frame, &view_model, size, &theme);
@@ -350,7 +376,7 @@ async fn run_app_mvvm(
             }
             recv(rx_tick) -> _ => {
                 // Handle tick events (activity simulation)
-                let msg = tui_exploration::view_model::Msg::Tick;
+                let msg = ViewModelMsg::Tick;
                 let _ = view_model.update(msg);
 
                 // Only redraw if tick actually changed something
@@ -360,7 +386,7 @@ async fn run_app_mvvm(
                         let size = frame.area();
                         // Use full render for production
                         // simple_render(frame, &mut view_model);
-                        view::render(frame, &mut view_model, &mut view_cache);
+                        view::render(frame, &mut view_model, &mut view_cache, &mut hit_registry);
 
                         // Render modals on top of main UI
                         render_modals(frame, &view_model, size, &theme);
@@ -375,10 +401,15 @@ async fn run_app_mvvm(
 }
 
 /// Render modals on top of the main UI
-fn render_modals(frame: &mut ratatui::Frame, view_model: &ViewModel, area: ratatui::layout::Rect, theme: &ah_tui::Theme) {
+fn render_modals(
+    frame: &mut ratatui::Frame,
+    view_model: &ViewModel,
+    area: ratatui::layout::Rect,
+    theme: &ah_tui::Theme,
+) {
     use ah_tui::view::dialogs::{
-        render_fuzzy_modal, render_model_selection_modal, render_settings_dialog,
-        render_go_to_line_modal, render_find_replace_modal, render_shortcut_help_modal,
+        render_find_replace_modal, render_fuzzy_modal, render_go_to_line_modal,
+        render_model_selection_modal, render_settings_dialog, render_shortcut_help_modal,
     };
 
     match view_model.modal_state {

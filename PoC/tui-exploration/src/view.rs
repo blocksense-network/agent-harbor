@@ -35,18 +35,18 @@
 //! - **Presentation Only**: Focus on visual appearance and user experience
 //! - **Testable**: Rendering logic can be tested independently
 
-use ratatui::{prelude::*, widgets::*};
-use crate::view_model::{ViewModel, InteractiveArea, MouseAction, TaskCardTypeEnum};
-use ah_tui::view_model::{TaskEntryViewModel, TaskExecutionViewModel, DraftSaveState};
-use ah_tui::view_model::{AgentActivityRow};
-use ah_tui::view_model::{FocusElement, TaskCardType};
-use ah_tui::view::{ViewCache, Theme};
+use crate::view_model::{MouseAction, TaskCardTypeEnum, ViewModel};
+use ah_core::TaskStatus;
+use ah_core::task_manager::TaskEvent;
+use ah_domain_types::TaskState;
+use ah_domain_types::task::ToolStatus;
 use ah_tui::view::autocomplete::render_autocomplete;
 use ah_tui::view::draft_card;
-use ah_core::task_manager::TaskEvent;
-use ah_core::TaskStatus;
-use ah_domain_types::task::ToolStatus;
-use ah_domain_types::TaskState;
+use ah_tui::view::{HitTestRegistry, Theme, ViewCache};
+use ah_tui::view_model::AgentActivityRow;
+use ah_tui::view_model::{DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel};
+use ah_tui::view_model::{FocusElement, TaskCardType};
+use ratatui::{prelude::*, widgets::*};
 use ratatui_image::StatefulImage;
 
 /// Display item types (exact same as main.rs)
@@ -57,7 +57,14 @@ enum DisplayItem {
     Spacer,
 }
 
-fn render_header(frame: &mut Frame<'_>, area: Rect, theme: &Theme, view_model: &mut ViewModel, view_cache: &mut ViewCache) {
+fn render_header(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    theme: &Theme,
+    view_model: &mut ViewModel,
+    view_cache: &mut ViewCache,
+    hit_registry: &mut HitTestRegistry<MouseAction>,
+) {
     // Create padded content area within the header
     let content_area = if area.width >= 6 && area.height >= 4 {
         // Add padding: 1 line top/bottom, 2 columns left/right
@@ -117,10 +124,7 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, theme: &Theme, view_model: &
         let button_paragraph = Paragraph::new(button_line);
         frame.render_widget(button_paragraph, button_area);
 
-        view_model.interactive_areas.push(InteractiveArea {
-            rect: button_area,
-            action: MouseAction::OpenSettings,
-        });
+        hit_registry.register(button_area, MouseAction::OpenSettings);
     }
 
     // Try to render the logo as an image first using persisted protocol
@@ -155,14 +159,18 @@ fn render_ascii_logo(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(header, area);
 }
 
-
 /// Main rendering function - transforms ViewModel to Ratatui widgets (exact same as main.rs)
-pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mut ViewCache) {
+pub fn render(
+    frame: &mut Frame<'_>,
+    view_model: &mut ViewModel,
+    view_cache: &mut ViewCache,
+    hit_registry: &mut HitTestRegistry<MouseAction>,
+) {
     let theme = Theme::default();
     let size = frame.area();
 
     // Clear interactive areas before rendering (exact same as main.rs)
-    view_model.interactive_areas.clear();
+    hit_registry.clear();
 
     // Background fill with theme color (exact same as main.rs)
     let bg = Paragraph::new("").style(Style::default().bg(theme.bg));
@@ -177,16 +185,31 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
 
     let (header_height, tasks_height, footer_y, padding_y) = if size.height >= min_total_height {
         // Enough space for full layout
-        (min_header_height, size.height - min_header_height - footer_height - padding_height, size.height - footer_height - padding_height, size.height - padding_height)
+        (
+            min_header_height,
+            size.height - min_header_height - footer_height - padding_height,
+            size.height - footer_height - padding_height,
+            size.height - padding_height,
+        )
     } else if size.height >= 10 {
         // Minimum viable layout
         let available = size.height - footer_height - padding_height;
         let header_actual = (available * 3 / 5).max(3); // 60% for header minimum 3
         let tasks_actual = available - header_actual;
-        (header_actual, tasks_actual, size.height - footer_height - padding_height, size.height - padding_height)
+        (
+            header_actual,
+            tasks_actual,
+            size.height - footer_height - padding_height,
+            size.height - padding_height,
+        )
     } else {
         // Emergency layout for very small terminals
-        (size.height.saturating_sub(2), 0, size.height.saturating_sub(1), size.height)
+        (
+            size.height.saturating_sub(2),
+            0,
+            size.height.saturating_sub(1),
+            size.height,
+        )
     };
 
     let main_layout = if size.height >= 3 {
@@ -213,7 +236,14 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
     };
 
     // Render header
-    render_header(frame, main_layout[0], &theme, view_model, view_cache);
+    render_header(
+        frame,
+        main_layout[0],
+        &theme,
+        view_model,
+        view_cache,
+        hit_registry,
+    );
 
     // Render tasks with screen edge padding (exact same as main.rs)
     let tasks_area_unpadded = main_layout[1];
@@ -266,9 +296,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                 // Calculate height based on card content and presentation needs
                 if let Some(card_info) = view_model.task_id_to_card_info.get(id.as_str()) {
                     match card_info.card_type {
-                        TaskCardTypeEnum::Draft => {
-                            view_model.draft_cards[card_info.index].height
-                        }
+                        TaskCardTypeEnum::Draft => view_model.draft_cards[card_info.index].height,
                         TaskCardTypeEnum::Task => {
                             calculate_task_card_height(&view_model.task_cards[card_info.index])
                         }
@@ -279,17 +307,17 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
             }
         };
 
-            // Only add items that fit within the screen bounds
-            let screen = frame.area();
-            if screen_y + item_height <= screen.height {
-                let rect = Rect {
-                    x: tasks_area.x,
-                    y: screen_y,
-                    width: tasks_area.width,
-                    height: item_height,
-                };
-                item_rects.push((item, rect));
-            }
+        // Only add items that fit within the screen bounds
+        let screen = frame.area();
+        if screen_y + item_height <= screen.height {
+            let rect = Rect {
+                x: tasks_area.x,
+                y: screen_y,
+                width: tasks_area.width,
+                height: item_height,
+            };
+            item_rects.push((item, rect));
+        }
         screen_y = screen_y.saturating_add(item_height);
     }
 
@@ -297,10 +325,13 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
     for (item, rect) in item_rects {
         match item {
             DisplayItem::Spacer => {
-                frame.render_widget(Paragraph::new("").style(Style::default().bg(theme.bg)), rect);
+                frame.render_widget(
+                    Paragraph::new("").style(Style::default().bg(theme.bg)),
+                    rect,
+                );
             }
             DisplayItem::FilterBar => {
-                render_filter_bar(frame, rect, view_model, &theme, view_cache);
+                render_filter_bar(frame, rect, view_model, &theme, view_cache, hit_registry);
             }
             DisplayItem::Task(id) => {
                 // Find and render the card using fast lookup
@@ -309,9 +340,28 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                         TaskCardTypeEnum::Draft => {
                             let card = &view_model.draft_cards[card_info.index];
                             let is_selected = matches!(view_model.focus_element, FocusElement::DraftTask(idx) if idx == card_info.index);
-                            let textarea_area = draft_card::render_draft_card(frame, rect, card, &theme, is_selected);
+                            let layout = draft_card::render_draft_card(
+                                frame,
+                                rect,
+                                card,
+                                &theme,
+                                is_selected,
+                            );
+                            hit_registry.register(
+                                layout.textarea,
+                                MouseAction::FocusDraftTextarea(card_info.index),
+                            );
+                            hit_registry.register(
+                                layout.repository_button,
+                                MouseAction::ActivateRepositoryModal,
+                            );
+                            hit_registry
+                                .register(layout.branch_button, MouseAction::ActivateBranchModal);
+                            hit_registry
+                                .register(layout.model_button, MouseAction::ActivateModelModal);
+                            hit_registry.register(layout.go_button, MouseAction::LaunchTask);
                             // Store textarea area for autocomplete positioning
-                            view_model.last_textarea_area = Some(textarea_area);
+                            view_model.last_textarea_area = Some(layout.textarea);
                             0 // Draft card is always at index 0
                         }
                         TaskCardTypeEnum::Task => {
@@ -323,10 +373,7 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
                     };
 
                     // Add interactive area for the card
-                    view_model.interactive_areas.push(InteractiveArea {
-                        rect,
-                        action: MouseAction::SelectCard(card_index),
-                    });
+                    hit_registry.register(rect, MouseAction::SelectCard(card_index));
                 }
             }
         }
@@ -362,21 +409,33 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
             if let Some(textarea_area) = find_textarea_area_for_card(view_model, card, tasks_area) {
                 // Use simplified cursor positioning logic
                 let (cursor_row, cursor_col) = card.description.cursor();
-                let caret_x = textarea_area.x.saturating_add(cursor_col as u16).min(textarea_area.x + textarea_area.width - 1);
-                let caret_y = textarea_area.y.saturating_add(cursor_row as u16).min(textarea_area.y + textarea_area.height - 1);
+                let caret_x = textarea_area
+                    .x
+                    .saturating_add(cursor_col as u16)
+                    .min(textarea_area.x + textarea_area.width - 1);
+                let caret_y = textarea_area
+                    .y
+                    .saturating_add(cursor_row as u16)
+                    .min(textarea_area.y + textarea_area.height - 1);
 
                 // Ensure cursor position is within screen bounds
                 let screen = frame.area();
                 let safe_caret_x = caret_x.min(screen.x + screen.width - 1);
                 let safe_caret_y = caret_y.min(screen.y + screen.height - 1);
 
-                frame.set_cursor_position(ratatui::layout::Position::new(safe_caret_x, safe_caret_y));
+                frame.set_cursor_position(ratatui::layout::Position::new(
+                    safe_caret_x,
+                    safe_caret_y,
+                ));
             }
         }
     }
 
     // Render autocomplete menu if textarea area is available
-    if let (Some(area), Some(card)) = (view_model.last_textarea_area, view_model.draft_cards.first()) {
+    if let (Some(area), Some(card)) = (
+        view_model.last_textarea_area,
+        view_model.draft_cards.first(),
+    ) {
         render_autocomplete(
             view_model.autocomplete.menu_state(),
             frame,
@@ -389,48 +448,56 @@ pub fn render(frame: &mut Frame<'_>, view_model: &mut ViewModel, view_cache: &mu
 }
 
 // Helper function to find the textarea area for a given card (needed for cursor positioning)
-fn find_textarea_area_for_card(_view_model: &ViewModel, _card: &TaskEntryViewModel, tasks_area: Rect) -> Option<Rect> {
+fn find_textarea_area_for_card(
+    _view_model: &ViewModel,
+    _card: &TaskEntryViewModel,
+    tasks_area: Rect,
+) -> Option<Rect> {
     // For draft cards, the textarea is positioned with left/right padding of 1
     // and starts after the top border + top padding
     // This is a simplified calculation - in a full implementation you'd track exact positions
     Some(Rect::new(
-        tasks_area.x + 1, // Left padding
-        tasks_area.y + 1, // Top border + top padding
+        tasks_area.x + 1,                   // Left padding
+        tasks_area.y + 1,                   // Top border + top padding
         tasks_area.width.saturating_sub(2), // Left + right padding
         5, // Approximate visible lines - should match actual calculation
     ))
 }
 
-
 /// Render a task card (exact same as main.rs TaskCard::render for Active/Completed/Merged)
-fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme, is_selected: bool) {
+fn render_task_card(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    card: &TaskExecutionViewModel,
+    theme: &Theme,
+    is_selected: bool,
+) {
     let display_title = match card.card_type {
         TaskCardType::Active { .. } => {
             // Active cards just show the title
             if card.title.len() > 40 {
                 format!("{}...", &card.title[..37])
-    } else {
+            } else {
                 card.title.clone()
             }
-        },
+        }
         TaskCardType::Completed { .. } | TaskCardType::Merged { .. } => {
             // Completed/merged cards show checkmark + title
-            let title = if card.title.len() > 35 { // Leave space for checkmark
+            let title = if card.title.len() > 35 {
+                // Leave space for checkmark
                 format!("{}...", &card.title[..32])
-        } else {
+            } else {
                 card.title.clone()
             };
             format!("✓ {}", title)
-        },
+        }
     };
 
     let card_block = theme.card_block(&display_title);
 
     // Apply selection highlighting
     let final_card_block = if is_selected {
-        card_block.border_style(
-            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
-        )
+        card_block.border_style(Style::default().fg(theme.primary).add_modifier(Modifier::BOLD))
     } else {
         card_block
     };
@@ -447,18 +514,26 @@ fn render_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewM
     }
 }
 
-
-
 /// Render active task card (exact same as main.rs TaskCard::render_active_card)
-fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme) {
+fn render_active_task_card(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    card: &TaskExecutionViewModel,
+    theme: &Theme,
+) {
     // First line: metadata on left, Stop button on right
     let agents_text = if card.metadata.models.is_empty() {
         "No agents".to_string()
     } else if card.metadata.models.len() == 1 {
-        format!("{} (x{})", card.metadata.models[0].name, card.metadata.models[0].count)
+        format!(
+            "{} (x{})",
+            card.metadata.models[0].name, card.metadata.models[0].count
+        )
     } else {
         let agent_strings: Vec<String> = card
-            .metadata.models.iter()
+            .metadata
+            .models
+            .iter()
             .map(|model| format!("{} (x{})", model.name, model.count))
             .collect();
         agent_strings.join(", ")
@@ -507,7 +582,10 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
     let title_line = Line::from(line_spans);
 
     // Activity lines - display activity entries
-    let activity_lines: Vec<Line> = if let TaskCardType::Active { activity_entries, .. } = &card.card_type {
+    let activity_lines: Vec<Line> = if let TaskCardType::Active {
+        activity_entries, ..
+    } = &card.card_type
+    {
         // Convert the activity entries to display lines (may be multiple lines per entry)
         let mut all_lines = Vec::new();
         for entry in activity_entries.iter().rev().take(3).rev() {
@@ -519,11 +597,19 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
                         Span::styled(thought.clone(), Style::default().fg(theme.text)),
                     ]));
                 }
-                AgentActivityRow::AgentEdit { file_path, lines_added, lines_removed, description } => {
+                AgentActivityRow::AgentEdit {
+                    file_path,
+                    lines_added,
+                    lines_removed,
+                    description,
+                } => {
                     let desc = if let Some(desc) = description.as_ref() {
                         desc.clone()
                     } else {
-                        format!("Modified {} (+{}, -{})", file_path, lines_added, lines_removed)
+                        format!(
+                            "Modified {} (+{}, -{})",
+                            file_path, lines_added, lines_removed
+                        )
                     };
                     all_lines.push(Line::from(vec![
                         Span::styled("📝", Style::default().fg(theme.accent)),
@@ -531,7 +617,13 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
                         Span::styled(desc, Style::default().fg(theme.text)),
                     ]));
                 }
-                AgentActivityRow::ToolUse { tool_name, last_line, completed, status, .. } => {
+                AgentActivityRow::ToolUse {
+                    tool_name,
+                    last_line,
+                    completed,
+                    status,
+                    ..
+                } => {
                     if *completed {
                         // Completed tool: show final result
                         let status_icon = match status {
@@ -545,20 +637,29 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
                             "Completed".to_string()
                         };
                         all_lines.push(Line::from(vec![
-                            Span::styled(status_icon, Style::default().fg(match status {
-                                ToolStatus::Completed => theme.success,
-                                ToolStatus::Failed => theme.error,
-                                ToolStatus::Started => theme.warning,
-                            })),
+                            Span::styled(
+                                status_icon,
+                                Style::default().fg(match status {
+                                    ToolStatus::Completed => theme.success,
+                                    ToolStatus::Failed => theme.error,
+                                    ToolStatus::Started => theme.warning,
+                                }),
+                            ),
                             Span::raw(" "),
-                            Span::styled(format!("{}: {}", tool_name, result_text), Style::default().fg(theme.text)),
+                            Span::styled(
+                                format!("{}: {}", tool_name, result_text),
+                                Style::default().fg(theme.text),
+                            ),
                         ]));
                     } else if let Some(line) = last_line {
                         // Tool with output: show tool name + indented output (two lines)
                         all_lines.push(Line::from(vec![
                             Span::styled("🔧", Style::default().fg(theme.primary)),
                             Span::raw(" "),
-                            Span::styled(format!("Tool usage: {}", tool_name), Style::default().fg(theme.text)),
+                            Span::styled(
+                                format!("Tool usage: {}", tool_name),
+                                Style::default().fg(theme.text),
+                            ),
                         ]));
                         all_lines.push(Line::from(vec![
                             Span::raw("  "),
@@ -569,7 +670,10 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
                         all_lines.push(Line::from(vec![
                             Span::styled("🔧", Style::default().fg(theme.primary)),
                             Span::raw(" "),
-                            Span::styled(format!("Tool usage: {}", tool_name), Style::default().fg(theme.text)),
+                            Span::styled(
+                                format!("Tool usage: {}", tool_name),
+                                Style::default().fg(theme.text),
+                            ),
                         ]));
                     }
                 }
@@ -578,13 +682,11 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
         all_lines
     } else {
         // Fallback for non-active cards (shouldn't happen)
-        vec![
-            Line::from(vec![
-                Span::styled("❓", Style::default().fg(theme.muted)),
-                Span::raw(" "),
-                Span::styled("No activity data", Style::default().fg(theme.text)),
-            ]),
-        ]
+        vec![Line::from(vec![
+            Span::styled("❓", Style::default().fg(theme.muted)),
+            Span::raw(" "),
+            Span::styled("No activity data", Style::default().fg(theme.text)),
+        ])]
     };
 
     // Build all_lines: title + separator + activity lines + spacing + padding to fill inner area
@@ -606,15 +708,15 @@ fn render_active_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecuti
 
     // Render all lines (7 lines to fill inner area)
     for (i, line) in all_lines.iter().enumerate() {
-            let line_area = Rect {
-                x: area.x, // ACTIVE_TASK_LEFT_PADDING = 0
-                y: area.y + i as u16,
-                width: area.width,
-                height: 1,
-            };
-            let para = Paragraph::new(line.clone());
-            frame.render_widget(para, line_area);
-        }
+        let line_area = Rect {
+            x: area.x, // ACTIVE_TASK_LEFT_PADDING = 0
+            y: area.y + i as u16,
+            width: area.width,
+            height: 1,
+        };
+        let para = Paragraph::new(line.clone());
+        frame.render_widget(para, line_area);
+    }
 }
 
 /// Calculate the summary of changes from activity entries
@@ -640,12 +742,18 @@ fn calculate_task_card_height(card: &TaskExecutionViewModel) -> u16 {
 }
 
 /// Render completed/merged task card (exact same as main.rs TaskCard::render_completed_card)
-fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExecutionViewModel, theme: &Theme) {
+fn render_completed_task_card(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    card: &TaskExecutionViewModel,
+    theme: &Theme,
+) {
     // Parse delivery indicators and apply proper colors
     let delivery_spans = if card.metadata.delivery_indicators.is_empty() {
         vec![Span::styled("⎇ br", Style::default().fg(theme.primary))]
     } else {
-        card.metadata.delivery_indicators
+        card.metadata
+            .delivery_indicators
             .split_whitespace()
             .flat_map(|indicator| match indicator {
                 "⎇" => vec![
@@ -668,9 +776,15 @@ fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExec
     let agents_text = if card.metadata.models.is_empty() {
         "No agents".to_string()
     } else if card.metadata.models.len() == 1 {
-        format!("{} (x{})", card.metadata.models[0].name, card.metadata.models[0].count)
+        format!(
+            "{} (x{})",
+            card.metadata.models[0].name, card.metadata.models[0].count
+        )
     } else {
-        let agent_strings: Vec<String> = card.metadata.models.iter()
+        let agent_strings: Vec<String> = card
+            .metadata
+            .models
+            .iter()
             .map(|model| format!("{} (x{})", model.name, model.count))
             .collect();
         agent_strings.join(", ")
@@ -699,7 +813,10 @@ fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExec
 
     // Add summary of changes
     metadata_spans.push(Span::raw(" • "));
-    metadata_spans.push(Span::styled(change_summary, Style::default().fg(theme.muted)));
+    metadata_spans.push(Span::styled(
+        change_summary,
+        Style::default().fg(theme.muted),
+    ));
 
     let metadata_line = Line::from(metadata_spans);
 
@@ -708,8 +825,14 @@ fn render_completed_task_card(frame: &mut Frame<'_>, area: Rect, card: &TaskExec
     frame.render_widget(paragraph, area);
 }
 
-
-fn render_filter_bar(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, theme: &Theme, view_cache: &mut ViewCache) {
+fn render_filter_bar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    view_model: &ViewModel,
+    theme: &Theme,
+    view_cache: &mut ViewCache,
+    hit_registry: &mut HitTestRegistry<MouseAction>,
+) {
     let repo_label = "All".to_string(); // TODO: Get from view_model
     let status_label = "All".to_string(); // TODO: Get from view_model
     let creator_label = "All".to_string(); // TODO: Get from view_model
@@ -746,19 +869,34 @@ fn render_filter_bar(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, 
         Style::default().fg(theme.text)
     };
     push_span(&mut spans, &mut consumed, "Repo ", header_style);
-    push_span(&mut spans, &mut consumed, &format!("[{}]", repo_label), repo_style);
+    push_span(
+        &mut spans,
+        &mut consumed,
+        &format!("[{}]", repo_label),
+        repo_style,
+    );
 
     push_span(&mut spans, &mut consumed, "  ", Style::default());
 
     let status_style = Style::default().fg(theme.text); // TODO: match focus
     push_span(&mut spans, &mut consumed, "Status ", header_style);
-    push_span(&mut spans, &mut consumed, &format!("[{}]", status_label), status_style);
+    push_span(
+        &mut spans,
+        &mut consumed,
+        &format!("[{}]", status_label),
+        status_style,
+    );
 
     push_span(&mut spans, &mut consumed, "  ", Style::default());
 
     let creator_style = Style::default().fg(theme.text); // TODO: match focus
     push_span(&mut spans, &mut consumed, "Creator ", header_style);
-    push_span(&mut spans, &mut consumed, &format!("[{}]", creator_label), creator_style);
+    push_span(
+        &mut spans,
+        &mut consumed,
+        &format!("[{}]", creator_label),
+        creator_style,
+    );
 
     let line_width = area.width as usize;
     if consumed < line_width {
@@ -772,6 +910,8 @@ fn render_filter_bar(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, 
     }
 
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
+
+    hit_registry.register(area, MouseAction::SelectFilterBarLine);
 }
 
 fn render_footer(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, theme: &Theme) {
@@ -817,7 +957,10 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, them
 
         spans.push(Span::styled(key_display, theme.primary_style()));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(shortcut.operation.english_description().to_string(), style));
+        spans.push(Span::styled(
+            shortcut.operation.english_description().to_string(),
+            style,
+        ));
     }
 
     frame.render_widget(
@@ -825,7 +968,6 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, them
         footer_area,
     );
 }
-
 
 /// Format a DraftSaveState for display
 fn format_save_state(state: &DraftSaveState) -> String {

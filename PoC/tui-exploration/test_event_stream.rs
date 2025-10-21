@@ -1,8 +1,9 @@
 //! Simple test program to verify TaskEvent streaming works
 
-use futures::StreamExt;
-use tui_exploration::{TaskManager, TaskLaunchParams, SelectedModel};
+use ah_core::task_manager::TaskManager;
 use ah_rest_mock_client::MockRestClient;
+use futures::StreamExt;
+use tui_exploration::{SelectedModel, TaskLaunchParams};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Runtime::new()?.block_on(async_main())

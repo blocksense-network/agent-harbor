@@ -1,9 +1,23 @@
 //! Renders draft task cards with textarea and control buttons.
 
-use ratatui::{prelude::*, widgets::*};
+use ratatui::{
+    layout::{Constraint, Direction, Layout},
+    prelude::*,
+    widgets::*,
+};
 
 use super::Theme;
 use crate::view_model::{FocusElement, TaskEntryViewModel};
+
+/// Geometry describing interactive regions inside a rendered draft card.
+#[derive(Debug, Clone, Copy)]
+pub struct DraftCardLayout {
+    pub textarea: Rect,
+    pub repository_button: Rect,
+    pub branch_button: Rect,
+    pub model_button: Rect,
+    pub go_button: Rect,
+}
 
 /// Render a draft card (exact same as main.rs TaskCard::render with state == Draft)
 /// Returns the textarea area for autocomplete positioning
@@ -13,7 +27,7 @@ pub fn render_draft_card(
     card: &TaskEntryViewModel,
     theme: &Theme,
     is_selected: bool,
-) -> Rect {
+) -> DraftCardLayout {
     // Draft cards have outer border with "New Task" title
     let border_style = if is_selected {
         Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
@@ -47,7 +61,7 @@ pub fn render_draft_card_content(
     card: &TaskEntryViewModel,
     theme: &Theme,
     is_selected: bool,
-) -> Rect {
+) -> DraftCardLayout {
     let content_height = area.height as usize;
 
     // Split the available area between textarea and buttons (exact same as main.rs)
@@ -154,77 +168,88 @@ pub fn render_draft_card_content(
         format!("🤖 {} model(s)", card.models.len())
     };
 
-    let go_button_text = "⏎ Go".to_string();
+    let button_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Ratio(3, 10),
+            Constraint::Ratio(3, 10),
+            Constraint::Ratio(3, 10),
+            Constraint::Ratio(1, 10),
+        ])
+        .split(button_area);
 
-    // Create button spans with focus styling using theme - exactly like main.rs
-    let repo_button =
+    let repo_style =
         if is_selected && matches!(card.focus_element, FocusElement::RepositorySelector) {
-            Span::styled(format!(" {} ", repo_button_text), theme.focused_style())
+            theme.focused_style()
         } else {
-            Span::styled(
-                format!(" {} ", repo_button_text),
-                Style::default()
-                    .fg(theme.primary)
-                    .bg(theme.surface)
-                    .add_modifier(Modifier::BOLD),
-            )
+            Style::default()
+                .fg(theme.primary)
+                .bg(theme.surface)
+                .add_modifier(Modifier::BOLD)
         };
 
-    let branch_button = if is_selected && matches!(card.focus_element, FocusElement::BranchSelector)
+    let branch_style = if is_selected && matches!(card.focus_element, FocusElement::BranchSelector)
     {
-        Span::styled(format!(" {} ", branch_button_text), theme.focused_style())
+        theme.focused_style()
     } else {
-        Span::styled(
-            format!(" {} ", branch_button_text),
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD),
-        )
+        Style::default()
+            .fg(theme.primary)
+            .bg(theme.surface)
+            .add_modifier(Modifier::BOLD)
     };
 
-    let models_button = if is_selected && matches!(card.focus_element, FocusElement::ModelSelector)
-    {
-        Span::styled(format!(" {} ", models_button_text), theme.focused_style())
+    let model_style = if is_selected && matches!(card.focus_element, FocusElement::ModelSelector) {
+        theme.focused_style()
     } else {
-        Span::styled(
-            format!(" {} ", models_button_text),
-            Style::default()
-                .fg(theme.primary)
-                .bg(theme.surface)
-                .add_modifier(Modifier::BOLD),
-        )
+        Style::default()
+            .fg(theme.primary)
+            .bg(theme.surface)
+            .add_modifier(Modifier::BOLD)
     };
 
-    let go_button = if is_selected && matches!(card.focus_element, FocusElement::GoButton) {
-        Span::styled(
-            format!(" {} ", go_button_text),
-            Style::default().fg(Color::Black).bg(theme.accent).add_modifier(Modifier::BOLD),
-        )
+    let go_style = if is_selected && matches!(card.focus_element, FocusElement::GoButton) {
+        Style::default().fg(Color::Black).bg(theme.accent).add_modifier(Modifier::BOLD)
     } else {
-        Span::styled(
-            format!(" {} ", go_button_text),
-            Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD),
-        )
+        Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)
     };
 
-    let button_line = Line::from(vec![
-        repo_button,
-        Span::raw(" "),
-        branch_button,
-        Span::raw(" "),
-        models_button,
-        Span::raw(" "),
-        go_button,
-    ]);
+    let mut render_button = |chunk: Rect, label: &str, style: Style, alignment: Alignment| {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![Span::styled(
+                format!(" {} ", label),
+                style,
+            )]))
+            .alignment(alignment)
+            .style(Style::default().bg(theme.bg)),
+            chunk,
+        );
+    };
 
-    let button_paragraph = Paragraph::new(button_line).style(Style::default().bg(theme.bg));
-    frame.render_widget(button_paragraph, button_area);
+    render_button(
+        button_chunks[0],
+        &repo_button_text,
+        repo_style,
+        Alignment::Left,
+    );
+    render_button(
+        button_chunks[1],
+        &branch_button_text,
+        branch_style,
+        Alignment::Left,
+    );
+    render_button(
+        button_chunks[2],
+        &models_button_text,
+        model_style,
+        Alignment::Left,
+    );
+    render_button(button_chunks[3], "⏎ Go", go_style, Alignment::Center);
 
-    // Register interactive areas for draft card buttons
-    // Temporarily disabled to avoid borrowing issues - will be re-enabled later when ViewModel is moved to ah-tui
-    // register_draft_card_button_areas(view_model, button_area, &repo_button_text, &branch_button_text, &models_button_text, &go_button_text);
-
-    // Return the textarea area for autocomplete positioning
-    textarea_area
+    DraftCardLayout {
+        textarea: textarea_area,
+        repository_button: button_chunks[0],
+        branch_button: button_chunks[1],
+        model_button: button_chunks[2],
+        go_button: button_chunks[3],
+    }
 }

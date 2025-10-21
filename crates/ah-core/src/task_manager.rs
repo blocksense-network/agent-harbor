@@ -61,7 +61,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
+use std::{fmt, pin::Pin};
 
 /// Parameters for launching a task
 #[derive(Debug, Clone, PartialEq)]
@@ -166,6 +166,19 @@ impl TaskLaunchResult {
         match self {
             TaskLaunchResult::Success { .. } => None,
             TaskLaunchResult::Failure { error } => Some(error),
+        }
+    }
+}
+
+impl fmt::Display for TaskLaunchResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaskLaunchResult::Success { task_id } => {
+                write!(f, "Task launched successfully: {task_id}")
+            }
+            TaskLaunchResult::Failure { error } => {
+                write!(f, "Task launch failed: {error}")
+            }
         }
     }
 }

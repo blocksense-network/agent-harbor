@@ -46,7 +46,11 @@ use ratatui::{prelude::*, widgets::*};
 // pub mod header; // Header rendering components - TODO: move later
 pub mod autocomplete; // Autocomplete rendering components
 pub mod dialogs;
-pub mod draft_card; // Draft card rendering components // Dialog/modal rendering components
+pub mod draft_card; // Draft card rendering components
+pub mod filter_bar; // Filter bar rendering components
+pub mod hit_test;
+
+pub use hit_test::{HitMatch, HitTestRegistry, HitZone};
 
 /// Cache for view-related computations and state
 pub struct ViewCache {

@@ -6,17 +6,21 @@
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
+use ah_rest_mock_client;
+use ah_tui::view_model::{DraftSaveState, FocusElement, ModalState};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tui_exploration::settings::KeyboardOperation;
 use tui_exploration::view_model::*;
-use ah_domain_types::{DraftTask, SelectedModel, TaskState, DeliveryStatus, TaskExecution};
-use ah_tui::view_model::{FocusElement, ModalState, DraftSaveState};
-use ah_rest_mock_client;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Helper function to create a test ViewModel with mock dependencies
 fn create_test_view_model() -> ViewModel {
-    let workspace_files = Box::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-    let workspace_workflows = Box::new(ah_workflows::WorkflowProcessor::new(ah_workflows::WorkflowConfig::default()));
+    let workspace_files = Box::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(
+        std::path::PathBuf::from("."),
+    ));
+    let workspace_workflows = Box::new(ah_workflows::WorkflowProcessor::new(
+        ah_workflows::WorkflowConfig::default(),
+    ));
     let task_manager = Box::new(ah_rest_mock_client::MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
@@ -25,7 +29,12 @@ fn create_test_view_model() -> ViewModel {
 
 /// Helper function to create a test key event
 fn key_event(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
-    KeyEvent { code, modifiers, kind: crossterm::event::KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() }
+    KeyEvent {
+        code,
+        modifiers,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::empty(),
+    }
 }
 
 fn create_viewmodel_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
@@ -33,9 +42,7 @@ fn create_viewmodel_test_log(test_name: &str) -> (std::fs::File, std::path::Path
     dir.push("ah_tui_vm_logs");
     std::fs::create_dir_all(&dir).expect("create log directory");
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("valid time");
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("valid time");
     let file_name = format!(
         "{}_{}_{}.log",
         test_name,
@@ -343,12 +350,17 @@ mod viewmodel_tests {
         writeln!(
             log,
             "After first ESC -> armed {} requested {}",
-            vm.exit_confirmation_armed,
-            vm.exit_requested
+            vm.exit_confirmation_armed, vm.exit_requested
         )
         .expect("write log");
-        assert!(vm.exit_confirmation_armed, "first ESC arms exit (log: {log_hint})");
-        assert!(!vm.exit_requested, "no exit request after first ESC (log: {log_hint})");
+        assert!(
+            vm.exit_confirmation_armed,
+            "first ESC arms exit (log: {log_hint})"
+        );
+        assert!(
+            !vm.exit_requested,
+            "no exit request after first ESC (log: {log_hint})"
+        );
 
         // Any other key should discharge the confirmation state
         assert!(
@@ -370,12 +382,17 @@ mod viewmodel_tests {
         writeln!(
             log,
             "After second ESC -> armed {} requested {}",
-            vm.exit_confirmation_armed,
-            vm.exit_requested
+            vm.exit_confirmation_armed, vm.exit_requested
         )
         .expect("write log");
-        assert!(vm.exit_requested, "second ESC requests exit (log: {log_hint})");
-        assert!(vm.take_exit_request(), "take_exit_request returns true (log: {log_hint})");
+        assert!(
+            vm.exit_requested,
+            "second ESC requests exit (log: {log_hint})"
+        );
+        assert!(
+            vm.take_exit_request(),
+            "take_exit_request returns true (log: {log_hint})"
+        );
         assert!(
             !vm.exit_requested,
             "exit request clears after take_exit_request (log: {log_hint})"
@@ -435,7 +452,10 @@ mod viewmodel_tests {
         // Should have created a new draft task
         assert_eq!(vm.draft_cards.len(), initial_draft_count + 1);
         // Global focus should be on the new draft task
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(initial_draft_count));
+        assert_eq!(
+            vm.focus_element,
+            FocusElement::DraftTask(initial_draft_count)
+        );
         // The new card's internal focus should be on TaskDescription
         if let Some(card) = vm.draft_cards.get(initial_draft_count) {
             assert_eq!(card.focus_element, FocusElement::TaskDescription);
@@ -476,7 +496,8 @@ mod viewmodel_tests {
 
         // Get the first draft card and manually set its timer to expired state
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.auto_save_timer = Some(std::time::Instant::now() - std::time::Duration::from_millis(600));
+            card.auto_save_timer =
+                Some(std::time::Instant::now() - std::time::Duration::from_millis(600));
         }
 
         // Handle tick should mark as saved

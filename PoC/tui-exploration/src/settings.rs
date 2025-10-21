@@ -159,14 +159,20 @@ impl KeyboardOperation {
             KeyboardOperation::MoveToPreviousLine => "shortcut-move-to-previous-line",
             KeyboardOperation::MoveForwardOneWord => "shortcut-move-forward-one-word",
             KeyboardOperation::MoveBackwardOneWord => "shortcut-move-backward-one-word",
-            KeyboardOperation::MoveToBeginningOfSentence => "shortcut-move-to-beginning-of-sentence",
+            KeyboardOperation::MoveToBeginningOfSentence => {
+                "shortcut-move-to-beginning-of-sentence"
+            }
             KeyboardOperation::MoveToEndOfSentence => "shortcut-move-to-end-of-sentence",
             KeyboardOperation::ScrollDownOneScreen => "shortcut-scroll-down-one-screen",
             KeyboardOperation::ScrollUpOneScreen => "shortcut-scroll-up-one-screen",
             KeyboardOperation::RecenterScreenOnCursor => "shortcut-recenter-screen-on-cursor",
-            KeyboardOperation::MoveToBeginningOfDocument => "shortcut-move-to-beginning-of-document",
+            KeyboardOperation::MoveToBeginningOfDocument => {
+                "shortcut-move-to-beginning-of-document"
+            }
             KeyboardOperation::MoveToEndOfDocument => "shortcut-move-to-end-of-document",
-            KeyboardOperation::MoveToBeginningOfParagraph => "shortcut-move-to-beginning-of-paragraph",
+            KeyboardOperation::MoveToBeginningOfParagraph => {
+                "shortcut-move-to-beginning-of-paragraph"
+            }
             KeyboardOperation::MoveToEndOfParagraph => "shortcut-move-to-end-of-paragraph",
             KeyboardOperation::GoToLineNumber => "shortcut-go-to-line-number",
             KeyboardOperation::MoveToMatchingParenthesis => "shortcut-move-to-matching-parenthesis",
@@ -234,7 +240,9 @@ impl KeyboardOperation {
             KeyboardOperation::RecenterScreenOnCursor => "Recenter screen on cursor",
             KeyboardOperation::MoveToBeginningOfDocument => "Move cursor to beginning of document",
             KeyboardOperation::MoveToEndOfDocument => "Move cursor to end of document",
-            KeyboardOperation::MoveToBeginningOfParagraph => "Move cursor to beginning of paragraph",
+            KeyboardOperation::MoveToBeginningOfParagraph => {
+                "Move cursor to beginning of paragraph"
+            }
             KeyboardOperation::MoveToEndOfParagraph => "Move cursor to end of paragraph",
             KeyboardOperation::GoToLineNumber => "Open go to line dialog",
             KeyboardOperation::MoveToMatchingParenthesis => "Jump to matching parenthesis",
@@ -296,7 +304,12 @@ pub struct KeyMatcher {
 
 impl KeyMatcher {
     /// Create a new key matcher
-    pub fn new(code: ratatui::crossterm::event::KeyCode, required: ratatui::crossterm::event::KeyModifiers, optional: ratatui::crossterm::event::KeyModifiers, char_lower: Option<char>) -> Self {
+    pub fn new(
+        code: ratatui::crossterm::event::KeyCode,
+        required: ratatui::crossterm::event::KeyModifiers,
+        optional: ratatui::crossterm::event::KeyModifiers,
+        char_lower: Option<char>,
+    ) -> Self {
         Self {
             code,
             required,
@@ -407,7 +420,11 @@ pub struct KeyboardOperationDefinition {
 }
 
 impl KeyboardOperationDefinition {
-    pub fn new(operation: KeyboardOperation, pc_defaults: Vec<String>, mac_defaults: Vec<String>) -> Self {
+    pub fn new(
+        operation: KeyboardOperation,
+        pc_defaults: Vec<String>,
+        mac_defaults: Vec<String>,
+    ) -> Self {
         Self {
             operation,
             pc_defaults,
@@ -433,7 +450,10 @@ pub struct KeyboardShortcut {
 impl KeyboardShortcut {
     /// Create a new keyboard shortcut
     pub fn new(operation: KeyboardOperation, bindings: Vec<KeyMatcher>) -> Self {
-        Self { operation, bindings }
+        Self {
+            operation,
+            bindings,
+        }
     }
 
     /// Check if any of the bindings match the given KeyEvent
@@ -516,8 +536,14 @@ impl KeyBinding {
         // Parse modifiers - support multiple formats for better UX
         let lower = s.to_lowercase();
         ctrl |= lower.contains("c-") || lower.contains("ctrl+") || lower.contains("control+");
-        alt |= lower.contains("m-") || lower.contains("alt+") || lower.contains("option+") || lower.contains("opt+");
-        super_key |= lower.contains("cmd+") || lower.contains("super+") || lower.contains("meta+") || lower.contains("win+");
+        alt |= lower.contains("m-")
+            || lower.contains("alt+")
+            || lower.contains("option+")
+            || lower.contains("opt+");
+        super_key |= lower.contains("cmd+")
+            || lower.contains("super+")
+            || lower.contains("meta+")
+            || lower.contains("win+");
         shift |= lower.contains("shift+") || lower.contains("s-");
 
         // Extract the key part (everything after the last + or -)
@@ -597,7 +623,9 @@ impl KeyBinding {
     }
 
     /// Parse the key token into KeyCode and optional lowercase character
-    fn parse_key_token(&self) -> Result<(ratatui::crossterm::event::KeyCode, Option<char>), KeyboardShortcutError> {
+    fn parse_key_token(
+        &self,
+    ) -> Result<(ratatui::crossterm::event::KeyCode, Option<char>), KeyboardShortcutError> {
         use crossterm::event::KeyCode;
 
         let token = &self.key;
@@ -621,7 +649,9 @@ impl KeyBinding {
             _ => {
                 // Single character
                 let mut chars = token.chars();
-                let first = chars.next().ok_or_else(|| KeyboardShortcutError::UnsupportedKey(token.clone()))?;
+                let first = chars
+                    .next()
+                    .ok_or_else(|| KeyboardShortcutError::UnsupportedKey(token.clone()))?;
                 if chars.next().is_some() {
                     return Err(KeyboardShortcutError::UnsupportedKey(token.clone()));
                 }
@@ -743,7 +773,6 @@ impl KeymapConfig {
                 vec!["Ctrl+Alt+F".to_string()],
                 vec!["Ctrl+Option+F".to_string()],
             ),
-
             // Editing and Deletion
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteCharacterForward,
@@ -787,7 +816,11 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Undo,
-                vec!["Ctrl+Z".to_string(), "Ctrl+_".to_string(), "Ctrl+/".to_string()],
+                vec![
+                    "Ctrl+Z".to_string(),
+                    "Ctrl+_".to_string(),
+                    "Ctrl+/".to_string(),
+                ],
                 vec!["Cmd+Z".to_string()],
             ),
             KeyboardOperationDefinition::new(
@@ -800,7 +833,6 @@ impl KeymapConfig {
                 vec!["Shift+Enter".to_string(), "Ctrl+J".to_string()],
                 vec!["Shift+Enter".to_string(), "Ctrl+J".to_string()],
             ),
-
             // Code Editing
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ToggleComment,
@@ -832,7 +864,6 @@ impl KeymapConfig {
                 vec!["Ctrl+[".to_string()],
                 vec!["Cmd+[".to_string()],
             ),
-
             // Search and Replace
             KeyboardOperationDefinition::new(
                 KeyboardOperation::IncrementalSearchForward,
@@ -854,7 +885,6 @@ impl KeymapConfig {
                 vec!["Shift+F3".to_string()],
                 vec!["Cmd+Shift+G".to_string()],
             ),
-
             // Mark and Region
             KeyboardOperationDefinition::new(
                 KeyboardOperation::SetMark,
@@ -875,7 +905,11 @@ impl KeymapConfig {
     }
 
     /// Check if any key binding for the given operation matches the KeyEvent
-    pub fn matches(&self, operation: KeyboardOperation, event: &crossterm::event::KeyEvent) -> bool {
+    pub fn matches(
+        &self,
+        operation: KeyboardOperation,
+        event: &crossterm::event::KeyEvent,
+    ) -> bool {
         let bindings = match operation {
             KeyboardOperation::MoveToBeginningOfLine => &self.move_to_beginning_of_line,
             KeyboardOperation::MoveToEndOfLine => &self.move_to_end_of_line,
@@ -957,64 +991,132 @@ impl KeymapConfig {
     /// Get matchers for a specific operation
     fn get_matchers(&self, operation: KeyboardOperation) -> Vec<KeyMatcher> {
         match operation {
-            KeyboardOperation::MoveToBeginningOfLine => self.move_to_beginning_of_line.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToEndOfLine => self.move_to_end_of_line.clone().unwrap_or_default(),
-            KeyboardOperation::MoveForwardOneCharacter => self.move_forward_one_character.clone().unwrap_or_default(),
-            KeyboardOperation::MoveBackwardOneCharacter => self.move_backward_one_character.clone().unwrap_or_default(),
+            KeyboardOperation::MoveToBeginningOfLine => {
+                self.move_to_beginning_of_line.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToEndOfLine => {
+                self.move_to_end_of_line.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveForwardOneCharacter => {
+                self.move_forward_one_character.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveBackwardOneCharacter => {
+                self.move_backward_one_character.clone().unwrap_or_default()
+            }
             KeyboardOperation::MoveToNextLine => self.move_to_next_line.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToNextField => self.move_to_next_field.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToPreviousField => self.move_to_previous_field.clone().unwrap_or_default(),
+            KeyboardOperation::MoveToNextField => {
+                self.move_to_next_field.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToPreviousField => {
+                self.move_to_previous_field.clone().unwrap_or_default()
+            }
             KeyboardOperation::DismissOverlay => self.dismiss_overlay.clone().unwrap_or_default(),
-            KeyboardOperation::SelectWordUnderCursor => self.select_word_under_cursor.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToPreviousLine => self.move_to_previous_line.clone().unwrap_or_default(),
-            KeyboardOperation::MoveForwardOneWord => self.move_forward_one_word.clone().unwrap_or_default(),
-            KeyboardOperation::MoveBackwardOneWord => self.move_backward_one_word.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToBeginningOfSentence => self.move_to_beginning_of_sentence.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToEndOfSentence => self.move_to_end_of_sentence.clone().unwrap_or_default(),
-            KeyboardOperation::ScrollDownOneScreen => self.scroll_down_one_screen.clone().unwrap_or_default(),
-            KeyboardOperation::ScrollUpOneScreen => self.scroll_up_one_screen.clone().unwrap_or_default(),
-            KeyboardOperation::RecenterScreenOnCursor => self.recenter_screen_on_cursor.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToBeginningOfDocument => self.move_to_beginning_of_document.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToEndOfDocument => self.move_to_end_of_document.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToBeginningOfParagraph => self.move_to_beginning_of_paragraph.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToEndOfParagraph => self.move_to_end_of_paragraph.clone().unwrap_or_default(),
+            KeyboardOperation::SelectWordUnderCursor => {
+                self.select_word_under_cursor.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToPreviousLine => {
+                self.move_to_previous_line.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveForwardOneWord => {
+                self.move_forward_one_word.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveBackwardOneWord => {
+                self.move_backward_one_word.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToBeginningOfSentence => {
+                self.move_to_beginning_of_sentence.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToEndOfSentence => {
+                self.move_to_end_of_sentence.clone().unwrap_or_default()
+            }
+            KeyboardOperation::ScrollDownOneScreen => {
+                self.scroll_down_one_screen.clone().unwrap_or_default()
+            }
+            KeyboardOperation::ScrollUpOneScreen => {
+                self.scroll_up_one_screen.clone().unwrap_or_default()
+            }
+            KeyboardOperation::RecenterScreenOnCursor => {
+                self.recenter_screen_on_cursor.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToBeginningOfDocument => {
+                self.move_to_beginning_of_document.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToEndOfDocument => {
+                self.move_to_end_of_document.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToBeginningOfParagraph => {
+                self.move_to_beginning_of_paragraph.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToEndOfParagraph => {
+                self.move_to_end_of_paragraph.clone().unwrap_or_default()
+            }
             KeyboardOperation::GoToLineNumber => self.go_to_line_number.clone().unwrap_or_default(),
-            KeyboardOperation::MoveToMatchingParenthesis => self.move_to_matching_parenthesis.clone().unwrap_or_default(),
-            KeyboardOperation::DeleteCharacterForward => self.delete_character_forward.clone().unwrap_or_default(),
-            KeyboardOperation::DeleteCharacterBackward => self.delete_character_backward.clone().unwrap_or_default(),
-            KeyboardOperation::DeleteWordForward => self.delete_word_forward.clone().unwrap_or_default(),
-            KeyboardOperation::DeleteWordBackward => self.delete_word_backward.clone().unwrap_or_default(),
-            KeyboardOperation::DeleteToEndOfLine => self.delete_to_end_of_line.clone().unwrap_or_default(),
+            KeyboardOperation::MoveToMatchingParenthesis => {
+                self.move_to_matching_parenthesis.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteCharacterForward => {
+                self.delete_character_forward.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteCharacterBackward => {
+                self.delete_character_backward.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteWordForward => {
+                self.delete_word_forward.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteWordBackward => {
+                self.delete_word_backward.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteToEndOfLine => {
+                self.delete_to_end_of_line.clone().unwrap_or_default()
+            }
             KeyboardOperation::Cut => self.cut.clone().unwrap_or_default(),
             KeyboardOperation::Copy => self.copy.clone().unwrap_or_default(),
             KeyboardOperation::Paste => self.paste.clone().unwrap_or_default(),
-            KeyboardOperation::CycleThroughClipboard => self.cycle_through_clipboard.clone().unwrap_or_default(),
-            KeyboardOperation::TransposeCharacters => self.transpose_characters.clone().unwrap_or_default(),
+            KeyboardOperation::CycleThroughClipboard => {
+                self.cycle_through_clipboard.clone().unwrap_or_default()
+            }
+            KeyboardOperation::TransposeCharacters => {
+                self.transpose_characters.clone().unwrap_or_default()
+            }
             KeyboardOperation::TransposeWords => self.transpose_words.clone().unwrap_or_default(),
             KeyboardOperation::Undo => self.undo.clone().unwrap_or_default(),
             KeyboardOperation::Redo => self.redo.clone().unwrap_or_default(),
             KeyboardOperation::OpenNewLine => self.open_new_line.clone().unwrap_or_default(),
-            KeyboardOperation::IndentOrComplete => self.indent_or_complete.clone().unwrap_or_default(),
-            KeyboardOperation::DeleteToBeginningOfLine => self.delete_to_beginning_of_line.clone().unwrap_or_default(),
+            KeyboardOperation::IndentOrComplete => {
+                self.indent_or_complete.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteToBeginningOfLine => {
+                self.delete_to_beginning_of_line.clone().unwrap_or_default()
+            }
             KeyboardOperation::UppercaseWord => self.uppercase_word.clone().unwrap_or_default(),
             KeyboardOperation::LowercaseWord => self.lowercase_word.clone().unwrap_or_default(),
             KeyboardOperation::CapitalizeWord => self.capitalize_word.clone().unwrap_or_default(),
-            KeyboardOperation::JustifyParagraph => self.justify_paragraph.clone().unwrap_or_default(),
+            KeyboardOperation::JustifyParagraph => {
+                self.justify_paragraph.clone().unwrap_or_default()
+            }
             KeyboardOperation::JoinLines => self.join_lines.clone().unwrap_or_default(),
             KeyboardOperation::Bold => self.bold.clone().unwrap_or_default(),
             KeyboardOperation::Italic => self.italic.clone().unwrap_or_default(),
             KeyboardOperation::Underline => self.underline.clone().unwrap_or_default(),
             KeyboardOperation::InsertHyperlink => self.insert_hyperlink.clone().unwrap_or_default(),
             KeyboardOperation::ToggleComment => self.toggle_comment.clone().unwrap_or_default(),
-            KeyboardOperation::DuplicateLineSelection => self.duplicate_line_selection.clone().unwrap_or_default(),
+            KeyboardOperation::DuplicateLineSelection => {
+                self.duplicate_line_selection.clone().unwrap_or_default()
+            }
             KeyboardOperation::MoveLineUp => self.move_line_up.clone().unwrap_or_default(),
             KeyboardOperation::MoveLineDown => self.move_line_down.clone().unwrap_or_default(),
             KeyboardOperation::IndentRegion => self.indent_region.clone().unwrap_or_default(),
             KeyboardOperation::DedentRegion => self.dedent_region.clone().unwrap_or_default(),
-            KeyboardOperation::IncrementalSearchForward => self.incremental_search_forward.clone().unwrap_or_default(),
-            KeyboardOperation::IncrementalSearchBackward => self.incremental_search_backward.clone().unwrap_or_default(),
+            KeyboardOperation::IncrementalSearchForward => {
+                self.incremental_search_forward.clone().unwrap_or_default()
+            }
+            KeyboardOperation::IncrementalSearchBackward => {
+                self.incremental_search_backward.clone().unwrap_or_default()
+            }
             KeyboardOperation::FindAndReplace => self.find_and_replace.clone().unwrap_or_default(),
-            KeyboardOperation::FindAndReplaceWithRegex => self.find_and_replace_with_regex.clone().unwrap_or_default(),
+            KeyboardOperation::FindAndReplaceWithRegex => {
+                self.find_and_replace_with_regex.clone().unwrap_or_default()
+            }
             KeyboardOperation::FindNext => self.find_next.clone().unwrap_or_default(),
             KeyboardOperation::FindPrevious => self.find_previous.clone().unwrap_or_default(),
             KeyboardOperation::SetMark => self.set_mark.clone().unwrap_or_default(),
@@ -1124,64 +1226,132 @@ impl Default for KeymapConfig {
 
             if !matchers.is_empty() {
                 match def.operation {
-                    KeyboardOperation::MoveToBeginningOfLine => config.move_to_beginning_of_line = Some(matchers),
-                    KeyboardOperation::MoveToEndOfLine => config.move_to_end_of_line = Some(matchers),
-                    KeyboardOperation::MoveForwardOneCharacter => config.move_forward_one_character = Some(matchers),
-                    KeyboardOperation::MoveBackwardOneCharacter => config.move_backward_one_character = Some(matchers),
+                    KeyboardOperation::MoveToBeginningOfLine => {
+                        config.move_to_beginning_of_line = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToEndOfLine => {
+                        config.move_to_end_of_line = Some(matchers)
+                    }
+                    KeyboardOperation::MoveForwardOneCharacter => {
+                        config.move_forward_one_character = Some(matchers)
+                    }
+                    KeyboardOperation::MoveBackwardOneCharacter => {
+                        config.move_backward_one_character = Some(matchers)
+                    }
                     KeyboardOperation::MoveToNextLine => config.move_to_next_line = Some(matchers),
-                    KeyboardOperation::MoveToNextField => config.move_to_next_field = Some(matchers),
-                    KeyboardOperation::MoveToPreviousField => config.move_to_previous_field = Some(matchers),
+                    KeyboardOperation::MoveToNextField => {
+                        config.move_to_next_field = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToPreviousField => {
+                        config.move_to_previous_field = Some(matchers)
+                    }
                     KeyboardOperation::DismissOverlay => config.dismiss_overlay = Some(matchers),
-                    KeyboardOperation::SelectWordUnderCursor => config.select_word_under_cursor = Some(matchers),
-                    KeyboardOperation::MoveToPreviousLine => config.move_to_previous_line = Some(matchers),
-                    KeyboardOperation::MoveForwardOneWord => config.move_forward_one_word = Some(matchers),
-                    KeyboardOperation::MoveBackwardOneWord => config.move_backward_one_word = Some(matchers),
-                    KeyboardOperation::MoveToBeginningOfSentence => config.move_to_beginning_of_sentence = Some(matchers),
-                    KeyboardOperation::MoveToEndOfSentence => config.move_to_end_of_sentence = Some(matchers),
-                    KeyboardOperation::ScrollDownOneScreen => config.scroll_down_one_screen = Some(matchers),
-                    KeyboardOperation::ScrollUpOneScreen => config.scroll_up_one_screen = Some(matchers),
-                    KeyboardOperation::RecenterScreenOnCursor => config.recenter_screen_on_cursor = Some(matchers),
-                    KeyboardOperation::MoveToBeginningOfDocument => config.move_to_beginning_of_document = Some(matchers),
-                    KeyboardOperation::MoveToEndOfDocument => config.move_to_end_of_document = Some(matchers),
-                    KeyboardOperation::MoveToBeginningOfParagraph => config.move_to_beginning_of_paragraph = Some(matchers),
-                    KeyboardOperation::MoveToEndOfParagraph => config.move_to_end_of_paragraph = Some(matchers),
+                    KeyboardOperation::SelectWordUnderCursor => {
+                        config.select_word_under_cursor = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToPreviousLine => {
+                        config.move_to_previous_line = Some(matchers)
+                    }
+                    KeyboardOperation::MoveForwardOneWord => {
+                        config.move_forward_one_word = Some(matchers)
+                    }
+                    KeyboardOperation::MoveBackwardOneWord => {
+                        config.move_backward_one_word = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToBeginningOfSentence => {
+                        config.move_to_beginning_of_sentence = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToEndOfSentence => {
+                        config.move_to_end_of_sentence = Some(matchers)
+                    }
+                    KeyboardOperation::ScrollDownOneScreen => {
+                        config.scroll_down_one_screen = Some(matchers)
+                    }
+                    KeyboardOperation::ScrollUpOneScreen => {
+                        config.scroll_up_one_screen = Some(matchers)
+                    }
+                    KeyboardOperation::RecenterScreenOnCursor => {
+                        config.recenter_screen_on_cursor = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToBeginningOfDocument => {
+                        config.move_to_beginning_of_document = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToEndOfDocument => {
+                        config.move_to_end_of_document = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToBeginningOfParagraph => {
+                        config.move_to_beginning_of_paragraph = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToEndOfParagraph => {
+                        config.move_to_end_of_paragraph = Some(matchers)
+                    }
                     KeyboardOperation::GoToLineNumber => config.go_to_line_number = Some(matchers),
-                    KeyboardOperation::MoveToMatchingParenthesis => config.move_to_matching_parenthesis = Some(matchers),
-                    KeyboardOperation::DeleteCharacterForward => config.delete_character_forward = Some(matchers),
-                    KeyboardOperation::DeleteCharacterBackward => config.delete_character_backward = Some(matchers),
-                    KeyboardOperation::DeleteWordForward => config.delete_word_forward = Some(matchers),
-                    KeyboardOperation::DeleteWordBackward => config.delete_word_backward = Some(matchers),
-                    KeyboardOperation::DeleteToEndOfLine => config.delete_to_end_of_line = Some(matchers),
+                    KeyboardOperation::MoveToMatchingParenthesis => {
+                        config.move_to_matching_parenthesis = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteCharacterForward => {
+                        config.delete_character_forward = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteCharacterBackward => {
+                        config.delete_character_backward = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteWordForward => {
+                        config.delete_word_forward = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteWordBackward => {
+                        config.delete_word_backward = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteToEndOfLine => {
+                        config.delete_to_end_of_line = Some(matchers)
+                    }
                     KeyboardOperation::Cut => config.cut = Some(matchers),
                     KeyboardOperation::Copy => config.copy = Some(matchers),
                     KeyboardOperation::Paste => config.paste = Some(matchers),
-                    KeyboardOperation::CycleThroughClipboard => config.cycle_through_clipboard = Some(matchers),
-                    KeyboardOperation::TransposeCharacters => config.transpose_characters = Some(matchers),
+                    KeyboardOperation::CycleThroughClipboard => {
+                        config.cycle_through_clipboard = Some(matchers)
+                    }
+                    KeyboardOperation::TransposeCharacters => {
+                        config.transpose_characters = Some(matchers)
+                    }
                     KeyboardOperation::TransposeWords => config.transpose_words = Some(matchers),
                     KeyboardOperation::Undo => config.undo = Some(matchers),
                     KeyboardOperation::Redo => config.redo = Some(matchers),
                     KeyboardOperation::OpenNewLine => config.open_new_line = Some(matchers),
-                    KeyboardOperation::IndentOrComplete => config.indent_or_complete = Some(matchers),
-                    KeyboardOperation::DeleteToBeginningOfLine => config.delete_to_beginning_of_line = Some(matchers),
+                    KeyboardOperation::IndentOrComplete => {
+                        config.indent_or_complete = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteToBeginningOfLine => {
+                        config.delete_to_beginning_of_line = Some(matchers)
+                    }
                     KeyboardOperation::UppercaseWord => config.uppercase_word = Some(matchers),
                     KeyboardOperation::LowercaseWord => config.lowercase_word = Some(matchers),
                     KeyboardOperation::CapitalizeWord => config.capitalize_word = Some(matchers),
-                    KeyboardOperation::JustifyParagraph => config.justify_paragraph = Some(matchers),
+                    KeyboardOperation::JustifyParagraph => {
+                        config.justify_paragraph = Some(matchers)
+                    }
                     KeyboardOperation::JoinLines => config.join_lines = Some(matchers),
                     KeyboardOperation::Bold => config.bold = Some(matchers),
                     KeyboardOperation::Italic => config.italic = Some(matchers),
                     KeyboardOperation::Underline => config.underline = Some(matchers),
                     KeyboardOperation::InsertHyperlink => config.insert_hyperlink = Some(matchers),
                     KeyboardOperation::ToggleComment => config.toggle_comment = Some(matchers),
-                    KeyboardOperation::DuplicateLineSelection => config.duplicate_line_selection = Some(matchers),
+                    KeyboardOperation::DuplicateLineSelection => {
+                        config.duplicate_line_selection = Some(matchers)
+                    }
                     KeyboardOperation::MoveLineUp => config.move_line_up = Some(matchers),
                     KeyboardOperation::MoveLineDown => config.move_line_down = Some(matchers),
                     KeyboardOperation::IndentRegion => config.indent_region = Some(matchers),
                     KeyboardOperation::DedentRegion => config.dedent_region = Some(matchers),
-                    KeyboardOperation::IncrementalSearchForward => config.incremental_search_forward = Some(matchers),
-                    KeyboardOperation::IncrementalSearchBackward => config.incremental_search_backward = Some(matchers),
+                    KeyboardOperation::IncrementalSearchForward => {
+                        config.incremental_search_forward = Some(matchers)
+                    }
+                    KeyboardOperation::IncrementalSearchBackward => {
+                        config.incremental_search_backward = Some(matchers)
+                    }
                     KeyboardOperation::FindAndReplace => config.find_and_replace = Some(matchers),
-                    KeyboardOperation::FindAndReplaceWithRegex => config.find_and_replace_with_regex = Some(matchers),
+                    KeyboardOperation::FindAndReplaceWithRegex => {
+                        config.find_and_replace_with_regex = Some(matchers)
+                    }
                     KeyboardOperation::FindNext => config.find_next = Some(matchers),
                     KeyboardOperation::FindPrevious => config.find_previous = Some(matchers),
                     KeyboardOperation::SetMark => config.set_mark = Some(matchers),
@@ -1337,7 +1507,6 @@ pub struct KeymapConfig {
     #[serde(rename = "select-all")]
     pub select_all: Option<Vec<KeyMatcher>>,
 }
-
 
 /// Main settings configuration structure
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

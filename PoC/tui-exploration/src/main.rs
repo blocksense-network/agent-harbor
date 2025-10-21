@@ -35,12 +35,12 @@
 //! - **Cross-Platform**: Works across different terminal environments
 
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap},
-    Frame, Terminal,
 };
 mod autocomplete;
 mod shortcuts;
@@ -66,8 +66,8 @@ use std::fmt;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tui_input::{Input, InputRequest};
@@ -76,9 +76,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::autocomplete::{AutocompleteKeyResult, InlineAutocomplete};
 use crate::shortcuts::{
-    InMemoryShortcutConfig, ShortcutConfigProvider, ShortcutDisplay, SHORTCUT_LAUNCH_TASK,
-    SHORTCUT_NEW_LINE, SHORTCUT_NEXT_FIELD, SHORTCUT_OPEN_SETTINGS, SHORTCUT_PREV_FIELD,
-    SHORTCUT_SHORTCUT_HELP,
+    InMemoryShortcutConfig, SHORTCUT_LAUNCH_TASK, SHORTCUT_NEW_LINE, SHORTCUT_NEXT_FIELD,
+    SHORTCUT_OPEN_SETTINGS, SHORTCUT_PREV_FIELD, SHORTCUT_SHORTCUT_HELP, ShortcutConfigProvider,
+    ShortcutDisplay,
 };
 
 // Comprehensive Command enum for all TUI keyboard shortcuts
@@ -1908,7 +1908,7 @@ enum FocusElement {
     GoButton,
     StopButton(usize), // Stop button for specific card
     SettingsButton,
-    FilterBarLine,     // Focus on the separator line itself, before any filter control
+    FilterBarLine, // Focus on the separator line itself, before any filter control
     Filter(FilterControl),
 }
 
@@ -5974,6 +5974,11 @@ impl AppState {
             }
             KeyCode::Left => {
                 match self.focus_element {
+                    FocusElement::FilterBarLine => {
+                        // Move from separator line to first filter control
+                        self.focus_element = FocusElement::Filter(FilterControl::Repository);
+                        self.ensure_filter_editor(FilterControl::Repository);
+                    }
                     FocusElement::TaskDescription => {
                         let shift_only = key.modifiers.contains(KeyModifiers::SHIFT)
                             && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
@@ -5995,18 +6000,14 @@ impl AppState {
                         return false;
                     }
                     FocusElement::Filter(control) => {
-                        self.focus_element = match control {
-                            FilterControl::Repository => {
-                                FocusElement::Filter(FilterControl::Creator)
-                            }
-                            FilterControl::Status => {
-                                FocusElement::Filter(FilterControl::Repository)
-                            }
-                            FilterControl::Creator => FocusElement::Filter(FilterControl::Status),
+                        // Navigate backwards through filter controls
+                        let next = match control {
+                            FilterControl::Repository => FilterControl::Creator, // Wrap backwards
+                            FilterControl::Status => FilterControl::Repository,
+                            FilterControl::Creator => FilterControl::Status,
                         };
-                        if let FocusElement::Filter(next) = self.focus_element {
-                            self.ensure_filter_editor(next);
-                        }
+                        self.focus_element = FocusElement::Filter(next);
+                        self.ensure_filter_editor(next);
                     }
                     _ => {
                         // For other elements, treat Left as reverse Tab
@@ -6035,6 +6036,29 @@ impl AppState {
                             }
                             _ => {}
                         }
+                    }
+                }
+            }
+            KeyCode::Right => {
+                match self.focus_element {
+                    FocusElement::FilterBarLine => {
+                        // Move from separator line to first filter control
+                        self.focus_element = FocusElement::Filter(FilterControl::Repository);
+                        self.ensure_filter_editor(FilterControl::Repository);
+                    }
+                    FocusElement::Filter(control) => {
+                        // Navigate between filter controls
+                        let next = match control {
+                            FilterControl::Repository => FilterControl::Status,
+                            FilterControl::Status => FilterControl::Creator,
+                            FilterControl::Creator => FilterControl::Repository, // Wrap around
+                        };
+                        self.focus_element = FocusElement::Filter(next);
+                        self.ensure_filter_editor(next);
+                    }
+                    _ => {
+                        // For other elements, treat Right as forward Tab
+                        self.focus_next_control(tasks);
                     }
                 }
             }
@@ -6940,12 +6964,14 @@ fn run_app_internal(
     let (tx_tick, rx_tick) = chan::unbounded::<()>();
 
     // Event reader thread (blocks, near-zero latency)
-    thread::spawn(move || loop {
-        match crossterm::event::read() {
-            Ok(ev) => {
-                let _ = tx_ev.send(ev);
+    thread::spawn(move || {
+        loop {
+            match crossterm::event::read() {
+                Ok(ev) => {
+                    let _ = tx_ev.send(ev);
+                }
+                Err(_) => break,
             }
-            Err(_) => break,
         }
     });
 
@@ -7498,7 +7524,10 @@ mod tests {
             title: "Draft Task".to_string(),
             repository: "test/repo".to_string(),
             branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "Claude".to_string(),
+                count: 1,
+            }],
             state: TaskState::Draft,
             timestamp: "2023-01-01 12:00:00".to_string(),
             activity: vec![],
@@ -7513,7 +7542,10 @@ mod tests {
             title: "Active Task".to_string(),
             repository: "test/repo".to_string(),
             branch: "feature/x".to_string(),
-            agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "GPT-4".to_string(),
+                count: 1,
+            }],
             state: TaskState::Active,
             timestamp: "2023-01-01 12:05:00".to_string(),
             activity: vec!["Thinking...".to_string(), "Tool usage: grep".to_string()],
@@ -7528,7 +7560,10 @@ mod tests {
             title: "Completed Task".to_string(),
             repository: "test/repo".to_string(),
             branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "Claude".to_string(),
+                count: 1,
+            }],
             state: TaskState::Completed,
             timestamp: "2023-01-01 12:10:00".to_string(),
             activity: vec![],
@@ -7560,7 +7595,11 @@ mod tests {
 
         // Cursor should be on line 3 (bottom line)
         let (cursor_row, _) = app_state.task_description.cursor();
-        assert_eq!(cursor_row, 2, "Expected cursor on line 3 (index 2), got {}", cursor_row);
+        assert_eq!(
+            cursor_row, 2,
+            "Expected cursor on line 3 (index 2), got {}",
+            cursor_row
+        );
 
         // 2. Press UP - should move cursor up within text area (to line 2)
         let _ = app_state.handle_key(key_event(KeyCode::Up, KeyModifiers::NONE), &mut tasks);
@@ -7611,7 +7650,10 @@ mod tests {
 
         // 11. Press DOWN - at last task, should move to filter controls (first filter)
         let _ = app_state.handle_key(key_event(KeyCode::Down, KeyModifiers::NONE), &mut tasks);
-        assert_eq!(app_state.focus_element, FocusElement::Filter(FilterControl::Repository));
+        assert_eq!(
+            app_state.focus_element,
+            FocusElement::Filter(FilterControl::Repository)
+        );
 
         // 12. Press DOWN - should wrap around to settings button
         let _ = app_state.handle_key(key_event(KeyCode::Down, KeyModifiers::NONE), &mut tasks);
@@ -7640,7 +7682,10 @@ mod tests {
             title: "Active Task".to_string(),
             repository: "test/repo".to_string(),
             branch: "feature/x".to_string(),
-            agents: vec![SelectedModel { name: "GPT-4".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "GPT-4".to_string(),
+                count: 1,
+            }],
             state: TaskState::Active,
             timestamp: "2023-01-01 12:05:00".to_string(),
             activity: vec!["Working...".to_string()],
@@ -7654,7 +7699,10 @@ mod tests {
             title: "Completed Task".to_string(),
             repository: "test/repo".to_string(),
             branch: "main".to_string(),
-            agents: vec![SelectedModel { name: "Claude".to_string(), count: 1 }],
+            agents: vec![SelectedModel {
+                name: "Claude".to_string(),
+                count: 1,
+            }],
             state: TaskState::Completed,
             timestamp: "2023-01-01 12:10:00".to_string(),
             activity: vec![],
@@ -7688,7 +7736,10 @@ mod tests {
 
         // 5. Press DOWN - should move to filter controls
         let _ = app_state.handle_key(key_event(KeyCode::Down, KeyModifiers::NONE), &mut tasks);
-        assert_eq!(app_state.focus_element, FocusElement::Filter(FilterControl::Repository));
+        assert_eq!(
+            app_state.focus_element,
+            FocusElement::Filter(FilterControl::Repository)
+        );
 
         // 6. Press DOWN - should wrap to settings button
         let _ = app_state.handle_key(key_event(KeyCode::Down, KeyModifiers::NONE), &mut tasks);

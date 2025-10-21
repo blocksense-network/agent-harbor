@@ -3,23 +3,19 @@
 //! This file contains tests organized by functional area:
 //! - Task Events: TaskEvent processing and activity line generation
 
-use std::sync::Arc;
-use tui_exploration::{
-    view_model::ViewModel,
-    workspace_files::GitWorkspaceFiles,
-    TaskEvent, TaskStatus, LogLevel,
-    settings::Settings,
-};
-use ah_workflows::{WorkflowProcessor, WorkflowConfig};
-use ah_core::task_manager::ToolStatus;
-use ah_tui::view_model::{FocusElement, AgentActivityRow, TaskCardType, TaskExecutionViewModel};
+use ah_domain_types::{task::ToolStatus, TaskExecutionStatus};
 use ah_rest_mock_client::MockRestClient;
-use time::OffsetDateTime;
+use ah_tui::view_model::{AgentActivityRow, FocusElement, TaskCardType, TaskExecutionViewModel};
+use ah_workflows::{WorkflowConfig, WorkflowProcessor};
+use chrono::Utc;
+use tui_exploration::{
+    LogLevel, TaskEvent, settings::Settings, view_model::ViewModel,
+    workspace_files::GitWorkspaceFiles,
+};
 
 #[cfg(test)]
 mod event_processing_tests {
     use super::*;
-    use time::OffsetDateTime;
 
     // Helper function to create a test ViewModel with a running task
     fn create_test_view_model_with_active_task() -> ViewModel {
@@ -29,12 +25,7 @@ mod event_processing_tests {
         let mut settings = Settings::default();
         settings.active_sessions_activity_rows = Some(3); // Set activity rows for testing
 
-        let mut vm = ViewModel::new(
-            workspace_files,
-            workspace_workflows,
-            task_manager,
-            settings,
-        );
+        let mut vm = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
 
         // Add a test active task card manually
         use ah_domain_types::{TaskExecution, TaskState};
@@ -52,7 +43,7 @@ mod event_processing_tests {
             delivery_status: vec![],
         };
 
-        use ah_tui::view_model::{TaskExecutionViewModel, TaskCardType, TaskMetadataViewModel};
+        use ah_tui::view_model::{TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel};
         let test_card = TaskExecutionViewModel {
             id: "test_task_1".to_string(),
             task: test_task,
@@ -89,14 +80,17 @@ mod event_processing_tests {
         let thought_event = TaskEvent::Thought {
             thought: "Analyzing the codebase structure".to_string(),
             reasoning: None,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("test_task_1", thought_event);
 
         // Check that the activity entry was created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
                 AgentActivityRow::AgentThought { thought } => {
@@ -119,17 +113,25 @@ mod event_processing_tests {
             lines_added: 10,
             lines_removed: 5,
             description: Some("Added error handling".to_string()),
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("test_task_1", file_edit_event);
 
         // Check that the activity entry was created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                AgentActivityRow::AgentEdit { file_path, lines_added, lines_removed, description } => {
+                AgentActivityRow::AgentEdit {
+                    file_path,
+                    lines_added,
+                    lines_removed,
+                    description,
+                } => {
                     assert_eq!(file_path, "src/main.rs");
                     assert_eq!(*lines_added, 10);
                     assert_eq!(*lines_removed, 5);
@@ -152,17 +154,26 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"command": "ls -la"}),
             tool_execution_id: "tool_exec_123".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("test_task_1", tool_use_event);
 
         // Check that the activity entry was created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                AgentActivityRow::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
+                AgentActivityRow::ToolUse {
+                    tool_name,
+                    tool_execution_id,
+                    last_line,
+                    completed,
+                    status,
+                } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     assert_eq!(*last_line, None); // Initially no output
@@ -186,7 +197,7 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"command": "ls -la"}),
             tool_execution_id: "tool_exec_123".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_use_event);
 
@@ -195,16 +206,25 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "Found 42 files in directory".to_string(),
             tool_execution_id: Some("tool_exec_123".to_string()),
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", log_event);
 
         // Check that the tool use entry was updated with the log message
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                AgentActivityRow::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
+                AgentActivityRow::ToolUse {
+                    tool_name,
+                    tool_execution_id,
+                    last_line,
+                    completed,
+                    status,
+                } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     assert_eq!(last_line, &Some("Found 42 files in directory".to_string()));
@@ -226,7 +246,7 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"command": "ls -la"}),
             tool_execution_id: "tool_exec_123".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_use_event);
 
@@ -235,30 +255,43 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "Command completed successfully".to_string(),
             tool_execution_id: Some("tool_exec_123".to_string()),
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", log_event);
 
         // Then send the tool result
         let tool_result_event = TaskEvent::ToolResult {
             tool_name: "run_terminal_cmd".to_string(),
-            tool_output: "total 42\ndrwxr-xr-x  5 user  staff   160 Jan  1 12:00 .\n...".to_string(),
+            tool_output: "total 42\ndrwxr-xr-x  5 user  staff   160 Jan  1 12:00 .\n..."
+                .to_string(),
             tool_execution_id: "tool_exec_123".to_string(),
             status: ToolStatus::Completed,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_result_event);
 
         // Check that the tool use entry was marked as completed
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                AgentActivityRow::ToolUse { tool_name, tool_execution_id, last_line, completed, status } => {
+                AgentActivityRow::ToolUse {
+                    tool_name,
+                    tool_execution_id,
+                    last_line,
+                    completed,
+                    status,
+                } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     // Should still have the log message as last_line
-                    assert_eq!(last_line, &Some("Command completed successfully".to_string()));
+                    assert_eq!(
+                        last_line,
+                        &Some("Command completed successfully".to_string())
+                    );
                     assert_eq!(*completed, true);
                     assert_eq!(*status, ToolStatus::Completed);
                 }
@@ -276,27 +309,36 @@ mod event_processing_tests {
             let thought_event = TaskEvent::Thought {
                 thought: format!("Thought number {}", i),
                 reasoning: None,
-                ts: OffsetDateTime::now_utc(),
+                ts: Utc::now(),
             };
             vm.process_task_event("test_task_1", thought_event);
         }
 
         // Check that only the most recent 3 activities are kept
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 3);
 
             // Should have thoughts 3, 4, 5 (most recent)
             match &activity_entries[0] {
-                AgentActivityRow::AgentThought { thought } => assert_eq!(thought, "Thought number 3"),
+                AgentActivityRow::AgentThought { thought } => {
+                    assert_eq!(thought, "Thought number 3")
+                }
                 _ => panic!("Expected AgentThought"),
             }
             match &activity_entries[1] {
-                AgentActivityRow::AgentThought { thought } => assert_eq!(thought, "Thought number 4"),
+                AgentActivityRow::AgentThought { thought } => {
+                    assert_eq!(thought, "Thought number 4")
+                }
                 _ => panic!("Expected AgentThought"),
             }
             match &activity_entries[2] {
-                AgentActivityRow::AgentThought { thought } => assert_eq!(thought, "Thought number 5"),
+                AgentActivityRow::AgentThought { thought } => {
+                    assert_eq!(thought, "Thought number 5")
+                }
                 _ => panic!("Expected AgentThought"),
             }
         }
@@ -311,14 +353,17 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "This should be ignored".to_string(),
             tool_execution_id: Some("nonexistent_tool_exec".to_string()),
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("test_task_1", log_event);
 
         // Check that no activity entries were created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 0);
         }
     }
@@ -333,14 +378,17 @@ mod event_processing_tests {
             tool_output: "Some output".to_string(),
             tool_execution_id: "nonexistent_tool_exec".to_string(),
             status: ToolStatus::Completed,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("test_task_1", tool_result_event);
 
         // Check that no activity entries were created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 0);
         }
     }
@@ -354,14 +402,17 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "General log message".to_string(),
             tool_execution_id: None,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("test_task_1", log_event);
 
         // Check that no activity entries were created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 0);
         }
     }
@@ -374,14 +425,17 @@ mod event_processing_tests {
         let thought_event = TaskEvent::Thought {
             thought: "This should be ignored".to_string(),
             reasoning: None,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("unknown_task_id", thought_event);
 
         // Check that no activity entries were created for our known task
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 0);
         }
     }
@@ -393,12 +447,7 @@ mod event_processing_tests {
         let task_manager = Box::new(MockRestClient::new());
         let settings = Settings::default();
 
-        let mut vm = ViewModel::new(
-            workspace_files,
-            workspace_workflows,
-            task_manager,
-            settings,
-        );
+        let mut vm = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
 
         // The MockTaskManager creates draft cards, so we should have at least one
         assert!(!vm.draft_cards.is_empty());
@@ -407,7 +456,7 @@ mod event_processing_tests {
         let thought_event = TaskEvent::Thought {
             thought: "This should be ignored for draft tasks".to_string(),
             reasoning: None,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
 
         vm.process_task_event("draft_001", thought_event);
@@ -426,7 +475,7 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"command": "ls"}),
             tool_execution_id: "tool_exec_1".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool1_event);
 
@@ -435,7 +484,7 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"query": "function"}),
             tool_execution_id: "tool_exec_2".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool2_event);
 
@@ -444,7 +493,7 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "Listing directory contents".to_string(),
             tool_execution_id: Some("tool_exec_1".to_string()),
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", log1_event);
 
@@ -452,13 +501,16 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "Searching for functions".to_string(),
             tool_execution_id: Some("tool_exec_2".to_string()),
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", log2_event);
 
         // Check that both tools have their respective log messages
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 2);
 
             // Find the tool entries (order may vary)
@@ -491,7 +543,7 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"command": "ls -la"}),
             tool_execution_id: "tool_exec_123".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_use_event);
 
@@ -501,16 +553,23 @@ mod event_processing_tests {
             tool_output: "total 42\ndrwxr-xr-x  5 user  staff   160 Jan  1 12:00 .".to_string(),
             tool_execution_id: "tool_exec_123".to_string(),
             status: ToolStatus::Completed,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_result_event);
 
         // Check that the last_line contains the first line of tool_output
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                AgentActivityRow::ToolUse { last_line, completed, .. } => {
+                AgentActivityRow::ToolUse {
+                    last_line,
+                    completed,
+                    ..
+                } => {
                     assert_eq!(last_line, &Some("total 42".to_string()));
                     assert_eq!(*completed, true);
                 }
@@ -525,8 +584,8 @@ mod event_processing_tests {
 
         // Send various events that should NOT create activity entries
         let status_event = TaskEvent::Status {
-            status: TaskStatus::Running,
-            ts: OffsetDateTime::now_utc(),
+            status: TaskExecutionStatus::Running,
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", status_event);
 
@@ -534,13 +593,16 @@ mod event_processing_tests {
             level: LogLevel::Info,
             message: "General status message".to_string(),
             tool_execution_id: None,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", log_without_tool_id);
 
         // Check that no activity entries were created
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 0);
         }
     }
@@ -555,7 +617,7 @@ mod event_processing_tests {
             tool_args: serde_json::json!({"command": "invalid_command"}),
             tool_execution_id: "tool_exec_456".to_string(),
             status: ToolStatus::Started,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_use_event);
 
@@ -565,19 +627,30 @@ mod event_processing_tests {
             tool_output: "bash: invalid_command: command not found".to_string(),
             tool_execution_id: "tool_exec_456".to_string(),
             status: ToolStatus::Failed,
-            ts: OffsetDateTime::now_utc(),
+            ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", tool_result_event);
 
         // Check that the tool entry shows failed status
         let task_card = vm.task_cards.first().unwrap();
-        if let TaskCardType::Active { activity_entries, .. } = &task_card.card_type {
+        if let TaskCardType::Active {
+            activity_entries, ..
+        } = &task_card.card_type
+        {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
-                AgentActivityRow::ToolUse { completed, status, last_line, .. } => {
+                AgentActivityRow::ToolUse {
+                    completed,
+                    status,
+                    last_line,
+                    ..
+                } => {
                     assert_eq!(*completed, true);
                     assert_eq!(*status, ToolStatus::Failed);
-                    assert_eq!(last_line, &Some("bash: invalid_command: command not found".to_string()));
+                    assert_eq!(
+                        last_line,
+                        &Some("bash: invalid_command: command not found".to_string())
+                    );
                 }
                 _ => panic!("Expected ToolUse activity entry"),
             }

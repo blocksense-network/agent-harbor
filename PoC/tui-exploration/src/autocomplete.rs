@@ -11,16 +11,16 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nucleo::{
-    pattern::{CaseMatching, Normalization, Pattern},
     Config, Matcher, Utf32Str,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 use once_cell::sync::OnceCell;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState},
-    Frame,
 };
 use tui_textarea::TextArea;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -28,7 +28,72 @@ use unicode_segmentation::UnicodeSegmentation as _;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::{compute_caret_metrics, Theme};
+use crate::Theme;
+
+#[derive(Debug, Clone, Copy)]
+struct CaretMetrics {
+    caret_x: u16,
+    caret_y: u16,
+    popup_x: u16,
+    popup_y: u16,
+}
+
+fn compute_caret_metrics(textarea: &TextArea<'_>, area: Rect) -> CaretMetrics {
+    let (cursor_row, cursor_col) = textarea.cursor();
+    let (top_row, left_col) = textarea.viewport_origin();
+    let gutter = textarea.gutter_width();
+
+    let mut visible_row = cursor_row.saturating_sub(top_row as usize);
+    let mut visible_col = cursor_col.saturating_sub(left_col as usize);
+
+    if textarea.word_wrap() {
+        let available_width = area.width.saturating_sub(gutter);
+        let content_width = available_width.max(1) as usize;
+
+        if content_width > 0 {
+            let start_row = top_row as usize;
+            let mut additional_rows = 0usize;
+
+            for line_idx in start_row..cursor_row {
+                let width = textarea.display_width_of_line(line_idx);
+                if width > 0 {
+                    let wraps = (width + content_width - 1) / content_width;
+                    if wraps > 0 {
+                        additional_rows = additional_rows.saturating_add(wraps.saturating_sub(1));
+                    }
+                }
+            }
+
+            let cursor_width = textarea.display_width_until(cursor_row, cursor_col);
+            let wraps = cursor_width / content_width;
+            visible_col = cursor_width % content_width;
+            if cursor_width > 0 && visible_col == 0 {
+                visible_col = 0;
+            }
+            additional_rows = additional_rows.saturating_add(wraps);
+            visible_row = cursor_row.saturating_sub(start_row) + additional_rows;
+        } else {
+            visible_col = 0;
+        }
+    }
+
+    let text_start_x = area.x.saturating_add(gutter as u16);
+    let max_x = area.x.saturating_add(area.width.saturating_sub(1));
+    let max_y = area.y.saturating_add(area.height.saturating_sub(1));
+
+    let caret_x = text_start_x.saturating_add(visible_col as u16).min(max_x);
+    let caret_y = area.y.saturating_add(visible_row as u16).min(max_y);
+
+    let popup_x = caret_x.saturating_add(1).min(max_x);
+    let popup_y = caret_y.saturating_add(1).min(max_y);
+
+    CaretMetrics {
+        caret_x,
+        caret_y,
+        popup_x,
+        popup_y,
+    }
+}
 
 const MAX_RESULTS: usize = 50_000; // High ceiling to allow full navigation through large result sets
 const MENU_WIDTH: u16 = 48;
@@ -346,6 +411,14 @@ impl InlineAutocomplete {
         self.suspended = false;
     }
 
+    pub fn is_open(&self) -> bool {
+        self.vm.open
+    }
+
+    pub fn get_query(&self) -> &str {
+        &self.vm.query
+    }
+
     pub fn handle_key_event(
         &mut self,
         key: &KeyEvent,
@@ -555,7 +628,7 @@ impl InlineAutocomplete {
             visible_results.iter().map(|m| make_list_item(m, theme)).collect()
         };
 
-        let menu_height = items.len().max(1) as u16;
+        let menu_height = visible_results.len().max(1) as u16;
         let popup = clip_popup(
             screen,
             caret.popup_x,
@@ -566,6 +639,34 @@ impl InlineAutocomplete {
 
         frame.render_widget(Clear, popup);
 
+<<<<<<< HEAD
+||||||| parent of 8ceb61c (feat(tui-exploration): New approach to mouse hit zones; Better test coverage)
+        let items: Vec<ListItem> = if visible_results.is_empty() {
+            // Show a "No results" message when menu is open but no results
+            vec![ListItem::new(Line::from(vec![Span::styled(
+                "No suggestions available",
+                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray))
+            )]))]
+        } else {
+            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
+        };
+
+=======
+        let items: Vec<ListItem> = if visible_results.is_empty() {
+            // Show loading or "No results" message when menu is open but no results
+            let message = match trigger {
+                Trigger::At => "Loading files...",
+                Trigger::Slash => "Loading workflows...",
+            };
+            vec![ListItem::new(Line::from(vec![Span::styled(
+                message,
+                Style::default().fg(theme.muted_style().fg.unwrap_or(Color::Gray)),
+            )]))]
+        } else {
+            visible_results.iter().map(|m| make_list_item(m, theme)).collect()
+        };
+
+>>>>>>> 8ceb61c (feat(tui-exploration): New approach to mouse hit zones; Better test coverage)
         let mut block = Block::default().style(Style::default().bg(background));
         if self.show_border {
             block = block

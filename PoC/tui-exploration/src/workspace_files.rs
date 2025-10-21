@@ -4,11 +4,11 @@
 //! metadata. Files are produced incrementally as VCS ls-files output is processed.
 //! It supports dependency injection for testing through the WorkspaceFiles trait.
 
-use std::path::PathBuf;
-use std::pin::Pin;
+use ah_repo::{VcsError, VcsRepo};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use ah_repo::{VcsRepo, VcsError};
+use std::path::PathBuf;
+use std::pin::Pin;
 
 /// Repository file item with metadata
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -48,7 +48,9 @@ impl GitWorkspaceFiles {
 #[async_trait]
 impl WorkspaceFiles for GitWorkspaceFiles {
     async fn stream_repository_files(&self) -> Result<FileStream, RepositoryError> {
-        let vcs_repo = self.vcs_repo.as_ref()
+        let vcs_repo = self
+            .vcs_repo
+            .as_ref()
             .ok_or_else(|| VcsError::RepositoryNotFound("Not a VCS repository".to_string()))?;
 
         let string_stream = vcs_repo.stream_tracked_files().await?;
@@ -114,7 +116,9 @@ impl MockWorkspaceFiles {
 impl WorkspaceFiles for MockWorkspaceFiles {
     async fn stream_repository_files(&self) -> Result<FileStream, RepositoryError> {
         if !self.is_git_repo {
-            return Err(RepositoryError::RepositoryNotFound("Not a VCS repository".to_string()));
+            return Err(RepositoryError::RepositoryNotFound(
+                "Not a VCS repository".to_string(),
+            ));
         }
 
         let files = self.files.clone();
@@ -157,8 +161,7 @@ mod tests {
         let mock_time = time::pause();
         let start_time = time::Instant::now();
 
-        let service = MockWorkspaceFiles::with_test_files()
-            .with_delay(Duration::from_millis(100));
+        let service = MockWorkspaceFiles::with_test_files().with_delay(Duration::from_millis(100));
 
         // This would normally take 200ms (2 files × 100ms), but with fake time it completes instantly
         let mut stream = service.stream_repository_files().await.unwrap();
@@ -200,7 +203,10 @@ mod tests {
         let service = MockWorkspaceFiles::new(vec![], false);
 
         let result = service.stream_repository_files().await;
-        assert!(matches!(result, Err(RepositoryError::RepositoryNotFound(_))));
+        assert!(matches!(
+            result,
+            Err(RepositoryError::RepositoryNotFound(_))
+        ));
 
         assert!(!service.is_git_repository().await);
     }
@@ -270,11 +276,20 @@ mod tests {
 
         assert_eq!(files.len(), 3);
         assert_eq!(files[0].as_ref().unwrap().path, "lib.rs");
-        assert_eq!(files[0].as_ref().unwrap().detail, Some("Library file".to_string()));
+        assert_eq!(
+            files[0].as_ref().unwrap().detail,
+            Some("Library file".to_string())
+        );
         assert_eq!(files[1].as_ref().unwrap().path, "main.rs");
-        assert_eq!(files[1].as_ref().unwrap().detail, Some("Entry point".to_string()));
+        assert_eq!(
+            files[1].as_ref().unwrap().detail,
+            Some("Entry point".to_string())
+        );
         assert_eq!(files[2].as_ref().unwrap().path, "Cargo.toml");
-        assert_eq!(files[2].as_ref().unwrap().detail, Some("Package manifest".to_string()));
+        assert_eq!(
+            files[2].as_ref().unwrap().detail,
+            Some("Package manifest".to_string())
+        );
     }
 
     #[tokio::test]
@@ -293,8 +308,7 @@ mod tests {
     async fn test_delay_precision() {
         let mock_time = time::pause();
 
-        let service = MockWorkspaceFiles::with_test_files()
-            .with_delay(Duration::from_millis(50));
+        let service = MockWorkspaceFiles::with_test_files().with_delay(Duration::from_millis(50));
 
         let start = time::Instant::now();
 
@@ -342,7 +356,10 @@ mod tests {
 
         // Should fail immediately when trying to create stream
         let result = service.stream_repository_files().await;
-        assert!(matches!(result, Err(RepositoryError::RepositoryNotFound(_))));
+        assert!(matches!(
+            result,
+            Err(RepositoryError::RepositoryNotFound(_))
+        ));
     }
 
     #[tokio::test]
@@ -366,4 +383,3 @@ mod tests {
         assert_eq!(collected[999].as_ref().unwrap().path, "file_999.rs");
     }
 }
-

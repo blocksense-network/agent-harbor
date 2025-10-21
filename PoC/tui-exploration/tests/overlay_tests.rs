@@ -55,9 +55,7 @@ fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
     dir.push("ah_tui_vm_logs");
     std::fs::create_dir_all(&dir).expect("create log directory");
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("valid time");
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("valid time");
     let file_name = format!(
         "{}_{}_{}.log",
         test_name,
@@ -79,16 +77,21 @@ fn build_view_model() -> ViewModel {
 }
 
 fn prepare_autocomplete(vm: &mut ViewModel, trigger: Trigger, labels: &[&str]) {
-    vm.autocomplete = InlineAutocomplete::with_providers(vec![
-        Arc::new(TestProvider::new(trigger, labels)) as Arc<dyn Provider>,
-    ]);
+    vm.autocomplete =
+        InlineAutocomplete::with_providers(vec![
+            Arc::new(TestProvider::new(trigger, labels)) as Arc<dyn Provider>
+        ]);
 
     let card = vm.draft_cards.get_mut(0).expect("draft card");
     card.description = tui_textarea::TextArea::default();
-    card.description
-        .input(KeyEvent::new(KeyCode::Char(trigger.as_char()), KeyModifiers::empty()));
-    card.description
-        .input(KeyEvent::new(KeyCode::Char(labels[0].chars().next().unwrap()), KeyModifiers::empty()));
+    card.description.input(KeyEvent::new(
+        KeyCode::Char(trigger.as_char()),
+        KeyModifiers::empty(),
+    ));
+    card.description.input(KeyEvent::new(
+        KeyCode::Char(labels[0].chars().next().unwrap()),
+        KeyModifiers::empty(),
+    ));
 
     vm.autocomplete.notify_text_input();
     vm.autocomplete.after_textarea_change(&card.description);
@@ -109,12 +112,7 @@ fn modal_navigation_wraps_with_keyboard_operations() {
 
     let next_key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
 
-    let total_options = vm
-        .active_modal
-        .as_ref()
-        .expect("modal available")
-        .filtered_options
-        .len();
+    let total_options = vm.active_modal.as_ref().expect("modal available").filtered_options.len();
 
     for step in 0..(total_options.saturating_sub(1)) {
         assert!(
@@ -122,13 +120,7 @@ fn modal_navigation_wraps_with_keyboard_operations() {
             "MoveToNextLine should be handled inside modal (log: {log_hint})"
         );
         let modal = vm.active_modal.as_ref().expect("modal still open");
-        writeln!(
-            log,
-            "Step {} -> selected {}",
-            step,
-            modal.selected_index
-        )
-        .expect("write log");
+        writeln!(log, "Step {} -> selected {}", step, modal.selected_index).expect("write log");
     }
 
     let modal = vm.active_modal.as_ref().expect("modal still open");
@@ -143,7 +135,10 @@ fn modal_navigation_wraps_with_keyboard_operations() {
         "additional MoveToNextLine should wrap (log: {log_hint})"
     );
     let modal = vm.active_modal.as_ref().expect("modal still open");
-    assert_eq!(modal.selected_index, 0, "selection should wrap to start (log: {log_hint})");
+    assert_eq!(
+        modal.selected_index, 0,
+        "selection should wrap to start (log: {log_hint})"
+    );
 
     assert!(
         vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousField, &next_key),
@@ -151,7 +146,11 @@ fn modal_navigation_wraps_with_keyboard_operations() {
     );
     let modal = vm.active_modal.as_ref().expect("modal still open");
     let len = modal.filtered_options.len();
-    assert_eq!(modal.selected_index, len - 1, "previous field wraps to last option (log: {log_hint})");
+    assert_eq!(
+        modal.selected_index,
+        len - 1,
+        "previous field wraps to last option (log: {log_hint})"
+    );
 }
 
 #[test]
@@ -171,16 +170,25 @@ fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
     writeln!(
         log,
         "Modal after dismiss: {:?}, exit armed: {}",
-        vm.modal_state,
-        vm.exit_confirmation_armed
+        vm.modal_state, vm.exit_confirmation_armed
     )
     .expect("write log");
 
-    assert_eq!(vm.modal_state, ModalState::None, "modal should close (log: {log_hint})");
-    assert!(!vm.exit_confirmation_armed, "closing modal should not arm exit (log: {log_hint})");
+    assert_eq!(
+        vm.modal_state,
+        ModalState::None,
+        "modal should close (log: {log_hint})"
+    );
+    assert!(
+        !vm.exit_confirmation_armed,
+        "closing modal should not arm exit (log: {log_hint})"
+    );
 
     prepare_autocomplete(&mut vm, Trigger::Slash, &["alpha"]);
-    assert!(vm.autocomplete.is_open(), "menu should be open before ESC (log: {log_hint})");
+    assert!(
+        vm.autocomplete.is_open(),
+        "menu should be open before ESC (log: {log_hint})"
+    );
     assert!(
         vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key),
         "ESC should close autocomplete first (log: {log_hint})"
@@ -189,15 +197,24 @@ fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
         !vm.autocomplete.is_open(),
         "autocomplete should close on ESC (log: {log_hint})"
     );
-    assert!(!vm.exit_confirmation_armed, "closing autocomplete should not arm exit (log: {log_hint})");
+    assert!(
+        !vm.exit_confirmation_armed,
+        "closing autocomplete should not arm exit (log: {log_hint})"
+    );
 
     // First ESC should arm exit state
     assert!(
         vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key),
         "ESC should arm exit when nothing else is open (log: {log_hint})"
     );
-    assert!(vm.exit_confirmation_armed, "exit should be armed after first ESC (log: {log_hint})");
-    assert!(!vm.exit_requested, "no exit yet after first ESC (log: {log_hint})");
+    assert!(
+        vm.exit_confirmation_armed,
+        "exit should be armed after first ESC (log: {log_hint})"
+    );
+    assert!(
+        !vm.exit_requested,
+        "no exit yet after first ESC (log: {log_hint})"
+    );
 
     // Any other key should discharge the confirmation
     assert!(
@@ -211,17 +228,25 @@ fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
 
     // Arm again and confirm second ESC requests exit
     vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key);
-    assert!(vm.exit_confirmation_armed, "exit re-armed (log: {log_hint})");
+    assert!(
+        vm.exit_confirmation_armed,
+        "exit re-armed (log: {log_hint})"
+    );
     vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key);
     writeln!(
         log,
         "After second ESC -> armed {} requested {}",
-        vm.exit_confirmation_armed,
-        vm.exit_requested
+        vm.exit_confirmation_armed, vm.exit_requested
     )
     .expect("write log");
-    assert!(vm.exit_requested, "second ESC should request exit (log: {log_hint})");
-    assert!(vm.take_exit_request(), "take_exit_request returns true (log: {log_hint})");
+    assert!(
+        vm.exit_requested,
+        "second ESC should request exit (log: {log_hint})"
+    );
+    assert!(
+        vm.take_exit_request(),
+        "take_exit_request returns true (log: {log_hint})"
+    );
     assert!(
         !vm.exit_requested,
         "exit flag cleared after take_exit_request (log: {log_hint})"

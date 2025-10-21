@@ -72,10 +72,6 @@ pub fn render_header(
         let button_paragraph = Paragraph::new(button_line);
         frame.render_widget(button_paragraph, button_area);
 
-        view_model.interactive_areas.push(crate::view_model::InteractiveArea {
-            rect: button_area,
-            action: crate::view_model::MouseAction::OpenSettings,
-        });
     }
 
     // Try to render the logo as an image first using persisted protocol

@@ -146,6 +146,9 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
 - **Auto-completion support** with popup menu:
   - `@filename` - Auto-completes file names within the repository
   - `/workflow` - Auto-completes available workflow commands from `.agents/workflows/`
+  - **Immediate menu opening**: Menu opens immediately when trigger characters (`/` or `@`) are typed, showing placeholder messages while data loads
+  - **Placeholder states**: Shows "Loading files..." for `@` trigger and "Loading workflows..." for `/` trigger until data is available
+  - **Background preloading**: Files and workflows are preloaded asynchronously on application startup for immediate availability
   - **Popup menu navigation**: Tab or arrow keys to navigate suggestions, mouse wheel to scroll, Mouse click or Enter to select
   - **Quick selection**: Right arrow key selects the currently active suggestion
   - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area

@@ -2,16 +2,16 @@
 //! This allows testing the task manager without the compilation issues
 //! in the main library due to ongoing MVVM refactoring.
 
+use chrono::Utc;
 use futures::StreamExt;
 use serde_json::json;
-use time::OffsetDateTime;
 
-use tui_exploration::{
-    TaskManager, TaskEvent, TaskLaunchParams, TaskLaunchResult,
-    TaskStatus, SelectedModel,
-};
-use ah_core::task_manager::ToolStatus;
+use ah_domain_types::task::ToolStatus;
+use ah_domain_types::TaskExecutionStatus;
 use ah_rest_mock_client::MockRestClient;
+use tui_exploration::{
+    SelectedModel, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
+};
 
 #[tokio::test]
 async fn test_mock_rest_client_launches_successful_task() {
@@ -64,7 +64,10 @@ async fn test_mock_rest_client_validates_empty_models() {
     let result = manager.launch_task(params).await;
 
     assert!(!result.is_success());
-    assert_eq!(result.error().unwrap(), "At least one model must be selected");
+    assert_eq!(
+        result.error().unwrap(),
+        "At least one model must be selected"
+    );
 }
 
 #[tokio::test]
@@ -117,8 +120,14 @@ async fn test_task_launch_result_display_formats_correctly() {
         error: "Something went wrong".to_string(),
     };
 
-    assert_eq!(format!("{}", success), "Task launched successfully: task_123");
-    assert_eq!(format!("{}", failure), "Task launch failed: Something went wrong");
+    assert_eq!(
+        format!("{}", success),
+        "Task launched successfully: task_123"
+    );
+    assert_eq!(
+        format!("{}", failure),
+        "Task launch failed: Something went wrong"
+    );
 }
 
 #[tokio::test]
@@ -138,15 +147,18 @@ async fn test_mock_task_manager_event_stream() {
 
     // Check that the first event is status change to queued
     match &events[0] {
-        TaskEvent::Status { status, .. } => assert_eq!(*status, TaskStatus::Queued),
+        TaskEvent::Status { status, .. } => assert_eq!(*status, TaskExecutionStatus::Queued),
         _ => panic!("First event should be status change to queued"),
     }
 
     // Check that we eventually get to completed status
     let has_completed = events.iter().any(|event| {
-        matches!(event, TaskEvent::Status { status, .. } if *status == TaskStatus::Completed)
+        matches!(event, TaskEvent::Status { status, .. } if *status == TaskExecutionStatus::Completed)
     });
-    assert!(has_completed, "Stream should contain a completed status event");
+    assert!(
+        has_completed,
+        "Stream should contain a completed status event"
+    );
 
     // Check that we have various event types
     let has_thoughts = events.iter().any(|event| matches!(event, TaskEvent::Thought { .. }));
@@ -162,11 +174,11 @@ async fn test_mock_task_manager_event_stream() {
 
 #[tokio::test]
 async fn test_task_event_serialization() {
-    let ts = OffsetDateTime::now_utc();
+    let ts = Utc::now();
 
     // Test status event
     let status_event = TaskEvent::Status {
-        status: TaskStatus::Running,
+        status: TaskExecutionStatus::Running,
         ts,
     };
     let json = serde_json::to_string(&status_event).unwrap();
