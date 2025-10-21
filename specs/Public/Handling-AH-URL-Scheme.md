@@ -158,7 +158,7 @@ To open a URL in the default browser from your handler, execute `xdg-open "http:
 
 # Handling task URLs
 
-The `agent-harbor://` scheme transports task intents into the local AH system. The **AH URL Handler** performs four jobs: **validate → normalize → ensure WebUI → open**. This document specifies the required behavior; implementation plans and status tracking live in the sibling [Handling AW URL Scheme.status.md](Handling-AW-URL-Scheme.status.md) file.
+The `agent-harbor://` scheme transports task intents into the local AH system. The **AH URL Handler** performs four jobs: **validate → normalize → ensure WebUI → open**. This document specifies the required behavior; implementation plans and status tracking live in the sibling [Handling AH URL Scheme.status.md](Handling-AH-URL-Scheme.status.md) file.
 
 ## URL shapes (required)
 

@@ -47,7 +47,7 @@ Per [Agent-Harbor-GUI.md](Agent-Harbor-GUI.md), the GUI is a **thin native wrapp
 - **Browser Automation**: Playwright with Electron's Chromium for cloud agent workflows
 - **Process Management**: Rust crates for WebUI process lifecycle, packaged as native Node addons
 - **Native Extensions**: Small CLI helpers or native Electron modules for system-specific functions
-- **URL Handler**: Rust binary per [Handling-AH-URL-Scheme.status.md](Handling-AW-URL-Scheme.status.md)
+- **URL Handler**: Rust binary per [Handling-AH-URL-Scheme.status.md](Handling-AH-URL-Scheme.status.md)
 
 ### Milestone Completion & Outstanding Tasks
 
@@ -65,7 +65,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 - **macOS Native Track**: AppKit/SwiftUI host application with WKWebView embedding
 - **Cross-Platform WebUI Track**: Continue WebUI development (ongoing in parallel)
 - **CLI Bundling Track**: Packaging and PATH integration for bundled CLI tools
-- **URL Scheme Track**: Protocol handler implementation (see [Handling-AH-URL-Scheme.status.md](Handling-AW-URL-Scheme.status.md))
+- **URL Scheme Track**: Protocol handler implementation (see [Handling-AH-URL-Scheme.status.md](Handling-AH-URL-Scheme.status.md))
 - **Testing Infrastructure Track**: Native UI testing framework setup
 
 ### Development Phases
@@ -559,8 +559,8 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
   - URL parsing and validation (reject malicious inputs)
 
 - **Cross-Spec Dependencies**:
-  - **[Handling-AH-URL-Scheme.status.md](Handling-AW-URL-Scheme.status.md)**: Standalone handler for headless systems
-  - **[Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md)**: Protocol specification
+  - **[Handling-AH-URL-Scheme.status.md](Handling-AH-URL-Scheme.status.md)**: Standalone handler for headless systems
+  - **[Handling-AH-URL-Scheme.md](Handling-AH-URL-Scheme.md)**: Protocol specification
 
 - **Implementation Strategy**:
   - Use Electron's protocol handling APIs (cross-platform)
@@ -1123,7 +1123,7 @@ Once foundation is established (M0-M1), multiple tracks can proceed in parallel:
 
 **URL Scheme Integration:**
 
-- Implements [Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md) specification
+- Implements [Handling-AH-URL-Scheme.md](Handling-AH-URL-Scheme.md) specification
 - Electron's built-in protocol handling APIs
 - electron-builder configures protocol registration in installers
 - Single-instance lock prevents multiple GUI instances

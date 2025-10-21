@@ -44,7 +44,7 @@ Once the Rust workspace bootstrap (M0.2) and core infrastructure (M0.3-M0.6) are
 - **Database Track**: Build `ah-local-db` crate with comprehensive unit tests (starts after M0.2, proceeds in parallel with FS snapshots)
 - **TUI Track**: Develop TUI user journey with mocked agents for comprehensive UX testing (starts after M1 core completion, uses existing [TUI PRD](TUI-PRD.md) specifications)
 - **WebUI Track**: Implement WebUI user journey with mocked agents for end-to-end validation (starts after M1 core completion, uses existing [WebUI PRD](WebUI-PRD.md) specifications)
-- **Desktop Notifications Track**: Build cross-platform notification library per [Handling-AW-URL-Scheme.md](Handling-AW-URL-Scheme.md) specifications (starts after M0.2, enables URL scheme handling)
+- **Desktop Notifications Track**: Build cross-platform notification library per [Handling-AH-URL-Scheme.md](Handling-AH-URL-Scheme.md) specifications (starts after M0.2, enables URL scheme handling)
 
 ### Approach
 
