@@ -21,5 +21,7 @@ else
   echo "vale not found; skipping outside Nix shell." >&2
 fi
 
-# Mermaid syntax validation (enabled by default)
-just md-mermaid-check
+# Mermaid syntax validation (enabled by default, disable with CHECK_MERMAID=false)
+if [ "${CHECK_MERMAID:-true}" != "false" ]; then
+  just md-mermaid-check
+fi

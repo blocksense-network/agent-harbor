@@ -20,6 +20,9 @@ on:
   pull_request:
     branches: [main, linux-sandbox]
 
+env:
+  CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
+
 jobs:
   lint:
     runs-on: [self-hosted, nixos, x86-64-v3]
