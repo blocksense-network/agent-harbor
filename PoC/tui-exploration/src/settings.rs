@@ -415,28 +415,22 @@ impl KeyMatcher {
 #[derive(Debug, Clone)]
 pub struct KeyboardOperationDefinition {
     pub operation: KeyboardOperation,
-    pub pc_defaults: Vec<String>,
-    pub mac_defaults: Vec<String>,
+    pub defaults: Vec<String>,
 }
 
 impl KeyboardOperationDefinition {
     pub fn new(
         operation: KeyboardOperation,
-        pc_defaults: Vec<String>,
-        mac_defaults: Vec<String>,
+        defaults: Vec<String>,
     ) -> Self {
         Self {
             operation,
-            pc_defaults,
-            mac_defaults,
+            defaults,
         }
     }
 
-    pub fn get_defaults(&self, platform: Platform) -> &[String] {
-        match platform {
-            Platform::Pc => &self.pc_defaults,
-            Platform::Mac => &self.mac_defaults,
-        }
+    pub fn get_defaults(&self, _platform: Platform) -> &[String] {
+        &self.defaults
     }
 }
 
@@ -685,134 +679,108 @@ impl KeymapConfig {
             // Cursor Movement
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToBeginningOfLine,
-                vec!["Home".to_string(), "Ctrl+A".to_string()],
-                vec!["Cmd+Left".to_string(), "Ctrl+A".to_string()],
+                vec!["Home".to_string(), "Ctrl+A".to_string(), "Cmd+Left".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToEndOfLine,
-                vec!["End".to_string(), "Ctrl+E".to_string()],
-                vec!["Cmd+Right".to_string(), "Ctrl+E".to_string()],
+                vec!["End".to_string(), "Ctrl+E".to_string(), "Cmd+Right".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveForwardOneCharacter,
-                vec!["Ctrl+F".to_string()],
-                vec!["Ctrl+F".to_string()],
+                vec!["Ctrl+F".to_string(), "Right".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveBackwardOneCharacter,
-                vec!["Ctrl+B".to_string()],
-                vec!["Ctrl+B".to_string()],
+                vec!["Ctrl+B".to_string(), "Left".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToNextLine,
-                vec!["Down".to_string(), "Ctrl+N".to_string()],
                 vec!["Down".to_string(), "Ctrl+N".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToNextField,
                 vec!["Tab".to_string()],
-                vec!["Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToPreviousField,
-                vec!["Shift+Tab".to_string()],
                 vec!["Shift+Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DismissOverlay,
                 vec!["Esc".to_string()],
-                vec!["Esc".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToPreviousLine,
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
-                vec!["Up".to_string(), "Ctrl+P".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveForwardOneWord,
-                vec!["Alt+F".to_string(), "Ctrl+Right".to_string()],
-                vec!["Option+Right".to_string()],
+                vec!["Alt+F".to_string(), "Ctrl+Right".to_string(), "Option+Right".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveBackwardOneWord,
-                vec!["Alt+B".to_string(), "Ctrl+Left".to_string()],
-                vec!["Option+Left".to_string()],
+                vec!["Alt+B".to_string(), "Ctrl+Left".to_string(), "Option+Left".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ScrollDownOneScreen,
-                vec!["PageDown".to_string()],
                 vec!["PageDown".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ScrollUpOneScreen,
                 vec!["PageUp".to_string()],
-                vec!["PageUp".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::RecenterScreenOnCursor,
                 vec!["Ctrl+L".to_string()],
-                vec!["Ctrl+L".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToBeginningOfDocument,
-                vec!["Ctrl+Home".to_string()],
-                vec!["Cmd+Up".to_string()],
+                vec!["Ctrl+Home".to_string(), "Cmd+Up".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToEndOfDocument,
-                vec!["Ctrl+End".to_string()],
-                vec!["Cmd+Down".to_string()],
+                vec!["Ctrl+End".to_string(), "Cmd+Down".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::GoToLineNumber,
-                vec!["Ctrl+G".to_string()],
-                vec!["Cmd+L".to_string()],
+                vec!["Ctrl+G".to_string(), "Cmd+L".to_string(), "Alt+G+G".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToMatchingParenthesis,
-                vec!["Ctrl+Alt+F".to_string()],
-                vec!["Ctrl+Option+F".to_string()],
+                vec!["Ctrl+Alt+F".to_string(), "Ctrl+Option+F".to_string()],
             ),
             // Editing and Deletion
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteCharacterForward,
                 vec!["Delete".to_string(), "Ctrl+D".to_string()],
-                vec!["Delete".to_string(), "Ctrl+D".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteCharacterBackward,
                 vec!["Backspace".to_string(), "Ctrl+H".to_string()],
-                vec!["Backspace".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteWordForward,
-                vec!["Ctrl+Delete".to_string(), "Alt+D".to_string()],
-                vec!["Option+Delete".to_string()],
+                vec!["Ctrl+Delete".to_string(), "Alt+D".to_string(), "Option+Delete".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteWordBackward,
-                vec!["Ctrl+Backspace".to_string(), "Alt+Backspace".to_string()],
-                vec!["Option+Backspace".to_string()],
+                vec!["Ctrl+Backspace".to_string(), "Alt+Backspace".to_string(), "Option+Backspace".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteToEndOfLine,
                 vec!["Ctrl+K".to_string()],
-                vec!["Ctrl+K".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Cut,
-                vec!["Ctrl+X".to_string(), "Ctrl+W".to_string()],
-                vec!["Cmd+X".to_string()],
+                vec!["Ctrl+X".to_string(), "Ctrl+W".to_string(), "Cmd+X".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Copy,
-                vec!["Ctrl+C".to_string(), "Alt+W".to_string()],
-                vec!["Cmd+C".to_string()],
+                vec!["Ctrl+C".to_string(), "Alt+W".to_string(), "Cmd+C".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Paste,
-                vec!["Ctrl+V".to_string(), "Ctrl+Y".to_string()],
-                vec!["Cmd+V".to_string()],
+                vec!["Ctrl+V".to_string(), "Ctrl+Y".to_string(), "Cmd+V".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Undo,
@@ -820,85 +788,70 @@ impl KeymapConfig {
                     "Ctrl+Z".to_string(),
                     "Ctrl+_".to_string(),
                     "Ctrl+/".to_string(),
+                    "Cmd+Z".to_string(),
                 ],
-                vec!["Cmd+Z".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Redo,
-                vec!["Ctrl+Y".to_string(), "Ctrl+Shift+Z".to_string()],
-                vec!["Cmd+Shift+Z".to_string()],
+                vec!["Ctrl+Y".to_string(), "Ctrl+Shift+Z".to_string(), "Cmd+Shift+Z".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::OpenNewLine,
-                vec!["Shift+Enter".to_string(), "Ctrl+J".to_string()],
                 vec!["Shift+Enter".to_string(), "Ctrl+J".to_string()],
             ),
             // Code Editing
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ToggleComment,
-                vec!["Ctrl+/".to_string(), "Alt+;".to_string()],
-                vec!["Cmd+/".to_string()],
+                vec!["Ctrl+/".to_string(), "Alt+;".to_string(), "Cmd+/".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DuplicateLineSelection,
-                vec!["Ctrl+D".to_string()],
-                vec!["Cmd+Shift+D".to_string()],
+                vec!["Ctrl+D".to_string(), "Cmd+Shift+D".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveLineUp,
-                vec!["Alt+Up".to_string()],
-                vec!["Option+Up".to_string()],
+                vec!["Alt+Up".to_string(), "Option+Up".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveLineDown,
-                vec!["Alt+Down".to_string()],
-                vec!["Option+Down".to_string()],
+                vec!["Alt+Down".to_string(), "Option+Down".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::IndentRegion,
-                vec!["Ctrl+]".to_string()],
-                vec!["Cmd+]".to_string()],
+                vec!["Ctrl+]".to_string(), "Cmd+]".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DedentRegion,
-                vec!["Ctrl+[".to_string()],
-                vec!["Cmd+[".to_string()],
+                vec!["Ctrl+[".to_string(), "Cmd+[".to_string()],
             ),
             // Search and Replace
             KeyboardOperationDefinition::new(
                 KeyboardOperation::IncrementalSearchForward,
-                vec!["Ctrl+F".to_string(), "Ctrl+S".to_string()],
-                vec!["Cmd+F".to_string()],
+                vec!["Ctrl+F".to_string(), "Ctrl+S".to_string(), "Cmd+F".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::FindAndReplace,
-                vec!["Ctrl+H".to_string()],
-                vec!["Cmd+Shift+H".to_string()],
+                vec!["Ctrl+H".to_string(), "Cmd+Shift+H".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::FindNext,
-                vec!["F3".to_string()],
-                vec!["Cmd+G".to_string()],
+                vec!["F3".to_string(), "Cmd+G".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::FindPrevious,
-                vec!["Shift+F3".to_string()],
-                vec!["Cmd+Shift+G".to_string()],
+                vec!["Shift+F3".to_string(), "Cmd+Shift+G".to_string()],
             ),
             // Mark and Region
             KeyboardOperationDefinition::new(
                 KeyboardOperation::SetMark,
                 vec!["Ctrl+Space".to_string(), "Ctrl+@".to_string()],
-                vec!["Ctrl+Space".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::SelectAll,
-                vec!["Ctrl+A".to_string()],
-                vec!["Cmd+A".to_string(), "Ctrl+A".to_string()],
+                vec!["Ctrl+A".to_string(), "Cmd+A".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::SelectWordUnderCursor,
-                vec!["Alt+@".to_string()],
                 vec!["Alt+@".to_string()],
             ),
         ]

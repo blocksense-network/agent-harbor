@@ -2,20 +2,22 @@ use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::view_model::FocusElement;
 use ah_tui::view_model::{FilterControl, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel};
-use ah_workflows::{WorkflowConfig, WorkflowProcessor};
+use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use std::sync::Arc;
+use tui_exploration::workspace_files::WorkspaceFiles;
 use ratatui::layout::Rect;
 use tui_exploration::view_model::{Msg, MouseAction, ViewModel};
 use tui_exploration::settings::KeyboardOperation;
 use tui_exploration::workspace_files::GitWorkspaceFiles;
 
 fn new_view_model() -> ViewModel {
-    let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-    let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
-    let task_manager = Box::new(MockRestClient::new());
+    let workspace_files: Arc<dyn WorkspaceFiles> = Arc::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+    let task_manager: Arc<dyn tui_exploration::TaskManager> = Arc::new(MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
-    ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
+    ViewModel::new_with_background_loading(workspace_files, workspace_workflows, task_manager, settings)
 }
 
 fn send_key(vm: &mut ViewModel, code: KeyCode, modifiers: KeyModifiers) {
@@ -412,6 +414,107 @@ mod keyboard {
         assert_eq!(new_cursor.1, initial_cursor.1 + 1); // One column right
         // Autocomplete should still be open
         assert!(vm.autocomplete.is_open());
+    }
+
+    #[test]
+    fn home_key_moves_caret_to_beginning_of_line_in_draft_card() {
+        let mut vm = new_view_model();
+
+        // Insert text and move cursor to end
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("test text");
+            // Cursor should be at the end: (0, 9)
+        }
+
+        // Get initial cursor position (should be at end)
+        let initial_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(initial_cursor.1, 9); // End of "test text"
+
+        // Send Home key (MoveToBeginningOfLine)
+        let home_event = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
+        vm.handle_keyboard_operation(KeyboardOperation::MoveToBeginningOfLine, &home_event);
+
+        // Verify cursor moved to beginning
+        let new_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(new_cursor.0, initial_cursor.0); // Same row
+        assert_eq!(new_cursor.1, 0); // Beginning of line
+    }
+
+    #[test]
+    fn end_key_moves_caret_to_end_of_line_in_draft_card() {
+        let mut vm = new_view_model();
+
+        // Insert text and move cursor to beginning
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("test text");
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+        }
+
+        // Get initial cursor position (should be at beginning)
+        let initial_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(initial_cursor.1, 0); // Beginning of "test text"
+
+        // Send End key (MoveToEndOfLine)
+        let end_event = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
+        vm.handle_keyboard_operation(KeyboardOperation::MoveToEndOfLine, &end_event);
+
+        // Verify cursor moved to end
+        let new_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(new_cursor.0, initial_cursor.0); // Same row
+        assert_eq!(new_cursor.1, 9); // End of line
+    }
+
+    #[test]
+    fn home_key_moves_caret_to_beginning_of_line_with_autocomplete_open() {
+        let mut vm = new_view_model();
+
+        // Insert text and open autocomplete
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("/test command");
+            vm.autocomplete.after_textarea_change(&card.description, &mut false);
+        }
+
+        // Get initial cursor position (should be at end)
+        let initial_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(initial_cursor.1, 13); // End of "/test command"
+
+        // Send Home key (MoveToBeginningOfLine)
+        let home_event = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
+        vm.handle_keyboard_operation(KeyboardOperation::MoveToBeginningOfLine, &home_event);
+
+        // Verify cursor moved to beginning
+        let new_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(new_cursor.0, initial_cursor.0); // Same row
+        assert_eq!(new_cursor.1, 0); // Beginning of line
+    }
+
+    #[test]
+    fn end_key_moves_caret_to_end_of_line_with_autocomplete_open() {
+        let mut vm = new_view_model();
+
+        // Insert text and open autocomplete
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("/test command");
+            vm.autocomplete.after_textarea_change(&card.description, &mut false);
+        }
+
+        // Move cursor to beginning
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+        }
+
+        // Get initial cursor position (should be at beginning)
+        let initial_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(initial_cursor.1, 0); // Beginning of "/test command"
+
+        // Send End key (MoveToEndOfLine)
+        let end_event = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
+        vm.handle_keyboard_operation(KeyboardOperation::MoveToEndOfLine, &end_event);
+
+        // Verify cursor moved to end
+        let new_cursor = vm.draft_cards[0].description.cursor();
+        assert_eq!(new_cursor.0, initial_cursor.0); // Same row
+        assert_eq!(new_cursor.1, 13); // End of line
     }
 }
 

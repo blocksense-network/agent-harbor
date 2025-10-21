@@ -74,7 +74,8 @@ use futures::stream::StreamExt;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
 use std::collections::HashMap;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+use std::sync::Arc;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
 
@@ -1061,9 +1062,9 @@ pub struct ViewModel {
     pub loading_models: bool,
 
     // Service dependencies
-    pub workspace_files: Box<dyn WorkspaceFiles>,
-    pub workspace_workflows: Box<dyn WorkspaceWorkflowsEnumerator>,
-    pub task_manager: Box<dyn TaskManager>, // Task launching abstraction
+    pub workspace_files: Arc<dyn WorkspaceFiles>,
+    pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+    pub task_manager: Arc<dyn TaskManager>, // Task launching abstraction
 
     // Autocomplete system
     pub autocomplete: InlineAutocomplete,
@@ -1076,6 +1077,18 @@ pub struct ViewModel {
     // Preloaded autocomplete data
     pub preloaded_files: Vec<String>,
     pub preloaded_workflows: Vec<String>,
+
+    // Background loading state
+    pub loading_files: bool,
+    pub loading_workflows: bool,
+    pub files_loaded: bool,
+    pub workflows_loaded: bool,
+
+    // Background loading communication channels
+    pub files_sender: Option<oneshot::Sender<Vec<String>>>,
+    pub workflows_sender: Option<oneshot::Sender<Vec<String>>>,
+    pub files_receiver: Option<oneshot::Receiver<Vec<String>>>,
+    pub workflows_receiver: Option<oneshot::Receiver<Vec<String>>>,
 
     // Task collections - cards contain the domain objects
     pub draft_cards: Vec<TaskEntryViewModel>, // Draft tasks (editable)
@@ -1094,11 +1107,11 @@ pub struct ViewModel {
 }
 
 impl ViewModel {
-    /// Create a new ViewModel with service dependencies
-    pub fn new(
-        workspace_files: Box<dyn WorkspaceFiles>,
-        workspace_workflows: Box<dyn WorkspaceWorkflowsEnumerator>,
-        task_manager: Box<dyn TaskManager>,
+    /// Create a new ViewModel with service dependencies and start background loading
+    pub fn new_with_background_loading(
+        workspace_files: Arc<dyn WorkspaceFiles>,
+        workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        task_manager: Arc<dyn TaskManager>,
         settings: Settings,
     ) -> Self {
         // Initialize available options
@@ -1113,9 +1126,21 @@ impl ViewModel {
             "Claude 3 Opus".to_string(),
         ];
 
-        // Initialize preloaded data (for now, empty - background preloading can be added later)
+        // Initialize preloaded data and loading state
         let preloaded_files = vec![];
         let preloaded_workflows = vec![];
+        let loading_files = false;
+        let loading_workflows = false;
+        let files_loaded = false;
+        let workflows_loaded = false;
+
+        // Create communication channels for background loading
+        let (files_sender, files_receiver) = oneshot::channel();
+        let (workflows_sender, workflows_receiver) = oneshot::channel();
+
+        // Create separate channels for the second ViewModel construction
+        let (files_sender2, files_receiver2) = oneshot::channel();
+        let (workflows_sender2, workflows_receiver2) = oneshot::channel();
 
         // Create initial draft card with embedded domain object
         let initial_draft = DraftTask {
@@ -1173,28 +1198,40 @@ impl ViewModel {
             focus_element: initial_global_focus,
 
             // Domain state
-            available_repositories,
-            available_branches,
-            available_models,
+            available_repositories: available_repositories.clone(),
+            available_branches: available_branches.clone(),
+            available_models: available_models.clone(),
 
             // Preloaded autocomplete data
-            preloaded_files,
-            preloaded_workflows,
+            preloaded_files: preloaded_files.clone(),
+            preloaded_workflows: preloaded_workflows.clone(),
 
-            draft_cards,
-            task_cards,
+            // Background loading state
+            loading_files,
+            loading_workflows,
+            files_loaded,
+            workflows_loaded,
+
+            // Background loading communication channels
+            files_sender: Some(files_sender),
+            workflows_sender: Some(workflows_sender),
+            files_receiver: Some(files_receiver),
+            workflows_receiver: Some(workflows_receiver),
+
+            draft_cards: draft_cards.clone(),
+            task_cards: task_cards.clone(),
             selected_card: 0,
             last_textarea_area: None,
-            active_modal,
-            footer,
-            status_bar,
+            active_modal: active_modal.clone(),
+            footer: footer.clone(),
+            status_bar: status_bar.clone(),
             scroll_offset: 0, // Calculated by View layer based on selection
             needs_scrollbar: total_content_height > 20, // Rough estimate, View layer refines
             total_content_height,
             visible_area_height: 20, // Will be set by View layer
 
             // Settings configuration
-            settings,
+            settings: settings.clone(),
 
             // Initialize UI state with defaults (moved from Model)
             modal_state: ModalState::None,
@@ -1215,9 +1252,9 @@ impl ViewModel {
             // Initialize quit flag
 
             // Service dependencies
-            workspace_files,
-            workspace_workflows,
-            task_manager,
+            workspace_files: workspace_files.clone(),
+            workspace_workflows: workspace_workflows.clone(),
+            task_manager: task_manager.clone(),
 
             // Autocomplete system - initialize with empty providers for now
             autocomplete: InlineAutocomplete::new(),
@@ -1228,13 +1265,89 @@ impl ViewModel {
             active_task_streams: HashMap::new(),
             task_id_to_card_info: HashMap::new(),
             needs_redraw: true,
-        }
+        };
+
+        let mut view_model = ViewModel {
+            focus_element: initial_global_focus,
+
+            // Domain state
+            available_repositories,
+            available_branches,
+            available_models,
+
+            // Preloaded autocomplete data
+            preloaded_files,
+            preloaded_workflows,
+
+            // Background loading state
+            loading_files,
+            loading_workflows,
+            files_loaded,
+            workflows_loaded,
+
+            // Background loading communication channels
+            files_sender: Some(files_sender2),
+            workflows_sender: Some(workflows_sender2),
+            files_receiver: Some(files_receiver2),
+            workflows_receiver: Some(workflows_receiver2),
+
+            draft_cards,
+            task_cards,
+            selected_card: 0,
+            last_textarea_area: None,
+            active_modal,
+            footer,
+            status_bar,
+            scroll_offset: 0, // Calculated by View layer based on selection
+            needs_scrollbar: total_content_height > 20, // Rough estimate, View layer refines
+            total_content_height,
+            visible_area_height: 20, // Rough estimate, updated by View layer
+
+            // Settings configuration
+            settings,
+
+            // Initialize UI state with defaults (moved from Model)
+            modal_state: ModalState::None,
+            search_mode: SearchMode::None,
+            word_wrap_enabled: true,
+            show_autocomplete_border: false,
+            status_message: None,
+            error_message: None,
+            exit_confirmation_armed: false,
+            exit_requested: false,
+
+            // Initialize loading states
+            loading_task_creation: false,
+            loading_repositories: false,
+            loading_branches: false,
+            loading_models: false,
+
+            // Service dependencies
+            workspace_files: workspace_files.clone(),
+            workspace_workflows: workspace_workflows.clone(),
+            task_manager: task_manager.clone(),
+
+            // Autocomplete system - initialize with empty providers for now
+            autocomplete: InlineAutocomplete::new(),
+
+            // Task event streaming
+            task_event_sender: None,
+            task_event_receiver: None,
+            active_task_streams: HashMap::new(),
+            task_id_to_card_info: HashMap::new(),
+            needs_redraw: true,
+        };
+
+        view_model
     }
 }
 
 impl ViewModel {
     /// Handle incoming UI messages and update ViewModel state
     pub fn update(&mut self, msg: Msg) -> Result<(), String> {
+        // Check for completed background loading tasks
+        self.check_background_loading();
+
         match msg {
             Msg::Key(key_event) => {
                 // Ignore key up events - we only want to process key down events
@@ -1365,7 +1478,10 @@ impl ViewModel {
 
         // First try to translate the key event to a keyboard operation
         if let Some(operation) = self.key_event_to_operation(&key) {
+            tracing::trace!("key_event_to_operation: {:?} -> {:?}", key, operation);
             return self.handle_keyboard_operation(operation, &key);
+        } else {
+            tracing::trace!("key_event_to_operation: {:?} -> None", key);
         }
 
         // Handle special key codes directly
@@ -1617,6 +1733,85 @@ impl ViewModel {
         match direction {
             NavigationDirection::Next => self.navigate_down_hierarchy(),
             NavigationDirection::Previous => self.navigate_up_hierarchy(),
+        }
+    }
+
+    /// Start background loading of workspace files and workflows
+    pub fn start_background_loading(&mut self) {
+        // Start loading files if not already loaded
+        if !self.files_loaded && !self.loading_files {
+            self.loading_files = true;
+            let workspace_files = Arc::clone(&self.workspace_files);
+
+            // Take the sender to move into the async task
+            if let Some(sender) = self.files_sender.take() {
+                tokio::spawn(async move {
+                    match workspace_files.stream_repository_files().await {
+                        Ok(mut stream) => {
+                            let mut files = Vec::new();
+                        while let Some(result) = stream.next().await {
+                            if let Ok(repo_file) = result {
+                                files.push(repo_file.path);
+                            }
+                        }
+                            // Send the loaded files back via the channel
+                            let _ = sender.send(files);
+                        }
+                        Err(_) => {
+                            // Send empty vec on error
+                            let _ = sender.send(Vec::new());
+                        }
+                    }
+                });
+            }
+        }
+
+        // Start loading workflows if not already loaded
+        if !self.workflows_loaded && !self.loading_workflows {
+            self.loading_workflows = true;
+            let workspace_workflows = Arc::clone(&self.workspace_workflows);
+
+            // Take the sender to move into the async task
+            if let Some(sender) = self.workflows_sender.take() {
+                tokio::spawn(async move {
+                    match workspace_workflows.enumerate_workflow_commands().await {
+                        Ok(commands) => {
+                            let workflows: Vec<String> = commands.into_iter().map(|c| c.name).collect();
+                            // Send the loaded workflows back via the channel
+                            let _ = sender.send(workflows);
+                        }
+                        Err(_) => {
+                            // Send empty vec on error
+                            let _ = sender.send(Vec::new());
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    /// Check for completed background loading tasks and update state
+    pub fn check_background_loading(&mut self) {
+        // Check if files have been loaded
+        if let Some(receiver) = self.files_receiver.as_mut() {
+            if let Ok(files) = receiver.try_recv() {
+                self.preloaded_files = files;
+                self.files_loaded = true;
+                self.loading_files = false;
+                self.files_receiver = None;
+                // TODO: Trigger autocomplete refresh if it's currently open
+            }
+        }
+
+        // Check if workflows have been loaded
+        if let Some(receiver) = self.workflows_receiver.as_mut() {
+            if let Ok(workflows) = receiver.try_recv() {
+                self.preloaded_workflows = workflows;
+                self.workflows_loaded = true;
+                self.loading_workflows = false;
+                self.workflows_receiver = None;
+                // TODO: Trigger autocomplete refresh if it's currently open
+            }
         }
     }
 
