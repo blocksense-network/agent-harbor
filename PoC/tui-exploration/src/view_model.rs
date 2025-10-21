@@ -107,7 +107,7 @@ impl ViewModel {
         }
 
         if self.autocomplete.is_open() {
-            self.autocomplete.close();
+            self.autocomplete.close(&mut self.needs_redraw);
             self.exit_confirmation_armed = false;
             self.exit_requested = false;
             if matches!(
@@ -529,8 +529,7 @@ impl ViewModel {
                         card.description.input(key_event);
 
                         // Trigger autocomplete after textarea change
-                        self.autocomplete.after_textarea_change(&card.description);
-                        self.needs_redraw = true;
+                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
@@ -548,8 +547,7 @@ impl ViewModel {
                             card.description.input(key_event);
 
                             // Trigger autocomplete after textarea change
-                            self.autocomplete.after_textarea_change(&card.description);
-                            self.needs_redraw = true;
+                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
 
                             card.save_state = DraftSaveState::Unsaved;
                             // Reset auto-save timer
@@ -667,8 +665,7 @@ impl ViewModel {
                     self.autocomplete.notify_text_input();
                     card.description.input(key_event);
 
-                    self.autocomplete.after_textarea_change(&card.description);
-                    self.needs_redraw = true;
+                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
 
                     card.save_state = DraftSaveState::Unsaved;
                     // Reset auto-save timer
@@ -686,8 +683,7 @@ impl ViewModel {
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
 
-                        self.autocomplete.after_textarea_change(&card.description);
-                        self.needs_redraw = true;
+                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
@@ -719,8 +715,7 @@ impl ViewModel {
                                         KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
                                     self.autocomplete.notify_text_input();
                                     card.description.input(key_event);
-                                    self.autocomplete.after_textarea_change(&card.description);
-                                    self.needs_redraw = true;
+                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                                     card.save_state = DraftSaveState::Unsaved;
                                     card.auto_save_timer = Some(std::time::Instant::now());
                                     return true;
@@ -760,8 +755,7 @@ impl ViewModel {
                         let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
-                        self.autocomplete.after_textarea_change(&card.description);
-                        self.needs_redraw = true;
+                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         card.auto_save_timer = Some(std::time::Instant::now());
@@ -1354,12 +1348,11 @@ impl ViewModel {
         // Handle autocomplete keys when focused on TaskDescription
         if matches!(self.focus_element, FocusElement::TaskDescription) {
             if let Some(card) = self.draft_cards.get_mut(0) {
-                match self.autocomplete.handle_key_event(&key, &mut card.description) {
+                match self.autocomplete.handle_key_event(&key, &mut card.description, &mut self.needs_redraw) {
                     AutocompleteKeyResult::Consumed { text_changed } => {
                         if text_changed {
                             self.autocomplete.notify_text_input();
-                            self.autocomplete.after_textarea_change(&card.description);
-                            self.needs_redraw = true;
+                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                         }
                         return true;
                     }
@@ -1432,8 +1425,7 @@ impl ViewModel {
                             let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::Head);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description);
-                                self.needs_redraw = true;
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                             }
                             return true;
                         }
@@ -1450,8 +1442,7 @@ impl ViewModel {
                             let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::End);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description);
-                                self.needs_redraw = true;
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                             }
                             return true;
                         }
@@ -1490,8 +1481,7 @@ impl ViewModel {
                             let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::Forward);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description);
-                                self.needs_redraw = true;
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                             }
                             return true;
                         }
@@ -1530,8 +1520,7 @@ impl ViewModel {
                             let before = card.description.cursor();
                             card.description.move_cursor(CursorMove::Back);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description);
-                                self.needs_redraw = true;
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                             }
                             return true;
                         }
@@ -1553,8 +1542,7 @@ impl ViewModel {
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
                                 // Cursor moved successfully within text area
-                                self.autocomplete.after_textarea_change(&card.description);
-                                self.needs_redraw = true;
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                                 return true;
                             }
                         }
@@ -1578,8 +1566,7 @@ impl ViewModel {
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
                                 // Cursor moved successfully within text area
-                                self.autocomplete.after_textarea_change(&card.description);
-                                self.needs_redraw = true;
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                                 return true;
                             }
                         }
@@ -1642,7 +1629,7 @@ impl ViewModel {
             || matches!(new_focus, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == FocusElement::TaskDescription));
 
         if was_on_textarea && !moving_to_textarea {
-            self.autocomplete.close();
+            self.autocomplete.close(&mut self.needs_redraw);
         }
     }
 
@@ -1679,7 +1666,7 @@ impl ViewModel {
                 line_index as u16,
                 col_index as u16,
             ));
-            self.autocomplete.after_textarea_change(&card.description);
+            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
         }
 
         self.needs_redraw = true;

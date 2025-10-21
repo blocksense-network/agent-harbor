@@ -371,6 +371,7 @@ impl InlineAutocomplete {
         &mut self,
         key: &KeyEvent,
         textarea: &mut TextArea<'_>,
+        needs_redraw: &mut bool,
     ) -> AutocompleteKeyResult {
         if !self.vm.open {
             return AutocompleteKeyResult::Ignored;
@@ -412,19 +413,19 @@ impl InlineAutocomplete {
                 }
             }
             KeyCode::Tab | KeyCode::BackTab => {
-                let changed = self.commit_selection(textarea);
+                let changed = self.commit_selection(textarea, needs_redraw);
                 AutocompleteKeyResult::Consumed {
                     text_changed: changed,
                 }
             }
             KeyCode::Enter if !key.modifiers.contains(KeyModifiers::SHIFT) => {
-                let changed = self.commit_selection(textarea);
+                let changed = self.commit_selection(textarea, needs_redraw);
                 AutocompleteKeyResult::Consumed {
                     text_changed: changed,
                 }
             }
             KeyCode::Esc => {
-                self.close();
+                self.close(needs_redraw);
                 self.suspended = true;
                 AutocompleteKeyResult::Consumed {
                     text_changed: false,
@@ -491,7 +492,7 @@ impl InlineAutocomplete {
         true
     }
 
-    pub fn after_textarea_change(&mut self, textarea: &TextArea<'_>) {
+    pub fn after_textarea_change(&mut self, textarea: &TextArea<'_>, needs_redraw: &mut bool) {
         if self.suspended {
             return;
         }
@@ -502,21 +503,26 @@ impl InlineAutocomplete {
                 // Same trigger – keep the menu visible without rescheduling work
                 // This handles cursor movement within the same token (e.g., "/te" vs "/t")
                 // Keep the menu open if it was already open (for loading states), otherwise open if we have results
+                let was_open = self.vm.open;
                 self.vm.open = self.vm.open || !self.vm.results.is_empty();
                 self.vm.token = Some(token);
+                let query_changed = self.vm.query != query;
                 self.vm.query = query.clone(); // Update query as cursor moves
-                return;
+                if was_open != self.vm.open || query_changed {
+                    *needs_redraw = true;
+                }
+            } else {
+                // New trigger context - reset selection
+                self.vm.selected = 0;
+                self.vm.trigger = Some(trigger);
+                self.vm.token = Some(token);
+                self.vm.query = query.clone();
+                self.vm.open = false;
+                self.schedule_query(trigger, query);
+                *needs_redraw = true;
             }
-
-            // New trigger context - reset selection
-            self.vm.selected = 0;
-            self.vm.trigger = Some(trigger);
-            self.vm.token = Some(token);
-            self.vm.query = query.clone();
-            self.vm.open = false;
-            self.schedule_query(trigger, query);
         } else {
-            self.close();
+            self.close(needs_redraw);
         }
     }
 
@@ -594,9 +600,9 @@ impl InlineAutocomplete {
         });
     }
 
-    fn commit_selection(&mut self, textarea: &mut TextArea<'_>) -> bool {
+    fn commit_selection(&mut self, textarea: &mut TextArea<'_>, needs_redraw: &mut bool) -> bool {
         if self.vm.results.is_empty() {
-            self.close();
+            self.close(needs_redraw);
             return false;
         }
 
@@ -627,18 +633,22 @@ impl InlineAutocomplete {
             }
         }
 
-        self.close();
+        self.close(needs_redraw);
         changed
     }
 
     /// Close the autocomplete menu and clear any pending state.
-    pub fn close(&mut self) {
+    pub fn close(&mut self, needs_redraw: &mut bool) {
+        let was_open = self.vm.open;
         self.vm.open = false;
         self.vm.trigger = None;
         self.vm.results.clear();
         self.vm.selected = 0;
         self.vm.token = None;
         self.pending = None;
+        if was_open {
+            *needs_redraw = true;
+        }
     }
 
     fn constrain_selected(&mut self) {
@@ -893,7 +903,8 @@ mod tests {
         let mut autocomplete = InlineAutocomplete::with_providers(vec![provider]);
         let mut textarea = TextArea::from(["@ma".to_string()]);
         textarea.move_cursor(CursorMove::End);
-        autocomplete.after_textarea_change(&textarea);
+        let mut needs_redraw = false;
+        autocomplete.after_textarea_change(&textarea, &mut needs_redraw);
 
         thread::sleep(QUERY_DEBOUNCE + Duration::from_millis(20));
         autocomplete.on_tick();
@@ -932,7 +943,8 @@ mod tests {
         let mut textarea = TextArea::from(["@ga".to_string()]);
         textarea.move_cursor(CursorMove::End);
 
-        autocomplete.commit_selection(&mut textarea);
+        let mut needs_redraw = false;
+        autocomplete.commit_selection(&mut textarea, &mut needs_redraw);
 
         assert_eq!(textarea.lines()[0], "@gamma.rs");
         assert!(!autocomplete.vm.open);

@@ -568,7 +568,8 @@ mod mouse {
             // Ensure cursor is at the end (after the "/")
             let len = card.description.lines().join("\n").chars().count();
             card.description.move_cursor(tui_textarea::CursorMove::Jump(0, len as u16));
-            vm.autocomplete.after_textarea_change(&card.description);
+            let mut needs_redraw = false;
+            vm.autocomplete.after_textarea_change(&card.description, &mut needs_redraw);
         }
 
         // For testing, directly set the autocomplete to open state since the async system
