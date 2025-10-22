@@ -5,6 +5,7 @@
 
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
 use ah_core::agent_types::AgentType;
+use anyhow::Context;
 use clap::{Args, ValueEnum};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -466,7 +467,7 @@ impl AgentStartArgs {
             }
 
             // Create process configuration
-            let config = self.build_agent_config()?;
+            let config = self.build_agent_config(AgentType::from(self.agent.clone()))?;
             let process_config = ProcessConfig {
                 command: agent_cmd,
                 working_dir: Some(actual_cwd.to_string_lossy().to_string()),
