@@ -10,10 +10,10 @@ import {
   type DraftUpdate,
   type CreateTaskRequest,
 } from '../../lib/api.js';
-import { TomSelectComponent } from '../common/TomSelect.js';
-import { ModelMultiSelect } from '../common/ModelMultiSelect.js';
-import { SaveStatus, type SaveStatusType } from '../common/SaveStatus.js';
-import { useFocus } from '../../contexts/FocusContext.js';
+import { TomSelectComponent } from '../common/TomSelect';
+import { ModelMultiSelect } from './ModelMultiSelect.jsx';
+import { SaveStatus, type SaveStatusType } from './SaveStatus.jsx';
+import { useFocus } from '../../contexts/FocusContext';
 
 interface Repository {
   id: string;
