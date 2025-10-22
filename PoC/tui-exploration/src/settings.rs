@@ -366,12 +366,18 @@ impl KeyMatcher {
 
     /// Check if this matcher matches a crossterm KeyEvent
     pub fn matches(&self, event: &ratatui::crossterm::event::KeyEvent) -> bool {
-        use crossterm::event::KeyModifiers;
+        use crossterm::event::{KeyModifiers, KeyCode};
 
         // Check key code first
         if !self.matches_code(&event.code) {
             return false;
         }
+
+        // Special handling for cursor movement keys: allow SHIFT for text selection
+        let is_cursor_key = matches!(event.code,
+            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down |
+            KeyCode::Home | KeyCode::End | KeyCode::PageUp | KeyCode::PageDown
+        );
 
         // Check modifiers
         for modifier in [
@@ -381,7 +387,7 @@ impl KeyMatcher {
             KeyModifiers::SUPER,
         ] {
             let required = self.required.contains(modifier);
-            let optional = self.optional.contains(modifier);
+            let optional = self.optional.contains(modifier) || (modifier == KeyModifiers::SHIFT && is_cursor_key);
             let present = event.modifiers.contains(modifier);
 
             if required && !present {

@@ -2,18 +2,43 @@ use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::view_model::FocusElement;
 use ah_tui::view_model::{FilterControl, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel};
-use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
+use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
+use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use futures::StreamExt;
 use std::sync::Arc;
 use tui_exploration::workspace_files::WorkspaceFiles;
 use ratatui::layout::Rect;
 use tui_exploration::view_model::{Msg, MouseAction, ViewModel};
 use tui_exploration::settings::KeyboardOperation;
-use tui_exploration::workspace_files::GitWorkspaceFiles;
+
+// Mock implementations for tests
+#[derive(Clone)]
+struct MockWorkspaceFiles;
+#[async_trait::async_trait]
+impl WorkspaceFiles for MockWorkspaceFiles {
+    async fn stream_repository_files(&self) -> Result<futures::stream::BoxStream<'static, Result<tui_exploration::workspace_files::RepositoryFile, ah_repo::error::VcsError>>, ah_repo::error::VcsError> {
+        use futures::stream;
+        Ok(stream::empty().boxed())
+    }
+
+    async fn is_git_repository(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Clone)]
+struct MockWorkspaceWorkflows;
+#[async_trait::async_trait]
+impl WorkspaceWorkflowsEnumerator for MockWorkspaceWorkflows {
+    async fn enumerate_workflow_commands(&self) -> Result<Vec<ah_workflows::WorkflowCommand>, ah_workflows::WorkflowError> {
+        Ok(vec![])
+    }
+}
 
 fn new_view_model() -> ViewModel {
-    let workspace_files: Arc<dyn WorkspaceFiles> = Arc::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+    let workspace_files: Arc<dyn WorkspaceFiles> = Arc::new(MockWorkspaceFiles);
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(MockWorkspaceWorkflows);
     let task_manager: Arc<dyn tui_exploration::TaskManager> = Arc::new(MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
@@ -820,5 +845,387 @@ mod mouse {
         // Verify autocomplete is still open and query updated to "te"
         assert!(vm.autocomplete.is_open());
         assert_eq!(vm.autocomplete.get_query(), "te"); // Should now be "te" since cursor moved to after "/te"
+    }
+
+    #[test]
+    fn shift_left_arrow_starts_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            // Move cursor to end
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press shift+left arrow
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+
+        // Should now have selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+    }
+
+    #[test]
+    fn shift_right_arrow_starts_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            // Move cursor to beginning
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press shift+right arrow
+        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT);
+
+        // Should now have selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+    }
+
+    #[test]
+    fn shift_home_starts_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            // Move cursor to end
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press shift+home
+        send_key(&mut vm, KeyCode::Home, KeyModifiers::SHIFT);
+
+        // Should now have selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+    }
+
+    #[test]
+    fn shift_end_starts_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            // Move cursor to beginning
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press shift+end
+        send_key(&mut vm, KeyCode::End, KeyModifiers::SHIFT);
+
+        // Should now have selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+    }
+
+    #[test]
+    fn shift_up_arrow_starts_selection() {
+        let mut vm = new_view_model();
+
+        // Type multiline text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("line 1\nline 2\nline 3");
+            // Move cursor to end of second line
+            card.description.move_cursor(tui_textarea::CursorMove::Jump(1, 6));
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press shift+up arrow
+        send_key(&mut vm, KeyCode::Up, KeyModifiers::SHIFT);
+
+        // Should now have selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+    }
+
+    #[test]
+    fn shift_down_arrow_starts_selection() {
+        let mut vm = new_view_model();
+
+        // Type multiline text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("line 1\nline 2\nline 3");
+            // Move cursor to beginning of second line
+            card.description.move_cursor(tui_textarea::CursorMove::Jump(1, 0));
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press shift+down arrow
+        send_key(&mut vm, KeyCode::Down, KeyModifiers::SHIFT);
+
+        // Should now have selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+    }
+
+    #[test]
+    fn typing_clears_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Create selection with shift+left
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Type a character - should clear selection
+        send_key(&mut vm, KeyCode::Char('x'), KeyModifiers::empty());
+
+        // Selection should be cleared
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+    }
+
+    #[test]
+    fn backspace_clears_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Create selection with shift+left
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Press backspace - should clear selection
+        send_key(&mut vm, KeyCode::Backspace, KeyModifiers::empty());
+
+        // Selection should be cleared
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+    }
+
+    #[test]
+    fn leaving_textarea_clears_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Create selection
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Navigate away from textarea (to settings button)
+        while vm.focus_element != FocusElement::SettingsButton {
+            send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
+        }
+
+        // Selection should be cleared
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+    }
+
+    #[test]
+    fn regular_arrow_keys_dont_start_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text first
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Initially no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+
+        // Press regular left arrow (no shift)
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+
+        // Should still have no selection
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+    }
+
+    #[test]
+    fn motion_keys_without_shift_discharge_selection() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Create selection with shift+left
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT); // Extend selection
+
+        // Verify selection exists
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Press left arrow without shift - should discharge selection
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+
+        // Selection should be discharged
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
+    }
+
+    #[test]
+    fn typing_replaces_selected_text() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Create selection with shift+left (select "world")
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+
+        // Verify selection exists
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Type a character - should replace selected text
+        send_key(&mut vm, KeyCode::Char('X'), KeyModifiers::empty());
+
+        // Selection should be cleared and text should be replaced
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+            assert_eq!(card.description.lines().join("\n"), "hello X");
+        }
+    }
+
+    #[test]
+    fn backspace_erases_selected_text() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Create selection with shift+left (select "world")
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT);
+
+        // Verify selection exists
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Press backspace - should erase selected text
+        send_key(&mut vm, KeyCode::Backspace, KeyModifiers::empty());
+
+        // Selection should be cleared and selected text should be erased
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+            assert_eq!(card.description.lines().join("\n"), "hello ");
+        }
+    }
+
+    #[test]
+    fn delete_erases_selected_text() {
+        let mut vm = new_view_model();
+
+        // Type some text and create selection
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("hello world");
+            card.description.move_cursor(tui_textarea::CursorMove::End);
+        }
+
+        // Move cursor back to select "world" from the beginning
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+        send_key(&mut vm, KeyCode::Left, KeyModifiers::empty());
+
+        // Create selection with shift+right (select "world")
+        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT);
+        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT);
+
+        // Verify selection exists
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+        }
+
+        // Press delete - should erase selected text
+        send_key(&mut vm, KeyCode::Delete, KeyModifiers::empty());
+
+        // Selection should be cleared and selected text should be erased
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+            assert_eq!(card.description.lines().join("\n"), "hello ");
+        }
     }
 }

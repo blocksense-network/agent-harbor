@@ -519,6 +519,7 @@ impl ViewModel {
             | FocusElement::ModelSelector
             | FocusElement::GoButton
             | FocusElement::DraftTask(_) => {
+
                 // Support editing the description when focused on TaskDescription or any DraftTask
                 if let FocusElement::TaskDescription = self.focus_element {
                     // Get the first (and currently only) draft card
@@ -658,6 +659,8 @@ impl ViewModel {
 
         match self.focus_element {
             FocusElement::TaskDescription => {
+                // Note: tui-textarea automatically deletes selected text when backspace is pressed
+
                 // Get the first (and currently only) draft card
                 if let Some(card) = self.draft_cards.get_mut(0) {
                     // Feed backspace to the textarea widget
@@ -675,12 +678,150 @@ impl ViewModel {
                 }
             }
             FocusElement::DraftTask(idx) => {
+                // Note: tui-textarea automatically deletes selected text when backspace is pressed
+
                 // When a draft task is focused, edit its description only if internal focus is on text area
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     if card.focus_element == FocusElement::TaskDescription {
                         // Feed backspace to the textarea widget
                         use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                         let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                        self.autocomplete.notify_text_input();
+                        card.description.input(key_event);
+
+                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+
+                        card.save_state = DraftSaveState::Unsaved;
+                        // Reset auto-save timer
+                        card.auto_save_timer = Some(std::time::Instant::now());
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    pub fn handle_delete(&mut self) -> bool {
+        // Handle modal delete when a modal is active
+        if let Some(ref mut modal) = self.active_modal {
+            match &modal.modal_type {
+                ModalType::Search { .. } => {
+                    // For search modals, remove last character from input value (same as backspace)
+                    if !modal.input_value.is_empty() {
+                        modal.input_value.pop();
+
+                        // Inline filtering logic to avoid double borrow
+                        let all_options = match self.modal_state {
+                            ModalState::RepositorySearch => &self.available_repositories,
+                            ModalState::BranchSearch => &self.available_branches,
+                            ModalState::ModelSearch => &self.available_models,
+                            _ => &Vec::new(),
+                        };
+
+                        let query = modal.input_value.to_lowercase();
+                        let mut filtered: Vec<(String, bool)> = all_options
+                            .iter()
+                            .filter(|option| {
+                                if query.is_empty() {
+                                    true // Show all options when no query
+                                } else {
+                                    option.to_lowercase().contains(&query)
+                                }
+                            })
+                            .cloned()
+                            .map(|opt| (opt, false))
+                            .collect();
+
+                        // Reset selected index if it's out of bounds
+                        if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                            modal.selected_index = 0;
+                        }
+
+                        // Mark the selected option
+                        if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                            filtered[modal.selected_index].1 = true;
+                        }
+
+                        modal.filtered_options = filtered;
+                        self.needs_redraw = true;
+                        return true;
+                    }
+                }
+                ModalType::ModelSelection { .. } => {
+                    // Model selection modals use search input similar to search modals
+                    modal.input_value.pop();
+
+                    // Inline filtering logic to avoid double borrow
+                    let query = modal.input_value.to_lowercase();
+                    let mut filtered: Vec<(String, bool)> =
+                        if let ModalType::ModelSelection { options } = &modal.modal_type {
+                            options
+                                .iter()
+                                .filter(|option| {
+                                    if query.is_empty() {
+                                        true // Show all options when no query
+                                    } else {
+                                        option.name.to_lowercase().contains(&query)
+                                    }
+                                })
+                                .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+
+                    // Reset selected index if it's out of bounds
+                    if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                        modal.selected_index = 0;
+                    }
+
+                    // Mark the selected option
+                    if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                        filtered[modal.selected_index].1 = true;
+                    }
+
+                    modal.filtered_options = filtered;
+                    self.needs_redraw = true;
+                    return true;
+                }
+                ModalType::Settings { .. } => {
+                    // Settings modals don't handle delete
+                    return false;
+                }
+            }
+        }
+
+        match self.focus_element {
+            FocusElement::TaskDescription => {
+                // Note: tui-textarea automatically deletes selected text when delete is pressed
+
+                // Get the first (and currently only) draft card
+                if let Some(card) = self.draft_cards.get_mut(0) {
+                    // Feed delete to the textarea widget
+                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                    let key_event = KeyEvent::new(KeyCode::Delete, KeyModifiers::empty());
+                    self.autocomplete.notify_text_input();
+                    card.description.input(key_event);
+
+                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+
+                    card.save_state = DraftSaveState::Unsaved;
+                    // Reset auto-save timer
+                    card.auto_save_timer = Some(std::time::Instant::now());
+                    return true;
+                }
+            }
+            FocusElement::DraftTask(idx) => {
+                // Note: tui-textarea automatically deletes selected text when delete is pressed
+
+                // When a draft task is focused, edit its description only if internal focus is on text area
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    if card.focus_element == FocusElement::TaskDescription {
+                        // Feed delete to the textarea widget
+                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                        let key_event = KeyEvent::new(KeyCode::Delete, KeyModifiers::empty());
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
 
@@ -1428,6 +1569,7 @@ impl ViewModel {
             KeyboardOperation::MoveForwardOneCharacter,  // Right arrow
             KeyboardOperation::MoveBackwardOneCharacter, // Left arrow
             KeyboardOperation::DeleteCharacterBackward,  // Backspace
+            KeyboardOperation::DeleteCharacterForward,   // Delete
             KeyboardOperation::OpenNewLine,              // Shift+Enter
             KeyboardOperation::DismissOverlay,           // Escape
         ];
@@ -1515,7 +1657,7 @@ impl ViewModel {
     pub fn handle_keyboard_operation(
         &mut self,
         operation: KeyboardOperation,
-        _key: &KeyEvent,
+        key: &KeyEvent,
     ) -> bool {
         match operation {
             KeyboardOperation::MoveToNextField => {
@@ -1539,6 +1681,21 @@ impl ViewModel {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
+
+                            // Handle shift+home selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
                             card.description.move_cursor(CursorMove::Head);
                             if card.description.cursor() != before {
                                 self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
@@ -1556,6 +1713,21 @@ impl ViewModel {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
+
+                            // Handle shift+end selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
                             card.description.move_cursor(CursorMove::End);
                             if card.description.cursor() != before {
                                 self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
@@ -1595,7 +1767,23 @@ impl ViewModel {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
+
+                            // Handle shift+arrow selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
                             card.description.move_cursor(CursorMove::Forward);
+
                             if card.description.cursor() != before {
                                 self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                             }
@@ -1634,7 +1822,23 @@ impl ViewModel {
                         if card.focus_element == FocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
+
+                            // Handle shift+arrow selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
                             card.description.move_cursor(CursorMove::Back);
+
                             if card.description.cursor() != before {
                                 self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
                             }
@@ -1654,6 +1858,21 @@ impl ViewModel {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             use tui_textarea::CursorMove;
                             let old_cursor = card.description.cursor();
+
+                            // Handle shift+arrow selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
                             card.description.move_cursor(CursorMove::Up);
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
@@ -1678,6 +1897,21 @@ impl ViewModel {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             use tui_textarea::CursorMove;
                             let old_cursor = card.description.cursor();
+
+                            // Handle shift+arrow selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
                             card.description.move_cursor(CursorMove::Down);
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
@@ -1695,6 +1929,10 @@ impl ViewModel {
             KeyboardOperation::DeleteCharacterBackward => {
                 // Backspace
                 self.handle_backspace()
+            }
+            KeyboardOperation::DeleteCharacterForward => {
+                // Delete key
+                self.handle_delete()
             }
             KeyboardOperation::OpenNewLine => {
                 // Shift+Enter
@@ -1825,6 +2063,14 @@ impl ViewModel {
 
         if was_on_textarea && !moving_to_textarea {
             self.autocomplete.close(&mut self.needs_redraw);
+            // Cancel any active text selection when leaving textarea
+            if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    if card.focus_element == FocusElement::TaskDescription && card.description.selection_range().is_some() {
+                        card.description.cancel_selection();
+                    }
+                }
+            }
         }
     }
 
