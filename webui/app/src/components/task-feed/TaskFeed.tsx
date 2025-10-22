@@ -7,12 +7,12 @@ import { Component, createSignal, createEffect, createMemo, For, Show, onMount }
 import { useNavigate } from '@solidjs/router';
 import { apiClient, type Session, type DraftTask } from '../../lib/api.js';
 import { type SessionsResponse } from '../../lib/server-data.js';
-import { SessionCard } from './SessionCard.js';
-import { DraftTaskCard } from '../tasks/DraftTaskCard.js';
-import { useSession } from '../../contexts/SessionContext.js';
-import { useDrafts } from '../../contexts/DraftContext.js';
-import { useFocus } from '../../contexts/FocusContext.js';
-import { useToast } from '../../contexts/ToastContext.js';
+import { SessionCard } from './SessionCard';
+import { DraftTaskCard } from './DraftTaskCard';
+import { useSession } from '../../contexts/SessionContext';
+import { useDrafts } from '../../contexts/DraftContext';
+import { useFocus } from '../../contexts/FocusContext';
+import { useToast } from '../../contexts/ToastContext';
 
 interface TaskFeedProps {
   draftTasks?: DraftTask[]; // Will be defined later

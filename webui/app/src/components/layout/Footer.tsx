@@ -7,7 +7,7 @@ import { Component, createMemo } from 'solid-js';
 import {
   KeyboardShortcutsFooter,
   type KeyboardShortcutsFooterProps,
-} from '../common/KeyboardShortcutsFooter.js';
+} from './KeyboardShortcutsFooter.jsx';
 
 export interface FooterProps {
   onNewDraft?: () => void;

@@ -5,7 +5,7 @@
 
 import { useParams } from '@solidjs/router';
 import { Title, Meta } from '@solidjs/meta';
-import { TaskDetailsPage } from '../../components/tasks/TaskDetailsPage.js';
+import { TaskDetailsPage } from '../../components/task-details/TaskDetailsPage';
 
 export default function TaskDetailsRoute() {
   const params = useParams();
