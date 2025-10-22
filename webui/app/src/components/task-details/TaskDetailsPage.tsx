@@ -14,7 +14,7 @@ import {
   onCleanup,
 } from 'solid-js';
 import { useParams, useNavigate } from '@solidjs/router';
-import { useBreadcrumbs } from '../../contexts/BreadcrumbContext.js';
+import { useBreadcrumbs } from '../../contexts/BreadcrumbContext';
 import { apiClient } from '../../lib/api.js';
 
 interface TaskDetailsPageProps {
