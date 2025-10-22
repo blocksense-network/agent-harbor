@@ -1249,11 +1249,32 @@ pub struct ViewModel {
 
 impl ViewModel {
     /// Create a new ViewModel with service dependencies and start background loading
+    /// Create a new ViewModel without background loading (for tests)
+    pub fn new(
+        workspace_files: Arc<dyn WorkspaceFiles>,
+        workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        task_manager: Arc<dyn TaskManager>,
+        settings: Settings,
+    ) -> Self {
+        Self::new_internal(workspace_files, workspace_workflows, task_manager, settings, false)
+    }
+
+    /// Create a new ViewModel with background loading enabled
     pub fn new_with_background_loading(
         workspace_files: Arc<dyn WorkspaceFiles>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         settings: Settings,
+    ) -> Self {
+        Self::new_internal(workspace_files, workspace_workflows, task_manager, settings, true)
+    }
+
+    fn new_internal(
+        workspace_files: Arc<dyn WorkspaceFiles>,
+        workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        task_manager: Arc<dyn TaskManager>,
+        settings: Settings,
+        with_background_loading: bool,
     ) -> Self {
         // Initialize available options
         let available_repositories = vec![
@@ -1275,13 +1296,14 @@ impl ViewModel {
         let files_loaded = false;
         let workflows_loaded = false;
 
-        // Create communication channels for background loading
-        let (files_sender, files_receiver) = oneshot::channel();
-        let (workflows_sender, workflows_receiver) = oneshot::channel();
-
-        // Create separate channels for the second ViewModel construction
-        let (files_sender2, files_receiver2) = oneshot::channel();
-        let (workflows_sender2, workflows_receiver2) = oneshot::channel();
+        // Create communication channels for background loading (only if enabled)
+        let (files_sender, files_receiver, workflows_sender, workflows_receiver) = if with_background_loading {
+            let (files_sender, files_receiver) = oneshot::channel();
+            let (workflows_sender, workflows_receiver) = oneshot::channel();
+            (Some(files_sender), Some(files_receiver), Some(workflows_sender), Some(workflows_receiver))
+        } else {
+            (None, None, None, None)
+        };
 
         // Create initial draft card with embedded domain object
         let initial_draft = DraftTask {
@@ -1354,10 +1376,10 @@ impl ViewModel {
             workflows_loaded,
 
             // Background loading communication channels
-            files_sender: Some(files_sender),
-            workflows_sender: Some(workflows_sender),
-            files_receiver: Some(files_receiver),
-            workflows_receiver: Some(workflows_receiver),
+            files_sender,
+            workflows_sender,
+            files_receiver,
+            workflows_receiver,
 
             draft_cards: draft_cards.clone(),
             task_cards: task_cards.clone(),
@@ -1406,80 +1428,7 @@ impl ViewModel {
             active_task_streams: HashMap::new(),
             task_id_to_card_info: HashMap::new(),
             needs_redraw: true,
-        };
-
-        let mut view_model = ViewModel {
-            focus_element: initial_global_focus,
-
-            // Domain state
-            available_repositories,
-            available_branches,
-            available_models,
-
-            // Preloaded autocomplete data
-            preloaded_files,
-            preloaded_workflows,
-
-            // Background loading state
-            loading_files,
-            loading_workflows,
-            files_loaded,
-            workflows_loaded,
-
-            // Background loading communication channels
-            files_sender: Some(files_sender2),
-            workflows_sender: Some(workflows_sender2),
-            files_receiver: Some(files_receiver2),
-            workflows_receiver: Some(workflows_receiver2),
-
-            draft_cards,
-            task_cards,
-            selected_card: 0,
-            last_textarea_area: None,
-            active_modal,
-            footer,
-            status_bar,
-            scroll_offset: 0, // Calculated by View layer based on selection
-            needs_scrollbar: total_content_height > 20, // Rough estimate, View layer refines
-            total_content_height,
-            visible_area_height: 20, // Rough estimate, updated by View layer
-
-            // Settings configuration
-            settings,
-
-            // Initialize UI state with defaults (moved from Model)
-            modal_state: ModalState::None,
-            search_mode: SearchMode::None,
-            word_wrap_enabled: true,
-            show_autocomplete_border: false,
-            status_message: None,
-            error_message: None,
-            exit_confirmation_armed: false,
-            exit_requested: false,
-
-            // Initialize loading states
-            loading_task_creation: false,
-            loading_repositories: false,
-            loading_branches: false,
-            loading_models: false,
-
-            // Service dependencies
-            workspace_files: workspace_files.clone(),
-            workspace_workflows: workspace_workflows.clone(),
-            task_manager: task_manager.clone(),
-
-            // Autocomplete system - initialize with empty providers for now
-            autocomplete: InlineAutocomplete::new(),
-
-            // Task event streaming
-            task_event_sender: None,
-            task_event_receiver: None,
-            active_task_streams: HashMap::new(),
-            task_id_to_card_info: HashMap::new(),
-            needs_redraw: true,
-        };
-
-        view_model
+        }
     }
 }
 
@@ -1568,8 +1517,12 @@ impl ViewModel {
             KeyboardOperation::MoveToEndOfLine,          // End
             KeyboardOperation::MoveForwardOneCharacter,  // Right arrow
             KeyboardOperation::MoveBackwardOneCharacter, // Left arrow
+            KeyboardOperation::MoveForwardOneWord,       // Ctrl+Right
+            KeyboardOperation::MoveBackwardOneWord,      // Ctrl+Left
             KeyboardOperation::DeleteCharacterBackward,  // Backspace
             KeyboardOperation::DeleteCharacterForward,   // Delete
+            KeyboardOperation::DeleteWordForward,        // Ctrl+Delete
+            KeyboardOperation::DeleteWordBackward,       // Ctrl+Backspace
             KeyboardOperation::OpenNewLine,              // Shift+Enter
             KeyboardOperation::DismissOverlay,           // Escape
         ];
@@ -1848,6 +1801,140 @@ impl ViewModel {
                 }
                 false
             }
+            KeyboardOperation::MoveForwardOneWord => {
+                // Ctrl+Right: move cursor forward one word in text area
+                if let FocusElement::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == FocusElement::TaskDescription {
+                            use tui_textarea::CursorMove;
+                            let before = card.description.cursor();
+
+                            // Handle shift+ctrl+arrow selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
+                            card.description.move_cursor(CursorMove::WordForward);
+
+                            if card.description.cursor() != before {
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            }
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            KeyboardOperation::MoveBackwardOneWord => {
+                // Ctrl+Left: move cursor backward one word in text area
+                if let FocusElement::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == FocusElement::TaskDescription {
+                            use tui_textarea::CursorMove;
+                            let before = card.description.cursor();
+
+                            // Handle shift+ctrl+arrow selection (CUA style)
+                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            if shift_pressed {
+                                // Start selection if not already active
+                                if card.description.selection_range().is_none() {
+                                    card.description.start_selection();
+                                }
+                            } else {
+                                // Clear any existing selection when moving without shift
+                                if card.description.selection_range().is_some() {
+                                    card.description.cancel_selection();
+                                }
+                            }
+
+                            card.description.move_cursor(CursorMove::WordBack);
+
+                            if card.description.cursor() != before {
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            }
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            KeyboardOperation::DeleteWordForward => {
+                // Ctrl+Delete: delete word forward
+                match self.focus_element {
+                    FocusElement::TaskDescription => {
+                        // Get the first (and currently only) draft card
+                        if let Some(card) = self.draft_cards.get_mut(0) {
+                            // Use tui-textarea's built-in word deletion method
+                            let before_text = card.description.lines().join("\\n");
+                            card.description.delete_next_word();
+                            let after_text = card.description.lines().join("\\n");
+                            if before_text != after_text {
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            }
+                            return true;
+                        }
+                    }
+                    FocusElement::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == FocusElement::TaskDescription {
+                                // Use tui-textarea's built-in word deletion method
+                                let before_text = card.description.lines().join("\\n");
+                                card.description.delete_next_word();
+                                let after_text = card.description.lines().join("\\n");
+                                if before_text != after_text {
+                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                false
+            }
+            KeyboardOperation::DeleteWordBackward => {
+                // Ctrl+Backspace: delete word backward
+                match self.focus_element {
+                    FocusElement::TaskDescription => {
+                        // Get the first (and currently only) draft card
+                        if let Some(card) = self.draft_cards.get_mut(0) {
+                            // Use tui-textarea's built-in word deletion method
+                            let before_text = card.description.lines().join("\\n");
+                            card.description.delete_word();
+                            let after_text = card.description.lines().join("\\n");
+                            if before_text != after_text {
+                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            }
+                            return true;
+                        }
+                    }
+                    FocusElement::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == FocusElement::TaskDescription {
+                                // Use tui-textarea's built-in word deletion method
+                                let before_text = card.description.lines().join("\\n");
+                                card.description.delete_word();
+                                let after_text = card.description.lines().join("\\n");
+                                if before_text != after_text {
+                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                false
+            }
             KeyboardOperation::MoveToPreviousLine => {
                 if self.handle_overlay_navigation(NavigationDirection::Previous) {
                     return true;
@@ -2037,7 +2124,7 @@ impl ViewModel {
                 self.files_loaded = true;
                 self.loading_files = false;
                 self.files_receiver = None;
-                // TODO: Trigger autocomplete refresh if it's currently open
+                self.needs_redraw = true; // Trigger redraw to update autocomplete
             }
         }
 
@@ -2048,13 +2135,13 @@ impl ViewModel {
                 self.workflows_loaded = true;
                 self.loading_workflows = false;
                 self.workflows_receiver = None;
-                // TODO: Trigger autocomplete refresh if it's currently open
+                self.needs_redraw = true; // Trigger redraw to update autocomplete
             }
         }
     }
 
     /// Close autocomplete if focus is moving away from textarea elements
-    fn close_autocomplete_if_leaving_textarea(&mut self, new_focus: FocusElement) {
+    pub fn close_autocomplete_if_leaving_textarea(&mut self, new_focus: FocusElement) {
         let was_on_textarea = matches!(self.focus_element, FocusElement::TaskDescription)
             || matches!(self.focus_element, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == FocusElement::TaskDescription));
 
