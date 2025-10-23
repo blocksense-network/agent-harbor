@@ -410,6 +410,8 @@ impl AgentExecutor for ClaudeAgent {
         }
 
         debug!("Claude Code command prepared successfully");
+        println!("Claude command: {:?}", cmd);
+
         Ok(cmd)
     }
 

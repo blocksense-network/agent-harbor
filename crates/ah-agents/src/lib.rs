@@ -65,6 +65,9 @@ pub mod claude;
 #[cfg(feature = "codex")]
 pub mod codex;
 
+#[cfg(feature = "gemini")]
+pub mod gemini;
+
 // Re-export core types
 pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
@@ -88,6 +91,11 @@ pub fn codex() -> codex::CodexAgent {
     codex::CodexAgent::new()
 }
 
+#[cfg(feature = "gemini")]
+pub fn gemini() -> gemini::GeminiAgent {
+    gemini::GeminiAgent::new()
+}
+
 /// Get an agent executor by name
 ///
 /// This function returns a boxed trait object for the requested agent.
@@ -108,6 +116,9 @@ pub fn agent_by_name(name: &str) -> Option<Box<dyn AgentExecutor>> {
 
         #[cfg(feature = "codex")]
         "codex" => Some(Box::new(codex::CodexAgent::new())),
+
+        #[cfg(feature = "gemini")]
+        "gemini" => Some(Box::new(gemini::GeminiAgent::new())),
 
         _ => None,
     }

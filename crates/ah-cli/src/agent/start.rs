@@ -149,6 +149,10 @@ pub struct AgentStartArgs {
     #[arg(long)]
     pub claude_model: Option<String>,
 
+    /// Model to use specifically for Gemini agent (overrides --model)
+    #[arg(long)]
+    pub gemini_model: Option<String>,
+
     /// Additional writable paths to bind mount
     #[arg(long)]
     pub mount_rw: Vec<PathBuf>,
@@ -193,12 +197,9 @@ impl AgentStartArgs {
         let agent: Box<dyn AgentExecutor> = match agent_type {
             AgentType::Claude => Box::new(ah_agents::claude()),
             AgentType::Codex => Box::new(ah_agents::codex()),
+            AgentType::Gemini => Box::new(ah_agents::gemini()),
             // For agents not yet implemented in ah-agents, fall back to old logic
-            AgentType::Gemini
-            | AgentType::Opencode
-            | AgentType::Qwen
-            | AgentType::CursorCli
-            | AgentType::Goose => {
+            AgentType::Opencode | AgentType::Qwen | AgentType::CursorCli | AgentType::Goose => {
                 return self.run_legacy_agent(agent_type).await;
             }
             AgentType::Mock => unreachable!(), // handled above
@@ -279,6 +280,13 @@ impl AgentStartArgs {
                     .or_else(|| self.model.clone())
                     .unwrap_or_else(|| "sonnet".to_string())
             }
+            AgentType::Gemini => {
+                // gemini-model takes precedence over model
+                self.gemini_model
+                    .clone()
+                    .or_else(|| self.model.clone())
+                    .unwrap_or_else(|| "gemini-2.5-pro".to_string())
+            }
             // For other agents, use the general model flag or None
             _ => self.model.clone().unwrap_or_default(),
         };
@@ -299,6 +307,7 @@ impl AgentStartArgs {
         let agent_name = match agent_type {
             AgentType::Claude => "claude",
             AgentType::Codex => "codex",
+            AgentType::Gemini => "gemini",
             _ => "unknown",
         };
 
@@ -308,7 +317,6 @@ impl AgentStartArgs {
     /// Run legacy agent implementations (not yet migrated to ah-agents)
     async fn run_legacy_agent(&self, agent_type: AgentType) -> anyhow::Result<()> {
         match agent_type {
-            AgentType::Gemini => self.run_mock_agent().await,
             AgentType::Opencode => self.run_mock_agent().await,
             AgentType::Qwen => self.run_mock_agent().await,
             AgentType::CursorCli => self.run_mock_agent().await,

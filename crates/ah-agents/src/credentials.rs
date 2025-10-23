@@ -115,6 +115,14 @@ pub fn codex_credential_paths() -> Vec<PathBuf> {
     ]
 }
 
+pub fn gemini_credential_paths() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from(".gemini/google_accounts.json"),
+        PathBuf::from(".gemini/oauth_creds.json"),
+        PathBuf::from(".gemini/settings.json"),
+    ]
+}
+
 /// Platform-specific credential paths for Cursor CLI
 pub fn cursor_credential_paths() -> Vec<PathBuf> {
     vec![
