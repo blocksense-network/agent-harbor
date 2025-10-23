@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Script to conditionally add host store substituter for Nix
 # This prevents errors if the host system doesn't have Nix installed
 # References:

@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 // @refresh reload
 import { createHandler, StartServer } from '@solidjs/start/server';
 

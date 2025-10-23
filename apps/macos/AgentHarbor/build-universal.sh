@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Build script for AgentHarbor with universal binary support
 # This script builds the Rust libraries for both architectures and creates universal binaries
 

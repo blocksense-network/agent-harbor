@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! TUI Test Runner - manages child processes and handles screenshot requests
 
 use crate::protocol::TestResponse;

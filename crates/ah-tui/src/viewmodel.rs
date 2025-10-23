@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! ViewModel layer - derived presentation state shaped for rendering
 //!
 //! The ViewModel transforms domain state into presentation-ready data

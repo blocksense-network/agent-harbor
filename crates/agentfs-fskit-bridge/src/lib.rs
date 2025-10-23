@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Swift-callable bridge for AgentFS FSKit adapter.
 //!
 //! This crate provides a higher-level interface for the Swift FSKit extension

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Universal binary build script for AgentFS FSKit Extension
 # Builds Rust crates for both Apple Silicon (arm64) and Intel (x86_64) Macs
 # and creates universal binaries using lipo

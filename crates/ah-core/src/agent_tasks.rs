@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Agent task file management and operations.
 //!
 //! This module provides functionality for managing agent task files in VCS repositories,

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Task execution engine for running agent tasks
 //!
 //! This module implements the task lifecycle state machine:

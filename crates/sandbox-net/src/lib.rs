@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Network isolation and management for sandboxing.
 
 #![cfg(target_os = "linux")]

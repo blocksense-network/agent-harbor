@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Build script for AgentFSKitExtension
 # This script builds the Rust crates and prepares them for Swift linking
 

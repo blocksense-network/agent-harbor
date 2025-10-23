@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { Component, createEffect, createSignal } from 'solid-js';
 
 export type SaveStatusType = 'unsaved' | 'saving' | 'saved' | 'error';

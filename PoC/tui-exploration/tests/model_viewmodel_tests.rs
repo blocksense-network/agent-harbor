@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Comprehensive ViewModel tests for PRD compliance
 //!
 //! These tests validate PRD-compliant behavior using the ViewModel architecture,

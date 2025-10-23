@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! View Layer - Pure Rendering and Presentation
 //!
 //! This module contains the Ratatui rendering code that transforms

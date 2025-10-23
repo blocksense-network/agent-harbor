@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Simple test to verify mount operations work within user namespaces.
 //!
 //! This test isolates the mount capability issue by creating minimal namespaces

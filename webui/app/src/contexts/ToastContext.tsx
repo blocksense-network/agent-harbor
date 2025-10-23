@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { createContext, createSignal, useContext, Component, JSX } from 'solid-js';
 import { Toast, ToastType, ToastAction, ToastContainer } from '../components/common/Toast.js';
 

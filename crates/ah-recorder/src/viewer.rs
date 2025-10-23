@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Live Ratatui viewer for terminal recordings
 //
 // This module implements the live TUI viewer that renders directly from a vt100::Parser,

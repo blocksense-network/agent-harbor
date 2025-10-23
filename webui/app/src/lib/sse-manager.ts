@@ -1,4 +1,9 @@
 /**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+/**
  * SSE Manager - Centralized management of Server-Sent Events connections
  *
  * Ensures only ONE EventSource per session, even if multiple components

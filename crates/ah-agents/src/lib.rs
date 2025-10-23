@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! AI Coding Agent Abstraction Layer
 //!
 //! This crate provides a unified interface for interacting with various AI coding agents

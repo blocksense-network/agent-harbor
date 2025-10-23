@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Core shared behaviors for basic provider operations.
 //!
 //! This module contains the core test behaviors that should be implemented by all

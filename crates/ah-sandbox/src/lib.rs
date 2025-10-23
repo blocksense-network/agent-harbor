@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Sandbox isolation abstractions for Agents Workflow.
 //!
 //! This crate provides abstractions for different sandboxing technologies

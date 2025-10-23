@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Fork bomb program to test PID limit enforcement
 //! This program tries to create as many child processes as possible
 //! to trigger cgroup PID limits.

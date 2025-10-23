@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Program to test blacklist enforcement in static mode
 //! Attempts to access a blacklisted path and should fail
 

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // File format definitions for .ahr (Agent Harbor Recording) files
 //
 // See: specs/Public/ah-agent-record.md for complete specification

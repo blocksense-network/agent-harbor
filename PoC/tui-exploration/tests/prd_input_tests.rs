@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::view_model::FocusElement;

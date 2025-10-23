@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! AgentFS WinFsp Host — Windows filesystem adapter
 //!
 //! This binary implements a WinFsp host that mounts AgentFS volumes

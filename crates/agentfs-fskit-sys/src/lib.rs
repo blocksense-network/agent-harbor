@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! C ABI bindings for AgentFS FSKit adapter.
 //!
 //! This crate provides the C-compatible interface that the Swift FSKit extension

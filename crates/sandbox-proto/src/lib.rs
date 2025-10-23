@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Protocol definitions for communication between sandbox helper and supervisor.
 
 use serde::{Deserialize, Serialize};

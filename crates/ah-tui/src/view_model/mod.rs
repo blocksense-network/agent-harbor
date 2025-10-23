@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! ViewModel Layer - UI State and Presentation Models
 //!
 //! This module contains the presentation models and UI state management

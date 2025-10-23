@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Schema root definition for configuration validation.
 //!
 //! This module defines the single strongly-typed structure that represents the

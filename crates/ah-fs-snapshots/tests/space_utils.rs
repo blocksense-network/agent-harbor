@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Space measurement utilities for different filesystem types.
 //!
 //! This module provides utilities for measuring filesystem space usage across different

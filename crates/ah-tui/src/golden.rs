@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Golden snapshot testing functionality for TUI tests
 //!
 //! This module provides the ability to save, load, and compare golden snapshots

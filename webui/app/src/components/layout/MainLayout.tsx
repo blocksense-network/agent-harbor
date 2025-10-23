@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { Component, JSX, onMount, onCleanup, For } from 'solid-js';
 import { useLocation, A } from '@solidjs/router';
 import agentHarborLogo from '../../assets/agent-harbor-logo.svg';

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Implementation of `ah agent record` command
 //
 // Spawns a command under a PTY, captures output to .ahr file format,

@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { Component, createSignal, createEffect, createMemo, For, Show, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { apiClient, type Session, type DraftTask } from '../../lib/api.js';

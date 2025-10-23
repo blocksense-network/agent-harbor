@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /// Integration tests using the mock LLM API server
 ///
 /// These tests launch real agent CLIs (claude, codex) with a mock API server

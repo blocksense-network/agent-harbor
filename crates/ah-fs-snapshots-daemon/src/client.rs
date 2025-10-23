@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Client library for communicating with the AH filesystem snapshots daemon.
 
 use crate::types::{Request, Response};

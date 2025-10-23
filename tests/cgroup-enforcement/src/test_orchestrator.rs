@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Test orchestrator for cgroup enforcement E2E tests
 //! This program launches the sandbox with abusive processes and verifies
 //! that cgroup limits are actually enforced.

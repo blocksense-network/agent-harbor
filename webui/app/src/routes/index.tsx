@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 // Conditional route entry point that selects CSR or SSR implementation
 // This uses Vite's build-time environment variable replacement
 

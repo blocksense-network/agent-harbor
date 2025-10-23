@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import express from 'express';
 import { scenarioReplayer } from './sessions.js';
 import { logger } from '../index.js';

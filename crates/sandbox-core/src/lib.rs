@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Core sandboxing functionality for namespace orchestration, lifecycle, and process supervision.
 
 #![cfg(target_os = "linux")]

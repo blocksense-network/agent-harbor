@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! AgentFS FSKit Host - macOS filesystem adapter using Apple's FSKit framework
 //!
 //! This crate provides a FSKit Unary File System extension that bridges

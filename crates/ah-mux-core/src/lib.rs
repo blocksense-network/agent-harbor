@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Low-level, AH-agnostic multiplexer trait and shared types
 //!
 //! This crate defines the common interface that all terminal multiplexer

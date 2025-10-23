@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::agent::start::WorkingCopyMode;
 use crate::sandbox::{parse_bool_flag, prepare_workspace_with_fallback};
 use ah_core::{

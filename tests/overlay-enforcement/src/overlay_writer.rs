@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Program to test overlay filesystem persistence
 //! Creates files in overlay paths and verifies they persist
 

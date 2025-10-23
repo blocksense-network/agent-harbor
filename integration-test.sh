@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Docker-based integration test for Alpine Linux + Ruby environment
 # Tests sourcing codex-setup with NIX=1 in a clean Alpine container
 

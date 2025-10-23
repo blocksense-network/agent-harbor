@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! VM enforcement test orchestrator
 //!
 //! This binary runs VM-related tests within the sandbox environment

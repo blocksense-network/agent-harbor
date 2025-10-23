@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Task Manager - Abstract Task Launching Interface
 //!
 //! This module defines the `TaskManager` trait that abstracts task launching

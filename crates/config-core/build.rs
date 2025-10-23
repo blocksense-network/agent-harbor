@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::{env, fs, path::Path};
 
 // Include minimal schema types directly in the build script

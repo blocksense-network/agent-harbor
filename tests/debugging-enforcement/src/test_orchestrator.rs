@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Test orchestrator for debugging enforcement tests.
 //!
 //! This program coordinates E2E tests for debugging functionality:

@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { Component, createSignal, onMount, onCleanup, For } from 'solid-js';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Scenario model and loader for TUI tests
 
 use ah_rest_api_contract::*;

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Shared behavior for providers that support quota/space limit testing.
 //!
 //! This module contains quota testing behaviors ported from the legacy Ruby

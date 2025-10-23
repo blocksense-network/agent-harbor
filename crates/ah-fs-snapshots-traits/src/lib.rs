@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Common traits and types for filesystem snapshot providers.
 //!
 //! This crate contains the shared abstractions used by all filesystem snapshot providers

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! ZFS snapshot provider implementation for Agents Workflow.
 
 use ah_fs_snapshots_daemon::client::{DaemonClient, DaemonError};

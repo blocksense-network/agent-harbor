@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Mock REST client backed by scenarios
 
 use ah_client_api::{ClientApi, ClientApiError, ClientApiResult};

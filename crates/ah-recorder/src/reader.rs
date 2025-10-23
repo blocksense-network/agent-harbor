@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // AHR file reader for replay functionality
 //
 // Reads compressed AHR blocks, decompresses them, and yields individual records

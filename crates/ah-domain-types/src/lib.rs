@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Domain types for the Agent Harbor software suite
 //!
 //! This crate contains the core domain types that are shared across

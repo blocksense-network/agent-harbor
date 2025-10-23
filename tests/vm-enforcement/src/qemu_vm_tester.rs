@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! QEMU VM tester
 //!
 //! This binary tests running a QEMU virtual machine within the sandbox environment

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Overlay filesystem implementation for AgentFS Core
 //!
 //! This module provides overlay functionality that allows AgentFS to operate

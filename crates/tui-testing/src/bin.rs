@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Simple command-line client for sending commands to TUI test runner
 
 use clap::Parser;

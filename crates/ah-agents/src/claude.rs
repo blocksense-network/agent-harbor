@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /// Claude Code agent implementation
 use crate::credentials::{claude_credential_paths, copy_files};
 use crate::session::{export_directory, import_directory};

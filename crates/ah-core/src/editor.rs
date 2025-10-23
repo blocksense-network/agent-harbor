@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Interactive editor integration for task content creation.
 //!
 //! This module provides functionality for interactively editing task content using

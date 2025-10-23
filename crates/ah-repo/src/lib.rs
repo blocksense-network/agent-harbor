@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! VCS repository abstraction crate for Agents Workflow.
 //!
 //! This crate provides a unified interface for working with different VCS types

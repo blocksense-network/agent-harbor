@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! MVVM Architecture TUI Application
 //!
 //! This is a new implementation of the TUI using proper MVVM architecture

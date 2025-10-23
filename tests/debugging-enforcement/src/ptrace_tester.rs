@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Binary for testing ptrace functionality in sandbox debugging mode.
 //!
 //! This program attempts to use ptrace to attach to a target process.

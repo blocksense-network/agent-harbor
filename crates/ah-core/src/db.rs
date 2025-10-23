@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Database integration for task and session persistence.
 
 use ah_local_db::models::{DraftRecord, DraftStore};

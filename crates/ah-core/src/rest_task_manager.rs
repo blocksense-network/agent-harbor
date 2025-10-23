@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! REST-based TaskManager implementation
 //!
 //! This module provides a TaskManager implementation that can work with either

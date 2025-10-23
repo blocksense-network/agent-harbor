@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Agent Harbor REST API server
 //!
 //! This crate implements the REST API server for agent-harbor as specified in

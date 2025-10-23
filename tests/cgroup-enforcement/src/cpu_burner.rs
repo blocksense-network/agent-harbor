@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! CPU burner program to test CPU limit enforcement
 //! This program performs CPU-intensive computations
 //! to trigger cgroup CPU throttling.

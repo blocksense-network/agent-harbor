@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The Model layer - domain state and rules (no I/O, no Ratatui)
 //!
 //! This implements the state machine core that processes messages

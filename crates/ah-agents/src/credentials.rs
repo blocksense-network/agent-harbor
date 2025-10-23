@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /// Cross-platform credential management for AI agents
 use crate::traits::{AgentError, AgentResult};
 use std::path::{Path, PathBuf};

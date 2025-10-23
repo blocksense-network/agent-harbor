@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Generic configuration engine with schema validation, merging, and provenance tracking.
 //!
 //! This crate provides the core functionality for loading, validating, merging, and

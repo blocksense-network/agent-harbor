@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Typed extraction utilities for distributed configuration access
 
 use serde::de::DeserializeOwned;

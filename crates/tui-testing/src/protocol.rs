@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! IPC protocol definitions for TUI testing framework
 
 /// Commands that can be sent from child process to test runner

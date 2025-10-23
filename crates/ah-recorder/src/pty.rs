@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // PTY management for spawning and capturing agent sessions
 //
 // Uses portable-pty for cross-platform PTY support and vt100 for terminal state tracking

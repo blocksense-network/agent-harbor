@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! agent-harbor specific multiplexer abstractions
 //!
 //! This crate provides AH-specific functionality on top of the low-level

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! tmux multiplexer implementation
 //!
 //! Implements the Multiplexer trait for tmux using its command-line interface.

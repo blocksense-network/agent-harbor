@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 set -euo pipefail
 
 # Attempt to trigger FSKit extension loading by mounting a minimal dummy device

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Wrapper script to launch Electron with Yarn PnP resolution
 # This ensures native addons like @agent-harbor/gui-core can be resolved
 

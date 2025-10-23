@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Modal navigation and ESC dismissal behaviour tests for the ViewModel
 
 use std::io::Write;

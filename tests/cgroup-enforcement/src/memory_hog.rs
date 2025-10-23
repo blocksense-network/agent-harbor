@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Memory hog program to test memory limit enforcement
 //! This program tries to allocate as much memory as possible
 //! to trigger cgroup memory limits and OOM kills.

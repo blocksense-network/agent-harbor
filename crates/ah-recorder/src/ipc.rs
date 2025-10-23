@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // IPC server for receiving snapshot notifications from external commands
 //
 // See: specs/Public/ah-agent-record.md section 7 for protocol specification

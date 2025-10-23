@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 // Server-side data fetching for SSR
 // This file contains server functions that fetch data from the API server during SSR
 

@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { cache, createAsync, type RouteDefinition } from '@solidjs/router';
 import { Show } from 'solid-js';
 import { Title, Meta } from '@solidjs/meta';

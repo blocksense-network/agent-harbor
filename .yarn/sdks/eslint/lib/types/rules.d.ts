@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 
 const {existsSync} = require(`fs`);
 const {createRequire, register} = require(`module`);

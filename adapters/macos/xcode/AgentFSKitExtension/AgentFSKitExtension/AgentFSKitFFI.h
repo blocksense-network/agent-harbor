@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 // AgentFSKitFFI.h
 // Bridging header for AgentFS Rust FFI functions
 

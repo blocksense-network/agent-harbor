@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Integration tests for ZFS filesystem snapshot provider.
 //!
 //! These tests create real ZFS pools and test the provider functionality,

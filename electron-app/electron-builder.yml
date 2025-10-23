@@ -1,6 +1,9 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 appId: com.agentharbor.gui
 productName: Agent Harbor
-copyright: Copyright © 2025 Agent Harbor Team
+copyright: Copyright © 2025 Schelling Point Labs Inc
 directories:
   output: release/${version}
   buildResources: assets

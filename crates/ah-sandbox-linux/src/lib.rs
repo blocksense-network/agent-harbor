@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Linux-specific sandbox implementation for Agents Workflow.
 
 use ah_sandbox::{Result, SandboxConfig, SandboxProvider, SandboxResult};

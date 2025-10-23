@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Simple test program to verify TaskEvent streaming works
 
 use ah_core::task_manager::TaskManager;

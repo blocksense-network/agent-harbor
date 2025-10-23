@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /// Codex CLI agent implementation
 use crate::credentials::{codex_credential_paths, copy_files};
 use crate::session::{export_directory, import_directory};

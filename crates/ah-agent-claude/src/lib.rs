@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Claude Code Agent Facade
 //!
 //! This crate provides a lightweight facade for using only the Claude Code agent

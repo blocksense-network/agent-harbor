@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Main Application - MVVM Orchestration and TUI Runner
 //!
 //! This is the application entry point that orchestrates the MVVM components

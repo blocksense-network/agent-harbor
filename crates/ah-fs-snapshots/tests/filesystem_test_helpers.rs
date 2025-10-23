@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! ZFS test helpers for creating test ZFS pools for testing.
 //!
 //! This module provides utilities for setting up ZFS test environments,

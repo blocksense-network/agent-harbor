@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 set -euo pipefail
 
 echo "Starting WebUI with mock server for manual testing (DEV MODE)..."

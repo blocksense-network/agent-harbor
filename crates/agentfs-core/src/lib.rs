@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! AgentFS Core — Cross-platform filesystem core implementation
 //!
 //! This crate provides the core VFS, snapshots, branches, and storage

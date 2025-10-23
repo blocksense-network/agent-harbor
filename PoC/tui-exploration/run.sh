@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
 
 # Run the TUI exploration application
 # This displays the interactive dashboard with Charm theming

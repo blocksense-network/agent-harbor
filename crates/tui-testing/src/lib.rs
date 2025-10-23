@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! # TUI Testing Framework
 //!
 //! A framework for testing terminal user interfaces using IPC-based screenshot capture.

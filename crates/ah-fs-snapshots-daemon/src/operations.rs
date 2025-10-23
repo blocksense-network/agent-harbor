@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::types::{Request, Response};
 use std::process::Stdio;
 use tokio::process::Command;

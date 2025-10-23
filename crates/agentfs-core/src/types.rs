@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Core type definitions for AgentFS
 
 use serde::{Deserialize, Serialize};

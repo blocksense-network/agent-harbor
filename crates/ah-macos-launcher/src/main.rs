@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ah_sandbox_macos::{SbplBuilder, apply_builder};
 use anyhow::{Context, Result, bail};
 use clap::Parser;

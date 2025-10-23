@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Terminal User Interface for agent-harbor
 //!
 //! This crate provides a Ratatui-based TUI for creating, monitoring,

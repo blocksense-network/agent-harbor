@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """
 Simple test suite for the mock coding agent that doesn't require pytest.
 

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! API contract types for the agent-harbor REST service
 
 use ah_domain_types::{LogLevel, TaskExecutionStatus};

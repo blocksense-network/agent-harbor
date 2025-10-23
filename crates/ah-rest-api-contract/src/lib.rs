@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! agent-harbor REST API contract types and validation
 //!
 //! This crate defines the schema types and validation for the REST API

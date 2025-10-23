@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Seccomp filtering and dynamic read allow-listing for sandboxing.
 
 #![cfg(target_os = "linux")]

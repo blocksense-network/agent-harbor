@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! tui-test runner CLI
 
 use ah_rest_client_mock::MockClient;

@@ -1,3 +1,6 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # CI Policy: Always use just targets in CI workflows
 # This ensures developers can run the exact same commands locally that CI uses,
 # maintaining consistency and making local development match CI behavior.

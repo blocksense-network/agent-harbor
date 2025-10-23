@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Core task and session lifecycle orchestration for Agents Workflow.
 //!
 //! This crate provides the foundational abstractions and orchestration logic for

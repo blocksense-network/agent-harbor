@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 import { test, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 import type { ElectronApplication, Page } from 'playwright';

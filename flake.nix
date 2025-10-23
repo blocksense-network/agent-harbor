@@ -172,6 +172,33 @@
             files = "\\.toml$";
           };
 
+          # License header check and insertion
+          spdx-addlicense = {
+            enable = true;
+            name = "SPDX headers (addlicense, fix then fail-on-change)";
+            language = "system";
+            pass_filenames = true;
+            files = ''\.(c|cc|h|hpp|hh|cpp|go|rs|py|sh|bash|zsh|js|jsx|ts|tsx|yml|yaml|toml)$'';
+
+            # Use bash -lc so we can run a small script
+            entry = ''
+              bash -lc '
+              set -euo pipefail
+              # Run addlicense in-place on the files given by pre-commit
+              "${pkgs.addlicense}/bin/addlicense" -s=only -c "Schelling Point Labs Inc" "$@"
+
+              # If anything changed, fail the hook (so the commit stops).
+              # Users re-stage and commit again, like with formatters.
+              if ! git diff --exit-code -- "$@"; then
+                echo
+                echo "addlicense inserted SPDX headers in the files above."
+                echo "Please review, stage the changes, and re-run your commit."
+                exit 1
+              fi
+              ' --
+            '';
+          };
+
           # Fast link check on changed files (CI will run full scan)
           lychee-fast = {
             enable = true;
@@ -196,6 +223,7 @@
           just = pkgs.just; # for the lint-specs hook
           rg = pkgs.ripgrep; # used by check-merge-conflict
           mmdc = pkgs.nodePackages."@mermaid-js/mermaid-cli"; # used by md-mermaid-check via just lint-specs
+          addlicense = pkgs.addlicense;
         };
       };
     in {
@@ -327,7 +355,7 @@
         pkgs.nodePackages.prettier
         pkgs.shfmt
         pkgs.taplo
-
+        pkgs.addlicense
 
         # pkgs.nodePackages."ajv-cli" # JSON Schema validator
 
@@ -422,6 +450,9 @@
         shellHook = ''
           # Install git pre-commit hook invoking our Nix-defined hooks
           ${self.checks.${system}.pre-commit-check.shellHook}
+
+          # Set default license for addlicense tool
+          export ADDLICENSE_LICENSE="AGPL-3.0-only"
 
           # Load Yarn plugins
           export YARN_PLUGINS="${yarnOutdated}"

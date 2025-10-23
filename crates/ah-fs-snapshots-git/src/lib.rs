@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Git-based filesystem snapshot provider for Agents Workflow.
 //!
 //! This provider implements filesystem snapshots using Git's native capabilities,

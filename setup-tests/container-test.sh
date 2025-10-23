@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Test script that runs inside Alpine Linux container
 # Sources codex-setup with NIX=1 and verifies nix becomes available
 

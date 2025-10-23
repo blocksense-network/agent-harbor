@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Comprehensive integration tests for filesystem snapshot providers.
 //!
 //! This test file provides end-to-end testing of ZFS and Git snapshot functionality,

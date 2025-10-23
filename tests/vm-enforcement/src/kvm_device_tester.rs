@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! KVM device access tester
 //!
 //! This binary tests that KVM device access is properly managed

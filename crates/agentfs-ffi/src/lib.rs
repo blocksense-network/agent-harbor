@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! AgentFS FFI — C ABI for FSKit and other integrations
 //!
 //! This crate provides a C-compatible ABI for integrating AgentFS

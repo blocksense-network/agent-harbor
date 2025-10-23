@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! TUI Test Client - used by child processes to communicate with test runner
 
 use crate::protocol::{TestCommand, TestResponse};

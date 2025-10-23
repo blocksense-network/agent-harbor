@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Example usage of the LLM API proxy library
 
 use llm_api_proxy::{LlmApiProxy, ProxyConfig};

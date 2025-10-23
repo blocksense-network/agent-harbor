@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Agent execution engine for spawning and managing agent processes
 //!
 //! This module provides the core functionality for spawning agent processes.

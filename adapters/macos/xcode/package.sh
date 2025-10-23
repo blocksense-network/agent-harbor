@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Packaging and signing script for AgentFS macOS app bundle
 # Creates signed and notarized app bundle for distribution
 

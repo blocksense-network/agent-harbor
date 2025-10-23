@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Copy native addon to dist-electron so it can be found without PnP
 # This is needed for Playwright testing where PnP loader doesn't work properly
 

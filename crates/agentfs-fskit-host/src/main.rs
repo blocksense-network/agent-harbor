@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! AgentFS FSKit Host Binary
 //!
 //! This binary provides a command-line interface for testing the FSKit adapter.

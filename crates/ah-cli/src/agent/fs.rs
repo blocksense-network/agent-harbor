@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ah_fs_snapshots::{
     FsSnapshotProvider, ProviderCapabilities, SnapshotProviderKind, provider_for,
 };

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! macOS Seatbelt (SBPL) profile utilities and libsandbox FFI bindings.
 //!
 //! This crate provides:

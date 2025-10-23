@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Codex CLI Agent Facade
 //!
 //! This crate provides a lightweight facade for using only the Codex CLI agent

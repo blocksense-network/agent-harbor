@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use agentfs_proto::{FsRequest, FsResponse};
 use libc::{c_char, c_int, c_void, mode_t, size_t, ssize_t};
 use ssz::{Decode, Encode};

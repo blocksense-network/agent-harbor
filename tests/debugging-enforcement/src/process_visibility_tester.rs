@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Binary for testing process visibility from within sandbox.
 //!
 //! This program attempts to ptrace host processes, which should fail

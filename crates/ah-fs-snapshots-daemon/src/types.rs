@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ssz_derive::{Decode, Encode};
 
 // SSZ Union-based request/response types for type-safe daemon communication

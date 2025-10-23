@@ -1,4 +1,9 @@
 /**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+/**
  * Vite configuration for Electron app
  *
  * This configuration sets up the Electron plugin for hot-reload development

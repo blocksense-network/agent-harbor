@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Filesystem controls for sandboxing including mount planning, RO sealing, and overlays.
 
 #![cfg(target_os = "linux")]

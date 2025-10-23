@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Standalone test file for TaskManager functionality
 //! This allows testing the task manager without the compilation issues
 //! in the main library due to ongoing MVVM refactoring.

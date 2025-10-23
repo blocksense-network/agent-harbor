@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
 // AgentFSBridge.c
 // C wrapper for AgentFS Rust FFI functions to ensure proper C linkage
 

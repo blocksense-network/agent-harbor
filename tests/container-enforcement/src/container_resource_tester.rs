@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Container resource limits tester
 //!
 //! This binary tests that resource limits (CPU, memory, PIDs) are properly

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Integration test script for AgentFSKitExtension
 # Tests basic mount/unmount and file operations
 

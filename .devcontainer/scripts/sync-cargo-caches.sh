@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Script to sync development caches with host system
 # This can be run multiple times to pick up new packages downloaded on the host
 # Usage: sync-cargo-caches

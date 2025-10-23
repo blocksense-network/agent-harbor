@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Convert OpenAI API requests/responses to Anthropic format
 //!
 //! TODO: Implement proper API format conversions when SDK compatibility is resolved

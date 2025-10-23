@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Basic integration tests for the LLM API proxy
 
 use llm_api_proxy::proxy::{ProxyMode, ProxyRequest};

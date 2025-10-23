@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Block device creation and cleanup utilities for AgentFS testing
 # Provides functions for creating test block devices and cleaning them up
 

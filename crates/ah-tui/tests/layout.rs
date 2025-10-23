@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Layout rendering tests for the TUI dashboard
 
 use ah_tui::{ViewModel, app::AppState};

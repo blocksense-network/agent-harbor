@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Integration tests for sandbox functionality
 
 #[cfg(target_os = "linux")]

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Filter Bar Rendering
 //!
 //! This module handles the rendering of the filter bar with its controls and focus states.
