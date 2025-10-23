@@ -2,38 +2,74 @@
  * Copyright 2025 Schelling Point Labs Inc
  * SPDX-License-Identifier: AGPL-3.0-only
  */
-import { Show, createMemo, createSignal, onMount } from 'solid-js';
+import { Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 
-type FooterProps = {
-  onNewDraft?: () => void;
-  agentCount?: number | undefined;
-  focusState?: {
-    focusedElement: 'draft-textarea' | 'session-card' | 'none';
-    focusedDraftId?: string;
-    focusedSessionId?: string;
-    focusedDraftAgentCount?: number;
-  };
-};
+import { useDrafts } from '../../contexts/DraftContext';
+import { useFocus } from '../../contexts/FocusContext';
 
-type FooterContext = 'task-feed' | 'draft-task' | 'modal' | 'default';
-
-export const Footer = (props: FooterProps) => {
+export const Footer = () => {
+  const { createDraft } = useDrafts();
+  const { focusState } = useFocus();
   const [isMac, setIsMac] = createSignal(false);
 
   onMount(() => {
-    if (typeof window !== 'undefined') {
-      setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+    if (typeof window === 'undefined') {
+      return;
     }
+
+    setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+
+      if (event.key.toLowerCase() !== 'n') {
+        return;
+      }
+
+      const target = event.target;
+      if (target && target instanceof window.HTMLElement) {
+        const tagName = target.tagName?.toLowerCase();
+        const isEditable =
+          tagName === 'input' || tagName === 'textarea' || target.isContentEditable;
+        if (isEditable) {
+          return;
+        }
+      }
+
+      event.preventDefault();
+      void handleNewDraft();
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    onCleanup(() => window.removeEventListener('keydown', handleShortcut));
   });
 
-  const resolvedAgentCount = createMemo(
-    () => props.agentCount ?? props.focusState?.focusedDraftAgentCount,
-  );
+  const handleNewDraft = async () => {
+    if (!import.meta.env.PROD) {
+      console.log('[Footer] New Task button clicked');
+    }
 
-  const getContext = (): FooterContext => {
-    if (!props.focusState) return 'default';
+    const created = await createDraft({
+      prompt: '',
+      repo: { mode: 'git', url: '', branch: 'main' },
+      agents: [],
+      runtime: { type: 'devcontainer' },
+      delivery: { mode: 'pr' },
+    });
 
-    switch (props.focusState.focusedElement) {
+    if (!import.meta.env.PROD) {
+      console.log('[Footer] Draft creation result:', created);
+    }
+  };
+
+  const resolvedAgentCount = createMemo(() => focusState().focusedDraftAgentCount);
+
+  const footerContext = createMemo(() => {
+    const state = focusState();
+
+    switch (state.focusedElement) {
       case 'draft-textarea':
         return 'draft-task';
       case 'session-card':
@@ -41,10 +77,10 @@ export const Footer = (props: FooterProps) => {
       default:
         return 'default';
     }
-  };
+  });
 
-  const getEnterShortcut = () => {
-    const context = getContext();
+  const enterShortcutLabel = createMemo(() => {
+    const context = footerContext();
 
     switch (context) {
       case 'draft-task': {
@@ -56,7 +92,7 @@ export const Footer = (props: FooterProps) => {
       default:
         return 'Go';
     }
-  };
+  });
 
   const modKey = () => (isMac() ? 'Cmd' : 'Ctrl');
 
@@ -70,25 +106,23 @@ export const Footer = (props: FooterProps) => {
       aria-label="Keyboard shortcuts"
     >
       <div class="flex items-center" role="toolbar" aria-label="Actions">
-        <Show when={props.onNewDraft}>
-          <button
-            onClick={() => props.onNewDraft?.()}
-            class={`
-              flex cursor-pointer items-center gap-1 rounded border
-              border-blue-700 bg-blue-600 px-3 py-1 text-xs text-white
-              transition-colors
-              hover:bg-blue-700
-            `}
-            aria-label={`New draft task (${modKey()}+N)`}
-          >
-            <kbd class="font-semibold">{modKey()}+N</kbd>
-            <span>New Draft Task</span>
-          </button>
-        </Show>
+        <button
+          onClick={() => void handleNewDraft()}
+          class={`
+            flex cursor-pointer items-center gap-1 rounded border
+            border-blue-700 bg-blue-600 px-3 py-1 text-xs text-white
+            transition-colors
+            hover:bg-blue-700
+          `}
+          aria-label={`New draft task (${modKey()}+N)`}
+        >
+          <kbd class="font-semibold">{modKey()}+N</kbd>
+          <span>New Draft Task</span>
+        </button>
       </div>
 
       <div class="flex items-center gap-2" role="toolbar" aria-label="Keyboard shortcuts">
-        <Show when={getContext() === 'task-feed'}>
+        <Show when={footerContext() === 'task-feed'}>
           <div
             class={`
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
@@ -104,23 +138,23 @@ export const Footer = (props: FooterProps) => {
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
-            aria-label={`Keyboard shortcut: Enter ${getEnterShortcut()}`}
+            aria-label={`Keyboard shortcut: Enter ${enterShortcutLabel()}`}
           >
             <kbd class="font-semibold">Enter</kbd>
-            <span>{getEnterShortcut()}</span>
+            <span>{enterShortcutLabel()}</span>
           </div>
         </Show>
 
-        <Show when={getContext() === 'draft-task'}>
+        <Show when={footerContext() === 'draft-task'}>
           <div
             class={`
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
-            aria-label={`Keyboard shortcut: Enter ${getEnterShortcut()}`}
+            aria-label={`Keyboard shortcut: Enter ${enterShortcutLabel()}`}
           >
             <kbd class="font-semibold">Enter</kbd>
-            <span>{getEnterShortcut()}</span>
+            <span>{enterShortcutLabel()}</span>
           </div>
           <div
             class={`
@@ -144,7 +178,7 @@ export const Footer = (props: FooterProps) => {
           </div>
         </Show>
 
-        <Show when={getContext() === 'default'}>
+        <Show when={footerContext() === 'default'}>
           <div
             class={`
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
@@ -160,10 +194,10 @@ export const Footer = (props: FooterProps) => {
               flex items-center gap-1 rounded border border-gray-200 bg-gray-100
               px-2 py-1 text-xs text-gray-700
             `}
-            aria-label={`Keyboard shortcut: Enter ${getEnterShortcut()}`}
+            aria-label={`Keyboard shortcut: Enter ${enterShortcutLabel()}`}
           >
             <kbd class="font-semibold">Enter</kbd>
-            <span>{getEnterShortcut()}</span>
+            <span>{enterShortcutLabel()}</span>
           </div>
         </Show>
       </div>
