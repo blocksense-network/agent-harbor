@@ -115,9 +115,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentfs-interpose-e2e-tests"
+version = "0.1.0"
+dependencies = [
+ "agentfs-core",
+ "agentfs-proto",
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
+ "libc",
+ "once_cell",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
 name = "agentfs-interpose-shim"
 version = "0.1.0"
 dependencies = [
+ "agentfs-core",
+ "agentfs-proto",
  "ctor",
  "ethereum_ssz",
  "ethereum_ssz_derive",

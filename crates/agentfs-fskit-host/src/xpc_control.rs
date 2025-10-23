@@ -68,6 +68,10 @@ impl XpcControlService {
             Request::SnapshotList(_) => self.handle_snapshot_list(SnapshotListRequest {}).await,
             Request::BranchCreate((_, req)) => self.handle_branch_create(req).await,
             Request::BranchBind((_, req)) => self.handle_branch_bind(req).await,
+            Request::FdOpen(_) => todo!("FdOpen not implemented for XPC control"),
+            Request::FdDup(_) => todo!("FdDup not implemented for XPC control"),
+            Request::PathOp(_) => todo!("PathOp not implemented for XPC control"),
+            Request::InterposeSetGet(_) => todo!("InterposeSetGet not implemented for XPC control"),
         }
     }
 

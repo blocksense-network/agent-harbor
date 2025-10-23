@@ -42,10 +42,19 @@ fn test_basic_open(args: &[String]) {
     let filename = &args[0];
     println!("Testing basic open of: {}", filename);
 
-    // Use libc directly to test interposition
+    // Use dlsym to get open function dynamically to ensure interposition works
     unsafe {
         let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
-        let fd = libc::open(c_filename.as_ptr(), libc::O_RDONLY, 0);
+
+        // Use dlsym to dynamically resolve open function
+        let open_func: Option<unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int> =
+            std::mem::transmute(libc::dlsym(libc::RTLD_DEFAULT, b"open\0".as_ptr() as *const libc::c_char));
+
+        let fd = if let Some(open_func) = open_func {
+            open_func(c_filename.as_ptr(), libc::O_RDONLY, 0)
+        } else {
+            libc::open(c_filename.as_ptr(), libc::O_RDONLY, 0)
+        };
         if fd < 0 {
             let err = std::io::Error::last_os_error();
             eprintln!("Failed to open file '{}': {}", filename, err);
@@ -53,7 +62,16 @@ fn test_basic_open(args: &[String]) {
         }
 
         let mut buffer = [0u8; 100];
-        let bytes_read = libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len());
+
+        // Use dlsym for read as well
+        let read_func: Option<unsafe extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t> =
+            std::mem::transmute(libc::dlsym(libc::RTLD_DEFAULT, b"read\0".as_ptr() as *const libc::c_char));
+
+        let bytes_read = if let Some(read_func) = read_func {
+            read_func(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len())
+        } else {
+            libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len())
+        };
         if bytes_read < 0 {
             let err = std::io::Error::last_os_error();
             eprintln!("Failed to read file: {}", err);

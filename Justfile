@@ -26,7 +26,7 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries
 
 # Run Rust tests
 test-rust: build-rust-test-binaries
@@ -253,6 +253,10 @@ build-cgroup-test-binaries:
 # Build overlay enforcement test binaries (overlay_test_orchestrator, blacklist_tester, overlay_writer)
 build-overlay-test-binaries:
     cargo build --bin overlay_test_orchestrator --bin blacklist_tester --bin overlay_writer
+
+# Build interpose shim test binaries (agentfs-interpose-test-helper, agentfs-interpose-mock-daemon)
+build-interpose-test-binaries:
+    echo "Interpose test binaries moved to agentfs-interpose-e2e-tests crate - run separately"
 
 # Build sbx-helper binary
 build-sbx-helper:

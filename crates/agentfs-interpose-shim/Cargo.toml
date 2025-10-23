@@ -16,14 +16,11 @@ libc = "0.2"
 ethereum_ssz = "0.8"
 ethereum_ssz_derive = "0.8"
 hex = "0.4"
+agentfs-proto = { path = "../agentfs-proto" }
+tempfile = "3"
+agentfs-core = { path = "../agentfs-core", optional = true }
+
+[features]
+mock-daemon = ["agentfs-core"]
 
 [dev-dependencies]
-tempfile = "3"
-serde_json = "1.0"
-ethereum_ssz = "0.8"
-ethereum_ssz_derive = "0.8"
-hex = "0.4"
-
-[[bin]]
-name = "agentfs-interpose-test-helper"
-path = "tests/fixtures/test_helper.rs"

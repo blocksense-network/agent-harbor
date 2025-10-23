@@ -22,6 +22,7 @@ legacy/ruby/test/logs/
 
 # Rust build artifacts
 target/
+target-install/
 
 # Swift Package Manager build artifacts
 .build/
@@ -70,6 +71,15 @@ apps/macos/AgentsWorkflow/PlugIns/
 !.vscode/settings.json
 .idea/
 
+# Editor files
+*.sublime-project
+*.sublime-workspace
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
 # Obsidian workspace configuration
 .obsidian/workspace.json
 
@@ -87,6 +97,16 @@ Thumbs.db
 *.swp
 *.swo
 *.log
+*.lock
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Rust coverage and profiling
+*.profraw
+coverage/
 
 # Python
 __pycache__/

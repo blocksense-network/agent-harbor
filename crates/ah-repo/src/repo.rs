@@ -3,7 +3,7 @@
 
 use futures::Stream;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;

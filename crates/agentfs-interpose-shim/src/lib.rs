@@ -1,17 +1,24 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-extern crate ethereum_ssz as ssz;
-
 use once_cell::sync::{Lazy, OnceCell};
-use std::ffi::OsStr;
-use std::io::{BufRead, Write};
+use std::ffi::{CStr, OsStr};
+use std::io::{BufRead, Read, Write};
+use std::os::fd::AsRawFd;
+use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
+
+// For dlsym to get original function pointers
+#[cfg(target_os = "macos")]
+use libc::{RTLD_NEXT, dlsym};
 
 // SSZ imports
 use ssz::{Decode, Encode};
-use ssz_derive::{Decode as SSZDecode, Encode as SSZEncode};
+use ssz_derive::{Decode, Encode};
+
+// AgentFS proto imports
+use agentfs_proto::*;
 
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
@@ -21,11 +28,12 @@ const ENV_ENABLED: &str = "AGENTFS_INTERPOSE_ENABLED";
 const ENV_SOCKET: &str = "AGENTFS_INTERPOSE_SOCKET";
 const ENV_ALLOWLIST: &str = "AGENTFS_INTERPOSE_ALLOWLIST";
 const ENV_LOG_LEVEL: &str = "AGENTFS_INTERPOSE_LOG";
+const ENV_FAIL_FAST: &str = "AGENTFS_INTERPOSE_FAIL_FAST";
 const DEFAULT_BANNER: &str = "AgentFS interpose shim loaded";
 
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
 #[cfg(target_os = "macos")]
-static STREAM: OnceCell<UnixStream> = OnceCell::new();
+static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
 
 #[cfg(test)]
 static ENV_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -63,24 +71,53 @@ fn initialize() {
 
     let allow = AllowDecision::from_env(&exe);
     if !allow.allowed {
+        let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+        if fail_fast {
+            log_message(&format!(
+                "process '{}' not present in allowlist but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                exe.display()
+            ));
+            std::process::exit(1);
+        } else {
         log_message(&format!(
             "process '{}' not present in allowlist; skipping handshake",
             exe.display()
         ));
         return;
+        }
     }
 
-    let Some(socket_path) = std::env::var_os(ENV_SOCKET).map(PathBuf::from) else {
+    let socket_env = std::env::var_os(ENV_SOCKET);
+    log_message(&format!("{ENV_SOCKET} = {:?}", socket_env));
+    let Some(socket_path) = socket_env.map(PathBuf::from) else {
+        let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+        if fail_fast {
+            log_message(&format!("{ENV_SOCKET} not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+            std::process::exit(1);
+        } else {
         log_message(&format!("{ENV_SOCKET} not set; skipping handshake"));
         return;
+        }
     };
 
     match attempt_handshake(&socket_path, &exe, &allow) {
         Ok(stream) => {
-            let _ = STREAM.set(stream);
+            let mut stream_guard = STREAM.lock().unwrap();
+            if stream_guard.is_none() {
+                *stream_guard = Some(Arc::new(Mutex::new(stream)));
+                log_message("STREAM set successfully in ctor");
+            } else {
+                log_message("STREAM already set in ctor");
+            }
         }
         Err(err) => {
             log_message(&format!("handshake failed: {err}"));
+            // Check if we should fail fast
+            let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+            if fail_fast {
+                log_message(&format!("AGENTFS_INTERPOSE_FAIL_FAST=1 set, terminating program due to handshake failure"));
+                std::process::exit(1);
+            }
         }
     }
 }
@@ -225,7 +262,7 @@ fn attempt_handshake(
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let socket_display = socket_path.display();
-    let stream = StdUnixStream::connect(socket_path).map_err(|err| {
+    let mut stream = StdUnixStream::connect(socket_path).map_err(|err| {
         format!(
             "failed to connect to AgentFS control socket '{}': {}",
             socket_display, err
@@ -277,37 +314,31 @@ fn attempt_handshake(
         timestamp: format!("{timestamp}").into_bytes(),
     });
 
-    let mut writer = stream.try_clone().map_err(|err| format!("failed to clone stream: {err}"))?;
-
     let ssz_bytes = encode_ssz(&message);
     let ssz_len = ssz_bytes.len() as u32;
 
-    writer
+    stream
         .write_all(&ssz_len.to_le_bytes())
-        .and_then(|_| writer.write_all(&ssz_bytes))
+        .and_then(|_| stream.write_all(&ssz_bytes))
         .map_err(|err| format!("failed to send handshake: {err}"))?;
 
-    // Attempt to read acknowledgement, but tolerate timeout
-    let mut reader = std::io::BufReader::new(
-        stream
-            .try_clone()
-            .map_err(|err| format!("failed to clone stream for reading: {err}"))?,
-    );
-    let mut response = String::new();
-    match reader.read_line(&mut response) {
+    // Read acknowledgement
+    let mut response_buf = [0u8; 1024];
+    match stream.read(&mut response_buf) {
         Ok(0) => {
-            log_message(&format!(
+            return Err(format!(
                 "control socket closed without acknowledgement from {}",
                 socket_display
             ));
         }
-        Ok(_) => {
+        Ok(n) => {
+            let response = String::from_utf8_lossy(&response_buf[..n]);
             log_message(&format!(
                 "handshake acknowledged by {socket_display}: {response}"
             ));
         }
         Err(err) => {
-            log_message(&format!("failed to read handshake acknowledgement: {err}"));
+            return Err(format!("failed to read handshake acknowledgement: {err}"));
         }
     }
 
@@ -354,212 +385,362 @@ mod tests {
     }
 }
 
-#[cfg(all(test, target_os = "macos"))]
-mod integration_tests {
+
+// Interposition implementation for file operations
+#[cfg(target_os = "macos")]
+mod interpose {
     use super::*;
-    use std::fs;
-    use std::io::{BufRead, BufReader, Write};
-    use std::os::unix::net::UnixListener;
-    use std::process::Command;
-    use std::sync::mpsc;
-    use std::thread;
-    use tempfile::tempdir;
+    use libc::{c_char, c_int, mode_t, msghdr, iovec, cmsghdr, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE};
+    use std::io::Read;
+    use std::mem;
+    use std::os::unix::io::FromRawFd;
 
-    fn build_dylib_path() -> PathBuf {
-        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("target")
-            .join(&profile);
-        let direct = root.join("libagentfs_interpose_shim.dylib");
-        if direct.exists() {
-            return direct;
-        }
-
-        // Ensure the cdylib is built
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let status = Command::new("cargo")
-            .current_dir(&workspace_root)
-            .args(["build", "-p", "agentfs-interpose-shim", "--lib"])
-            .status()
-            .expect("failed to invoke cargo build for interpose shim");
-        assert!(status.success(), "cargo build for interpose shim failed");
-
-        if direct.exists() {
-            return direct;
-        }
-
-        let deps_dir = root.join("deps");
-        if let Ok(entries) = std::fs::read_dir(&deps_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(name) = path.file_name().and_then(OsStr::to_str) {
-                    if name.starts_with("libagentfs_interpose_shim") && name.ends_with(".dylib") {
-                        return path;
+    /// Send fd_open request and receive file descriptor via SCM_RIGHTS
+    fn send_fd_open_request(path: &CStr, flags: c_int, mode: mode_t) -> Result<RawFd, String> {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            log_message(&format!("STREAM.lock() returned: {:?}", stream_guard.as_ref().map(|_| "Some(arc)")));
+            match stream_guard.as_ref() {
+                Some(arc) => {
+                    log_message("STREAM found, sending fd_open request");
+                    Arc::clone(arc)
+                },
+                None => {
+                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original open");
+                        return Err("not connected to AgentFS control socket".to_string());
                     }
                 }
             }
+        };
+
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::fd_open(path_str, flags as u32, mode as u32);
+
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+                .map_err(|e| format!("send fd_open request: {e}"))?;
         }
 
-        panic!(
-            "unable to locate built interpose shim dylib in {:?} or {:?}",
-            direct, deps_dir
-        );
+        // Read response (for now, simple response with fd number)
+        // TODO: Implement proper SCM_RIGHTS
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read response length: {e}"))?;
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read response: {e}"))?;
+        }
+
+        // Decode the response
+        let fd = match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => {
+                match response {
+                    Response::FdOpen(fd_response) => {
+                        let fd = fd_response.fd as RawFd;
+                        log_message(&format!("received fd {} from daemon", fd));
+                        fd
+                    }
+                    Response::Error(err) => {
+                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
+                    }
+                    _ => {
+                        return Err("unexpected response type".to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("decode response failed: {:?}", e));
+            }
+        };
+
+        if fd < 0 {
+            return Err("invalid file descriptor received".to_string());
+        }
+
+        // Duplicate the file descriptor to avoid issues with the received fd
+        let dup_fd = unsafe { libc::dup(fd) };
+        if dup_fd < 0 {
+            return Err(format!("dup failed: {}", std::io::Error::last_os_error()));
+        }
+
+        Ok(dup_fd as RawFd)
     }
 
-    fn compile_helper_binary(dir: &Path) -> PathBuf {
-        let source = dir.join("helper.rs");
-        fs::write(&source, "fn main() { println!(\"interpose-helper\"); }").unwrap();
-        let output = dir.join("helper-bin");
-        let status = Command::new("rustc")
-            .arg(&source)
-            .arg("-C")
-            .arg("opt-level=0")
-            .arg("-o")
-            .arg(&output)
-            .status()
-            .expect("failed to invoke rustc");
-        assert!(status.success(), "failed to compile helper binary");
-        output
+    /// Send file descriptor via SCM_RIGHTS (for testing/debugging)
+    fn send_fd_response(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
+        let response = Response::fd_open(fd as u32);
+
+        let ssz_bytes = encode_ssz(&response);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        // Send response with file descriptor via SCM_RIGHTS
+        let mut iov = iovec {
+            iov_base: ssz_len.to_le_bytes().as_ptr() as *mut libc::c_void,
+            iov_len: 4,
+        };
+
+        let mut msg: msghdr = unsafe { mem::zeroed() };
+        msg.msg_iov = &mut iov;
+        msg.msg_iovlen = 1;
+
+        let cmsg_space = unsafe { CMSG_SPACE(mem::size_of::<RawFd>() as libc::c_uint) } as usize;
+        let mut cmsg_buf = vec![0u8; cmsg_space];
+        msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
+        msg.msg_controllen = cmsg_space as libc::c_uint;
+
+        let cmsg = unsafe { CMSG_FIRSTHDR(&msg) };
+        if cmsg.is_null() {
+            return Err("failed to get control message header".to_string());
+        }
+
+        unsafe {
+            (*cmsg).cmsg_len = CMSG_LEN(mem::size_of::<RawFd>() as libc::c_uint);
+            (*cmsg).cmsg_level = libc::SOL_SOCKET;
+            (*cmsg).cmsg_type = libc::SCM_RIGHTS;
+            *(CMSG_DATA(cmsg) as *mut RawFd) = fd;
+        }
+
+        let result = unsafe { libc::sendmsg(stream.as_raw_fd(), &msg, 0) };
+        if result < 0 {
+            return Err(format!("sendmsg failed: {}", std::io::Error::last_os_error()));
+        }
+
+        Ok(())
     }
 
-    #[test]
-    fn shim_performs_handshake_when_allowed() {
-        let _lock = ENV_GUARD.lock().unwrap();
-        let dir = tempdir().unwrap();
-        let socket_path = dir.path().join("agentfs.sock");
-        let listener = UnixListener::bind(&socket_path).unwrap();
+    /// Interposed open function
+    #[no_mangle]
+    pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+        if path.is_null() {
+            return -1;
+        }
 
-        let (tx, rx) = mpsc::channel();
+        let c_path = unsafe { CStr::from_ptr(path) };
 
-        thread::spawn({
-            let tx = tx.clone();
-            move || {
-                if let Ok((stream, _addr)) = listener.accept() {
-                    let mut reader = BufReader::new(stream.try_clone().unwrap());
-                    // Read length-prefixed SSZ data
-                    let mut len_buf = [0u8; 4];
-                    reader.read_exact(&mut len_buf).unwrap();
-                    let msg_len = u32::from_le_bytes(len_buf) as usize;
+        log_message(&format!("interposing open({}, {:#x}, {:#o})", c_path.to_string_lossy(), flags, mode));
 
-                    let mut msg_bytes = vec![0u8; msg_len];
-                    reader.read_exact(&mut msg_bytes).unwrap();
-
-                    tx.send(msg_bytes).unwrap();
-                    let mut stream = stream;
-                    // Send back length-prefixed SSZ success response
-                    let response = HandshakeMessage::Handshake(HandshakeData {
-                        version: b"1".to_vec(),
-                        shim: ShimInfo {
-                            name: b"agentfs-server".to_vec(),
-                            crate_version: b"1.0.0".to_vec(),
-                            features: vec![b"ack".to_vec()],
-                        },
-                        process: ProcessInfo {
-                            pid: 1,
-                            ppid: 0,
-                            uid: 0,
-                            gid: 0,
-                            exe_path: b"/server".to_vec(),
-                            exe_name: b"server".to_vec(),
-                        },
-                        allowlist: AllowlistInfo {
-                            matched_entry: None,
-                            configured_entries: None,
-                        },
-                        timestamp: b"1234567890".to_vec(),
-                    });
-                    let response_bytes = encode_ssz(&response);
-                    let response_len = response_bytes.len() as u32;
-                    let _ = stream.write_all(&response_len.to_le_bytes());
-                    let _ = stream.write_all(&response_bytes);
+        match send_fd_open_request(c_path, flags, mode) {
+            Ok(fd) => {
+                log_message(&format!("fd_open succeeded, returning fd {}", fd));
+                fd as c_int
+            }
+            Err(err) => {
+                log_message(&format!("fd_open failed: {}, falling back to original", err));
+                // Fall back to original implementation using dlsym
+                #[cfg(target_os = "macos")]
+                if let Some(original_open) = *ORIGINAL_OPEN {
+                    unsafe { original_open(path, flags, mode) }
                 } else {
-                    tx.send(Vec::new()).ok();
+                    log_message("dlsym failed for open, returning error");
+                    -1
                 }
-            }
-        });
-
-        let helper = compile_helper_binary(dir.path());
-        set_env_var(ENV_ALLOWLIST, "helper-bin");
-        set_env_var(ENV_SOCKET, socket_path.to_str().unwrap());
-        set_env_var(ENV_LOG_LEVEL, "1");
-
-        let status = Command::new(&helper)
-            .env("DYLD_INSERT_LIBRARIES", build_dylib_path())
-            .env(ENV_SOCKET, &socket_path)
-            .env(ENV_ALLOWLIST, "helper-bin")
-            .env(ENV_LOG_LEVEL, "1")
-            .status()
-            .expect("failed to launch helper");
-        assert!(status.success());
-
-        let handshake_bytes = rx.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert!(
-            !handshake_bytes.is_empty(),
-            "expected handshake payload (raw SSZ bytes)"
-        );
-
-        // Verify the received data can be decoded as SSZ
-        let decoded: HandshakeMessage =
-            decode_ssz(&handshake_bytes).expect("handshake should be valid SSZ");
-        match decoded {
-            HandshakeMessage::Handshake(data) => {
-                assert_eq!(data.version, b"1");
-                assert_eq!(data.shim.name, b"agentfs-interpose-shim");
-                assert!(data.process.pid > 0);
+                #[cfg(not(target_os = "macos"))]
+                unsafe { libc::open(path, flags, mode as libc::c_uint) }
             }
         }
-
-        remove_env_var(ENV_ALLOWLIST);
-        remove_env_var(ENV_SOCKET);
-        remove_env_var(ENV_LOG_LEVEL);
     }
 
-    #[test]
-    fn shim_skips_handshake_when_not_allowed() {
-        let _lock = ENV_GUARD.lock().unwrap();
-        let dir = tempdir().unwrap();
-        let socket_path = dir.path().join("agentfs.sock");
-        let listener = UnixListener::bind(&socket_path).unwrap();
-        listener.set_nonblocking(true).unwrap();
-
-        let helper = compile_helper_binary(dir.path());
-
-        set_env_var(ENV_ALLOWLIST, "some-other-binary");
-        set_env_var(ENV_SOCKET, socket_path.to_str().unwrap());
-        set_env_var(ENV_LOG_LEVEL, "1");
-
-        let status = Command::new(&helper)
-            .env("DYLD_INSERT_LIBRARIES", build_dylib_path())
-            .env(ENV_SOCKET, &socket_path)
-            .env(ENV_ALLOWLIST, "some-other-binary")
-            .env(ENV_LOG_LEVEL, "1")
-            .status()
-            .expect("failed to launch helper");
-        assert!(status.success());
-
-        let mut accepted = false;
-        for _ in 0..20 {
-            match listener.accept() {
-                Ok((_stream, _addr)) => {
-                    accepted = true;
-                    break;
-                }
-                Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(50));
-                }
-                Err(err) => panic!("listener error: {err}"),
-            }
+    /// Interposed openat function
+    #[no_mangle]
+    pub extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+        if path.is_null() {
+            return -1;
         }
 
-        assert!(
-            !accepted,
-            "shim should not have connected to socket when disallowed"
-        );
+        let c_path = unsafe { CStr::from_ptr(path) };
 
-        remove_env_var(ENV_ALLOWLIST);
-        remove_env_var(ENV_SOCKET);
-        remove_env_var(ENV_LOG_LEVEL);
+        log_message(&format!("interposing openat({}, {}, {:#x}, {:#o})", dirfd, c_path.to_string_lossy(), flags, mode));
+
+        // For now, fall back to original - openat forwarding needs more complex path resolution
+        #[cfg(target_os = "macos")]
+        if let Some(original_openat) = *ORIGINAL_OPENAT {
+            unsafe { original_openat(dirfd, path, flags, mode) }
+        } else {
+            log_message("dlsym failed for openat, returning error");
+            -1
+        }
+        #[cfg(not(target_os = "macos"))]
+        unsafe { libc::openat(dirfd, path, flags, mode as libc::c_uint) }
     }
+
+    /// Interposed creat function
+    #[no_mangle]
+    pub extern "C" fn creat(path: *const c_char, mode: mode_t) -> c_int {
+        if path.is_null() {
+            return -1;
+        }
+
+        let c_path = unsafe { CStr::from_ptr(path) };
+        let flags = libc::O_CREAT | libc::O_TRUNC | libc::O_WRONLY;
+
+        log_message(&format!("interposing creat({}, {:#o})", c_path.to_string_lossy(), mode));
+
+        match send_fd_open_request(c_path, flags, mode) {
+            Ok(fd) => {
+                log_message(&format!("fd_open succeeded, returning fd {}", fd));
+                fd as c_int
+            }
+            Err(err) => {
+                log_message(&format!("fd_open failed: {}, falling back to original", err));
+                #[cfg(target_os = "macos")]
+                if let Some(original_creat) = *ORIGINAL_CREAT {
+                    unsafe { original_creat(path, mode) }
+                } else {
+                    log_message("dlsym failed for creat, returning error");
+                    -1
+                }
+                #[cfg(not(target_os = "macos"))]
+                unsafe { libc::creat(path, mode) }
+            }
+        }
+    }
+
+    /// Interposed fopen function
+    #[no_mangle]
+    pub extern "C" fn fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE {
+        log_message("interposing fopen() - not yet implemented, falling back to original");
+
+        // For now, fall back to original
+        #[cfg(target_os = "macos")]
+        if let Some(original_fopen) = *ORIGINAL_FOPEN {
+            unsafe { original_fopen(filename, mode) }
+        } else {
+            log_message("dlsym failed for fopen, returning null");
+            std::ptr::null_mut()
+        }
+        #[cfg(not(target_os = "macos"))]
+        unsafe { libc::fopen(filename, mode) }
+    }
+
+    /// Interposed freopen function
+    #[no_mangle]
+    pub extern "C" fn freopen(filename: *const c_char, mode: *const c_char, stream: *mut libc::FILE) -> *mut libc::FILE {
+        log_message("interposing freopen() - not yet implemented, falling back to original");
+
+        // For now, fall back to original
+        #[cfg(target_os = "macos")]
+        if let Some(original_freopen) = *ORIGINAL_FREOPEN {
+            unsafe { original_freopen(filename, mode, stream) }
+        } else {
+            log_message("dlsym failed for freopen, returning null");
+            std::ptr::null_mut()
+        }
+        #[cfg(not(target_os = "macos"))]
+        unsafe { libc::freopen(filename, mode, stream) }
+    }
+
+    // Note: _INODE64 variants are not implemented as they require symbol names with '$'
+    // which is not valid in Rust function names. The base functions handle the common case.
 }
+
+// DYLD interposition structure for macOS
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct Interpose {
+    new_func: *const libc::c_void,
+    old_func: *const libc::c_void,
+}
+
+// Safety: This is required for DYLD interposition table
+#[cfg(target_os = "macos")]
+unsafe impl Sync for Interpose {}
+
+// DYLD interposition table for macOS
+// Note: This uses the __DATA,__interpose section which DYLD automatically processes
+#[cfg(target_os = "macos")]
+#[link_section = "__DATA,__interpose"]
+#[used]
+static INTERPOSE_TABLE: [Interpose; 5] = [
+    Interpose {
+        new_func: interpose::open as *const libc::c_void,
+        old_func: libc::open as *const libc::c_void,
+    },
+    Interpose {
+        new_func: interpose::openat as *const libc::c_void,
+        old_func: libc::openat as *const libc::c_void,
+    },
+    Interpose {
+        new_func: interpose::creat as *const libc::c_void,
+        old_func: libc::creat as *const libc::c_void,
+    },
+    Interpose {
+        new_func: interpose::fopen as *const libc::c_void,
+        old_func: libc::fopen as *const libc::c_void,
+    },
+    Interpose {
+        new_func: interpose::freopen as *const libc::c_void,
+        old_func: libc::freopen as *const libc::c_void,
+    },
+];
+
+// Original function pointers obtained via dlsym
+#[cfg(target_os = "macos")]
+static ORIGINAL_OPEN: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int>> = Lazy::new(|| {
+    unsafe {
+        let ptr = dlsym(RTLD_NEXT, b"open\0".as_ptr() as *const libc::c_char);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::mem::transmute(ptr))
+        }
+    }
+});
+
+#[cfg(target_os = "macos")]
+static ORIGINAL_OPENAT: Lazy<Option<unsafe extern "C" fn(libc::c_int, *const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int>> = Lazy::new(|| {
+    unsafe {
+        let ptr = dlsym(RTLD_NEXT, b"openat\0".as_ptr() as *const libc::c_char);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::mem::transmute(ptr))
+        }
+    }
+});
+
+#[cfg(target_os = "macos")]
+static ORIGINAL_CREAT: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, libc::mode_t) -> libc::c_int>> = Lazy::new(|| {
+    unsafe {
+        let ptr = dlsym(RTLD_NEXT, b"creat\0".as_ptr() as *const libc::c_char);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::mem::transmute(ptr))
+        }
+    }
+});
+
+#[cfg(target_os = "macos")]
+static ORIGINAL_FOPEN: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, *const libc::c_char) -> *mut libc::FILE>> = Lazy::new(|| {
+    unsafe {
+        let ptr = dlsym(RTLD_NEXT, b"fopen\0".as_ptr() as *const libc::c_char);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::mem::transmute(ptr))
+        }
+    }
+});
+
+#[cfg(target_os = "macos")]
+static ORIGINAL_FREOPEN: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, *const libc::c_char, *mut libc::FILE) -> *mut libc::FILE>> = Lazy::new(|| {
+    unsafe {
+        let ptr = dlsym(RTLD_NEXT, b"freopen\0".as_ptr() as *const libc::c_char);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::mem::transmute(ptr))
+        }
+    }
+});

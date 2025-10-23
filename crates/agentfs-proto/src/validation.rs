@@ -20,7 +20,11 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
     match request {
         Request::SnapshotCreate((version, _))
         | Request::BranchCreate((version, _))
-        | Request::BranchBind((version, _)) => {
+        | Request::BranchBind((version, _))
+        | Request::FdOpen((version, _))
+        | Request::FdDup((version, _))
+        | Request::PathOp((version, _))
+        | Request::InterposeSetGet((version, _)) => {
             if version != b"1" {
                 return Err(ValidationError::Schema("version must be '1'".to_string()));
             }
@@ -44,6 +48,10 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
         | Response::SnapshotList(_)
         | Response::BranchCreate(_)
         | Response::BranchBind(_)
+        | Response::FdOpen(_)
+        | Response::FdDup(_)
+        | Response::PathOp(_)
+        | Response::InterposeSetGet(_)
         | Response::Error(_) => Ok(()),
     }
 }

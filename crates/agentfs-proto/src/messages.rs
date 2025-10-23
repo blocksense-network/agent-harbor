@@ -17,6 +17,10 @@ pub enum Request {
     SnapshotList(Vec<u8>),                            // version
     BranchCreate((Vec<u8>, BranchCreateRequest)),     // (version, request)
     BranchBind((Vec<u8>, BranchBindRequest)),         // (version, request)
+    FdOpen((Vec<u8>, FdOpenRequest)),                  // (version, request)
+    FdDup((Vec<u8>, FdDupRequest)),                    // (version, request)
+    PathOp((Vec<u8>, PathOpRequest)),                  // (version, request)
+    InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
 }
 
 /// Response union - operation-specific success responses or errors
@@ -27,6 +31,10 @@ pub enum Response {
     SnapshotList(SnapshotListResponse),
     BranchCreate(BranchCreateResponse),
     BranchBind(BranchBindResponse),
+    FdOpen(FdOpenResponse),
+    FdDup(FdDupResponse),
+    PathOp(PathOpResponse),
+    InterposeSetGet(InterposeSetGetResponse),
     Error(ErrorResponse),
 }
 
@@ -99,6 +107,59 @@ pub struct BranchBindRequest {
 pub struct BranchBindResponse {
     pub branch: Vec<u8>,
     pub pid: u32,
+}
+
+/// FdOpen request payload for interpose forwarding
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FdOpenRequest {
+    pub path: Vec<u8>,
+    pub flags: u32,
+    pub mode: u32,
+}
+
+/// FdOpen response payload with file descriptor
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FdOpenResponse {
+    pub fd: u32,
+}
+
+/// FdDup request payload for duplicating file descriptors
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FdDupRequest {
+    pub fd: u32,
+}
+
+/// FdDup response payload with duplicated file descriptor
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FdDupResponse {
+    pub fd: u32,
+}
+
+/// PathOp request payload for path-based operations
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct PathOpRequest {
+    pub path: Vec<u8>,
+    pub operation: Vec<u8>, // "stat", "lstat", "chmod", etc.
+    pub args: Option<Vec<u8>>, // operation-specific arguments
+}
+
+/// PathOp response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct PathOpResponse {
+    pub result: Option<Vec<u8>>, // operation-specific result
+}
+
+/// InterposeSetGet request payload for configuration management
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct InterposeSetGetRequest {
+    pub key: Vec<u8>, // "max_copy_bytes", "require_reflink", etc.
+    pub value: Option<Vec<u8>>, // None for get, Some(value) for set
+}
+
+/// InterposeSetGet response payload with configuration value
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct InterposeSetGetResponse {
+    pub value: Vec<u8>, // current/updated configuration value
 }
 
 /// Filesystem operation request union
@@ -277,6 +338,45 @@ impl Request {
             },
         ))
     }
+
+    pub fn fd_open(path: String, flags: u32, mode: u32) -> Self {
+        Self::FdOpen((
+            b"1".to_vec(),
+            FdOpenRequest {
+                path: path.into_bytes(),
+                flags,
+                mode,
+            },
+        ))
+    }
+
+    pub fn fd_dup(fd: u32) -> Self {
+        Self::FdDup((
+            b"1".to_vec(),
+            FdDupRequest { fd },
+        ))
+    }
+
+    pub fn path_op(path: String, operation: String, args: Option<String>) -> Self {
+        Self::PathOp((
+            b"1".to_vec(),
+            PathOpRequest {
+                path: path.into_bytes(),
+                operation: operation.into_bytes(),
+                args: args.map(|s| s.into_bytes()),
+            },
+        ))
+    }
+
+    pub fn interpose_setget(key: String, value: Option<String>) -> Self {
+        Self::InterposeSetGet((
+            b"1".to_vec(),
+            InterposeSetGetRequest {
+                key: key.into_bytes(),
+                value: value.map(|s| s.into_bytes()),
+            },
+        ))
+    }
 }
 
 impl Response {
@@ -294,6 +394,26 @@ impl Response {
 
     pub fn branch_bind(branch: Vec<u8>, pid: u32) -> Self {
         Self::BranchBind(BranchBindResponse { branch, pid })
+    }
+
+    pub fn fd_open(fd: u32) -> Self {
+        Self::FdOpen(FdOpenResponse { fd })
+    }
+
+    pub fn fd_dup(fd: u32) -> Self {
+        Self::FdDup(FdDupResponse { fd })
+    }
+
+    pub fn path_op(result: Option<String>) -> Self {
+        Self::PathOp(PathOpResponse {
+            result: result.map(|s| s.into_bytes()),
+        })
+    }
+
+    pub fn interpose_setget(value: String) -> Self {
+        Self::InterposeSetGet(InterposeSetGetResponse {
+            value: value.into_bytes(),
+        })
     }
 
     pub fn error(message: String, code: Option<u32>) -> Self {
