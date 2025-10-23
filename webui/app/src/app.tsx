@@ -6,14 +6,14 @@
 import { Router } from '@solidjs/router';
 import { FileRoutes } from '@solidjs/start/router';
 import { MetaProvider, Title, Meta } from '@solidjs/meta';
-import { MainLayout } from './components/layout/MainLayout.js';
-import { SessionProvider } from './contexts/SessionContext.js';
-import { DraftProvider } from './contexts/DraftContext.js';
-import { FocusProvider } from './contexts/FocusContext.js';
-import { ToastProvider } from './contexts/ToastContext.js';
-import { BreadcrumbProvider } from './contexts/BreadcrumbContext.js';
 import { isServer, getRequestEvent } from 'solid-js/web';
 import { Suspense } from 'solid-js';
+
+import { SessionProvider } from './contexts/SessionContext';
+import { DraftProvider } from './contexts/DraftContext';
+import { FocusProvider } from './contexts/FocusContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { BreadcrumbProvider } from './contexts/BreadcrumbContext';
 import './app.css';
 
 export default function App() {
@@ -35,14 +35,7 @@ export default function App() {
           <DraftProvider>
             <FocusProvider>
               <BreadcrumbProvider>
-                <Router
-                  url={initialUrl}
-                  root={props => (
-                    <Suspense>
-                      <MainLayout>{props.children}</MainLayout>
-                    </Suspense>
-                  )}
-                >
+                <Router url={initialUrl} root={props => <Suspense>{props.children}</Suspense>}>
                   <FileRoutes />
                 </Router>
               </BreadcrumbProvider>

@@ -15,13 +15,16 @@ import {
 } from 'solid-js';
 import { useNavigate, useParams } from '@solidjs/router';
 
-import { useBreadcrumbs } from '../../contexts/BreadcrumbContext';
-import { apiClient } from '../../lib/api.js';
-import { mockModifiedFiles, getDiffContentForFile } from '../../components/task-details/mock-data';
-import { ModifiedFiles } from '../../components/task-details/ModifiedFiles';
-import { AgentActivity } from '../../components/task-details/AgentActivity';
-import { ChatBox } from '../../components/task-details/ChatBox';
-import { FileDiff } from '../../components/task-details/FileDiff';
+import { useBreadcrumbs } from '../../../contexts/BreadcrumbContext';
+import { apiClient } from '../../../lib/api.js';
+import {
+  mockModifiedFiles,
+  getDiffContentForFile,
+} from '../../../components/task-details/mock-data';
+import { ModifiedFiles } from '../../../components/task-details/ModifiedFiles';
+import { AgentActivity } from '../../../components/task-details/AgentActivity';
+import { ChatBox } from '../../../components/task-details/ChatBox';
+import { FileDiff } from '../../../components/task-details/FileDiff';
 
 export default function TaskDetailsPage() {
   const params = useParams();
