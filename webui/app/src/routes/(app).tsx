@@ -2,34 +2,28 @@
  * Copyright 2025 Schelling Point Labs Inc
  * SPDX-License-Identifier: AGPL-3.0-only
  */
+import { RouteSectionProps, useLocation, A } from '@solidjs/router';
+import { For, onCleanup, onMount } from 'solid-js';
 
-import { Component, JSX, onMount, onCleanup, For } from 'solid-js';
-import { useLocation, A } from '@solidjs/router';
-import agentHarborLogo from '../../assets/agent-harbor-logo.svg';
-import { Footer } from './Footer';
-import { useDrafts } from '../../contexts/DraftContext.js';
-import { useFocus } from '../../contexts/FocusContext.js';
-import { useBreadcrumbs } from '../../contexts/BreadcrumbContext.js';
+import agentHarborLogo from '../assets/agent-harbor-logo.svg';
+import { Footer } from '../components/layout/Footer';
+import { useDrafts } from '../contexts/DraftContext.js';
+import { useFocus } from '../contexts/FocusContext.js';
+import { useBreadcrumbs } from '../contexts/BreadcrumbContext.js';
 
-interface MainLayoutProps {
-  children?: JSX.Element;
-  onNewDraft?: () => void;
-}
-
-export const MainLayout: Component<MainLayoutProps> = props => {
+export default function AppLayout(props: RouteSectionProps) {
   const location = useLocation();
   const { focusState } = useFocus();
   const { breadcrumbs } = useBreadcrumbs();
-  const isActive = (path: string) => location.pathname === path;
-
-  // Access DraftProvider for creating new drafts
   const draftOps = useDrafts();
+
+  const isActive = (path: string) => location.pathname === path;
 
   const handleNewDraft = async () => {
     if (!import.meta.env.PROD) {
-      console.log('[MainLayout] New Task button clicked');
+      console.log('[AppLayout] New Task button clicked');
     }
-    // Create a new empty draft
+
     const created = await draftOps.createDraft({
       prompt: '',
       repo: { mode: 'git', url: '', branch: 'main' },
@@ -37,8 +31,9 @@ export const MainLayout: Component<MainLayoutProps> = props => {
       runtime: { type: 'devcontainer' },
       delivery: { mode: 'pr' },
     });
+
     if (!import.meta.env.PROD) {
-      console.log('[MainLayout] Draft creation result:', created);
+      console.log('[AppLayout] Draft creation result:', created);
     }
   };
 
@@ -72,7 +67,6 @@ export const MainLayout: Component<MainLayoutProps> = props => {
 
   return (
     <div class="flex h-screen flex-col bg-white">
-      {/* Skip to main content link */}
       <a
         href="#main"
         class={`
@@ -83,7 +77,6 @@ export const MainLayout: Component<MainLayoutProps> = props => {
         Skip to main content
       </a>
 
-      {/* Top Navigation */}
       <header class="border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
         <div class="flex items-center">
           <div class="flex items-center space-x-3">
@@ -97,7 +90,6 @@ export const MainLayout: Component<MainLayoutProps> = props => {
             <h1 class="text-xl font-bold text-gray-900">Agent Harbor</h1>
           </div>
 
-          {/* Centered Breadcrumbs */}
           <div class="flex flex-1 justify-center">
             {breadcrumbs().length > 0 && (
               <nav
@@ -158,12 +150,10 @@ export const MainLayout: Component<MainLayoutProps> = props => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main id="main" class="flex-1 overflow-hidden">
         {props.children}
       </main>
 
-      {/* Footer with keyboard shortcuts */}
       {(() => {
         const state = focusState();
         return (
@@ -176,4 +166,4 @@ export const MainLayout: Component<MainLayoutProps> = props => {
       })()}
     </div>
   );
-};
+}
