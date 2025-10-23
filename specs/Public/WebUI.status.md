@@ -130,7 +130,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
 - **Key Source Files**:
   - `webui/app/src/App.tsx` - Main SolidJS application with routing
   - `webui/app/src/routes/index.tsx` - Dashboard route with layout
-  - `webui/app/src/components/layout/MainLayout.tsx` - Top-level navigation layout
   - Mock server implementation (see [Mock Server README](../webui/mock-server/README.md) for source files)
   - `webui/shared/eslint.config.js` - Shared ESLint configuration
   - `webui/shared/.prettierrc.json` - Shared Prettier configuration
@@ -386,7 +385,6 @@ Multiple development tracks can proceed in parallel once the core infrastructure
   - **Always-Visible Drafts**: Draft task creation permanently available at bottom of feed
 
 - **Key Source Files**:
-  - `webui/app/src/components/layout/MainLayout.tsx` - Agent Harbor branding and simplified navigation
   - `webui/app/src/components/tasks/TaskCard.tsx` - New 4-line task card with status indicators
   - `webui/app/src/components/tasks/DraftTaskCard.tsx` - Always-visible draft with TOM's selects
   - `webui/app/src/routes/index.tsx` - New task-centric dashboard layout
