@@ -12,7 +12,7 @@ import { DraftProvider } from './contexts/DraftContext.js';
 import { FocusProvider } from './contexts/FocusContext.js';
 import { ToastProvider } from './contexts/ToastContext.js';
 import { BreadcrumbProvider } from './contexts/BreadcrumbContext.js';
-import { isServer, getRequestEvent } from 'solid-js/web';
+import { isServer, getRequestEvent, Suspense } from 'solid-js/web';
 import './app.css';
 
 export default function App() {
@@ -34,7 +34,14 @@ export default function App() {
           <DraftProvider>
             <FocusProvider>
               <BreadcrumbProvider>
-                <Router url={initialUrl} root={props => <MainLayout>{props.children}</MainLayout>}>
+                <Router
+                  url={initialUrl}
+                  root={props => (
+                    <Suspense>
+                      <MainLayout>{props.children}</MainLayout>
+                    </Suspense>
+                  )}
+                >
                   <FileRoutes />
                 </Router>
               </BreadcrumbProvider>
