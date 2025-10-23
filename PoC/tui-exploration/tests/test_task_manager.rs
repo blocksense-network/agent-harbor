@@ -86,7 +86,7 @@ async fn test_mock_rest_client_handles_simulated_failures() {
     let result = manager.launch_task(params).await;
 
     assert!(!result.is_success());
-    assert_eq!(result.error().unwrap(), "Simulated task creation failure");
+    assert_eq!(result.error().unwrap(), "Simulated task launch failure");
 }
 
 #[tokio::test]

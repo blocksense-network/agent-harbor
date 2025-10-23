@@ -68,9 +68,9 @@ fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
 }
 
 fn build_view_model() -> ViewModel {
-    let workspace_files = Box::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
-    let workspace_workflows = Box::new(WorkflowProcessor::new(WorkflowConfig::default()));
-    let task_manager = Box::new(MockRestClient::new());
+    let workspace_files = Arc::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
+    let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+    let task_manager = Arc::new(MockRestClient::new());
     let settings = Settings::default();
 
     ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
@@ -94,7 +94,7 @@ fn prepare_autocomplete(vm: &mut ViewModel, trigger: Trigger, labels: &[&str]) {
     ));
 
     vm.autocomplete.notify_text_input();
-    vm.autocomplete.after_textarea_change(&card.description);
+    vm.autocomplete.after_textarea_change(&card.description, &mut vm.needs_redraw);
 
     std::thread::sleep(Duration::from_millis(90));
     vm.autocomplete.on_tick();

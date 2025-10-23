@@ -123,7 +123,6 @@ pub enum KeyboardOperation {
     Bold,
     Italic,
     Underline,
-    InsertHyperlink,
 
     // Code Editing
     ToggleComment,
@@ -203,7 +202,6 @@ impl KeyboardOperation {
             KeyboardOperation::Bold => "shortcut-bold",
             KeyboardOperation::Italic => "shortcut-italic",
             KeyboardOperation::Underline => "shortcut-underline",
-            KeyboardOperation::InsertHyperlink => "shortcut-insert-hyperlink",
             KeyboardOperation::ToggleComment => "shortcut-toggle-comment",
             KeyboardOperation::DuplicateLineSelection => "shortcut-duplicate-line-selection",
             KeyboardOperation::MoveLineUp => "shortcut-move-line-up",
@@ -273,7 +271,6 @@ impl KeyboardOperation {
             KeyboardOperation::Bold => "Toggle bold formatting",
             KeyboardOperation::Italic => "Toggle italic formatting",
             KeyboardOperation::Underline => "Toggle underline formatting",
-            KeyboardOperation::InsertHyperlink => "Insert hyperlink",
             KeyboardOperation::ToggleComment => "Toggle comment",
             KeyboardOperation::DuplicateLineSelection => "Duplicate line or selection",
             KeyboardOperation::MoveLineUp => "Move line up",
@@ -697,7 +694,7 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveBackwardOneCharacter,
-                vec!["Ctrl+B".to_string(), "Left".to_string()],
+                vec!["Left".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToNextLine,
@@ -774,7 +771,7 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteToEndOfLine,
-                vec!["Ctrl+K".to_string()],
+                vec!["Ctrl+K".to_string()], // Emacs-style delete to end of line
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Cut,
@@ -860,6 +857,88 @@ impl KeymapConfig {
                 KeyboardOperation::SelectWordUnderCursor,
                 vec!["Alt+@".to_string()],
             ),
+
+            // Additional operations from research document
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CycleThroughClipboard,
+                vec!["Alt+Y".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::TransposeCharacters,
+                vec!["Ctrl+T".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::TransposeWords,
+                vec!["Alt+T".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::UppercaseWord,
+                vec!["Alt+U".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::LowercaseWord,
+                vec!["Alt+L".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CapitalizeWord,
+                vec!["Alt+C".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::JoinLines,
+                vec!["Alt+^".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::Bold,
+                vec!["Ctrl+B".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::Italic,
+                vec!["Ctrl+I".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::Underline,
+                vec!["Ctrl+U".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::ToggleComment,
+                vec!["Ctrl+/".to_string(), "Alt+;".to_string(), "Cmd+/".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::DuplicateLineSelection,
+                vec!["Ctrl+D".to_string(), "Cmd+Shift+D".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveLineUp,
+                vec!["Alt+Up".to_string(), "Option+Up".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveLineDown,
+                vec!["Alt+Down".to_string(), "Option+Down".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::IndentRegion,
+                vec!["Ctrl+]".to_string(), "Cmd+]".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::DedentRegion,
+                vec!["Ctrl+[".to_string(), "Cmd+[".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::IncrementalSearchForward,
+                vec!["Ctrl+S".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::IncrementalSearchBackward,
+                vec!["Ctrl+R".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::FindNext,
+                vec!["F3".to_string(), "Cmd+G".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::FindPrevious,
+                vec!["Shift+F3".to_string(), "Cmd+Shift+G".to_string()],
+            ),
         ]
     }
 
@@ -917,7 +996,6 @@ impl KeymapConfig {
             KeyboardOperation::Bold => &self.bold,
             KeyboardOperation::Italic => &self.italic,
             KeyboardOperation::Underline => &self.underline,
-            KeyboardOperation::InsertHyperlink => &self.insert_hyperlink,
             KeyboardOperation::ToggleComment => &self.toggle_comment,
             KeyboardOperation::DuplicateLineSelection => &self.duplicate_line_selection,
             KeyboardOperation::MoveLineUp => &self.move_line_up,
@@ -1057,7 +1135,6 @@ impl KeymapConfig {
             KeyboardOperation::Bold => self.bold.clone().unwrap_or_default(),
             KeyboardOperation::Italic => self.italic.clone().unwrap_or_default(),
             KeyboardOperation::Underline => self.underline.clone().unwrap_or_default(),
-            KeyboardOperation::InsertHyperlink => self.insert_hyperlink.clone().unwrap_or_default(),
             KeyboardOperation::ToggleComment => self.toggle_comment.clone().unwrap_or_default(),
             KeyboardOperation::DuplicateLineSelection => {
                 self.duplicate_line_selection.clone().unwrap_or_default()
@@ -1153,7 +1230,6 @@ impl Default for KeymapConfig {
             bold: None,
             italic: None,
             underline: None,
-            insert_hyperlink: None,
             toggle_comment: None,
             duplicate_line_selection: None,
             move_line_up: None,
@@ -1292,7 +1368,6 @@ impl Default for KeymapConfig {
                     KeyboardOperation::Bold => config.bold = Some(matchers),
                     KeyboardOperation::Italic => config.italic = Some(matchers),
                     KeyboardOperation::Underline => config.underline = Some(matchers),
-                    KeyboardOperation::InsertHyperlink => config.insert_hyperlink = Some(matchers),
                     KeyboardOperation::ToggleComment => config.toggle_comment = Some(matchers),
                     KeyboardOperation::DuplicateLineSelection => {
                         config.duplicate_line_selection = Some(matchers)
@@ -1429,8 +1504,6 @@ pub struct KeymapConfig {
     pub italic: Option<Vec<KeyMatcher>>,
     #[serde(rename = "underline")]
     pub underline: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "insert-hyperlink")]
-    pub insert_hyperlink: Option<Vec<KeyMatcher>>,
 
     // Code Editing
     #[serde(rename = "toggle-comment")]

@@ -4,6 +4,7 @@
 //! testing draft editing, navigation, task creation, and auto-save functionality.
 
 use std::io::Write;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
@@ -15,13 +16,13 @@ use tui_exploration::view_model::*;
 
 /// Helper function to create a test ViewModel with mock dependencies
 fn create_test_view_model() -> ViewModel {
-    let workspace_files = Box::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(
+    let workspace_files = Arc::new(tui_exploration::workspace_files::GitWorkspaceFiles::new(
         std::path::PathBuf::from("."),
     ));
-    let workspace_workflows = Box::new(ah_workflows::WorkflowProcessor::new(
+    let workspace_workflows = Arc::new(ah_workflows::WorkflowProcessor::new(
         ah_workflows::WorkflowConfig::default(),
     ));
-    let task_manager = Box::new(ah_rest_mock_client::MockRestClient::new());
+    let task_manager = Arc::new(ah_rest_mock_client::MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
     ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
