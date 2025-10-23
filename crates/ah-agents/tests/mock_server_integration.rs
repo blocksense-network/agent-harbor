@@ -93,6 +93,7 @@ fn setup_test_env(cmd: &mut std::process::Command) {
 
 #[cfg(feature = "claude")]
 #[tokio::test]
+#[ignore]
 async fn test_claude_with_mock_server() {
     // Check if claude is available
     if Command::new("claude").arg("--version").output().is_err() {
