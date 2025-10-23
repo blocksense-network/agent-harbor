@@ -2,38 +2,37 @@
  * Copyright 2025 Schelling Point Labs Inc
  * SPDX-License-Identifier: AGPL-3.0-only
  */
-
-import { Component, createSignal, onMount, onCleanup, For } from 'solid-js';
+import { createSignal, onMount, onCleanup, For } from 'solid-js';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
-export interface ToastAction {
+export type ToastAction = {
   label: string;
   onClick: () => void;
   variant?: 'primary' | 'secondary' | 'danger';
-}
+};
 
-export interface Toast {
+export type Toast = {
   id: string;
   type: ToastType;
   message: string;
   duration?: number;
   actions?: ToastAction[];
-}
+};
 
-interface ToastItemProps {
+type ToastItemProps = {
   toast: Toast;
   onRemove: (id: string) => void;
-}
+};
 
-const ToastItem: Component<ToastItemProps> = props => {
+const ToastItem = (props: ToastItemProps) => {
   const [isVisible, setIsVisible] = createSignal(true);
 
   onMount(() => {
     const duration = props.toast.duration ?? 5000;
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(() => props.onRemove(props.toast.id), 300); // Allow animation to complete
+      setTimeout(() => props.onRemove(props.toast.id), 300);
     }, duration);
 
     onCleanup(() => clearTimeout(timer));
@@ -74,13 +73,7 @@ const ToastItem: Component<ToastItemProps> = props => {
       data-toast
       class={`
         ${getToastStyles(props.toast.type)}
-        ${
-          isVisible()
-            ? 'translate-x-0 opacity-100'
-            : `
-          translate-x-full opacity-0
-        `
-        }
+        ${isVisible() ? 'translate-x-0 opacity-100' : `translate-x-full opacity-0`}
       `}
       role="alert"
       aria-live="assertive"
@@ -138,12 +131,12 @@ const ToastItem: Component<ToastItemProps> = props => {
   );
 };
 
-interface ToastContainerProps {
+type ToastContainerProps = {
   toasts: Toast[];
   onRemove: (id: string) => void;
-}
+};
 
-export const ToastContainer: Component<ToastContainerProps> = props => {
+export const ToastContainer = (props: ToastContainerProps) => {
   return (
     <div class="fixed top-4 right-4 z-50 max-w-sm" role="region" aria-label="Notifications">
       <For each={props.toasts}>

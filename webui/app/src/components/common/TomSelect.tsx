@@ -6,7 +6,7 @@
 import { onMount, onCleanup, createEffect, For } from 'solid-js';
 import TomSelect from 'tom-select';
 
-interface TomSelectProps<T = string> {
+type TomSelectProps<T = string> = {
   items: T[];
   selectedItem?: T | null;
   onSelect: (item: T | null) => void;
@@ -17,7 +17,7 @@ interface TomSelectProps<T = string> {
   class?: string;
   testId?: string;
   id?: string;
-}
+};
 
 export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   let selectRef: HTMLSelectElement | undefined;
@@ -45,7 +45,6 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
   onMount(() => {
     if (!selectRef || typeof window === 'undefined') return;
 
-    // Initialize TOM Select with proper positioning and styling
     tomSelectInstance = new TomSelect(selectRef, {
       create: false,
       maxItems: 1,
@@ -90,13 +89,11 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
       tomSelectInstance.dropdown.style.zIndex = '9999';
     }
 
-    // Set initial value if provided
     if (props.selectedItem) {
       tomSelectInstance.setValue(props.getKey(props.selectedItem), true);
     }
   });
 
-  // Update options when items change
   createEffect(() => {
     if (tomSelectInstance && typeof window !== 'undefined') {
       tomSelectInstance!.clearOptions();
@@ -117,7 +114,6 @@ export const TomSelectComponent = <T,>(props: TomSelectProps<T>) => {
     }
   });
 
-  // Update selected value when it changes
   createEffect(() => {
     if (tomSelectInstance && typeof window !== 'undefined') {
       const newValue = props.selectedItem ? props.getKey(props.selectedItem) : '';
