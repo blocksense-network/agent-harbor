@@ -4,8 +4,7 @@
 //! Scenario playback engine for deterministic testing
 //!
 //! This module implements the Scenario-Format.md specification for
-//! deterministic playback of LLM interactions based on the existing
-//! server.py mock implementation.
+//! deterministic playback of LLM interactions.
 //!
 //!
 //! ## OVERVIEW:
@@ -119,7 +118,7 @@
 //! - Anthropic: {"content": [{"type": "thinking", "thinking": "thinking_content"}, {"type": "text", "text": "text_content"}, {"type": "tool_use", ...}]} - thinking is exposed as separate content blocks
 //!
 //! ## TOOL CHANGES TRACKING:
-//! When tool validation fails, the complete API request is saved to:
+//! When tool validation fails in strict mode, the complete API request is saved to:
 //! agent-requests/{agent_name}/{version}/request.json
 //!
 //! This creates a git-tracked historical record of third-party agent API evolution:
@@ -137,6 +136,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use serde_json::{Map as JsonMap, Value as JsonValue, json};
 
 use crate::{
     config::ProxyConfig,
@@ -207,6 +208,9 @@ impl ScenarioPlayer {
 
         // Process the request using the full algorithm
         let response = session.process_request(request, &scenario).await?;
+
+        // Log response for debugging and tool changes tracking
+        self.log_response(request, &response).await?;
 
         Ok(response)
     }
@@ -309,7 +313,10 @@ impl ScenarioPlayer {
 
                 if is_invalid {
                     let error_msg = if force_failure_enabled {
-                        format!("Tool validation forced to fail by FORCE_TOOLS_VALIDATION_FAILURE for '{}'", tool_name)
+                        format!(
+                            "Tool validation forced to fail by FORCE_TOOLS_VALIDATION_FAILURE for '{}'",
+                            tool_name
+                        )
                     } else {
                         format!(
                             "Tool '{}' is not in the valid tools profile for {}",
@@ -364,77 +371,146 @@ impl ScenarioPlayer {
         Ok(())
     }
 
-    /// Log complete request with headers and body for debugging and tool changes tracking
-    async fn log_request(&self, request: &ProxyRequest) -> Result<()> {
-        // Get request logging configuration from environment or config
-        let request_log_template = std::env::var("REQUEST_LOG_TEMPLATE")
-            .or_else(|_| std::env::var("LLM_API_PROXY_REQUEST_LOG"))
-            .unwrap_or_else(|_| "stdout".to_string());
-
-        if request_log_template == "none" {
+    /// Log complete response for debugging and tool changes tracking
+    async fn log_response(&self, request: &ProxyRequest, response: &ProxyResponse) -> Result<()> {
+        let request_log_template = self.logging_template();
+        if request_log_template.as_deref() == Some("none") {
             return Ok(());
         }
 
-        // Extract API key from headers for session identification
+        let log_responses = env_flag("LLM_API_PROXY_LOG_RESPONSES", false);
+        if !log_responses {
+            return Ok(());
+        }
+
         let api_key = self.extract_session_id(request).unwrap_or_else(|_| "unknown".to_string());
+        let scenario_name = self.current_scenario_name(request);
 
-        // Get scenario name from current context
-        let scenario_name = "unknown"; // TODO: Could be enhanced to get from request headers
-
-        // Format log path with template
         let log_path = request_log_template
+            .unwrap()
             .replace("{scenario}", &scenario_name)
             .replace("{key}", &api_key);
 
-        // Create log entry with comprehensive request information
-        let log_entry = serde_json::json!({
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "method": "POST", // Mock server only handles POST
-            "path": match request.client_format {
+        let mut entry = JsonMap::new();
+        entry.insert("timestamp".into(), json!(Utc::now().to_rfc3339()));
+        entry.insert("type".into(), json!("response"));
+        entry.insert("method".into(), json!("POST"));
+        entry.insert(
+            "path".into(),
+            json!(match request.client_format {
                 ApiFormat::OpenAI => "/v1/chat/completions",
                 ApiFormat::OpenAIResponses => "/v1/responses",
                 ApiFormat::Anthropic => "/v1/messages",
-            },
-            "headers": request.headers,
-            "body": request.payload,
-            "request_id": request.request_id,
-            "client_format": request.client_format,
-            "scenario": scenario_name,
-            "api_key": api_key
-        });
+            }),
+        );
+        entry.insert("request_id".into(), json!(request.request_id.clone()));
+        entry.insert("client_format".into(), json!(request.client_format));
+        entry.insert("scenario".into(), json!(scenario_name));
+        entry.insert("api_key".into(), json!(api_key));
+        entry.insert("status".into(), json!(response.status));
+        entry.insert("response".into(), response.payload.clone());
+        entry.insert("response_headers".into(), json!(response.headers.clone()));
 
-        // Write to file or stdout
-        if log_path == "stdout" {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&log_entry).unwrap_or_default()
-            );
+        let minimize_logs = self.config.read().await.scenario.minimize_logs;
+        self.write_log_entry(&log_path, JsonValue::Object(entry), minimize_logs)
+    }
+
+    /// Log complete request with headers and body for debugging and tool changes tracking
+    async fn log_request(&self, request: &ProxyRequest) -> Result<()> {
+        let request_log_template = self.logging_template();
+        if request_log_template.as_deref() == Some("none") {
+            return Ok(());
+        }
+
+        let log_headers = env_flag("LLM_API_PROXY_LOG_HEADERS", true);
+        let log_body = env_flag("LLM_API_PROXY_LOG_BODY", true);
+
+        if !log_headers && !log_body {
+            return Ok(());
+        }
+
+        let api_key = self.extract_session_id(request).unwrap_or_else(|_| "unknown".to_string());
+        let scenario_name = self.current_scenario_name(request);
+
+        let log_path = request_log_template
+            .unwrap()
+            .replace("{scenario}", &scenario_name)
+            .replace("{key}", &api_key);
+
+        let mut entry = JsonMap::new();
+        entry.insert("timestamp".into(), json!(Utc::now().to_rfc3339()));
+        entry.insert("type".into(), json!("request"));
+        entry.insert("method".into(), json!("POST"));
+        entry.insert(
+            "path".into(),
+            json!(match request.client_format {
+                ApiFormat::OpenAI => "/v1/chat/completions",
+                ApiFormat::OpenAIResponses => "/v1/responses",
+                ApiFormat::Anthropic => "/v1/messages",
+            }),
+        );
+        entry.insert("request_id".into(), json!(request.request_id.clone()));
+        entry.insert("client_format".into(), json!(request.client_format));
+        entry.insert("scenario".into(), json!(scenario_name));
+        entry.insert("api_key".into(), json!(api_key));
+
+        if log_headers {
+            entry.insert("headers".into(), json!(request.headers.clone()));
+        }
+        if log_body {
+            entry.insert("body".into(), request.payload.clone());
+        }
+
+        let minimize_logs = self.config.read().await.scenario.minimize_logs;
+        self.write_log_entry(&log_path, JsonValue::Object(entry), minimize_logs)
+    }
+
+    fn logging_template(&self) -> Option<String> {
+        Some(
+            std::env::var("REQUEST_LOG_TEMPLATE")
+                .or_else(|_| std::env::var("LLM_API_PROXY_REQUEST_LOG"))
+                .unwrap_or_else(|_| "none".to_string()),
+        )
+    }
+
+    fn current_scenario_name(&self, request: &ProxyRequest) -> String {
+        request
+            .headers
+            .get("x-scenario-name")
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+
+    fn write_log_entry(&self, log_path: &str, entry: JsonValue, minimize: bool) -> Result<()> {
+        let json_string = if minimize {
+            serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string())
         } else {
-            // Ensure directory exists
-            if let Some(parent) = std::path::Path::new(&log_path).parent() {
-                std::fs::create_dir_all(parent).map_err(|e| Error::Scenario {
-                    message: format!("Failed to create log directory: {}", e),
-                })?;
-            }
+            serde_json::to_string_pretty(&entry).unwrap_or_else(|_| "{}".to_string())
+        };
 
-            // Append to log file
-            let mut file =
-                std::fs::OpenOptions::new().create(true).append(true).open(&log_path).map_err(
-                    |e| Error::Scenario {
-                        message: format!("Failed to open log file {}: {}", log_path, e),
-                    },
-                )?;
+        if log_path == "stdout" {
+            println!("{}", json_string);
+            return Ok(());
+        }
 
-            use std::io::Write;
-            writeln!(
-                file,
-                "{}",
-                serde_json::to_string_pretty(&log_entry).unwrap_or_default()
-            )
-            .map_err(|e| Error::Scenario {
-                message: format!("Failed to write to log file: {}", e),
+        if let Some(parent) = std::path::Path::new(log_path).parent() {
+            std::fs::create_dir_all(parent).map_err(|e| Error::Scenario {
+                message: format!("Failed to create log directory: {}", e),
             })?;
         }
+
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+            .map_err(|e| Error::Scenario {
+                message: format!("Failed to open log file {}: {}", log_path, e),
+            })?;
+
+        use std::io::Write;
+        writeln!(file, "{}", json_string).map_err(|e| Error::Scenario {
+            message: format!("Failed to write to log file {}: {}", log_path, e),
+        })?;
 
         Ok(())
     }
@@ -607,7 +683,107 @@ impl ScenarioPlayer {
             message: format!("Failed to parse scenario file {}: {}", path.display(), e),
         })?;
 
+        // Validate scenario structure
+        Self::validate_scenario(&scenario)?;
+
         Ok(scenario)
+    }
+
+    /// Validate scenario structure and constraints
+    fn validate_scenario(scenario: &Scenario) -> Result<()> {
+        // Check that thinking blocks are never standalone - they must be paired with assistant responses
+        for (index, event) in scenario.timeline.iter().enumerate() {
+            match event {
+                TimelineEvent::LlmResponse { llm_response } => {
+                    let has_thinking = llm_response
+                        .iter()
+                        .any(|element| matches!(element, ResponseElement::Think { .. }));
+                    let has_assistant = llm_response
+                        .iter()
+                        .any(|element| matches!(element, ResponseElement::Assistant { .. }));
+
+                    if has_thinking && !has_assistant {
+                        return Err(Error::Scenario {
+                            message: format!(
+                                "Scenario '{}' llmResponse event at index {} contains thinking blocks but no assistant responses. \
+                                 llmResponse events with thinking must include assistant blocks to provide user-visible responses.",
+                                scenario.name, index
+                            ),
+                        });
+                    }
+                }
+                TimelineEvent::Event(data) => {
+                    // Check if this is an llmResponse stored as Event due to deserialization issues
+                    if let Some(serde_yaml::Value::Sequence(elements)) = data.get("llmResponse") {
+                        // Try to validate the elements
+                        let mut has_thinking = false;
+                        let mut has_assistant = false;
+
+                        for element_value in elements {
+                            if let Ok(element) =
+                                serde_yaml::from_value::<ResponseElement>(element_value.clone())
+                            {
+                                has_thinking |= matches!(element, ResponseElement::Think { .. });
+                                has_assistant |=
+                                    matches!(element, ResponseElement::Assistant { .. });
+                            }
+                        }
+
+                        if has_thinking && !has_assistant {
+                            return Err(Error::Scenario {
+                                message: format!(
+                                    "Scenario '{}' llmResponse event at index {} contains thinking blocks but no assistant responses. \
+                                     llmResponse events with thinking must include assistant blocks to provide user-visible responses.",
+                                    scenario.name, index
+                                ),
+                            });
+                        }
+                    } else if data.contains_key("think") {
+                        // Legacy thinking event - must be immediately followed by assistant event
+                        // (cannot be separated by tool use or other response events)
+                        let mut found_assistant = false;
+                        for next_index in (index + 1)..scenario.timeline.len() {
+                            match &scenario.timeline[next_index] {
+                                TimelineEvent::Event(next_data) => {
+                                    if next_data.contains_key("assistant") {
+                                        found_assistant = true;
+                                        break;
+                                    } else if next_data.contains_key("think")
+                                        || next_data.contains_key("agentToolUse")
+                                        || next_data.contains_key("agentEdits")
+                                    {
+                                        // Another thinking event or tool event without assistant in between - invalid
+                                        break;
+                                    }
+                                    // Skip other non-response events
+                                }
+                                TimelineEvent::LlmResponse { .. } => {
+                                    // llmResponse events break the sequence
+                                    break;
+                                }
+                                TimelineEvent::Control { .. } | TimelineEvent::Assert { .. } => {
+                                    // Skip control and assert events
+                                    continue;
+                                }
+                            }
+                        }
+
+                        if !found_assistant {
+                            return Err(Error::Scenario {
+                                message: format!(
+                                    "Scenario '{}' contains a thinking block at index {} that is not immediately followed by an assistant response. \
+                                     Thinking blocks must be paired with assistant responses to provide user-visible content.",
+                                    scenario.name, index
+                                ),
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     /// Find the appropriate scenario for a request
@@ -701,9 +877,12 @@ pub struct ServerConfig {
 #[serde(untagged)]
 pub enum TimelineEvent {
     /// LLM response event (groups multiple response elements)
-    LlmResponse { llm_response: Vec<ResponseElement> },
-    /// Individual events for backward compatibility
-    Event(HashMap<String, serde_yaml::Value>),
+    LlmResponse {
+        #[serde(rename = "llmResponse")]
+        llm_response: Vec<ResponseElement>,
+    },
+    /// Assertion event for verifying filesystem state and other conditions
+    Assert { assert: AssertionData },
     /// Control events
     Control {
         #[serde(rename = "type")]
@@ -711,6 +890,8 @@ pub enum TimelineEvent {
         #[serde(flatten)]
         data: HashMap<String, serde_yaml::Value>,
     },
+    /// Legacy events for backward compatibility (must come last as catch-all)
+    Event(HashMap<String, serde_yaml::Value>),
 }
 
 /// Response element in an LLM response
@@ -748,6 +929,7 @@ pub struct ProgressStep(pub u64, pub String); // (milliseconds, message)
 
 /// File edit data
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileEditData {
     pub path: String,
     pub lines_added: u32,
@@ -773,12 +955,67 @@ pub struct ArtifactExpectation {
     pub pattern: Option<String>,
 }
 
+/// Assertion data for verifying filesystem state and other conditions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct AssertionData {
+    pub fs: Option<FilesystemAssertions>,
+    pub text: Option<TextAssertions>,
+    pub json: Option<JsonAssertions>,
+    pub git: Option<GitAssertions>,
+}
+
+/// Filesystem assertions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FilesystemAssertions {
+    pub exists: Option<Vec<String>>,
+    pub not_exists: Option<Vec<String>>,
+}
+
+/// Text assertions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TextAssertions {
+    pub contains: Option<Vec<String>>,
+}
+
+/// JSON assertions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct JsonAssertions {
+    pub file: Option<Vec<JsonFileAssertion>>,
+}
+
+/// JSON file assertion
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct JsonFileAssertion {
+    pub path: String,
+    pub pointer: String,
+    pub equals: serde_yaml::Value,
+}
+
+/// Git assertions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GitAssertions {
+    pub commit: Option<Vec<GitCommitAssertion>>,
+}
+
+/// Git commit assertion
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GitCommitAssertion {
+    pub message_contains: Option<String>,
+}
+
 /// Tool call generated from scenario events
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub args: HashMap<String, serde_yaml::Value>,
+}
+
+#[derive(Debug, Default)]
+struct AggregatedResponse {
+    assistant_text: String,
+    tool_calls: Vec<ToolCall>,
+    thinking_steps: Vec<ThinkingStep>,
 }
 
 /// Response part collected from timeline events
@@ -798,6 +1035,7 @@ pub struct ScenarioSession {
     pub start_time: std::time::Instant,
     pub tool_profiles: Arc<tool_profiles::ToolProfiles>,
     pub agent_type: tool_profiles::AgentType,
+    pub scenario_started: bool,
 }
 
 impl ScenarioSession {
@@ -813,6 +1051,7 @@ impl ScenarioSession {
             start_time: std::time::Instant::now(),
             tool_profiles,
             agent_type,
+            scenario_started: false,
         }
     }
 
@@ -822,32 +1061,277 @@ impl ScenarioSession {
         request: &ProxyRequest,
         scenario: &Scenario,
     ) -> Result<ProxyResponse> {
+        // Special handling for haiku model requests (topic detection)
+        if let Some(model) = request.payload.get("model").and_then(|m| m.as_str()) {
+            if model.contains("haiku") {
+                return self.generate_haiku_topic_detection_response(request.client_format);
+            }
+        }
+
+        // Check if this request contains meaningful content before starting scenario playback
+        if !self.scenario_started {
+            if !self.is_meaningful_request(request) {
+                // Return a minimal response to keep the client connection alive
+                // but don't start scenario playback yet
+                return self.generate_minimal_response(request.client_format);
+            }
+            // This is the first meaningful request - start scenario playback
+            self.scenario_started = true;
+        }
+
         // Follow the algorithm: skip non-response events, collect response parts
         let response_parts = self.collect_response_parts(scenario)?;
-        let (assistant_text, tool_calls) = self.process_response_parts(response_parts)?;
+        let aggregated = self.process_response_parts(response_parts)?;
 
         // Generate API response based on client format (not agent type)
-        let response =
-            self.generate_api_response(assistant_text, tool_calls, request.client_format)?;
+        let response = self.generate_api_response(aggregated, request.client_format)?;
 
         Ok(response)
+    }
+
+    /// Generate a hardcoded response for haiku model topic detection requests
+    fn generate_haiku_topic_detection_response(
+        &self,
+        client_format: ApiFormat,
+    ) -> Result<ProxyResponse> {
+        match client_format {
+            ApiFormat::Anthropic => {
+                let payload = serde_json::json!({
+                    "id": format!("msg_{}", Uuid::new_v4()),
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-5-haiku-20241022",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "{\"isNewTopic\": false, \"title\": null}"
+                        }
+                    ],
+                    "stop_reason": "end_turn",
+                    "stop_sequence": null,
+                    "usage": {
+                        "input_tokens": 25,
+                        "output_tokens": 15
+                    }
+                });
+
+                Ok(ProxyResponse {
+                    status: 200,
+                    payload,
+                    headers: HashMap::new(),
+                })
+            }
+            ApiFormat::OpenAI => {
+                let payload = serde_json::json!({
+                    "id": format!("chatcmpl-{}", Uuid::new_v4()),
+                    "object": "chat.completion",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "{\"isNewTopic\": false, \"title\": null}"
+                            },
+                            "finish_reason": "stop"
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 25,
+                        "completion_tokens": 15,
+                        "total_tokens": 40
+                    }
+                });
+
+                Ok(ProxyResponse {
+                    status: 200,
+                    payload,
+                    headers: HashMap::new(),
+                })
+            }
+            ApiFormat::OpenAIResponses => {
+                let payload = serde_json::json!({
+                    "id": format!("resp-{}", Uuid::new_v4()),
+                    "object": "response",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o-mini",
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "{\"isNewTopic\": false, \"title\": null}"
+                                }
+                            ]
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 25,
+                        "completion_tokens": 15,
+                        "total_tokens": 40
+                    }
+                });
+
+                Ok(ProxyResponse {
+                    status: 200,
+                    payload,
+                    headers: HashMap::new(),
+                })
+            }
+        }
+    }
+
+    /// Check if a request contains meaningful content that should trigger scenario playback
+    fn is_meaningful_request(&self, request: &ProxyRequest) -> bool {
+        // Check if the request payload contains messages with substantial content
+        if let Some(messages) = request.payload.get("messages") {
+            if let Some(messages_array) = messages.as_array() {
+                for message in messages_array {
+                    if let Some(content) = message.get("content") {
+                        match content {
+                            serde_json::Value::String(text) => {
+                                // Consider requests with more than 3 characters as meaningful
+                                // This filters out very short test requests like "count" but allows
+                                // legitimate short requests like "test"
+                                if text.len() > 3 {
+                                    return true;
+                                }
+                            }
+                            serde_json::Value::Array(content_blocks) => {
+                                // Handle array content (for complex content blocks)
+                                for block in content_blocks {
+                                    if let Some(text) = block.get("text") {
+                                        if let Some(text_str) = text.as_str() {
+                                            if text_str.len() > 3 {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => continue,
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Generate a minimal response to keep client connection alive before scenario starts
+    fn generate_minimal_response(
+        &self,
+        client_format: crate::converters::ApiFormat,
+    ) -> Result<ProxyResponse> {
+        match client_format {
+            crate::converters::ApiFormat::Anthropic => {
+                let content = vec![serde_json::json!({
+                    "type": "text",
+                    "text": "Initializing..."
+                })];
+
+                let payload = serde_json::json!({
+                    "id": format!("msg_{}", Uuid::new_v4()),
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "content": content,
+                    "stop_reason": "end_turn",
+                    "stop_sequence": null,
+                    "usage": {
+                        "input_tokens": 25,
+                        "output_tokens": 15
+                    }
+                });
+
+                Ok(ProxyResponse {
+                    status: 200,
+                    payload,
+                    headers: HashMap::new(),
+                })
+            }
+            crate::converters::ApiFormat::OpenAI => {
+                let payload = serde_json::json!({
+                    "id": format!("chatcmpl-{}", Uuid::new_v4()),
+                    "object": "chat.completion",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o",
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Initializing..."
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 8,
+                        "completion_tokens": 12,
+                        "total_tokens": 20
+                    }
+                });
+
+                Ok(ProxyResponse {
+                    status: 200,
+                    payload,
+                    headers: HashMap::new(),
+                })
+            }
+            crate::converters::ApiFormat::OpenAIResponses => {
+                let payload = serde_json::json!({
+                    "id": format!("resp-{}", Uuid::new_v4()),
+                    "object": "response",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o-mini",
+                    "status": "completed",
+                    "output": [{
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{
+                            "type": "output_text",
+                            "text": "Initializing..."
+                        }]
+                    }],
+                    "usage": {
+                        "prompt_tokens": 5,
+                        "completion_tokens": 8,
+                        "total_tokens": 13
+                    }
+                });
+
+                Ok(ProxyResponse {
+                    status: 200,
+                    payload,
+                    headers: HashMap::new(),
+                })
+            }
+        }
     }
 
     /// Collect response parts from the current scenario event (equivalent to Python _collect_response_parts)
     fn collect_response_parts(&mut self, scenario: &Scenario) -> Result<Vec<ResponsePart>> {
         let mut response_parts = Vec::new();
 
-        // Skip events that don't generate API responses, advance to next response-generating event/group
+        // Process events that should execute before the next response (assertions, control events)
         while self.current_event_index < scenario.timeline.len() {
             let current_event = &scenario.timeline[self.current_event_index];
 
             // Check if this is a response-generating event
             let event_type = self.get_event_type(current_event);
-
             match event_type.as_deref() {
                 // Skip non-response-generating events (handled by test harness)
                 Some("complete") | Some("merge") | Some("advanceMs") | Some("userInputs")
                 | Some("userCommands") | Some("userEdits") => {
+                    self.current_event_index += 1;
+                    continue;
+                }
+                // Execute assertions before next response to verify expected outcomes
+                Some("assert") => {
+                    self.execute_assertion(current_event)?;
                     self.current_event_index += 1;
                     continue;
                 }
@@ -865,11 +1349,35 @@ impl ScenarioSession {
                 }
                 // Grouped response event
                 Some("llmResponse") => {
-                    if let TimelineEvent::LlmResponse { llm_response } = current_event {
-                        for element in llm_response {
-                            let part = self.response_element_to_response_part(element)?;
-                            response_parts.push(part);
+                    match current_event {
+                        TimelineEvent::LlmResponse { llm_response } => {
+                            for element in llm_response {
+                                let part = self.response_element_to_response_part(element)?;
+                                response_parts.push(part);
+                            }
                         }
+                        TimelineEvent::Event(data) => {
+                            // Handle llmResponse in Event format (fallback parsing)
+                            if let Some(serde_yaml::Value::Sequence(elements)) =
+                                data.get("llmResponse")
+                            {
+                                for element_value in elements {
+                                    // Try to deserialize each element as a ResponseElement
+                                    let element: ResponseElement = serde_yaml::from_value(
+                                        element_value.clone(),
+                                    )
+                                    .map_err(|e| Error::Scenario {
+                                        message: format!(
+                                            "Failed to parse llmResponse element: {}",
+                                            e
+                                        ),
+                                    })?;
+                                    let part = self.response_element_to_response_part(&element)?;
+                                    response_parts.push(part);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                     self.current_event_index += 1;
                     break;
@@ -935,6 +1443,9 @@ impl ScenarioSession {
             TimelineEvent::LlmResponse { .. } => Err(Error::Scenario {
                 message: "llmResponse should be handled separately".to_string(),
             }),
+            TimelineEvent::Assert { .. } => Err(Error::Scenario {
+                message: "Assert events should be handled separately".to_string(),
+            }),
         }
     }
 
@@ -958,61 +1469,80 @@ impl ScenarioSession {
     fn process_response_parts(
         &self,
         response_parts: Vec<ResponsePart>,
-    ) -> Result<(String, Vec<ToolCall>)> {
-        let mut assistant_text = String::new();
-        let mut tool_calls = Vec::new();
+    ) -> Result<AggregatedResponse> {
+        let mut aggregate = AggregatedResponse::default();
 
         for part in response_parts {
             match part {
-                ResponsePart::Think(_) => {
-                    // Thinking content - handled differently by provider
-                    // For now, we don't include thinking in responses
-                    // (matches OpenAI behavior where thinking is internal)
+                ResponsePart::Think(steps) => {
+                    aggregate.thinking_steps.extend(steps);
                 }
                 ResponsePart::Assistant(steps) => {
-                    // Assistant message
                     for step in steps {
-                        assistant_text.push_str(&step.1); // step.1 is the text
+                        aggregate.assistant_text.push_str(&step.1);
                     }
                 }
                 ResponsePart::ToolUse(tool_data) => {
-                    // Tool use event - map to agent-specific tool calls
-                    let tool_call = self.tool_profiles.map_tool_call(
+                    if let Some(call) = self.tool_profiles.map_tool_call(
                         self.agent_type,
                         &tool_data.tool_name,
                         &tool_data.args,
-                    );
-                    if let Some(call) = tool_call {
-                        tool_calls.push(call);
+                    ) {
+                        aggregate.tool_calls.push(call);
                     }
                 }
-                ResponsePart::FileEdit(_edit_data) => {
-                    // File editing - map to appropriate editing tool
-                    // For now, map to a generic edit tool
-                    let tool_call = ToolCall {
-                        id: format!("call_{}", uuid::Uuid::new_v4()),
-                        name: "edit_file".to_string(),
-                        args: HashMap::new(), // TODO: Include file edit args
-                    };
-                    tool_calls.push(tool_call);
+                ResponsePart::FileEdit(edit_data) => {
+                    let mut args = HashMap::new();
+                    args.insert(
+                        "path".to_string(),
+                        serde_yaml::Value::String(edit_data.path.clone()),
+                    );
+                    args.insert(
+                        "linesAdded".to_string(),
+                        serde_yaml::Value::Number(serde_yaml::Number::from(
+                            edit_data.lines_added as u64,
+                        )),
+                    );
+                    args.insert(
+                        "linesRemoved".to_string(),
+                        serde_yaml::Value::Number(serde_yaml::Number::from(
+                            edit_data.lines_removed as u64,
+                        )),
+                    );
+
+                    if let Some(call) =
+                        self.tool_profiles.map_tool_call(self.agent_type, "agentEdits", &args)
+                    {
+                        aggregate.tool_calls.push(call);
+                    } else {
+                        aggregate.tool_calls.push(ToolCall {
+                            id: format!("call_{}", uuid::Uuid::new_v4()),
+                            name: "edit_file".to_string(),
+                            args,
+                        });
+                    }
                 }
             }
         }
 
-        Ok((assistant_text, tool_calls))
+        Ok(aggregate)
     }
 
     /// Generate API response based on format (implements coalescing rules)
     fn generate_api_response(
         &self,
-        assistant_text: String,
-        tool_calls: Vec<ToolCall>,
+        aggregate: AggregatedResponse,
         client_format: crate::converters::ApiFormat,
     ) -> Result<ProxyResponse> {
-        // Generate response based on client format (not agent type)
+        let AggregatedResponse {
+            assistant_text,
+            tool_calls,
+            thinking_steps,
+        } = aggregate;
+
         match client_format {
             crate::converters::ApiFormat::Anthropic => {
-                self.generate_anthropic_response(assistant_text, tool_calls)
+                self.generate_anthropic_response(assistant_text, tool_calls, thinking_steps)
             }
             crate::converters::ApiFormat::OpenAI => {
                 self.generate_openai_response(assistant_text, tool_calls)
@@ -1067,12 +1597,12 @@ impl ScenarioSession {
             "id": format!("chatcmpl-{}", Uuid::new_v4()),
             "object": "chat.completion",
             "created": Utc::now().timestamp(),
-            "model": "mock-model",
+            "model": "gpt-4o",
             "choices": choices,
             "usage": {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0
+                "prompt_tokens": 15,
+                "completion_tokens": 30,
+                "total_tokens": 45
             }
         });
 
@@ -1088,8 +1618,17 @@ impl ScenarioSession {
         &self,
         assistant_text: String,
         tool_calls: Vec<ToolCall>,
+        thinking_steps: Vec<ThinkingStep>,
     ) -> Result<ProxyResponse> {
         let mut content = Vec::new();
+
+        for step in &thinking_steps {
+            content.push(serde_json::json!({
+                "type": "thinking",
+                "thinking": step.1.clone(),
+                "signature": format!("sig_{}", Uuid::new_v4().simple()),
+            }));
+        }
 
         // Add text content if present
         if !assistant_text.is_empty() {
@@ -1113,12 +1652,13 @@ impl ScenarioSession {
             "id": format!("msg_{}", Uuid::new_v4()),
             "type": "message",
             "role": "assistant",
-            "model": "mock-model",
+            "model": "claude-3-5-sonnet-20241022",
             "content": content,
             "stop_reason": "end_turn",
+            "stop_sequence": null,
             "usage": {
-                "input_tokens": 0,
-                "output_tokens": 0
+                "input_tokens": 150,
+                "output_tokens": 300
             }
         });
 
@@ -1156,6 +1696,7 @@ impl ScenarioSession {
         }
 
         output_items.push(serde_json::json!({
+            "type": "message",
             "role": "assistant",
             "content": content_parts,
         }));
@@ -1164,13 +1705,13 @@ impl ScenarioSession {
             "id": format!("resp-{}", Uuid::new_v4()),
             "object": "response",
             "created": Utc::now().timestamp(),
-            "model": "mock-model",
+            "model": "gpt-4o-mini",
             "status": "completed",
             "output": output_items,
             "usage": {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0
+                "prompt_tokens": 12,
+                "completion_tokens": 25,
+                "total_tokens": 37
             }
         });
 
@@ -1179,6 +1720,89 @@ impl ScenarioSession {
             payload,
             headers: HashMap::new(),
         })
+    }
+
+    /// Execute assertion event to verify filesystem state and other conditions
+    fn execute_assertion(&self, event: &TimelineEvent) -> Result<()> {
+        match event {
+            TimelineEvent::Assert { assert } => {
+                // Execute filesystem assertions
+                if let Some(fs_assertions) = &assert.fs {
+                    self.execute_filesystem_assertions(fs_assertions)?;
+                }
+                // Note: Other assertion types (text, json, git) are not yet implemented
+                // They would be handled here in the future
+            }
+            TimelineEvent::Event(data) => {
+                // Handle legacy assert events in Event format
+                if let Some(assert_value) = data.get("assert") {
+                    let assertion_data: AssertionData =
+                        serde_yaml::from_value(assert_value.clone()).map_err(|e| {
+                            Error::Scenario {
+                                message: format!("Failed to parse legacy assert event: {}", e),
+                            }
+                        })?;
+
+                    // Execute filesystem assertions
+                    if let Some(fs_assertions) = &assertion_data.fs {
+                        self.execute_filesystem_assertions(fs_assertions)?;
+                    }
+                    // Note: Other assertion types (text, json, git) are not yet implemented
+                    // They would be handled here in the future
+                } else {
+                    return Err(Error::Scenario {
+                        message: "Invalid assertion event format".to_string(),
+                    });
+                }
+            }
+            _ => {
+                return Err(Error::Scenario {
+                    message: "Not an assertion event".to_string(),
+                });
+            }
+        };
+
+        Ok(())
+    }
+
+    /// Execute filesystem assertions (fs.exists and fs.notExists)
+    fn execute_filesystem_assertions(&self, assertions: &FilesystemAssertions) -> Result<()> {
+        // Check files/directories that must exist
+        if let Some(exists_paths) = &assertions.exists {
+            for path_str in exists_paths {
+                let path = std::path::Path::new(path_str);
+                if !path.exists() {
+                    return Err(Error::Scenario {
+                        message: format!(
+                            "Filesystem assertion failed: path '{}' does not exist",
+                            path_str
+                        ),
+                    });
+                }
+                println!("✓ Filesystem assertion passed: '{}' exists", path_str);
+            }
+        }
+
+        // Check files/directories that must not exist
+        if let Some(not_exists_paths) = &assertions.not_exists {
+            for path_str in not_exists_paths {
+                let path = std::path::Path::new(path_str);
+                if path.exists() {
+                    return Err(Error::Scenario {
+                        message: format!(
+                            "Filesystem assertion failed: path '{}' exists but should not",
+                            path_str
+                        ),
+                    });
+                }
+                println!(
+                    "✓ Filesystem assertion passed: '{}' does not exist",
+                    path_str
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// Get event type from timeline event
@@ -1191,7 +1815,9 @@ impl ScenarioSession {
                 } else {
                     // Infer from keys
                     let keys: Vec<&String> = data.keys().collect();
-                    if keys.contains(&&"think".to_string()) {
+                    if keys.contains(&&"llmResponse".to_string()) {
+                        Some("llmResponse".to_string())
+                    } else if keys.contains(&&"think".to_string()) {
                         Some("think".to_string())
                     } else if keys.contains(&&"agentToolUse".to_string()) {
                         Some("agentToolUse".to_string())
@@ -1199,6 +1825,8 @@ impl ScenarioSession {
                         Some("agentEdits".to_string())
                     } else if keys.contains(&&"assistant".to_string()) {
                         Some("assistant".to_string())
+                    } else if keys.contains(&&"assert".to_string()) {
+                        Some("assert".to_string())
                     } else {
                         None
                     }
@@ -1206,6 +1834,17 @@ impl ScenarioSession {
             }
             TimelineEvent::Control { event_type, .. } => Some(event_type.clone()),
             TimelineEvent::LlmResponse { .. } => Some("llmResponse".to_string()),
+            TimelineEvent::Assert { .. } => Some("assert".to_string()),
         }
     }
+}
+
+fn env_flag(name: &str, default: bool) -> bool {
+    std::env::var(name)
+        .map(|value| match value.to_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => default,
+        })
+        .unwrap_or(default)
 }
