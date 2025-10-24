@@ -409,6 +409,9 @@
         pkgs.mitmproxy
         # Network utilities for proxy setup
         pkgs.netcat
+        # Additional compression libraries for mitmproxy addon
+        pkgs.python3Packages.brotli
+        pkgs.python3Packages.zstandard
       ];
 
       # Linux-specific packages
