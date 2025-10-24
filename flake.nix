@@ -404,6 +404,11 @@
 
         # OpenSSL for Rust crates that require it
         pkgs.openssl
+
+        # MITM proxy for inspecting HTTPS traffic
+        pkgs.mitmproxy
+        # Network utilities for proxy setup
+        pkgs.netcat
       ];
 
       # Linux-specific packages
@@ -506,6 +511,7 @@
             fi
           }
           echo "Tip: run: docson -d ./specs/schemas  # then open http://localhost:3000"
+          echo "🧪 Use: just mitm <program> [args...]  # to run programs behind mitmproxy with full HTTP(S) dumps"
         '';
       };
     });
