@@ -1045,7 +1045,7 @@ identity provider and optional embedded REST API.
 ```
 ah agent enroll [OPTIONS]
 
-DESCRIPTION: Enrolls an executor machine with an agents workflow access point server.
+DESCRIPTION: Enrolls an executor machine with an Agent Harbor access point server.
              Once enrolled, the executor remains connected and ready to receive tasks.
 
 OPTIONS (choose identity via --identity; SPIFFE is default):

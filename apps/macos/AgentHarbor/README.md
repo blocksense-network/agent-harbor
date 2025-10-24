@@ -1,6 +1,6 @@
 # AgentHarbor macOS Application
 
-This directory contains the main macOS application for the Agents Workflow project, which serves as a host for system extensions including the AgentFSKitExtension filesystem extension.
+This directory contains the main macOS application for the Agent Harbor project, which serves as a host for system extensions including the AgentFSKitExtension filesystem extension.
 
 ## Project Structure
 

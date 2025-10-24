@@ -5,7 +5,7 @@
 name = "ah-fs-snapshots-btrfs"
 version = "0.1.0"
 edition = "2021"
-description = "Btrfs snapshot provider implementation for Agents Workflow"
+description = "Btrfs snapshot provider implementation for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

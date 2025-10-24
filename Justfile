@@ -488,7 +488,7 @@ repomix-webui:
 # Create repomix bundle of all specs files
 repomix-specs:
     mkdir -p {{REPOMIX_OUT_DIR}}
-    repomix specs/ -o {{REPOMIX_OUT_DIR}}/Agent-Harbor-Specs.md --style markdown --header-text "Agents Workflow Specifications"
+    repomix specs/ -o {{REPOMIX_OUT_DIR}}/Agent-Harbor-Specs.md --style markdown --header-text "Agent Harbor Specifications"
 
 # Create repomix bundle of all Third-Party-Agents files
 repomix-agent-questions:

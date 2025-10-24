@@ -5,7 +5,7 @@
 name = "ah-fs-snapshots-git"
 version = "0.1.0"
 edition = "2021"
-description = "Git-based filesystem snapshot provider for Agents Workflow"
+description = "Git-based filesystem snapshot provider for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

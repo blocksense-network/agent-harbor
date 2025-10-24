@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Distributed, strongly-typed configuration structs for Agents Workflow modules.
+//! Distributed, strongly-typed configuration structs for Agent Harbor modules.
 //!
 //! This crate provides the individual configuration types that are used by different
 //! parts of the agent-harbor system. These types are designed to be extracted from

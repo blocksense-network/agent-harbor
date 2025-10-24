@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Core task and session lifecycle orchestration for Agents Workflow.
+//! Core task and session lifecycle orchestration for Agent Harbor.
 //!
 //! This crate provides the foundational abstractions and orchestration logic for
 //! managing agent tasks and sessions, including lifecycle management, state

@@ -5,7 +5,7 @@
 name = "ah-fs-snapshots"
 version = "0.1.0"
 edition = "2021"
-description = "Filesystem snapshot provider abstractions for Agents Workflow"
+description = "Filesystem snapshot provider abstractions for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

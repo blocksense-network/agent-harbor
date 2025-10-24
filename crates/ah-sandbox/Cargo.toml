@@ -5,7 +5,7 @@
 name = "ah-sandbox"
 version = "0.1.0"
 edition = "2021"
-description = "Sandbox isolation abstractions for Agents Workflow"
+description = "Sandbox isolation abstractions for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

@@ -1,4 +1,4 @@
-This template defines the information we collect for each agentic coding tool supported by Agents Workflow. Usually this can be obtained from `--help` screens and the tool's documentation.
+This template defines the information we collect for each agentic coding tool supported by Agent Harbor. Usually this can be obtained from `--help` screens and the tool's documentation.
 
 We'll aim to collect the following information for all agent types supported by Agent Harbor:
 

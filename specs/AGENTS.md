@@ -1,4 +1,4 @@
-# Agents Workflow Specs
+# Agent Harbor Specs
 
 This folder contains a work-in-progress specification for the next iteration of the agent-harbor product.
 

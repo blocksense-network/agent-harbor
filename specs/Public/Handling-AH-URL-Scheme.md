@@ -20,7 +20,7 @@ Create these keys (per‑user is recommended so no admin rights are needed):
 Windows Registry Editor Version 5.00
 
 [HKEY_CURRENT_USER\Software\Classes\agent-harbor]
-@="URL:Agents Workflow Protocol"
+@="URL:Agent Harbor Protocol"
 "URL Protocol"=""
 "DefaultIcon"="\"C:\\Program Files\\AH\\agent-harbor-url-handler.exe\",1"
 
@@ -238,7 +238,7 @@ xdg-open "http://127.0.0.1:8787/tasks/1234" >/dev/null 2>&1 &
 - **Register protocol**: Use Electron’s **Deep Links** pattern. On macOS, include the scheme in the app’s `Info.plist` (your packager will generate this if configured). In code, call `app.setAsDefaultProtocolClient('agent-harbor')` in the **main process**.
 - **Events**: Handle `app.on('open-url', ...)` on macOS, and `app.requestSingleInstanceLock()` + `'second-instance'` on Windows/Linux so a running instance processes the URL.
 - **Packaging**:
-  - **Electron Forge**: add `packagerConfig.protocols` with `{ name: 'Agents Workflow', schemes: ['agent-harbor'] }`, and for Linux makers set `mimeType: ['x-scheme-handler/agent-harbor']`.
+  - **Electron Forge**: add `packagerConfig.protocols` with `{ name: 'Agent Harbor', schemes: ['agent-harbor'] }`, and for Linux makers set `mimeType: ['x-scheme-handler/agent-harbor']`.
   - **Electron Packager**: pass a `protocols` array in options for macOS builds.
   - **electron-builder**: set `protocols` under `mac` config; it writes `CFBundleURLTypes` in `Info.plist`. (On Linux, ensure your `.desktop` file declares `x-scheme-handler/agent-harbor`.)
 

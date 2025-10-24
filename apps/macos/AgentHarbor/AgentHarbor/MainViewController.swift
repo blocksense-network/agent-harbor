@@ -12,7 +12,7 @@ import SystemExtensions
 
 class MainViewController: NSViewController {
 
-    private let statusLabel = NSTextField(labelWithString: "Agents Workflow")
+    private let statusLabel = NSTextField(labelWithString: "Agent Harbor")
     private let extensionStatusLabel = NSTextField(labelWithString: "Extension Status: Checking...")
     private let infoTextView = NSTextView()
     private let approveButton = NSButton(title: "Open Settings to Approve", target: nil, action: nil)
@@ -42,9 +42,9 @@ class MainViewController: NSViewController {
         infoTextView.isEditable = false
         infoTextView.backgroundColor = .clear
         infoTextView.string = """
-        Agents Workflow macOS Application
+        Agent Harbor macOS Application
 
-        This application hosts system extensions for the Agents Workflow platform,
+        This application hosts system extensions for the Agent Harbor platform,
         including filesystem extensions for AgentFS.
         """
         infoTextView.translatesAutoresizingMaskIntoConstraints = false
@@ -120,9 +120,9 @@ class MainViewController: NSViewController {
 
     private func updateInfoText(withError error: String) {
         infoTextView.string = """
-        Agents Workflow macOS Application
+        Agent Harbor macOS Application
 
-        This application hosts system extensions for the Agents Workflow platform,
+        This application hosts system extensions for the Agent Harbor platform,
         including filesystem extensions for AgentFS.
 
         Status

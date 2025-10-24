@@ -5,7 +5,7 @@
 name = "ah-core"
 version = "0.1.0"
 edition = "2021"
-description = "Core task and session lifecycle orchestration for Agents Workflow"
+description = "Core task and session lifecycle orchestration for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
