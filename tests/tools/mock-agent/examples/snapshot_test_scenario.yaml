@@ -6,8 +6,11 @@ description: "Test scenario for filesystem snapshot functionality"
 repo:
   init: true
 timeline:
-  - think:
-      - [500, "I need to create a Python file with a print statement and a filesystem snapshot should be taken."]
+  - llmResponse:
+      - think:
+          - [500, "I need to create a Python file with a print statement and a filesystem snapshot should be taken."]
+      - assistant:
+          - [300, "Created hello.py successfully. A filesystem snapshot should have been taken after this operation."]
   - agentToolUse:
       toolName: "write_file"
       args:
@@ -15,8 +18,6 @@ timeline:
         text: "print('Hello, World!')\nprint('Snapshot test complete!')\n"
       result: "File created"
       status: "ok"
-  - assistant:
-      - [300, "Created hello.py successfully. A filesystem snapshot should have been taken after this operation."]
   - agentToolUse:
       toolName: "read_file"
       args:

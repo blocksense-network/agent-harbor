@@ -427,10 +427,53 @@ impl AgentExecutor for ClaudeAgent {
         Ok(child)
     }
 
-    async fn copy_credentials(&self, _src_home: &Path, _dst_home: &Path) -> AgentResult<()> {
-        // Claude Code credentials are obtained dynamically in the launch functions
-        // and set as environment variables, so no file copying is needed
-        Ok(())
+    /// Platform-specific credential paths for Claude Code
+    fn credential_paths(&self) -> Vec<PathBuf> {
+        #[cfg(target_os = "macos")]
+        {
+            // On macOS, Claude Code uses Keychain for credentials, no files to copy
+            vec![]
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            // On other platforms (Linux, etc.), credentials may be stored in files
+            vec![PathBuf::from(".claude/.credentials.json")]
+        }
+    }
+
+    async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
+        // 1. Check direct environment variable (Claude-specific: ANTHROPIC_API_KEY)
+        if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+            if !api_key.trim().is_empty() {
+                debug!("Found Anthropic API key in environment variable");
+                return Ok(Some(api_key));
+            }
+        }
+
+        // 2. Check environment variable pointing to file (Claude-specific: ANTHROPIC_API_KEY_FILE)
+        if let Ok(file_path) = std::env::var("ANTHROPIC_API_KEY_FILE") {
+            match tokio::fs::read_to_string(&file_path).await {
+                Ok(content) => {
+                    let api_key = content.trim().to_string();
+                    if !api_key.is_empty() {
+                        debug!(
+                            "Found Anthropic API key in file specified by ANTHROPIC_API_KEY_FILE"
+                        );
+                        return Ok(Some(api_key));
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to read API key file {}: {}", file_path, e);
+                }
+            }
+        }
+
+        // 3. Claude Code uses OAuth tokens directly, not API keys
+        // For proxy routing, we would need API keys, but Claude typically doesn't provide them
+        // Return None to indicate no API key conversion is available
+        debug!("Claude uses OAuth tokens, API key conversion not implemented");
+        Ok(None)
     }
 
     async fn export_session(&self, home_dir: &Path) -> AgentResult<PathBuf> {

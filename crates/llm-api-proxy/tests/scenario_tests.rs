@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Unit tests for scenario playback and tool profiles
 
 use std::collections::HashMap;
@@ -5,9 +8,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use llm_api_proxy::{
-    config::{ProxyConfig, ScenarioConfig},
+    config::{ProviderConfig, ProxyConfig, RoutingConfig, ScenarioConfig},
     converters::ApiFormat,
-    proxy::{ProxyMode, ProxyRequest},
+    proxy::{ProxyMode, ProxyRequest, SessionManager},
     scenario::{
         ScenarioPlayer,
         tool_profiles::{AgentType, ToolProfiles},
@@ -123,8 +126,11 @@ name: test_scenario
 repo:
   init: true
 timeline:
-  - think:
-      - [500, "Processing test request"]
+  - llmResponse:
+      - think:
+          - [500, "Processing test request"]
+      - assistant:
+          - [300, "Test scenario completed"]
   - agentToolUse:
       toolName: "writeFile"
       args:
@@ -132,8 +138,6 @@ timeline:
         content: "Hello from scenario"
       result: "File created"
       status: "ok"
-  - assistant:
-      - [300, "Test scenario completed"]
 expect:
   exitCode: 0
 "#;
@@ -296,14 +300,15 @@ async fn test_anthropic_thinking_and_agent_edits() {
     let scenario_content = r#"
 name: anthropic_thinking
 timeline:
-  - think:
-      - [120, "Reasoning about the task"]
+  - llmResponse:
+      - think:
+          - [120, "Reasoning about the task"]
+      - assistant:
+          - [60, "All done"]
   - agentEdits:
       path: "foo.txt"
       linesAdded: 2
       linesRemoved: 1
-  - assistant:
-      - [60, "All done"]
 expect:
   exitCode: 0
 "#;
@@ -331,11 +336,14 @@ expect:
         request_id: "anthropic-1".to_string(),
     };
 
-    // First call: thinking block
+    // First call: thinking + assistant blocks (grouped in llmResponse)
     let response1 = player.play_request(&base_request).await.unwrap();
     let content1 = response1.payload["content"].as_array().unwrap();
+    assert_eq!(content1.len(), 2);
     assert_eq!(content1[0]["type"], "thinking");
     assert_eq!(content1[0]["thinking"], "Reasoning about the task");
+    assert_eq!(content1[1]["type"], "text");
+    assert_eq!(content1[1]["text"], "All done");
 
     // Second call: agent edits produce tool_use block
     base_request.request_id = "anthropic-2".to_string();
@@ -347,13 +355,6 @@ expect:
     assert_eq!(input["path"], "foo.txt");
     assert_eq!(input["linesAdded"], 2);
     assert_eq!(input["linesRemoved"], 1);
-
-    // Third call: assistant message after edits
-    base_request.request_id = "anthropic-3".to_string();
-    let response3 = player.play_request(&base_request).await.unwrap();
-    let content3 = response3.payload["content"].as_array().unwrap();
-    assert_eq!(content3[0]["type"], "text");
-    assert_eq!(content3[0]["text"], "All done");
 }
 
 #[tokio::test]
@@ -1060,7 +1061,8 @@ expect:
     config_minimized_with_log.scenario.minimize_logs = true;
     let config_minimized_with_log = Arc::new(RwLock::new(config_minimized_with_log));
 
-    let mut player_minimized_with_log = ScenarioPlayer::new(config_minimized_with_log).await.unwrap();
+    let mut player_minimized_with_log =
+        ScenarioPlayer::new(config_minimized_with_log).await.unwrap();
 
     std::env::set_var(
         "LLM_API_PROXY_REQUEST_LOG",
@@ -1073,15 +1075,20 @@ expect:
     let log_content_minimized = std::fs::read_to_string(&log_path_minimized).unwrap();
 
     // Verify that pretty-printed logs are longer (contain newlines and indentation)
-    assert!(log_content_pretty.len() > log_content_minimized.len(),
-        "Pretty-printed logs should be longer than minimized logs");
+    assert!(
+        log_content_pretty.len() > log_content_minimized.len(),
+        "Pretty-printed logs should be longer than minimized logs"
+    );
 
     // Verify that pretty-printed logs contain more newlines than minimized logs
     let pretty_newlines = log_content_pretty.chars().filter(|&c| c == '\n').count();
     let minimized_newlines = log_content_minimized.chars().filter(|&c| c == '\n').count();
-    assert!(pretty_newlines > minimized_newlines,
+    assert!(
+        pretty_newlines > minimized_newlines,
         "Pretty-printed logs should have more newlines than minimized logs ({} vs {})",
-        pretty_newlines, minimized_newlines);
+        pretty_newlines,
+        minimized_newlines
+    );
 
     // Both should contain valid JSON entries (may have multiple entries)
     let _: Vec<serde_json::Value> = serde_json::Deserializer::from_str(&log_content_pretty)
@@ -1095,4 +1102,386 @@ expect:
 
     // Clean up environment variable
     std::env::remove_var("LLM_API_PROXY_REQUEST_LOG");
+}
+
+#[tokio::test]
+async fn test_scenario_validation_thinking_requires_assistant() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a scenario that has thinking but no assistant
+    let temp_dir = TempDir::new().unwrap();
+    let invalid_scenario_path = temp_dir.path().join("invalid_thinking_scenario.yaml");
+
+    let invalid_scenario_content = r#"
+name: invalid_thinking_scenario
+timeline:
+  - llmResponse:
+      - think:
+          - [1000, "This is a thinking step"]
+          - [500, "Another thinking step"]
+      - agentToolUse:
+          toolName: "run_command"
+          args:
+            command: "echo 'test'"
+          result: "test"
+          status: "ok"
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&invalid_scenario_path)
+        .unwrap()
+        .write_all(invalid_scenario_content.as_bytes())
+        .unwrap();
+
+    // Try to create a config with this invalid scenario
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(invalid_scenario_path.to_string_lossy().to_string());
+
+    // Creating the ScenarioPlayer should fail due to validation
+    let result = ScenarioPlayer::new(Arc::new(RwLock::new(config))).await;
+    assert!(
+        result.is_err(),
+        "Scenario with thinking but no assistant should fail validation"
+    );
+
+    if let Err(e) = result {
+        let error_message = e.to_string();
+        assert!(
+            error_message.contains("contains thinking blocks but no assistant responses"),
+            "Error message should mention the validation rule"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_openai_responses_api_format() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a test scenario
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("responses_api_scenario.yaml");
+
+    let scenario_content = r#"
+name: responses_api_scenario
+timeline:
+  - assistant:
+      - [100, "Test response for OpenAI Responses API"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = Arc::new(RwLock::new(config));
+
+    let mut player = ScenarioPlayer::new(config).await.unwrap();
+
+    // Create a test request for OpenAI Responses API
+    let request = ProxyRequest {
+        client_format: ApiFormat::OpenAIResponses,
+        mode: ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
+        headers: HashMap::new(),
+        request_id: "test-responses-api".to_string(),
+    };
+
+    // Play the request
+    let response = player.play_request(&request).await.unwrap();
+
+    // Verify response structure for OpenAI Responses API
+    assert_eq!(response.status, 200);
+    assert!(response.payload.is_object());
+
+    let payload = response.payload.as_object().unwrap();
+
+    // Check required top-level fields
+    assert!(payload.contains_key("id"));
+    assert_eq!(payload["object"], "response");
+    assert!(payload.contains_key("created"));
+    assert_eq!(payload["model"], "gpt-4o-mini");
+    assert_eq!(payload["status"], "completed");
+
+    // Check output array structure
+    assert!(payload.contains_key("output"));
+    let output = payload["output"].as_array().unwrap();
+    assert_eq!(output.len(), 1);
+
+    // Check that output item has required "type": "message" field
+    let message = &output[0];
+    assert_eq!(message["type"], "message");
+    assert_eq!(message["role"], "assistant");
+
+    // Check content structure
+    let content = message["content"].as_array().unwrap();
+    assert_eq!(content.len(), 1);
+    assert_eq!(content[0]["type"], "output_text");
+    assert_eq!(content[0]["text"], "Test response for OpenAI Responses API");
+
+    // Check usage structure
+    assert!(payload.contains_key("usage"));
+    let usage = payload["usage"].as_object().unwrap();
+    assert!(usage.contains_key("prompt_tokens"));
+    assert!(usage.contains_key("completion_tokens"));
+    assert!(usage.contains_key("total_tokens"));
+    assert!(usage["prompt_tokens"].as_i64().unwrap() > 0);
+    assert!(usage["completion_tokens"].as_i64().unwrap() > 0);
+    assert!(usage["total_tokens"].as_i64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn test_anthropic_thinking_format() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a test scenario that includes thinking
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("thinking_scenario.yaml");
+
+    let scenario_content = r#"
+name: thinking_scenario
+timeline:
+  - llmResponse:
+      - think:
+          - [1000, "This is a thinking step"]
+          - [500, "Another thinking step"]
+      - assistant:
+          - [2000, "This is the final response"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = Arc::new(RwLock::new(config));
+
+    let mut player = ScenarioPlayer::new(config).await.unwrap();
+
+    // Create a test request for Anthropic
+    let request = ProxyRequest {
+        client_format: ApiFormat::Anthropic,
+        mode: ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
+        headers: HashMap::new(),
+        request_id: "test-anthropic-thinking".to_string(),
+    };
+
+    // Play the request
+    let response = player.play_request(&request).await.unwrap();
+
+    // Verify response structure for Anthropic with thinking
+    assert_eq!(response.status, 200);
+    assert!(response.payload.is_object());
+
+    let payload = response.payload.as_object().unwrap();
+
+    // Check required top-level fields
+    assert!(payload.contains_key("id"));
+    assert_eq!(payload["type"], "message");
+    assert_eq!(payload["role"], "assistant");
+    assert!(payload.contains_key("model"));
+    assert_eq!(payload["stop_reason"], "end_turn");
+    assert_eq!(payload["stop_sequence"], serde_json::Value::Null);
+
+    // Check content array
+    assert!(payload.contains_key("content"));
+    let content = payload["content"].as_array().unwrap();
+    assert!(content.len() >= 2); // Should have thinking blocks + at least one text block
+
+    // Check thinking blocks
+    let thinking_blocks: Vec<&serde_json::Value> =
+        content.iter().filter(|block| block["type"] == "thinking").collect();
+
+    assert!(!thinking_blocks.is_empty(), "Should have thinking blocks");
+
+    for thinking_block in thinking_blocks {
+        assert_eq!(thinking_block["type"], "thinking");
+        assert!(
+            thinking_block.get("thinking").is_some(),
+            "Thinking block should have thinking content"
+        );
+        assert!(
+            thinking_block.get("signature").is_some(),
+            "Thinking block should have signature"
+        );
+        assert!(
+            thinking_block.get("duration_ms").is_none(),
+            "Thinking block should NOT have duration_ms"
+        );
+    }
+
+    // Check that there's at least one text block after thinking
+    let text_blocks: Vec<&serde_json::Value> =
+        content.iter().filter(|block| block["type"] == "text").collect();
+
+    assert!(
+        !text_blocks.is_empty(),
+        "Should have at least one text block when thinking is present"
+    );
+
+    for text_block in text_blocks {
+        assert_eq!(text_block["type"], "text");
+        assert!(
+            text_block.get("text").is_some(),
+            "Text block should have text content"
+        );
+    }
+
+    // Check usage structure
+    assert!(payload.contains_key("usage"));
+    let usage = payload["usage"].as_object().unwrap();
+    assert!(usage.contains_key("input_tokens"));
+    assert!(usage.contains_key("output_tokens"));
+    assert!(usage["input_tokens"].as_i64().unwrap() > 0);
+    assert!(usage["output_tokens"].as_i64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn test_session_manager_creation() {
+    let session_manager = SessionManager::new();
+    assert_eq!(session_manager.cleanup_expired_sessions().await, 0);
+}
+
+#[tokio::test]
+async fn test_session_preparation_and_retrieval() {
+    let session_manager = SessionManager::new();
+
+    // Create test routing config
+    let routing_config = RoutingConfig {
+        default_provider: "anthropic".to_string(),
+        model_routing: HashMap::new(),
+        enable_fallback: true,
+        max_retries: 3,
+        retry_delay_ms: 1000,
+    };
+
+    // Create test providers
+    let mut providers = HashMap::new();
+    providers.insert(
+        "anthropic".to_string(),
+        ProviderConfig {
+            name: "anthropic".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            api_key: Some("test-key".to_string()),
+            headers: HashMap::new(),
+            models: vec!["claude-3-sonnet-20240229".to_string()],
+            weight: 1,
+            rate_limit_rpm: Some(50),
+            timeout_seconds: Some(300),
+        },
+    );
+
+    // Prepare session
+    let session_id = session_manager
+        .prepare_session(
+            "test-api-key".to_string(),
+            routing_config.clone(),
+            providers.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert!(!session_id.is_empty());
+
+    // Retrieve session config
+    let session_config = session_manager.get_session_config("test-api-key").await.unwrap();
+
+    assert_eq!(session_config.routing_config.default_provider, "anthropic");
+    assert!(session_config.providers.contains_key("anthropic"));
+}
+
+#[tokio::test]
+async fn test_session_config_deduplication() {
+    let session_manager = SessionManager::new();
+
+    // Create identical routing configs
+    let routing_config = RoutingConfig {
+        default_provider: "anthropic".to_string(),
+        model_routing: HashMap::new(),
+        enable_fallback: true,
+        max_retries: 3,
+        retry_delay_ms: 1000,
+    };
+
+    let providers = HashMap::new(); // Empty for simplicity
+
+    // Prepare two sessions with identical configs
+    let session_id1 = session_manager
+        .prepare_session(
+            "api-key-1".to_string(),
+            routing_config.clone(),
+            providers.clone(),
+        )
+        .await
+        .unwrap();
+
+    let session_id2 = session_manager
+        .prepare_session(
+            "api-key-2".to_string(),
+            routing_config.clone(),
+            providers.clone(),
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(session_id1, session_id2);
+
+    // Both sessions should exist
+    assert!(session_manager.get_session_config("api-key-1").await.is_some());
+    assert!(session_manager.get_session_config("api-key-2").await.is_some());
+}
+
+#[tokio::test]
+async fn test_session_end() {
+    let session_manager = SessionManager::new();
+
+    let routing_config = RoutingConfig {
+        default_provider: "anthropic".to_string(),
+        model_routing: HashMap::new(),
+        enable_fallback: true,
+        max_retries: 3,
+        retry_delay_ms: 1000,
+    };
+
+    let providers = HashMap::new();
+
+    // Prepare session
+    session_manager
+        .prepare_session("test-api-key".to_string(), routing_config, providers)
+        .await
+        .unwrap();
+
+    // Verify session exists
+    assert!(session_manager.get_session_config("test-api-key").await.is_some());
+
+    // End session
+    session_manager.end_session("test-api-key").await.unwrap();
+
+    // Verify session is gone
+    assert!(session_manager.get_session_config("test-api-key").await.is_none());
+}
+
+#[tokio::test]
+async fn test_session_nonexistent() {
+    let session_manager = SessionManager::new();
+
+    // Try to get config for non-existent session
+    assert!(session_manager.get_session_config("nonexistent").await.is_none());
+
+    // Try to end non-existent session (should not error)
+    assert!(session_manager.end_session("nonexistent").await.is_ok());
 }

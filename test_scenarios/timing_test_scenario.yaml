@@ -14,9 +14,12 @@ repo:
         Used to verify that SSE events are streamed with correct timing.
 timeline:
   # Start with thinking events at specific times
-  - think:
-      - [500, "Starting timing test scenario"]
-      - [300, "Analyzing timing requirements"]
+  - llmResponse:
+      - think:
+          - [500, "Starting timing test scenario"]
+          - [300, "Analyzing timing requirements"]
+      - assistant:
+          - [100, "Beginning timing verification process"]
 
   # First tool execution after 800ms total thinking time
   - agentToolUse:
@@ -37,9 +40,12 @@ timeline:
       linesRemoved: 0
 
   # More thinking
-  - think:
-      - [400, "Processing timing results"]
-      - [200, "Preparing final verification"]
+  - llmResponse:
+      - think:
+          - [400, "Processing timing results"]
+          - [200, "Preparing final verification"]
+      - assistant:
+          - [150, "Timing verification completed successfully"]
 
   # Final tool execution
   - agentToolUse:

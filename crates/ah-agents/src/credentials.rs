@@ -102,51 +102,6 @@ fn copy_directory_impl<'a>(
     })
 }
 
-/// Platform-specific credential paths for Claude Code
-pub fn claude_credential_paths() -> Vec<PathBuf> {
-    vec![PathBuf::from(".claude/.credentials.json")]
-}
-
-/// Platform-specific credential paths for Codex CLI
-pub fn codex_credential_paths() -> Vec<PathBuf> {
-    vec![
-        // Authentication file (as defined in Codex Rust code)
-        PathBuf::from(".codex/auth.json"),
-    ]
-}
-
-/// Platform-specific credential paths for Cursor CLI
-pub fn cursor_credential_paths() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from(".cursor/cli-config.json"),
-        PathBuf::from(".cursor/mcp.json"),
-    ]
-}
-
-/// Platform-specific credential paths for GitHub Copilot CLI
-pub fn copilot_credential_paths() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from(".copilot/config.json"),
-        PathBuf::from(".copilot/state.json"),
-    ]
-}
-
-/// Platform-specific credential paths for Crush
-pub fn crush_credential_paths() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from(".config/crush/config.json"),
-        PathBuf::from(".local/share/crush/state.json"),
-    ]
-}
-
-/// Platform-specific credential paths for Amp
-pub fn amp_credential_paths() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from(".config/amp/settings.json"),
-        PathBuf::from(".cache/amp/logs/cli.log"),
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

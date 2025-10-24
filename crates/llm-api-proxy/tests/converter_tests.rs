@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use anthropic_ai_sdk::types::message as anthropic;
 use async_openai::types as openai;
 use chrono::Utc;

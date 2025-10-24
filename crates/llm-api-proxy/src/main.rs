@@ -11,7 +11,9 @@ use axum::{
 };
 use clap::{Parser, Subcommand};
 use futures::stream;
-use llm_api_proxy::{LlmApiProxy, ProxyConfig};
+use llm_api_proxy::config::RoutingConfig;
+use llm_api_proxy::{LlmApiProxy, ProviderConfig, ProxyConfig};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -29,6 +31,40 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Run a proxy server that forwards requests to real LLM APIs
+    Proxy {
+        /// Port to bind the proxy server to
+        #[arg(long, default_value = "18081")]
+        port: u16,
+
+        /// Target provider to proxy to (auto-detected from agent-type if not specified)
+        #[arg(long)]
+        provider: Option<String>,
+
+        /// API key for the target provider
+        #[arg(long)]
+        api_key: Option<String>,
+
+        /// Path to log request details
+        #[arg(long)]
+        request_log: Option<PathBuf>,
+
+        /// Include request headers in logs
+        #[arg(long)]
+        log_headers: bool,
+
+        /// Include request body in logs
+        #[arg(long)]
+        log_body: bool,
+
+        /// Include responses in logs
+        #[arg(long)]
+        log_responses: bool,
+
+        /// Minimize JSON logs (default: false, pretty-print by default)
+        #[arg(long)]
+        minimize_logs: bool,
+    },
     /// Run a test server for integration testing
     TestServer {
         /// Port to bind the test server to
@@ -78,6 +114,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Proxy {
+            port,
+            provider,
+            api_key,
+            request_log,
+            log_headers,
+            log_body,
+            log_responses,
+            minimize_logs,
+        } => {
+            run_proxy_server(
+                port,
+                provider,
+                api_key,
+                request_log,
+                log_headers,
+                log_body,
+                log_responses,
+                minimize_logs,
+            )
+            .await?;
+        }
         Commands::TestServer {
             port,
             scenario_file,
@@ -105,6 +163,137 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
         }
     }
+
+    Ok(())
+}
+
+/// Run as a proxy server for forwarding to real LLM APIs
+async fn run_proxy_server(
+    port: u16,
+    provider: Option<String>,
+    api_key: Option<String>,
+    request_log_path: Option<PathBuf>,
+    log_headers: bool,
+    log_body: bool,
+    log_responses: bool,
+    minimize_logs: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Starting LLM API Proxy server on port {}", port);
+    println!("Mode: Live proxy to real LLM APIs");
+    println!("Target provider: {:?}", provider);
+
+    // Check if API key is configured (either from command line or environment)
+    let provider_name = provider.as_deref().unwrap_or("openai");
+    let api_key_configured = api_key.is_some()
+        || match provider_name {
+            "anthropic" => std::env::var("ANTHROPIC_API_KEY").is_ok(),
+            "openai" => std::env::var("OPENAI_API_KEY").is_ok(),
+            "openrouter" => std::env::var("OPENROUTER_API_KEY").is_ok(),
+            _ => false,
+        };
+    println!("API key configured: {}", api_key_configured);
+
+    println!("Request log path: {:?}", request_log_path);
+    println!("Log headers: {}", log_headers);
+    println!("Log body: {}", log_body);
+    println!("Log responses: {}", log_responses);
+
+    // Set logging environment variables
+    if let Some(log_path) = &request_log_path {
+        std::env::set_var("REQUEST_LOG_TEMPLATE", log_path);
+        println!("Set REQUEST_LOG_TEMPLATE={}", log_path.display());
+    }
+
+    // Set logging policy flags
+    std::env::set_var(
+        "LLM_API_PROXY_LOG_HEADERS",
+        if log_headers { "true" } else { "false" },
+    );
+    std::env::set_var(
+        "LLM_API_PROXY_LOG_BODY",
+        if log_body { "true" } else { "false" },
+    );
+    std::env::set_var(
+        "LLM_API_PROXY_LOG_RESPONSES",
+        if log_responses { "true" } else { "false" },
+    );
+
+    // Create proxy configuration for live proxying
+    let mut config = ProxyConfig::default();
+    config.server.port = port;
+    config.scenario.enabled = false; // Disable scenario mode
+    config.routing.default_provider = provider.unwrap_or_else(|| "openai".to_string());
+    config.scenario.minimize_logs = minimize_logs;
+
+    // Override API key if provided via command line
+    if let Some(api_key) = api_key {
+        if let Some(provider_config) = config.providers.get_mut(&config.routing.default_provider) {
+            provider_config.api_key = Some(api_key);
+        }
+    }
+
+    // Create the proxy
+    println!("Creating proxy in live mode");
+    let proxy = match LlmApiProxy::new(config).await {
+        Ok(p) => {
+            println!("Proxy created successfully");
+            p
+        }
+        Err(e) => {
+            eprintln!("Failed to create proxy: {}", e);
+            return Err(e.into());
+        }
+    };
+    let proxy = std::sync::Arc::new(tokio::sync::RwLock::new(proxy));
+
+    // Create Axum router for HTTP endpoints (same as test server)
+    let proxy_for_chat = proxy.clone();
+    let proxy_for_responses = proxy.clone();
+    let proxy_for_responses_stream = proxy.clone();
+    let proxy_for_messages = proxy.clone();
+    let proxy_for_prepare_session = proxy.clone();
+    let proxy_for_end_session = proxy.clone();
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(move |body| handle_chat_completion(proxy_for_chat.clone(), body)),
+        )
+        .route(
+            "/v1/responses",
+            post(move |body| handle_openai_responses(proxy_for_responses.clone(), body)),
+        )
+        .route(
+            "/v1/responses/{id}/events",
+            get(move |path| {
+                handle_openai_responses_stream(proxy_for_responses_stream.clone(), path)
+            }),
+        )
+        .route(
+            "/v1/messages",
+            post(move |body| handle_anthropic_messages(proxy_for_messages.clone(), body)),
+        )
+        .route(
+            "/prepare-session",
+            post(move |body| handle_prepare_session(proxy_for_prepare_session.clone(), body)),
+        )
+        .route(
+            "/end-session",
+            post(move |body| handle_end_session(proxy_for_end_session.clone(), body)),
+        )
+        .route("/health", axum::routing::get(|| async { "OK" }))
+        .fallback(|req: axum::http::Request<axum::body::Body>| async move {
+            eprintln!("Unhandled request path: {}", req.uri());
+            (axum::http::StatusCode::NOT_FOUND, "Not Found")
+        })
+        .layer(CorsLayer::permissive());
+
+    // Bind to address
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    println!("Server listening on {}", addr);
+
+    // Run the server
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
@@ -230,10 +419,17 @@ async fn handle_chat_completion(
     println!("Received OpenAI chat completion request");
     let proxy_guard = proxy.read().await;
 
+    // Determine mode based on proxy configuration
+    let mode = if proxy_guard.is_scenario_mode() {
+        llm_api_proxy::proxy::ProxyMode::Scenario
+    } else {
+        llm_api_proxy::proxy::ProxyMode::Live
+    };
+
     // Create a proxy request from the incoming body
     let proxy_request = llm_api_proxy::proxy::ProxyRequest {
         client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
-        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        mode,
         payload: body,
         headers: std::collections::HashMap::new(), // TODO: Extract headers from request
         request_id: format!("req-{}", uuid::Uuid::new_v4()),
@@ -254,6 +450,131 @@ async fn handle_chat_completion(
     }
 }
 
+/// Handle session preparation requests
+async fn handle_prepare_session(
+    proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
+    axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
+) -> axum::response::Json<serde_json::Value> {
+    println!("Received prepare-session request");
+
+    // Extract required fields
+    let api_key = match body.get("api_key").and_then(|v| v.as_str()) {
+        Some(key) => key.to_string(),
+        None => {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": "Missing required field: api_key",
+                    "type": "validation_error"
+                }
+            }));
+        }
+    };
+
+    let routing_config_value = match body.get("routing_config") {
+        Some(config) => config,
+        None => {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": "Missing required field: routing_config",
+                    "type": "validation_error"
+                }
+            }));
+        }
+    };
+
+    // Parse routing configuration
+    let routing_config: RoutingConfig = match serde_json::from_value(routing_config_value.clone()) {
+        Ok(config) => config,
+        Err(e) => {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": format!("Invalid routing_config: {}", e),
+                    "type": "validation_error"
+                }
+            }));
+        }
+    };
+
+    // Parse providers
+    let empty_providers = serde_json::json!({});
+    let providers_value = body.get("providers").unwrap_or(&empty_providers);
+    let providers: HashMap<String, ProviderConfig> =
+        match serde_json::from_value(providers_value.clone()) {
+            Ok(providers) => providers,
+            Err(e) => {
+                return axum::response::Json(serde_json::json!({
+                    "error": {
+                        "message": format!("Invalid providers: {}", e),
+                        "type": "validation_error"
+                    }
+                }));
+            }
+        };
+
+    let proxy_guard = proxy.read().await;
+
+    // Prepare the session
+    match proxy_guard.prepare_session(api_key, routing_config, providers).await {
+        Ok(session_id) => {
+            let expires_at = chrono::Utc::now() + chrono::Duration::days(3);
+            axum::response::Json(serde_json::json!({
+                "status": "success",
+                "session_id": session_id,
+                "expires_at": expires_at.to_rfc3339()
+            }))
+        }
+        Err(e) => {
+            eprintln!("Session preparation error: {}", e);
+            axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": format!("Session preparation failed: {}", e),
+                    "type": "internal_error"
+                }
+            }))
+        }
+    }
+}
+
+/// Handle session end requests
+async fn handle_end_session(
+    proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
+    axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
+) -> axum::response::Json<serde_json::Value> {
+    println!("Received end-session request");
+
+    // Extract required fields
+    let api_key = match body.get("api_key").and_then(|v| v.as_str()) {
+        Some(key) => key.to_string(),
+        None => {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": "Missing required field: api_key",
+                    "type": "validation_error"
+                }
+            }));
+        }
+    };
+
+    let proxy_guard = proxy.read().await;
+
+    // End the session
+    match proxy_guard.end_session(&api_key).await {
+        Ok(()) => axum::response::Json(serde_json::json!({
+            "status": "success",
+            "message": "Session ended"
+        })),
+        Err(e) => {
+            eprintln!("Session end error: {}", e);
+            axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": format!("Session end failed: {}", e),
+                    "type": "internal_error"
+                }
+            }))
+        }
+    }
+}
+
 /// Handle OpenAI responses API requests
 async fn handle_openai_responses(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
@@ -262,9 +583,16 @@ async fn handle_openai_responses(
     println!("Received OpenAI responses request");
     let proxy_guard = proxy.read().await;
 
+    // Determine mode based on proxy configuration
+    let mode = if proxy_guard.is_scenario_mode() {
+        llm_api_proxy::proxy::ProxyMode::Scenario
+    } else {
+        llm_api_proxy::proxy::ProxyMode::Live
+    };
+
     let proxy_request = llm_api_proxy::proxy::ProxyRequest {
         client_format: llm_api_proxy::converters::ApiFormat::OpenAIResponses,
-        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        mode,
         payload: body,
         headers: std::collections::HashMap::new(),
         request_id: format!("req-{}", uuid::Uuid::new_v4()),
@@ -356,10 +684,17 @@ async fn handle_anthropic_messages(
     println!("Received Anthropic messages request");
     let proxy_guard = proxy.read().await;
 
+    // Determine mode based on proxy configuration
+    let mode = if proxy_guard.is_scenario_mode() {
+        llm_api_proxy::proxy::ProxyMode::Scenario
+    } else {
+        llm_api_proxy::proxy::ProxyMode::Live
+    };
+
     // Create a proxy request from the incoming body
     let proxy_request = llm_api_proxy::proxy::ProxyRequest {
         client_format: llm_api_proxy::converters::ApiFormat::Anthropic,
-        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        mode,
         payload: body,
         headers: std::collections::HashMap::new(), // TODO: Extract headers from request
         request_id: format!("req-{}", uuid::Uuid::new_v4()),

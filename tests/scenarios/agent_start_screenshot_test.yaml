@@ -27,6 +27,9 @@ timeline:
       linesAdded: 2
       linesRemoved: 0
   - screenshot: "file_created"
+  - assistant:
+      - [500, "Screenshot test completed successfully"]
+      - [300, "All test artifacts created and verified"]
   - complete: true
 expect:
   exitCode: 0

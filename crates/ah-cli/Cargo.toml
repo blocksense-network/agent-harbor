@@ -39,6 +39,8 @@ ah-fs-snapshots-zfs = { path = "../ah-fs-snapshots-zfs" }
 ah-fs-snapshots-btrfs = { path = "../ah-fs-snapshots-btrfs" }
 ah-fs-snapshots-git = { path = "../ah-fs-snapshots-git" }
 chrono = { workspace = true, features = ["serde"] }
+reqwest = { workspace = true, features = ["json"] }
+uuid = { workspace = true, features = ["v4"] }
 sandbox-core = { path = "../sandbox-core", features = [
   "cgroups",
   "seccomp",
