@@ -76,6 +76,15 @@ impl Database {
     ///
     /// If the path doesn't exist, the database will be created.
     pub fn open<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
+        let path = path.as_ref();
+
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                crate::Error::generic(format!("Failed to create database directory {}: {}", parent.display(), e))
+            })?;
+        }
+
         let conn = Connection::open(path)?;
         Self::initialize_schema(&conn)?;
         Ok(Self {

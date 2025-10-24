@@ -6,8 +6,45 @@
 //! This crate provides concrete implementations of the Multiplexer trait
 //! for various terminal multiplexers (tmux, kitty, zellij, screen, wezterm, etc.).
 
+pub mod detection;
+
+#[cfg(feature = "kitty")]
+pub mod kitty;
+pub mod iterm2;
+pub mod tmux;
+#[cfg(feature = "screen")]
+pub mod screen;
+#[cfg(feature = "wezterm")]
+pub mod wezterm;
+#[cfg(feature = "zellij")]
+pub mod zellij;
+#[cfg(all(feature = "tilix", target_os = "linux"))]
+pub mod tilix;
+#[cfg(feature = "windows-terminal")]
+pub mod windows_terminal;
+#[cfg(feature = "ghostty")]
+pub mod ghostty;
+#[cfg(feature = "vim")]
+pub mod vim;
+#[cfg(feature = "neovim")]
+pub mod neovim;
 #[cfg(feature = "emacs")]
 pub mod emacs;
+
+#[cfg(feature = "kitty")]
+pub use kitty::KittyMultiplexer;
+pub use iterm2::ITerm2Multiplexer;
+pub use tmux::TmuxMultiplexer;
+#[cfg(feature = "screen")]
+pub use screen::ScreenMultiplexer;
+#[cfg(feature = "wezterm")]
+pub use wezterm::WezTermMultiplexer;
+#[cfg(feature = "zellij")]
+pub use zellij::ZellijMultiplexer;
+#[cfg(all(feature = "tilix", target_os = "linux"))]
+pub use tilix::TilixMultiplexer;
+#[cfg(feature = "windows-terminal")]
+pub use windows_terminal::WindowsTerminalMultiplexer;
 #[cfg(feature = "ghostty")]
 pub mod ghostty;
 #[cfg(feature = "kitty")]
@@ -18,7 +55,6 @@ pub mod neovim;
 pub mod screen;
 #[cfg(all(feature = "tilix", target_os = "linux"))]
 pub mod tilix;
-pub mod tmux;
 #[cfg(feature = "vim")]
 pub mod vim;
 #[cfg(feature = "wezterm")]
@@ -40,7 +76,6 @@ pub use neovim::NeovimMultiplexer;
 pub use screen::ScreenMultiplexer;
 #[cfg(all(feature = "tilix", target_os = "linux"))]
 pub use tilix::TilixMultiplexer;
-pub use tmux::TmuxMultiplexer;
 #[cfg(feature = "vim")]
 pub use vim::VimMultiplexer;
 #[cfg(feature = "wezterm")]
@@ -52,6 +87,9 @@ pub use zellij::ZellijMultiplexer;
 
 use ah_mux_core::*;
 
+// Re-export detection functions
+pub use detection::*;
+
 /// Get the default multiplexer for the current system
 pub fn default_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, MuxError> {
     // Priority order: tmux > wezterm > kitty > zellij > screen > tilix > windows-terminal > ghostty > neovim > vim > emacs
@@ -59,6 +97,13 @@ pub fn default_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, MuxEr
     if let Ok(tmux) = tmux::TmuxMultiplexer::new() {
         if tmux.is_available() {
             return Ok(Box::new(tmux));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Ok(iterm2) = iterm2::ITerm2Multiplexer::new() {
+        if iterm2.is_available() {
+            return Ok(Box::new(iterm2));
         }
     }
 
@@ -145,6 +190,13 @@ pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sy
             })?;
             Ok(Box::new(tmux))
         }
+        #[cfg(target_os = "macos")]
+        "iterm2" => {
+            let iterm2 = iterm2::ITerm2Multiplexer::new().map_err(|e| {
+                MuxError::Other(format!("Failed to create iTerm2 multiplexer: {}", e))
+            })?;
+            Ok(Box::new(iterm2))
+        }
         #[cfg(feature = "kitty")]
         "kitty" => {
             let kitty = kitty::KittyMultiplexer::new().map_err(|e| {
@@ -221,6 +273,13 @@ pub fn available_multiplexers() -> Vec<(String, Box<dyn Multiplexer + Send + Syn
                 "tmux".to_string(),
                 Box::new(tmux) as Box<dyn Multiplexer + Send + Sync>,
             ));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Ok(iterm2) = iterm2::ITerm2Multiplexer::new() {
+        if iterm2.is_available() {
+            multiplexers.push(("iterm2".to_string(), Box::new(iterm2) as Box<dyn Multiplexer + Send + Sync>));
         }
     }
 

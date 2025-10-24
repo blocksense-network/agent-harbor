@@ -56,7 +56,7 @@
 
 use crate::Settings;
 use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
-use crate::workspace_files::WorkspaceFiles;
+use crate::WorkspaceFilesEnumerator;
 use ah_core::task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
@@ -64,9 +64,9 @@ use ah_domain_types::task::ToolStatus;
 use ah_domain_types::{
     DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskInfo, TaskState,
 };
-use ah_tui::view_model::FilterBarViewModel;
-use ah_tui::view_model::autocomplete::{AutocompleteKeyResult, InlineAutocomplete};
-use ah_tui::view_model::{
+use crate::view_model::FilterBarViewModel;
+use crate::view_model::autocomplete::{AutocompleteKeyResult, InlineAutocomplete};
+use crate::view_model::{
     AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
     DraftSaveState, FilterControl, FilterOptions, FocusElement, ModalState, SearchMode,
     TaskCardType, TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionViewModel,
@@ -1215,7 +1215,7 @@ pub struct ViewModel {
     pub loading_models: bool,
 
     // Service dependencies
-    pub workspace_files: Arc<dyn WorkspaceFiles>,
+    pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
     pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
     pub task_manager: Arc<dyn TaskManager>, // Task launching abstraction
 
@@ -1263,7 +1263,7 @@ impl ViewModel {
     /// Create a new ViewModel with service dependencies and start background loading
     /// Create a new ViewModel without background loading (for tests)
     pub fn new(
-        workspace_files: Arc<dyn WorkspaceFiles>,
+        workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         settings: Settings,
@@ -1279,7 +1279,7 @@ impl ViewModel {
 
     /// Create a new ViewModel with background loading enabled
     pub fn new_with_background_loading(
-        workspace_files: Arc<dyn WorkspaceFiles>,
+        workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         settings: Settings,
@@ -1294,7 +1294,7 @@ impl ViewModel {
     }
 
     fn new_internal(
-        workspace_files: Arc<dyn WorkspaceFiles>,
+        workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         settings: Settings,

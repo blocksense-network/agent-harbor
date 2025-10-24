@@ -7,11 +7,8 @@ use std::collections::HashMap;
 /// Font style for displaying symbols and icons
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FontStyle {
-    #[serde(rename = "unicode")]
     Unicode,
-    #[serde(rename = "nerdfont")]
     NerdFont,
-    #[serde(rename = "ascii")]
     Ascii,
 }
 
@@ -24,11 +21,8 @@ impl Default for FontStyle {
 /// Dialog style for selection interfaces
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SelectionDialogStyle {
-    #[serde(rename = "modal")]
     Modal,
-    #[serde(rename = "inline")]
     Inline,
-    #[serde(rename = "default")]
     Default,
 }
 
@@ -41,9 +35,7 @@ impl Default for SelectionDialogStyle {
 /// Meta key configuration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MetaKey {
-    #[serde(rename = "alt")]
     Alt,
-    #[serde(rename = "option")]
     Option,
 }
 
@@ -294,7 +286,7 @@ impl KeyboardOperation {
 }
 
 /// Enhanced key matcher with support for required/optional modifiers
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KeyMatcher {
     pub code: ratatui::crossterm::event::KeyCode,
     pub required: ratatui::crossterm::event::KeyModifiers,
@@ -446,7 +438,7 @@ impl KeyboardOperationDefinition {
 }
 
 /// Collection of parsed key bindings for an operation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KeyboardShortcut {
     pub operation: KeyboardOperation,
     pub bindings: Vec<KeyMatcher>,
@@ -1456,164 +1448,99 @@ impl Default for KeymapConfig {
 }
 
 /// Keyboard shortcuts configuration section
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KeymapConfig {
     pub meta_key: Option<MetaKey>,
 
     // Cursor Movement
-    #[serde(rename = "move-to-beginning-of-line")]
     pub move_to_beginning_of_line: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-end-of-line")]
     pub move_to_end_of_line: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-forward-one-character")]
     pub move_forward_one_character: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-backward-one-character")]
     pub move_backward_one_character: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-next-line")]
     pub move_to_next_line: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-next-field")]
     pub move_to_next_field: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-previous-field")]
     pub move_to_previous_field: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "dismiss-overlay")]
     pub dismiss_overlay: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "select-word-under-cursor")]
     pub select_word_under_cursor: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-previous-line")]
     pub move_to_previous_line: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-forward-one-word")]
     pub move_forward_one_word: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-backward-one-word")]
     pub move_backward_one_word: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-beginning-of-sentence")]
     pub move_to_beginning_of_sentence: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-end-of-sentence")]
     pub move_to_end_of_sentence: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "scroll-down-one-screen")]
     pub scroll_down_one_screen: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "scroll-up-one-screen")]
     pub scroll_up_one_screen: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "recenter-screen-on-cursor")]
     pub recenter_screen_on_cursor: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-beginning-of-document")]
     pub move_to_beginning_of_document: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-end-of-document")]
     pub move_to_end_of_document: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-beginning-of-paragraph")]
     pub move_to_beginning_of_paragraph: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-end-of-paragraph")]
     pub move_to_end_of_paragraph: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "go-to-line-number")]
     pub go_to_line_number: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-to-matching-parenthesis")]
     pub move_to_matching_parenthesis: Option<Vec<KeyMatcher>>,
 
     // Editing and Deletion
-    #[serde(rename = "delete-character-forward")]
     pub delete_character_forward: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "delete-character-backward")]
     pub delete_character_backward: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "delete-word-forward")]
     pub delete_word_forward: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "delete-word-backward")]
     pub delete_word_backward: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "delete-to-end-of-line")]
     pub delete_to_end_of_line: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "cut")]
     pub cut: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "copy")]
     pub copy: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "paste")]
     pub paste: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "cycle-through-clipboard")]
     pub cycle_through_clipboard: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "transpose-characters")]
     pub transpose_characters: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "transpose-words")]
     pub transpose_words: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "undo")]
     pub undo: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "redo")]
     pub redo: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "open-new-line")]
     pub open_new_line: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "indent-or-complete")]
     pub indent_or_complete: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "delete-to-beginning-of-line")]
     pub delete_to_beginning_of_line: Option<Vec<KeyMatcher>>,
 
     // Text Transformation
-    #[serde(rename = "uppercase-word")]
     pub uppercase_word: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "lowercase-word")]
     pub lowercase_word: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "capitalize-word")]
     pub capitalize_word: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "justify-paragraph")]
     pub justify_paragraph: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "join-lines")]
     pub join_lines: Option<Vec<KeyMatcher>>,
 
     // Formatting (Markdown Style)
-    #[serde(rename = "bold")]
     pub bold: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "italic")]
     pub italic: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "underline")]
     pub underline: Option<Vec<KeyMatcher>>,
 
     // Code Editing
-    #[serde(rename = "toggle-comment")]
     pub toggle_comment: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "duplicate-line-selection")]
     pub duplicate_line_selection: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-line-up")]
     pub move_line_up: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "move-line-down")]
     pub move_line_down: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "indent-region")]
     pub indent_region: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "dedent-region")]
     pub dedent_region: Option<Vec<KeyMatcher>>,
 
     // Search and Replace
-    #[serde(rename = "incremental-search-forward")]
     pub incremental_search_forward: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "incremental-search-backward")]
     pub incremental_search_backward: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "find-and-replace")]
     pub find_and_replace: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "find-and-replace-with-regex")]
     pub find_and_replace_with_regex: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "find-next")]
     pub find_next: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "find-previous")]
     pub find_previous: Option<Vec<KeyMatcher>>,
 
     // Mark and Region
-    #[serde(rename = "set-mark")]
     pub set_mark: Option<Vec<KeyMatcher>>,
-    #[serde(rename = "select-all")]
     pub select_all: Option<Vec<KeyMatcher>>,
 }
 
 /// Main settings configuration structure
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
     /// Number of activity rows to display for active tasks (default: 3)
-    #[serde(rename = "tui.active-sessions-activity-rows")]
     pub active_sessions_activity_rows: Option<usize>,
 
     /// Font style for symbols and icons
-    #[serde(rename = "tui-font-style")]
     pub font_style: Option<FontStyle>,
 
     /// Selection dialog style preference
-    #[serde(rename = "tui.selection-dialog-style")]
     pub selection_dialog_style: Option<SelectionDialogStyle>,
 
     /// Keyboard shortcuts configuration
-    #[serde(rename = "tui.keymap")]
     pub keymap: Option<KeymapConfig>,
 }
 

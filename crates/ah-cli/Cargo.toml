@@ -55,6 +55,19 @@ sandbox-seccomp = { path = "../sandbox-seccomp" }
 # REST API client for TUI
 ah-rest-client = { path = "../ah-rest-client" }
 
+# TUI implementation
+ah-tui = { path = "../ah-tui" }
+
+# Workflows
+ah-workflows = { path = "../ah-workflows" }
+
+# Mock REST client for testing
+ah-rest-mock-client = { path = "../ah-rest-mock-client" }
+
+# Multiplexer support
+ah-mux = { path = "../ah-mux" }
+ah-mux-core = { path = "../ah-mux-core" }
+
 # AgentFS dependencies
 agentfs-proto = { path = "../agentfs-proto" }
 # SSZ serialization (matching agentfs-proto)

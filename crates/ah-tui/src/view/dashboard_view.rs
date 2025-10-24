@@ -43,12 +43,12 @@ use ah_core::TaskStatus;
 use ah_core::task_manager::TaskEvent;
 use ah_domain_types::TaskState;
 use ah_domain_types::task::ToolStatus;
-use ah_tui::view::autocomplete::render_autocomplete;
-use ah_tui::view::draft_card;
-use ah_tui::view::{HitTestRegistry, Theme, ViewCache};
-use ah_tui::view_model::AgentActivityRow;
-use ah_tui::view_model::{DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel};
-use ah_tui::view_model::{FocusElement, TaskCardType};
+use crate::view::autocomplete::render_autocomplete;
+use crate::view::draft_card;
+use crate::view::{HitTestRegistry, Theme, ViewCache};
+use crate::view_model::AgentActivityRow;
+use crate::view_model::{DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel};
+use crate::view_model::{FocusElement, TaskCardType};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_image::StatefulImage;
 
@@ -153,7 +153,7 @@ fn render_header(
 /// Render the ASCII logo as fallback
 fn render_ascii_logo(frame: &mut Frame<'_>, area: Rect) {
     // Try to read the ASCII logo from assets
-    let logo_content = include_str!("../../../assets/agent-harbor-logo-80.ansi");
+    let logo_content = include_str!("../../../../assets/agent-harbor-logo-80.ansi");
 
     // Create a paragraph with the logo, preserving ANSI escape codes
     let header = Paragraph::new(logo_content)

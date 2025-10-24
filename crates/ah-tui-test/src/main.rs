@@ -5,7 +5,8 @@
 
 use ah_rest_client_mock::MockClient;
 use ah_test_scenarios::{Scenario, Step};
-use ah_tui::{TestRuntime, execute_scenario, task::TaskState};
+// TODO: Update imports for new TUI architecture
+// use ah_tui::{TestRuntime, execute_scenario, task::TaskState};
 use clap::{Parser, Subcommand};
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode};

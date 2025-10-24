@@ -213,9 +213,14 @@ dependencies = [
  "ah-fs-snapshots-git",
  "ah-fs-snapshots-zfs",
  "ah-local-db",
+ "ah-mux",
+ "ah-mux-core",
  "ah-recorder",
  "ah-repo",
  "ah-rest-client",
+ "ah-rest-mock-client",
+ "ah-tui",
+ "ah-workflows",
  "anyhow",
  "chrono",
  "clap",
@@ -661,14 +666,19 @@ dependencies = [
  "ah-client-api",
  "ah-core",
  "ah-domain-types",
+ "ah-repo",
  "ah-rest-api-contract",
  "ah-rest-client",
+ "ah-rest-mock-client",
  "ah-test-scenarios",
  "ah-workflows",
  "anyhow",
+ "async-trait",
+ "chrono",
  "clap",
  "crossbeam-channel",
  "crossterm 0.28.1",
+ "ctrlc",
  "expectrl",
  "futures",
  "image",
@@ -690,6 +700,7 @@ dependencies = [
  "tracing-subscriber",
  "tui-testing",
  "tui-textarea",
+ "unic-langid",
  "unicode-segmentation",
  "unicode-width 0.2.0",
  "url",
@@ -704,20 +715,6 @@ dependencies = [
  "ah-mux-core",
  "serde",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "ah-tui-test"
-version = "0.1.0"
-dependencies = [
- "ah-rest-client-mock",
- "ah-test-scenarios",
- "ah-tui",
- "anyhow",
- "clap",
- "crossterm 0.29.0",
- "ratatui",
- "tokio",
 ]
 
 [[package]]
@@ -2326,6 +2323,17 @@ checksum = "32a2785755761f3ddc1492979ce1e48d2c00d09311c39e4466429188f3dd6501"
 dependencies = [
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "ctrlc"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "881c5d0a13b2f1498e2306e82cbada78390e152d4b1378fb28a84f4dcd0dc4f3"
+dependencies = [
+ "dispatch",
+ "nix 0.30.1",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7856,6 +7864,24 @@ name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
+
+[[package]]
+name = "unic-langid"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a28ba52c9b05311f4f6e62d5d9d46f094bd6e84cb8df7b3ef952748d752a7d05"
+dependencies = [
+ "unic-langid-impl",
+]
+
+[[package]]
+name = "unic-langid-impl"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce1bf08044d4b7a94028c93786f8566047edc11110595914de93362559bc658"
+dependencies = [
+ "tinystr",
+]
 
 [[package]]
 name = "unicase"

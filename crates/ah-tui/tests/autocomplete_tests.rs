@@ -7,14 +7,16 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ah_core::TaskManager;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::view_model::FocusElement;
 use ah_tui::view_model::autocomplete::{InlineAutocomplete, Item, Provider, Trigger};
-use ah_workflows::{WorkflowConfig, WorkflowProcessor};
+use ah_tui::view_model::ViewModel;
+use ah_tui::settings::{KeyboardOperation, Settings};
+use ah_core::WorkspaceFilesEnumerator;
+use ah_repo::VcsRepo;
+use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui_exploration::settings::{KeyboardOperation, Settings};
-use tui_exploration::view_model::ViewModel;
-use tui_exploration::workspace_files::GitWorkspaceFiles;
 
 #[derive(Clone)]
 struct TestProvider {
@@ -71,7 +73,7 @@ fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
 }
 
 fn build_view_model() -> ViewModel {
-    let workspace_files = Arc::new(GitWorkspaceFiles::new(std::path::PathBuf::from(".")));
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
     let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
     let task_manager = Arc::new(MockRestClient::new());
     let settings = Settings::default();

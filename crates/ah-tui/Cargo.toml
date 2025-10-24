@@ -8,14 +8,12 @@ edition = "2021"
 description = "Terminal User Interface for agent-harbor"
 license = "MIT OR Apache-2.0"
 
-[[bin]]
-name = "ah-tui"
-path = "src/main.rs"
 
 [dependencies]
 ah-rest-api-contract = { path = "../ah-rest-api-contract" }
 ah-client-api = { path = "../ah-client-api" }
 ah-rest-client = { path = "../ah-rest-client" }
+ah-repo = { path = "../ah-repo" }
 ah-test-scenarios = { path = "../ah-test-scenarios" }
 ah-domain-types = { path = "../ah-domain-types" }
 ah-core = { path = "../ah-core" }
@@ -41,10 +39,15 @@ crossbeam-channel = "0.5"
 nucleo = "0.5"
 once_cell = "1.0"
 unicode-segmentation = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+unic-langid = "0.9"
+ctrlc = "3.4"
 
 [dev-dependencies]
 tokio-test = "0.4"
 ah-test-scenarios = { path = "../ah-test-scenarios" }
+ah-rest-mock-client = { path = "../ah-rest-mock-client" }
 url = { workspace = true }
 tempfile = "3.0"
 tui-testing = { path = "../tui-testing" }

@@ -1,18 +1,19 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_cli::{AgentCommands, Cli, Commands, Parser};
+use ah_cli::{health, AgentCommands, Cli, Commands, Parser};
 use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing - controlled by RUST_LOG environment variable
-    tracing_subscriber::fmt()
+    // Try to initialize tracing, but don't fail if it doesn't work (e.g., in test environments)
+    let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
-        .init();
+        .try_init();
     let cli = Cli::parse();
 
     match cli.command {
@@ -29,5 +30,6 @@ async fn main() -> Result<()> {
             }
         },
         Commands::Tui(args) => args.run().await,
+        Commands::Health(args) => args.run().await,
     }
 }

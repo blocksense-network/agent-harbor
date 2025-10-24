@@ -81,10 +81,14 @@ Shell completions are provided via the `ah shell-completion` command group. They
 
 #### 1) TUI
 
-- `ah` or `ah tui [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Auto-attaches to or launches the configured multiplexer session, then starts the TUI dashboard within it. See [TUI-PRD](TUI-PRD.md) for full UI details and flows.
+- `ah` or `ah tui [--multiplexer <tmux|zellij|screen|auto>] [--attach] [--new] [--remote-server <NAME|URL>]` — Auto-attaches to or launches the configured multiplexer session, then starts the TUI dashboard within it. See [TUI-PRD](TUI-PRD.md) for full UI details and flows.
 - `ah tui dashboard [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Launches the TUI dashboard directly (for use within multiplexer windows).
 - The main `ah tui` command handles multiplexer session management; the `dashboard` subcommand provides the actual task management interface.
 - With `--remote-server` (or configured `remote-server`), the same dashboard is presented, but task windows may attach to remote sessions over SSH. See [Multi‑OS Testing](Multi-OS-Testing.md) for details on QUIC control plane, SSH via HTTP CONNECT, and client‑side relay in hybrid fleets.
+
+The default value of the `tui.multiplexer` configuration value is `auto` which attempts to detect whether the `ah tui` command was launched in an already supporter terminal or a multiplexer. If a supported terminal is detected, the `ah tui` invocation is replaced with an `ah tui dashboard` process (i.e. using exec).
+
+When multiplexer is set to a specific value, `ah tui` attaches to an existing AH session of the specified multiplexer or launches a new one. Specifying the `--new` flag forces the creation of a new session. Specifying `--attach` results in an error when an existing session is not present.
 
 #### 2) Tasks
 
@@ -844,6 +848,8 @@ Behavior:
 Output and exit codes:
 
 - Human‑readable table by default; `--json` emits `{ agent: { present, version, authenticated, details } }` per tool. Non‑zero exit if any requested agent tool is present but unauthenticated, unless `--quiet` and policy permit soft warnings.
+
+- The command also prints the detected terminal environment and the availability of supported terminal multiplexers.
 
 #### 6) Runtimes, Agents, Hosts (capabilities)
 

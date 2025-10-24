@@ -1,44 +1,22 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use ah_core::TaskManager;
 use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::view_model::FocusElement;
-use ah_tui::view_model::{
-    FilterControl, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
-};
+use ah_tui::view_model::{FilterControl, Msg, MouseAction, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel, ViewModel};
+use ah_tui::settings::{KeyboardOperation, Settings};
+use ah_core::{RepositoryFile, WorkspaceFilesEnumerator};
+use ah_repo::VcsRepo;
 use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use ratatui::layout::Rect;
 use std::sync::Arc;
-use tui_exploration::settings::KeyboardOperation;
-use tui_exploration::view_model::{MouseAction, Msg, ViewModel};
-use tui_exploration::workspace_files::WorkspaceFiles;
 
 // Mock implementations for tests
-#[derive(Clone)]
-struct MockWorkspaceFiles;
-#[async_trait::async_trait]
-impl WorkspaceFiles for MockWorkspaceFiles {
-    async fn stream_repository_files(
-        &self,
-    ) -> Result<
-        futures::stream::BoxStream<
-            'static,
-            Result<tui_exploration::workspace_files::RepositoryFile, ah_repo::error::VcsError>,
-        >,
-        ah_repo::error::VcsError,
-    > {
-        use futures::stream;
-        Ok(stream::empty().boxed())
-    }
-
-    async fn is_git_repository(&self) -> bool {
-        true
-    }
-}
 
 #[derive(Clone)]
 struct MockWorkspaceWorkflows;
@@ -52,11 +30,10 @@ impl WorkspaceWorkflowsEnumerator for MockWorkspaceWorkflows {
 }
 
 fn new_view_model() -> ViewModel {
-    let workspace_files: Arc<dyn WorkspaceFiles> = Arc::new(MockWorkspaceFiles);
-    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
-        Arc::new(MockWorkspaceWorkflows);
-    let task_manager: Arc<dyn tui_exploration::TaskManager> = Arc::new(MockRestClient::new());
-    let settings = tui_exploration::settings::Settings::default();
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(MockWorkspaceWorkflows);
+    let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
+    let settings = Settings::default();
 
     ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
 }

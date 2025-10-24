@@ -4,9 +4,99 @@
 //! Header View Component
 //!
 //! Renders the application header including logo and settings button.
+//! Also handles logo image initialization and processing.
 
+use image::{DynamicImage, GenericImageView, ImageReader};
 use ratatui::{prelude::*, widgets::*};
-use ratatui_image::StatefulImage;
+use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
+use std::io::Cursor;
+
+/// Initialize logo rendering components (Picker and StatefulProtocol)
+pub fn initialize_logo_rendering(
+    bg_color: ratatui::style::Color,
+) -> (
+    Option<Picker>,
+    Option<StatefulProtocol>,
+) {
+    // Try to create a picker that detects terminal graphics capabilities
+    let picker = match Picker::from_query_stdio() {
+        Ok(picker) => Some(picker),
+        Err(_) => {
+            // If we can't detect terminal capabilities, try with default font size
+            // This allows for basic image processing
+            Some(Picker::from_fontsize((8, 16)))
+        }
+    };
+
+    // Try to load and encode the logo image from embedded data
+    let logo_protocol = if let Some(ref picker) = picker {
+        let cell_width = Some(picker.font_size().0);
+        // Try to load the embedded PNG logo
+        let png_data = include_bytes!("../../../../assets/agent-harbor-logo.png");
+        match ImageReader::new(Cursor::new(png_data)).with_guessed_format() {
+            Ok(reader) => match reader.decode() {
+                Ok(img) => {
+                    // Compose the transparent logo onto the themed background before encoding.
+                    let composed = precompose_on_background(img, bg_color);
+                    let prepared = pad_to_cell_width(composed, bg_color, cell_width);
+                    Some(picker.new_resize_protocol(prepared) as StatefulProtocol)
+                }
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    (picker, logo_protocol)
+}
+
+/// Convert a Ratatui color into raw RGB components (default to black for non-RGB variants).
+fn color_to_rgb_components(color: ratatui::style::Color) -> (u8, u8, u8) {
+    match color {
+        ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
+        _ => (0, 0, 0),
+    }
+}
+
+/// Compose a transparent image onto a solid background color.
+fn precompose_on_background(
+    image: DynamicImage,
+    bg_color: ratatui::style::Color,
+) -> DynamicImage {
+    let (r, g, b) = color_to_rgb_components(bg_color);
+    let rgba_logo = image.to_rgba8();
+    let (width, height) = rgba_logo.dimensions();
+    let mut background = image::RgbaImage::from_pixel(width, height, image::Rgba([r, g, b, 255]));
+    image::imageops::overlay(&mut background, &rgba_logo, 0, 0);
+    DynamicImage::ImageRgba8(background)
+}
+
+/// Pad the image width so it fills complete terminal cells, avoiding partially transparent columns.
+fn pad_to_cell_width(
+    image: DynamicImage,
+    bg_color: ratatui::style::Color,
+    cell_width: Option<u16>,
+) -> DynamicImage {
+    let cell_width = match cell_width {
+        Some(width) if width > 0 => width as u32,
+        _ => return image,
+    };
+
+    let (width, height) = image.dimensions();
+    let remainder = width % cell_width;
+    if remainder == 0 {
+        return image;
+    }
+
+    let pad_width = cell_width - remainder;
+    let (r, g, b) = color_to_rgb_components(bg_color);
+    let mut canvas =
+        image::RgbaImage::from_pixel(width + pad_width, height, image::Rgba([r, g, b, 255]));
+    image::imageops::overlay(&mut canvas, &image.to_rgba8(), 0, 0);
+    DynamicImage::ImageRgba8(canvas)
+}
 
 /// Render the header section with logo and settings button
 pub fn render_header(

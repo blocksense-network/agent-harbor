@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod config;
+pub mod health;
 pub mod sandbox;
 pub mod task;
 pub mod test_config;
@@ -46,6 +47,8 @@ pub enum Commands {
     },
     /// Launch the Terminal User Interface
     Tui(tui::TuiArgs),
+    /// Health check commands
+    Health(health::HealthArgs),
 }
 
 #[derive(Subcommand)]

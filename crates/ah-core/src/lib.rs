@@ -19,6 +19,7 @@ pub mod rest_task_manager;
 pub mod session;
 pub mod task;
 pub mod task_manager;
+pub mod workspace_files_enumerator;
 
 /// Core result type used throughout the AH system.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -64,3 +65,8 @@ pub use agent_executor::{AgentExecutionConfig, AgentExecutor, WorkingCopyMode};
 
 /// REST API-based task manager implementation.
 pub use rest_task_manager::{GenericRestTaskManager, RestApiClient, RestTaskManager};
+
+/// Workspace files enumeration for repository file discovery.
+pub use workspace_files_enumerator::{
+    FileStream, RepositoryError, RepositoryFile, WorkspaceFilesEnumerator,
+};
