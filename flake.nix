@@ -201,7 +201,7 @@
               bash -lc '
               set -euo pipefail
               # Run addlicense in-place on the files given by pre-commit
-              "${pkgs.addlicense}/bin/addlicense" -s=only -c "Schelling Point Labs Inc" "$@"
+              "${pkgs.addlicense}/bin/addlicense" -l AGPL-3.0-only -s=only -c "Schelling Point Labs Inc" "$@"
 
               # If anything changed, fail the hook (so the commit stops).
               # Users re-stage and commit again, like with formatters.

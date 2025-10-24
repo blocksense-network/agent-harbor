@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Handshake structures for AgentFS interpose communication
 
 use ssz::{Decode, Encode};
