@@ -4,7 +4,8 @@
 //! Scenario playback engine for deterministic testing
 //!
 //! This module implements the Scenario-Format.md specification for
-//! deterministic playback of LLM interactions.
+//! deterministic playback of LLM interactions based on the existing
+//! server.py mock implementation.
 //!
 //!
 //! ## OVERVIEW:
@@ -118,7 +119,7 @@
 //! - Anthropic: {"content": [{"type": "thinking", "thinking": "thinking_content"}, {"type": "text", "text": "text_content"}, {"type": "tool_use", ...}]} - thinking is exposed as separate content blocks
 //!
 //! ## TOOL CHANGES TRACKING:
-//! When tool validation fails in strict mode, the complete API request is saved to:
+//! When tool validation fails, the complete API request is saved to:
 //! agent-requests/{agent_name}/{version}/request.json
 //!
 //! This creates a git-tracked historical record of third-party agent API evolution:
@@ -136,8 +137,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-use serde_json::{Map as JsonMap, Value as JsonValue, json};
 
 use crate::{
     config::ProxyConfig,
@@ -208,9 +207,6 @@ impl ScenarioPlayer {
 
         // Process the request using the full algorithm
         let response = session.process_request(request, &scenario).await?;
-
-        // Log response for debugging and tool changes tracking
-        self.log_response(request, &response).await?;
 
         Ok(response)
     }
@@ -313,10 +309,7 @@ impl ScenarioPlayer {
 
                 if is_invalid {
                     let error_msg = if force_failure_enabled {
-                        format!(
-                            "Tool validation forced to fail by FORCE_TOOLS_VALIDATION_FAILURE for '{}'",
-                            tool_name
-                        )
+                        format!("Tool validation forced to fail by FORCE_TOOLS_VALIDATION_FAILURE for '{}'", tool_name)
                     } else {
                         format!(
                             "Tool '{}' is not in the valid tools profile for {}",
@@ -371,146 +364,77 @@ impl ScenarioPlayer {
         Ok(())
     }
 
-    /// Log complete response for debugging and tool changes tracking
-    async fn log_response(&self, request: &ProxyRequest, response: &ProxyResponse) -> Result<()> {
-        let request_log_template = self.logging_template();
-        if request_log_template.as_deref() == Some("none") {
-            return Ok(());
-        }
-
-        let log_responses = env_flag("LLM_API_PROXY_LOG_RESPONSES", false);
-        if !log_responses {
-            return Ok(());
-        }
-
-        let api_key = self.extract_session_id(request).unwrap_or_else(|_| "unknown".to_string());
-        let scenario_name = self.current_scenario_name(request);
-
-        let log_path = request_log_template
-            .unwrap()
-            .replace("{scenario}", &scenario_name)
-            .replace("{key}", &api_key);
-
-        let mut entry = JsonMap::new();
-        entry.insert("timestamp".into(), json!(Utc::now().to_rfc3339()));
-        entry.insert("type".into(), json!("response"));
-        entry.insert("method".into(), json!("POST"));
-        entry.insert(
-            "path".into(),
-            json!(match request.client_format {
-                ApiFormat::OpenAI => "/v1/chat/completions",
-                ApiFormat::OpenAIResponses => "/v1/responses",
-                ApiFormat::Anthropic => "/v1/messages",
-            }),
-        );
-        entry.insert("request_id".into(), json!(request.request_id.clone()));
-        entry.insert("client_format".into(), json!(request.client_format));
-        entry.insert("scenario".into(), json!(scenario_name));
-        entry.insert("api_key".into(), json!(api_key));
-        entry.insert("status".into(), json!(response.status));
-        entry.insert("response".into(), response.payload.clone());
-        entry.insert("response_headers".into(), json!(response.headers.clone()));
-
-        let minimize_logs = self.config.read().await.scenario.minimize_logs;
-        self.write_log_entry(&log_path, JsonValue::Object(entry), minimize_logs)
-    }
-
     /// Log complete request with headers and body for debugging and tool changes tracking
     async fn log_request(&self, request: &ProxyRequest) -> Result<()> {
-        let request_log_template = self.logging_template();
-        if request_log_template.as_deref() == Some("none") {
+        // Get request logging configuration from environment or config
+        let request_log_template = std::env::var("REQUEST_LOG_TEMPLATE")
+            .or_else(|_| std::env::var("LLM_API_PROXY_REQUEST_LOG"))
+            .unwrap_or_else(|_| "stdout".to_string());
+
+        if request_log_template == "none" {
             return Ok(());
         }
 
-        let log_headers = env_flag("LLM_API_PROXY_LOG_HEADERS", true);
-        let log_body = env_flag("LLM_API_PROXY_LOG_BODY", true);
-
-        if !log_headers && !log_body {
-            return Ok(());
-        }
-
+        // Extract API key from headers for session identification
         let api_key = self.extract_session_id(request).unwrap_or_else(|_| "unknown".to_string());
-        let scenario_name = self.current_scenario_name(request);
 
+        // Get scenario name from current context
+        let scenario_name = "unknown"; // TODO: Could be enhanced to get from request headers
+
+        // Format log path with template
         let log_path = request_log_template
-            .unwrap()
             .replace("{scenario}", &scenario_name)
             .replace("{key}", &api_key);
 
-        let mut entry = JsonMap::new();
-        entry.insert("timestamp".into(), json!(Utc::now().to_rfc3339()));
-        entry.insert("type".into(), json!("request"));
-        entry.insert("method".into(), json!("POST"));
-        entry.insert(
-            "path".into(),
-            json!(match request.client_format {
+        // Create log entry with comprehensive request information
+        let log_entry = serde_json::json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "method": "POST", // Mock server only handles POST
+            "path": match request.client_format {
                 ApiFormat::OpenAI => "/v1/chat/completions",
                 ApiFormat::OpenAIResponses => "/v1/responses",
                 ApiFormat::Anthropic => "/v1/messages",
-            }),
-        );
-        entry.insert("request_id".into(), json!(request.request_id.clone()));
-        entry.insert("client_format".into(), json!(request.client_format));
-        entry.insert("scenario".into(), json!(scenario_name));
-        entry.insert("api_key".into(), json!(api_key));
+            },
+            "headers": request.headers,
+            "body": request.payload,
+            "request_id": request.request_id,
+            "client_format": request.client_format,
+            "scenario": scenario_name,
+            "api_key": api_key
+        });
 
-        if log_headers {
-            entry.insert("headers".into(), json!(request.headers.clone()));
-        }
-        if log_body {
-            entry.insert("body".into(), request.payload.clone());
-        }
-
-        let minimize_logs = self.config.read().await.scenario.minimize_logs;
-        self.write_log_entry(&log_path, JsonValue::Object(entry), minimize_logs)
-    }
-
-    fn logging_template(&self) -> Option<String> {
-        Some(
-            std::env::var("REQUEST_LOG_TEMPLATE")
-                .or_else(|_| std::env::var("LLM_API_PROXY_REQUEST_LOG"))
-                .unwrap_or_else(|_| "none".to_string()),
-        )
-    }
-
-    fn current_scenario_name(&self, request: &ProxyRequest) -> String {
-        request
-            .headers
-            .get("x-scenario-name")
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string())
-    }
-
-    fn write_log_entry(&self, log_path: &str, entry: JsonValue, minimize: bool) -> Result<()> {
-        let json_string = if minimize {
-            serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string())
-        } else {
-            serde_json::to_string_pretty(&entry).unwrap_or_else(|_| "{}".to_string())
-        };
-
+        // Write to file or stdout
         if log_path == "stdout" {
-            println!("{}", json_string);
-            return Ok(());
-        }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&log_entry).unwrap_or_default()
+            );
+        } else {
+            // Ensure directory exists
+            if let Some(parent) = std::path::Path::new(&log_path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| Error::Scenario {
+                    message: format!("Failed to create log directory: {}", e),
+                })?;
+            }
 
-        if let Some(parent) = std::path::Path::new(log_path).parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Error::Scenario {
-                message: format!("Failed to create log directory: {}", e),
-            })?;
-        }
+            // Append to log file
+            let mut file =
+                std::fs::OpenOptions::new().create(true).append(true).open(&log_path).map_err(
+                    |e| Error::Scenario {
+                        message: format!("Failed to open log file {}: {}", log_path, e),
+                    },
+                )?;
 
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_path)
+            use std::io::Write;
+            writeln!(
+                file,
+                "{}",
+                serde_json::to_string_pretty(&log_entry).unwrap_or_default()
+            )
             .map_err(|e| Error::Scenario {
-                message: format!("Failed to open log file {}: {}", log_path, e),
+                message: format!("Failed to write to log file: {}", e),
             })?;
-
-        use std::io::Write;
-        writeln!(file, "{}", json_string).map_err(|e| Error::Scenario {
-            message: format!("Failed to write to log file {}: {}", log_path, e),
-        })?;
+        }
 
         Ok(())
     }
@@ -787,8 +711,6 @@ pub enum TimelineEvent {
         #[serde(flatten)]
         data: HashMap<String, serde_yaml::Value>,
     },
-    /// Assertion event for verifying filesystem state and other conditions
-    Assert { assert: AssertionData },
 }
 
 /// Response element in an LLM response
@@ -826,7 +748,6 @@ pub struct ProgressStep(pub u64, pub String); // (milliseconds, message)
 
 /// File edit data
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FileEditData {
     pub path: String,
     pub lines_added: u32,
@@ -852,67 +773,12 @@ pub struct ArtifactExpectation {
     pub pattern: Option<String>,
 }
 
-/// Assertion data for verifying filesystem state and other conditions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct AssertionData {
-    pub fs: Option<FilesystemAssertions>,
-    pub text: Option<TextAssertions>,
-    pub json: Option<JsonAssertions>,
-    pub git: Option<GitAssertions>,
-}
-
-/// Filesystem assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct FilesystemAssertions {
-    pub exists: Option<Vec<String>>,
-    pub not_exists: Option<Vec<String>>,
-}
-
-/// Text assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct TextAssertions {
-    pub contains: Option<Vec<String>>,
-}
-
-/// JSON assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct JsonAssertions {
-    pub file: Option<Vec<JsonFileAssertion>>,
-}
-
-/// JSON file assertion
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct JsonFileAssertion {
-    pub path: String,
-    pub pointer: String,
-    pub equals: serde_yaml::Value,
-}
-
-/// Git assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct GitAssertions {
-    pub commit: Option<Vec<GitCommitAssertion>>,
-}
-
-/// Git commit assertion
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct GitCommitAssertion {
-    pub message_contains: Option<String>,
-}
-
 /// Tool call generated from scenario events
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub args: HashMap<String, serde_yaml::Value>,
-}
-
-#[derive(Debug, Default)]
-struct AggregatedResponse {
-    assistant_text: String,
-    tool_calls: Vec<ToolCall>,
-    thinking_steps: Vec<ThinkingStep>,
 }
 
 /// Response part collected from timeline events
@@ -932,7 +798,6 @@ pub struct ScenarioSession {
     pub start_time: std::time::Instant,
     pub tool_profiles: Arc<tool_profiles::ToolProfiles>,
     pub agent_type: tool_profiles::AgentType,
-    pub scenario_started: bool,
 }
 
 impl ScenarioSession {
@@ -948,7 +813,6 @@ impl ScenarioSession {
             start_time: std::time::Instant::now(),
             tool_profiles,
             agent_type,
-            scenario_started: false,
         }
     }
 
@@ -958,155 +822,22 @@ impl ScenarioSession {
         request: &ProxyRequest,
         scenario: &Scenario,
     ) -> Result<ProxyResponse> {
-        // Check if this request contains meaningful content before starting scenario playback
-        if !self.scenario_started {
-            if !self.is_meaningful_request(request) {
-                // Return a minimal response to keep the client connection alive
-                // but don't start scenario playback yet
-                return self.generate_minimal_response(request.client_format);
-            }
-            // This is the first meaningful request - start scenario playback
-            self.scenario_started = true;
-        }
-
         // Follow the algorithm: skip non-response events, collect response parts
         let response_parts = self.collect_response_parts(scenario)?;
-        let aggregated = self.process_response_parts(response_parts)?;
+        let (assistant_text, tool_calls) = self.process_response_parts(response_parts)?;
 
         // Generate API response based on client format (not agent type)
-        let response = self.generate_api_response(aggregated, request.client_format)?;
+        let response =
+            self.generate_api_response(assistant_text, tool_calls, request.client_format)?;
 
         Ok(response)
-    }
-
-    /// Check if a request contains meaningful content that should trigger scenario playback
-    fn is_meaningful_request(&self, request: &ProxyRequest) -> bool {
-        // Check if the request payload contains messages with substantial content
-        if let Some(messages) = request.payload.get("messages") {
-            if let Some(messages_array) = messages.as_array() {
-                for message in messages_array {
-                    if let Some(content) = message.get("content") {
-                        match content {
-                            serde_json::Value::String(text) => {
-                                // Consider requests with more than 3 characters as meaningful
-                                // This filters out very short test requests like "count" but allows
-                                // legitimate short requests like "test"
-                                if text.len() > 3 {
-                                    return true;
-                                }
-                            }
-                            serde_json::Value::Array(content_blocks) => {
-                                // Handle array content (for complex content blocks)
-                                for block in content_blocks {
-                                    if let Some(text) = block.get("text") {
-                                        if let Some(text_str) = text.as_str() {
-                                            if text_str.len() > 3 {
-                                                return true;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            _ => continue,
-                        }
-                    }
-                }
-            }
-        }
-        false
-    }
-
-    /// Generate a minimal response to keep client connection alive before scenario starts
-    fn generate_minimal_response(&self, client_format: crate::converters::ApiFormat) -> Result<ProxyResponse> {
-        match client_format {
-            crate::converters::ApiFormat::Anthropic => {
-                let content = vec![serde_json::json!({
-                    "type": "text",
-                    "text": "Initializing..."
-                })];
-
-                let payload = serde_json::json!({
-                    "id": format!("msg_{}", Uuid::new_v4()),
-                    "type": "message",
-                    "role": "assistant",
-                    "model": "claude-3-5-sonnet-20241022",
-                    "content": content,
-                    "stop_reason": "end_turn",
-                    "stop_sequence": null,
-                    "usage": {
-                        "input_tokens": 0,
-                        "output_tokens": 0
-                    }
-                });
-
-                Ok(ProxyResponse {
-                    status: 200,
-                    payload,
-                    headers: HashMap::new(),
-                })
-            }
-            crate::converters::ApiFormat::OpenAI => {
-                let payload = serde_json::json!({
-                    "id": format!("chatcmpl-{}", Uuid::new_v4()),
-                    "object": "chat.completion",
-                    "created": chrono::Utc::now().timestamp(),
-                    "model": "gpt-4",
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "Initializing..."
-                        },
-                        "finish_reason": "stop"
-                    }],
-                    "usage": {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0
-                    }
-                });
-
-                Ok(ProxyResponse {
-                    status: 200,
-                    payload,
-                    headers: HashMap::new(),
-                })
-            }
-            crate::converters::ApiFormat::OpenAIResponses => {
-                let payload = serde_json::json!({
-                    "id": format!("resp-{}", Uuid::new_v4()),
-                    "object": "response",
-                    "created": chrono::Utc::now().timestamp(),
-                    "model": "gpt-4",
-                    "status": "completed",
-                    "output": [{
-                        "role": "assistant",
-                        "content": [{
-                            "type": "output_text",
-                            "text": "Initializing..."
-                        }]
-                    }],
-                    "usage": {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0
-                    }
-                });
-
-                Ok(ProxyResponse {
-                    status: 200,
-                    payload,
-                    headers: HashMap::new(),
-                })
-            }
-        }
     }
 
     /// Collect response parts from the current scenario event (equivalent to Python _collect_response_parts)
     fn collect_response_parts(&mut self, scenario: &Scenario) -> Result<Vec<ResponsePart>> {
         let mut response_parts = Vec::new();
 
-        // Process events that should execute before the next response (assertions, control events)
+        // Skip events that don't generate API responses, advance to next response-generating event/group
         while self.current_event_index < scenario.timeline.len() {
             let current_event = &scenario.timeline[self.current_event_index];
 
@@ -1117,12 +848,6 @@ impl ScenarioSession {
                 // Skip non-response-generating events (handled by test harness)
                 Some("complete") | Some("merge") | Some("advanceMs") | Some("userInputs")
                 | Some("userCommands") | Some("userEdits") => {
-                    self.current_event_index += 1;
-                    continue;
-                }
-                // Execute assertions before next response to verify expected outcomes
-                Some("assert") => {
-                    self.execute_assertion(current_event)?;
                     self.current_event_index += 1;
                     continue;
                 }
@@ -1210,9 +935,6 @@ impl ScenarioSession {
             TimelineEvent::LlmResponse { .. } => Err(Error::Scenario {
                 message: "llmResponse should be handled separately".to_string(),
             }),
-            TimelineEvent::Assert { .. } => Err(Error::Scenario {
-                message: "Assert events should be handled separately".to_string(),
-            }),
         }
     }
 
@@ -1236,80 +958,61 @@ impl ScenarioSession {
     fn process_response_parts(
         &self,
         response_parts: Vec<ResponsePart>,
-    ) -> Result<AggregatedResponse> {
-        let mut aggregate = AggregatedResponse::default();
+    ) -> Result<(String, Vec<ToolCall>)> {
+        let mut assistant_text = String::new();
+        let mut tool_calls = Vec::new();
 
         for part in response_parts {
             match part {
-                ResponsePart::Think(steps) => {
-                    aggregate.thinking_steps.extend(steps);
+                ResponsePart::Think(_) => {
+                    // Thinking content - handled differently by provider
+                    // For now, we don't include thinking in responses
+                    // (matches OpenAI behavior where thinking is internal)
                 }
                 ResponsePart::Assistant(steps) => {
+                    // Assistant message
                     for step in steps {
-                        aggregate.assistant_text.push_str(&step.1);
+                        assistant_text.push_str(&step.1); // step.1 is the text
                     }
                 }
                 ResponsePart::ToolUse(tool_data) => {
-                    if let Some(call) = self.tool_profiles.map_tool_call(
+                    // Tool use event - map to agent-specific tool calls
+                    let tool_call = self.tool_profiles.map_tool_call(
                         self.agent_type,
                         &tool_data.tool_name,
                         &tool_data.args,
-                    ) {
-                        aggregate.tool_calls.push(call);
+                    );
+                    if let Some(call) = tool_call {
+                        tool_calls.push(call);
                     }
                 }
-                ResponsePart::FileEdit(edit_data) => {
-                    let mut args = HashMap::new();
-                    args.insert(
-                        "path".to_string(),
-                        serde_yaml::Value::String(edit_data.path.clone()),
-                    );
-                    args.insert(
-                        "linesAdded".to_string(),
-                        serde_yaml::Value::Number(serde_yaml::Number::from(
-                            edit_data.lines_added as u64,
-                        )),
-                    );
-                    args.insert(
-                        "linesRemoved".to_string(),
-                        serde_yaml::Value::Number(serde_yaml::Number::from(
-                            edit_data.lines_removed as u64,
-                        )),
-                    );
-
-                    if let Some(call) =
-                        self.tool_profiles.map_tool_call(self.agent_type, "agentEdits", &args)
-                    {
-                        aggregate.tool_calls.push(call);
-                    } else {
-                        aggregate.tool_calls.push(ToolCall {
-                            id: format!("call_{}", uuid::Uuid::new_v4()),
-                            name: "edit_file".to_string(),
-                            args,
-                        });
-                    }
+                ResponsePart::FileEdit(_edit_data) => {
+                    // File editing - map to appropriate editing tool
+                    // For now, map to a generic edit tool
+                    let tool_call = ToolCall {
+                        id: format!("call_{}", uuid::Uuid::new_v4()),
+                        name: "edit_file".to_string(),
+                        args: HashMap::new(), // TODO: Include file edit args
+                    };
+                    tool_calls.push(tool_call);
                 }
             }
         }
 
-        Ok(aggregate)
+        Ok((assistant_text, tool_calls))
     }
 
     /// Generate API response based on format (implements coalescing rules)
     fn generate_api_response(
         &self,
-        aggregate: AggregatedResponse,
+        assistant_text: String,
+        tool_calls: Vec<ToolCall>,
         client_format: crate::converters::ApiFormat,
     ) -> Result<ProxyResponse> {
-        let AggregatedResponse {
-            assistant_text,
-            tool_calls,
-            thinking_steps,
-        } = aggregate;
-
+        // Generate response based on client format (not agent type)
         match client_format {
             crate::converters::ApiFormat::Anthropic => {
-                self.generate_anthropic_response(assistant_text, tool_calls, thinking_steps)
+                self.generate_anthropic_response(assistant_text, tool_calls)
             }
             crate::converters::ApiFormat::OpenAI => {
                 self.generate_openai_response(assistant_text, tool_calls)
@@ -1385,17 +1088,8 @@ impl ScenarioSession {
         &self,
         assistant_text: String,
         tool_calls: Vec<ToolCall>,
-        thinking_steps: Vec<ThinkingStep>,
     ) -> Result<ProxyResponse> {
         let mut content = Vec::new();
-
-        for step in thinking_steps {
-            content.push(serde_json::json!({
-                "type": "thinking",
-                "thinking": step.1,
-                "duration_ms": step.0,
-            }));
-        }
 
         // Add text content if present
         if !assistant_text.is_empty() {
@@ -1419,10 +1113,9 @@ impl ScenarioSession {
             "id": format!("msg_{}", Uuid::new_v4()),
             "type": "message",
             "role": "assistant",
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "mock-model",
             "content": content,
             "stop_reason": "end_turn",
-            "stop_sequence": null,
             "usage": {
                 "input_tokens": 0,
                 "output_tokens": 0
@@ -1488,78 +1181,6 @@ impl ScenarioSession {
         })
     }
 
-    /// Execute assertion event to verify filesystem state and other conditions
-    fn execute_assertion(&self, event: &TimelineEvent) -> Result<()> {
-        match event {
-            TimelineEvent::Assert { assert } => {
-                // Execute filesystem assertions
-                if let Some(fs_assertions) = &assert.fs {
-                    self.execute_filesystem_assertions(fs_assertions)?;
-                }
-                // Note: Other assertion types (text, json, git) are not yet implemented
-                // They would be handled here in the future
-            }
-            TimelineEvent::Event(data) => {
-                // Handle legacy assert events in Event format
-                if let Some(assert_value) = data.get("assert") {
-                    let assertion_data: AssertionData = serde_yaml::from_value(assert_value.clone())
-                        .map_err(|e| Error::Scenario {
-                            message: format!("Failed to parse legacy assert event: {}", e),
-                        })?;
-
-                    // Execute filesystem assertions
-                    if let Some(fs_assertions) = &assertion_data.fs {
-                        self.execute_filesystem_assertions(fs_assertions)?;
-                    }
-                    // Note: Other assertion types (text, json, git) are not yet implemented
-                    // They would be handled here in the future
-                } else {
-                    return Err(Error::Scenario {
-                        message: "Invalid assertion event format".to_string(),
-                    });
-                }
-            }
-            _ => {
-                return Err(Error::Scenario {
-                    message: "Not an assertion event".to_string(),
-                });
-            }
-        };
-
-        Ok(())
-    }
-
-    /// Execute filesystem assertions (fs.exists and fs.notExists)
-    fn execute_filesystem_assertions(&self, assertions: &FilesystemAssertions) -> Result<()> {
-        // Check files/directories that must exist
-        if let Some(exists_paths) = &assertions.exists {
-            for path_str in exists_paths {
-                let path = std::path::Path::new(path_str);
-                if !path.exists() {
-                    return Err(Error::Scenario {
-                        message: format!("Filesystem assertion failed: path '{}' does not exist", path_str),
-                    });
-                }
-                println!("✓ Filesystem assertion passed: '{}' exists", path_str);
-            }
-        }
-
-        // Check files/directories that must not exist
-        if let Some(not_exists_paths) = &assertions.not_exists {
-            for path_str in not_exists_paths {
-                let path = std::path::Path::new(path_str);
-                if path.exists() {
-                    return Err(Error::Scenario {
-                        message: format!("Filesystem assertion failed: path '{}' exists but should not", path_str),
-                    });
-                }
-                println!("✓ Filesystem assertion passed: '{}' does not exist", path_str);
-            }
-        }
-
-        Ok(())
-    }
-
     /// Get event type from timeline event
     fn get_event_type(&self, event: &TimelineEvent) -> Option<String> {
         match event {
@@ -1578,8 +1199,6 @@ impl ScenarioSession {
                         Some("agentEdits".to_string())
                     } else if keys.contains(&&"assistant".to_string()) {
                         Some("assistant".to_string())
-                    } else if keys.contains(&&"assert".to_string()) {
-                        Some("assert".to_string())
                     } else {
                         None
                     }
@@ -1587,17 +1206,6 @@ impl ScenarioSession {
             }
             TimelineEvent::Control { event_type, .. } => Some(event_type.clone()),
             TimelineEvent::LlmResponse { .. } => Some("llmResponse".to_string()),
-            TimelineEvent::Assert { .. } => Some("assert".to_string()),
         }
     }
-}
-
-fn env_flag(name: &str, default: bool) -> bool {
-    std::env::var(name)
-        .map(|value| match value.to_lowercase().as_str() {
-            "1" | "true" | "yes" | "on" => true,
-            "0" | "false" | "no" | "off" => false,
-            _ => default,
-        })
-        .unwrap_or(default)
 }

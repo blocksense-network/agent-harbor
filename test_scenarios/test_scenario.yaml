@@ -12,9 +12,13 @@ repo:
 
         A simple test scenario for the mock server.
 timeline:
-  - think:
-      - [1000, "Starting test scenario"]
-      - [500, "This is a simple test to verify scenario execution"]
+  - llmResponse:
+      - think:
+          - [1000, "Starting test scenario"]
+          - [500, "This is a simple test to verify scenario execution"]
+      - assistant:
+          - [1000, "Test scenario completed successfully"]
+          - [500, "All events processed"]
 
   - agentToolUse:
       toolName: "run_command"
@@ -30,10 +34,6 @@ timeline:
       path: "test.txt"
       linesAdded: 1
       linesRemoved: 0
-
-  - assistant:
-      - [1000, "Test scenario completed successfully"]
-      - [500, "All events processed"]
 
   - complete: true
   - merge: true

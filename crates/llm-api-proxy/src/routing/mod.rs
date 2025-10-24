@@ -12,9 +12,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::{
-    config::{ProviderConfig, ProxyConfig},
+    config::{ProviderConfig, ProxyConfig, RoutingConfig},
     error::{Error, Result},
-    proxy::{ProviderInfo, ProxyRequest},
+    proxy::{ProviderInfo, ProxyRequest, SessionConfig},
 };
 
 // TODO: Replace with actual Helicone imports when available
@@ -39,6 +39,27 @@ impl DynamicRouter {
     pub async fn new(config: std::sync::Arc<tokio::sync::RwLock<ProxyConfig>>) -> Result<Self> {
         // TODO: Initialize Helicone dynamic router with our configuration
         // let helicone_router = Self::create_helicone_router(&config).await?;
+
+        Ok(Self {
+            // helicone_router,
+            config,
+            selector: ProviderSelector::new(),
+        })
+    }
+
+    /// Create a new dynamic router from session configuration
+    pub async fn new_from_session(session_config: SessionConfig) -> Result<Self> {
+        // Create a temporary ProxyConfig from session config
+        let temp_config = ProxyConfig {
+            server: Default::default(),
+            providers: session_config.providers,
+            routing: session_config.routing_config,
+            metrics: Default::default(),
+            security: Default::default(),
+            scenario: Default::default(),
+        };
+
+        let config = std::sync::Arc::new(tokio::sync::RwLock::new(temp_config));
 
         Ok(Self {
             // helicone_router,

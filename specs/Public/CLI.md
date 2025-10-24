@@ -1201,6 +1201,7 @@ OPTIONS:
                                      Output format: text (default), text-normalized, json, or json-normalized
   --llm-api <URI>                    Custom LLM API URI for agent backend
   --llm-api-key <KEY>                API key for custom LLM API
+  --llm-api-proxy-url <URL>          LLM API proxy URL to use for routing requests
   --repo <PATH>                      Repository path (auto-detected if not provided)
   --working-copy <auto|cow-overlay|worktree|in-place>
                                      Working copy mode for isolation (default: auto)
@@ -1270,6 +1271,19 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
    - Cloud agents: May use browser automation when `--browser-automation true`
    - Session recording: Captures output with `ah agent record` when `--record-output yes`
 
+**LLM API Proxy Routing:**
+
+When `--llm-api-proxy-url` is specified, the agent uses an LLM API proxy for request routing instead of direct API calls:
+
+- **Session Preparation**: Automatically prepares a routing session with the proxy using either a user-provided or randomly generated API key
+- **Credential Discovery**: For random keys, discovers credentials from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or common credential files (`.codex/auth.json`, `.config/claude/auth.json`)
+- **Provider Mapping**: Maps agent types to appropriate providers:
+  - `codex` → OpenAI provider
+  - `claude` → Anthropic provider
+  - Other agents → OpenRouter fallback
+- **Request Routing**: All LLM API calls are routed through the proxy with the prepared session configuration
+- **Session Management**: Sessions automatically expire after 3 days of inactivity or can be explicitly ended
+
 7. **Monitoring and Completion**: Tracks agent execution and handles completion:
    - Real-time event streaming for TUI integration
    - OS notifications on completion when `--follow` is specified
@@ -1304,6 +1318,12 @@ ah agent start --agent claude --sandbox devcontainer --devcontainer .devcontaine
 
 # Run in-place without isolation (policy-gated)
 ah agent start --working-copy in-place --sandbox disabled --agent openhands --prompt "Fix the bug in the login function"
+
+# Use LLM API proxy with automatic credential discovery
+ah agent start --agent codex --llm-api-proxy-url http://localhost:18081 --prompt "Implement a new feature"
+
+# Use LLM API proxy with explicit API key
+ah agent start --agent claude --llm-api-proxy-url http://localhost:18081 --llm-api-key sk-custom-key-123 --prompt "Review the code changes"
 ```
 
 ```

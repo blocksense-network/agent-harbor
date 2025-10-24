@@ -189,7 +189,24 @@ pub trait AgentExecutor: Send + Sync {
     ///
     /// This allows setting up a custom HOME directory with authentication
     /// credentials copied from the user's actual home directory.
-    async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()>;
+    ///
+    /// Default implementation gets credential paths and uses utility functions
+    /// to perform the copying.
+    async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()> {
+        let paths = self.credential_paths();
+        if !paths.is_empty() {
+            crate::credentials::copy_files(&paths, src_home, dst_home).await
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Get API key from user credentials for external API access
+    ///
+    /// This method retrieves API keys that can be used for proxy routing
+    /// or direct API calls. For agents that use OAuth, this may involve
+    /// token exchange to obtain API keys from OAuth credentials.
+    async fn get_user_api_key(&self) -> AgentResult<Option<String>>;
 
     /// Export agent session from HOME directory to compressed archive
     ///
@@ -210,6 +227,12 @@ pub trait AgentExecutor: Send + Sync {
     ///
     /// For example: ~/.cursor, ~/.config/crush, ~/.copilot
     fn config_dir(&self, home: &Path) -> PathBuf;
+
+    /// Get platform-specific credential file paths for this agent
+    ///
+    /// Returns the relative paths to credential files that should be copied
+    /// when setting up a custom agent home directory.
+    fn credential_paths(&self) -> Vec<PathBuf>;
 
     /// Get the expected state/data directory path for this agent
     ///

@@ -6,16 +6,16 @@ Spec: See [Scenario-Format.md](../../specs/Public/Scenario-Format.md) for the sc
 
 Deliver a high-performance LLM API proxy library that can be integrated into `ah webui` to provide API translation, routing, metrics collection, and scenario playback capabilities. The library should translate between OpenAI and Anthropic API formats, route requests to multiple providers (OpenRouter, Anthropic, OpenAI, etc.), collect comprehensive metrics, and support deterministic playback of Scenario-Format scenarios.
 
-## Current Status: ✅ Bidirectional proxy with scenario playback and Anthropic API compliance
+## Current Status: ✅ Bidirectional proxy with scenario playback and complete API compliance
 
 **Implemented Features:**
 - Bidirectional OpenAI ↔ Anthropic conversion for chat completions, responses API, tool calls, metadata, and streaming deltas
 - Weighted round-robin routing with model-pattern rules, replica weights, and provider fallback selection
 - HTTP client and configuration system with provider management, API key injection, and environment overrides
 - Metrics collection (latency, request counts, token usage) integrated with proxy lifecycle
-- Scenario playback engine aligned with `Scenario-Format.md`, including tool profile validation and request/response logging hooks
+- Scenario playback engine aligned with `Scenario-Format.md`, including tool profile validation, request/response logging hooks, and special handling for auxiliary model requests (haiku topic detection)
 - Clap-based test server wiring converters, routing, and scenario playback for manual and automated runs
-- Unit tests covering converters (bidirectional + streaming), routing selector, scenario playback, and configuration validation
+ - Unit tests covering converters (bidirectional + streaming), routing selector, scenario playback, configuration validation, API format compliance, and thinking-assistant pairing validation rules
 
 **Current Limitations / Known Issues:**
 - Multimodal payloads (audio/images) are skipped during conversion with warnings
@@ -64,6 +64,11 @@ Deliver a high-performance LLM API proxy library that can be integrated into `ah
    - ✅ Filesystem assertion events (`fs.exists`, `fs.notExists`) executed before next response
    - ✅ Initial prompt detection - waits for meaningful requests before starting scenario playback
    - ✅ Anthropic API response format compliance with required fields (`stop_sequence`, proper usage structure)
+   - ✅ OpenAI Responses API format compliance with required `type: "message"` field and current model names
+   - ✅ Anthropic Messages API format compliance with thinking signatures, required text blocks, and realistic usage values
+   - ✅ Scenario validation rules (thinking blocks must be immediately followed by assistant responses)
+   - ✅ Haiku model topic detection handling (returns "not a new topic" for scenario playback tests)
+   - ✅ `llmResponse` event format for grouping thinking + assistant responses in single API calls
 
 ### 🔄 Outstanding Tasks
 

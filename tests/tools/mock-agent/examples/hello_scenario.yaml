@@ -5,8 +5,11 @@ name: hello_scenario
 repo:
   init: true
 timeline:
-  - think:
-      - [500, "I'll create hello.py with a print statement."]
+  - llmResponse:
+      - think:
+          - [500, "I'll create hello.py with a print statement."]
+      - assistant:
+          - [300, "Created hello.py. Run: python hello.py"]
   - agentToolUse:
       toolName: "write_file"
       args:
@@ -14,8 +17,6 @@ timeline:
         text: "print('Hello, World!')\n"
       result: "File created"
       status: "ok"
-  - assistant:
-      - [300, "Created hello.py. Run: python hello.py"]
   - agentToolUse:
       toolName: "read_file"
       args:
@@ -29,4 +30,3 @@ expect:
   artifacts:
     - type: "taskFile"
       pattern: "hello.py"
-  

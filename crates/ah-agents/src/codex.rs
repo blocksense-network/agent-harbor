@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /// Codex CLI agent implementation
-use crate::credentials::{codex_credential_paths, copy_files};
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Codex CLI agent executor
 pub struct CodexAgent {
@@ -186,17 +185,87 @@ impl AgentExecutor for CodexAgent {
         Ok(child)
     }
 
-    async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()> {
-        info!(
-            "Copying Codex credentials from {:?} to {:?}",
-            src_home, dst_home
-        );
+    /// Platform-specific credential paths for Codex CLI
+    fn credential_paths(&self) -> Vec<PathBuf> {
+        vec![
+            // Authentication file (as defined in Codex Rust code)
+            PathBuf::from(".codex/auth.json"),
+        ]
+    }
 
-        let paths = codex_credential_paths();
-        copy_files(&paths, src_home, dst_home).await?;
+    async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
+        // 1. Check direct environment variable (Codex-specific: OPENAI_API_KEY)
+        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            if !api_key.trim().is_empty() {
+                debug!("Found OpenAI API key in environment variable");
+                return Ok(Some(api_key));
+            }
+        }
 
-        debug!("Codex credentials copied successfully");
-        Ok(())
+        // 2. Check environment variable pointing to file (Codex-specific: OPENAI_API_KEY_FILE)
+        if let Ok(file_path) = std::env::var("OPENAI_API_KEY_FILE") {
+            match tokio::fs::read_to_string(&file_path).await {
+                Ok(content) => {
+                    let api_key = content.trim().to_string();
+                    if !api_key.is_empty() {
+                        debug!("Found OpenAI API key in file specified by OPENAI_API_KEY_FILE");
+                        return Ok(Some(api_key));
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to read API key file {}: {}", file_path, e);
+                }
+            }
+        }
+
+        // 3. Try OAuth token exchange from Codex auth file
+        if let Some(home_dir) = dirs::home_dir() {
+            let auth_path = home_dir.join(".codex").join("auth.json");
+
+            match std::fs::read_to_string(&auth_path) {
+                Ok(content) => {
+                    match serde_json::from_str::<serde_json::Value>(&content) {
+                        Ok(json) => {
+                            // Try to extract OAuth tokens from the auth file
+                            if let Some(oauth) = json.get("oauth") {
+                                if let (Some(_access_token), Some(id_token)) = (
+                                    oauth.get("access_token").and_then(|v| v.as_str()),
+                                    oauth.get("id_token").and_then(|v| v.as_str()),
+                                ) {
+                                    debug!(
+                                        "Found OAuth credentials in Codex auth file, attempting token exchange"
+                                    );
+                                    match crate::oauth_key_exchange::exchange_oauth_for_openai_api_key(id_token, "codex").await {
+                                        Ok(api_key) => Ok(Some(api_key)),
+                                        Err(e) => {
+                                            warn!("Failed to exchange OAuth token for API key: {}", e);
+                                            Ok(None)
+                                        }
+                                    }
+                                } else {
+                                    debug!("OAuth credentials missing required tokens");
+                                    Ok(None)
+                                }
+                            } else {
+                                debug!("No OAuth section found in Codex auth file");
+                                Ok(None)
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse Codex auth file: {}", e);
+                            Ok(None)
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("Codex auth file not readable: {}", e);
+                    Ok(None)
+                }
+            }
+        } else {
+            warn!("Could not determine home directory");
+            Ok(None)
+        }
     }
 
     async fn export_session(&self, home_dir: &Path) -> AgentResult<PathBuf> {

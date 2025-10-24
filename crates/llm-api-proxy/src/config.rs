@@ -32,6 +32,46 @@ pub struct ProxyConfig {
 impl Default for ProxyConfig {
     fn default() -> Self {
         let mut providers = HashMap::new();
+        // Add Anthropic provider
+        providers.insert(
+            "anthropic".to_string(),
+            ProviderConfig {
+                name: "anthropic".to_string(),
+                base_url: "https://api.anthropic.com".to_string(),
+                api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
+                headers: HashMap::new(),
+                models: vec![
+                    "claude-3-haiku-20240307".to_string(),
+                    "claude-3-sonnet-20240229".to_string(),
+                    "claude-3-opus-20240229".to_string(),
+                    "claude-3-5-sonnet-20241022".to_string(),
+                ],
+                weight: 1,
+                rate_limit_rpm: Some(50), // Anthropic rate limit
+                timeout_seconds: Some(300),
+            },
+        );
+
+        // Add OpenAI provider
+        providers.insert(
+            "openai".to_string(),
+            ProviderConfig {
+                name: "openai".to_string(),
+                base_url: "https://api.openai.com/v1".to_string(),
+                api_key: std::env::var("OPENAI_API_KEY").ok(),
+                headers: HashMap::new(),
+                models: vec![
+                    "gpt-4o".to_string(),
+                    "gpt-4o-mini".to_string(),
+                    "gpt-4-turbo".to_string(),
+                    "gpt-3.5-turbo".to_string(),
+                ],
+                weight: 1,
+                rate_limit_rpm: Some(10000), // OpenAI rate limit
+                timeout_seconds: Some(60),
+            },
+        );
+
         // Add OpenRouter provider for Anthropic -> OpenRouter routing
         providers.insert(
             "openrouter".to_string(),
@@ -167,6 +207,29 @@ impl Default for RoutingConfig {
             max_retries: 3,
             retry_delay_ms: 1000,
         }
+    }
+}
+
+impl std::hash::Hash for ProviderConfig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.base_url.hash(state);
+        // Don't hash api_key for security
+        // Don't hash headers as they may contain sensitive data
+        // Don't hash models as they might be large
+        self.weight.hash(state);
+        self.rate_limit_rpm.hash(state);
+        self.timeout_seconds.hash(state);
+    }
+}
+
+impl std::hash::Hash for RoutingConfig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.default_provider.hash(state);
+        // Don't hash model_routing as it's a HashMap
+        self.enable_fallback.hash(state);
+        self.max_retries.hash(state);
+        self.retry_delay_ms.hash(state);
     }
 }
 
@@ -364,6 +427,26 @@ impl ProxyConfig {
             if provider.models.is_empty() {
                 return Err(Error::Config {
                     message: format!("Provider '{}' has no models configured", name),
+                });
+            }
+
+            // For the default provider, require API key when not in scenario mode (except for mock provider)
+            if name == &self.routing.default_provider
+                && name != "mock"
+                && !self.scenario.enabled
+                && provider.api_key.is_none()
+            {
+                return Err(Error::Config {
+                    message: format!(
+                        "Default provider '{}' requires an API key. Set the {} environment variable or provide --api-key",
+                        name,
+                        match name.as_str() {
+                            "anthropic" => "ANTHROPIC_API_KEY",
+                            "openai" => "OPENAI_API_KEY",
+                            "openrouter" => "OPENROUTER_API_KEY",
+                            _ => "API_KEY",
+                        }
+                    ),
                 });
             }
         }

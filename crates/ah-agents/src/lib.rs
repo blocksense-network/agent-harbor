@@ -55,6 +55,7 @@
 
 // Public re-exports
 pub mod credentials;
+pub mod oauth_key_exchange;
 pub mod session;
 pub mod traits;
 

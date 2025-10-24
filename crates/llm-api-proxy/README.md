@@ -11,6 +11,14 @@ The library provides essential proxying capabilities for routing LLM API request
 #### HTTP Client with Provider Routing
 Routes requests through the implemented OpenRouter integration and applies provider-specific configuration such as weighted routing and authentication. Additional providers can be layered in via `ProxyConfig` without altering the library code.
 
+#### Dynamic Session-Based Routing
+Provides runtime configuration of routing rules on a per-session basis through REST API endpoints. Sessions are identified by API keys and can have custom routing configurations applied dynamically, with automatic cleanup after inactivity periods.
+
+- **Session Preparation**: POST `/prepare-session` endpoint accepts API key and routing configuration
+- **Automatic Application**: Requests with configured API keys automatically use their assigned routing rules
+- **Configuration Caching**: Identical configurations are deduplicated with reference counting
+- **Session Lifecycle**: Automatic expiration after 3 days of inactivity or explicit cleanup via `/end-session`
+
 #### Configuration System
 YAML-based configuration for defining providers, their API endpoints, authentication credentials, and routing rules. Supports environment variable substitution for sensitive data like API keys.
 
@@ -32,9 +40,6 @@ Executes pre-recorded scenarios with predictable outcomes, enabling reliable int
 
 #### Timeline-based Event Processing
 Processes scenario events in chronological order with proper timing, simulating real user interactions and system responses for comprehensive testing.
-
-#### Workspace State Management *(planned)*
-The Rust port does not yet recreate the full filesystem orchestration from the historical Python mock server. Tests that depend on workspace mirroring still need to rely on the legacy harness or extend this crate.
 
 #### HTTP Test Server
 Built-in test server that serves scenario responses over HTTP, enabling end-to-end integration testing without external API calls.
@@ -104,6 +109,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+```
+
+#### Dynamic Session Configuration
+
+Configure routing rules for specific API keys through REST endpoints:
+
+```rust
+use serde_json::json;
+
+// Prepare a session with custom routing
+let prepare_request = json!({
+    "api_key": "sk-session-123",
+    "routing_config": {
+        "default_provider": "anthropic",
+        "providers": {
+            "anthropic": {
+                "api_key": "sk-ant-api-key-here",
+                "base_url": "https://api.anthropic.com"
+            }
+        }
+    }
+});
+
+// All subsequent requests with this API key will use the configured routing
+// curl -X POST http://localhost:18081/prepare-session \
+//   -H "Content-Type: application/json" \
+//   -d '{"api_key": "sk-session-123", "routing_config": {...}}'
+
+// End a session explicitly
+// curl -X POST http://localhost:18081/end-session \
+//   -H "Content-Type: application/json" \
+//   -d '{"api_key": "sk-session-123"}'
 ```
 
 #### Proxying Requests
@@ -204,6 +241,46 @@ This command:
 - Loads scenario responses from the YAML file
 - Logs all HTTP traffic to `test-session.log`
 - Includes request headers, request bodies, and response payloads in logs
+
+#### Session-Based Routing
+
+Configure per-session routing rules dynamically:
+
+```bash
+# Prepare a session with custom Anthropic routing
+curl -X POST http://localhost:18081/prepare-session \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "sk-session-custom-123",
+    "routing_config": {
+      "default_provider": "anthropic",
+      "providers": {
+        "anthropic": {
+          "name": "anthropic",
+          "base_url": "https://api.anthropic.com",
+          "api_key": "sk-ant-your-anthropic-key",
+          "models": ["claude-3-sonnet-20240229"],
+          "weight": 1
+        }
+      }
+    }
+  }'
+
+# Now requests with this API key will use Anthropic
+curl -X POST http://localhost:18081/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-session-custom-123" \
+  -d '{
+    "model": "claude-3-sonnet-20240229",
+    "messages": [{"role": "user", "content": "Hello from custom session!"}],
+    "max_tokens": 100
+  }'
+
+# End the session explicitly
+curl -X POST http://localhost:18081/end-session \
+  -H "Content-Type: application/json" \
+  -d '{"api_key": "sk-session-custom-123"}'
+```
 
 #### Testing with curl
 
@@ -425,6 +502,61 @@ pub enum ApiFormat {
 pub enum ProxyMode {
     Live,      // Route to real LLM providers
     Scenario,  // Use scenario playback for testing
+}
+```
+
+### REST API Endpoints
+
+#### Session Management Endpoints
+
+##### POST `/prepare-session`
+
+Prepares a session with custom routing configuration for a specific API key.
+
+**Request Body:**
+```json
+{
+  "api_key": "sk-session-123",
+  "routing_config": {
+    "default_provider": "anthropic",
+    "providers": {
+      "anthropic": {
+        "name": "anthropic",
+        "base_url": "https://api.anthropic.com",
+        "api_key": "sk-ant-your-key",
+        "models": ["claude-3-sonnet-20240229"],
+        "weight": 1
+      }
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "session_id": "session-uuid-123",
+  "expires_at": "2025-10-24T10:30:00Z"
+}
+```
+
+##### POST `/end-session`
+
+Explicitly ends a session and cleans up its routing configuration.
+
+**Request Body:**
+```json
+{
+  "api_key": "sk-session-123"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Session ended"
 }
 ```
 

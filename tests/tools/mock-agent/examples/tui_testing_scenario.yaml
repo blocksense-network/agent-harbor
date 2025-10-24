@@ -6,8 +6,11 @@ description: "Test scenario demonstrating TUI testing with screenshots and user 
 repo:
   init: true
 timeline:
-  - think:
-      - [500, "I'll start by creating a simple Python script and taking a screenshot."]
+  - llmResponse:
+      - think:
+          - [500, "I'll start by creating a simple Python script and taking a screenshot."]
+      - assistant:
+          - [300, "Created hello.py successfully. Let me run it to show the output."]
   - screenshot: "initial_workspace"
   - agentToolUse:
       toolName: "write_file"
@@ -17,8 +20,6 @@ timeline:
       result: "File created"
       status: "ok"
   - screenshot: "after_file_creation"
-  - assistant:
-      - [300, "Created hello.py successfully. Let me run it to show the output."]
   - userCommand:
       cmd: "python hello.py"
       cwd: "."

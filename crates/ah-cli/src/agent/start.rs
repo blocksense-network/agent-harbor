@@ -3,12 +3,15 @@
 
 //! Agent start command implementation
 
-use ah_agents::{AgentExecutor, AgentLaunchConfig};
+use ah_agents::{AgentExecutor, AgentLaunchConfig, credentials};
 use ah_core::agent_types::AgentType;
 use anyhow::Context;
 use clap::{Args, ValueEnum};
+use reqwest::Client;
+use serde_json::json;
 use std::path::PathBuf;
 use std::process::Stdio;
+use uuid;
 
 /// CLI-specific agent type enum that derives clap::ValueEnum
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
@@ -92,6 +95,10 @@ pub struct AgentStartArgs {
     /// API key for custom LLM API
     #[arg(long, value_name = "KEY")]
     pub llm_api_key: Option<String>,
+
+    /// LLM API proxy URL to use for routing requests
+    #[arg(long, value_name = "URL")]
+    pub llm_api_proxy_url: Option<String>,
 
     /// Working copy mode
     #[arg(long, default_value = "in-place")]
@@ -204,14 +211,106 @@ impl AgentStartArgs {
             AgentType::Mock => unreachable!(), // handled above
         };
 
-        // Build the launch configuration
-        let config = self.build_agent_config(agent_type)?;
+        // Handle LLM API proxy configuration
+        let mut config = if let Some(proxy_url) = &self.llm_api_proxy_url {
+            let session_api_key =
+                self.prepare_proxy_session(proxy_url, &agent, agent_type.clone()).await?;
+            let mut config = self.build_agent_config(agent_type)?;
+            config = config.api_server(proxy_url.clone());
+            config = config.api_key(session_api_key);
+            config
+        } else {
+            self.build_agent_config(agent_type)?
+        };
 
         // Execute the agent (replace current process)
         agent.exec(config).await?;
 
         // This should never return on success
         unreachable!("exec() should replace the current process")
+    }
+
+    /// Prepare a session with the LLM API proxy
+    async fn prepare_proxy_session(
+        &self,
+        proxy_url: &str,
+        agent: &Box<dyn AgentExecutor>,
+        agent_type: AgentType,
+    ) -> anyhow::Result<String> {
+        // Generate or use provided API key for session
+        let session_api_key = self.llm_api_key.clone().unwrap_or_else(|| {
+            // Generate a random API key for the session
+            format!("sk-session-{}", uuid::Uuid::new_v4().simple())
+        });
+
+        // Get API key from the agent
+        let api_key = agent.get_user_api_key().await?.unwrap_or_else(|| String::new());
+
+        // Determine provider based on agent type
+        let provider_name = match agent_type {
+            AgentType::Codex => "openai",
+            AgentType::Claude => "anthropic",
+            // For other agents, use OpenRouter as fallback
+            _ => "openrouter",
+        };
+
+        // Prepare routing configuration
+        let routing_config = json!({
+            "default_provider": provider_name,
+            "providers": {
+                provider_name: {
+                    "name": provider_name,
+                    "base_url": match provider_name {
+                        "anthropic" => "https://api.anthropic.com",
+                        "openai" => "https://api.openai.com/v1",
+                        "openrouter" => "https://openrouter.ai/api/v1",
+                        _ => "https://api.openai.com/v1"
+                    },
+                    "api_key": api_key,
+                    "models": match agent_type {
+                        AgentType::Codex => vec!["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+                        AgentType::Claude => vec!["claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+                        _ => vec!["gpt-4o"]
+                    }
+                }
+            }
+        });
+
+        // Prepare session with proxy
+        let client = Client::new();
+        let prepare_url = format!("{}/prepare-session", proxy_url.trim_end_matches('/'));
+
+        let request_body = json!({
+            "api_key": session_api_key,
+            "routing_config": routing_config
+        });
+
+        let response = client
+            .post(&prepare_url)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to prepare proxy session: {}", e))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "Proxy session preparation failed: {}",
+                error_text
+            ));
+        }
+
+        let response_body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse proxy response: {}", e))?;
+
+        println!("✅ Proxy session prepared successfully");
+        if let Some(session_id) = response_body.get("session_id").and_then(|v| v.as_str()) {
+            println!("   Session ID: {}", session_id);
+        }
+
+        Ok(session_api_key)
     }
 
     /// Build AgentLaunchConfig from command line arguments
@@ -224,12 +323,12 @@ impl AgentStartArgs {
         // Set interactive mode based on flags
         config = config.interactive(!self.non_interactive);
 
-        // Set API server if provided
+        // Set API server if provided (will be overridden if using proxy)
         if let Some(api) = &self.llm_api {
             config = config.api_server(api.clone());
         }
 
-        // Set API key if provided
+        // Set API key if provided (will be overridden if using proxy)
         if let Some(key) = &self.llm_api_key {
             config = config.api_key(key.clone());
         }

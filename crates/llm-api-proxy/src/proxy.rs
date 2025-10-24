@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::{
-    config::ProxyConfig,
+    config::{ProviderConfig, ProxyConfig, RoutingConfig},
     converters::ApiFormat,
     error::{Error, Result},
     metrics::MetricsCollector,
@@ -15,12 +15,176 @@ use crate::{
     scenario::ScenarioPlayer,
 };
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
+
+/// Session-specific routing configuration
+#[derive(Debug, Clone)]
+pub struct SessionConfig {
+    pub routing_config: RoutingConfig,
+    pub providers: HashMap<String, ProviderConfig>,
+    pub created_at: Instant,
+    pub last_used: Instant,
+}
+
+/// Session information stored per API key
+#[derive(Debug, Clone)]
+pub struct SessionInfo {
+    pub session_id: String,
+    pub api_key: String,
+    pub config_hash: u64, // Hash of the routing config for deduplication
+}
+
+/// Session manager for dynamic routing configurations
+#[derive(Debug)]
+pub struct SessionManager {
+    /// Map from API key to session info
+    sessions: RwLock<HashMap<String, SessionInfo>>,
+    /// Map from config hash to (config, reference count)
+    config_cache: RwLock<HashMap<u64, (SessionConfig, AtomicU32)>>,
+    /// Session expiration timeout (3 days)
+    session_timeout: Duration,
+}
+
+impl SessionManager {
+    pub fn new() -> Self {
+        Self {
+            sessions: RwLock::new(HashMap::new()),
+            config_cache: RwLock::new(HashMap::new()),
+            session_timeout: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
+        }
+    }
+
+    /// Prepare a session with custom routing configuration
+    pub async fn prepare_session(
+        &self,
+        api_key: String,
+        routing_config: RoutingConfig,
+        providers: HashMap<String, ProviderConfig>,
+    ) -> Result<String> {
+        let session_id = format!("session-{}", uuid::Uuid::new_v4());
+
+        // Create session config
+        let session_config = SessionConfig {
+            routing_config,
+            providers,
+            created_at: Instant::now(),
+            last_used: Instant::now(),
+        };
+
+        // Calculate hash for deduplication
+        let config_hash = self.calculate_config_hash(&session_config);
+
+        // Store or update config in cache
+        let mut config_cache = self.config_cache.write().await;
+        config_cache
+            .entry(config_hash)
+            .or_insert_with(|| (session_config, AtomicU32::new(0)))
+            .1
+            .fetch_add(1, Ordering::SeqCst);
+
+        // Create session info
+        let session_info = SessionInfo {
+            session_id: session_id.clone(),
+            api_key: api_key.clone(),
+            config_hash,
+        };
+
+        // Store session
+        let mut sessions = self.sessions.write().await;
+        sessions.insert(api_key, session_info);
+
+        Ok(session_id)
+    }
+
+    /// Get session configuration for an API key
+    pub async fn get_session_config(&self, api_key: &str) -> Option<SessionConfig> {
+        let sessions = self.sessions.read().await;
+        if let Some(session_info) = sessions.get(api_key) {
+            // Update last used time
+            let mut config_cache = self.config_cache.write().await;
+            if let Some((config, _)) = config_cache.get_mut(&session_info.config_hash) {
+                config.last_used = Instant::now();
+                return Some(config.clone());
+            }
+        }
+        None
+    }
+
+    /// End a session explicitly
+    pub async fn end_session(&self, api_key: &str) -> Result<()> {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session_info) = sessions.remove(api_key) {
+            // Decrease reference count
+            let mut config_cache = self.config_cache.write().await;
+            if let Some((_, ref_count)) = config_cache.get_mut(&session_info.config_hash) {
+                let new_count = ref_count.fetch_sub(1, Ordering::SeqCst);
+                if new_count == 0 {
+                    // Remove config if no more references
+                    config_cache.remove(&session_info.config_hash);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Clean up expired sessions
+    pub async fn cleanup_expired_sessions(&self) -> usize {
+        let mut sessions = self.sessions.write().await;
+        let mut config_cache = self.config_cache.write().await;
+        let mut expired_sessions = Vec::new();
+
+        // Find expired sessions
+        for (api_key, session_info) in sessions.iter() {
+            if let Some((config, _)) = config_cache.get(&session_info.config_hash) {
+                if config.last_used.elapsed() > self.session_timeout {
+                    expired_sessions.push(api_key.clone());
+                }
+            }
+        }
+
+        // Remove expired sessions
+        let expired_count = expired_sessions.len();
+        for api_key in expired_sessions {
+            if let Some(session_info) = sessions.remove(&api_key) {
+                // Decrease reference count
+                if let Some((_, ref_count)) = config_cache.get_mut(&session_info.config_hash) {
+                    let new_count = ref_count.fetch_sub(1, Ordering::SeqCst);
+                    if new_count == 0 {
+                        config_cache.remove(&session_info.config_hash);
+                    }
+                }
+            }
+        }
+
+        expired_count
+    }
+
+    /// Calculate hash for config deduplication
+    fn calculate_config_hash(&self, config: &SessionConfig) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        config.routing_config.hash(&mut hasher);
+        for (key, provider) in &config.providers {
+            key.hash(&mut hasher);
+            provider.name.hash(&mut hasher);
+            provider.base_url.hash(&mut hasher);
+            // Don't hash API keys for security, but include other provider fields
+        }
+        hasher.finish()
+    }
+}
+
 /// Main LLM API proxy struct
 pub struct LlmApiProxy {
     config: Arc<RwLock<ProxyConfig>>,
     router: Arc<DynamicRouter>,
     metrics: Arc<MetricsCollector>,
     scenario_player: Option<Arc<RwLock<ScenarioPlayer>>>,
+    session_manager: Arc<SessionManager>,
     http_client: reqwest::Client,
 }
 
@@ -33,6 +197,7 @@ impl LlmApiProxy {
         let config = Arc::new(RwLock::new(config));
         let router = Arc::new(DynamicRouter::new(config.clone()).await?);
         let metrics = Arc::new(MetricsCollector::new().await?);
+        let session_manager = Arc::new(SessionManager::new());
 
         let scenario_player = if config.read().await.scenario.enabled {
             Some(Arc::new(RwLock::new(
@@ -51,8 +216,60 @@ impl LlmApiProxy {
             router,
             metrics,
             scenario_player,
+            session_manager,
             http_client,
         })
+    }
+
+    /// Check if scenario mode is enabled
+    pub fn is_scenario_mode(&self) -> bool {
+        self.scenario_player.is_some()
+    }
+
+    /// Prepare a session with custom routing configuration
+    pub async fn prepare_session(
+        &self,
+        api_key: String,
+        routing_config: RoutingConfig,
+        providers: HashMap<String, ProviderConfig>,
+    ) -> Result<String> {
+        self.session_manager.prepare_session(api_key, routing_config, providers).await
+    }
+
+    /// End a session explicitly
+    pub async fn end_session(&self, api_key: &str) -> Result<()> {
+        self.session_manager.end_session(api_key).await
+    }
+
+    /// Get session configuration for an API key
+    pub async fn get_session_config(&self, api_key: &str) -> Option<SessionConfig> {
+        self.session_manager.get_session_config(api_key).await
+    }
+
+    /// Clean up expired sessions
+    pub async fn cleanup_expired_sessions(&self) -> usize {
+        self.session_manager.cleanup_expired_sessions().await
+    }
+
+    /// Extract API key from request headers
+    fn extract_api_key_from_request(&self, request: &ProxyRequest) -> Result<Option<String>> {
+        // Check Authorization header
+        if let Some(auth_header) = request.headers.get("authorization") {
+            if let Some(bearer_token) = auth_header.strip_prefix("Bearer ") {
+                return Ok(Some(bearer_token.to_string()));
+            }
+        }
+
+        // Check alternative headers
+        if let Some(api_key) = request.headers.get("api-key") {
+            return Ok(Some(api_key.to_string()));
+        }
+
+        if let Some(api_key) = request.headers.get("x-api-key") {
+            return Ok(Some(api_key.to_string()));
+        }
+
+        Ok(None)
     }
 
     /// Process an API request through the proxy
@@ -83,8 +300,22 @@ impl LlmApiProxy {
 
     /// Handle a live API request (route to real providers)
     async fn handle_live_request(&self, request: &ProxyRequest) -> Result<ProxyResponse> {
-        // Determine target provider
-        let provider = self.router.select_provider(&request).await?;
+        // Check if this request has a session-based configuration
+        let api_key = self.extract_api_key_from_request(request)?;
+        let session_config = if let Some(api_key) = &api_key {
+            self.get_session_config(api_key).await
+        } else {
+            None
+        };
+
+        let provider = if let Some(session_config) = &session_config {
+            // Use session-specific routing
+            let session_router = DynamicRouter::new_from_session(session_config.clone()).await?;
+            session_router.select_provider(&request).await?
+        } else {
+            // Use default routing
+            self.router.select_provider(&request).await?
+        };
 
         // Convert request format if needed
         let converted_request = self.convert_request_for_provider(&request, &provider).await?;

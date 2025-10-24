@@ -29,9 +29,12 @@ repo:
             print("Calculator app")
 timeline:
   # Agent starts working on the task
-  - think:
-      - [2000, "User wants me to add division by zero handling to the calculator. Let me examine the current code first."]
-      - [1500, "Looking at the calculator.py file to understand the current implementation."]
+  - llmResponse:
+      - think:
+          - [2000, "User wants me to add division by zero handling to the calculator. Let me examine the current code first."]
+          - [1500, "Looking at the calculator.py file to understand the current implementation."]
+      - assistant:
+          - [500, "I'll start by examining the current calculator implementation."]
 
   # Agent reads the current code
   - agentToolUse:
@@ -41,10 +44,13 @@ timeline:
       result: "File read successfully"
       status: "ok"
 
-  # Agent analyzes the code
-  - think:
-      - [2500, "I can see the calculator has basic arithmetic operations but the divide function doesn't handle division by zero. I need to add proper error handling."]
-      - [1200, "I'll modify the divide function to raise a ValueError when dividing by zero."]
+  # Agent analyzes the code and plans the fix
+  - llmResponse:
+      - think:
+          - [2500, "I can see the calculator has basic arithmetic operations but the divide function doesn't handle division by zero. I need to add proper error handling."]
+          - [1200, "I'll modify the divide function to raise a ValueError when dividing by zero."]
+      - assistant:
+          - [1000, "I can see the calculator code. The divide function currently performs direct division without checking for division by zero. I'll implement proper error handling."]
 
   # Agent implements the fix
   - agentToolUse:
@@ -55,10 +61,14 @@ timeline:
       result: "10/2 = 5.0"
       status: "ok"
 
-  # Agent hits a roadblock - realizes they need to test division by zero
-  - think:
-      - [3000, "Good, the basic functionality works. Now I need to test the division by zero case and add proper error handling. Let me first try dividing by zero to see what happens."]
-      - [1500, "Actually, let me think about this more carefully. The user wants me to add division by zero handling. I should first test what happens when we try to divide by zero with the current code."]
+  # Agent tests division by zero and encounters the error, then asks user for guidance
+  - llmResponse:
+      - think:
+          - [3000, "Good, the basic functionality works. Now I need to test the division by zero case and add proper error handling. Let me first try dividing by zero to see what happens."]
+          - [1500, "Actually, let me think about this more carefully. The user wants me to add division by zero handling. I should first test what happens when we try to divide by zero with the current code."]
+      - assistant:
+          - [2000, "I see that dividing by zero causes a ZeroDivisionError. I need to add proper error handling to the divide function."]
+          - [2500, "What approach would you like me to take for handling division by zero? Should I raise a custom ValueError, return None, or handle it differently?"]
 
   # Agent tests division by zero and encounters the error
   - agentToolUse:
@@ -79,10 +89,13 @@ timeline:
       - [1000, "Please raise a ValueError with a clear message when dividing by zero."]
     target: "tui"
 
-  # Agent acknowledges the user's input
-  - think:
-      - [1800, "The user wants me to raise a ValueError with a clear message for division by zero. That's a good approach."]
-      - [800, "Now I'll implement the fix by modifying the divide function to check for division by zero before performing the division."]
+  # Agent acknowledges the user's input and implements the fix
+  - llmResponse:
+      - think:
+          - [1800, "The user wants me to raise a ValueError with a clear message for division by zero. That's a good approach."]
+          - [800, "Now I'll implement the fix by modifying the divide function to check for division by zero before performing the division."]
+      - assistant:
+          - [1000, "Got it! I'll implement the division by zero check by raising a ValueError with a clear message."]
 
   # Agent implements the fix
   - agentToolUse:

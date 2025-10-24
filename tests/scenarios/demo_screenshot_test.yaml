@@ -22,4 +22,6 @@ timeline:
       linesAdded: 1
       linesRemoved: 0
   - screenshot: "file_created"
+  - assistant:
+      - [200, "Demo screenshot test completed successfully"]
   - complete: true

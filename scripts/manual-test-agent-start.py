@@ -5,11 +5,15 @@
 """
 Manual Agent Start/Record Script
 
-This script launches mock LLM servers and ah agent start/record commands using process-compose
-for manual testing and integration verification.
+This script launches LLM API servers (mock or live proxy) and ah agent start/record commands
+using process-compose for manual testing and integration verification.
+
+MODES:
+- SCENARIO MODE (default): Uses pre-recorded scenario files for deterministic testing
+- PROXY MODE: Forwards requests to real LLM APIs for live testing
 
 This script provides a convenient way to run integration tests between
-the mock LLM API server and the Agent Harbor CLI agent start/record commands.
+LLM API servers and the Agent Harbor CLI agent start/record commands.
 """
 
 import atexit
@@ -231,26 +235,31 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
     mock_agent_dir = project_root / "tests" / "tools" / "mock-agent"
 
     # Determine scenario file and agent type
-    if args.scenario:
-        # Explicit scenario requested
+    use_scenario_mode = args.scenario is not None
+
+    if use_scenario_mode:
+        # Explicit scenario requested - use test-server mode
         scenario_file = mock_agent_dir / "scenarios" / f"{args.scenario}.yaml"
         if not scenario_file.exists():
             print(f"Error: Scenario file {scenario_file} does not exist")
             sys.exit(1)
     else:
-        scenario_file = mock_agent_dir / "scenarios" / "realistic_development_scenario.yaml"
+        # No scenario specified - use proxy mode
+        scenario_file = None
 
-    # Load scenario file to extract initialPrompt
-    try:
-        import yaml
-    except (ImportError, ModuleNotFoundError):
-        print("Warning: PyYAML not available. " +
-              "Please run this script in the nix dev shell, provided by the nix flake at the root of the repository.")
-        sys.exit(1)
+    # Load scenario file to extract initialPrompt (only in scenario mode)
+    initial_prompt = "Please help me with development tasks"
+    if use_scenario_mode:
+        try:
+            import yaml
+        except (ImportError, ModuleNotFoundError):
+            print("Warning: PyYAML not available. " +
+                  "Please run this script in the nix dev shell, provided by the nix flake at the root of the repository.")
+            sys.exit(1)
 
-    with open(scenario_file, 'r') as f:
-        scenario_data = yaml.safe_load(f)
-    initial_prompt = scenario_data.get('initialPrompt', 'Please execute this scenario')
+        with open(scenario_file, 'r') as f:
+            scenario_data = yaml.safe_load(f)
+        initial_prompt = scenario_data.get('initialPrompt', 'Please execute this scenario')
 
     # Configure logging defaults prior to building the server command
     session_log_path = user_home_dir / "session.log"
@@ -269,19 +278,54 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
     else:
         logging.info("All request logging disabled")
 
-    # Build mock server command - use Rust llm-api-proxy with clap
-    server_cmd = [
-        "cargo",
-        "run",
-        "-p",
-        "llm-api-proxy",
-        "--",
-        "test-server",
-        "--port", str(args.server_port),
-        "--scenario-file", str(scenario_file),
-        "--agent-type", args.agent_type,
-        "--agent-version", agent_version,  # Use the actual agent version
-    ]
+    # Build server command - use Rust llm-api-proxy with clap
+    if use_scenario_mode:
+        # Use test-server mode for scenario playback
+        server_cmd = [
+            "cargo",
+            "run",
+            "-p",
+            "llm-api-proxy",
+            "--",
+            "test-server",
+            "--port", str(args.server_port),
+            "--scenario-file", str(scenario_file),
+            "--agent-type", args.agent_type,
+            "--agent-version", agent_version,  # Use the actual agent version
+        ]
+    else:
+        # Use proxy mode for live API calls
+        server_cmd = [
+            "cargo",
+            "run",
+            "-p",
+            "llm-api-proxy",
+            "--",
+            "proxy",
+            "--port", str(args.server_port),
+        ]
+
+        # Determine provider based on agent type or OpenRouter option
+        if args.use_openrouter:
+            server_cmd.extend(["--provider", "openrouter"])
+            server_cmd.extend(["--api-key", args.use_openrouter])
+        else:
+            # Map agent type to provider
+            provider_map = {
+                "codex": "openai",
+                "claude": "anthropic",
+                "gemini": "google",
+                "opencode": "openrouter",
+                "qwen": "tongyi",
+                "cursor-cli": "openai",
+                "goose": "openai",
+            }
+            provider = provider_map.get(args.agent_type, args.agent_type)
+            server_cmd.extend(["--provider", provider])
+
+            # Add API key if provided
+            if args.llm_api_key:
+                server_cmd.extend(["--api-key", args.llm_api_key])
 
     # Note: strict_tools_validation defaults to false in clap, so we don't need to pass it unless enabling it
     # If we wanted to enable it by default in the script, we could add --strict-tools-validation here
@@ -324,25 +368,35 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
         ah_cmd.extend(["--output", args.output_format])
 
     # Handle LLM API configuration
-    if args.llm_api:
-        # When --llm-api is explicitly overridden, use it as provided
-        ah_cmd.extend(["--llm-api", args.llm_api])
+    mock_server_url = f"http://127.0.0.1:{args.server_port}"
+
+    if use_scenario_mode:
+        # In scenario mode, always use the mock server
+        if args.llm_api:
+            # When --llm-api is explicitly overridden, use it as provided
+            ah_cmd.extend(["--llm-api", args.llm_api])
+        else:
+            # Claude uses base URL, others use /v1 suffix
+            if args.agent_type == "claude":
+                ah_cmd.extend(["--llm-api", mock_server_url])
+            else:
+                ah_cmd.extend(["--llm-api", f"{mock_server_url}/v1"])
     else:
-        # When --llm-api is not explicitly overridden, set it to the mock server address
-        mock_server_url = f"http://127.0.0.1:{args.server_port}"
-        # Claude uses base URL, others use /v1 suffix
+        # In proxy mode, use the proxy server (which is the mock_server_url)
         if args.agent_type == "claude":
             ah_cmd.extend(["--llm-api", mock_server_url])
         else:
             ah_cmd.extend(["--llm-api", f"{mock_server_url}/v1"])
 
-            # When explicitly overridden, set --llm-api-key to a random value (unless explicitly provided)
-    if args.llm_api_key:
-        ah_cmd.extend(["--llm-api-key", args.llm_api_key])
-    else:
-        import secrets
-        random_api_key = secrets.token_hex(16)  # 32 character random hex string
-        ah_cmd.extend(["--llm-api-key", random_api_key])
+    # Handle API key configuration
+    if use_scenario_mode:
+        # In scenario mode, use provided key or generate random
+        if args.llm_api_key:
+            ah_cmd.extend(["--llm-api-key", args.llm_api_key])
+        else:
+            import secrets
+            random_api_key = secrets.token_hex(16)  # 32 character random hex string
+            ah_cmd.extend(["--llm-api-key", random_api_key])
 
     # Use initial prompt from scenario file
     ah_cmd.extend(["--prompt", initial_prompt])
@@ -406,7 +460,7 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Launch mock LLM server and ah agent start/record with process-compose",
+        description="Launch LLM API server (mock or live proxy) and ah agent start/record with process-compose",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -421,6 +475,15 @@ Examples:
 
   # Claude agent with JSON output
   %(prog)s --scenario feature_implementation_scenario --agent-type claude --output-format json
+
+  # PROXY MODE: Live API calls to Claude (requires ANTHROPIC_API_KEY env var)
+  %(prog)s --agent-type claude
+
+  # PROXY MODE: Live API calls to OpenAI via OpenRouter
+  %(prog)s --use-openrouter sk-or-v1-your-openrouter-key
+
+  # PROXY MODE: Live API calls with custom API key
+  %(prog)s --agent-type claude --llm-api-key sk-ant-your-key
 
   # With custom OpenAI API endpoint
   %(prog)s --non-interactive --llm-api https://api.openai.com/v1 --llm-api-key sk-your-key
@@ -541,7 +604,7 @@ Examples:
     # Scenario selection
     parser.add_argument(
         "--scenario",
-        help="YAML scenario file to use for the mock server"
+        help="YAML scenario file to use for the mock server (if not specified, runs in live proxy mode)"
     )
 
     # Agent options
@@ -579,6 +642,12 @@ Examples:
     parser.add_argument(
         "--llm-api-key",
         help="API key for custom LLM API"
+    )
+
+    parser.add_argument(
+        "--use-openrouter",
+        metavar="API_KEY",
+        help="Route traffic through OpenRouter using the specified API key"
     )
 
 
