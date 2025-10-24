@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Agents Workflow CLI library
+//! Agent Harbor CLI library
 
 pub mod agent;
 pub mod config;
@@ -16,7 +16,7 @@ pub use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "ah")]
-#[command(about = "Agents Workflow CLI")]
+#[command(about = "Agent Harbor CLI")]
 #[command(version, author, long_about = None)]
 pub struct Cli {
     /// Additional configuration file to load (sits just below CLI flags in precedence order)

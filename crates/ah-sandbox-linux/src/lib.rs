@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Linux-specific sandbox implementation for Agents Workflow.
+//! Linux-specific sandbox implementation for Agent Harbor.
 
 use ah_sandbox::{Result, SandboxConfig, SandboxProvider, SandboxResult};
 use async_trait::async_trait;

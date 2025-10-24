@@ -5,7 +5,7 @@
 name = "ah-local-db"
 version = "0.1.0"
 edition = "2021"
-description = "SQLite database management for local Agents Workflow state"
+description = "SQLite database management for local Agent Harbor state"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

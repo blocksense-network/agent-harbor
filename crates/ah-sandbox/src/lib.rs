@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Sandbox isolation abstractions for Agents Workflow.
+//! Sandbox isolation abstractions for Agent Harbor.
 //!
 //! This crate provides abstractions for different sandboxing technologies
 //! (Linux namespaces, Docker, etc.) to enable secure agent execution.

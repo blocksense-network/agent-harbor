@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Filesystem snapshot provider abstractions for Agents Workflow.
+//! Filesystem snapshot provider abstractions for Agent Harbor.
 //!
 //! This crate provides abstractions for different filesystem snapshot technologies
 //! (ZFS, Btrfs, etc.) to enable time travel capabilities in the AH system.

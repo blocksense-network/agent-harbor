@@ -41,7 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         window.center()
-        window.title = "Agents Workflow"
+        window.title = "Agent Harbor"
         window.makeKeyAndOrderFront(nil)
 
         let viewController = MainViewController()

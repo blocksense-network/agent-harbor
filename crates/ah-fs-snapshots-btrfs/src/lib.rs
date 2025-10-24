@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Btrfs snapshot provider implementation for Agents Workflow.
+//! Btrfs snapshot provider implementation for Agent Harbor.
 
 use ah_fs_snapshots_traits::{
     FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotProviderKind,

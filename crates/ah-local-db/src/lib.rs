@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! SQLite database management for local Agents Workflow state.
+//! SQLite database management for local Agent Harbor state.
 //!
 //! This crate provides persistent storage for tasks, sessions, agent recordings,
 //! and other local state using SQLite as the backing database.
