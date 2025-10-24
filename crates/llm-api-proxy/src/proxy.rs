@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::{
-    config::{ProviderConfig, ProxyConfig, RoutingConfig},
+    config::{ProviderConfig, ProxyConfig},
     converters::ApiFormat,
     error::{Error, Result},
     metrics::MetricsCollector,
@@ -19,11 +19,34 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+/// Provider definition for session preparation API
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ProviderDefinition {
+    /// Provider name (unique identifier)
+    pub name: String,
+    /// Base URL for the provider API
+    pub base_url: String,
+    /// Headers to include with each request (typically authorization)
+    pub headers: HashMap<String, String>,
+}
+
+/// Model mapping for routing decisions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ModelMapping {
+    /// Source model pattern to match (case-insensitive substring)
+    pub source_pattern: String,
+    /// Target provider name
+    pub provider: String,
+    /// Target model name to use
+    pub model: String,
+}
+
 /// Session-specific routing configuration
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
-    pub routing_config: RoutingConfig,
     pub providers: HashMap<String, ProviderConfig>,
+    pub model_mappings: Vec<ModelMapping>,
+    pub default_provider: String,
     pub created_at: Instant,
     pub last_used: Instant,
 }
@@ -60,15 +83,33 @@ impl SessionManager {
     pub async fn prepare_session(
         &self,
         api_key: String,
-        routing_config: RoutingConfig,
-        providers: HashMap<String, ProviderConfig>,
+        providers: Vec<ProviderDefinition>,
+        model_mappings: Vec<ModelMapping>,
+        default_provider: String,
     ) -> Result<String> {
         let session_id = format!("session-{}", uuid::Uuid::new_v4());
 
+        // Convert provider definitions to ProviderConfig
+        let mut session_providers = HashMap::new();
+        for provider_def in providers {
+            let provider_config = ProviderConfig {
+                name: provider_def.name.clone(),
+                base_url: provider_def.base_url,
+                api_key: None, // API keys are handled via headers
+                headers: provider_def.headers,
+                models: vec![], // Not needed for session routing
+                weight: 1,
+                rate_limit_rpm: None,
+                timeout_seconds: None,
+            };
+            session_providers.insert(provider_def.name, provider_config);
+        }
+
         // Create session config
         let session_config = SessionConfig {
-            routing_config,
-            providers,
+            providers: session_providers,
+            model_mappings,
+            default_provider,
             created_at: Instant::now(),
             last_used: Instant::now(),
         };
@@ -167,12 +208,17 @@ impl SessionManager {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        config.routing_config.hash(&mut hasher);
+        config.default_provider.hash(&mut hasher);
+        for mapping in &config.model_mappings {
+            mapping.source_pattern.hash(&mut hasher);
+            mapping.provider.hash(&mut hasher);
+            mapping.model.hash(&mut hasher);
+        }
         for (key, provider) in &config.providers {
             key.hash(&mut hasher);
             provider.name.hash(&mut hasher);
             provider.base_url.hash(&mut hasher);
-            // Don't hash API keys for security, but include other provider fields
+            // Don't hash headers as they may contain sensitive data
         }
         hasher.finish()
     }
@@ -230,10 +276,13 @@ impl LlmApiProxy {
     pub async fn prepare_session(
         &self,
         api_key: String,
-        routing_config: RoutingConfig,
-        providers: HashMap<String, ProviderConfig>,
+        providers: Vec<ProviderDefinition>,
+        model_mappings: Vec<ModelMapping>,
+        default_provider: String,
     ) -> Result<String> {
-        self.session_manager.prepare_session(api_key, routing_config, providers).await
+        self.session_manager
+            .prepare_session(api_key, providers, model_mappings, default_provider)
+            .await
     }
 
     /// End a session explicitly
