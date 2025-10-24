@@ -127,9 +127,15 @@
           lint-specs = {
             enable = true;
             name = "Lint Markdown specs";
-            entry = "just lint-specs";
+            # This hook calls markdownlint-cli2 directly with pass_filenames=true,
+            # so it only processes modified .md files (incremental linting for fast pre-commits).
+            # The --no-globs flag disables the .markdownlint-cli2.yaml config's "specs/**/*.md" glob,
+            # ensuring only the specific files passed by pre-commit are linted.
+            # The justfile's lint-specs target calls pre-commit with --all-files for comprehensive checks.
+            entry = "markdownlint-cli2 --no-globs";
             language = "system";
-            pass_filenames = false;
+            pass_filenames = true;
+            files = "\\.md$";
           };
 
           # Spelling

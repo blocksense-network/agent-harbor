@@ -8,7 +8,8 @@ if [ -n "${IN_NIX_SHELL:-}" ]; then
   echo "Running lint-specs inside Nix dev shell (no fallbacks)." >&2
 fi
 
-just md-lint
+# Use pre-commit to run markdown linting (respects configuration and can be incremental)
+pre-commit run lint-specs --all-files
 just md-links || echo "⚠️  Link checking found external certificate issues (non-fatal - these are external sites with SSL problems)"
 just md-spell
 
