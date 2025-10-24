@@ -1,13 +1,18 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! Vim/Neovim multiplexer implementation
 //!
 //! This implementation supports both Vim and Neovim, with Neovim being preferred
 //! due to its better RPC interface for automation.
 
-use std::process::Command;
 use std::fs;
+use std::process::Command;
 use tempfile;
 
-use ah_mux_core::{Multiplexer, WindowId, PaneId, WindowOptions, CommandOptions, SplitDirection, MuxError};
+use ah_mux_core::{
+    CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
+};
 
 /// Vim multiplexer implementation supporting both Vim and Neovim
 pub struct VimMultiplexer {
@@ -48,19 +53,14 @@ impl VimMultiplexer {
 
     /// Get the vim command to use
     fn vim_command(&self) -> &str {
-        if self.use_neovim {
-            "nvim"
-        } else {
-            "vim"
-        }
+        if self.use_neovim { "nvim" } else { "vim" }
     }
 
     /// Run a vim command with the given arguments
     fn run_vim_command(&self, args: &[&str]) -> Result<String, MuxError> {
-        let output = Command::new(self.vim_command())
-            .args(args)
-            .output()
-            .map_err(|e| MuxError::Other(format!("Failed to execute {}: {}", self.vim_command(), e)))?;
+        let output = Command::new(self.vim_command()).args(args).output().map_err(|e| {
+            MuxError::Other(format!("Failed to execute {}: {}", self.vim_command(), e))
+        })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -74,15 +74,13 @@ impl VimMultiplexer {
         }
     }
 
-
     /// Create a temporary vimscript file and execute it
     fn execute_vimscript(&self, script: &str) -> Result<(), MuxError> {
-        let temp_file = tempfile::NamedTempFile::new()
-            .map_err(|e| MuxError::Other(e.to_string()))?;
+        let temp_file =
+            tempfile::NamedTempFile::new().map_err(|e| MuxError::Other(e.to_string()))?;
         let temp_path = temp_file.path();
 
-        fs::write(temp_path, script)
-            .map_err(|e| MuxError::Other(e.to_string()))?;
+        fs::write(temp_path, script).map_err(|e| MuxError::Other(e.to_string()))?;
 
         let temp_path_str = temp_path.to_string_lossy().to_string();
         let args = if self.use_neovim {
@@ -114,10 +112,13 @@ impl Multiplexer for VimMultiplexer {
         let title = opts.title.unwrap_or(&default_title);
         let window_id = format!("vim:{}", title);
 
-        let mut script = format!(r#"
+        let mut script = format!(
+            r#"
 tabnew
 file {}
-"#, title);
+"#,
+            title
+        );
 
         if let Some(cwd) = opts.cwd {
             script.push_str(&format!("cd {}\n", cwd.to_string_lossy()));
@@ -128,7 +129,15 @@ file {}
         Ok(window_id)
     }
 
-    fn split_pane(&self, _window: &WindowId, _target: Option<&PaneId>, dir: SplitDirection, _percent: Option<u8>, _opts: &CommandOptions, _initial_cmd: Option<&str>) -> Result<PaneId, MuxError> {
+    fn split_pane(
+        &self,
+        _window: &WindowId,
+        _target: Option<&PaneId>,
+        dir: SplitDirection,
+        _percent: Option<u8>,
+        _opts: &CommandOptions,
+        _initial_cmd: Option<&str>,
+    ) -> Result<PaneId, MuxError> {
         let cmd = match dir {
             SplitDirection::Vertical => "vsplit",
             SplitDirection::Horizontal => "split",
@@ -139,7 +148,12 @@ file {}
         Ok("vim:pane:1".to_string())
     }
 
-    fn run_command(&self, _pane: &PaneId, cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        _pane: &PaneId,
+        cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         let script = format!("terminal {}\n", cmd);
         self.execute_vimscript(&script)
     }
@@ -148,34 +162,47 @@ file {}
         // For Vim/Neovim, we can use chansend to send text to terminal buffers
         // This is a simplified version - in practice, we'd need to track terminal buffer IDs
         if self.use_neovim {
-            let script = format!("call chansend(b:terminal_job_id, \"{}\")\n", text.escape_default());
+            let script = format!(
+                "call chansend(b:terminal_job_id, \"{}\")\n",
+                text.escape_default()
+            );
             self.execute_vimscript(&script)?;
             Ok(())
         } else {
             // Vim has term_sendkeys but it's more complex
-            Err(MuxError::NotAvailable("Vim text sending requires buffer-specific implementation"))
+            Err(MuxError::NotAvailable(
+                "Vim text sending requires buffer-specific implementation",
+            ))
         }
     }
 
     fn focus_window(&self, _window: &WindowId) -> Result<(), MuxError> {
         // Window focus in Vim/Neovim context means switching tabs
         // This would require more complex tab management
-        Err(MuxError::NotAvailable("Vim tab focusing requires session-specific implementation"))
+        Err(MuxError::NotAvailable(
+            "Vim tab focusing requires session-specific implementation",
+        ))
     }
 
     fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // Vim pane focusing requires knowing which window to focus
-        Err(MuxError::NotAvailable("Vim pane focusing requires window-specific implementation"))
+        Err(MuxError::NotAvailable(
+            "Vim pane focusing requires window-specific implementation",
+        ))
     }
 
     fn list_windows(&self, _title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
         // Listing windows would require parsing Vim's internal state
         // This is complex and not implemented in the basic version
-        Err(MuxError::NotAvailable("Vim window listing requires advanced RPC integration"))
+        Err(MuxError::NotAvailable(
+            "Vim window listing requires advanced RPC integration",
+        ))
     }
 
     fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         // Similar to windows, pane listing requires parsing Vim's window state
-        Err(MuxError::NotAvailable("Vim pane listing requires advanced RPC integration"))
+        Err(MuxError::NotAvailable(
+            "Vim pane listing requires advanced RPC integration",
+        ))
     }
 }

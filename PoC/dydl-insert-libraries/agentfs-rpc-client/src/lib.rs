@@ -1,14 +1,14 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use agentfs_proto::{FsRequest, FsResponse, FsDirEntry};
-use ssz::{Encode, Decode};
+use agentfs_proto::{FsDirEntry, FsRequest, FsResponse};
+use anyhow::{Result, anyhow};
+use ssz::{Decode, Encode};
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use anyhow::{Result, anyhow};
+use tokio::net::UnixStream;
 
 // Re-export agentfs_core types for compatibility
 pub use agentfs_core;
@@ -52,8 +52,8 @@ impl AgentFsClient {
         self.stream.read_exact(&mut resp_buf).await?;
 
         // Decode response from SSZ
-        let response = FsResponse::from_ssz_bytes(&resp_buf)
-            .map_err(|e| anyhow!("SSZ decode error"))?;
+        let response =
+            FsResponse::from_ssz_bytes(&resp_buf).map_err(|e| anyhow!("SSZ decode error"))?;
 
         Ok(response)
     }
@@ -219,7 +219,9 @@ impl AgentFsClient {
 
         match self.send_request(req).await? {
             FsResponse::Entries(resp) => {
-                let entries = resp.entries.into_iter()
+                let entries = resp
+                    .entries
+                    .into_iter()
                     .map(|entry| agentfs_core::DirEntry {
                         name: String::from_utf8_lossy(&entry.name).to_string(),
                         is_dir: entry.is_dir,

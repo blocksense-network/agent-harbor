@@ -35,15 +35,25 @@ impl FsSnapshotProvider for ZfsProvider {
         _repo: &Path,
         _mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace> {
-        Err(Error::provider("ZFS support not compiled in - enable the 'zfs' feature"))
+        Err(Error::provider(
+            "ZFS support not compiled in - enable the 'zfs' feature",
+        ))
     }
 
-    async fn snapshot_now(&self, _ws: &PreparedWorkspace, _label: Option<&str>) -> Result<SnapshotRef> {
-        Err(Error::provider("ZFS support not compiled in - enable the 'zfs' feature"))
+    async fn snapshot_now(
+        &self,
+        _ws: &PreparedWorkspace,
+        _label: Option<&str>,
+    ) -> Result<SnapshotRef> {
+        Err(Error::provider(
+            "ZFS support not compiled in - enable the 'zfs' feature",
+        ))
     }
 
     async fn mount_readonly(&self, _snap: &SnapshotRef) -> Result<PathBuf> {
-        Err(Error::provider("ZFS support not compiled in - enable the 'zfs' feature"))
+        Err(Error::provider(
+            "ZFS support not compiled in - enable the 'zfs' feature",
+        ))
     }
 
     async fn branch_from_snapshot(
@@ -51,10 +61,14 @@ impl FsSnapshotProvider for ZfsProvider {
         _snap: &SnapshotRef,
         _mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace> {
-        Err(Error::provider("ZFS support not compiled in - enable the 'zfs' feature"))
+        Err(Error::provider(
+            "ZFS support not compiled in - enable the 'zfs' feature",
+        ))
     }
 
     async fn cleanup(&self, _token: &str) -> Result<()> {
-        Err(Error::provider("ZFS support not compiled in - enable the 'zfs' feature"))
+        Err(Error::provider(
+            "ZFS support not compiled in - enable the 'zfs' feature",
+        ))
     }
 }

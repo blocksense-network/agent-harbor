@@ -9,12 +9,10 @@ use chrono::Utc;
 use futures::StreamExt;
 use serde_json::json;
 
-use ah_domain_types::task::ToolStatus;
 use ah_domain_types::TaskExecutionStatus;
+use ah_domain_types::task::ToolStatus;
 use ah_rest_mock_client::MockRestClient;
-use tui_exploration::{
-    SelectedModel, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
-};
+use tui_exploration::{SelectedModel, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 
 #[tokio::test]
 async fn test_mock_rest_client_launches_successful_task() {

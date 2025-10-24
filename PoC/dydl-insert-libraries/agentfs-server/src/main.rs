@@ -1,10 +1,8 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use agentfs_core::{
-    BranchId, FsConfig, FsCore, FsLimits, MemoryPolicy, OpenOptions, PID,
-};
-use agentfs_proto::{FsRequest, FsResponse, FsDirEntry};
+use agentfs_core::{BranchId, FsConfig, FsCore, FsLimits, MemoryPolicy, OpenOptions, PID};
+use agentfs_proto::{FsDirEntry, FsRequest, FsResponse};
 use serde::{Deserialize, Serialize};
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
@@ -19,15 +17,32 @@ use tokio::net::UnixListener;
 #[serde(tag = "op")]
 pub enum LegacyFsRequest {
     #[serde(rename = "fs.open")]
-    Open { path: String, read: bool, write: bool, create: bool },
+    Open {
+        path: String,
+        read: bool,
+        write: bool,
+        create: bool,
+    },
     #[serde(rename = "fs.create")]
-    Create { path: String, read: bool, write: bool },
+    Create {
+        path: String,
+        read: bool,
+        write: bool,
+    },
     #[serde(rename = "fs.close")]
     Close { handle: u64 },
     #[serde(rename = "fs.read")]
-    Read { handle: u64, offset: u64, len: usize },
+    Read {
+        handle: u64,
+        offset: u64,
+        len: usize,
+    },
     #[serde(rename = "fs.write")]
-    Write { handle: u64, offset: u64, data: Vec<u8> },
+    Write {
+        handle: u64,
+        offset: u64,
+        data: Vec<u8>,
+    },
     #[serde(rename = "fs.getattr")]
     GetAttr { path: String },
     #[serde(rename = "fs.mkdir")]
@@ -41,9 +56,15 @@ pub enum LegacyFsRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum LegacyFsResponse {
-    Handle { handle: u64 },
-    Data { data: Vec<u8> },
-    Written { len: usize },
+    Handle {
+        handle: u64,
+    },
+    Data {
+        data: Vec<u8>,
+    },
+    Written {
+        len: usize,
+    },
     Attrs {
         len: u64,
         is_dir: bool,
@@ -51,7 +72,10 @@ pub enum LegacyFsResponse {
     },
     Entries(Vec<LegacyDirEntry>),
     Ok,
-    Error { error: String, code: Option<i32> },
+    Error {
+        error: String,
+        code: Option<i32>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -143,7 +167,6 @@ impl AgentFsServer {
 
         FsResponse::error(error_msg.to_string(), Some(code as u32))
     }
-
 
     fn normalize_agentfs_path(&self, path: &[u8]) -> String {
         let mut path_str = String::from_utf8_lossy(path).to_string();
@@ -286,12 +309,14 @@ impl AgentFsServer {
                     Ok(entries_with_attrs) => {
                         let entries = entries_with_attrs
                             .into_iter()
-                            .map(|(entry, _attrs)| FsDirEntry::new(
-                                entry.name,
-                                entry.is_dir,
-                                entry.is_symlink,
-                                entry.len,
-                            ))
+                            .map(|(entry, _attrs)| {
+                                FsDirEntry::new(
+                                    entry.name,
+                                    entry.is_dir,
+                                    entry.is_symlink,
+                                    entry.len,
+                                )
+                            })
                             .collect();
                         FsResponse::entries(entries)
                     }
@@ -323,39 +348,36 @@ impl AgentFsServer {
 
 fn convert_legacy_to_ssz(legacy: LegacyFsRequest) -> FsRequest {
     match legacy {
-        LegacyFsRequest::Open { path, read, write, create: _ } => {
-            FsRequest::open(path, read, write)
-        }
-        LegacyFsRequest::Create { path, read, write } => {
-            FsRequest::create(path, read, write)
-        }
-        LegacyFsRequest::Close { handle } => {
-            FsRequest::close(handle)
-        }
-        LegacyFsRequest::Read { handle, offset, len } => {
-            FsRequest::read(handle, offset as u64, len)
-        }
-        LegacyFsRequest::Write { handle, offset, data } => {
-            FsRequest::write(handle, offset as u64, data)
-        }
-        LegacyFsRequest::GetAttr { path } => {
-            FsRequest::getattr(path)
-        }
-        LegacyFsRequest::Mkdir { path } => {
-            FsRequest::mkdir(path)
-        }
-        LegacyFsRequest::Unlink { path } => {
-            FsRequest::unlink(path)
-        }
-        LegacyFsRequest::ReadDir { path } => {
-            FsRequest::readdir(path)
-        }
+        LegacyFsRequest::Open {
+            path,
+            read,
+            write,
+            create: _,
+        } => FsRequest::open(path, read, write),
+        LegacyFsRequest::Create { path, read, write } => FsRequest::create(path, read, write),
+        LegacyFsRequest::Close { handle } => FsRequest::close(handle),
+        LegacyFsRequest::Read {
+            handle,
+            offset,
+            len,
+        } => FsRequest::read(handle, offset as u64, len),
+        LegacyFsRequest::Write {
+            handle,
+            offset,
+            data,
+        } => FsRequest::write(handle, offset as u64, data),
+        LegacyFsRequest::GetAttr { path } => FsRequest::getattr(path),
+        LegacyFsRequest::Mkdir { path } => FsRequest::mkdir(path),
+        LegacyFsRequest::Unlink { path } => FsRequest::unlink(path),
+        LegacyFsRequest::ReadDir { path } => FsRequest::readdir(path),
     }
 }
 
 fn convert_ssz_to_legacy(ssz: FsResponse) -> LegacyFsResponse {
     match ssz {
-        FsResponse::Handle(resp) => LegacyFsResponse::Handle { handle: resp.handle },
+        FsResponse::Handle(resp) => LegacyFsResponse::Handle {
+            handle: resp.handle,
+        },
         FsResponse::Data(resp) => LegacyFsResponse::Data { data: resp.data },
         FsResponse::Written(resp) => LegacyFsResponse::Written { len: resp.len },
         FsResponse::Attrs(resp) => LegacyFsResponse::Attrs {
@@ -364,14 +386,15 @@ fn convert_ssz_to_legacy(ssz: FsResponse) -> LegacyFsResponse {
             is_symlink: resp.is_symlink,
         },
         FsResponse::Entries(resp) => LegacyFsResponse::Entries(
-            resp.entries.into_iter()
+            resp.entries
+                .into_iter()
                 .map(|entry| LegacyDirEntry {
                     name: String::from_utf8_lossy(&entry.name).to_string(),
                     is_dir: entry.is_dir,
                     is_symlink: entry.is_symlink,
                     len: entry.len,
                 })
-                .collect()
+                .collect(),
         ),
         FsResponse::Ok(_) => LegacyFsResponse::Ok,
         FsResponse::Error(resp) => LegacyFsResponse::Error {
@@ -410,7 +433,9 @@ async fn handle_json_client(mut socket: tokio::net::UnixStream, server: Arc<Agen
                     let legacy_response = convert_ssz_to_legacy(response);
 
                     // Serialize response
-                    let response_msg = LegacyResponse { body: legacy_response };
+                    let response_msg = LegacyResponse {
+                        body: legacy_response,
+                    };
                     match serde_json::to_string(&response_msg) {
                         Ok(json) => {
                             let data = json.as_bytes();
@@ -480,7 +505,10 @@ async fn handle_ssz_client(mut socket: tokio::net::UnixStream, server: Arc<Agent
                     eprintln!("Failed to send response data");
                     return;
                 }
-                eprintln!("[SSZ] Server sent response ({} bytes)", response_bytes.len());
+                eprintln!(
+                    "[SSZ] Server sent response ({} bytes)",
+                    response_bytes.len()
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse SSZ request: {:?}", e);

@@ -1,4 +1,6 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
 
 use once_cell::sync::{Lazy, OnceCell};
 use std::ffi::{CStr, OsStr};
@@ -79,11 +81,11 @@ fn initialize() {
             ));
             std::process::exit(1);
         } else {
-        log_message(&format!(
-            "process '{}' not present in allowlist; skipping handshake",
-            exe.display()
-        ));
-        return;
+            log_message(&format!(
+                "process '{}' not present in allowlist; skipping handshake",
+                exe.display()
+            ));
+            return;
         }
     }
 
@@ -92,11 +94,13 @@ fn initialize() {
     let Some(socket_path) = socket_env.map(PathBuf::from) else {
         let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
         if fail_fast {
-            log_message(&format!("{ENV_SOCKET} not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+            log_message(&format!(
+                "{ENV_SOCKET} not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+            ));
             std::process::exit(1);
         } else {
-        log_message(&format!("{ENV_SOCKET} not set; skipping handshake"));
-        return;
+            log_message(&format!("{ENV_SOCKET} not set; skipping handshake"));
+            return;
         }
     };
 
@@ -115,7 +119,9 @@ fn initialize() {
             // Check if we should fail fast
             let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
             if fail_fast {
-                log_message(&format!("AGENTFS_INTERPOSE_FAIL_FAST=1 set, terminating program due to handshake failure"));
+                log_message(&format!(
+                    "AGENTFS_INTERPOSE_FAIL_FAST=1 set, terminating program due to handshake failure"
+                ));
                 std::process::exit(1);
             }
         }
@@ -385,12 +391,14 @@ mod tests {
     }
 }
 
-
 // Interposition implementation for file operations
 #[cfg(target_os = "macos")]
 mod interpose {
     use super::*;
-    use libc::{c_char, c_int, mode_t, msghdr, iovec, cmsghdr, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE};
+    use libc::{
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, cmsghdr, iovec, mode_t,
+        msghdr,
+    };
     use std::io::Read;
     use std::mem;
     use std::os::unix::io::FromRawFd;
@@ -399,16 +407,22 @@ mod interpose {
     fn send_fd_open_request(path: &CStr, flags: c_int, mode: mode_t) -> Result<RawFd, String> {
         let stream_arc = {
             let stream_guard = STREAM.lock().unwrap();
-            log_message(&format!("STREAM.lock() returned: {:?}", stream_guard.as_ref().map(|_| "Some(arc)")));
+            log_message(&format!(
+                "STREAM.lock() returned: {:?}",
+                stream_guard.as_ref().map(|_| "Some(arc)")
+            ));
             match stream_guard.as_ref() {
                 Some(arc) => {
                     log_message("STREAM found, sending fd_open request");
                     Arc::clone(arc)
-                },
+                }
                 None => {
-                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original open");
@@ -426,7 +440,9 @@ mod interpose {
 
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+            stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes))
                 .map_err(|e| format!("send fd_open request: {e}"))?;
         }
 
@@ -436,29 +452,34 @@ mod interpose {
         let mut msg_buf: Vec<u8>;
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read response length: {e}"))?;
+            stream_guard
+                .read_exact(&mut len_buf)
+                .map_err(|e| format!("read response length: {e}"))?;
             let msg_len = u32::from_le_bytes(len_buf) as usize;
             msg_buf = vec![0u8; msg_len];
-            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read response: {e}"))?;
+            stream_guard
+                .read_exact(&mut msg_buf)
+                .map_err(|e| format!("read response: {e}"))?;
         }
 
         // Decode the response
         let fd = match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => {
-                match response {
-                    Response::FdOpen(fd_response) => {
-                        let fd = fd_response.fd as RawFd;
-                        log_message(&format!("received fd {} from daemon", fd));
-                        fd
-                    }
-                    Response::Error(err) => {
-                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
-                    }
-                    _ => {
-                        return Err("unexpected response type".to_string());
-                    }
+            Ok(response) => match response {
+                Response::FdOpen(fd_response) => {
+                    let fd = fd_response.fd as RawFd;
+                    log_message(&format!("received fd {} from daemon", fd));
+                    fd
                 }
-            }
+                Response::Error(err) => {
+                    return Err(format!(
+                        "daemon error: {}",
+                        String::from_utf8_lossy(&err.error)
+                    ));
+                }
+                _ => {
+                    return Err("unexpected response type".to_string());
+                }
+            },
             Err(e) => {
                 return Err(format!("decode response failed: {:?}", e));
             }
@@ -513,7 +534,10 @@ mod interpose {
 
         let result = unsafe { libc::sendmsg(stream.as_raw_fd(), &msg, 0) };
         if result < 0 {
-            return Err(format!("sendmsg failed: {}", std::io::Error::last_os_error()));
+            return Err(format!(
+                "sendmsg failed: {}",
+                std::io::Error::last_os_error()
+            ));
         }
 
         Ok(())
@@ -528,7 +552,12 @@ mod interpose {
 
         let c_path = unsafe { CStr::from_ptr(path) };
 
-        log_message(&format!("interposing open({}, {:#x}, {:#o})", c_path.to_string_lossy(), flags, mode));
+        log_message(&format!(
+            "interposing open({}, {:#x}, {:#o})",
+            c_path.to_string_lossy(),
+            flags,
+            mode
+        ));
 
         match send_fd_open_request(c_path, flags, mode) {
             Ok(fd) => {
@@ -536,7 +565,10 @@ mod interpose {
                 fd as c_int
             }
             Err(err) => {
-                log_message(&format!("fd_open failed: {}, falling back to original", err));
+                log_message(&format!(
+                    "fd_open failed: {}, falling back to original",
+                    err
+                ));
                 // Fall back to original implementation using dlsym
                 #[cfg(target_os = "macos")]
                 if let Some(original_open) = *ORIGINAL_OPEN {
@@ -546,21 +578,34 @@ mod interpose {
                     -1
                 }
                 #[cfg(not(target_os = "macos"))]
-                unsafe { libc::open(path, flags, mode as libc::c_uint) }
+                unsafe {
+                    libc::open(path, flags, mode as libc::c_uint)
+                }
             }
         }
     }
 
     /// Interposed openat function
     #[no_mangle]
-    pub extern "C" fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+    pub extern "C" fn openat(
+        dirfd: c_int,
+        path: *const c_char,
+        flags: c_int,
+        mode: mode_t,
+    ) -> c_int {
         if path.is_null() {
             return -1;
         }
 
         let c_path = unsafe { CStr::from_ptr(path) };
 
-        log_message(&format!("interposing openat({}, {}, {:#x}, {:#o})", dirfd, c_path.to_string_lossy(), flags, mode));
+        log_message(&format!(
+            "interposing openat({}, {}, {:#x}, {:#o})",
+            dirfd,
+            c_path.to_string_lossy(),
+            flags,
+            mode
+        ));
 
         // For now, fall back to original - openat forwarding needs more complex path resolution
         #[cfg(target_os = "macos")]
@@ -571,7 +616,9 @@ mod interpose {
             -1
         }
         #[cfg(not(target_os = "macos"))]
-        unsafe { libc::openat(dirfd, path, flags, mode as libc::c_uint) }
+        unsafe {
+            libc::openat(dirfd, path, flags, mode as libc::c_uint)
+        }
     }
 
     /// Interposed creat function
@@ -584,7 +631,11 @@ mod interpose {
         let c_path = unsafe { CStr::from_ptr(path) };
         let flags = libc::O_CREAT | libc::O_TRUNC | libc::O_WRONLY;
 
-        log_message(&format!("interposing creat({}, {:#o})", c_path.to_string_lossy(), mode));
+        log_message(&format!(
+            "interposing creat({}, {:#o})",
+            c_path.to_string_lossy(),
+            mode
+        ));
 
         match send_fd_open_request(c_path, flags, mode) {
             Ok(fd) => {
@@ -592,7 +643,10 @@ mod interpose {
                 fd as c_int
             }
             Err(err) => {
-                log_message(&format!("fd_open failed: {}, falling back to original", err));
+                log_message(&format!(
+                    "fd_open failed: {}, falling back to original",
+                    err
+                ));
                 #[cfg(target_os = "macos")]
                 if let Some(original_creat) = *ORIGINAL_CREAT {
                     unsafe { original_creat(path, mode) }
@@ -601,7 +655,9 @@ mod interpose {
                     -1
                 }
                 #[cfg(not(target_os = "macos"))]
-                unsafe { libc::creat(path, mode) }
+                unsafe {
+                    libc::creat(path, mode)
+                }
             }
         }
     }
@@ -620,12 +676,18 @@ mod interpose {
             std::ptr::null_mut()
         }
         #[cfg(not(target_os = "macos"))]
-        unsafe { libc::fopen(filename, mode) }
+        unsafe {
+            libc::fopen(filename, mode)
+        }
     }
 
     /// Interposed freopen function
     #[no_mangle]
-    pub extern "C" fn freopen(filename: *const c_char, mode: *const c_char, stream: *mut libc::FILE) -> *mut libc::FILE {
+    pub extern "C" fn freopen(
+        filename: *const c_char,
+        mode: *const c_char,
+        stream: *mut libc::FILE,
+    ) -> *mut libc::FILE {
         log_message("interposing freopen() - not yet implemented, falling back to original");
 
         // For now, fall back to original
@@ -637,7 +699,9 @@ mod interpose {
             std::ptr::null_mut()
         }
         #[cfg(not(target_os = "macos"))]
-        unsafe { libc::freopen(filename, mode, stream) }
+        unsafe {
+            libc::freopen(filename, mode, stream)
+        }
     }
 
     // Note: _INODE64 variants are not implemented as they require symbol names with '$'
@@ -686,61 +750,74 @@ static INTERPOSE_TABLE: [Interpose; 5] = [
 
 // Original function pointers obtained via dlsym
 #[cfg(target_os = "macos")]
-static ORIGINAL_OPEN: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int>> = Lazy::new(|| {
-    unsafe {
-        let ptr = dlsym(RTLD_NEXT, b"open\0".as_ptr() as *const libc::c_char);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(std::mem::transmute(ptr))
-        }
+static ORIGINAL_OPEN: Lazy<
+    Option<unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int>,
+> = Lazy::new(|| unsafe {
+    let ptr = dlsym(RTLD_NEXT, b"open\0".as_ptr() as *const libc::c_char);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(std::mem::transmute(ptr))
     }
 });
 
 #[cfg(target_os = "macos")]
-static ORIGINAL_OPENAT: Lazy<Option<unsafe extern "C" fn(libc::c_int, *const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int>> = Lazy::new(|| {
-    unsafe {
-        let ptr = dlsym(RTLD_NEXT, b"openat\0".as_ptr() as *const libc::c_char);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(std::mem::transmute(ptr))
-        }
+static ORIGINAL_OPENAT: Lazy<
+    Option<
+        unsafe extern "C" fn(
+            libc::c_int,
+            *const libc::c_char,
+            libc::c_int,
+            libc::mode_t,
+        ) -> libc::c_int,
+    >,
+> = Lazy::new(|| unsafe {
+    let ptr = dlsym(RTLD_NEXT, b"openat\0".as_ptr() as *const libc::c_char);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(std::mem::transmute(ptr))
     }
 });
 
 #[cfg(target_os = "macos")]
-static ORIGINAL_CREAT: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, libc::mode_t) -> libc::c_int>> = Lazy::new(|| {
-    unsafe {
-        let ptr = dlsym(RTLD_NEXT, b"creat\0".as_ptr() as *const libc::c_char);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(std::mem::transmute(ptr))
-        }
+static ORIGINAL_CREAT: Lazy<
+    Option<unsafe extern "C" fn(*const libc::c_char, libc::mode_t) -> libc::c_int>,
+> = Lazy::new(|| unsafe {
+    let ptr = dlsym(RTLD_NEXT, b"creat\0".as_ptr() as *const libc::c_char);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(std::mem::transmute(ptr))
     }
 });
 
 #[cfg(target_os = "macos")]
-static ORIGINAL_FOPEN: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, *const libc::c_char) -> *mut libc::FILE>> = Lazy::new(|| {
-    unsafe {
-        let ptr = dlsym(RTLD_NEXT, b"fopen\0".as_ptr() as *const libc::c_char);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(std::mem::transmute(ptr))
-        }
+static ORIGINAL_FOPEN: Lazy<
+    Option<unsafe extern "C" fn(*const libc::c_char, *const libc::c_char) -> *mut libc::FILE>,
+> = Lazy::new(|| unsafe {
+    let ptr = dlsym(RTLD_NEXT, b"fopen\0".as_ptr() as *const libc::c_char);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(std::mem::transmute(ptr))
     }
 });
 
 #[cfg(target_os = "macos")]
-static ORIGINAL_FREOPEN: Lazy<Option<unsafe extern "C" fn(*const libc::c_char, *const libc::c_char, *mut libc::FILE) -> *mut libc::FILE>> = Lazy::new(|| {
-    unsafe {
-        let ptr = dlsym(RTLD_NEXT, b"freopen\0".as_ptr() as *const libc::c_char);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(std::mem::transmute(ptr))
-        }
+static ORIGINAL_FREOPEN: Lazy<
+    Option<
+        unsafe extern "C" fn(
+            *const libc::c_char,
+            *const libc::c_char,
+            *mut libc::FILE,
+        ) -> *mut libc::FILE,
+    >,
+> = Lazy::new(|| unsafe {
+    let ptr = dlsym(RTLD_NEXT, b"freopen\0".as_ptr() as *const libc::c_char);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(std::mem::transmute(ptr))
     }
 });

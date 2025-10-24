@@ -123,6 +123,10 @@ lint-rust:
 
 # Format Rust code
 fmt-rust:
+    pre-commit run rustfmt --all-files || true
+
+# Check Rust code formatting (used by CI)
+fmt-rust-check:
     cargo fmt --all --check
 
 # Build release binary for sbx-helper

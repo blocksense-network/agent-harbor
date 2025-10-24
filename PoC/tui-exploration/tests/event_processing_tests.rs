@@ -6,12 +6,12 @@
 //! This file contains tests organized by functional area:
 //! - Task Events: TaskEvent processing and activity line generation
 
-use ah_domain_types::{task::ToolStatus, TaskExecutionStatus};
+use ah_domain_types::{TaskExecutionStatus, task::ToolStatus};
 use ah_rest_mock_client::MockRestClient;
-use std::sync::Arc;
 use ah_tui::view_model::{AgentActivityRow, FocusElement, TaskCardType, TaskExecutionViewModel};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor};
 use chrono::Utc;
+use std::sync::Arc;
 use tui_exploration::{
     LogLevel, TaskEvent, settings::Settings, view_model::ViewModel,
     workspace_files::GitWorkspaceFiles,

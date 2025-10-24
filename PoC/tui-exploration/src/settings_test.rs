@@ -85,7 +85,10 @@ mod tests {
         assert!(!binding.matches(&event));
 
         // Should not match with extra modifiers
-        let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        let event = KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
         assert!(!binding.matches(&event));
     }
 
@@ -123,7 +126,10 @@ mod tests {
     fn test_multiple_modifiers() {
         let binding = KeyBinding::from_string("Ctrl+Shift+A").unwrap();
 
-        let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        let event = KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
         assert!(binding.matches(&event));
 
         // Missing shift
@@ -135,7 +141,10 @@ mod tests {
         assert!(!binding.matches(&event));
 
         // Extra alt
-        let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::SHIFT | KeyModifiers::ALT);
+        let event = KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT | KeyModifiers::ALT,
+        );
         assert!(!binding.matches(&event));
     }
 
@@ -190,12 +199,66 @@ mod tests {
     fn test_complex_key_binding_parsing() {
         // Test various complex key binding formats
         let test_cases = vec![
-            ("C-a", KeyBinding { key: "a".to_string(), ctrl: true, alt: false, shift: false, super_key: false }),
-            ("M-f", KeyBinding { key: "f".to_string(), ctrl: false, alt: true, shift: false, super_key: false }),
-            ("S-Enter", KeyBinding { key: "Enter".to_string(), ctrl: false, alt: false, shift: true, super_key: false }),
-            ("Cmd+X", KeyBinding { key: "X".to_string(), ctrl: false, alt: false, shift: false, super_key: true }),
-            ("Ctrl+Alt+Shift+Delete", KeyBinding { key: "Delete".to_string(), ctrl: true, alt: true, shift: true, super_key: false }),
-            ("Home", KeyBinding { key: "Home".to_string(), ctrl: false, alt: false, shift: false, super_key: false }),
+            (
+                "C-a",
+                KeyBinding {
+                    key: "a".to_string(),
+                    ctrl: true,
+                    alt: false,
+                    shift: false,
+                    super_key: false,
+                },
+            ),
+            (
+                "M-f",
+                KeyBinding {
+                    key: "f".to_string(),
+                    ctrl: false,
+                    alt: true,
+                    shift: false,
+                    super_key: false,
+                },
+            ),
+            (
+                "S-Enter",
+                KeyBinding {
+                    key: "Enter".to_string(),
+                    ctrl: false,
+                    alt: false,
+                    shift: true,
+                    super_key: false,
+                },
+            ),
+            (
+                "Cmd+X",
+                KeyBinding {
+                    key: "X".to_string(),
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                    super_key: true,
+                },
+            ),
+            (
+                "Ctrl+Alt+Shift+Delete",
+                KeyBinding {
+                    key: "Delete".to_string(),
+                    ctrl: true,
+                    alt: true,
+                    shift: true,
+                    super_key: false,
+                },
+            ),
+            (
+                "Home",
+                KeyBinding {
+                    key: "Home".to_string(),
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                    super_key: false,
+                },
+            ),
         ];
 
         for (input, expected) in test_cases {
@@ -257,7 +320,11 @@ mod tests {
 
         for op in multi_binding_ops {
             let bindings = config.get_bindings_display(op);
-            assert!(!bindings.is_empty(), "Operation {:?} should have default bindings", op);
+            assert!(
+                !bindings.is_empty(),
+                "Operation {:?} should have default bindings",
+                op
+            );
         }
     }
 
@@ -326,8 +393,16 @@ mod tests {
         ];
 
         for op in all_operations {
-            assert!(!op.localization_key().is_empty(), "Operation {:?} should have localization key", op);
-            assert!(!op.english_description().is_empty(), "Operation {:?} should have description", op);
+            assert!(
+                !op.localization_key().is_empty(),
+                "Operation {:?} should have localization key",
+                op
+            );
+            assert!(
+                !op.english_description().is_empty(),
+                "Operation {:?} should have description",
+                op
+            );
         }
     }
 
@@ -339,7 +414,8 @@ mod tests {
         assert!(definitions.len() > 20);
 
         // Test a specific operation
-        let move_to_beginning = definitions.iter()
+        let move_to_beginning = definitions
+            .iter()
             .find(|d| d.operation == KeyboardOperation::MoveToBeginningOfLine)
             .unwrap();
 
@@ -422,7 +498,10 @@ mod tests {
         assert!(matcher.matches(&event));
 
         // Should match Ctrl+Shift+A (optional modifier present)
-        let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        let event = KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
         assert!(matcher.matches(&event));
 
         // Should NOT match just Shift+A (required modifier missing)
@@ -430,7 +509,10 @@ mod tests {
         assert!(!matcher.matches(&event));
 
         // Should NOT match Ctrl+A with extra Alt (not optional)
-        let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::ALT);
+        let event = KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        );
         assert!(!matcher.matches(&event));
     }
 }

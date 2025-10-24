@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! GNU Screen multiplexer implementation
 //!
 //! GNU Screen is a classic terminal multiplexer with support for sessions,
@@ -46,7 +49,10 @@ impl Multiplexer for ScreenMultiplexer {
         let session_name = opts.title.unwrap_or("ah-session");
 
         // Check if session already exists
-        if self.list_windows(Some(session_name)).map_or(false, |windows| !windows.is_empty()) {
+        if self
+            .list_windows(Some(session_name))
+            .map_or(false, |windows| !windows.is_empty())
+        {
             return Ok(session_name.to_string());
         }
 
@@ -57,12 +63,16 @@ impl Multiplexer for ScreenMultiplexer {
         // Add command if specified
         cmd.arg("bash").arg("-lc").arg("echo 'Agent Harbor session started'");
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to start screen session: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen session creation failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen session creation failed: {}",
+                stderr
+            )));
         }
 
         Ok(session_name.to_string())
@@ -89,12 +99,16 @@ impl Multiplexer for ScreenMultiplexer {
         let mut split_command = Command::new("screen");
         split_command.arg("-S").arg(window).arg("-X").arg(split_cmd);
 
-        let output = split_command.output()
+        let output = split_command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to split screen region: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen split failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen split failed: {}",
+                stderr
+            )));
         }
 
         // Focus the new region
@@ -106,12 +120,16 @@ impl Multiplexer for ScreenMultiplexer {
         let mut focus_command = Command::new("screen");
         focus_command.arg("-S").arg(window).arg("-X").arg(focus_dir);
 
-        let output = focus_command.output()
+        let output = focus_command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to focus screen region: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen focus failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen focus failed: {}",
+                stderr
+            )));
         }
 
         // Create a new window in the new region
@@ -132,12 +150,16 @@ impl Multiplexer for ScreenMultiplexer {
             screen_command.arg("bash");
         }
 
-        let output = screen_command.output()
+        let output = screen_command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to create screen window: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen window creation failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen window creation failed: {}",
+                stderr
+            )));
         }
 
         // Screen doesn't provide pane IDs in a programmatic way
@@ -147,8 +169,7 @@ impl Multiplexer for ScreenMultiplexer {
 
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
         // Extract session name from pane ID
-        let session_name = pane.strip_prefix("screen-region-")
-            .ok_or_else(|| MuxError::NotFound)?;
+        let session_name = pane.strip_prefix("screen-region-").ok_or_else(|| MuxError::NotFound)?;
 
         // Send the command as text input to the focused window
         let mut stuff_command = format!("{}\n", cmd);
@@ -156,12 +177,16 @@ impl Multiplexer for ScreenMultiplexer {
         let mut command = Command::new("screen");
         command.arg("-S").arg(session_name).arg("-X").arg("stuff").arg(stuff_command);
 
-        let output = command.output()
+        let output = command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to send command to screen: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen stuff failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen stuff failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -169,19 +194,22 @@ impl Multiplexer for ScreenMultiplexer {
 
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         // Extract session name from pane ID
-        let session_name = pane.strip_prefix("screen-region-")
-            .ok_or_else(|| MuxError::NotFound)?;
+        let session_name = pane.strip_prefix("screen-region-").ok_or_else(|| MuxError::NotFound)?;
 
         // Use screen's stuff command to send text
         let mut command = Command::new("screen");
         command.arg("-S").arg(session_name).arg("-X").arg("stuff").arg(text);
 
-        let output = command.output()
+        let output = command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to send text to screen: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen stuff failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen stuff failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -189,15 +217,17 @@ impl Multiplexer for ScreenMultiplexer {
 
     fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
         // Reattach to the session (this brings it to the foreground)
-        let output = Command::new("screen")
-            .arg("-r")
-            .arg(window)
-            .output()
-            .map_err(|e| MuxError::Other(format!("Failed to reattach to screen session: {}", e)))?;
+        let output =
+            Command::new("screen").arg("-r").arg(window).output().map_err(|e| {
+                MuxError::Other(format!("Failed to reattach to screen session: {}", e))
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen reattach failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen reattach failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -219,7 +249,10 @@ impl Multiplexer for ScreenMultiplexer {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("screen -ls failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "screen -ls failed: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

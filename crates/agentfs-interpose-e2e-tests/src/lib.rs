@@ -1,4 +1,6 @@
 #![cfg(target_os = "macos")]
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
 
 pub mod handshake;
 
@@ -102,7 +104,11 @@ pub fn find_helper_binary() -> PathBuf {
         .join(&profile);
 
     let direct = root.join("agentfs-interpose-test-helper");
-    assert!(direct.exists(), "Test helper binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.", direct.display());
+    assert!(
+        direct.exists(),
+        "Test helper binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.",
+        direct.display()
+    );
 
     direct
 }
@@ -116,7 +122,11 @@ pub fn find_daemon_path() -> PathBuf {
         .join(&profile);
 
     let direct = root.join("agentfs-interpose-mock-daemon");
-    assert!(direct.exists(), "Mock daemon binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.", direct.display());
+    assert!(
+        direct.exists(),
+        "Mock daemon binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.",
+        direct.display()
+    );
 
     direct
 }
@@ -188,14 +198,20 @@ mod tests {
         });
 
         let helper = find_helper_binary();
-        set_env_var("AGENTFS_INTERPOSE_ALLOWLIST", "agentfs-interpose-test-helper");
+        set_env_var(
+            "AGENTFS_INTERPOSE_ALLOWLIST",
+            "agentfs-interpose-test-helper",
+        );
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
         set_env_var("AGENTFS_INTERPOSE_LOG", "1");
 
         let output = Command::new(&helper)
             .env("DYLD_INSERT_LIBRARIES", find_dylib_path())
             .env("AGENTFS_INTERPOSE_SOCKET", &socket_path)
-            .env("AGENTFS_INTERPOSE_ALLOWLIST", "agentfs-interpose-test-helper")
+            .env(
+                "AGENTFS_INTERPOSE_ALLOWLIST",
+                "agentfs-interpose-test-helper",
+            )
             .env("AGENTFS_INTERPOSE_LOG", "1")
             .output()
             .expect("failed to launch helper");
@@ -204,7 +220,8 @@ mod tests {
         assert!(
             stderr.contains(DEFAULT_BANNER),
             "Expected banner '{}' in stderr, got: {}",
-            DEFAULT_BANNER, stderr
+            DEFAULT_BANNER,
+            stderr
         );
 
         // Verify successful handshake occurred
@@ -352,27 +369,53 @@ mod tests {
             .output()
             .expect("failed to run basic-open test");
 
-        println!("Basic test stdout: {}", String::from_utf8_lossy(&output.stdout));
-        println!("Basic test stderr: {}", String::from_utf8_lossy(&output.stderr));
+        println!(
+            "Basic test stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        println!(
+            "Basic test stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         // Verify the helper program executed successfully (M24.a verification)
-        assert!(output.status.success(), "Helper program should succeed, got: {}", output.status);
+        assert!(
+            output.status.success(),
+            "Helper program should succeed, got: {}",
+            output.status
+        );
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         // Verify shim loaded and handshake succeeded (M24.a verification)
-        assert!(stderr.contains(DEFAULT_BANNER), "Expected banner '{}' in stderr", DEFAULT_BANNER);
-        assert!(stderr.contains("handshake acknowledged"), "Expected handshake acknowledgment in stderr");
+        assert!(
+            stderr.contains(DEFAULT_BANNER),
+            "Expected banner '{}' in stderr",
+            DEFAULT_BANNER
+        );
+        assert!(
+            stderr.contains("handshake acknowledged"),
+            "Expected handshake acknowledgment in stderr"
+        );
 
         // Verify interposition occurred (M24.b verification)
-        assert!(stderr.contains("interposing open("), "Expected interposition message in stderr");
+        assert!(
+            stderr.contains("interposing open("),
+            "Expected interposition message in stderr"
+        );
 
         // Verify filesystem behavior within the helper program (M24.b verification)
         // The helper should have successfully read the expected content
-        assert!(stdout.contains("Successfully opened and read 33 bytes"), "Expected successful file read in stdout");
+        assert!(
+            stdout.contains("Successfully opened and read 33 bytes"),
+            "Expected successful file read in stdout"
+        );
         // Check that the first few bytes match the expected content (printed as byte array)
-        assert!(stdout.contains("First few bytes: [72, 101, 108, 108, 111, 44, 32, 87, 111, 114]"), "Expected correct file content bytes in stdout");
+        assert!(
+            stdout.contains("First few bytes: [72, 101, 108, 108, 111, 44, 32, 87, 111, 114]"),
+            "Expected correct file content bytes in stdout"
+        );
 
         // TODO: Ideally, also verify the daemon's filesystem state after execution
         // This would require extending the daemon to expose filesystem state or

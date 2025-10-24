@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
@@ -11,7 +14,11 @@ use std::time::Duration;
 use libc;
 
 // AgentFS core imports
-use agentfs_core::{config::{FsConfig, InterposeConfig}, error::FsResult, FsCore, PID};
+use agentfs_core::{
+    FsCore, PID,
+    config::{FsConfig, InterposeConfig},
+    error::FsResult,
+};
 
 // AgentFS proto imports
 use agentfs_proto::*;
@@ -58,8 +65,17 @@ impl AgentFsDaemon {
         self.processes.get(&os_pid)
     }
 
-    fn handle_fd_open(&mut self, path: String, flags: u32, mode: u32, os_pid: u32) -> Result<RawFd, String> {
-        println!("AgentFsDaemon: fd_open({}, flags={:#x}, mode={:#o}, pid={})", path, flags, mode, os_pid);
+    fn handle_fd_open(
+        &mut self,
+        path: String,
+        flags: u32,
+        mode: u32,
+        os_pid: u32,
+    ) -> Result<RawFd, String> {
+        println!(
+            "AgentFsDaemon: fd_open({}, flags={:#x}, mode={:#o}, pid={})",
+            path, flags, mode, os_pid
+        );
 
         // For interpose testing, we provide direct access to files in the test directory
         // This simulates what the real AgentFS interpose mode would do - provide direct
@@ -93,9 +109,7 @@ impl AgentFsDaemon {
             .map_err(|e| format!("invalid path '{}': {}", path, e))?;
 
         // Use libc::open directly to get a real file descriptor
-        let fd = unsafe {
-            libc::open(c_path.as_ptr(), libc_flags, mode as libc::c_uint)
-        };
+        let fd = unsafe { libc::open(c_path.as_ptr(), libc_flags, mode as libc::c_uint) };
 
         if fd == -1 {
             let err = std::io::Error::last_os_error();
@@ -114,7 +128,10 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     {
         let mut daemon = daemon.lock().unwrap();
         if let Err(e) = daemon.register_process(client_pid, 0, 0, 0) {
-            println!("AgentFsDaemon: failed to register process {}: {:?}", client_pid, e);
+            println!(
+                "AgentFsDaemon: failed to register process {}: {:?}",
+                client_pid, e
+            );
             return;
         }
     }
@@ -152,17 +169,25 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     Request::FdOpen((version, fd_open_req)) => {
                         let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_fd_open(path, fd_open_req.flags, fd_open_req.mode, client_pid) {
+                        match daemon.handle_fd_open(
+                            path,
+                            fd_open_req.flags,
+                            fd_open_req.mode,
+                            client_pid,
+                        ) {
                             Ok(fd) => {
                                 // For now, send a simple success response with the fd number
                                 // TODO: Implement proper SCM_RIGHTS
                                 let response = Response::fd_open(fd as u32);
                                 send_response(&mut stream, &response);
                                 // Close our copy of the fd
-                                unsafe { libc::close(fd); }
+                                unsafe {
+                                    libc::close(fd);
+                                }
                             }
                             Err(e) => {
-                                let response = Response::error(format!("fd_open failed: {}", e), Some(2));
+                                let response =
+                                    Response::error(format!("fd_open failed: {}", e), Some(2));
                                 send_response(&mut stream, &response);
                             }
                         }
@@ -182,7 +207,10 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
 }
 
 fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
-    use libc::{c_int, cmsghdr, iovec, msghdr, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET};
+    use libc::{
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET, c_int, cmsghdr,
+        iovec, msghdr,
+    };
 
     // Create a dummy message (we're only sending the fd)
     let dummy_data = [0u8; 1];
@@ -195,7 +223,8 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
     msg.msg_iov = &mut iov;
     msg.msg_iovlen = 1;
 
-    let cmsg_space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as libc::c_uint) } as usize;
+    let cmsg_space =
+        unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as libc::c_uint) } as usize;
     let mut cmsg_buf = vec![0u8; cmsg_space];
     msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
     msg.msg_controllen = cmsg_buf.len() as libc::c_uint;
@@ -214,7 +243,10 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
 
     let result = unsafe { libc::sendmsg(stream.as_raw_fd(), &msg, 0) };
     if result < 0 {
-        return Err(format!("sendmsg failed: {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "sendmsg failed: {}",
+            std::io::Error::last_os_error()
+        ));
     }
 
     Ok(())

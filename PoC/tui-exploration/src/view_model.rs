@@ -77,8 +77,8 @@ use futures::stream::StreamExt;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
 use std::collections::HashMap;
-use tokio::sync::{mpsc, oneshot};
 use std::sync::Arc;
+use tokio::sync::{mpsc, oneshot};
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
 
@@ -522,7 +522,6 @@ impl ViewModel {
             | FocusElement::ModelSelector
             | FocusElement::GoButton
             | FocusElement::DraftTask(_) => {
-
                 // Support editing the description when focused on TaskDescription or any DraftTask
                 if let FocusElement::TaskDescription = self.focus_element {
                     // Get the first (and currently only) draft card
@@ -534,7 +533,8 @@ impl ViewModel {
                         card.description.input(key_event);
 
                         // Trigger autocomplete after textarea change
-                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                        self.autocomplete
+                            .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
@@ -552,7 +552,8 @@ impl ViewModel {
                             card.description.input(key_event);
 
                             // Trigger autocomplete after textarea change
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                             card.save_state = DraftSaveState::Unsaved;
                             // Reset auto-save timer
@@ -672,7 +673,8 @@ impl ViewModel {
                     self.autocomplete.notify_text_input();
                     card.description.input(key_event);
 
-                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                    self.autocomplete
+                        .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                     card.save_state = DraftSaveState::Unsaved;
                     // Reset auto-save timer
@@ -692,7 +694,8 @@ impl ViewModel {
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
 
-                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                        self.autocomplete
+                            .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
@@ -808,7 +811,8 @@ impl ViewModel {
                     self.autocomplete.notify_text_input();
                     card.description.input(key_event);
 
-                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                    self.autocomplete
+                        .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                     card.save_state = DraftSaveState::Unsaved;
                     // Reset auto-save timer
@@ -828,7 +832,8 @@ impl ViewModel {
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
 
-                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                        self.autocomplete
+                            .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         // Reset auto-save timer
@@ -860,7 +865,10 @@ impl ViewModel {
                                         KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
                                     self.autocomplete.notify_text_input();
                                     card.description.input(key_event);
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                     card.save_state = DraftSaveState::Unsaved;
                                     card.auto_save_timer = Some(std::time::Instant::now());
                                     return true;
@@ -900,7 +908,8 @@ impl ViewModel {
                         let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
-                        self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                        self.autocomplete
+                            .after_textarea_change(&card.description, &mut self.needs_redraw);
 
                         card.save_state = DraftSaveState::Unsaved;
                         card.auto_save_timer = Some(std::time::Instant::now());
@@ -1259,7 +1268,13 @@ impl ViewModel {
         task_manager: Arc<dyn TaskManager>,
         settings: Settings,
     ) -> Self {
-        Self::new_internal(workspace_files, workspace_workflows, task_manager, settings, false)
+        Self::new_internal(
+            workspace_files,
+            workspace_workflows,
+            task_manager,
+            settings,
+            false,
+        )
     }
 
     /// Create a new ViewModel with background loading enabled
@@ -1269,7 +1284,13 @@ impl ViewModel {
         task_manager: Arc<dyn TaskManager>,
         settings: Settings,
     ) -> Self {
-        Self::new_internal(workspace_files, workspace_workflows, task_manager, settings, true)
+        Self::new_internal(
+            workspace_files,
+            workspace_workflows,
+            task_manager,
+            settings,
+            true,
+        )
     }
 
     fn new_internal(
@@ -1300,13 +1321,19 @@ impl ViewModel {
         let workflows_loaded = false;
 
         // Create communication channels for background loading (only if enabled)
-        let (files_sender, files_receiver, workflows_sender, workflows_receiver) = if with_background_loading {
-            let (files_sender, files_receiver) = oneshot::channel();
-            let (workflows_sender, workflows_receiver) = oneshot::channel();
-            (Some(files_sender), Some(files_receiver), Some(workflows_sender), Some(workflows_receiver))
-        } else {
-            (None, None, None, None)
-        };
+        let (files_sender, files_receiver, workflows_sender, workflows_receiver) =
+            if with_background_loading {
+                let (files_sender, files_receiver) = oneshot::channel();
+                let (workflows_sender, workflows_receiver) = oneshot::channel();
+                (
+                    Some(files_sender),
+                    Some(files_receiver),
+                    Some(workflows_sender),
+                    Some(workflows_receiver),
+                )
+            } else {
+                (None, None, None, None)
+            };
 
         // Create initial draft card with embedded domain object
         let initial_draft = DraftTask {
@@ -1519,61 +1546,61 @@ impl ViewModel {
         // Define all operations we care about in the TUI
         // These are operations that have default key bindings defined
         let operations_to_check = vec![
-            KeyboardOperation::MoveToPreviousLine,       // Up arrow
-            KeyboardOperation::MoveToNextLine,           // Down arrow
-            KeyboardOperation::MoveToNextField,          // Tab
-            KeyboardOperation::MoveToPreviousField,      // Shift+Tab
-            KeyboardOperation::MoveToBeginningOfLine,    // Home
-            KeyboardOperation::MoveToEndOfLine,          // End
-            KeyboardOperation::MoveForwardOneCharacter,  // Right arrow
-            KeyboardOperation::MoveBackwardOneCharacter, // Left arrow
-            KeyboardOperation::MoveForwardOneWord,       // Ctrl+Right
-            KeyboardOperation::MoveBackwardOneWord,      // Ctrl+Left
-            KeyboardOperation::MoveToBeginningOfSentence, // Alt+A
-            KeyboardOperation::MoveToEndOfSentence,     // Alt+E
-            KeyboardOperation::ScrollDownOneScreen,      // PageDown
-            KeyboardOperation::ScrollUpOneScreen,        // PageUp
-            KeyboardOperation::RecenterScreenOnCursor,   // Ctrl+L
-            KeyboardOperation::MoveToBeginningOfDocument, // Ctrl+Home
-            KeyboardOperation::MoveToEndOfDocument,     // Ctrl+End
+            KeyboardOperation::MoveToPreviousLine,         // Up arrow
+            KeyboardOperation::MoveToNextLine,             // Down arrow
+            KeyboardOperation::MoveToNextField,            // Tab
+            KeyboardOperation::MoveToPreviousField,        // Shift+Tab
+            KeyboardOperation::MoveToBeginningOfLine,      // Home
+            KeyboardOperation::MoveToEndOfLine,            // End
+            KeyboardOperation::MoveForwardOneCharacter,    // Right arrow
+            KeyboardOperation::MoveBackwardOneCharacter,   // Left arrow
+            KeyboardOperation::MoveForwardOneWord,         // Ctrl+Right
+            KeyboardOperation::MoveBackwardOneWord,        // Ctrl+Left
+            KeyboardOperation::MoveToBeginningOfSentence,  // Alt+A
+            KeyboardOperation::MoveToEndOfSentence,        // Alt+E
+            KeyboardOperation::ScrollDownOneScreen,        // PageDown
+            KeyboardOperation::ScrollUpOneScreen,          // PageUp
+            KeyboardOperation::RecenterScreenOnCursor,     // Ctrl+L
+            KeyboardOperation::MoveToBeginningOfDocument,  // Ctrl+Home
+            KeyboardOperation::MoveToEndOfDocument,        // Ctrl+End
             KeyboardOperation::MoveToBeginningOfParagraph, // Alt+{
-            KeyboardOperation::MoveToEndOfParagraph,    // Alt+}
-            KeyboardOperation::DeleteCharacterBackward,  // Backspace
-            KeyboardOperation::DeleteCharacterForward,   // Delete
-            KeyboardOperation::DeleteWordForward,        // Ctrl+Delete
-            KeyboardOperation::DeleteWordBackward,       // Ctrl+Backspace
-            KeyboardOperation::DeleteToEndOfLine,         // Ctrl+K
-            KeyboardOperation::DeleteToBeginningOfLine,   // Ctrl+U
-            KeyboardOperation::Cut,                      // Ctrl+X
-            KeyboardOperation::Copy,                     // Ctrl+C
-            KeyboardOperation::Paste,                    // Ctrl+V
-            KeyboardOperation::CycleThroughClipboard,    // Alt+Y
-            KeyboardOperation::Undo,                     // Ctrl+Z
-            KeyboardOperation::Redo,                     // Ctrl+Y
-            KeyboardOperation::OpenNewLine,              // Shift+Enter
-            KeyboardOperation::TransposeCharacters,      // Ctrl+T
-            KeyboardOperation::TransposeWords,           // Alt+T
-            KeyboardOperation::UppercaseWord,            // Alt+U
-            KeyboardOperation::LowercaseWord,            // Alt+L
-            KeyboardOperation::CapitalizeWord,           // Alt+C
-            KeyboardOperation::JoinLines,                // Alt+^
-            KeyboardOperation::Bold,                     // Ctrl+B
-            KeyboardOperation::Italic,                   // Ctrl+I
-            KeyboardOperation::Underline,                // Ctrl+U
-            KeyboardOperation::ToggleComment,            // Ctrl+/
-            KeyboardOperation::DuplicateLineSelection,   // Ctrl+D
-            KeyboardOperation::MoveLineUp,                // Alt+Up
-            KeyboardOperation::MoveLineDown,              // Alt+Down
-            KeyboardOperation::IndentRegion,             // Ctrl+]
-            KeyboardOperation::DedentRegion,             // Ctrl+[
-            KeyboardOperation::IncrementalSearchForward, // Ctrl+S
-            KeyboardOperation::IncrementalSearchBackward,// Ctrl+R
-            KeyboardOperation::FindNext,                 // F3
-            KeyboardOperation::FindPrevious,             // Shift+F3
-            KeyboardOperation::SelectAll,                // Ctrl+A
-            KeyboardOperation::SelectWordUnderCursor,    // Alt+@
-            KeyboardOperation::SetMark,                  // Ctrl+Space
-            KeyboardOperation::DismissOverlay,           // Escape
+            KeyboardOperation::MoveToEndOfParagraph,       // Alt+}
+            KeyboardOperation::DeleteCharacterBackward,    // Backspace
+            KeyboardOperation::DeleteCharacterForward,     // Delete
+            KeyboardOperation::DeleteWordForward,          // Ctrl+Delete
+            KeyboardOperation::DeleteWordBackward,         // Ctrl+Backspace
+            KeyboardOperation::DeleteToEndOfLine,          // Ctrl+K
+            KeyboardOperation::DeleteToBeginningOfLine,    // Ctrl+U
+            KeyboardOperation::Cut,                        // Ctrl+X
+            KeyboardOperation::Copy,                       // Ctrl+C
+            KeyboardOperation::Paste,                      // Ctrl+V
+            KeyboardOperation::CycleThroughClipboard,      // Alt+Y
+            KeyboardOperation::Undo,                       // Ctrl+Z
+            KeyboardOperation::Redo,                       // Ctrl+Y
+            KeyboardOperation::OpenNewLine,                // Shift+Enter
+            KeyboardOperation::TransposeCharacters,        // Ctrl+T
+            KeyboardOperation::TransposeWords,             // Alt+T
+            KeyboardOperation::UppercaseWord,              // Alt+U
+            KeyboardOperation::LowercaseWord,              // Alt+L
+            KeyboardOperation::CapitalizeWord,             // Alt+C
+            KeyboardOperation::JoinLines,                  // Alt+^
+            KeyboardOperation::Bold,                       // Ctrl+B
+            KeyboardOperation::Italic,                     // Ctrl+I
+            KeyboardOperation::Underline,                  // Ctrl+U
+            KeyboardOperation::ToggleComment,              // Ctrl+/
+            KeyboardOperation::DuplicateLineSelection,     // Ctrl+D
+            KeyboardOperation::MoveLineUp,                 // Alt+Up
+            KeyboardOperation::MoveLineDown,               // Alt+Down
+            KeyboardOperation::IndentRegion,               // Ctrl+]
+            KeyboardOperation::DedentRegion,               // Ctrl+[
+            KeyboardOperation::IncrementalSearchForward,   // Ctrl+S
+            KeyboardOperation::IncrementalSearchBackward,  // Ctrl+R
+            KeyboardOperation::FindNext,                   // F3
+            KeyboardOperation::FindPrevious,               // Shift+F3
+            KeyboardOperation::SelectAll,                  // Ctrl+A
+            KeyboardOperation::SelectWordUnderCursor,      // Alt+@
+            KeyboardOperation::SetMark,                    // Ctrl+Space
+            KeyboardOperation::DismissOverlay,             // Escape
         ];
 
         // Find the first operation that matches this key event
@@ -1591,7 +1618,6 @@ impl ViewModel {
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
-
         if !matches!(key.code, KeyCode::Esc) {
             self.clear_exit_confirmation();
         }
@@ -1606,11 +1632,16 @@ impl ViewModel {
         // Handle autocomplete keys when focused on TaskDescription
         if matches!(self.focus_element, FocusElement::TaskDescription) {
             if let Some(card) = self.draft_cards.get_mut(0) {
-                match self.autocomplete.handle_key_event(&key, &mut card.description, &mut self.needs_redraw) {
+                match self.autocomplete.handle_key_event(
+                    &key,
+                    &mut card.description,
+                    &mut self.needs_redraw,
+                ) {
                     AutocompleteKeyResult::Consumed { text_changed } => {
                         if text_changed {
                             self.autocomplete.notify_text_input();
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                         }
                         return true;
                     }
@@ -1691,7 +1722,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+home selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -1706,7 +1739,10 @@ impl ViewModel {
 
                             card.description.move_cursor(CursorMove::Head);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1723,7 +1759,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+end selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -1738,7 +1776,10 @@ impl ViewModel {
 
                             card.description.move_cursor(CursorMove::End);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1777,7 +1818,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -1793,7 +1836,10 @@ impl ViewModel {
                             card.description.move_cursor(CursorMove::Forward);
 
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1832,7 +1878,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -1848,7 +1896,10 @@ impl ViewModel {
                             card.description.move_cursor(CursorMove::Back);
 
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1865,7 +1916,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+ctrl+arrow selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -1881,7 +1934,10 @@ impl ViewModel {
                             card.description.move_cursor(CursorMove::WordForward);
 
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1898,7 +1954,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+ctrl+arrow selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -1914,7 +1972,10 @@ impl ViewModel {
                             card.description.move_cursor(CursorMove::WordBack);
 
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1933,7 +1994,10 @@ impl ViewModel {
                             card.description.delete_next_word();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1946,7 +2010,10 @@ impl ViewModel {
                                 card.description.delete_next_word();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -1967,7 +2034,10 @@ impl ViewModel {
                             card.description.delete_word();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -1980,7 +2050,10 @@ impl ViewModel {
                                 card.description.delete_word();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2002,7 +2075,9 @@ impl ViewModel {
                             let old_cursor = card.description.cursor();
 
                             // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2019,7 +2094,10 @@ impl ViewModel {
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
                                 // Cursor moved successfully within text area
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                                 return true;
                             }
                         }
@@ -2041,7 +2119,9 @@ impl ViewModel {
                             let old_cursor = card.description.cursor();
 
                             // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2058,7 +2138,10 @@ impl ViewModel {
                             let new_cursor = card.description.cursor();
                             if new_cursor != old_cursor {
                                 // Cursor moved successfully within text area
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                                 return true;
                             }
                         }
@@ -2090,7 +2173,10 @@ impl ViewModel {
                             card.description.cut();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2102,7 +2188,10 @@ impl ViewModel {
                                 card.description.cut();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2142,7 +2231,10 @@ impl ViewModel {
                             card.description.paste();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2154,7 +2246,10 @@ impl ViewModel {
                                 card.description.paste();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2173,7 +2268,10 @@ impl ViewModel {
                             card.description.undo();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2185,7 +2283,10 @@ impl ViewModel {
                                 card.description.undo();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2204,7 +2305,10 @@ impl ViewModel {
                             card.description.redo();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2216,7 +2320,10 @@ impl ViewModel {
                                 card.description.redo();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2235,7 +2342,10 @@ impl ViewModel {
                             card.description.delete_line_by_end();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2247,7 +2357,10 @@ impl ViewModel {
                                 card.description.delete_line_by_end();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2266,7 +2379,10 @@ impl ViewModel {
                             card.description.delete_line_by_head();
                             let after_text = card.description.lines().join("\\n");
                             if before_text != after_text {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2278,7 +2394,10 @@ impl ViewModel {
                                 card.description.delete_line_by_head();
                                 let after_text = card.description.lines().join("\\n");
                                 if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
                                 }
                                 return true;
                             }
@@ -2294,7 +2413,8 @@ impl ViewModel {
                     FocusElement::TaskDescription => {
                         if let Some(card) = self.draft_cards.get_mut(0) {
                             card.description.select_all();
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2302,7 +2422,10 @@ impl ViewModel {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             if card.focus_element == FocusElement::TaskDescription {
                                 card.description.select_all();
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                                 return true;
                             }
                         }
@@ -2320,7 +2443,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+sentence selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2335,7 +2460,10 @@ impl ViewModel {
 
                             card.description.move_cursor(CursorMove::Head);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2352,7 +2480,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+sentence selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2367,7 +2497,10 @@ impl ViewModel {
 
                             card.description.move_cursor(CursorMove::End);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2384,7 +2517,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+document selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2410,12 +2545,15 @@ impl ViewModel {
                             card.description.move_cursor(CursorMove::Head);
 
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
-                        return true;
+                            return true;
+                        }
                     }
                 }
-            }
                 false
             }
             KeyboardOperation::MoveToEndOfDocument => {
@@ -2427,7 +2565,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+document selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2453,10 +2593,13 @@ impl ViewModel {
                             card.description.move_cursor(CursorMove::End);
 
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
-                return true;
-            }
+                            return true;
+                        }
                     }
                 }
                 false
@@ -2470,7 +2613,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+paragraph selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2485,13 +2630,16 @@ impl ViewModel {
 
                             card.description.move_cursor(CursorMove::Head);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
-                return true;
-            }
-            }
-        }
-        false
+                            return true;
+                        }
+                    }
+                }
+                false
             }
             KeyboardOperation::MoveToEndOfParagraph => {
                 // Move to end of paragraph (approximated as end of current line)
@@ -2502,7 +2650,9 @@ impl ViewModel {
                             let before = card.description.cursor();
 
                             // Handle shift+paragraph selection (CUA style)
-                            let shift_pressed = key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
+                            let shift_pressed = key
+                                .modifiers
+                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
                             if shift_pressed {
                                 // Start selection if not already active
                                 if card.description.selection_range().is_none() {
@@ -2517,7 +2667,10 @@ impl ViewModel {
 
                             card.description.move_cursor(CursorMove::End);
                             if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                             }
                             return true;
                         }
@@ -2533,7 +2686,8 @@ impl ViewModel {
                             // For now, just select all as a simple approximation
                             // A more sophisticated implementation would find word boundaries
                             card.description.select_all();
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2606,24 +2760,26 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             let lines = card.description.lines();
-                   let cursor_row = card.description.cursor().0 as usize;
-                   let cursor_col = card.description.cursor().1 as usize;
+                            let cursor_row = card.description.cursor().0 as usize;
+                            let cursor_col = card.description.cursor().1 as usize;
 
                             // Determine lines to comment/uncomment
-                            let (_start_line, _end_line) = if let Some(range) = card.description.selection_range() {
-                                // Multi-line selection - range is ((start_row, start_col), (end_row, end_col))
-                                (range.0.0, range.1.0)
-                            } else {
-                                // Single line at cursor
-                                (cursor_row, cursor_row)
-                            };
+                            let (_start_line, _end_line) =
+                                if let Some(range) = card.description.selection_range() {
+                                    // Multi-line selection - range is ((start_row, start_col), (end_row, end_col))
+                                    (range.0.0, range.1.0)
+                                } else {
+                                    // Single line at cursor
+                                    (cursor_row, cursor_row)
+                                };
 
                             // Use // as comment marker (could be made configurable)
                             let comment_marker = "//";
                             let mut lines_to_modify = Vec::new();
 
                             // Check if we're adding or removing comments
-                            let should_add_comment = lines.get(_start_line)
+                            let should_add_comment = lines
+                                .get(_start_line)
                                 .map(|line: &String| !line.starts_with(comment_marker))
                                 .unwrap_or(true);
 
@@ -2633,7 +2789,9 @@ impl ViewModel {
                                     let modified_line = if should_add_comment {
                                         format!("{}{}", comment_marker, line)
                                     } else if line.starts_with(comment_marker) {
-                                        line.strip_prefix(comment_marker).unwrap_or(line).to_string()
+                                        line.strip_prefix(comment_marker)
+                                            .unwrap_or(line)
+                                            .to_string()
                                     } else {
                                         line.clone()
                                     };
@@ -2667,7 +2825,8 @@ impl ViewModel {
                                 card.description.insert_str(&current_line);
                             }
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2703,7 +2862,8 @@ impl ViewModel {
                             // Paste above the current line
                             card.description.paste();
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2739,7 +2899,8 @@ impl ViewModel {
                             card.description.insert_newline();
                             card.description.paste();
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2752,12 +2913,13 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             // Get selection range or current line
-                            let (_start_line, _end_line) = if let Some(range) = card.description.selection_range() {
-                                (range.0.0, range.1.0)
-                            } else {
-                                let cursor_row = card.description.cursor().0 as usize;
-                                (cursor_row, cursor_row)
-                            };
+                            let (_start_line, _end_line) =
+                                if let Some(range) = card.description.selection_range() {
+                                    (range.0.0, range.1.0)
+                                } else {
+                                    let cursor_row = card.description.cursor().0 as usize;
+                                    (cursor_row, cursor_row)
+                                };
 
                             // Insert 4 spaces (or tab) at start of each line
                             // This is simplified - full implementation would need to modify textarea content directly
@@ -2773,12 +2935,13 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == FocusElement::TaskDescription {
                             // Get selection range or current line
-                            let (_start_line, _end_line) = if let Some(range) = card.description.selection_range() {
-                                (range.0.0, range.1.0)
-                            } else {
-                                let cursor_row = card.description.cursor().0 as usize;
-                                (cursor_row, cursor_row)
-                            };
+                            let (_start_line, _end_line) =
+                                if let Some(range) = card.description.selection_range() {
+                                    (range.0.0, range.1.0)
+                                } else {
+                                    let cursor_row = card.description.cursor().0 as usize;
+                                    (cursor_row, cursor_row)
+                                };
 
                             // Remove up to 4 spaces from start of each line
                             // This is simplified - full implementation would need to modify textarea content directly
@@ -2807,18 +2970,22 @@ impl ViewModel {
                                     let mut word_end = cursor_col;
 
                                     // Find start of word (move left until non-alphanumeric)
-                                    while word_start > 0 && chars[word_start - 1].is_alphanumeric() {
+                                    while word_start > 0 && chars[word_start - 1].is_alphanumeric()
+                                    {
                                         word_start -= 1;
                                     }
 
                                     // Find end of word (move right until non-alphanumeric)
-                                    while word_end < chars.len() && chars[word_end].is_alphanumeric() {
+                                    while word_end < chars.len()
+                                        && chars[word_end].is_alphanumeric()
+                                    {
                                         word_end += 1;
                                     }
 
                                     if word_start < word_end {
                                         // Extract and uppercase the word
-                                        let word: String = chars[word_start..word_end].iter().collect();
+                                        let word: String =
+                                            chars[word_start..word_end].iter().collect();
                                         let uppercased = word.to_uppercase();
 
                                         // Replace the word in the line
@@ -2828,18 +2995,26 @@ impl ViewModel {
                                         new_line.extend(&chars[word_end..]);
 
                                         // Replace the entire line
-                                        let mut all_lines: Vec<String> = lines.into_iter().map(|s| s.clone()).collect();
+                                        let mut all_lines: Vec<String> =
+                                            lines.into_iter().map(|s| s.clone()).collect();
                                         all_lines[cursor_row] = new_line;
                                         card.description = tui_textarea::TextArea::new(all_lines);
 
                                         // Restore cursor position (after the uppercased word)
-                                        let new_cursor_col = word_start + uppercased.chars().count();
-                                        card.description.move_cursor(tui_textarea::CursorMove::Jump(cursor_row as u16, new_cursor_col as u16));
+                                        let new_cursor_col =
+                                            word_start + uppercased.chars().count();
+                                        card.description.move_cursor(
+                                            tui_textarea::CursorMove::Jump(
+                                                cursor_row as u16,
+                                                new_cursor_col as u16,
+                                            ),
+                                        );
                                     }
                                 }
                             }
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2865,18 +3040,22 @@ impl ViewModel {
                                     let mut word_end = cursor_col;
 
                                     // Find start of word (move left until non-alphanumeric)
-                                    while word_start > 0 && chars[word_start - 1].is_alphanumeric() {
+                                    while word_start > 0 && chars[word_start - 1].is_alphanumeric()
+                                    {
                                         word_start -= 1;
                                     }
 
                                     // Find end of word (move right until non-alphanumeric)
-                                    while word_end < chars.len() && chars[word_end].is_alphanumeric() {
+                                    while word_end < chars.len()
+                                        && chars[word_end].is_alphanumeric()
+                                    {
                                         word_end += 1;
                                     }
 
                                     if word_start < word_end {
                                         // Extract and lowercase the word
-                                        let word: String = chars[word_start..word_end].iter().collect();
+                                        let word: String =
+                                            chars[word_start..word_end].iter().collect();
                                         let lowercased = word.to_lowercase();
 
                                         // Replace the word in the line
@@ -2886,18 +3065,26 @@ impl ViewModel {
                                         new_line.extend(&chars[word_end..]);
 
                                         // Replace the entire line
-                                        let mut all_lines: Vec<String> = lines.into_iter().map(|s| s.clone()).collect();
+                                        let mut all_lines: Vec<String> =
+                                            lines.into_iter().map(|s| s.clone()).collect();
                                         all_lines[cursor_row] = new_line;
                                         card.description = tui_textarea::TextArea::new(all_lines);
 
                                         // Restore cursor position (after the lowercased word)
-                                        let new_cursor_col = word_start + lowercased.chars().count();
-                                        card.description.move_cursor(tui_textarea::CursorMove::Jump(cursor_row as u16, new_cursor_col as u16));
+                                        let new_cursor_col =
+                                            word_start + lowercased.chars().count();
+                                        card.description.move_cursor(
+                                            tui_textarea::CursorMove::Jump(
+                                                cursor_row as u16,
+                                                new_cursor_col as u16,
+                                            ),
+                                        );
                                     }
                                 }
                             }
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2917,15 +3104,26 @@ impl ViewModel {
                             // Get the copied word and capitalize it
                             let word = card.description.yank_text();
                             if !word.is_empty() {
-                                let capitalized = word.chars().enumerate()
-                                    .map(|(i, c)| if i == 0 { c.to_uppercase().to_string() } else { c.to_lowercase().to_string() })
+                                let capitalized = word
+                                    .chars()
+                                    .enumerate()
+                                    .map(|(i, c)| {
+                                        if i == 0 {
+                                            c.to_uppercase().to_string()
+                                        } else {
+                                            c.to_lowercase().to_string()
+                                        }
+                                    })
                                     .collect::<String>();
                                 card.description.set_yank_text(capitalized);
 
                                 // Replace the selection
                                 card.description.paste();
 
-                                self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
                                 return true;
                             }
                         }
@@ -2942,7 +3140,8 @@ impl ViewModel {
                             card.description.move_cursor(tui_textarea::CursorMove::End);
                             card.description.delete_next_char(); // This should delete the newline
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2972,7 +3171,8 @@ impl ViewModel {
                                 card.description.move_cursor(tui_textarea::CursorMove::Back);
                             }
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -2998,7 +3198,8 @@ impl ViewModel {
                                 card.description.move_cursor(tui_textarea::CursorMove::Back);
                             }
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -3016,7 +3217,8 @@ impl ViewModel {
                                 let selected_text = card.description.yank_text();
                                 if !selected_text.is_empty() {
                                     // Replace selection with wrapped text
-                                    card.description.insert_str(&format!("<u>{}</u>", selected_text));
+                                    card.description
+                                        .insert_str(&format!("<u>{}</u>", selected_text));
                                 }
                             } else {
                                 // Insert tags and position cursor
@@ -3027,7 +3229,8 @@ impl ViewModel {
                                 card.description.move_cursor(tui_textarea::CursorMove::Back);
                             }
 
-                            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
                             return true;
                         }
                     }
@@ -3175,11 +3378,11 @@ impl ViewModel {
                     match workspace_files.stream_repository_files().await {
                         Ok(mut stream) => {
                             let mut files = Vec::new();
-                        while let Some(result) = stream.next().await {
-                            if let Ok(repo_file) = result {
-                                files.push(repo_file.path);
+                            while let Some(result) = stream.next().await {
+                                if let Ok(repo_file) = result {
+                                    files.push(repo_file.path);
+                                }
                             }
-                        }
                             // Send the loaded files back via the channel
                             let _ = sender.send(files);
                         }
@@ -3202,7 +3405,8 @@ impl ViewModel {
                 tokio::spawn(async move {
                     match workspace_workflows.enumerate_workflow_commands().await {
                         Ok(commands) => {
-                            let workflows: Vec<String> = commands.into_iter().map(|c| c.name).collect();
+                            let workflows: Vec<String> =
+                                commands.into_iter().map(|c| c.name).collect();
                             // Send the loaded workflows back via the channel
                             let _ = sender.send(workflows);
                         }
@@ -3254,7 +3458,9 @@ impl ViewModel {
             // Cancel any active text selection when leaving textarea
             if let FocusElement::DraftTask(idx) = self.focus_element {
                 if let Some(card) = self.draft_cards.get_mut(idx) {
-                    if card.focus_element == FocusElement::TaskDescription && card.description.selection_range().is_some() {
+                    if card.focus_element == FocusElement::TaskDescription
+                        && card.description.selection_range().is_some()
+                    {
                         card.description.cancel_selection();
                     }
                 }
@@ -3295,7 +3501,8 @@ impl ViewModel {
                 line_index as u16,
                 col_index as u16,
             ));
-            self.autocomplete.after_textarea_change(&card.description, &mut self.needs_redraw);
+            self.autocomplete
+                .after_textarea_change(&card.description, &mut self.needs_redraw);
         }
 
         self.needs_redraw = true;
@@ -3415,7 +3622,7 @@ impl ViewModel {
     pub fn select_repository(&mut self, repo: String) {
         if let FocusElement::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-            draft_card.repository = repo;
+                draft_card.repository = repo;
             }
         }
         self.close_modal();
@@ -3425,7 +3632,7 @@ impl ViewModel {
     pub fn select_branch(&mut self, branch: String) {
         if let FocusElement::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-            draft_card.branch = branch;
+                draft_card.branch = branch;
             }
         }
         self.close_modal();
@@ -4230,53 +4437,53 @@ fn create_draft_card_view_models(
     draft_tasks
         .iter()
         .map(|draft| {
-        let textarea = create_draft_card_textarea(&draft.description);
+            let textarea = create_draft_card_textarea(&draft.description);
 
-        let controls = TaskEntryControlsViewModel {
-            repository_button: ButtonViewModel {
-                text: draft.repository.clone(),
-                is_focused: false,
-                style: ButtonStyle::Normal,
-            },
-            branch_button: ButtonViewModel {
-                text: draft.branch.clone(),
-                is_focused: false,
-                style: ButtonStyle::Normal,
-            },
-            model_button: ButtonViewModel {
+            let controls = TaskEntryControlsViewModel {
+                repository_button: ButtonViewModel {
+                    text: draft.repository.clone(),
+                    is_focused: false,
+                    style: ButtonStyle::Normal,
+                },
+                branch_button: ButtonViewModel {
+                    text: draft.branch.clone(),
+                    is_focused: false,
+                    style: ButtonStyle::Normal,
+                },
+                model_button: ButtonViewModel {
                     text: draft
                         .models
                         .first()
                         .map(|m| m.name.clone())
                         .unwrap_or_else(|| "Select model".to_string()),
-                is_focused: false,
-                style: ButtonStyle::Normal,
-            },
-            go_button: ButtonViewModel {
-                text: "Go".to_string(),
-                is_focused: false,
-                style: ButtonStyle::Normal,
-            },
-        };
+                    is_focused: false,
+                    style: ButtonStyle::Normal,
+                },
+                go_button: ButtonViewModel {
+                    text: "Go".to_string(),
+                    is_focused: false,
+                    style: ButtonStyle::Normal,
+                },
+            };
 
-        // Calculate height dynamically like in main.rs TaskCard::height for Draft
-        let visible_lines = textarea.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
-        let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
-        let height = inner_height as u16 + 2; // account for rounded border
+            // Calculate height dynamically like in main.rs TaskCard::height for Draft
+            let visible_lines = textarea.lines().len().max(5); // MIN_TEXTAREA_VISIBLE_LINES = 5
+            let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
+            let height = inner_height as u16 + 2; // account for rounded border
 
-        TaskEntryViewModel {
-            id: draft.id.clone(),
-            repository: draft.repository.clone(),
-            branch: draft.branch.clone(),
-            models: draft.models.clone(),
-            created_at: draft.created_at.clone(),
-            height,
-            controls,
-            save_state: DraftSaveState::Unsaved,
-            description: textarea,
-            focus_element,
-            auto_save_timer: None,
-        }
+            TaskEntryViewModel {
+                id: draft.id.clone(),
+                repository: draft.repository.clone(),
+                branch: draft.branch.clone(),
+                models: draft.models.clone(),
+                created_at: draft.created_at.clone(),
+                height,
+                controls,
+                save_state: DraftSaveState::Unsaved,
+                description: textarea,
+                focus_element,
+                auto_save_timer: None,
+            }
         })
         .collect()
 }
@@ -4294,63 +4501,63 @@ fn create_task_card_view_models(
         .into_iter()
         .enumerate()
         .map(|(_idx, task_item)| {
-        match task_item {
-            TaskItem::Task(task_execution, _) => {
-                let title = format_title_from_execution(&task_execution);
+            match task_item {
+                TaskItem::Task(task_execution, _) => {
+                    let title = format_title_from_execution(&task_execution);
 
-                let metadata = TaskMetadataViewModel {
-                    repository: task_execution.repository.clone(),
-                    branch: task_execution.branch.clone(),
-                    models: task_execution.agents.clone(),
-                    state: task_execution.state,
-                    timestamp: task_execution.timestamp.clone(),
+                    let metadata = TaskMetadataViewModel {
+                        repository: task_execution.repository.clone(),
+                        branch: task_execution.branch.clone(),
+                        models: task_execution.agents.clone(),
+                        state: task_execution.state,
+                        timestamp: task_execution.timestamp.clone(),
                         delivery_indicators: task_execution
                             .delivery_status
                             .iter()
                             .map(|status| match status {
-                            DeliveryStatus::BranchCreated => "⎇",
-                            DeliveryStatus::PullRequestCreated { .. } => "⇄",
-                            DeliveryStatus::PullRequestMerged { .. } => "✓",
+                                DeliveryStatus::BranchCreated => "⎇",
+                                DeliveryStatus::PullRequestCreated { .. } => "⇄",
+                                DeliveryStatus::PullRequestMerged { .. } => "✓",
                             })
                             .collect::<Vec<_>>()
                             .join(" "),
-                };
+                    };
 
-                let card_type = match task_execution.state {
-                    TaskState::Active => TaskCardType::Active {
+                    let card_type = match task_execution.state {
+                        TaskState::Active => TaskCardType::Active {
                             activity_entries: task_execution
                                 .activity
                                 .iter()
                                 .map(|activity| AgentActivityRow::AgentThought {
-                                thought: activity.clone(),
+                                    thought: activity.clone(),
                                 })
                                 .collect(),
-                        pause_delete_buttons: "Pause | Delete".to_string(),
-                    },
-                    TaskState::Completed => TaskCardType::Completed {
-                        delivery_indicators: String::new(),
-                    },
-                    TaskState::Merged => TaskCardType::Merged {
-                        delivery_indicators: String::new(),
-                    },
-                    TaskState::Draft => unreachable!("Drafts should not be in task_executions"),
-                };
+                            pause_delete_buttons: "Pause | Delete".to_string(),
+                        },
+                        TaskState::Completed => TaskCardType::Completed {
+                            delivery_indicators: String::new(),
+                        },
+                        TaskState::Merged => TaskCardType::Merged {
+                            delivery_indicators: String::new(),
+                        },
+                        TaskState::Draft => unreachable!("Drafts should not be in task_executions"),
+                    };
 
-                TaskExecutionViewModel {
-                    id: task_execution.id.clone(),
-                    task: task_execution.clone(),
-                    title,
-                    metadata,
-                    height: calculate_card_height(&task_execution, settings),
-                    card_type,
-                    focus_element,
+                    TaskExecutionViewModel {
+                        id: task_execution.id.clone(),
+                        task: task_execution.clone(),
+                        title,
+                        metadata,
+                        height: calculate_card_height(&task_execution, settings),
+                        card_type,
+                        focus_element,
+                    }
+                }
+                TaskItem::Draft(_) => {
+                    // Drafts are now handled by create_draft_card_view_models
+                    unreachable!("Drafts should not appear in task card creation")
                 }
             }
-            TaskItem::Draft(_) => {
-                // Drafts are now handled by create_draft_card_view_models
-                unreachable!("Drafts should not appear in task card creation")
-            }
-        }
         })
         .collect()
 }

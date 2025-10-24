@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! Windows Terminal multiplexer implementation
 //!
 //! Windows Terminal is Microsoft's modern terminal emulator that supports
@@ -5,7 +8,9 @@
 
 use std::process::Command;
 
-use ah_mux_core::{Multiplexer, WindowId, PaneId, WindowOptions, CommandOptions, SplitDirection, MuxError};
+use ah_mux_core::{
+    CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
+};
 
 /// Windows Terminal multiplexer implementation
 pub struct WindowsTerminalMultiplexer;
@@ -68,7 +73,10 @@ impl Multiplexer for WindowsTerminalMultiplexer {
 
         // Add working directory if specified
         if let Some(cwd) = opts.cwd {
-            args.extend_from_slice(&["--startingDirectory".to_string(), cwd.to_string_lossy().to_string()]);
+            args.extend_from_slice(&[
+                "--startingDirectory".to_string(),
+                cwd.to_string_lossy().to_string(),
+            ]);
         }
 
         // Add command if specified in profile
@@ -95,7 +103,15 @@ impl Multiplexer for WindowsTerminalMultiplexer {
         Ok(window_id)
     }
 
-    fn split_pane(&self, _window: &WindowId, _target: Option<&PaneId>, dir: SplitDirection, percent: Option<u8>, opts: &CommandOptions, initial_cmd: Option<&str>) -> Result<PaneId, MuxError> {
+    fn split_pane(
+        &self,
+        _window: &WindowId,
+        _target: Option<&PaneId>,
+        dir: SplitDirection,
+        percent: Option<u8>,
+        opts: &CommandOptions,
+        initial_cmd: Option<&str>,
+    ) -> Result<PaneId, MuxError> {
         let mut args = vec!["split-pane".to_string()];
 
         // Add direction
@@ -132,36 +148,53 @@ impl Multiplexer for WindowsTerminalMultiplexer {
         Ok("wt:pane:1".to_string())
     }
 
-    fn run_command(&self, _pane: &PaneId, _cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        _pane: &PaneId,
+        _cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         // Windows Terminal doesn't have direct send-text capability
         // This would require external automation tools
-        Err(MuxError::NotAvailable("Windows Terminal does not support running commands in existing panes"))
+        Err(MuxError::NotAvailable(
+            "Windows Terminal does not support running commands in existing panes",
+        ))
     }
 
     fn send_text(&self, _pane: &PaneId, _text: &str) -> Result<(), MuxError> {
         // Windows Terminal doesn't have a direct send-text capability
         // This would require external automation tools
-        Err(MuxError::NotAvailable("Windows Terminal does not support sending text to panes"))
+        Err(MuxError::NotAvailable(
+            "Windows Terminal does not support sending text to panes",
+        ))
     }
 
     fn focus_window(&self, _window: &WindowId) -> Result<(), MuxError> {
         // Windows Terminal doesn't have direct window focusing via CLI
         // Window focus is handled by the OS/window manager
-        Err(MuxError::NotAvailable("Windows Terminal does not support programmatic window focusing"))
+        Err(MuxError::NotAvailable(
+            "Windows Terminal does not support programmatic window focusing",
+        ))
     }
 
     fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // Windows Terminal supports move-focus but we don't know pane relationships
-        Err(MuxError::NotAvailable("Windows Terminal does not support programmatic pane focusing"))
+        Err(MuxError::NotAvailable(
+            "Windows Terminal does not support programmatic pane focusing",
+        ))
     }
 
     fn list_windows(&self, _title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
         // Windows Terminal doesn't provide a way to list windows programmatically
-        Err(MuxError::NotAvailable("Windows Terminal does not support listing windows"))
+        Err(MuxError::NotAvailable(
+            "Windows Terminal does not support listing windows",
+        ))
     }
 
     fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         // Windows Terminal doesn't provide pane enumeration
-        Err(MuxError::NotAvailable("Windows Terminal does not support listing panes"))
+        Err(MuxError::NotAvailable(
+            "Windows Terminal does not support listing panes",
+        ))
     }
 }

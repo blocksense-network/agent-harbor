@@ -178,6 +178,16 @@
             files = "\\.toml$";
           };
 
+          # Rust formatting
+          rustfmt = {
+            enable = true;
+            name = "cargo fmt";
+            entry = "cargo fmt --";
+            language = "system";
+            pass_filenames = true;
+            files = "\\.rs$";
+          };
+
           # License header check and insertion
           spdx-addlicense = {
             enable = true;

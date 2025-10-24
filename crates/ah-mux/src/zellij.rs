@@ -1,11 +1,14 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! Zellij multiplexer implementation
 //!
 //! Zellij is a terminal workspace that uses KDL layout files for defining
 //! complex pane arrangements and CLI commands for session management.
 
 use std::collections::HashMap;
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 use ah_mux_core::*;
 
@@ -52,7 +55,10 @@ impl Multiplexer for ZellijMultiplexer {
         let session_name = opts.title.unwrap_or("ah-session");
 
         // Check if session already exists
-        if self.list_windows(Some(session_name)).map_or(false, |windows| !windows.is_empty()) {
+        if self
+            .list_windows(Some(session_name))
+            .map_or(false, |windows| !windows.is_empty())
+        {
             return Ok(session_name.to_string());
         }
 
@@ -67,12 +73,16 @@ impl Multiplexer for ZellijMultiplexer {
         // Start with a default layout (just a single pane)
         cmd.arg("--layout").arg("default");
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to start zellij session: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("zellij session creation failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "zellij session creation failed: {}",
+                stderr
+            )));
         }
 
         Ok(session_name.to_string())
@@ -114,12 +124,16 @@ impl Multiplexer for ZellijMultiplexer {
             cmd.arg("--").arg("sh");
         }
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to run zellij command: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("zellij run failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "zellij run failed: {}",
+                stderr
+            )));
         }
 
         // Zellij doesn't return pane IDs in a parseable way from CLI.
@@ -133,8 +147,7 @@ impl Multiplexer for ZellijMultiplexer {
         // The best we can do is create a new pane with the command.
         // This is a limitation of Zellij's CLI interface.
 
-        let session_name = pane.strip_prefix("zellij-pane-")
-            .ok_or_else(|| MuxError::NotFound)?;
+        let session_name = pane.strip_prefix("zellij-pane-").ok_or_else(|| MuxError::NotFound)?;
 
         let mut zellij_cmd = Command::new("zellij");
         zellij_cmd.arg("--session").arg(session_name);
@@ -152,12 +165,16 @@ impl Multiplexer for ZellijMultiplexer {
 
         zellij_cmd.arg("--").arg(cmd);
 
-        let output = zellij_cmd.output()
+        let output = zellij_cmd
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to run zellij command: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("zellij run failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "zellij run failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -171,15 +188,17 @@ impl Multiplexer for ZellijMultiplexer {
 
     fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
         // Attach to the session (this brings it to the foreground)
-        let output = Command::new("zellij")
-            .arg("attach")
-            .arg(window)
-            .output()
-            .map_err(|e| MuxError::Other(format!("Failed to attach to zellij session: {}", e)))?;
+        let output =
+            Command::new("zellij").arg("attach").arg(window).output().map_err(|e| {
+                MuxError::Other(format!("Failed to attach to zellij session: {}", e))
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("zellij attach failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "zellij attach failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -199,7 +218,10 @@ impl Multiplexer for ZellijMultiplexer {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("zellij list-sessions failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "zellij list-sessions failed: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::io::RawFd;
@@ -27,7 +30,9 @@ fn main() {
         }
         _ => {
             eprintln!("Unknown command: {}", command);
-            eprintln!("Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, dummy");
+            eprintln!(
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, dummy"
+            );
             std::process::exit(1);
         }
     }
@@ -47,8 +52,12 @@ fn test_basic_open(args: &[String]) {
         let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
 
         // Use dlsym to dynamically resolve open function
-        let open_func: Option<unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int> =
-            std::mem::transmute(libc::dlsym(libc::RTLD_DEFAULT, b"open\0".as_ptr() as *const libc::c_char));
+        let open_func: Option<
+            unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int,
+        > = std::mem::transmute(libc::dlsym(
+            libc::RTLD_DEFAULT,
+            b"open\0".as_ptr() as *const libc::c_char,
+        ));
 
         let fd = if let Some(open_func) = open_func {
             open_func(c_filename.as_ptr(), libc::O_RDONLY, 0)
@@ -64,8 +73,12 @@ fn test_basic_open(args: &[String]) {
         let mut buffer = [0u8; 100];
 
         // Use dlsym for read as well
-        let read_func: Option<unsafe extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t> =
-            std::mem::transmute(libc::dlsym(libc::RTLD_DEFAULT, b"read\0".as_ptr() as *const libc::c_char));
+        let read_func: Option<
+            unsafe extern "C" fn(libc::c_int, *mut libc::c_void, libc::size_t) -> libc::ssize_t,
+        > = std::mem::transmute(libc::dlsym(
+            libc::RTLD_DEFAULT,
+            b"read\0".as_ptr() as *const libc::c_char,
+        ));
 
         let bytes_read = if let Some(read_func) = read_func {
             read_func(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len())
@@ -81,7 +94,10 @@ fn test_basic_open(args: &[String]) {
 
         println!("Successfully opened and read {} bytes", bytes_read);
         if bytes_read > 0 {
-            println!("First few bytes: {:?}", &buffer[..std::cmp::min(10, bytes_read as usize)]);
+            println!(
+                "First few bytes: {:?}",
+                &buffer[..std::cmp::min(10, bytes_read as usize)]
+            );
         }
 
         libc::close(fd);
@@ -127,7 +143,10 @@ fn test_large_file(args: &[String]) {
         if all_correct {
             println!("Content verification passed");
         } else {
-            println!("Content verification failed - first few bytes: {:?}", &buffer[..std::cmp::min(10, bytes_read as usize)]);
+            println!(
+                "Content verification failed - first few bytes: {:?}",
+                &buffer[..std::cmp::min(10, bytes_read as usize)]
+            );
         }
 
         libc::close(fd);
@@ -151,7 +170,8 @@ fn test_multiple_files(args: &[String]) {
                     let path = entry.path();
                     if path.is_file() {
                         unsafe {
-                            let c_path = std::ffi::CString::new(path.to_string_lossy().as_ref()).unwrap();
+                            let c_path =
+                                std::ffi::CString::new(path.to_string_lossy().as_ref()).unwrap();
                             let fd = libc::open(c_path.as_ptr(), libc::O_RDONLY, 0);
                             if fd < 0 {
                                 let err = std::io::Error::last_os_error();
@@ -160,7 +180,11 @@ fn test_multiple_files(args: &[String]) {
                             }
 
                             let mut buffer = [0u8; 10];
-                            let n = libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len());
+                            let n = libc::read(
+                                fd,
+                                buffer.as_mut_ptr() as *mut libc::c_void,
+                                buffer.len(),
+                            );
                             if n < 0 {
                                 let err = std::io::Error::last_os_error();
                                 eprintln!("  Read failed for {}: {}", path.display(), err);
@@ -168,7 +192,11 @@ fn test_multiple_files(args: &[String]) {
                                 std::process::exit(1);
                             }
 
-                            println!("  Successfully opened and read {} bytes from {}", n, path.display());
+                            println!(
+                                "  Successfully opened and read {} bytes from {}",
+                                n,
+                                path.display()
+                            );
                             opened_count += 1;
                             libc::close(fd);
                         }
@@ -238,7 +266,12 @@ fn test_fopen(args: &[String]) {
         } else {
             // Try to read some data
             let mut buffer = [0i8; 100];
-            let result = libc::fread(buffer.as_mut_ptr() as *mut libc::c_void, 1, buffer.len(), file_ptr);
+            let result = libc::fread(
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                1,
+                buffer.len(),
+                file_ptr,
+            );
             if result > 0 {
                 println!("Successfully opened with fopen");
             } else {

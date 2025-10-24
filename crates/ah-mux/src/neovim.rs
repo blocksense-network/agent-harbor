@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! Neovim multiplexer implementation
 //!
 //! Enhanced Vim/Neovim implementation that leverages Neovim's RPC interface
@@ -5,7 +8,9 @@
 
 use std::process::Command;
 
-use ah_mux_core::{Multiplexer, WindowId, PaneId, WindowOptions, CommandOptions, SplitDirection, MuxError};
+use ah_mux_core::{
+    CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
+};
 
 /// Neovim multiplexer implementation with RPC support
 pub struct NeovimMultiplexer;
@@ -72,17 +77,28 @@ impl Multiplexer for NeovimMultiplexer {
         let title = opts.title.unwrap_or(&default_title);
         let window_id = format!("neovim:{}", title);
 
-        let lua_code = format!(r#"
+        let lua_code = format!(
+            r#"
 vim.cmd("tabnew")
 vim.cmd("file {}")
-"#, title);
+"#,
+            title
+        );
 
         self.execute_lua(&lua_code)?;
 
         Ok(window_id)
     }
 
-    fn split_pane(&self, _window: &WindowId, _target: Option<&PaneId>, dir: SplitDirection, _percent: Option<u8>, _opts: &CommandOptions, _initial_cmd: Option<&str>) -> Result<PaneId, MuxError> {
+    fn split_pane(
+        &self,
+        _window: &WindowId,
+        _target: Option<&PaneId>,
+        dir: SplitDirection,
+        _percent: Option<u8>,
+        _opts: &CommandOptions,
+        _initial_cmd: Option<&str>,
+    ) -> Result<PaneId, MuxError> {
         let cmd = match dir {
             SplitDirection::Vertical => "vsplit",
             SplitDirection::Horizontal => "split",
@@ -93,18 +109,26 @@ vim.cmd("file {}")
         Ok("neovim:pane:1".to_string())
     }
 
-    fn run_command(&self, _pane: &PaneId, cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        _pane: &PaneId,
+        cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         let lua_code = format!(r#"vim.cmd("terminal {}")"#, cmd);
         self.execute_lua(&lua_code)
     }
 
     fn send_text(&self, _pane: &PaneId, text: &str) -> Result<(), MuxError> {
         // Use chansend to send text to terminal buffers in Neovim
-        let lua_code = format!(r#"
+        let lua_code = format!(
+            r#"
 if vim.b.terminal_job_id then
     vim.fn.chansend(vim.b.terminal_job_id, "{}")
 end
-"#, text);
+"#,
+            text
+        );
 
         self.execute_lua(&lua_code)?;
         Ok(())
@@ -112,21 +136,29 @@ end
 
     fn focus_window(&self, _window: &WindowId) -> Result<(), MuxError> {
         // Tab switching in Neovim
-        Err(MuxError::NotAvailable("Neovim tab focusing requires session-specific implementation"))
+        Err(MuxError::NotAvailable(
+            "Neovim tab focusing requires session-specific implementation",
+        ))
     }
 
     fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // Neovim pane focusing requires knowing which window to focus
-        Err(MuxError::NotAvailable("Neovim pane focusing requires window-specific implementation"))
+        Err(MuxError::NotAvailable(
+            "Neovim pane focusing requires window-specific implementation",
+        ))
     }
 
     fn list_windows(&self, _title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
         // Would require RPC integration to query Neovim state
-        Err(MuxError::NotAvailable("Neovim window listing requires RPC integration"))
+        Err(MuxError::NotAvailable(
+            "Neovim window listing requires RPC integration",
+        ))
     }
 
     fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         // Would require RPC integration to query window state
-        Err(MuxError::NotAvailable("Neovim pane listing requires RPC integration"))
+        Err(MuxError::NotAvailable(
+            "Neovim pane listing requires RPC integration",
+        ))
     }
 }

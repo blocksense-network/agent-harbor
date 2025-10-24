@@ -3,7 +3,7 @@
 
 //! Test the new TaskManager async methods
 
-use tui_exploration::{TaskManager, MockTaskManager, SelectedModel, SaveDraftResult};
+use tui_exploration::{MockTaskManager, SaveDraftResult, SelectedModel, TaskManager};
 
 #[tokio::test]
 async fn test_get_initial_tasks() {
@@ -33,13 +33,15 @@ async fn test_save_draft_success() {
         count: 1,
     }];
 
-    let result = manager.save_draft_task(
-        "draft_001",
-        "Test description",
-        "test/repo",
-        "main",
-        &models,
-    ).await;
+    let result = manager
+        .save_draft_task(
+            "draft_001",
+            "Test description",
+            "test/repo",
+            "main",
+            &models,
+        )
+        .await;
 
     assert!(matches!(result, tui_exploration::SaveDraftResult::Success));
 }
@@ -52,15 +54,14 @@ async fn test_save_draft_failure() {
         count: 1,
     }];
 
-    let result = manager.save_draft_task(
-        "draft_001",
-        "This will fail",
-        "test/repo",
-        "main",
-        &models,
-    ).await;
+    let result = manager
+        .save_draft_task("draft_001", "This will fail", "test/repo", "main", &models)
+        .await;
 
-    assert!(matches!(result, tui_exploration::SaveDraftResult::Failure { .. }));
+    assert!(matches!(
+        result,
+        tui_exploration::SaveDraftResult::Failure { .. }
+    ));
 }
 
 #[tokio::test]

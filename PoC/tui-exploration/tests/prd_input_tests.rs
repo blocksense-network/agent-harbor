@@ -4,23 +4,33 @@
 use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::view_model::FocusElement;
-use ah_tui::view_model::{FilterControl, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel};
+use ah_tui::view_model::{
+    FilterControl, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
+};
 use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
-use std::sync::Arc;
-use tui_exploration::workspace_files::WorkspaceFiles;
 use ratatui::layout::Rect;
-use tui_exploration::view_model::{Msg, MouseAction, ViewModel};
+use std::sync::Arc;
 use tui_exploration::settings::KeyboardOperation;
+use tui_exploration::view_model::{MouseAction, Msg, ViewModel};
+use tui_exploration::workspace_files::WorkspaceFiles;
 
 // Mock implementations for tests
 #[derive(Clone)]
 struct MockWorkspaceFiles;
 #[async_trait::async_trait]
 impl WorkspaceFiles for MockWorkspaceFiles {
-    async fn stream_repository_files(&self) -> Result<futures::stream::BoxStream<'static, Result<tui_exploration::workspace_files::RepositoryFile, ah_repo::error::VcsError>>, ah_repo::error::VcsError> {
+    async fn stream_repository_files(
+        &self,
+    ) -> Result<
+        futures::stream::BoxStream<
+            'static,
+            Result<tui_exploration::workspace_files::RepositoryFile, ah_repo::error::VcsError>,
+        >,
+        ah_repo::error::VcsError,
+    > {
         use futures::stream;
         Ok(stream::empty().boxed())
     }
@@ -34,14 +44,17 @@ impl WorkspaceFiles for MockWorkspaceFiles {
 struct MockWorkspaceWorkflows;
 #[async_trait::async_trait]
 impl WorkspaceWorkflowsEnumerator for MockWorkspaceWorkflows {
-    async fn enumerate_workflow_commands(&self) -> Result<Vec<ah_workflows::WorkflowCommand>, ah_workflows::WorkflowError> {
+    async fn enumerate_workflow_commands(
+        &self,
+    ) -> Result<Vec<ah_workflows::WorkflowCommand>, ah_workflows::WorkflowError> {
         Ok(vec![])
     }
 }
 
 fn new_view_model() -> ViewModel {
     let workspace_files: Arc<dyn WorkspaceFiles> = Arc::new(MockWorkspaceFiles);
-    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(MockWorkspaceWorkflows);
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+        Arc::new(MockWorkspaceWorkflows);
     let task_manager: Arc<dyn tui_exploration::TaskManager> = Arc::new(MockRestClient::new());
     let settings = tui_exploration::settings::Settings::default();
 
@@ -123,14 +136,23 @@ mod keyboard {
 
         let tab_event = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
-        assert_eq!(vm.draft_cards[0].focus_element, FocusElement::RepositorySelector);
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            FocusElement::RepositorySelector
+        );
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
-        assert_eq!(vm.draft_cards[0].focus_element, FocusElement::BranchSelector);
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            FocusElement::BranchSelector
+        );
 
         let back_tab_event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
         vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousField, &back_tab_event);
-        assert_eq!(vm.draft_cards[0].focus_element, FocusElement::RepositorySelector);
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            FocusElement::RepositorySelector
+        );
     }
 
     #[test]
@@ -265,7 +287,10 @@ mod keyboard {
     fn escape_closes_modal() {
         let mut vm = new_view_model();
         vm.open_modal(ah_tui::view_model::ModalState::RepositorySearch);
-        assert_eq!(vm.modal_state, ah_tui::view_model::ModalState::RepositorySearch);
+        assert_eq!(
+            vm.modal_state,
+            ah_tui::view_model::ModalState::RepositorySearch
+        );
 
         send_key(&mut vm, KeyCode::Esc, KeyModifiers::empty());
         assert_eq!(vm.modal_state, ah_tui::view_model::ModalState::None);
@@ -279,33 +304,24 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
 
         // Test that KeyEventKind::Press is processed
-        let press_event = KeyEvent::new_with_kind(
-            KeyCode::Down,
-            KeyModifiers::empty(),
-            KeyEventKind::Press,
-        );
+        let press_event =
+            KeyEvent::new_with_kind(KeyCode::Down, KeyModifiers::empty(), KeyEventKind::Press);
         vm.handle_key_event(press_event);
 
         // Should have moved to next focus element (from DraftTask(0) to SettingsButton)
         assert_eq!(vm.focus_element, FocusElement::SettingsButton);
 
         // Test that KeyEventKind::Repeat is also processed
-        let repeat_event = KeyEvent::new_with_kind(
-            KeyCode::Down,
-            KeyModifiers::empty(),
-            KeyEventKind::Repeat,
-        );
+        let repeat_event =
+            KeyEvent::new_with_kind(KeyCode::Down, KeyModifiers::empty(), KeyEventKind::Repeat);
         vm.handle_key_event(repeat_event);
 
         // Should have moved to the next focus element again (SettingsButton wraps to DraftTask(0))
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
 
         // Test that KeyEventKind::Release is ignored (filtered at main event loop)
-        let release_event = KeyEvent::new_with_kind(
-            KeyCode::Down,
-            KeyModifiers::empty(),
-            KeyEventKind::Release,
-        );
+        let release_event =
+            KeyEvent::new_with_kind(KeyCode::Down, KeyModifiers::empty(), KeyEventKind::Release);
         vm.handle_key_event(release_event);
 
         // Should have moved to SettingsButton (navigation cycles: DraftTask(0) -> SettingsButton -> DraftTask(0) -> SettingsButton)
@@ -383,11 +399,7 @@ mod keyboard {
 
         // For testing, manually set autocomplete to open state since the async system
         // doesn't work in unit tests. In real usage, after_textarea_change would trigger this.
-        vm.autocomplete.set_test_state(
-            true,
-            "test",
-            vec![],
-        );
+        vm.autocomplete.set_test_state(true, "test", vec![]);
 
         // Verify autocomplete is open
         assert!(vm.autocomplete.is_open());
@@ -420,11 +432,7 @@ mod keyboard {
 
         // For testing, manually set autocomplete to open state since the async system
         // doesn't work in unit tests. In real usage, after_textarea_change would trigger this.
-        vm.autocomplete.set_test_state(
-            true,
-            "",
-            vec![],
-        );
+        vm.autocomplete.set_test_state(true, "", vec![]);
 
         // Verify autocomplete is open
         assert!(vm.autocomplete.is_open());
@@ -562,13 +570,7 @@ mod mouse {
     fn clicking_settings_opens_modal() {
         let mut vm = new_view_model();
 
-        click(
-            &mut vm,
-            MouseAction::OpenSettings,
-            sample_bounds(),
-            2,
-            1,
-        );
+        click(&mut vm, MouseAction::OpenSettings, sample_bounds(), 2, 1);
         assert_eq!(vm.modal_state, ah_tui::view_model::ModalState::Settings);
         assert_eq!(vm.focus_element, FocusElement::SettingsButton);
     }
@@ -585,7 +587,10 @@ mod mouse {
             1,
         );
         assert_eq!(vm.focus_element, FocusElement::RepositoryButton);
-        assert_eq!(vm.modal_state, ah_tui::view_model::ModalState::RepositorySearch);
+        assert_eq!(
+            vm.modal_state,
+            ah_tui::view_model::ModalState::RepositorySearch
+        );
     }
 
     #[test]
@@ -595,16 +600,13 @@ mod mouse {
             card.description.insert_str("Launchable");
         }
 
-        click(
-            &mut vm,
-            MouseAction::LaunchTask,
-            sample_bounds(),
-            2,
-            1,
-        );
+        click(&mut vm, MouseAction::LaunchTask, sample_bounds(), 2, 1);
 
         assert_eq!(vm.focus_element, FocusElement::GoButton);
-        assert_eq!(vm.status_bar.status_message.as_deref(), Some("Task launched successfully"));
+        assert_eq!(
+            vm.status_bar.status_message.as_deref(),
+            Some("Task launched successfully")
+        );
     }
 
     #[test]
@@ -617,13 +619,7 @@ mod mouse {
             height: 5,
         };
 
-        click(
-            &mut vm,
-            MouseAction::FocusDraftTextarea(0),
-            bounds,
-            8,
-            6,
-        );
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 6);
 
         assert_eq!(vm.focus_element, FocusElement::TaskDescription);
         assert_eq!(vm.last_textarea_area, Some(bounds));
@@ -677,13 +673,7 @@ mod mouse {
         });
         vm.rebuild_task_id_mapping();
 
-        click(
-            &mut vm,
-            MouseAction::SelectCard(1),
-            sample_bounds(),
-            1,
-            1,
-        );
+        click(&mut vm, MouseAction::SelectCard(1), sample_bounds(), 1, 1);
 
         assert_eq!(vm.focus_element, FocusElement::ExistingTask(0));
         assert_eq!(vm.selected_card, 1);
@@ -708,19 +698,17 @@ mod mouse {
         vm.autocomplete.set_test_state(
             true,
             "",
-            vec![
-                ah_tui::view_model::autocomplete::ScoredMatch {
-                    item: ah_tui::view_model::autocomplete::Item {
-                        id: "test-workflow".to_string(),
-                        trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
-                        label: "test-workflow".to_string(),
-                        detail: Some("Test workflow".to_string()),
-                        replacement: "/test-workflow".to_string(),
-                    },
-                    score: 100,
-                    indices: vec![],
-                }
-            ],
+            vec![ah_tui::view_model::autocomplete::ScoredMatch {
+                item: ah_tui::view_model::autocomplete::Item {
+                    id: "test-workflow".to_string(),
+                    trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
+                    label: "test-workflow".to_string(),
+                    detail: Some("Test workflow".to_string()),
+                    replacement: "/test-workflow".to_string(),
+                },
+                score: 100,
+                indices: vec![],
+            }],
         );
 
         // Verify autocomplete is open
@@ -761,13 +749,7 @@ mod mouse {
         vm.rebuild_task_id_mapping();
 
         // Click on the task card to change focus
-        click(
-            &mut vm,
-            MouseAction::SelectCard(1),
-            sample_bounds(),
-            1,
-            1,
-        );
+        click(&mut vm, MouseAction::SelectCard(1), sample_bounds(), 1, 1);
 
         // Verify focus changed and autocomplete is hidden
         assert_eq!(vm.focus_element, FocusElement::ExistingTask(0));
@@ -789,19 +771,17 @@ mod mouse {
         vm.autocomplete.set_test_state(
             true,
             "t",
-            vec![
-                ah_tui::view_model::autocomplete::ScoredMatch {
-                    item: ah_tui::view_model::autocomplete::Item {
-                        id: "test-workflow".to_string(),
-                        trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
-                        label: "test-workflow".to_string(),
-                        detail: Some("Test workflow".to_string()),
-                        replacement: "/test-workflow".to_string(),
-                    },
-                    score: 100,
-                    indices: vec![],
-                }
-            ],
+            vec![ah_tui::view_model::autocomplete::ScoredMatch {
+                item: ah_tui::view_model::autocomplete::Item {
+                    id: "test-workflow".to_string(),
+                    trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
+                    label: "test-workflow".to_string(),
+                    detail: Some("Test workflow".to_string()),
+                    replacement: "/test-workflow".to_string(),
+                },
+                score: 100,
+                indices: vec![],
+            }],
         );
 
         // Verify autocomplete is open with some query
@@ -830,19 +810,17 @@ mod mouse {
         vm.autocomplete.set_test_state(
             true,
             "te",
-            vec![
-                ah_tui::view_model::autocomplete::ScoredMatch {
-                    item: ah_tui::view_model::autocomplete::Item {
-                        id: "test-workflow".to_string(),
-                        trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
-                        label: "test-workflow".to_string(),
-                        detail: Some("Test workflow".to_string()),
-                        replacement: "/test-workflow".to_string(),
-                    },
-                    score: 100,
-                    indices: vec![],
-                }
-            ],
+            vec![ah_tui::view_model::autocomplete::ScoredMatch {
+                item: ah_tui::view_model::autocomplete::Item {
+                    id: "test-workflow".to_string(),
+                    trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
+                    label: "test-workflow".to_string(),
+                    detail: Some("Test workflow".to_string()),
+                    replacement: "/test-workflow".to_string(),
+                },
+                score: 100,
+                indices: vec![],
+            }],
         );
 
         // Verify autocomplete is still open and query updated to "te"
@@ -1338,7 +1316,11 @@ mod mouse {
         }
 
         // Press Shift+Ctrl+Right to select forward one word
-        send_key(&mut vm, KeyCode::Right, KeyModifiers::SHIFT | KeyModifiers::CONTROL);
+        send_key(
+            &mut vm,
+            KeyCode::Right,
+            KeyModifiers::SHIFT | KeyModifiers::CONTROL,
+        );
 
         // Should have selection from start to end of first word
         if let Some(card) = vm.draft_cards.first() {
@@ -1365,18 +1347,22 @@ mod mouse {
         }
 
         // Press Shift+Ctrl+Left to select backward one word
-        send_key(&mut vm, KeyCode::Left, KeyModifiers::SHIFT | KeyModifiers::CONTROL);
+        send_key(
+            &mut vm,
+            KeyCode::Left,
+            KeyModifiers::SHIFT | KeyModifiers::CONTROL,
+        );
 
         // Should have selection from end of "world" to end of text
         if let Some(card) = vm.draft_cards.first() {
             assert!(card.description.selection_range().is_some());
             let (start, end) = card.description.selection_range().unwrap();
-        // From end of text, Shift+Ctrl+Left selects the last word
-        // This depends on how tui-textarea implements word boundaries
-        println!("Selection range: start={:?}, end={:?}", start, end);
-        assert!(start < end); // At minimum, some selection should exist
+            // From end of text, Shift+Ctrl+Left selects the last word
+            // This depends on how tui-textarea implements word boundaries
+            println!("Selection range: start={:?}, end={:?}", start, end);
+            assert!(start < end); // At minimum, some selection should exist
+        }
     }
-}
 
     #[test]
     fn alt_a_moves_to_beginning_of_sentence() {
@@ -1549,7 +1535,9 @@ mod mouse {
 
         // Type multiple lines of text to enable scrolling
         if let Some(card) = vm.draft_cards.first_mut() {
-            card.description.insert_str("line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10");
+            card.description.insert_str(
+                "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10",
+            );
         }
 
         // Record initial viewport
@@ -1576,7 +1564,9 @@ mod mouse {
 
         // Type multiple lines of text
         if let Some(card) = vm.draft_cards.first_mut() {
-            card.description.insert_str("line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10");
+            card.description.insert_str(
+                "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10",
+            );
         }
 
         // First scroll down to have something to scroll up from
@@ -1605,7 +1595,9 @@ mod mouse {
 
         // Type multiple lines of text
         if let Some(card) = vm.draft_cards.first_mut() {
-            card.description.insert_str("line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10");
+            card.description.insert_str(
+                "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10",
+            );
         }
 
         // Move cursor to a specific position (line 3)
@@ -1629,7 +1621,10 @@ mod mouse {
 
             // The viewport should have adjusted to center the cursor (row 2)
             // Since we can't easily test the exact centering logic, we verify that the viewport changed
-            assert_ne!(initial_viewport, new_viewport, "Viewport should have changed after recenter");
+            assert_ne!(
+                initial_viewport, new_viewport,
+                "Viewport should have changed after recenter"
+            );
         }
     }
 
@@ -1664,7 +1659,10 @@ mod mouse {
             // Check that "first line" appears twice
             let lines = card.description.lines();
             let first_line_count = lines.iter().filter(|&line| line == "first line").count();
-            assert_eq!(first_line_count, 2, "Should have two instances of 'first line'");
+            assert_eq!(
+                first_line_count, 2,
+                "Should have two instances of 'first line'"
+            );
         }
     }
 
@@ -1689,7 +1687,11 @@ mod mouse {
         // Check that "world" became "WORLD"
         if let Some(card) = vm.draft_cards.first() {
             let new_text = card.description.lines().join("\n");
-            assert_eq!(new_text, "hello WORLD", "Word should be uppercased, got: {}", new_text);
+            assert_eq!(
+                new_text, "hello WORLD",
+                "Word should be uppercased, got: {}",
+                new_text
+            );
         }
     }
 
@@ -1714,7 +1716,11 @@ mod mouse {
         // Check that "WORLD" became "world"
         if let Some(card) = vm.draft_cards.first() {
             let new_text = card.description.lines().join("\n");
-            assert_eq!(new_text, "HELLO world", "Word should be lowercased, got: {}", new_text);
+            assert_eq!(
+                new_text, "HELLO world",
+                "Word should be lowercased, got: {}",
+                new_text
+            );
         }
     }
 
@@ -1746,8 +1752,16 @@ mod mouse {
         // Check that **** was inserted at cursor
         if let Some(card) = vm.draft_cards.first() {
             let text_after = card.description.lines().join("\n");
-            assert_ne!(text_before, text_after, "Text should have changed from '{}' to something else", text_before);
-            assert!(text_after.contains("****"), "Should contain **** markers, got: {}", text_after);
+            assert_ne!(
+                text_before, text_after,
+                "Text should have changed from '{}' to something else",
+                text_before
+            );
+            assert!(
+                text_after.contains("****"),
+                "Should contain **** markers, got: {}",
+                text_after
+            );
         }
     }
 
@@ -1772,10 +1786,13 @@ mod mouse {
         // Check that ** was inserted
         if let Some(card) = vm.draft_cards.first() {
             let text = card.description.lines().join("\n");
-            assert!(text.contains("**"), "Should contain ** markers, got: {}", text);
+            assert!(
+                text.contains("**"),
+                "Should contain ** markers, got: {}",
+                text
+            );
         }
     }
-
 
     #[test]
     fn f3_finds_next_match() {
@@ -1807,4 +1824,3 @@ mod mouse {
         }
     }
 }
-

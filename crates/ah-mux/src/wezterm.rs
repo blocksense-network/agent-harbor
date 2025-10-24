@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! WezTerm multiplexer implementation
 //!
 //! WezTerm is a modern, GPU-accelerated terminal emulator with excellent
@@ -55,12 +58,16 @@ impl Multiplexer for WezTermMultiplexer {
         let command = format!("printf '\\e]2;{}\\a'; bash", title);
         cmd.arg("--").arg("bash").arg("-lc").arg(command);
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to spawn wezterm window: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm spawn failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm spawn failed: {}",
+                stderr
+            )));
         }
 
         // Extract window ID from output if possible
@@ -109,12 +116,16 @@ impl Multiplexer for WezTermMultiplexer {
             cmd.arg("--").arg("bash");
         }
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to split wezterm pane: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm split-pane failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm split-pane failed: {}",
+                stderr
+            )));
         }
 
         // Extract pane ID from output
@@ -124,19 +135,32 @@ impl Multiplexer for WezTermMultiplexer {
         Ok(format!("{}", pane_id))
     }
 
-    fn run_command(&self, pane: &PaneId, cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        pane: &PaneId,
+        cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         let mut command = Command::new("wezterm");
-        command.arg("cli").arg("send-text")
+        command
+            .arg("cli")
+            .arg("send-text")
             .arg("--no-paste")
-            .arg("--pane-id").arg(pane)
-            .arg("--").arg(format!("{}\n", cmd));
+            .arg("--pane-id")
+            .arg(pane)
+            .arg("--")
+            .arg(format!("{}\n", cmd));
 
-        let output = command.output()
+        let output = command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to send command to wezterm: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm send-text failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm send-text failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -144,17 +168,25 @@ impl Multiplexer for WezTermMultiplexer {
 
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         let mut command = Command::new("wezterm");
-        command.arg("cli").arg("send-text")
+        command
+            .arg("cli")
+            .arg("send-text")
             .arg("--no-paste")
-            .arg("--pane-id").arg(pane)
-            .arg("--").arg(text);
+            .arg("--pane-id")
+            .arg(pane)
+            .arg("--")
+            .arg(text);
 
-        let output = command.output()
+        let output = command
+            .output()
             .map_err(|e| MuxError::Other(format!("Failed to send text to wezterm: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm send-text failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm send-text failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -164,13 +196,17 @@ impl Multiplexer for WezTermMultiplexer {
         let output = Command::new("wezterm")
             .arg("cli")
             .arg("activate")
-            .arg("--window-id").arg(window)
+            .arg("--window-id")
+            .arg(window)
             .output()
             .map_err(|e| MuxError::Other(format!("Failed to activate wezterm window: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm activate failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm activate failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -180,13 +216,17 @@ impl Multiplexer for WezTermMultiplexer {
         let output = Command::new("wezterm")
             .arg("cli")
             .arg("activate-pane")
-            .arg("--pane-id").arg(pane)
+            .arg("--pane-id")
+            .arg(pane)
             .output()
             .map_err(|e| MuxError::Other(format!("Failed to activate wezterm pane: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm activate-pane failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm activate-pane failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -196,13 +236,17 @@ impl Multiplexer for WezTermMultiplexer {
         let output = Command::new("wezterm")
             .arg("cli")
             .arg("list")
-            .arg("--format").arg("json")
+            .arg("--format")
+            .arg("json")
             .output()
             .map_err(|e| MuxError::Other(format!("Failed to list wezterm windows: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm list failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm list failed: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -237,13 +281,17 @@ impl Multiplexer for WezTermMultiplexer {
         let output = Command::new("wezterm")
             .arg("cli")
             .arg("list")
-            .arg("--format").arg("json")
+            .arg("--format")
+            .arg("json")
             .output()
             .map_err(|e| MuxError::Other(format!("Failed to list wezterm panes: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("wezterm list failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "wezterm list failed: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

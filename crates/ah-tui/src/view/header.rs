@@ -57,7 +57,10 @@ pub fn render_header(
         };
 
         let theme = crate::view::Theme::default();
-        let button_style = if matches!(view_model.focus_element, crate::view_model::FocusElement::SettingsButton) {
+        let button_style = if matches!(
+            view_model.focus_element,
+            crate::view_model::FocusElement::SettingsButton
+        ) {
             Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
         } else {
             Style::default()
@@ -74,7 +77,6 @@ pub fn render_header(
 
         let button_paragraph = Paragraph::new(button_line);
         frame.render_widget(button_paragraph, button_area);
-
     }
 
     // Try to render the logo as an image first using persisted protocol

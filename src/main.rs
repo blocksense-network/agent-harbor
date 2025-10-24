@@ -1,17 +1,17 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use rand::seq::SliceRandom;
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wrap},
-    Frame, Terminal,
 };
 use std::io;
 use std::time::{Duration, Instant};
-use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone, PartialEq)]
 enum TaskState {

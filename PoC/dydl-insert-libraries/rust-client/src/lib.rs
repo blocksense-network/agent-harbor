@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use agentfs_proto::{FsRequest, FsResponse};
+use lazy_static::lazy_static;
 use libc::{c_char, c_int, c_void, mode_t, size_t, ssize_t};
 use ssz::{Decode, Encode};
-use std::ffi::CStr;
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use lazy_static::lazy_static;
 
 // Environment variable names
 const ENV_AGENTFS_SERVER: &str = "AGENTFS_SERVER";
@@ -16,9 +16,8 @@ const ENV_AGENTFS_ENABLED: &str = "AGENTFS_ENABLED";
 
 // Global state
 lazy_static! {
-    static ref AGENTFS_ENABLED: bool = std::env::var(ENV_AGENTFS_ENABLED)
-        .map(|v| v == "1")
-        .unwrap_or(false);
+    static ref AGENTFS_ENABLED: bool =
+        std::env::var(ENV_AGENTFS_ENABLED).map(|v| v == "1").unwrap_or(false);
     static ref AGENTFS_SERVER: Option<String> = std::env::var(ENV_AGENTFS_SERVER).ok();
 }
 
@@ -63,7 +62,13 @@ impl SyncAgentFsClient {
         Ok(response)
     }
 
-    fn open(&self, path: &str, read: bool, write: bool, _create: bool) -> Result<i32, Box<dyn std::error::Error>> {
+    fn open(
+        &self,
+        path: &str,
+        read: bool,
+        write: bool,
+        _create: bool,
+    ) -> Result<i32, Box<dyn std::error::Error>> {
         let request = FsRequest::open(path.to_string(), read, write);
         match self.send_request(request)? {
             FsResponse::Handle(resp) => Ok(resp.handle as i32),
@@ -90,7 +95,12 @@ impl SyncAgentFsClient {
         }
     }
 
-    fn write(&self, handle: i32, offset: u64, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    fn write(
+        &self,
+        handle: i32,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = FsRequest::write(handle as u64, offset, data.to_vec());
         match self.send_request(request)? {
             FsResponse::Ok(_) => Ok(()),
@@ -181,9 +191,7 @@ fn add_handle_mapping(local_fd: i32, agentfs_handle: i32) {
 }
 
 fn get_agentfs_handle(local_fd: i32) -> Option<i32> {
-    HANDLE_MAP.with(|map_cell| {
-        map_cell.borrow().get(&local_fd).cloned()
-    })
+    HANDLE_MAP.with(|map_cell| map_cell.borrow().get(&local_fd).cloned())
 }
 
 fn remove_handle_mapping(local_fd: i32) {

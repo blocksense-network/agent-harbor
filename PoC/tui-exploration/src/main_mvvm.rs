@@ -43,8 +43,8 @@ use ah_tui::Theme;
 use ah_tui::view::HitTestRegistry;
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use image::GenericImageView;
-use tui_exploration::workspace_files::WorkspaceFiles;
 use tui_exploration::workspace_files::GitWorkspaceFiles;
+use tui_exploration::workspace_files::WorkspaceFiles;
 
 /// Initialize logo rendering components (Picker and StatefulProtocol)
 fn initialize_logo_rendering(
@@ -251,7 +251,8 @@ async fn run_app_mvvm(
 
     // Create service instances
     let workspace_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let workspace_files: Arc<dyn WorkspaceFiles> = Arc::new(GitWorkspaceFiles::new(workspace_dir.clone()));
+    let workspace_files: Arc<dyn WorkspaceFiles> =
+        Arc::new(GitWorkspaceFiles::new(workspace_dir.clone()));
     let config = WorkflowConfig::default();
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(
         WorkflowProcessor::for_repo(config, &workspace_dir)
@@ -260,8 +261,12 @@ async fn run_app_mvvm(
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::with_mock_data());
 
     let settings = Settings::default();
-    let mut view_model =
-        ViewModel::new_with_background_loading(workspace_files, workspace_workflows, task_manager, settings);
+    let mut view_model = ViewModel::new_with_background_loading(
+        workspace_files,
+        workspace_workflows,
+        task_manager,
+        settings,
+    );
 
     // Start background loading of workspace data
     view_model.start_background_loading();

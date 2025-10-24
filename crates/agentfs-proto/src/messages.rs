@@ -17,9 +17,9 @@ pub enum Request {
     SnapshotList(Vec<u8>),                            // version
     BranchCreate((Vec<u8>, BranchCreateRequest)),     // (version, request)
     BranchBind((Vec<u8>, BranchBindRequest)),         // (version, request)
-    FdOpen((Vec<u8>, FdOpenRequest)),                  // (version, request)
-    FdDup((Vec<u8>, FdDupRequest)),                    // (version, request)
-    PathOp((Vec<u8>, PathOpRequest)),                  // (version, request)
+    FdOpen((Vec<u8>, FdOpenRequest)),                 // (version, request)
+    FdDup((Vec<u8>, FdDupRequest)),                   // (version, request)
+    PathOp((Vec<u8>, PathOpRequest)),                 // (version, request)
     InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
 }
 
@@ -139,7 +139,7 @@ pub struct FdDupResponse {
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct PathOpRequest {
     pub path: Vec<u8>,
-    pub operation: Vec<u8>, // "stat", "lstat", "chmod", etc.
+    pub operation: Vec<u8>,    // "stat", "lstat", "chmod", etc.
     pub args: Option<Vec<u8>>, // operation-specific arguments
 }
 
@@ -152,7 +152,7 @@ pub struct PathOpResponse {
 /// InterposeSetGet request payload for configuration management
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct InterposeSetGetRequest {
-    pub key: Vec<u8>, // "max_copy_bytes", "require_reflink", etc.
+    pub key: Vec<u8>,           // "max_copy_bytes", "require_reflink", etc.
     pub value: Option<Vec<u8>>, // None for get, Some(value) for set
 }
 
@@ -351,10 +351,7 @@ impl Request {
     }
 
     pub fn fd_dup(fd: u32) -> Self {
-        Self::FdDup((
-            b"1".to_vec(),
-            FdDupRequest { fd },
-        ))
+        Self::FdDup((b"1".to_vec(), FdDupRequest { fd }))
     }
 
     pub fn path_op(path: String, operation: String, args: Option<String>) -> Self {

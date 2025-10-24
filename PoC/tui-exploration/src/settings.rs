@@ -366,7 +366,7 @@ impl KeyMatcher {
 
     /// Check if this matcher matches a crossterm KeyEvent
     pub fn matches(&self, event: &ratatui::crossterm::event::KeyEvent) -> bool {
-        use crossterm::event::{KeyModifiers, KeyCode};
+        use crossterm::event::{KeyCode, KeyModifiers};
 
         // Check key code first
         if !self.matches_code(&event.code) {
@@ -374,9 +374,16 @@ impl KeyMatcher {
         }
 
         // Special handling for cursor movement keys: allow SHIFT for text selection
-        let is_cursor_key = matches!(event.code,
-            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down |
-            KeyCode::Home | KeyCode::End | KeyCode::PageUp | KeyCode::PageDown
+        let is_cursor_key = matches!(
+            event.code,
+            KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::PageUp
+                | KeyCode::PageDown
         );
 
         // Check modifiers
@@ -387,7 +394,8 @@ impl KeyMatcher {
             KeyModifiers::SUPER,
         ] {
             let required = self.required.contains(modifier);
-            let optional = self.optional.contains(modifier) || (modifier == KeyModifiers::SHIFT && is_cursor_key);
+            let optional = self.optional.contains(modifier)
+                || (modifier == KeyModifiers::SHIFT && is_cursor_key);
             let present = event.modifiers.contains(modifier);
 
             if required && !present {
@@ -425,10 +433,7 @@ pub struct KeyboardOperationDefinition {
 }
 
 impl KeyboardOperationDefinition {
-    pub fn new(
-        operation: KeyboardOperation,
-        defaults: Vec<String>,
-    ) -> Self {
+    pub fn new(operation: KeyboardOperation, defaults: Vec<String>) -> Self {
         Self {
             operation,
             defaults,
@@ -685,11 +690,19 @@ impl KeymapConfig {
             // Cursor Movement
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToBeginningOfLine,
-                vec!["Home".to_string(), "Ctrl+A".to_string(), "Cmd+Left".to_string()],
+                vec![
+                    "Home".to_string(),
+                    "Ctrl+A".to_string(),
+                    "Cmd+Left".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToEndOfLine,
-                vec!["End".to_string(), "Ctrl+E".to_string(), "Cmd+Right".to_string()],
+                vec![
+                    "End".to_string(),
+                    "Ctrl+E".to_string(),
+                    "Cmd+Right".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveForwardOneCharacter,
@@ -721,11 +734,19 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveForwardOneWord,
-                vec!["Alt+F".to_string(), "Ctrl+Right".to_string(), "Option+Right".to_string()],
+                vec![
+                    "Alt+F".to_string(),
+                    "Ctrl+Right".to_string(),
+                    "Option+Right".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveBackwardOneWord,
-                vec!["Alt+B".to_string(), "Ctrl+Left".to_string(), "Option+Left".to_string()],
+                vec![
+                    "Alt+B".to_string(),
+                    "Ctrl+Left".to_string(),
+                    "Option+Left".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ScrollDownOneScreen,
@@ -749,7 +770,11 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::GoToLineNumber,
-                vec!["Ctrl+G".to_string(), "Cmd+L".to_string(), "Alt+G+G".to_string()],
+                vec![
+                    "Ctrl+G".to_string(),
+                    "Cmd+L".to_string(),
+                    "Alt+G+G".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToMatchingParenthesis,
@@ -766,11 +791,19 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteWordForward,
-                vec!["Ctrl+Delete".to_string(), "Alt+D".to_string(), "Option+Delete".to_string()],
+                vec![
+                    "Ctrl+Delete".to_string(),
+                    "Alt+D".to_string(),
+                    "Option+Delete".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteWordBackward,
-                vec!["Ctrl+Backspace".to_string(), "Alt+Backspace".to_string(), "Option+Backspace".to_string()],
+                vec![
+                    "Ctrl+Backspace".to_string(),
+                    "Alt+Backspace".to_string(),
+                    "Option+Backspace".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteToEndOfLine,
@@ -778,15 +811,27 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Cut,
-                vec!["Ctrl+X".to_string(), "Ctrl+W".to_string(), "Cmd+X".to_string()],
+                vec![
+                    "Ctrl+X".to_string(),
+                    "Ctrl+W".to_string(),
+                    "Cmd+X".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Copy,
-                vec!["Ctrl+C".to_string(), "Alt+W".to_string(), "Cmd+C".to_string()],
+                vec![
+                    "Ctrl+C".to_string(),
+                    "Alt+W".to_string(),
+                    "Cmd+C".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Paste,
-                vec!["Ctrl+V".to_string(), "Ctrl+Y".to_string(), "Cmd+V".to_string()],
+                vec![
+                    "Ctrl+V".to_string(),
+                    "Ctrl+Y".to_string(),
+                    "Cmd+V".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Undo,
@@ -799,7 +844,11 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Redo,
-                vec!["Ctrl+Y".to_string(), "Ctrl+Shift+Z".to_string(), "Cmd+Shift+Z".to_string()],
+                vec![
+                    "Ctrl+Y".to_string(),
+                    "Ctrl+Shift+Z".to_string(),
+                    "Cmd+Shift+Z".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::OpenNewLine,
@@ -808,7 +857,11 @@ impl KeymapConfig {
             // Code Editing
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ToggleComment,
-                vec!["Ctrl+/".to_string(), "Alt+;".to_string(), "Cmd+/".to_string()],
+                vec![
+                    "Ctrl+/".to_string(),
+                    "Alt+;".to_string(),
+                    "Cmd+/".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DuplicateLineSelection,
@@ -833,7 +886,11 @@ impl KeymapConfig {
             // Search and Replace
             KeyboardOperationDefinition::new(
                 KeyboardOperation::IncrementalSearchForward,
-                vec!["Ctrl+F".to_string(), "Ctrl+S".to_string(), "Cmd+F".to_string()],
+                vec![
+                    "Ctrl+F".to_string(),
+                    "Ctrl+S".to_string(),
+                    "Cmd+F".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::FindAndReplace,
@@ -860,7 +917,6 @@ impl KeymapConfig {
                 KeyboardOperation::SelectWordUnderCursor,
                 vec!["Alt+@".to_string()],
             ),
-
             // Additional operations from research document
             KeyboardOperationDefinition::new(
                 KeyboardOperation::CycleThroughClipboard,
@@ -890,21 +946,19 @@ impl KeymapConfig {
                 KeyboardOperation::JoinLines,
                 vec!["Alt+^".to_string()],
             ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::Bold,
-                vec!["Ctrl+B".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::Italic,
-                vec!["Ctrl+I".to_string()],
-            ),
+            KeyboardOperationDefinition::new(KeyboardOperation::Bold, vec!["Ctrl+B".to_string()]),
+            KeyboardOperationDefinition::new(KeyboardOperation::Italic, vec!["Ctrl+I".to_string()]),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Underline,
                 vec!["Ctrl+U".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ToggleComment,
-                vec!["Ctrl+/".to_string(), "Alt+;".to_string(), "Cmd+/".to_string()],
+                vec![
+                    "Ctrl+/".to_string(),
+                    "Alt+;".to_string(),
+                    "Cmd+/".to_string(),
+                ],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DuplicateLineSelection,

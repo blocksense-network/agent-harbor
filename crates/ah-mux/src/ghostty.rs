@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! Ghostty multiplexer implementation
 //!
 //! Ghostty is a fast, native macOS terminal emulator with evolving CLI support.
@@ -6,7 +9,9 @@
 
 use std::process::Command;
 
-use ah_mux_core::{Multiplexer, WindowId, PaneId, WindowOptions, CommandOptions, SplitDirection, MuxError};
+use ah_mux_core::{
+    CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
+};
 
 /// Ghostty multiplexer implementation
 pub struct GhosttyMultiplexer;
@@ -69,7 +74,10 @@ impl Multiplexer for GhosttyMultiplexer {
 
         // Add working directory if specified
         if let Some(cwd) = opts.cwd {
-            args.extend_from_slice(&["--working-directory".to_string(), cwd.to_string_lossy().to_string()]);
+            args.extend_from_slice(&[
+                "--working-directory".to_string(),
+                cwd.to_string_lossy().to_string(),
+            ]);
         }
 
         // Add command if specified in profile
@@ -92,40 +100,67 @@ impl Multiplexer for GhosttyMultiplexer {
         Ok(window_id)
     }
 
-    fn split_pane(&self, _window: &WindowId, _target: Option<&PaneId>, _dir: SplitDirection, _percent: Option<u8>, _opts: &CommandOptions, _initial_cmd: Option<&str>) -> Result<PaneId, MuxError> {
+    fn split_pane(
+        &self,
+        _window: &WindowId,
+        _target: Option<&PaneId>,
+        _dir: SplitDirection,
+        _percent: Option<u8>,
+        _opts: &CommandOptions,
+        _initial_cmd: Option<&str>,
+    ) -> Result<PaneId, MuxError> {
         // Ghostty's CLI is evolving - split functionality may be added in future versions
         // For now, this is not available
-        Err(MuxError::NotAvailable("Ghostty split-pane functionality is not yet available in CLI"))
+        Err(MuxError::NotAvailable(
+            "Ghostty split-pane functionality is not yet available in CLI",
+        ))
     }
 
-    fn run_command(&self, _pane: &PaneId, _cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        _pane: &PaneId,
+        _cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         // Ghostty's CLI is still evolving
         // Commands are typically passed during window creation
-        Err(MuxError::NotAvailable("Ghostty programmatic command execution is not yet available"))
+        Err(MuxError::NotAvailable(
+            "Ghostty programmatic command execution is not yet available",
+        ))
     }
 
     fn send_text(&self, _pane: &PaneId, _text: &str) -> Result<(), MuxError> {
         // Ghostty may support this via AppleScript/JXA in the future
-        Err(MuxError::NotAvailable("Ghostty does not support sending text to panes yet"))
+        Err(MuxError::NotAvailable(
+            "Ghostty does not support sending text to panes yet",
+        ))
     }
 
     fn focus_window(&self, _window: &WindowId) -> Result<(), MuxError> {
         // Could potentially use AppleScript/JXA for window focusing
-        Err(MuxError::NotAvailable("Ghostty programmatic window focusing is not available"))
+        Err(MuxError::NotAvailable(
+            "Ghostty programmatic window focusing is not available",
+        ))
     }
 
     fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // Split functionality not available yet
-        Err(MuxError::NotAvailable("Ghostty pane focusing is not available without splits"))
+        Err(MuxError::NotAvailable(
+            "Ghostty pane focusing is not available without splits",
+        ))
     }
 
     fn list_windows(&self, _title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
         // CLI doesn't support listing yet
-        Err(MuxError::NotAvailable("Ghostty does not support listing windows"))
+        Err(MuxError::NotAvailable(
+            "Ghostty does not support listing windows",
+        ))
     }
 
     fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         // No pane support yet
-        Err(MuxError::NotAvailable("Ghostty does not support listing panes"))
+        Err(MuxError::NotAvailable(
+            "Ghostty does not support listing panes",
+        ))
     }
 }

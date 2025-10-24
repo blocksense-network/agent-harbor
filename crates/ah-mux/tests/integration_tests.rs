@@ -1,14 +1,17 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: Apache-2.0
+
 //! Integration tests for multiplexer functionality
 //!
 //! These tests verify that multiplexer implementations work correctly
 //! by creating real windows/panes and measuring terminal dimensions.
 
 use std::process::Command;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 use ah_mux::available_multiplexers;
-use ah_mux_core::{Multiplexer, WindowOptions, CommandOptions, SplitDirection};
+use ah_mux_core::{CommandOptions, Multiplexer, SplitDirection, WindowOptions};
 
 /// Terminal dimensions returned by our test binary
 #[derive(Debug, Clone)]
@@ -30,23 +33,23 @@ impl BorderInfo {
     fn for_multiplexer(name: &str) -> Self {
         match name {
             "tmux" => BorderInfo {
-                vertical_border_cols: 1,    // tmux uses 1 column for vertical borders
-                horizontal_border_rows: 0,  // tmux doesn't use rows for horizontal borders
+                vertical_border_cols: 1,   // tmux uses 1 column for vertical borders
+                horizontal_border_rows: 0, // tmux doesn't use rows for horizontal borders
             },
             "kitty" => BorderInfo {
-                vertical_border_cols: 0,    // kitty has no visible borders in split view
+                vertical_border_cols: 0, // kitty has no visible borders in split view
                 horizontal_border_rows: 0,
             },
             "wezterm" => BorderInfo {
-                vertical_border_cols: 0,    // wezterm has minimal borders
+                vertical_border_cols: 0, // wezterm has minimal borders
                 horizontal_border_rows: 0,
             },
             "zellij" => BorderInfo {
-                vertical_border_cols: 2,    // zellij has thicker borders
+                vertical_border_cols: 2, // zellij has thicker borders
                 horizontal_border_rows: 1,
             },
             "screen" => BorderInfo {
-                vertical_border_cols: 1,    // screen has minimal borders
+                vertical_border_cols: 1, // screen has minimal borders
                 horizontal_border_rows: 0,
             },
             _ => BorderInfo {
@@ -60,13 +63,9 @@ impl BorderInfo {
 /// Run the terminal size measurement binary and parse output
 fn measure_terminal_size() -> Result<TerminalSize, Box<dyn std::error::Error>> {
     // Run tput commands separately to ensure proper output format
-    let cols_output = Command::new("tput")
-        .arg("cols")
-        .output()?;
+    let cols_output = Command::new("tput").arg("cols").output()?;
 
-    let lines_output = Command::new("tput")
-        .arg("lines")
-        .output()?;
+    let lines_output = Command::new("tput").arg("lines").output()?;
 
     if !cols_output.status.success() || !lines_output.status.success() {
         return Err("Failed to run tput commands".into());
@@ -96,12 +95,14 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
 
     // Step 1: Create a new window
     println!("  Step 1: Creating multiplexer window...");
-    let window_id = mux.open_window(&WindowOptions {
-        title: Some(&format!("test-{}-{}", mux_name, std::process::id())),
-        cwd: None,
-        focus: false,
-        profile: None,
-    }).expect("Failed to create window");
+    let window_id = mux
+        .open_window(&WindowOptions {
+            title: Some(&format!("test-{}-{}", mux_name, std::process::id())),
+            cwd: None,
+            focus: false,
+            profile: None,
+        })
+        .expect("Failed to create window");
 
     println!("    Created window: {}", window_id);
 
@@ -118,7 +119,11 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
     println!("    Found {} windows after creation", windows_after.len());
 
     // We should have at least one window now (some multiplexers may create default windows)
-    assert!(windows_after.len() >= windows_before.len(), "Window count should not decrease after creation for {}", mux_name);
+    assert!(
+        windows_after.len() >= windows_before.len(),
+        "Window count should not decrease after creation for {}",
+        mux_name
+    );
 
     // Step 3: Test pane splitting (if supported)
     if !matches!(mux_name, "zellij") {
@@ -162,10 +167,14 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
 
     // Step 4: Test command execution
     println!("  Step 4: Testing command execution...");
-    let cmd_result = mux.run_command(&window_id, "echo 'multiplexer test'", &CommandOptions {
-        cwd: None,
-        env: None,
-    });
+    let cmd_result = mux.run_command(
+        &window_id,
+        "echo 'multiplexer test'",
+        &CommandOptions {
+            cwd: None,
+            env: None,
+        },
+    );
 
     match cmd_result {
         Ok(_) => println!("    Command execution successful"),
@@ -189,11 +198,11 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
 fn test_multiplexer_sizing_logic_internal() {
     // Test border calculations for different multiplexers
     let test_cases = vec![
-        ("tmux", 100, 1, 0),      // tmux: 1 col border, 0 row border
-        ("zellij", 100, 2, 1),    // zellij: 2 col border, 1 row border
-        ("kitty", 100, 0, 0),     // kitty: no borders
-        ("wezterm", 100, 0, 0),   // wezterm: minimal borders
-        ("screen", 100, 1, 0),    // screen: 1 col border
+        ("tmux", 100, 1, 0),    // tmux: 1 col border, 0 row border
+        ("zellij", 100, 2, 1),  // zellij: 2 col border, 1 row border
+        ("kitty", 100, 0, 0),   // kitty: no borders
+        ("wezterm", 100, 0, 0), // wezterm: minimal borders
+        ("screen", 100, 1, 0),  // screen: 1 col border
     ];
 
     for (mux_name, total_width, expected_border_cols, expected_border_rows) in test_cases {
@@ -201,11 +210,13 @@ fn test_multiplexer_sizing_logic_internal() {
 
         assert_eq!(
             border_info.vertical_border_cols, expected_border_cols,
-            "Border cols mismatch for {}", mux_name
+            "Border cols mismatch for {}",
+            mux_name
         );
         assert_eq!(
             border_info.horizontal_border_rows, expected_border_rows,
-            "Border rows mismatch for {}", mux_name
+            "Border rows mismatch for {}",
+            mux_name
         );
 
         // Test sizing calculation
@@ -219,7 +230,11 @@ fn test_multiplexer_sizing_logic_internal() {
         assert!(
             discrepancy <= 1, // Allow 1 col discrepancy for rounding
             "Sizing calculation failed for {}: total={}, available={}, panes={}, discrepancy={}",
-            mux_name, total_width, available_width, total_pane_width, discrepancy
+            mux_name,
+            total_width,
+            available_width,
+            total_pane_width,
+            discrepancy
         );
     }
 }
@@ -299,12 +314,14 @@ mod tests {
             let _baseline = measure_terminal_size().unwrap();
 
             // 2. Create window
-            let _window_id = mux.open_window(&WindowOptions {
-                title: Some(&format!("size-test-{}", name)),
-                cwd: None,
-                focus: false,
-                profile: None,
-            }).unwrap();
+            let _window_id = mux
+                .open_window(&WindowOptions {
+                    title: Some(&format!("size-test-{}", name)),
+                    cwd: None,
+                    focus: false,
+                    profile: None,
+                })
+                .unwrap();
 
             thread::sleep(Duration::from_millis(500));
 

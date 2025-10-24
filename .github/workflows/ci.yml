@@ -6,7 +6,7 @@
 # maintaining consistency and making local development match CI behavior.
 #
 # To run CI commands locally:
-#   just fmt-rust          # Check code formatting
+#   just fmt-rust-check    # Check code formatting
 #   just lint-rust         # Run clippy linting
 #   just check             # Check compilation
 #   just build-cgroup-tests # Build test binaries
@@ -88,7 +88,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check code formatting
-        run: just fmt-rust
+        run: just fmt-rust-check
 
       - name: Check code with clippy
         run: just lint-rust
@@ -200,7 +200,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check code formatting
-        run: just fmt-rust
+        run: just fmt-rust-check
 
       - name: Check code with clippy
         run: just lint-rust
