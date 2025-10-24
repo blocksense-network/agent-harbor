@@ -16,6 +16,9 @@ legacy/ruby/test/logs/
 .rubocop-cache/
 .pre-commit-config.yaml
 
+# Man-in-the-middle proxy dumps
+.mitmproxy/
+
 # Spell check cache
 .cspellcache
 .lycheecache

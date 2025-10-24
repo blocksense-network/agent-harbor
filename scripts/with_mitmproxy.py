@@ -11,209 +11,164 @@ from the specified program and dumps request/response pairs to files.
 
 import argparse
 import os
+import shlex
+import shutil
+import signal
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
-from typing import Optional, List
 
 
-def find_repo_root() -> Path:
-    """Find the repository root directory."""
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Run a program behind mitmproxy, dump all HTTP(S) traffic, and set universal CA envs."
+    )
+    p.add_argument("-p", "--port", default=os.getenv("MITM_PORT", "8080"))
+    p.add_argument("--out", default=os.getenv("WITH_MITM_OUT"))
+    p.add_argument("--confdir", default=os.getenv("WITH_MITM_CONFDIR"))
+    p.add_argument("--no-proxy", default=os.getenv("WITH_MITM_NO_PROXY", ""))
+    p.add_argument("program", help="Program to run")
+    p.add_argument("args", nargs=argparse.REMAINDER)
+    return p.parse_args()
+
+
+def repo_root():
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=os.getcwd()
-        )
-        return Path(result.stdout.strip())
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return Path(os.getcwd())
+        r = subprocess.run(["git", "rev-parse", "--show-toplevel"], check=True, capture_output=True, text=True)
+        return Path(r.stdout.strip())
+    except Exception:
+        return Path.cwd()
 
 
-def wait_for_port(port: int, timeout: float = 12.0) -> bool:
-    """Wait for a port to become available."""
+def run(cmd, **kw):
+    return subprocess.run(cmd, **kw)
+
+
+def check_port(port, tries=60, pause=0.2):
     import socket
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(0.1)
-                result = sock.connect_ex(('127.0.0.1', port))
-                if result == 0:
-                    return True
-        except:
-            pass
-        time.sleep(0.2)
+    for _ in range(tries):
+        with socket.socket() as s:
+            s.settimeout(0.2)
+            try:
+                s.connect(("127.0.0.1", port))
+                return True
+            except Exception:
+                time.sleep(pause)
     return False
 
 
+def ensure_ca_exists(port: int, confdir: Path, outdir: Path):
+    ca_pem = confdir / "mitmproxy-ca-cert.pem"
+    # Quick path: already created.
+    if ca_pem.exists():
+        return ca_pem
+
+    # Force a TLS handshake through the proxy so mitmproxy generates the CA & leaf.
+    # We allow insecure (-k) here because we only care about triggering mitmproxy.
+    # If curl isn't present, we skip; most devs have it.
+    curl = shutil.which("curl")
+    if curl:
+        try:
+            run([curl, "-sS", "-k",
+                 "-x", f"http://127.0.0.1:{port}",
+                 "https://example.com"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+    # Wait until the CA file appears.
+    for _ in range(100):  # ~10s
+        if ca_pem.exists():
+            return ca_pem
+        time.sleep(0.1)
+    # As a fallback we still return the path; caller can decide to proceed.
+    return ca_pem
+
+
 def main():
-    parser = argparse.ArgumentParser(
-        prog='with-mitmproxy',
-        description='Launch a program with all HTTP(S) traffic routed through mitmproxy and dump every request/response to files.'
-    )
+    args = parse_args()
+    root = repo_root()
+    program_name = Path(args.program).name
 
-    parser.add_argument(
-        '-p', '--port',
-        type=int,
-        default=int(os.environ.get('MITM_PORT', '8080')),
-        help='Proxy port (default: 8080 or $MITM_PORT)'
-    )
-
-    parser.add_argument(
-        '--out',
-        type=str,
-        default=os.environ.get('WITH_MITM_OUT', ''),
-        help='Dump output directory'
-    )
-
-    parser.add_argument(
-        '--confdir',
-        type=str,
-        default=os.environ.get('WITH_MITM_CONFDIR', ''),
-        help='mitmproxy confdir (stores CA & state)'
-    )
-
-    parser.add_argument(
-        '--no-proxy',
-        type=str,
-        default=os.environ.get('WITH_MITM_NO_PROXY', ''),
-        help='Comma list for NO_PROXY (e.g. "localhost,127.0.0.1")'
-    )
-
-    parser.add_argument(
-        'program',
-        help='Program to run'
-    )
-
-    parser.add_argument(
-        'args',
-        nargs='*',
-        help='Arguments for the program'
-    )
-
-    args = parser.parse_args()
-
-    # Find repo root
-    repo_root = find_repo_root()
-
-    # Set defaults
-    confdir = Path(args.confdir) if args.confdir else repo_root / '.mitmproxy' / 'state'
-    if not args.out:
-        timestamp = time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()).replace(':', '_')
-        program_name = Path(args.program).name
-        out_dir = repo_root / '.mitmproxy' / program_name / f'{timestamp}-event-logs'
-    else:
-        out_dir = Path(args.out)
-
-    # Create directories
+    confdir = Path(args.confdir) if args.confdir else (root / ".mitmproxy" / "state")
+    ts = time.strftime("%Y-%m-%dT%H_%M_%S")
+    outdir = Path(args.out) if args.out else (root / ".mitmproxy" / program_name / f"{ts}-event-logs")
     confdir.mkdir(parents=True, exist_ok=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    outdir.mkdir(parents=True, exist_ok=True)
 
-    ca_pem = confdir / 'mitmproxy-ca-cert.pem'
+    addon_path = Path(__file__).with_name("mitm_dump_addon.py")
+    if not addon_path.exists():
+        print(f"ERROR: {addon_path} not found (put the addon next to this script).", file=sys.stderr)
+        sys.exit(1)
 
-    print(f"Starting mitmproxy on port {args.port}...")
-    print(f"Dumping traffic to: {out_dir}")
+    port = int(args.port)
+    env = os.environ.copy()
+    env["MITM_DUMP_OUTDIR"] = str(outdir)
+
+    print(f"Starting mitmproxy on port {port}...")
+    print(f"Dumping traffic to: {outdir}")
+    ca_pem = confdir / "mitmproxy-ca-cert.pem"
     print(f"CA certificate will be at: {ca_pem}")
 
-    # Start mitmdump with our addon
-    mitmdump_cmd = [
-        'mitmdump',
-        '-p', str(args.port),
-        '--set', f'confdir={confdir}',
-        '-s', str(Path(__file__).parent / 'mitm_dump_addon.py'),
-        '--quiet'
-    ]
+    mitmdump_bin = shutil.which("mitmdump") or "/usr/bin/mitmdump"
+    # Start mitmdump (headless) with our addon
+    mitm = subprocess.Popen(
+        [mitmdump_bin, "-p", str(port), "--set", f"confdir={confdir}", "-s", str(addon_path), "--quiet"],
+        stdout=open(outdir / "mitmdump.stdout.log", "wb"),
+        stderr=open(outdir / "mitmdump.stderr.log", "wb"),
+        env=env
+    )
 
-    env = os.environ.copy()
-    env['MITM_DUMP_OUTDIR'] = str(out_dir)
-
-    stderr_log = out_dir / 'mitmdump.stderr.log'
-
-    try:
-        with open(stderr_log, 'w') as stderr_file:
-            mitmdump_proc = subprocess.Popen(
-                mitmdump_cmd,
-                env=env,
-                stderr=stderr_file,
-                stdout=stderr_file
-            )
-
-        # Wait for proxy to be ready
-        if not wait_for_port(args.port):
-            print(f"Error: mitmproxy failed to start (port {args.port} not open)", file=sys.stderr)
-            mitmdump_proc.terminate()
-            try:
-                mitmdump_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                mitmdump_proc.kill()
-            return 1
-
-        print(f"mitmproxy is ready. Launching: {' '.join([args.program] + args.args)}")
-
-        # Prepare environment for the child process
-        child_env = os.environ.copy()
-
-        # Proxy environment variables
-        proxy_url = f'http://127.0.0.1:{args.port}'
-        child_env['HTTP_PROXY'] = proxy_url
-        child_env['HTTPS_PROXY'] = proxy_url
-        child_env['ALL_PROXY'] = proxy_url
-
-        if args.no_proxy:
-            child_env['NO_PROXY'] = args.no_proxy
-            child_env['no_proxy'] = args.no_proxy
-
-        # CA trust environment variables (if CA exists)
-        if ca_pem.exists():
-            child_env['SSL_CERT_FILE'] = str(ca_pem)
-            child_env['REQUESTS_CA_BUNDLE'] = str(ca_pem)
-            child_env['CURL_CA_BUNDLE'] = str(ca_pem)
-            child_env['NODE_EXTRA_CA_CERTS'] = str(ca_pem)
-            child_env['GIT_SSL_CAINFO'] = str(ca_pem)
-            print("CA certificate found, TLS interception enabled.")
-        else:
-            print("CA certificate not found yet - it will be created on first HTTPS connection.")
-
-        # Launch the target program
+    def shutdown(_sig=None, _frm=None):
         try:
-            result = subprocess.run(
-                [args.program] + args.args,
-                env=child_env
-            )
-            return result.returncode
+            mitm.terminate()
+            try:
+                mitm.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                mitm.kill()
         finally:
-            # Clean up mitmproxy
-            print("Shutting down mitmproxy...")
-            mitmdump_proc.terminate()
-            try:
-                mitmdump_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                print("Force killing mitmproxy...")
-                mitmdump_proc.kill()
-                mitmdump_proc.wait()
+            pass
 
-    except KeyboardInterrupt:
-        print("\nInterrupted by user. Shutting down...")
-        mitmdump_proc.terminate()
-        try:
-            mitmdump_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            mitmdump_proc.kill()
-        return 130
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        mitmdump_proc.terminate()
-        try:
-            mitmdump_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            mitmdump_proc.kill()
-        return 1
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    if not check_port(port):
+        print(f"mitmproxy failed to open port {port}", file=sys.stderr)
+        shutdown()
+        sys.exit(1)
+
+    # Warm-up: force CA generation and wait for it
+    ca_path = ensure_ca_exists(port, confdir, outdir)
+    if ca_path.exists():
+        print("mitmproxy is ready. CA certificate present.")
+        # Universal CA envs for the child:
+        env["SSL_CERT_FILE"]       = str(ca_path)   # OpenSSL consumers
+        env["REQUESTS_CA_BUNDLE"]  = str(ca_path)   # Python requests
+        env["CURL_CA_BUNDLE"]      = str(ca_path)   # curl
+        env["NODE_EXTRA_CA_CERTS"] = str(ca_path)   # Node
+        env["GIT_SSL_CAINFO"]      = str(ca_path)   # git
+    else:
+        print("WARNING: CA certificate not found after warm-up; TLS may fail until it appears.", file=sys.stderr)
+
+    # Proxy envs for the child only:
+    env["HTTP_PROXY"]  = f"http://127.0.0.1:{port}"
+    env["HTTPS_PROXY"] = env["HTTP_PROXY"]
+    env["ALL_PROXY"]   = env["HTTP_PROXY"]
+    if args.no_proxy:
+        env["NO_PROXY"] = args.no_proxy
+        env["no_proxy"] = args.no_proxy
+
+    # Exec the target program
+    print(f"Launching: {args.program} {' '.join(map(shlex.quote, args.args))}")
+    try:
+        proc = subprocess.Popen([args.program, *args.args], env=env)
+        rc = proc.wait()
+    finally:
+        shutdown()
+
+    sys.exit(rc)
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+if __name__ == "__main__":
+    main()
