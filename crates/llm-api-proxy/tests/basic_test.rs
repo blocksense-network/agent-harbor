@@ -4,7 +4,7 @@
 //! Basic integration tests for the LLM API proxy
 
 use llm_api_proxy::proxy::{ProxyMode, ProxyRequest};
-use llm_api_proxy::{LlmApiProxy, ProxyConfig, converters::ApiFormat};
+use llm_api_proxy::{LlmApiProxy, ProxyConfig, converters::ApiFormat, routing::DynamicRouter};
 
 #[tokio::test]
 async fn test_proxy_creation() {
@@ -191,6 +191,52 @@ async fn test_provider_routing_logic() {
     }
 
     println!("✅ Provider routing logic test passed!");
+}
+
+#[tokio::test]
+async fn test_model_routing_patterns() {
+    // Test the standard routing patterns (non-session based)
+    let config = ProxyConfig::default();
+    let router = DynamicRouter::new(std::sync::Arc::new(tokio::sync::RwLock::new(config)))
+        .await
+        .unwrap();
+
+    // Test that models route to their expected providers based on patterns
+    let test_cases = vec![
+        // Anthropic models should route to anthropic provider
+        ("claude-3-haiku-20240307", "anthropic"),
+        ("claude-3-sonnet-20240229", "anthropic"),
+        ("claude-3-opus-20240229", "anthropic"),
+        ("claude-3-5-sonnet-20241022", "anthropic"),
+        // OpenAI models should route to openai provider
+        ("gpt-4o", "openai"),
+        ("gpt-4o-mini", "openai"),
+        ("gpt-4-turbo", "openai"),
+        ("gpt-3.5-turbo", "openai"),
+        // OpenRouter models should route to openrouter provider
+        ("anthropic/claude-3-haiku", "openrouter"),
+        ("anthropic/claude-3-sonnet", "openrouter"),
+        ("openai/gpt-4o", "openrouter"),
+    ];
+
+    for (model_name, expected_provider) in test_cases {
+        let request = ProxyRequest {
+            client_format: ApiFormat::Anthropic, // Test with anthropic format
+            mode: ProxyMode::Live,
+            payload: serde_json::json!({"model": model_name, "messages": []}),
+            headers: std::collections::HashMap::new(),
+            request_id: format!("test-routing-{}", model_name),
+        };
+
+        let provider_info = router.select_provider(&request).await.unwrap();
+        assert_eq!(
+            provider_info.name, expected_provider,
+            "Model '{}' should route to provider '{}', but got '{}'",
+            model_name, expected_provider, provider_info.name
+        );
+    }
+
+    println!("✅ Model routing patterns test passed!");
 }
 
 #[tokio::test]

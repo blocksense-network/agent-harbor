@@ -9,26 +9,34 @@ A Rust library providing LLM API proxying, routing, and scenario playback capabi
 The library provides essential proxying capabilities for routing LLM API requests between clients and providers.
 
 #### HTTP Client with Provider Routing
+
 Routes requests through the implemented OpenRouter integration and applies provider-specific configuration such as weighted routing and authentication. Additional providers can be layered in via `ProxyConfig` without altering the library code.
 
 #### Dynamic Session-Based Routing
+
 Provides runtime configuration of routing rules on a per-session basis through REST API endpoints. Sessions are identified by API keys and can have custom routing configurations applied dynamically, with automatic cleanup after inactivity periods.
 
-- **Session Preparation**: POST `/prepare-session` endpoint accepts API key and routing configuration
+- **Session Preparation**: POST `/prepare-session` endpoint accepts API key, providers list, model mappings, and default provider
+- **Flexible Provider Configuration**: Each provider specifies base URL and custom headers (typically for authentication)
+- **Model Pattern Matching**: Case-insensitive substring matching for routing models to providers
 - **Automatic Application**: Requests with configured API keys automatically use their assigned routing rules
 - **Configuration Caching**: Identical configurations are deduplicated with reference counting
 - **Session Lifecycle**: Automatic expiration after 3 days of inactivity or explicit cleanup via `/end-session`
 
 #### Configuration System
+
 YAML-based configuration for defining providers, their API endpoints, authentication credentials, and routing rules. Supports environment variable substitution for sensitive data like API keys.
 
 #### Basic Metrics Collection
+
 Tracks request latency, success/failure counts, and token usage. Thread-safe counters ensure accurate metrics even under concurrent load. Useful for monitoring proxy performance and provider reliability.
 
 #### Asynchronous Request Processing
+
 Built on Tokio for high-performance async processing. Handles multiple concurrent requests efficiently without blocking, making it suitable for production workloads.
 
 #### API Format Detection and Bidirectional Conversion
+
 Automatically detects whether incoming requests use OpenAI or Anthropic API formats, performs request/response translation (including tool calls, usage accounting, and streaming deltas), and forwards them to the appropriate provider.
 
 ### Scenario Playback
@@ -36,12 +44,15 @@ Automatically detects whether incoming requests use OpenAI or Anthropic API form
 Provides deterministic testing capabilities by replaying recorded interaction scenarios.
 
 #### Deterministic Scenario Execution
+
 Executes pre-recorded scenarios with predictable outcomes, enabling reliable integration testing. Scenarios can include LLM responses, user inputs, assertions, and file system operations.
 
 #### Timeline-based Event Processing
+
 Processes scenario events in chronological order with proper timing, simulating real user interactions and system responses for comprehensive testing.
 
 #### HTTP Test Server
+
 Built-in test server that serves scenario responses over HTTP, enabling end-to-end integration testing without external API calls.
 
 ### Test Server
@@ -49,15 +60,19 @@ Built-in test server that serves scenario responses over HTTP, enabling end-to-e
 Command-line interface specifically designed for testing and development workflows.
 
 #### Command-line Interface for Integration Testing
+
 Standalone executable for testing proxy functionality. Supports various configuration options and provides detailed output for debugging integration issues.
 
 #### Configurable Request/Response Logging
+
 Flexible logging system that can capture requests, responses, or both. Supports JSON output for easy parsing and includes options to log headers, bodies, or both selectively.
 
 #### Scenario File Support
+
 Loads scenario definitions from YAML files, allowing you to define complex interaction sequences for testing specific workflows or edge cases.
 
 #### Multiple Provider Compatibility
+
 Supports weighted round-robin selection across multiple provider replicas. When fallback routing is enabled, the router will select among providers that share a logical name (e.g., regional OpenRouter deployments).
 
 ### Current Limitations
@@ -121,21 +136,47 @@ use serde_json::json;
 // Prepare a session with custom routing
 let prepare_request = json!({
     "api_key": "sk-session-123",
-    "routing_config": {
-        "default_provider": "anthropic",
-        "providers": {
-            "anthropic": {
-                "api_key": "sk-ant-api-key-here",
-                "base_url": "https://api.anthropic.com"
+    "providers": [
+        {
+            "name": "anthropic",
+            "base_url": "https://api.anthropic.com",
+            "headers": {
+                "anthropic-version": "2023-06-01",
+                "authorization": "Bearer sk-ant-api-key-here"
+            }
+        },
+        {
+            "name": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "headers": {
+                "authorization": "Bearer sk-openai-key"
             }
         }
-    }
+    ],
+    "model_mappings": [
+        {
+            "source_pattern": "haiku",
+            "provider": "anthropic",
+            "model": "claude-3-5-haiku-20241022"
+        },
+        {
+            "source_pattern": "opus",
+            "provider": "anthropic",
+            "model": "claude-3-opus-20240229"
+        },
+        {
+            "source_pattern": "gpt-4",
+            "provider": "openai",
+            "model": "gpt-4o"
+        }
+    ],
+    "default_provider": "anthropic"
 });
 
 // All subsequent requests with this API key will use the configured routing
 // curl -X POST http://localhost:18081/prepare-session \
 //   -H "Content-Type: application/json" \
-//   -d '{"api_key": "sk-session-123", "routing_config": {...}}'
+//   -d '{"api_key": "sk-session-123", "providers": [...], "model_mappings": [...], "default_provider": "anthropic"}'
 
 // End a session explicitly
 // curl -X POST http://localhost:18081/end-session \
@@ -237,6 +278,7 @@ cargo run -p llm-api-proxy -- test-server \
 ```
 
 This command:
+
 - Starts a test server on port 18081
 - Loads scenario responses from the YAML file
 - Logs all HTTP traffic to `test-session.log`
@@ -252,18 +294,24 @@ curl -X POST http://localhost:18081/prepare-session \
   -H "Content-Type: application/json" \
   -d '{
     "api_key": "sk-session-custom-123",
-    "routing_config": {
-      "default_provider": "anthropic",
-      "providers": {
-        "anthropic": {
-          "name": "anthropic",
-          "base_url": "https://api.anthropic.com",
-          "api_key": "sk-ant-your-anthropic-key",
-          "models": ["claude-3-sonnet-20240229"],
-          "weight": 1
+    "providers": [
+      {
+        "name": "anthropic",
+        "base_url": "https://api.anthropic.com",
+        "headers": {
+          "anthropic-version": "2023-06-01",
+          "authorization": "Bearer sk-ant-your-anthropic-key"
         }
       }
-    }
+    ],
+    "model_mappings": [
+      {
+        "source_pattern": "claude",
+        "provider": "anthropic",
+        "model": "claude-3-sonnet-20240229"
+      }
+    ],
+    "default_provider": "anthropic"
   }'
 
 # Now requests with this API key will use Anthropic
@@ -311,6 +359,7 @@ curl -X POST http://localhost:18081/v1/chat/completions \
 The test server produces detailed JSON logs for debugging:
 
 **Request Log Entry:**
+
 ```json
 {
   "timestamp": "2025-10-21T10:45:30.123Z",
@@ -326,12 +375,13 @@ The test server produces detailed JSON logs for debugging:
   },
   "body": {
     "model": "claude-3-sonnet",
-    "messages": [{"role": "user", "content": "Hello"}]
+    "messages": [{ "role": "user", "content": "Hello" }]
   }
 }
 ```
 
 **Response Log Entry:**
+
 ```json
 {
   "timestamp": "2025-10-21T10:45:30.456Z",
@@ -341,8 +391,8 @@ The test server produces detailed JSON logs for debugging:
   "request_id": "req-uuid-123",
   "scenario": "test_scenario",
   "response": {
-    "content": [{"text": "Hello! How can I help you?"}],
-    "usage": {"input_tokens": 10, "output_tokens": 8}
+    "content": [{ "text": "Hello! How can I help you?" }],
+    "usage": { "input_tokens": 10, "output_tokens": 8 }
   }
 }
 ```
@@ -363,28 +413,28 @@ providers:
   # Define available LLM providers
   openrouter:
     # API key for authentication (can use env vars)
-    api_key: "${OPENROUTER_API_KEY}"
+    api_key: '${OPENROUTER_API_KEY}'
     # Base URL for the provider's API
-    base_url: "https://openrouter.ai/api/v1"
+    base_url: 'https://openrouter.ai/api/v1'
     # Optional custom headers
     headers:
-      "X-Custom-Header": "value"
+      'X-Custom-Header': 'value'
 
   anthropic:
-    api_key: "${ANTHROPIC_API_KEY}"
-    base_url: "https://api.anthropic.com"
+    api_key: '${ANTHROPIC_API_KEY}'
+    base_url: 'https://api.anthropic.com'
     # Additional headers for this provider
     headers:
-      "anthropic-version": "2023-06-01"
+      'anthropic-version': '2023-06-01'
 
 routing:
   # Default provider for requests that don't match specific rules
-  default_provider: "openrouter"
+  default_provider: 'openrouter'
 
   # Optional: model-based routing rules
   model_mappings:
-    "claude-3-sonnet": "anthropic"
-    "gpt-4": "openai"
+    'claude-3-sonnet': 'anthropic'
+    'gpt-4': 'openai'
 ```
 
 ### Environment Variables
@@ -406,21 +456,25 @@ cargo run -p llm-api-proxy -- test-server --help
 ```
 
 **Server Configuration:**
+
 - `--port <PORT>`: Port to bind the server (default: 18081)
 - `--scenario-file <FILE>`: Path to YAML scenario file for mock responses
 - `--agent-type <TYPE>`: Agent type for scenario compatibility (default: codex)
 - `--agent-version <VERSION>`: Agent version string for scenario matching (default: unknown)
 
 **Tool Validation:**
+
 - `--strict-tools-validation`: Enable strict validation of tool definitions in requests
 
 **Logging Options:**
+
 - `--request-log <PATH>`: File path to write request/response logs (enables logging)
 - `--log-headers`: Include HTTP headers in log entries
 - `--log-body`: Include request body content in logs
 - `--log-responses`: Include response payloads in logs
 
 **Logging Behavior:**
+
 - Logging is disabled by default for privacy and performance
 - Specify `--request-log <file>` to enable logging to a file
 - Individual content types (headers, body, responses) can be enabled/disabled separately
@@ -514,25 +568,50 @@ pub enum ProxyMode {
 Prepares a session with custom routing configuration for a specific API key.
 
 **Request Body:**
+
 ```json
 {
   "api_key": "sk-session-123",
-  "routing_config": {
-    "default_provider": "anthropic",
-    "providers": {
-      "anthropic": {
-        "name": "anthropic",
-        "base_url": "https://api.anthropic.com",
-        "api_key": "sk-ant-your-key",
-        "models": ["claude-3-sonnet-20240229"],
-        "weight": 1
+  "providers": [
+    {
+      "name": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "headers": {
+        "anthropic-version": "2023-06-01",
+        "authorization": "Bearer sk-ant-your-key"
+      }
+    },
+    {
+      "name": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "headers": {
+        "authorization": "Bearer sk-openai-key"
       }
     }
-  }
+  ],
+  "model_mappings": [
+    {
+      "source_pattern": "haiku",
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-20241022"
+    },
+    {
+      "source_pattern": "opus",
+      "provider": "anthropic",
+      "model": "claude-3-opus-20240229"
+    },
+    {
+      "source_pattern": "gpt-4",
+      "provider": "openai",
+      "model": "gpt-4o"
+    }
+  ],
+  "default_provider": "anthropic"
 }
 ```
 
 **Response:**
+
 ```json
 {
   "status": "success",
@@ -546,6 +625,7 @@ Prepares a session with custom routing configuration for a specific API key.
 Explicitly ends a session and cleans up its routing configuration.
 
 **Request Body:**
+
 ```json
 {
   "api_key": "sk-session-123"
@@ -553,6 +633,7 @@ Explicitly ends a session and cleans up its routing configuration.
 ```
 
 **Response:**
+
 ```json
 {
   "status": "success",
@@ -689,30 +770,30 @@ cargo run -p llm-api-proxy -- test-server \
 
 #### Request Log Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp` | ISO 8601 | When the request was received |
-| `type` | string | Always `"request"` |
-| `method` | string | HTTP method (always `"POST"`) |
-| `path` | string | API endpoint path |
-| `request_id` | string | Unique request identifier |
-| `client_format` | string | `"OpenAI"` or `"Anthropic"` |
-| `scenario` | string | Scenario name (for test server) |
-| `api_key` | string | Masked API key identifier |
-| `headers` | object | HTTP headers (if enabled) |
-| `body` | object | Request payload (if enabled) |
+| Field           | Type     | Description                     |
+| --------------- | -------- | ------------------------------- |
+| `timestamp`     | ISO 8601 | When the request was received   |
+| `type`          | string   | Always `"request"`              |
+| `method`        | string   | HTTP method (always `"POST"`)   |
+| `path`          | string   | API endpoint path               |
+| `request_id`    | string   | Unique request identifier       |
+| `client_format` | string   | `"OpenAI"` or `"Anthropic"`     |
+| `scenario`      | string   | Scenario name (for test server) |
+| `api_key`       | string   | Masked API key identifier       |
+| `headers`       | object   | HTTP headers (if enabled)       |
+| `body`          | object   | Request payload (if enabled)    |
 
 #### Response Log Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp` | ISO 8601 | When the response was sent |
-| `type` | string | Always `"response"` |
-| `method` | string | HTTP method (always `"POST"`) |
-| `path` | string | API endpoint path |
-| `request_id` | string | Matching request identifier |
-| `scenario` | string | Scenario name (for test server) |
-| `response` | object | Provider response payload |
+| Field        | Type     | Description                     |
+| ------------ | -------- | ------------------------------- |
+| `timestamp`  | ISO 8601 | When the response was sent      |
+| `type`       | string   | Always `"response"`             |
+| `method`     | string   | HTTP method (always `"POST"`)   |
+| `path`       | string   | API endpoint path               |
+| `request_id` | string   | Matching request identifier     |
+| `scenario`   | string   | Scenario name (for test server) |
+| `response`   | object   | Provider response payload       |
 
 ### Log Analysis Examples
 
@@ -724,8 +805,8 @@ jq 'select(.type == "request" and (.api_key | contains("sk-ant"))) | .timestamp,
 jq -r '.client_format // empty' session.log | sort | uniq -c
 
 # Find slow requests (responses taking >1 second)
-jq 'select(.type == "response") | 
-    select((.timestamp | fromdate) - (input | .timestamp | fromdate) > 1) | 
+jq 'select(.type == "response") |
+    select((.timestamp | fromdate) - (input | .timestamp | fromdate) > 1) |
     .request_id' session.log
 
 # Extract all Anthropic API calls

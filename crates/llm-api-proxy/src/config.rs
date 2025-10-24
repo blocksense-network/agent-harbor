@@ -107,10 +107,20 @@ impl Default for ProxyConfig {
             },
         );
 
+        // Set up default routing rules based on model name patterns
+        let mut routing = RoutingConfig::default();
+        routing.model_routing.insert("claude-*".to_string(), "anthropic".to_string());
+        routing.model_routing.insert("gpt-*".to_string(), "openai".to_string());
+        routing
+            .model_routing
+            .insert("anthropic/*".to_string(), "openrouter".to_string());
+        routing.model_routing.insert("openai/*".to_string(), "openrouter".to_string());
+        routing.default_provider = "mock".to_string(); // Keep mock as fallback
+
         Self {
             server: ServerConfig::default(),
             providers,
-            routing: RoutingConfig::default(),
+            routing,
             metrics: MetricsConfig::default(),
             security: SecurityConfig::default(),
             scenario: ScenarioConfig::default(),

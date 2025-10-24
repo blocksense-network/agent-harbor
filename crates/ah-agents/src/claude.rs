@@ -19,11 +19,13 @@ pub struct ClaudeAgent {
 /// Claude Code OAuth credentials structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeCredentials {
+    #[serde(rename = "claudeAiOauth")]
     pub claude_ai_oauth: ClaudeAiOauth,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeAiOauth {
+    #[serde(rename = "accessToken")]
     pub access_token: String,
     #[serde(rename = "refreshToken")]
     pub refresh_token: String,
@@ -469,11 +471,23 @@ impl AgentExecutor for ClaudeAgent {
             }
         }
 
-        // 3. Claude Code uses OAuth tokens directly, not API keys
-        // For proxy routing, we would need API keys, but Claude typically doesn't provide them
-        // Return None to indicate no API key conversion is available
-        debug!("Claude uses OAuth tokens, API key conversion not implemented");
-        Ok(None)
+        // 3. Try to extract access token from Claude Code OAuth credentials
+        if let Some(credentials_json) = self.retrieve_credentials().await? {
+            match serde_json::from_str::<ClaudeCredentials>(&credentials_json) {
+                Ok(credentials) => {
+                    debug!("Successfully parsed Claude OAuth credentials");
+                    // Return the access token which can be used directly in Authorization header
+                    Ok(Some(credentials.claude_ai_oauth.access_token))
+                }
+                Err(e) => {
+                    warn!("Failed to parse Claude OAuth credentials JSON: {}", e);
+                    Ok(None)
+                }
+            }
+        } else {
+            debug!("No Claude credentials found in system");
+            Ok(None)
+        }
     }
 
     async fn export_session(&self, home_dir: &Path) -> AgentResult<PathBuf> {
@@ -579,5 +593,28 @@ mod tests {
         let invalid_json = r#"{"invalid": "json"}"#;
         let result_invalid = agent.extract_access_token(invalid_json);
         assert!(result_invalid.is_err());
+    }
+
+    #[test]
+    fn test_parse_oauth_credentials() {
+        let json_str = r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-test-token","refreshToken":"refresh-token","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+
+        let credentials: ClaudeCredentials = serde_json::from_str(json_str).unwrap();
+        assert_eq!(
+            credentials.claude_ai_oauth.access_token,
+            "sk-ant-oat01-test-token"
+        );
+    }
+
+    #[test]
+    fn test_parse_real_claude_credentials() {
+        // Test with the real format from the user's example
+        let json_str = r#"{"claudeAiOauth":{"accessToken":"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","refreshToken":"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","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+
+        let credentials: ClaudeCredentials = serde_json::from_str(json_str).unwrap();
+        assert_eq!(
+            credentials.claude_ai_oauth.access_token,
+            "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"
+        );
     }
 }

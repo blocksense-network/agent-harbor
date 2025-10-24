@@ -246,43 +246,60 @@ impl AgentStartArgs {
         // Get API key from the agent
         let api_key = agent.get_user_api_key().await?.unwrap_or_else(|| String::new());
 
-        // Determine provider based on agent type
-        let provider_name = match agent_type {
-            AgentType::Codex => "openai",
-            AgentType::Claude => "anthropic",
+        if api_key.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No API credentials found for agent {:?}. Please ensure credentials are available.",
+                agent_type
+            ));
+        }
+
+        // Determine provider configuration based on agent type
+        let (provider_name, base_url, model_mappings) = match agent_type {
+            AgentType::Codex => (
+                "openai",
+                "https://api.openai.com/v1",
+                vec![
+                    serde_json::json!({"source_pattern": "gpt-4", "provider": "openai", "model": "gpt-4o"}),
+                    serde_json::json!({"source_pattern": "gpt-3.5", "provider": "openai", "model": "gpt-3.5-turbo"}),
+                ],
+            ),
+            AgentType::Claude => (
+                "anthropic",
+                "https://api.anthropic.com",
+                vec![
+                    serde_json::json!({"source_pattern": "claude", "provider": "anthropic", "model": "claude-3-5-sonnet-20241022"}),
+                    serde_json::json!({"source_pattern": "haiku", "provider": "anthropic", "model": "claude-3-5-haiku-20241022"}),
+                    serde_json::json!({"source_pattern": "opus", "provider": "anthropic", "model": "claude-3-opus-20240229"}),
+                    serde_json::json!({"source_pattern": "sonnet", "provider": "anthropic", "model": "claude-3-5-sonnet-20241022"}),
+                ],
+            ),
             // For other agents, use OpenRouter as fallback
-            _ => "openrouter",
+            _ => (
+                "openrouter",
+                "https://openrouter.ai/api/v1",
+                vec![
+                    serde_json::json!({"source_pattern": "gpt-4", "provider": "openrouter", "model": "openai/gpt-4o"}),
+                ],
+            ),
         };
 
-        // Prepare routing configuration
-        let routing_config = json!({
-            "default_provider": provider_name,
-            "providers": {
-                provider_name: {
-                    "name": provider_name,
-                    "base_url": match provider_name {
-                        "anthropic" => "https://api.anthropic.com",
-                        "openai" => "https://api.openai.com/v1",
-                        "openrouter" => "https://openrouter.ai/api/v1",
-                        _ => "https://api.openai.com/v1"
-                    },
-                    "api_key": api_key,
-                    "models": match agent_type {
-                        AgentType::Codex => vec!["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-                        AgentType::Claude => vec!["claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
-                        _ => vec!["gpt-4o"]
-                    }
-                }
-            }
-        });
-
-        // Prepare session with proxy
+        // Prepare session with proxy using new API format
         let client = Client::new();
         let prepare_url = format!("{}/prepare-session", proxy_url.trim_end_matches('/'));
 
         let request_body = json!({
             "api_key": session_api_key,
-            "routing_config": routing_config
+            "providers": [
+                {
+                    "name": provider_name,
+                    "base_url": base_url,
+                    "headers": {
+                        "authorization": format!("Bearer {}", api_key)
+                    }
+                }
+            ],
+            "model_mappings": model_mappings,
+            "default_provider": provider_name
         });
 
         let response = client

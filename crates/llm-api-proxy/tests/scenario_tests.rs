@@ -8,9 +8,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use llm_api_proxy::{
-    config::{ProviderConfig, ProxyConfig, RoutingConfig, ScenarioConfig},
+    config::{ProviderConfig, ProxyConfig, ScenarioConfig},
     converters::ApiFormat,
-    proxy::{ProxyMode, ProxyRequest, SessionManager},
+    proxy::{
+        ModelMapping, ProviderDefinition, ProxyMode, ProxyRequest, SessionConfig, SessionManager,
+    },
+    routing::DynamicRouter,
     scenario::{
         ScenarioPlayer,
         tool_profiles::{AgentType, ToolProfiles},
@@ -1360,37 +1363,27 @@ async fn test_session_manager_creation() {
 async fn test_session_preparation_and_retrieval() {
     let session_manager = SessionManager::new();
 
-    // Create test routing config
-    let routing_config = RoutingConfig {
-        default_provider: "anthropic".to_string(),
-        model_routing: HashMap::new(),
-        enable_fallback: true,
-        max_retries: 3,
-        retry_delay_ms: 1000,
-    };
-
     // Create test providers
-    let mut providers = HashMap::new();
-    providers.insert(
-        "anthropic".to_string(),
-        ProviderConfig {
-            name: "anthropic".to_string(),
-            base_url: "https://api.anthropic.com".to_string(),
-            api_key: Some("test-key".to_string()),
-            headers: HashMap::new(),
-            models: vec!["claude-3-sonnet-20240229".to_string()],
-            weight: 1,
-            rate_limit_rpm: Some(50),
-            timeout_seconds: Some(300),
-        },
-    );
+    let providers = vec![ProviderDefinition {
+        name: "anthropic".to_string(),
+        base_url: "https://api.anthropic.com".to_string(),
+        headers: HashMap::from([("authorization".to_string(), "Bearer test-key".to_string())]),
+    }];
+
+    // Create test model mappings
+    let model_mappings = vec![ModelMapping {
+        source_pattern: "claude".to_string(),
+        provider: "anthropic".to_string(),
+        model: "claude-3-sonnet-20240229".to_string(),
+    }];
 
     // Prepare session
     let session_id = session_manager
         .prepare_session(
             "test-api-key".to_string(),
-            routing_config.clone(),
             providers.clone(),
+            model_mappings.clone(),
+            "anthropic".to_string(),
         )
         .await
         .unwrap();
@@ -1400,31 +1393,36 @@ async fn test_session_preparation_and_retrieval() {
     // Retrieve session config
     let session_config = session_manager.get_session_config("test-api-key").await.unwrap();
 
-    assert_eq!(session_config.routing_config.default_provider, "anthropic");
+    assert_eq!(session_config.default_provider, "anthropic");
     assert!(session_config.providers.contains_key("anthropic"));
+    assert_eq!(session_config.model_mappings.len(), 1);
+    assert_eq!(session_config.model_mappings[0].source_pattern, "claude");
 }
 
 #[tokio::test]
 async fn test_session_config_deduplication() {
     let session_manager = SessionManager::new();
 
-    // Create identical routing configs
-    let routing_config = RoutingConfig {
-        default_provider: "anthropic".to_string(),
-        model_routing: HashMap::new(),
-        enable_fallback: true,
-        max_retries: 3,
-        retry_delay_ms: 1000,
-    };
+    // Create identical session configs
+    let providers = vec![ProviderDefinition {
+        name: "anthropic".to_string(),
+        base_url: "https://api.anthropic.com".to_string(),
+        headers: HashMap::from([("authorization".to_string(), "Bearer test-key".to_string())]),
+    }];
 
-    let providers = HashMap::new(); // Empty for simplicity
+    let model_mappings = vec![ModelMapping {
+        source_pattern: "claude".to_string(),
+        provider: "anthropic".to_string(),
+        model: "claude-3-sonnet-20240229".to_string(),
+    }];
 
     // Prepare two sessions with identical configs
     let session_id1 = session_manager
         .prepare_session(
             "api-key-1".to_string(),
-            routing_config.clone(),
             providers.clone(),
+            model_mappings.clone(),
+            "anthropic".to_string(),
         )
         .await
         .unwrap();
@@ -1432,8 +1430,9 @@ async fn test_session_config_deduplication() {
     let session_id2 = session_manager
         .prepare_session(
             "api-key-2".to_string(),
-            routing_config.clone(),
             providers.clone(),
+            model_mappings.clone(),
+            "anthropic".to_string(),
         )
         .await
         .unwrap();
@@ -1449,19 +1448,26 @@ async fn test_session_config_deduplication() {
 async fn test_session_end() {
     let session_manager = SessionManager::new();
 
-    let routing_config = RoutingConfig {
-        default_provider: "anthropic".to_string(),
-        model_routing: HashMap::new(),
-        enable_fallback: true,
-        max_retries: 3,
-        retry_delay_ms: 1000,
-    };
+    let providers = vec![ProviderDefinition {
+        name: "anthropic".to_string(),
+        base_url: "https://api.anthropic.com".to_string(),
+        headers: HashMap::from([("authorization".to_string(), "Bearer test-key".to_string())]),
+    }];
 
-    let providers = HashMap::new();
+    let model_mappings = vec![ModelMapping {
+        source_pattern: "claude".to_string(),
+        provider: "anthropic".to_string(),
+        model: "claude-3-sonnet-20240229".to_string(),
+    }];
 
     // Prepare session
     session_manager
-        .prepare_session("test-api-key".to_string(), routing_config, providers)
+        .prepare_session(
+            "test-api-key".to_string(),
+            providers,
+            model_mappings,
+            "anthropic".to_string(),
+        )
         .await
         .unwrap();
 
@@ -1473,6 +1479,297 @@ async fn test_session_end() {
 
     // Verify session is gone
     assert!(session_manager.get_session_config("test-api-key").await.is_none());
+}
+
+#[tokio::test]
+async fn test_session_model_routing_substring_matching() {
+    // Create a session config with model mappings
+    let providers = vec![
+        ProviderDefinition {
+            name: "anthropic".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            headers: HashMap::from([("authorization".to_string(), "Bearer test-key".to_string())]),
+        },
+        ProviderDefinition {
+            name: "openai".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            headers: HashMap::from([(
+                "authorization".to_string(),
+                "Bearer openai-key".to_string(),
+            )]),
+        },
+    ];
+
+    let model_mappings = vec![
+        ModelMapping {
+            source_pattern: "claude".to_string(),
+            provider: "anthropic".to_string(),
+            model: "claude-3-sonnet-20240229".to_string(),
+        },
+        ModelMapping {
+            source_pattern: "gpt".to_string(),
+            provider: "openai".to_string(),
+            model: "gpt-4o".to_string(),
+        },
+        ModelMapping {
+            source_pattern: "HAIKU".to_string(), // Test case-insensitive
+            provider: "anthropic".to_string(),
+            model: "claude-3-5-haiku-20241022".to_string(),
+        },
+    ];
+
+    // Create a session router
+    let session_config = SessionConfig {
+        providers: HashMap::from([
+            (
+                "anthropic".to_string(),
+                ProviderConfig {
+                    name: "anthropic".to_string(),
+                    base_url: "https://api.anthropic.com".to_string(),
+                    api_key: None,
+                    headers: HashMap::from([(
+                        "authorization".to_string(),
+                        "Bearer test-key".to_string(),
+                    )]),
+                    models: vec![],
+                    weight: 1,
+                    rate_limit_rpm: None,
+                    timeout_seconds: None,
+                },
+            ),
+            (
+                "openai".to_string(),
+                ProviderConfig {
+                    name: "openai".to_string(),
+                    base_url: "https://api.openai.com/v1".to_string(),
+                    api_key: None,
+                    headers: HashMap::from([(
+                        "authorization".to_string(),
+                        "Bearer openai-key".to_string(),
+                    )]),
+                    models: vec![],
+                    weight: 1,
+                    rate_limit_rpm: None,
+                    timeout_seconds: None,
+                },
+            ),
+        ]),
+        model_mappings,
+        default_provider: "anthropic".to_string(),
+        created_at: std::time::Instant::now(),
+        last_used: std::time::Instant::now(),
+    };
+
+    let router = DynamicRouter::new_from_session(session_config).await.unwrap();
+
+    // Test case-insensitive substring matching
+    let test_cases = vec![
+        ("claude-3-sonnet-20240229", "anthropic"), // Exact substring match
+        ("some-claude-model", "anthropic"),        // Substring match
+        ("CLAUDE-3-OPUS", "anthropic"),            // Case-insensitive match
+        ("gpt-4-turbo", "openai"),                 // GPT substring match
+        ("my-gpt-model", "openai"),                // Substring match
+        ("HAIKU-MODEL", "anthropic"),              // Case-insensitive HAIKU match
+        ("unknown-model", "anthropic"),            // No match, fallback to default
+    ];
+
+    for (model_name, expected_provider) in test_cases {
+        let request = ProxyRequest {
+            client_format: ApiFormat::Anthropic,
+            mode: ProxyMode::Live,
+            payload: serde_json::json!({"model": model_name, "messages": []}),
+            headers: HashMap::new(),
+            request_id: format!("test-{}", model_name),
+        };
+
+        let provider_info = router.select_provider(&request).await.unwrap();
+        assert_eq!(
+            provider_info.name, expected_provider,
+            "Model '{}' should route to provider '{}', but got '{}'",
+            model_name, expected_provider, provider_info.name
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_session_model_routing_priority() {
+    // Test that more specific patterns take priority over general ones
+    let providers = vec![
+        ProviderDefinition {
+            name: "anthropic".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            headers: HashMap::from([("authorization".to_string(), "Bearer test-key".to_string())]),
+        },
+        ProviderDefinition {
+            name: "special".to_string(),
+            base_url: "https://special-provider.com".to_string(),
+            headers: HashMap::from([(
+                "authorization".to_string(),
+                "Bearer special-key".to_string(),
+            )]),
+        },
+    ];
+
+    let model_mappings = vec![
+        ModelMapping {
+            source_pattern: "claude".to_string(),
+            provider: "anthropic".to_string(),
+            model: "claude-3-sonnet-20240229".to_string(),
+        },
+        ModelMapping {
+            source_pattern: "claude-3-5-haiku".to_string(), // More specific pattern
+            provider: "special".to_string(),
+            model: "special-haiku-model".to_string(),
+        },
+    ];
+
+    let session_config = SessionConfig {
+        providers: HashMap::from([
+            (
+                "anthropic".to_string(),
+                ProviderConfig {
+                    name: "anthropic".to_string(),
+                    base_url: "https://api.anthropic.com".to_string(),
+                    api_key: None,
+                    headers: HashMap::new(),
+                    models: vec![],
+                    weight: 1,
+                    rate_limit_rpm: None,
+                    timeout_seconds: None,
+                },
+            ),
+            (
+                "special".to_string(),
+                ProviderConfig {
+                    name: "special".to_string(),
+                    base_url: "https://special-provider.com".to_string(),
+                    api_key: None,
+                    headers: HashMap::new(),
+                    models: vec![],
+                    weight: 1,
+                    rate_limit_rpm: None,
+                    timeout_seconds: None,
+                },
+            ),
+        ]),
+        model_mappings,
+        default_provider: "anthropic".to_string(),
+        created_at: std::time::Instant::now(),
+        last_used: std::time::Instant::now(),
+    };
+
+    let router = DynamicRouter::new_from_session(session_config).await.unwrap();
+
+    // Test that more specific patterns are matched first
+    let test_cases = vec![
+        ("claude-3-sonnet-20240229", "anthropic"), // Matches "claude"
+        ("claude-3-5-haiku-20241022", "special"),  // Matches more specific "claude-3-5-haiku"
+        ("some-other-claude-model", "anthropic"),  // Matches "claude" but not the specific pattern
+    ];
+
+    for (model_name, expected_provider) in test_cases {
+        let request = ProxyRequest {
+            client_format: ApiFormat::Anthropic,
+            mode: ProxyMode::Live,
+            payload: serde_json::json!({"model": model_name, "messages": []}),
+            headers: HashMap::new(),
+            request_id: format!("test-{}", model_name),
+        };
+
+        let provider_info = router.select_provider(&request).await.unwrap();
+        assert_eq!(
+            provider_info.name, expected_provider,
+            "Model '{}' should route to provider '{}', but got '{}'",
+            model_name, expected_provider, provider_info.name
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_session_model_routing_default_fallback() {
+    // Test default provider fallback when no mappings match
+    let providers = vec![
+        ProviderDefinition {
+            name: "anthropic".to_string(),
+            base_url: "https://api.anthropic.com".to_string(),
+            headers: HashMap::from([("authorization".to_string(), "Bearer test-key".to_string())]),
+        },
+        ProviderDefinition {
+            name: "openai".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            headers: HashMap::from([(
+                "authorization".to_string(),
+                "Bearer openai-key".to_string(),
+            )]),
+        },
+    ];
+
+    let model_mappings = vec![ModelMapping {
+        source_pattern: "claude".to_string(),
+        provider: "anthropic".to_string(),
+        model: "claude-3-sonnet-20240229".to_string(),
+    }];
+
+    let session_config = SessionConfig {
+        providers: HashMap::from([
+            (
+                "anthropic".to_string(),
+                ProviderConfig {
+                    name: "anthropic".to_string(),
+                    base_url: "https://api.anthropic.com".to_string(),
+                    api_key: None,
+                    headers: HashMap::new(),
+                    models: vec![],
+                    weight: 1,
+                    rate_limit_rpm: None,
+                    timeout_seconds: None,
+                },
+            ),
+            (
+                "openai".to_string(),
+                ProviderConfig {
+                    name: "openai".to_string(),
+                    base_url: "https://api.openai.com/v1".to_string(),
+                    api_key: None,
+                    headers: HashMap::new(),
+                    models: vec![],
+                    weight: 1,
+                    rate_limit_rpm: None,
+                    timeout_seconds: None,
+                },
+            ),
+        ]),
+        model_mappings,
+        default_provider: "openai".to_string(), // Set OpenAI as default
+        created_at: std::time::Instant::now(),
+        last_used: std::time::Instant::now(),
+    };
+
+    let router = DynamicRouter::new_from_session(session_config).await.unwrap();
+
+    // Test fallback to default provider
+    let test_cases = vec![
+        ("claude-3-sonnet-20240229", "anthropic"), // Matches mapping
+        ("unknown-model", "openai"),               // No match, fallback to default
+        ("random-llm-model", "openai"),            // No match, fallback to default
+    ];
+
+    for (model_name, expected_provider) in test_cases {
+        let request = ProxyRequest {
+            client_format: ApiFormat::Anthropic,
+            mode: ProxyMode::Live,
+            payload: serde_json::json!({"model": model_name, "messages": []}),
+            headers: HashMap::new(),
+            request_id: format!("test-{}", model_name),
+        };
+
+        let provider_info = router.select_provider(&request).await.unwrap();
+        assert_eq!(
+            provider_info.name, expected_provider,
+            "Model '{}' should route to provider '{}', but got '{}'",
+            model_name, expected_provider, provider_info.name
+        );
+    }
 }
 
 #[tokio::test]

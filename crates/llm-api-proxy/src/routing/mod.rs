@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use crate::{
     config::{ProviderConfig, ProxyConfig, RoutingConfig},
     error::{Error, Result},
-    proxy::{ProviderInfo, ProxyRequest, SessionConfig},
+    proxy::{ModelMapping, ProviderInfo, ProxyRequest, SessionConfig},
 };
 
 // TODO: Replace with actual Helicone imports when available
@@ -32,6 +32,8 @@ pub struct DynamicRouter {
     // helicone_router: HeliconeDynamicRouter,
     config: std::sync::Arc<tokio::sync::RwLock<ProxyConfig>>,
     selector: ProviderSelector,
+    // Session-specific model mappings (if this is a session router)
+    session_model_mappings: Option<Vec<crate::proxy::ModelMapping>>,
 }
 
 impl DynamicRouter {
@@ -44,16 +46,26 @@ impl DynamicRouter {
             // helicone_router,
             config,
             selector: ProviderSelector::new(),
+            session_model_mappings: None,
         })
     }
 
     /// Create a new dynamic router from session configuration
     pub async fn new_from_session(session_config: SessionConfig) -> Result<Self> {
         // Create a temporary ProxyConfig from session config
+        // Note: For sessions, we don't use the standard RoutingConfig, so we create a minimal one
+        let temp_routing = RoutingConfig {
+            default_provider: session_config.default_provider.clone(),
+            model_routing: HashMap::new(), // Not used for session routing
+            enable_fallback: false,
+            max_retries: 0,
+            retry_delay_ms: 0,
+        };
+
         let temp_config = ProxyConfig {
             server: Default::default(),
             providers: session_config.providers,
-            routing: session_config.routing_config,
+            routing: temp_routing,
             metrics: Default::default(),
             security: Default::default(),
             scenario: Default::default(),
@@ -65,6 +77,7 @@ impl DynamicRouter {
             // helicone_router,
             config,
             selector: ProviderSelector::new(),
+            session_model_mappings: Some(session_config.model_mappings),
         })
     }
 
@@ -118,19 +131,47 @@ impl DynamicRouter {
 
     /// Select provider name based on model and routing rules
     async fn select_provider_name(&self, model: &str, config: &ProxyConfig) -> String {
+        // First check session-specific model mappings (if this is a session router)
+        if let Some(mappings) = &self.session_model_mappings {
+            // Find the most specific (longest) matching pattern
+            let mut best_match: Option<&ModelMapping> = None;
+            for mapping in mappings {
+                // Case-insensitive substring matching
+                if model.to_lowercase().contains(&mapping.source_pattern.to_lowercase()) {
+                    // Prefer longer (more specific) patterns
+                    if best_match.is_none()
+                        || mapping.source_pattern.len() > best_match.unwrap().source_pattern.len()
+                    {
+                        best_match = Some(mapping);
+                    }
+                }
+            }
+            if let Some(mapping) = best_match {
+                return mapping.provider.clone();
+            }
+        }
+
+        // Fall back to standard routing rules from config
         // Check model-specific routing rules first
         if let Some(provider) = config.routing.model_routing.get(model) {
             return provider.clone();
         }
 
-        // Check for model patterns (e.g., "gpt-*" -> "openai")
+        // Check for model patterns, preferring longer/more specific patterns
+        let mut best_match: Option<&String> = None;
         for (pattern, provider) in &config.routing.model_routing {
             if pattern.contains('*') {
                 let regex_pattern = pattern.replace('*', ".*");
                 if regex::Regex::new(&regex_pattern).map_or(false, |re| re.is_match(model)) {
-                    return provider.clone();
+                    // Prefer longer (more specific) patterns
+                    if best_match.is_none() || pattern.len() > best_match.unwrap().len() {
+                        best_match = Some(provider);
+                    }
                 }
             }
+        }
+        if let Some(provider) = best_match {
+            return provider.clone();
         }
 
         // Fall back to default provider

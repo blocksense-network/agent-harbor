@@ -11,9 +11,8 @@ use axum::{
 };
 use clap::{Parser, Subcommand};
 use futures::stream;
-use llm_api_proxy::config::RoutingConfig;
-use llm_api_proxy::{LlmApiProxy, ProviderConfig, ProxyConfig};
-use std::collections::HashMap;
+use llm_api_proxy::proxy::{ModelMapping, ProviderDefinition};
+use llm_api_proxy::{LlmApiProxy, ProxyConfig};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -470,36 +469,9 @@ async fn handle_prepare_session(
         }
     };
 
-    let routing_config_value = match body.get("routing_config") {
-        Some(config) => config,
-        None => {
-            return axum::response::Json(serde_json::json!({
-                "error": {
-                    "message": "Missing required field: routing_config",
-                    "type": "validation_error"
-                }
-            }));
-        }
-    };
-
-    // Parse routing configuration
-    let routing_config: RoutingConfig = match serde_json::from_value(routing_config_value.clone()) {
-        Ok(config) => config,
-        Err(e) => {
-            return axum::response::Json(serde_json::json!({
-                "error": {
-                    "message": format!("Invalid routing_config: {}", e),
-                    "type": "validation_error"
-                }
-            }));
-        }
-    };
-
     // Parse providers
-    let empty_providers = serde_json::json!({});
-    let providers_value = body.get("providers").unwrap_or(&empty_providers);
-    let providers: HashMap<String, ProviderConfig> =
-        match serde_json::from_value(providers_value.clone()) {
+    let providers: Vec<ProviderDefinition> = match body.get("providers") {
+        Some(providers_value) => match serde_json::from_value(providers_value.clone()) {
             Ok(providers) => providers,
             Err(e) => {
                 return axum::response::Json(serde_json::json!({
@@ -509,12 +481,77 @@ async fn handle_prepare_session(
                     }
                 }));
             }
-        };
+        },
+        None => {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": "Missing required field: providers",
+                    "type": "validation_error"
+                }
+            }));
+        }
+    };
+
+    // Parse model mappings
+    let model_mappings: Vec<ModelMapping> = match body.get("model_mappings") {
+        Some(mappings_value) => match serde_json::from_value(mappings_value.clone()) {
+            Ok(mappings) => mappings,
+            Err(e) => {
+                return axum::response::Json(serde_json::json!({
+                    "error": {
+                        "message": format!("Invalid model_mappings: {}", e),
+                        "type": "validation_error"
+                    }
+                }));
+            }
+        },
+        None => Vec::new(), // Optional field, defaults to empty
+    };
+
+    // Parse default provider
+    let default_provider = match body.get("default_provider").and_then(|v| v.as_str()) {
+        Some(provider) => provider.to_string(),
+        None => {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": "Missing required field: default_provider",
+                    "type": "validation_error"
+                }
+            }));
+        }
+    };
+
+    // Validate that all model mappings reference valid providers
+    let provider_names: std::collections::HashSet<String> =
+        providers.iter().map(|p| p.name.clone()).collect();
+    for mapping in &model_mappings {
+        if !provider_names.contains(&mapping.provider) {
+            return axum::response::Json(serde_json::json!({
+                "error": {
+                    "message": format!("Model mapping references unknown provider '{}'", mapping.provider),
+                    "type": "validation_error"
+                }
+            }));
+        }
+    }
+
+    // Validate that default provider exists
+    if !provider_names.contains(&default_provider) {
+        return axum::response::Json(serde_json::json!({
+            "error": {
+                "message": format!("Default provider '{}' is not in the providers list", default_provider),
+                "type": "validation_error"
+            }
+        }));
+    }
 
     let proxy_guard = proxy.read().await;
 
     // Prepare the session
-    match proxy_guard.prepare_session(api_key, routing_config, providers).await {
+    match proxy_guard
+        .prepare_session(api_key, providers, model_mappings, default_provider)
+        .await
+    {
         Ok(session_id) => {
             let expires_at = chrono::Utc::now() + chrono::Duration::days(3);
             axum::response::Json(serde_json::json!({
