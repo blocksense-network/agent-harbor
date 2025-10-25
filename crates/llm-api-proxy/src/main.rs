@@ -5,12 +5,14 @@
 
 use axum::extract::Path;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
 use axum::{
     Router,
     routing::{get, post},
 };
 use clap::{Parser, Subcommand};
 use futures::stream;
+use llm_api_proxy::proxy::ProxyResponse;
 use llm_api_proxy::proxy::{ModelMapping, ProviderDefinition};
 use llm_api_proxy::{LlmApiProxy, ProxyConfig};
 use std::convert::Infallible;
@@ -410,11 +412,42 @@ async fn run_test_server(
     Ok(())
 }
 
+/// Convert ProxyResponse to appropriate Axum response type
+fn proxy_response_to_axum_response(response: ProxyResponse) -> Response {
+    use axum::http::{HeaderMap, StatusCode};
+    use axum::response::IntoResponse;
+
+    // Check if this is an SSE response
+    if let Some(sse_data) = response.sse_data {
+        use axum::body::Body;
+        use axum::http::header;
+
+        let mut headers = HeaderMap::new();
+        for (key, value) in &response.headers {
+            if let Ok(header_name) = header::HeaderName::from_bytes(key.as_bytes()) {
+                if let Ok(header_value) = header::HeaderValue::from_str(value) {
+                    headers.insert(header_name, header_value);
+                }
+            }
+        }
+
+        return Response::builder()
+            .status(StatusCode::from_u16(response.status).unwrap_or(StatusCode::OK))
+            .header(header::CONTENT_TYPE, "text/event-stream")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(Body::from(sse_data))
+            .unwrap();
+    }
+
+    // Regular JSON response
+    axum::response::Json(response.payload).into_response()
+}
+
 /// Handle OpenAI chat completion requests
 async fn handle_chat_completion(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
-) -> axum::response::Json<serde_json::Value> {
+) -> Response {
     println!("Received OpenAI chat completion request");
     let proxy_guard = proxy.read().await;
 
@@ -426,17 +459,19 @@ async fn handle_chat_completion(
     };
 
     // Create a proxy request from the incoming body
+    let streaming = body.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
     let proxy_request = llm_api_proxy::proxy::ProxyRequest {
         client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
         mode,
         payload: body,
         headers: std::collections::HashMap::new(), // TODO: Extract headers from request
         request_id: format!("req-{}", uuid::Uuid::new_v4()),
+        streaming,
     };
 
     // Process the request through the proxy
     match proxy_guard.proxy_request(proxy_request).await {
-        Ok(response) => axum::response::Json(response.payload),
+        Ok(response) => proxy_response_to_axum_response(response),
         Err(e) => {
             eprintln!("Proxy error: {}", e);
             axum::response::Json(serde_json::json!({
@@ -445,6 +480,7 @@ async fn handle_chat_completion(
                     "type": "internal_error"
                 }
             }))
+            .into_response()
         }
     }
 }
@@ -627,12 +663,14 @@ async fn handle_openai_responses(
         llm_api_proxy::proxy::ProxyMode::Live
     };
 
+    let streaming = body.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
     let proxy_request = llm_api_proxy::proxy::ProxyRequest {
         client_format: llm_api_proxy::converters::ApiFormat::OpenAIResponses,
         mode,
         payload: body,
         headers: std::collections::HashMap::new(),
         request_id: format!("req-{}", uuid::Uuid::new_v4()),
+        streaming,
     };
 
     let (events, keep_alive) = match proxy_guard.proxy_request(proxy_request).await {
@@ -717,7 +755,7 @@ async fn handle_openai_responses_stream(
 async fn handle_anthropic_messages(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
-) -> axum::response::Json<serde_json::Value> {
+) -> Response {
     println!("Received Anthropic messages request");
     let proxy_guard = proxy.read().await;
 
@@ -729,17 +767,19 @@ async fn handle_anthropic_messages(
     };
 
     // Create a proxy request from the incoming body
+    let streaming = body.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
     let proxy_request = llm_api_proxy::proxy::ProxyRequest {
         client_format: llm_api_proxy::converters::ApiFormat::Anthropic,
         mode,
         payload: body,
         headers: std::collections::HashMap::new(), // TODO: Extract headers from request
         request_id: format!("req-{}", uuid::Uuid::new_v4()),
+        streaming,
     };
 
     // Process the request through the proxy
     match proxy_guard.proxy_request(proxy_request).await {
-        Ok(response) => axum::response::Json(response.payload),
+        Ok(response) => proxy_response_to_axum_response(response),
         Err(e) => {
             eprintln!("Proxy error: {}", e);
             axum::response::Json(serde_json::json!({
@@ -748,6 +788,7 @@ async fn handle_anthropic_messages(
                     "type": "internal_error"
                 }
             }))
+            .into_response()
         }
     }
 }

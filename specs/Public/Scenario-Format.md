@@ -53,10 +53,10 @@ timeline:
       - [500, "Analyzing the user's request"]
       - [800, 'I need to create a hello.py file']
   - agentToolUse:
-      toolName: "runCmd"
+      toolName: 'runCmd'
       args:
-        cmd: "python hello.py"
-        cwd: "."
+        cmd: 'python hello.py'
+        cwd: '.'
       progress:
         - [300, 'Running Python script...']
         - [100, 'Script executed successfully']
@@ -104,7 +104,7 @@ expect:
   - `coalesceThinkingWithToolUse`: `true|false` (only used for Anthropic, defaults to `true`).
   - Optional seed objects for mock server endpoints.
 - **timeline[]** (unified event sequence):
-  - `llmResponse`: **NEW** - Groups multiple response elements into a single LLM API response. Contains sub-events that get coalesced based on the target LLM API style (OpenAI vs Anthropic).
+  - `llmResponse`: Groups multiple response elements into a single LLM API response. Contains sub-events that get coalesced based on the target LLM API style (OpenAI vs Anthropic). When the client requests streaming responses, the server automatically converts this into a sequence of incremental streaming events with preserved timing.
     - `think`: Array of `[milliseconds, text]` pairs for agent thinking events. For OpenAI API style: thinking is processed internally but **NOT included in API responses** (matches OpenAI's behavior where thinking is never exposed). For Anthropic API style: thinking is exposed as separate "thinking" blocks in the response content array.
     - `runCmd`: Execute terminal/shell commands. Fields: `cmd` (command string), `cwd` (optional working directory), `timeout` (optional milliseconds), `description` (optional description), `run_in_background` (optional boolean).
     - `grep`: Search for patterns in files. Fields: `pattern`, `path`, `glob` (optional glob pattern), `output_mode` (optional: content/files_with_matches/count), `-B` (optional before context), `-A` (optional after context), `-C` (optional context), `-n` (optional line numbers), `-i` (optional case insensitive), `type` (optional file type), `head_limit` (optional result limit), `multiline` (optional multiline mode).
@@ -171,6 +171,7 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 ### Event Execution by Component
 
 **Mock-Agent Execution:**
+
 - **`agentToolUse`** events with `toolName: "runCmd"` are actually executed by the mock-agent
 - **`agentEdits`** events are carried out by the mock-agent (file modifications happen in the test workspace)
 - When the `--checkpoint-cmd` option is provided, the mock-agent must automatically execute the specified command after each `agentEdits` and `agentToolUse` event completes (after the edits are carried out and the tool execution finishes). The typical command to use is `ah agent fs snapshot` which captures the filesystem state changes for time travel functionality. By default, no checkpoint commands are executed.
@@ -188,9 +189,10 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 - Simulates external LLM APIs (Anthropic, OpenAI, GitHub Copilot, etc.) that coding agents communicate with
 - **Started with a specific tools profile** (server startup option) that defines valid tool schemas for the target coding agent (Codex, Claude, Gemini, etc.)
 - Groups **`llmResponse`** events into single API responses with appropriate coalescing based on `llmApiStyle`
+- Automatically converts `llmResponse` events to incremental streaming responses when clients request streaming (e.g., via SSE)
 - **Validates client tool definitions** sent in API requests against the tools profile; in strict tools validation mode (server startup option --strict-tools-validation), aborts immediately on unknown tools to help identify missing mappings during development
 - For OpenAI: Thinking is processed internally but **NOT included in API responses** - only text content and tool calls appear in the assistant message (matches OpenAI's actual API behavior)
-- For Anthropic: Can include thinking blocks, text, and tool_use blocks in a single response when `coalesceThinkingWithToolUse` is enabled
+- For Anthropic: Can include thinking blocks, text, and tool_use blocks in a single response when `coalesceThinkingWithToolUse` is enabled; supports incremental streaming with content block events
 - Instructs the coding agent via mock LLM API responses to perform tool invocations
 
 **Test Executor:**
@@ -209,14 +211,23 @@ timeline:
           - [500, 'I need to examine the current code first'] # 500ms
           - [300, 'Let me check what functions exist...'] # 300ms, total: 800ms
       - agentToolUse:
-          toolName: "runCmd"
+          toolName: 'runCmd'
           args:
             cmd: "grep -n 'def' main.py"
-            cwd: "."
+            cwd: '.'
           progress:
             - [200, 'Searching for function definitions...']
           result: 'main.py:1:def main():'
           status: 'ok' # 200ms total
+
+  # Response with timing (automatically streams when client requests streaming)
+  - llmResponse:
+      - think:
+          - [500, 'Analyzing user request and planning response'] # 500ms
+          - [300, 'This is a simple arithmetic question requiring basic math'] # 800ms total
+      - assistant:
+          - [200, 'The answer to 2 + 2 is 4.'] # 200ms
+          - [100, 'This is a straightforward mathematical calculation.'] # 300ms total
 
   # Test harness events (handled separately from API responses)
   - userInputs:

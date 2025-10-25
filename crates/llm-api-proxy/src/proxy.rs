@@ -540,6 +540,7 @@ impl LlmApiProxy {
                     status: response.status,
                     payload: response.body,
                     headers: response.headers,
+                    sse_data: None,
                 })
             }
             ApiFormat::OpenAI | ApiFormat::OpenAIResponses => {
@@ -548,6 +549,7 @@ impl LlmApiProxy {
                     status: response.status,
                     payload: response.body,
                     headers: response.headers,
+                    sse_data: None,
                 })
             }
         }
@@ -589,6 +591,8 @@ pub struct ProxyRequest {
     pub headers: std::collections::HashMap<String, String>,
     /// Request ID for tracking
     pub request_id: String,
+    /// Whether client requested streaming response
+    pub streaming: bool,
 }
 
 /// Proxy mode
@@ -609,6 +613,8 @@ pub struct ProxyResponse {
     pub payload: serde_json::Value,
     /// Response headers
     pub headers: std::collections::HashMap<String, String>,
+    /// SSE data for streaming responses (optional)
+    pub sse_data: Option<String>,
 }
 
 /// Provider information

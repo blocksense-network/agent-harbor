@@ -683,7 +683,7 @@ impl ScenarioPlayer {
             message: format!("Failed to parse scenario file {}: {}", path.display(), e),
         })?;
 
-        // Validate scenario structure
+        // Validate the scenario structure
         Self::validate_scenario(&scenario)?;
 
         Ok(scenario)
@@ -691,90 +691,60 @@ impl ScenarioPlayer {
 
     /// Validate scenario structure and constraints
     fn validate_scenario(scenario: &Scenario) -> Result<()> {
-        // Check that thinking blocks are never standalone - they must be paired with assistant responses
-        for (index, event) in scenario.timeline.iter().enumerate() {
+        for event in &scenario.timeline {
             match event {
                 TimelineEvent::LlmResponse { llm_response } => {
-                    let has_thinking = llm_response
-                        .iter()
-                        .any(|element| matches!(element, ResponseElement::Think { .. }));
-                    let has_assistant = llm_response
-                        .iter()
-                        .any(|element| matches!(element, ResponseElement::Assistant { .. }));
+                    let mut has_thinking = false;
+                    let mut has_assistant = false;
 
+                    for element in llm_response {
+                        match element {
+                            ResponseElement::Think { .. } => {
+                                has_thinking = true;
+                            }
+                            ResponseElement::Assistant { .. } => {
+                                has_assistant = true;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // If there's thinking, there must also be an assistant response
                     if has_thinking && !has_assistant {
                         return Err(Error::Scenario {
-                            message: format!(
-                                "Scenario '{}' llmResponse event at index {} contains thinking blocks but no assistant responses. \
-                                 llmResponse events with thinking must include assistant blocks to provide user-visible responses.",
-                                scenario.name, index
-                            ),
+                            message:
+                                "llmResponse contains thinking blocks but no assistant responses"
+                                    .to_string(),
                         });
                     }
                 }
                 TimelineEvent::Event(data) => {
-                    // Check if this is an llmResponse stored as Event due to deserialization issues
+                    // Also validate llmResponse in Event variant
                     if let Some(serde_yaml::Value::Sequence(elements)) = data.get("llmResponse") {
-                        // Try to validate the elements
                         let mut has_thinking = false;
                         let mut has_assistant = false;
 
                         for element_value in elements {
-                            if let Ok(element) =
-                                serde_yaml::from_value::<ResponseElement>(element_value.clone())
-                            {
-                                has_thinking |= matches!(element, ResponseElement::Think { .. });
-                                has_assistant |=
-                                    matches!(element, ResponseElement::Assistant { .. });
+                            let element: ResponseElement =
+                                serde_yaml::from_value(element_value.clone()).map_err(|e| {
+                                    Error::Scenario {
+                                        message: format!("Failed to parse response element: {}", e),
+                                    }
+                                })?;
+                            match element {
+                                ResponseElement::Think { .. } => {
+                                    has_thinking = true;
+                                }
+                                ResponseElement::Assistant { .. } => {
+                                    has_assistant = true;
+                                }
+                                _ => {}
                             }
                         }
 
                         if has_thinking && !has_assistant {
                             return Err(Error::Scenario {
-                                message: format!(
-                                    "Scenario '{}' llmResponse event at index {} contains thinking blocks but no assistant responses. \
-                                     llmResponse events with thinking must include assistant blocks to provide user-visible responses.",
-                                    scenario.name, index
-                                ),
-                            });
-                        }
-                    } else if data.contains_key("think") {
-                        // Legacy thinking event - must be immediately followed by assistant event
-                        // (cannot be separated by tool use or other response events)
-                        let mut found_assistant = false;
-                        for next_index in (index + 1)..scenario.timeline.len() {
-                            match &scenario.timeline[next_index] {
-                                TimelineEvent::Event(next_data) => {
-                                    if next_data.contains_key("assistant") {
-                                        found_assistant = true;
-                                        break;
-                                    } else if next_data.contains_key("think")
-                                        || next_data.contains_key("agentToolUse")
-                                        || next_data.contains_key("agentEdits")
-                                    {
-                                        // Another thinking event or tool event without assistant in between - invalid
-                                        break;
-                                    }
-                                    // Skip other non-response events
-                                }
-                                TimelineEvent::LlmResponse { .. } => {
-                                    // llmResponse events break the sequence
-                                    break;
-                                }
-                                TimelineEvent::Control { .. } | TimelineEvent::Assert { .. } => {
-                                    // Skip control and assert events
-                                    continue;
-                                }
-                            }
-                        }
-
-                        if !found_assistant {
-                            return Err(Error::Scenario {
-                                message: format!(
-                                    "Scenario '{}' contains a thinking block at index {} that is not immediately followed by an assistant response. \
-                                     Thinking blocks must be paired with assistant responses to provide user-visible content.",
-                                    scenario.name, index
-                                ),
+                                message: "llmResponse contains thinking blocks but no assistant responses".to_string(),
                             });
                         }
                     }
@@ -877,12 +847,9 @@ pub struct ServerConfig {
 #[serde(untagged)]
 pub enum TimelineEvent {
     /// LLM response event (groups multiple response elements)
-    LlmResponse {
-        #[serde(rename = "llmResponse")]
-        llm_response: Vec<ResponseElement>,
-    },
-    /// Assertion event for verifying filesystem state and other conditions
-    Assert { assert: AssertionData },
+    LlmResponse { llm_response: Vec<ResponseElement> },
+    /// Individual events for backward compatibility
+    Event(HashMap<String, serde_yaml::Value>),
     /// Control events
     Control {
         #[serde(rename = "type")]
@@ -890,8 +857,8 @@ pub enum TimelineEvent {
         #[serde(flatten)]
         data: HashMap<String, serde_yaml::Value>,
     },
-    /// Legacy events for backward compatibility (must come last as catch-all)
-    Event(HashMap<String, serde_yaml::Value>),
+    /// Assertion event for verifying filesystem state and other conditions
+    Assert { assert: AssertionData },
 }
 
 /// Response element in an LLM response
@@ -899,12 +866,20 @@ pub enum TimelineEvent {
 #[serde(untagged)]
 pub enum ResponseElement {
     /// Thinking event
+    #[serde(rename = "think")]
     Think { think: Vec<ThinkingStep> },
     /// Tool use event
-    AgentToolUse { agent_tool_use: ToolUseData },
+    AgentToolUse {
+        #[serde(rename = "agentToolUse")]
+        agent_tool_use: ToolUseData,
+    },
     /// File edits event
-    AgentEdits { agent_edits: FileEditData },
+    AgentEdits {
+        #[serde(rename = "agentEdits")]
+        agent_edits: FileEditData,
+    },
     /// Assistant response event
+    #[serde(rename = "assistant")]
     Assistant { assistant: Vec<AssistantStep> },
 }
 
@@ -1061,13 +1036,6 @@ impl ScenarioSession {
         request: &ProxyRequest,
         scenario: &Scenario,
     ) -> Result<ProxyResponse> {
-        // Special handling for haiku model requests (topic detection)
-        if let Some(model) = request.payload.get("model").and_then(|m| m.as_str()) {
-            if model.contains("haiku") {
-                return self.generate_haiku_topic_detection_response(request.client_format);
-            }
-        }
-
         // Check if this request contains meaningful content before starting scenario playback
         if !self.scenario_started {
             if !self.is_meaningful_request(request) {
@@ -1083,106 +1051,14 @@ impl ScenarioSession {
         let response_parts = self.collect_response_parts(scenario)?;
         let aggregated = self.process_response_parts(response_parts)?;
 
-        // Generate API response based on client format (not agent type)
-        let response = self.generate_api_response(aggregated, request.client_format)?;
+        // Generate API response based on client format and streaming preference
+        let response = if request.streaming {
+            self.generate_streaming_response(aggregated, request.client_format)?
+        } else {
+            self.generate_api_response(aggregated, request.client_format)?
+        };
 
         Ok(response)
-    }
-
-    /// Generate a hardcoded response for haiku model topic detection requests
-    fn generate_haiku_topic_detection_response(
-        &self,
-        client_format: ApiFormat,
-    ) -> Result<ProxyResponse> {
-        match client_format {
-            ApiFormat::Anthropic => {
-                let payload = serde_json::json!({
-                    "id": format!("msg_{}", Uuid::new_v4()),
-                    "type": "message",
-                    "role": "assistant",
-                    "model": "claude-3-5-haiku-20241022",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "{\"isNewTopic\": false, \"title\": null}"
-                        }
-                    ],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": null,
-                    "usage": {
-                        "input_tokens": 25,
-                        "output_tokens": 15
-                    }
-                });
-
-                Ok(ProxyResponse {
-                    status: 200,
-                    payload,
-                    headers: HashMap::new(),
-                })
-            }
-            ApiFormat::OpenAI => {
-                let payload = serde_json::json!({
-                    "id": format!("chatcmpl-{}", Uuid::new_v4()),
-                    "object": "chat.completion",
-                    "created": chrono::Utc::now().timestamp(),
-                    "model": "gpt-4o",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": "{\"isNewTopic\": false, \"title\": null}"
-                            },
-                            "finish_reason": "stop"
-                        }
-                    ],
-                    "usage": {
-                        "prompt_tokens": 25,
-                        "completion_tokens": 15,
-                        "total_tokens": 40
-                    }
-                });
-
-                Ok(ProxyResponse {
-                    status: 200,
-                    payload,
-                    headers: HashMap::new(),
-                })
-            }
-            ApiFormat::OpenAIResponses => {
-                let payload = serde_json::json!({
-                    "id": format!("resp-{}", Uuid::new_v4()),
-                    "object": "response",
-                    "created": chrono::Utc::now().timestamp(),
-                    "model": "gpt-4o-mini",
-                    "status": "completed",
-                    "output": [
-                        {
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [
-                                {
-                                    "type": "output_text",
-                                    "text": "{\"isNewTopic\": false, \"title\": null}"
-                                }
-                            ]
-                        }
-                    ],
-                    "usage": {
-                        "prompt_tokens": 25,
-                        "completion_tokens": 15,
-                        "total_tokens": 40
-                    }
-                });
-
-                Ok(ProxyResponse {
-                    status: 200,
-                    payload,
-                    headers: HashMap::new(),
-                })
-            }
-        }
     }
 
     /// Check if a request contains meaningful content that should trigger scenario playback
@@ -1243,8 +1119,8 @@ impl ScenarioSession {
                     "stop_reason": "end_turn",
                     "stop_sequence": null,
                     "usage": {
-                        "input_tokens": 25,
-                        "output_tokens": 15
+                        "input_tokens": 0,
+                        "output_tokens": 0
                     }
                 });
 
@@ -1252,6 +1128,7 @@ impl ScenarioSession {
                     status: 200,
                     payload,
                     headers: HashMap::new(),
+                    sse_data: None,
                 })
             }
             crate::converters::ApiFormat::OpenAI => {
@@ -1259,7 +1136,7 @@ impl ScenarioSession {
                     "id": format!("chatcmpl-{}", Uuid::new_v4()),
                     "object": "chat.completion",
                     "created": chrono::Utc::now().timestamp(),
-                    "model": "gpt-4o",
+                    "model": "gpt-4",
                     "choices": [{
                         "index": 0,
                         "message": {
@@ -1269,9 +1146,9 @@ impl ScenarioSession {
                         "finish_reason": "stop"
                     }],
                     "usage": {
-                        "prompt_tokens": 8,
-                        "completion_tokens": 12,
-                        "total_tokens": 20
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0
                     }
                 });
 
@@ -1279,6 +1156,7 @@ impl ScenarioSession {
                     status: 200,
                     payload,
                     headers: HashMap::new(),
+                    sse_data: None,
                 })
             }
             crate::converters::ApiFormat::OpenAIResponses => {
@@ -1286,10 +1164,9 @@ impl ScenarioSession {
                     "id": format!("resp-{}", Uuid::new_v4()),
                     "object": "response",
                     "created": chrono::Utc::now().timestamp(),
-                    "model": "gpt-4o-mini",
+                    "model": "gpt-4",
                     "status": "completed",
                     "output": [{
-                        "type": "message",
                         "role": "assistant",
                         "content": [{
                             "type": "output_text",
@@ -1297,9 +1174,9 @@ impl ScenarioSession {
                         }]
                     }],
                     "usage": {
-                        "prompt_tokens": 5,
-                        "completion_tokens": 8,
-                        "total_tokens": 13
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0
                     }
                 });
 
@@ -1307,6 +1184,7 @@ impl ScenarioSession {
                     status: 200,
                     payload,
                     headers: HashMap::new(),
+                    sse_data: None,
                 })
             }
         }
@@ -1322,6 +1200,7 @@ impl ScenarioSession {
 
             // Check if this is a response-generating event
             let event_type = self.get_event_type(current_event);
+
             match event_type.as_deref() {
                 // Skip non-response-generating events (handled by test harness)
                 Some("complete") | Some("merge") | Some("advanceMs") | Some("userInputs")
@@ -1357,27 +1236,28 @@ impl ScenarioSession {
                             }
                         }
                         TimelineEvent::Event(data) => {
-                            // Handle llmResponse in Event format (fallback parsing)
+                            // Handle llmResponse parsed as generic Event
                             if let Some(serde_yaml::Value::Sequence(elements)) =
                                 data.get("llmResponse")
                             {
                                 for element_value in elements {
-                                    // Try to deserialize each element as a ResponseElement
+                                    // Try to deserialize each element as ResponseElement
                                     let element: ResponseElement = serde_yaml::from_value(
                                         element_value.clone(),
                                     )
                                     .map_err(|e| Error::Scenario {
-                                        message: format!(
-                                            "Failed to parse llmResponse element: {}",
-                                            e
-                                        ),
+                                        message: format!("Failed to parse response element: {}", e),
                                     })?;
                                     let part = self.response_element_to_response_part(&element)?;
                                     response_parts.push(part);
                                 }
                             }
                         }
-                        _ => {}
+                        _ => {
+                            return Err(Error::Scenario {
+                                message: "Expected LlmResponse event".to_string(),
+                            });
+                        }
                     }
                     self.current_event_index += 1;
                     break;
@@ -1597,12 +1477,12 @@ impl ScenarioSession {
             "id": format!("chatcmpl-{}", Uuid::new_v4()),
             "object": "chat.completion",
             "created": Utc::now().timestamp(),
-            "model": "gpt-4o",
+            "model": "gpt-4o-mini",
             "choices": choices,
             "usage": {
-                "prompt_tokens": 15,
-                "completion_tokens": 30,
-                "total_tokens": 45
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150
             }
         });
 
@@ -1610,6 +1490,7 @@ impl ScenarioSession {
             status: 200,
             payload,
             headers: HashMap::new(),
+            sse_data: None,
         })
     }
 
@@ -1622,11 +1503,11 @@ impl ScenarioSession {
     ) -> Result<ProxyResponse> {
         let mut content = Vec::new();
 
-        for step in &thinking_steps {
+        for step in thinking_steps {
             content.push(serde_json::json!({
                 "type": "thinking",
-                "thinking": step.1.clone(),
-                "signature": format!("sig_{}", Uuid::new_v4().simple()),
+                "thinking": step.1,
+                "signature": format!("sig_{}", uuid::Uuid::new_v4().simple()),
             }));
         }
 
@@ -1657,8 +1538,8 @@ impl ScenarioSession {
             "stop_reason": "end_turn",
             "stop_sequence": null,
             "usage": {
-                "input_tokens": 150,
-                "output_tokens": 300
+                "input_tokens": 100,
+                "output_tokens": 50
             }
         });
 
@@ -1666,6 +1547,7 @@ impl ScenarioSession {
             status: 200,
             payload,
             headers: HashMap::new(),
+            sse_data: None,
         })
     }
 
@@ -1709,9 +1591,9 @@ impl ScenarioSession {
             "status": "completed",
             "output": output_items,
             "usage": {
-                "prompt_tokens": 12,
-                "completion_tokens": 25,
-                "total_tokens": 37
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150
             }
         });
 
@@ -1719,6 +1601,7 @@ impl ScenarioSession {
             status: 200,
             payload,
             headers: HashMap::new(),
+            sse_data: None,
         })
     }
 
@@ -1836,6 +1719,339 @@ impl ScenarioSession {
             TimelineEvent::LlmResponse { .. } => Some("llmResponse".to_string()),
             TimelineEvent::Assert { .. } => Some("assert".to_string()),
         }
+    }
+
+    /// Generate streaming response with SSE events
+    fn generate_streaming_response(
+        &self,
+        aggregate: AggregatedResponse,
+        client_format: crate::converters::ApiFormat,
+    ) -> Result<ProxyResponse> {
+        let AggregatedResponse {
+            assistant_text,
+            tool_calls,
+            thinking_steps,
+        } = aggregate;
+
+        let mut sse_events = Vec::new();
+
+        match client_format {
+            crate::converters::ApiFormat::Anthropic => {
+                // Generate message_start
+                let message_start = serde_json::json!({
+                    "type": "message_start",
+                    "message": {
+                        "id": format!("msg_{}", uuid::Uuid::new_v4()),
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-3-5-sonnet-20241022",
+                        "content": [],
+                        "stop_reason": null,
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 50
+                        }
+                    }
+                });
+                sse_events.push(format!("event: message_start\ndata: {}\n\n", message_start));
+
+                // Generate thinking blocks if present
+                for thinking_step in &thinking_steps {
+                    let ThinkingStep(_, text) = thinking_step;
+
+                    // Content block start for thinking
+                    let content_block_start = serde_json::json!({
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {
+                            "type": "thinking",
+                            "thinking": "",
+                            "signature": format!("sig_{}", uuid::Uuid::new_v4().simple())
+                        }
+                    });
+                    sse_events.push(format!(
+                        "event: content_block_start\ndata: {}\n\n",
+                        content_block_start
+                    ));
+
+                    // Content block deltas for thinking text (chunked)
+                    let chunks = self.chunk_text(text, 20); // Chunk into ~20 char pieces
+                    for chunk in chunks {
+                        let content_block_delta = serde_json::json!({
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {
+                                "type": "thinking_delta",
+                                "thinking": chunk
+                            }
+                        });
+                        sse_events.push(format!(
+                            "event: content_block_delta\ndata: {}\n\n",
+                            content_block_delta
+                        ));
+                    }
+
+                    // Content block stop
+                    let content_block_stop = serde_json::json!({
+                        "type": "content_block_stop",
+                        "index": 0
+                    });
+                    sse_events.push(format!(
+                        "event: content_block_stop\ndata: {}\n\n",
+                        content_block_stop
+                    ));
+                }
+
+                // Generate assistant text blocks if present
+                if !assistant_text.is_empty() {
+                    let content_block_start = serde_json::json!({
+                        "type": "content_block_start",
+                        "index": 1,
+                        "content_block": {
+                            "type": "text",
+                            "text": ""
+                        }
+                    });
+                    sse_events.push(format!(
+                        "event: content_block_start\ndata: {}\n\n",
+                        content_block_start
+                    ));
+
+                    // Content block deltas for assistant text
+                    let chunks = self.chunk_text(&assistant_text, 30);
+                    for chunk in chunks {
+                        let content_block_delta = serde_json::json!({
+                            "type": "content_block_delta",
+                            "index": 1,
+                            "delta": {
+                                "type": "text_delta",
+                                "text": chunk
+                            }
+                        });
+                        sse_events.push(format!(
+                            "event: content_block_delta\ndata: {}\n\n",
+                            content_block_delta
+                        ));
+                    }
+
+                    // Content block stop
+                    let content_block_stop = serde_json::json!({
+                        "type": "content_block_stop",
+                        "index": 1
+                    });
+                    sse_events.push(format!(
+                        "event: content_block_stop\ndata: {}\n\n",
+                        content_block_stop
+                    ));
+                }
+
+                // Generate tool calls if present
+                for (i, tool_call) in tool_calls.iter().enumerate() {
+                    let tool_index = if thinking_steps.is_empty() && assistant_text.is_empty() {
+                        i
+                    } else {
+                        i + 1
+                    };
+                    let content_block_start = serde_json::json!({
+                        "type": "content_block_start",
+                        "index": tool_index,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": tool_call.id,
+                            "name": tool_call.name,
+                            "input": serde_json::to_value(&tool_call.args).unwrap_or(serde_json::json!({}))
+                        }
+                    });
+                    sse_events.push(format!(
+                        "event: content_block_start\ndata: {}\n\n",
+                        content_block_start
+                    ));
+
+                    // Tool use doesn't need deltas, just the block
+                    let content_block_stop = serde_json::json!({
+                        "type": "content_block_stop",
+                        "index": tool_index
+                    });
+                    sse_events.push(format!(
+                        "event: content_block_stop\ndata: {}\n\n",
+                        content_block_stop
+                    ));
+                }
+
+                // Final message delta
+                let message_delta = serde_json::json!({
+                    "type": "message_delta",
+                    "delta": {
+                        "stop_reason": "end_turn",
+                        "usage": {
+                            "output_tokens": 150
+                        }
+                    }
+                });
+                sse_events.push(format!("event: message_delta\ndata: {}\n\n", message_delta));
+
+                // Message stop
+                let message_stop = serde_json::json!({
+                    "type": "message_stop"
+                });
+                sse_events.push(format!("event: message_stop\ndata: {}\n\n", message_stop));
+            }
+            crate::converters::ApiFormat::OpenAI => {
+                // For OpenAI, streaming is simpler - just text deltas
+                // OpenAI doesn't expose thinking in streaming responses
+
+                // Create the choice structure
+                let choice = serde_json::json!({
+                    "index": 0,
+                    "delta": {
+                        "role": "assistant",
+                        "content": null
+                    },
+                    "finish_reason": null
+                });
+
+                let chunk = serde_json::json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o",
+                    "choices": [choice]
+                });
+                sse_events.push(format!("data: {}\n\n", chunk));
+
+                // Send content chunks
+                let chunks = self.chunk_text(&assistant_text, 20);
+                for chunk_text in chunks {
+                    let choice = serde_json::json!({
+                        "index": 0,
+                        "delta": {
+                            "content": chunk_text
+                        },
+                        "finish_reason": null
+                    });
+
+                    let chunk = serde_json::json!({
+                        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                        "object": "chat.completion.chunk",
+                        "created": chrono::Utc::now().timestamp(),
+                        "model": "gpt-4o",
+                        "choices": [choice]
+                    });
+                    sse_events.push(format!("data: {}\n\n", chunk));
+                }
+
+                // Final chunk with finish_reason
+                let choice = serde_json::json!({
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop"
+                });
+
+                let chunk = serde_json::json!({
+                    "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                    "object": "chat.completion.chunk",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o",
+                    "choices": [choice],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150
+                    }
+                });
+                sse_events.push(format!("data: {}\n\n", chunk));
+                sse_events.push("data: [DONE]\n\n".to_string());
+            }
+            crate::converters::ApiFormat::OpenAIResponses => {
+                // Similar to OpenAI but with different structure
+                let output_item = serde_json::json!({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": []
+                });
+
+                let response = serde_json::json!({
+                    "id": format!("resp-{}", uuid::Uuid::new_v4()),
+                    "object": "response",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o-mini",
+                    "status": "in_progress",
+                    "output": [output_item]
+                });
+                sse_events.push(format!("data: {}\n\n", response));
+
+                // Content deltas
+                let chunks = self.chunk_text(&assistant_text, 20);
+                for chunk_text in chunks {
+                    let output_item = serde_json::json!({
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{
+                            "type": "output_text",
+                            "text": chunk_text
+                        }]
+                    });
+
+                    let response = serde_json::json!({
+                        "id": format!("resp-{}", uuid::Uuid::new_v4()),
+                        "object": "response",
+                        "created": chrono::Utc::now().timestamp(),
+                        "model": "gpt-4o-mini",
+                        "status": "in_progress",
+                        "output": [output_item]
+                    });
+                    sse_events.push(format!("data: {}\n\n", response));
+                }
+
+                // Final response
+                let output_item = serde_json::json!({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "output_text",
+                        "text": assistant_text
+                    }]
+                });
+
+                let response = serde_json::json!({
+                    "id": format!("resp-{}", uuid::Uuid::new_v4()),
+                    "object": "response",
+                    "created": chrono::Utc::now().timestamp(),
+                    "model": "gpt-4o-mini",
+                    "status": "completed",
+                    "output": [output_item],
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "total_tokens": 150
+                    }
+                });
+                sse_events.push(format!("data: {}\n\n", response));
+            }
+        }
+
+        // Combine all SSE events into a single response
+        let sse_data = sse_events.join("");
+
+        Ok(ProxyResponse {
+            status: 200,
+            payload: serde_json::Value::Null,
+            headers: std::collections::HashMap::from([
+                ("content-type".to_string(), "text/event-stream".to_string()),
+                ("cache-control".to_string(), "no-cache".to_string()),
+            ]),
+            sse_data: Some(sse_data),
+        })
+    }
+
+    /// Helper function to chunk text into smaller pieces for streaming
+    fn chunk_text(&self, text: &str, chunk_size: usize) -> Vec<String> {
+        text.chars()
+            .collect::<Vec<char>>()
+            .chunks(chunk_size)
+            .map(|chunk| chunk.iter().collect::<String>())
+            .collect()
     }
 }
 

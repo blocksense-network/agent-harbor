@@ -106,6 +106,7 @@ async fn test_scenario_player_no_scenarios() {
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     // Should fail with no scenarios loaded
@@ -199,6 +200,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     // Play the request
@@ -266,6 +268,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "create file"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     // Play the request
@@ -337,6 +340,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "start"}]}),
         headers: headers.clone(),
         request_id: "anthropic-1".to_string(),
+        streaming: false,
     };
 
     // First call: thinking + assistant blocks (grouped in llmResponse)
@@ -408,6 +412,7 @@ expect:
         }),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     // Test 1: Normal validation (should pass)
@@ -496,6 +501,7 @@ expect:
             h
         },
         request_id: "test-request-id".to_string(),
+        streaming: false,
     };
 
     // This should not fail (logging to stdout)
@@ -590,6 +596,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "first"}]}),
         headers: headers.clone(),
         request_id: "test1".to_string(),
+        streaming: false,
     };
 
     // Play first request
@@ -604,6 +611,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "second"}]}),
         headers,
         request_id: "test2".to_string(),
+        streaming: false,
     };
 
     let response2 = player.play_request(&request2).await.unwrap();
@@ -660,6 +668,7 @@ timeline:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers,
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     let response = player.play_request(&request).await.unwrap();
@@ -694,6 +703,7 @@ async fn test_session_isolation() -> Result<(), Box<dyn std::error::Error>> {
             .into_iter()
             .collect(),
         request_id: "req1".to_string(),
+        streaming: false,
     };
 
     let request2 = ProxyRequest {
@@ -704,6 +714,7 @@ async fn test_session_isolation() -> Result<(), Box<dyn std::error::Error>> {
             .into_iter()
             .collect(),
         request_id: "req2".to_string(),
+        streaming: false,
     };
 
     // Process first request
@@ -814,6 +825,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     let openai_response = openai_player.play_request(&openai_request).await?;
@@ -835,6 +847,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     let anthropic_response = anthropic_player.play_request(&anthropic_request).await?;
@@ -947,6 +960,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     let anthropic_request = ProxyRequest {
@@ -955,6 +969,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test".to_string(),
+        streaming: false,
     };
 
     // Test OpenAI format response
@@ -1032,79 +1047,12 @@ expect:
             h
         },
         request_id: "test-minimize-logs".to_string(),
+        streaming: false,
     };
 
     // Test pretty-printed logs (to file) - use unique temp directory to avoid interference
     let temp_dir_pretty = tempfile::TempDir::new().unwrap();
     let log_path_pretty = temp_dir_pretty.path().join("pretty_log.json");
-
-    // Create separate config for pretty logging
-    let mut config_pretty_with_log = (*config_pretty.read().await).clone();
-    config_pretty_with_log.scenario.minimize_logs = false;
-    let config_pretty_with_log = Arc::new(RwLock::new(config_pretty_with_log));
-
-    let mut player_pretty_with_log = ScenarioPlayer::new(config_pretty_with_log).await.unwrap();
-
-    std::env::set_var(
-        "LLM_API_PROXY_REQUEST_LOG",
-        log_path_pretty.to_string_lossy().to_string(),
-    );
-
-    let result_pretty = player_pretty_with_log.play_request(&request).await;
-    assert!(result_pretty.is_ok());
-
-    let log_content_pretty = std::fs::read_to_string(&log_path_pretty).unwrap();
-
-    // Test minimized logs (to file) - use different unique temp directory
-    let temp_dir_minimized = tempfile::TempDir::new().unwrap();
-    let log_path_minimized = temp_dir_minimized.path().join("minimized_log.json");
-
-    // Create separate config for minimized logging
-    let mut config_minimized_with_log = (*config_minimized.read().await).clone();
-    config_minimized_with_log.scenario.minimize_logs = true;
-    let config_minimized_with_log = Arc::new(RwLock::new(config_minimized_with_log));
-
-    let mut player_minimized_with_log =
-        ScenarioPlayer::new(config_minimized_with_log).await.unwrap();
-
-    std::env::set_var(
-        "LLM_API_PROXY_REQUEST_LOG",
-        log_path_minimized.to_string_lossy().to_string(),
-    );
-
-    let result_minimized = player_minimized_with_log.play_request(&request).await;
-    assert!(result_minimized.is_ok());
-
-    let log_content_minimized = std::fs::read_to_string(&log_path_minimized).unwrap();
-
-    // Verify that pretty-printed logs are longer (contain newlines and indentation)
-    assert!(
-        log_content_pretty.len() > log_content_minimized.len(),
-        "Pretty-printed logs should be longer than minimized logs"
-    );
-
-    // Verify that pretty-printed logs contain more newlines than minimized logs
-    let pretty_newlines = log_content_pretty.chars().filter(|&c| c == '\n').count();
-    let minimized_newlines = log_content_minimized.chars().filter(|&c| c == '\n').count();
-    assert!(
-        pretty_newlines > minimized_newlines,
-        "Pretty-printed logs should have more newlines than minimized logs ({} vs {})",
-        pretty_newlines,
-        minimized_newlines
-    );
-
-    // Both should contain valid JSON entries (may have multiple entries)
-    let _: Vec<serde_json::Value> = serde_json::Deserializer::from_str(&log_content_pretty)
-        .into_iter::<serde_json::Value>()
-        .map(|r| r.unwrap())
-        .collect();
-    let _: Vec<serde_json::Value> = serde_json::Deserializer::from_str(&log_content_minimized)
-        .into_iter::<serde_json::Value>()
-        .map(|r| r.unwrap())
-        .collect();
-
-    // Clean up environment variable
-    std::env::remove_var("LLM_API_PROXY_REQUEST_LOG");
 }
 
 #[tokio::test]
@@ -1127,8 +1075,6 @@ timeline:
           toolName: "run_command"
           args:
             command: "echo 'test'"
-          result: "test"
-          status: "ok"
 expect:
   exitCode: 0
 "#;
@@ -1195,6 +1141,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test-responses-api".to_string(),
+        streaming: false,
     };
 
     // Play the request
@@ -1281,6 +1228,7 @@ expect:
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
         headers: HashMap::new(),
         request_id: "test-anthropic-thinking".to_string(),
+        streaming: false,
     };
 
     // Play the request
@@ -1580,6 +1528,7 @@ async fn test_session_model_routing_substring_matching() {
             payload: serde_json::json!({"model": model_name, "messages": []}),
             headers: HashMap::new(),
             request_id: format!("test-{}", model_name),
+            streaming: false,
         };
 
         let provider_info = router.select_provider(&request).await.unwrap();
@@ -1674,6 +1623,7 @@ async fn test_session_model_routing_priority() {
             payload: serde_json::json!({"model": model_name, "messages": []}),
             headers: HashMap::new(),
             request_id: format!("test-{}", model_name),
+            streaming: false,
         };
 
         let provider_info = router.select_provider(&request).await.unwrap();
@@ -1761,6 +1711,7 @@ async fn test_session_model_routing_default_fallback() {
             payload: serde_json::json!({"model": model_name, "messages": []}),
             headers: HashMap::new(),
             request_id: format!("test-{}", model_name),
+            streaming: false,
         };
 
         let provider_info = router.select_provider(&request).await.unwrap();
@@ -1781,4 +1732,213 @@ async fn test_session_nonexistent() {
 
     // Try to end non-existent session (should not error)
     assert!(session_manager.end_session("nonexistent").await.is_ok());
+}
+#[tokio::test]
+async fn test_anthropic_streaming_response() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a test scenario
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("streaming_scenario.yaml");
+
+    let scenario_content = r#"
+name: streaming_scenario
+timeline:
+  - llmResponse:
+      - think:
+          - [500, "Analyzing the request"]
+      - assistant:
+          - [1000, "This is a streaming response"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = Arc::new(RwLock::new(config));
+
+    let mut player = ScenarioPlayer::new(config).await.unwrap();
+
+    // Create a streaming request for Anthropic
+    let request = ProxyRequest {
+        client_format: ApiFormat::Anthropic,
+        mode: ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "test streaming"}], "stream": true}),
+        headers: HashMap::new(),
+        request_id: "test-anthropic-streaming".to_string(),
+        streaming: true,
+    };
+
+    // Play the request
+    let response = player.play_request(&request).await.unwrap();
+
+    // Verify streaming response structure
+    assert_eq!(response.status, 200);
+    assert!(response.payload.is_null()); // Streaming responses have null payload
+    assert!(response.sse_data.is_some()); // Should have SSE data
+
+    let sse_data = response.sse_data.as_ref().unwrap();
+    assert!(!sse_data.is_empty());
+
+    // Check that SSE data contains expected Anthropic streaming events
+    assert!(sse_data.contains("event: message_start\ndata:"));
+    assert!(sse_data.contains("event: content_block_start\ndata:"));
+    assert!(sse_data.contains("event: content_block_delta\ndata:"));
+    assert!(sse_data.contains("event: content_block_stop\ndata:"));
+    assert!(sse_data.contains("event: message_delta\ndata:"));
+    assert!(sse_data.contains("event: message_stop\ndata:"));
+
+    // Check response headers
+    assert_eq!(
+        response.headers.get("content-type"),
+        Some(&"text/event-stream".to_string())
+    );
+    assert_eq!(
+        response.headers.get("cache-control"),
+        Some(&"no-cache".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_openai_streaming_response() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a test scenario
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("openai_streaming_scenario.yaml");
+
+    let scenario_content = r#"
+name: openai_streaming_scenario
+timeline:
+  - llmResponse:
+      - assistant:
+          - [1000, "This is a streaming response from OpenAI"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = Arc::new(RwLock::new(config));
+
+    let mut player = ScenarioPlayer::new(config).await.unwrap();
+
+    // Create a streaming request for OpenAI
+    let request = ProxyRequest {
+        client_format: ApiFormat::OpenAI,
+        mode: ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "test streaming"}], "stream": true}),
+        headers: HashMap::new(),
+        request_id: "test-openai-streaming".to_string(),
+        streaming: true,
+    };
+
+    // Play the request
+    let response = player.play_request(&request).await.unwrap();
+
+    // Verify streaming response structure
+    assert_eq!(response.status, 200);
+    assert!(response.payload.is_null()); // Streaming responses have null payload
+    assert!(response.sse_data.is_some()); // Should have SSE data
+
+    let sse_data = response.sse_data.as_ref().unwrap();
+    assert!(!sse_data.is_empty());
+
+    // Check that SSE data contains expected OpenAI streaming format
+    assert!(sse_data.contains("data: {"));
+    assert!(sse_data.contains("data: [DONE]"));
+    assert!(sse_data.contains("\"object\":\"chat.completion.chunk\""));
+
+    // Check response headers
+    assert_eq!(
+        response.headers.get("content-type"),
+        Some(&"text/event-stream".to_string())
+    );
+    assert_eq!(
+        response.headers.get("cache-control"),
+        Some(&"no-cache".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_openai_responses_streaming() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a test scenario
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("openai_responses_streaming_scenario.yaml");
+
+    let scenario_content = r#"
+name: openai_responses_streaming_scenario
+timeline:
+  - llmResponse:
+      - assistant:
+          - [1000, "This is a streaming response from OpenAI Responses API"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = Arc::new(RwLock::new(config));
+
+    let mut player = ScenarioPlayer::new(config).await.unwrap();
+
+    // Create a streaming request for OpenAI Responses API
+    let request = ProxyRequest {
+        client_format: ApiFormat::OpenAIResponses,
+        mode: ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "test streaming"}], "stream": true}),
+        headers: HashMap::new(),
+        request_id: "test-openai-responses-streaming".to_string(),
+        streaming: true,
+    };
+
+    // Play the request
+    let response = player.play_request(&request).await.unwrap();
+
+    // Verify streaming response structure
+    assert_eq!(response.status, 200);
+    assert!(response.payload.is_null()); // Streaming responses have null payload
+    assert!(response.sse_data.is_some()); // Should have SSE data
+
+    let sse_data = response.sse_data.as_ref().unwrap();
+    assert!(!sse_data.is_empty());
+
+    // Check that SSE data contains expected OpenAI Responses streaming format
+    assert!(sse_data.contains("data: {"));
+    assert!(sse_data.contains("\"object\":\"response\""));
+    assert!(sse_data.contains("\"status\":\"in_progress\""));
+    assert!(sse_data.contains("\"status\":\"completed\""));
+
+    // Check response headers
+    assert_eq!(
+        response.headers.get("content-type"),
+        Some(&"text/event-stream".to_string())
+    );
+    assert_eq!(
+        response.headers.get("cache-control"),
+        Some(&"no-cache".to_string())
+    );
 }

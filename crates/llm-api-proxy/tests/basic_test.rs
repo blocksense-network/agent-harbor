@@ -60,6 +60,7 @@ async fn test_anthropic_to_openrouter_routing() {
     });
 
     let request = ProxyRequest {
+        streaming: false,
         client_format: ApiFormat::Anthropic,
         mode: ProxyMode::Live,
         payload: anthropic_request,
@@ -124,6 +125,7 @@ async fn test_full_proxy_workflow() {
         });
 
         let request = ProxyRequest {
+            streaming: false,
             client_format: ApiFormat::Anthropic,
             mode: ProxyMode::Live,
             payload: anthropic_request,
@@ -174,6 +176,7 @@ async fn test_provider_routing_logic() {
 
     for model in anthropic_models {
         let request = ProxyRequest {
+            streaming: false,
             client_format: ApiFormat::Anthropic,
             mode: ProxyMode::Live,
             payload: serde_json::json!({"model": model, "messages": []}),
@@ -221,6 +224,7 @@ async fn test_model_routing_patterns() {
 
     for (model_name, expected_provider) in test_cases {
         let request = ProxyRequest {
+            streaming: false,
             client_format: ApiFormat::Anthropic, // Test with anthropic format
             mode: ProxyMode::Live,
             payload: serde_json::json!({"model": model_name, "messages": []}),
@@ -249,6 +253,7 @@ async fn test_metrics_collection() {
 
     // Create a mock request that will fail (since we have no real API)
     let request = ProxyRequest {
+        streaming: false,
         client_format: ApiFormat::Anthropic,
         mode: ProxyMode::Live,
         payload: serde_json::json!({"model": "claude-3-haiku-20240307", "messages": []}),
