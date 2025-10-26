@@ -42,6 +42,7 @@ use crate::view::autocomplete::render_autocomplete;
 use crate::view::draft_card;
 use crate::view::{HitTestRegistry, Theme, ViewCache};
 use crate::view_model::AgentActivityRow;
+use crate::view_model::task_entry::CardFocusElement;
 use crate::view_model::{DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel};
 use crate::view_model::{FocusElement, TaskCardType};
 use crate::view_model::{MouseAction, TaskCardTypeEnum, ViewModel};
@@ -403,35 +404,6 @@ pub fn render(
         };
         let padding = Paragraph::new("").style(Style::default().bg(theme.bg));
         frame.render_widget(padding, padding_area);
-    }
-
-    // Handle cursor positioning for focused text areas (exact same as main.rs)
-    if matches!(view_model.focus_element, FocusElement::DraftTask(0)) {
-        // Find the focused draft card
-        if let Some(card) = view_model.draft_cards.first() {
-            if let Some(textarea_area) = find_textarea_area_for_card(view_model, card, tasks_area) {
-                // Use simplified cursor positioning logic
-                let (cursor_row, cursor_col) = card.description.cursor();
-                let caret_x = textarea_area
-                    .x
-                    .saturating_add(cursor_col as u16)
-                    .min(textarea_area.x + textarea_area.width - 1);
-                let caret_y = textarea_area
-                    .y
-                    .saturating_add(cursor_row as u16)
-                    .min(textarea_area.y + textarea_area.height - 1);
-
-                // Ensure cursor position is within screen bounds
-                let screen = frame.area();
-                let safe_caret_x = caret_x.min(screen.x + screen.width - 1);
-                let safe_caret_y = caret_y.min(screen.y + screen.height - 1);
-
-                frame.set_cursor_position(ratatui::layout::Position::new(
-                    safe_caret_x,
-                    safe_caret_y,
-                ));
-            }
-        }
     }
 
     // Render autocomplete menu if textarea area is available
