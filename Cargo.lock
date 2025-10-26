@@ -225,7 +225,7 @@ dependencies = [
  "chrono",
  "clap",
  "config-core",
- "crossterm 0.29.0",
+ "crossterm 0.28.1",
  "dirs",
  "ethereum_ssz",
  "ethereum_ssz_derive",
@@ -468,11 +468,14 @@ dependencies = [
 name = "ah-recorder"
 version = "0.1.0"
 dependencies = [
+ "ah-core",
+ "ah-domain-types",
+ "ah-tui",
  "anyhow",
  "brotli",
  "byteorder",
  "chrono",
- "crossterm 0.29.0",
+ "crossterm 0.28.1",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "portable-pty",
@@ -483,6 +486,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "tui-textarea",
  "vt100",
 ]
 

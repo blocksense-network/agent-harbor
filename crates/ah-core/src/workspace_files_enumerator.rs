@@ -73,18 +73,16 @@ impl MockWorkspaceFilesEnumerator {
     }
 
     pub fn with_test_files() -> Self {
-        Self::new(
-            vec![
-                RepositoryFile {
-                    path: "src/main.rs".to_string(),
-                    detail: Some("Tracked file".to_string()),
-                },
-                RepositoryFile {
-                    path: "Cargo.toml".to_string(),
-                    detail: Some("Tracked file".to_string()),
-                },
-            ],
-        )
+        Self::new(vec![
+            RepositoryFile {
+                path: "src/main.rs".to_string(),
+                detail: Some("Tracked file".to_string()),
+            },
+            RepositoryFile {
+                path: "Cargo.toml".to_string(),
+                detail: Some("Tracked file".to_string()),
+            },
+        ])
     }
 }
 
@@ -126,7 +124,8 @@ mod tests {
     async fn test_mock_service_with_delay() {
         let start_time = time::Instant::now();
 
-        let service = MockWorkspaceFilesEnumerator::with_test_files().with_delay(Duration::from_millis(100));
+        let service =
+            MockWorkspaceFilesEnumerator::with_test_files().with_delay(Duration::from_millis(100));
 
         // This should take at least 200ms (2 files × 100ms delay each)
         let mut stream = service.stream_repository_files().await.unwrap();
@@ -160,6 +159,4 @@ mod tests {
         assert_eq!(files[0].path, "src/main.rs");
         assert_eq!(files[1].path, "Cargo.toml");
     }
-
-
 }

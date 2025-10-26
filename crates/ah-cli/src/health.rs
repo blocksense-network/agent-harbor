@@ -3,9 +3,9 @@
 
 //! Health check commands
 
-use ah_mux::detection::{detect_terminal_environments, TerminalEnvironment};
-use ah_mux_core::Multiplexer;
 use ah_mux::TmuxMultiplexer;
+use ah_mux::detection::{TerminalEnvironment, detect_terminal_environments};
+use ah_mux_core::Multiplexer;
 use clap::Args;
 use std::collections::HashMap;
 
@@ -89,9 +89,7 @@ impl HealthArgs {
         println!("🔧 Terminal Multiplexer Availability");
         println!("{:-<40}", "");
 
-        let multiplexers = vec![
-            ("tmux", TmuxMultiplexer::new()),
-        ];
+        let multiplexers = vec![("tmux", TmuxMultiplexer::new())];
 
         for (name, multiplexer_result) in multiplexers {
             match multiplexer_result {
@@ -120,9 +118,7 @@ impl HealthArgs {
 
         let mut multiplexers = HashMap::new();
 
-        let multiplexer_checks = vec![
-            ("tmux", TmuxMultiplexer::new()),
-        ];
+        let multiplexer_checks = vec![("tmux", TmuxMultiplexer::new())];
 
         for (name, multiplexer_result) in multiplexer_checks {
             let status = match multiplexer_result {
@@ -144,4 +140,3 @@ impl HealthArgs {
         }))
     }
 }
-

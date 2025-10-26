@@ -5,22 +5,15 @@
 //!
 //! This module contains functions for rendering modal dialogs and overlays.
 
-use ratatui::layout::Rect;
 use ratatui::Frame;
+use ratatui::layout::Rect;
 
-use super::dialogs::{
-    render_fuzzy_modal, render_settings_dialog, FuzzySearchModal,
-};
 use super::Theme;
+use super::dialogs::{FuzzySearchModal, render_fuzzy_modal, render_settings_dialog};
 use crate::view_model::{ModalState, ViewModel};
 
 /// Render active modal dialogs
-pub fn render_modals(
-    frame: &mut Frame,
-    view_model: &ViewModel,
-    area: Rect,
-    theme: &Theme,
-) {
+pub fn render_modals(frame: &mut Frame, view_model: &ViewModel, area: Rect, theme: &Theme) {
     match view_model.modal_state {
         ModalState::None => {
             // No modal to render

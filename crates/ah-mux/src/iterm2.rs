@@ -56,12 +56,16 @@ impl ITerm2Multiplexer {
             .spawn()
             .map_err(|e| MuxError::CommandFailed(format!("Failed to run osascript: {}", e)))?;
 
-        let output = child.wait_with_output()
+        let output = child
+            .wait_with_output()
             .map_err(|e| MuxError::CommandFailed(format!("Failed to wait for osascript: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(MuxError::CommandFailed(format!("osascript failed: {}", stderr)));
+            return Err(MuxError::CommandFailed(format!(
+                "osascript failed: {}",
+                stderr
+            )));
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -69,9 +73,11 @@ impl ITerm2Multiplexer {
 
     /// Check if iTerm2 application is running
     fn is_iterm2_running(&self) -> bool {
-        self.run_applescript(r#"tell application "System Events" to (name of processes) contains "iTerm2""#)
-            .map(|output| output == "true")
-            .unwrap_or(false)
+        self.run_applescript(
+            r#"tell application "System Events" to (name of processes) contains "iTerm2""#,
+        )
+        .map(|output| output == "true")
+        .unwrap_or(false)
     }
 
     /// Get the number of windows in iTerm2
@@ -88,7 +94,8 @@ impl ITerm2Multiplexer {
 
     /// Find a window by title substring
     fn find_window_by_title(&self, title_substr: &str) -> Result<Option<WindowId>, MuxError> {
-        let script = format!(r#"
+        let script = format!(
+            r#"
             tell application "iTerm"
                 set windowList to windows
                 repeat with w in windowList
@@ -100,7 +107,9 @@ impl ITerm2Multiplexer {
                 end repeat
                 return ""
             end tell
-        "#, title_substr.replace("\"", "\\\""));
+        "#,
+            title_substr.replace("\"", "\\\"")
+        );
 
         let result = self.run_applescript(&script)?;
         if result.is_empty() {
@@ -133,28 +142,37 @@ impl Multiplexer for ITerm2Multiplexer {
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
         let window_id = self.next_window_id();
 
-        let mut script = format!(r#"
+        let mut script = format!(
+            r#"
             tell application "iTerm"
                 activate
                 set newWindow to (create window with default profile)
-        "#);
+        "#
+        );
 
         if let Some(title) = opts.title {
-            script.push_str(&format!(r#"
+            script.push_str(&format!(
+                r#"
                 tell current session of current tab of newWindow
                     write text "printf '\\e]1;{}\\a'"
                 end tell
-            "#, title.replace("\"", "\\\"").replace("'", "\\'")));
+            "#,
+                title.replace("\"", "\\\"").replace("'", "\\'")
+            ));
         }
 
-        script.push_str(r#"
+        script.push_str(
+            r#"
                 return "window-1"
             end tell
-        "#);
+        "#,
+        );
 
         let result = self.run_applescript(&script)?;
         if result.is_empty() {
-            return Err(MuxError::CommandFailed("Failed to create window".to_string()));
+            return Err(MuxError::CommandFailed(
+                "Failed to create window".to_string(),
+            ));
         }
 
         // Give iTerm2 a moment to create the window
@@ -179,24 +197,32 @@ impl Multiplexer for ITerm2Multiplexer {
             SplitDirection::Vertical => "vertically",
         };
 
-        let mut script = format!(r#"
+        let mut script = format!(
+            r#"
             tell application "iTerm"
                 tell current tab of window 1
                     set newPane to (split {} with default profile)
-        "#, direction);
+        "#,
+            direction
+        );
 
         if let Some(cmd) = initial_cmd {
-            script.push_str(&format!(r#"
+            script.push_str(&format!(
+                r#"
                     tell newPane
                         write text "{}"
                     end tell
-            "#, cmd.replace("\"", "\\\"").replace("'", "\\'")));
+            "#,
+                cmd.replace("\"", "\\\"").replace("'", "\\'")
+            ));
         }
 
-        script.push_str(r#"
+        script.push_str(
+            r#"
                 end tell
             end tell
-        "#);
+        "#,
+        );
 
         self.run_applescript(&script)?;
 
@@ -206,16 +232,24 @@ impl Multiplexer for ITerm2Multiplexer {
         Ok(pane_id)
     }
 
-    fn run_command(&self, pane: &PaneId, cmd: &str, _opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        pane: &PaneId,
+        cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         // For simplicity, we'll target the current session in the current tab
         // A more sophisticated implementation would track pane IDs
-        let script = format!(r#"
+        let script = format!(
+            r#"
             tell application "iTerm"
                 tell current session of current tab of window 1
                     write text "{}"
                 end tell
             end tell
-        "#, cmd.replace("\"", "\\\"").replace("'", "\\'"));
+        "#,
+            cmd.replace("\"", "\\\"").replace("'", "\\'")
+        );
 
         self.run_applescript(&script)?;
         Ok(())
@@ -223,13 +257,16 @@ impl Multiplexer for ITerm2Multiplexer {
 
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         // Similar to run_command but for sending literal text
-        let script = format!(r#"
+        let script = format!(
+            r#"
             tell application "iTerm"
                 tell current session of current tab of window 1
                     write text "{}"
                 end tell
             end tell
-        "#, text.replace("\"", "\\\"").replace("'", "\\'"));
+        "#,
+            text.replace("\"", "\\\"").replace("'", "\\'")
+        );
 
         self.run_applescript(&script)?;
         Ok(())

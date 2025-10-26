@@ -21,7 +21,7 @@ ah-workflows = { path = "../ah-workflows" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
 ratatui = "0.29"
-crossterm = "0.28"
+crossterm = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

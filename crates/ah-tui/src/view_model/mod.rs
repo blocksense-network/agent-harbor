@@ -63,7 +63,9 @@ pub mod task_execution;
 // Re-export the main types
 pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, Provider, Trigger};
 pub use dashboard_model::{
-    MouseAction, Msg, ViewModel, create_draft_card_from_task, FooterAction, ModalType, ModalViewModel, ModelOptionViewModel, SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo, TaskCardTypeEnum, TaskItem
+    FooterAction, ModalType, ModalViewModel, ModelOptionViewModel, MouseAction, Msg,
+    SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo, TaskCardTypeEnum,
+    TaskItem, ViewModel, create_draft_card_from_task,
 };
 pub use task_entry::{TaskEntryControlsViewModel, TaskEntryViewModel};
 pub use task_execution::{

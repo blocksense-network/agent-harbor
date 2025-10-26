@@ -125,6 +125,9 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 # URL parsing
 url = "2.5"
 
+# Text input widget for TUI
+tui-textarea = "0.7"
+
 # Base64 encoding
 base64 = "0.22"
 
@@ -136,7 +139,7 @@ eventsource-client = "0.13"
 
 # Terminal UI
 ratatui = "0.29"
-crossterm = "0.29"
+crossterm = "0.28"
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }

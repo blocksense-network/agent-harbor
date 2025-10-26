@@ -81,7 +81,11 @@ impl Database {
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                crate::Error::generic(format!("Failed to create database directory {}: {}", parent.display(), e))
+                crate::Error::generic(format!(
+                    "Failed to create database directory {}: {}",
+                    parent.display(),
+                    e
+                ))
             })?;
         }
 

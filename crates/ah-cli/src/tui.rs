@@ -4,23 +4,21 @@
 //! TUI command handling for the CLI
 
 use ah_core::{
-    local_task_manager::GenericLocalTaskManager,
-    AgentExecutionConfig,
-    WorkspaceFilesEnumerator,
+    AgentExecutionConfig, WorkspaceFilesEnumerator, local_task_manager::GenericLocalTaskManager,
 };
-use ah_mux::{detection::{self, TerminalEnvironment}, TmuxMultiplexer};
-use ah_repo::VcsRepo;
+use ah_mux::{
+    TmuxMultiplexer,
+    detection::{self, TerminalEnvironment},
+};
 use ah_mux_core::{Multiplexer, WindowOptions};
+use ah_repo::VcsRepo;
 use ah_rest_client::AuthConfig;
-use ah_tui::dashboard_loop::{run_dashboard, DashboardDependencies};
+use ah_tui::dashboard_loop::{DashboardDependencies, run_dashboard};
 use ah_tui::settings::Settings;
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
-use std::{
-    fs::OpenOptions,
-    sync::Arc,
-};
+use std::{fs::OpenOptions, sync::Arc};
 
 /// Multiplexer types supported by the CLI
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
@@ -137,7 +135,11 @@ impl TuiArgs {
     /// Run the TUI command
     pub async fn run(self) -> Result<()> {
         match self.subcommand {
-            Some(TuiSubcommands::Dashboard { remote_server, api_key, bearer_token }) => {
+            Some(TuiSubcommands::Dashboard {
+                remote_server,
+                api_key,
+                bearer_token,
+            }) => {
                 // Run dashboard directly
                 Self::run_dashboard(remote_server, api_key, bearer_token, None).await
             }
@@ -149,14 +151,19 @@ impl TuiArgs {
     }
 
     /// Determine the multiplexer choice based on detected terminal environments
-    fn determine_multiplexer_choice(&self, terminal_envs: &[TerminalEnvironment]) -> Result<MultiplexerChoice> {
+    fn determine_multiplexer_choice(
+        &self,
+        terminal_envs: &[TerminalEnvironment],
+    ) -> Result<MultiplexerChoice> {
         // Check for supported multiplexers (inner-most first, as per spec)
         // terminal_envs is in wrapping order (outermost to innermost), so rev() gives us innermost first
         for env in terminal_envs.iter().rev() {
             match env {
                 TerminalEnvironment::Tmux => {
                     // Tmux is supported
-                    return Ok(MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tmux));
+                    return Ok(MultiplexerChoice::InSupportedMultiplexer(
+                        CliMultiplexerType::Tmux,
+                    ));
                 }
                 #[cfg(target_os = "macos")]
                 TerminalEnvironment::ITerm2 => {
@@ -164,19 +171,19 @@ impl TuiArgs {
                     return Ok(MultiplexerChoice::InSupportedTerminal);
                 }
                 // Other supported terminal environments - we can run dashboard directly
-                TerminalEnvironment::Kitty |
-                TerminalEnvironment::WezTerm |
-                TerminalEnvironment::Tilix |
-                TerminalEnvironment::WindowsTerminal |
-                TerminalEnvironment::Ghostty => {
+                TerminalEnvironment::Kitty
+                | TerminalEnvironment::WezTerm
+                | TerminalEnvironment::Tilix
+                | TerminalEnvironment::WindowsTerminal
+                | TerminalEnvironment::Ghostty => {
                     return Ok(MultiplexerChoice::InSupportedTerminal);
                 }
                 // Other multiplexers/editors - not supported yet, continue checking
-                TerminalEnvironment::Zellij |
-                TerminalEnvironment::Screen |
-                TerminalEnvironment::Neovim |
-                TerminalEnvironment::Vim |
-                TerminalEnvironment::Emacs => {} // Continue checking
+                TerminalEnvironment::Zellij
+                | TerminalEnvironment::Screen
+                | TerminalEnvironment::Neovim
+                | TerminalEnvironment::Vim
+                | TerminalEnvironment::Emacs => {} // Continue checking
             }
         }
 
@@ -194,17 +201,40 @@ impl TuiArgs {
 
         match (&self.multiplexer, multiplexer_choice) {
             // Auto mode: detect terminal environment and choose appropriate action
-            (Some(CliMultiplexerType::Auto), MultiplexerChoice::InSupportedMultiplexer(multiplexer_type)) | (None, MultiplexerChoice::InSupportedMultiplexer(multiplexer_type)) => {
-                println!("Detected {} multiplexer environment, launching dashboard directly...", multiplexer_type.display_name());
+            (
+                Some(CliMultiplexerType::Auto),
+                MultiplexerChoice::InSupportedMultiplexer(multiplexer_type),
+            )
+            | (None, MultiplexerChoice::InSupportedMultiplexer(multiplexer_type)) => {
+                println!(
+                    "Detected {} multiplexer environment, launching dashboard directly...",
+                    multiplexer_type.display_name()
+                );
                 // Use the detected multiplexer for task management
                 let multiplexer_type = Some(multiplexer_type.clone());
-                Self::run_dashboard(self.remote_server, self.api_key, self.bearer_token, multiplexer_type).await
+                Self::run_dashboard(
+                    self.remote_server,
+                    self.api_key,
+                    self.bearer_token,
+                    multiplexer_type,
+                )
+                .await
             }
-            (Some(CliMultiplexerType::Auto), MultiplexerChoice::InSupportedTerminal) | (None, MultiplexerChoice::InSupportedTerminal) => {
-                println!("Detected supported terminal environment, launching dashboard directly...");
-                Self::run_dashboard(self.remote_server, self.api_key, self.bearer_token, self.multiplexer.clone()).await
+            (Some(CliMultiplexerType::Auto), MultiplexerChoice::InSupportedTerminal)
+            | (None, MultiplexerChoice::InSupportedTerminal) => {
+                println!(
+                    "Detected supported terminal environment, launching dashboard directly..."
+                );
+                Self::run_dashboard(
+                    self.remote_server,
+                    self.api_key,
+                    self.bearer_token,
+                    self.multiplexer.clone(),
+                )
+                .await
             }
-            (Some(CliMultiplexerType::Auto), MultiplexerChoice::UnsupportedEnvironment) | (None, MultiplexerChoice::UnsupportedEnvironment) => {
+            (Some(CliMultiplexerType::Auto), MultiplexerChoice::UnsupportedEnvironment)
+            | (None, MultiplexerChoice::UnsupportedEnvironment) => {
                 // Not in a supported environment, create a multiplexer session
                 let multiplexer = self.create_multiplexer()?;
                 self.create_and_enter_multiplexer_session(&*multiplexer).await
@@ -224,16 +254,12 @@ impl TuiArgs {
                 // For auto/none, use the default multiplexer (which prioritizes tmux)
                 Ok(Box::new(TmuxMultiplexer::default()))
             }
-            Some(CliMultiplexerType::Tmux) => {
-                Ok(Box::new(TmuxMultiplexer::default()))
-            }
+            Some(CliMultiplexerType::Tmux) => Ok(Box::new(TmuxMultiplexer::default())),
             Some(CliMultiplexerType::Kitty) => {
                 // TODO: Implement KittyMultiplexer
                 anyhow::bail!("Kitty multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::ITerm2) => {
-                Ok(Box::new(ah_mux::ITerm2Multiplexer::new()?))
-            }
+            Some(CliMultiplexerType::ITerm2) => Ok(Box::new(ah_mux::ITerm2Multiplexer::new()?)),
             Some(CliMultiplexerType::Wezterm) => {
                 // TODO: Implement WezTermMultiplexer
                 anyhow::bail!("WezTerm multiplexer is not yet supported");
@@ -279,12 +305,21 @@ impl TuiArgs {
     }
 
     /// Create a new multiplexer session and enter it
-    async fn create_and_enter_multiplexer_session(&self, multiplexer: &dyn Multiplexer) -> Result<()> {
+    async fn create_and_enter_multiplexer_session(
+        &self,
+        multiplexer: &dyn Multiplexer,
+    ) -> Result<()> {
         if !multiplexer.is_available() {
-            anyhow::bail!("Multiplexer '{}' is not available on this system", multiplexer.id());
+            anyhow::bail!(
+                "Multiplexer '{}' is not available on this system",
+                multiplexer.id()
+            );
         }
 
-        println!("Creating new {} session for agent-harbor...", multiplexer.id());
+        println!(
+            "Creating new {} session for agent-harbor...",
+            multiplexer.id()
+        );
 
         // Create a new window with the dashboard command
         let window_opts = WindowOptions {
@@ -298,7 +333,11 @@ impl TuiArgs {
 
         // Run the dashboard command in the new window
         let dashboard_cmd = self.build_dashboard_command();
-        multiplexer.run_command(&format!("{}-1", window_id), &dashboard_cmd, &Default::default())?;
+        multiplexer.run_command(
+            &format!("{}-1", window_id),
+            &dashboard_cmd,
+            &Default::default(),
+        )?;
 
         // For now, we'll run the dashboard locally instead of trying to exec into multiplexer
         // TODO: Implement proper session attachment
@@ -306,12 +345,21 @@ impl TuiArgs {
         println!("  {} attach -t {}", multiplexer.id(), window_id);
 
         // For development, just run the dashboard directly
-        Self::run_dashboard(self.remote_server.clone(), self.api_key.clone(), self.bearer_token.clone(), self.multiplexer.clone()).await
+        Self::run_dashboard(
+            self.remote_server.clone(),
+            self.api_key.clone(),
+            self.bearer_token.clone(),
+            self.multiplexer.clone(),
+        )
+        .await
     }
 
     /// Build the command to run the dashboard
     fn build_dashboard_command(&self) -> String {
-        let mut cmd = format!("{} tui dashboard", std::env::current_exe().unwrap().display());
+        let mut cmd = format!(
+            "{} tui dashboard",
+            std::env::current_exe().unwrap().display()
+        );
 
         if let Some(ref remote_server) = self.remote_server {
             cmd.push_str(&format!(" --remote-server {}", remote_server));
@@ -362,13 +410,17 @@ impl TuiArgs {
             let rest_client = ah_rest_client::RestClient::from_url(&server_url, auth)?;
 
             // Use RestTaskManager for remote mode
-            let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(ah_core::rest_task_manager::GenericRestTaskManager::new(rest_client));
+            let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
+                ah_core::rest_task_manager::GenericRestTaskManager::new(rest_client),
+            );
 
             // For remote mode, we need remote workspace files and workflows
             // TODO: Implement remote WorkspaceFiles and WorkspaceWorkflowsEnumerator
             // For now, we'll use local implementations
-            let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(VcsRepo::new(&std::path::Path::new(".").to_path_buf()).unwrap());
-            let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+            let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+                Arc::new(VcsRepo::new(&std::path::Path::new(".").to_path_buf()).unwrap());
+            let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+                Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
 
             DashboardDependencies {
                 workspace_files,
@@ -381,15 +433,17 @@ impl TuiArgs {
             println!("Running in local mode");
 
             // Create local service dependencies
-            let workspace_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = match VcsRepo::new(&workspace_dir) {
-                Ok(vcs_repo) => Arc::new(vcs_repo),
-                Err(_) => {
-                    // If not a git repository, we could return an error or use a mock
-                    // For now, let's just panic since the dashboard expects a valid repo
-                    panic!("Current directory is not a git repository");
-                }
-            };
+            let workspace_dir =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+                match VcsRepo::new(&workspace_dir) {
+                    Ok(vcs_repo) => Arc::new(vcs_repo),
+                    Err(_) => {
+                        // If not a git repository, we could return an error or use a mock
+                        // For now, let's just panic since the dashboard expects a valid repo
+                        panic!("Current directory is not a git repository");
+                    }
+                };
             let config = WorkflowConfig::default();
             let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(
                 WorkflowProcessor::for_repo(config, &workspace_dir)
@@ -404,14 +458,22 @@ impl TuiArgs {
             // For now, always use TmuxMultiplexer for the task manager
             // TODO: Support other multiplexers in task manager when they're implemented
             if let Some(multiplexer_type) = multiplexer {
-                if !matches!(multiplexer_type, CliMultiplexerType::Tmux | CliMultiplexerType::Auto | CliMultiplexerType::ITerm2) {
-                    eprintln!("Warning: Multiplexer {:?} not yet supported for task manager, using tmux", multiplexer_type);
+                if !matches!(
+                    multiplexer_type,
+                    CliMultiplexerType::Tmux
+                        | CliMultiplexerType::Auto
+                        | CliMultiplexerType::ITerm2
+                ) {
+                    eprintln!(
+                        "Warning: Multiplexer {:?} not yet supported for task manager, using tmux",
+                        multiplexer_type
+                    );
                 }
             }
 
             let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
                 GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
-                    .expect("Failed to create local task manager")
+                    .expect("Failed to create local task manager"),
             );
 
             DashboardDependencies {

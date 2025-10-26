@@ -11,21 +11,21 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ah_core::TaskManager;
-use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
-use ah_rest_mock_client::MockRestClient;
-use ah_tui::view_model::{DraftSaveState, FocusElement, ModalState, ViewModel};
-use ah_tui::settings::KeyboardOperation;
 use ah_core::WorkspaceFilesEnumerator;
+use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
 use ah_repo::VcsRepo;
+use ah_rest_mock_client::MockRestClient;
+use ah_tui::settings::KeyboardOperation;
+use ah_tui::view_model::{DraftSaveState, FocusElement, ModalState, ViewModel};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Helper function to create a test ViewModel with mock dependencies
 fn create_test_view_model() -> ViewModel {
-    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
-    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(WorkflowProcessor::new(
-        WorkflowConfig::default(),
-    ));
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+        Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+        Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
     let settings = ah_tui::settings::Settings::default();
 

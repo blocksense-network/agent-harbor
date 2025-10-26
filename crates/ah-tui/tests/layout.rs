@@ -4,11 +4,11 @@
 //! Layout rendering tests for the TUI dashboard
 
 use ah_core::TaskManager;
+use ah_core::WorkspaceFilesEnumerator;
+use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::Settings;
 use ah_tui::view_model::ViewModel;
-use ah_core::WorkspaceFilesEnumerator;
-use ah_repo::VcsRepo;
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -33,7 +33,10 @@ fn test_dashboard_layout_small_terminal() -> Result<()> {
 
     // Check that basic rendering works
     let all_text = buffer.content().iter().map(|cell| cell.symbol()).collect::<String>();
-    assert!(all_text.contains("Test content"), "Should contain test content");
+    assert!(
+        all_text.contains("Test content"),
+        "Should contain test content"
+    );
 
     Ok(())
 }

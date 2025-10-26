@@ -10,7 +10,11 @@
 // See: specs/Public/ah-agent-record.md section 6 for complete specification
 
 use crate::snapshots::Snapshot;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, MouseButton, MouseEvent};
+use ah_core::TaskManager;
+use ah_tui::Theme;
+use ah_tui::view::draft_card::render_draft_card;
+use ah_tui::view_model::{FocusElement, TaskEntryViewModel};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, MouseButton, MouseEvent};
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -66,23 +70,10 @@ pub struct TerminalViewer {
     total_rows: usize,
     /// Configuration
     config: ViewerConfig,
-    /// Current instruction overlay (if any)
-    instruction_overlay: Option<InstructionOverlay>,
+    /// Current task entry for instruction input (if any)
+    instruction_entry: Option<TaskEntryViewModel>,
     /// Search mode state
     search_mode: Option<SearchState>,
-}
-
-/// Instruction overlay for displaying draft tasks or annotations
-#[derive(Debug, Clone)]
-pub struct InstructionOverlay {
-    /// Row index where the overlay appears
-    pub row_index: usize,
-    /// The instruction text being edited
-    pub text: String,
-    /// Cursor position in the text
-    pub cursor_pos: usize,
-    /// Whether this is a new instruction or editing existing
-    pub is_new: bool,
 }
 
 /// Search mode state for incremental search
@@ -110,7 +101,7 @@ impl TerminalViewer {
             scroll_offset: 0,
             total_rows: 0,
             config,
-            instruction_overlay: None,
+            instruction_entry: None,
             search_mode: None,
         };
 
@@ -180,42 +171,182 @@ impl TerminalViewer {
             .min_by_key(move |s| (s.anchor_byte as i64 - row_last_write as i64).abs())
     }
 
-    /// Start instruction overlay at the given row
+    /// Start instruction entry overlay at the given row
     pub fn start_instruction_overlay(
         &mut self,
         row_index: usize,
         existing_instruction: Option<String>,
     ) {
-        let is_new = existing_instruction.is_none();
-        self.instruction_overlay = Some(InstructionOverlay {
-            row_index,
-            text: existing_instruction.unwrap_or_default(),
-            cursor_pos: 0,
-            is_new,
-        });
+        use ah_tui::view_model::DraftSaveState;
+        use tui_textarea::TextArea;
+
+        // Create a new task entry for instruction input
+        let mut textarea = TextArea::new(vec![existing_instruction.unwrap_or_default()]);
+        textarea.move_cursor(tui_textarea::CursorMove::End);
+
+        let mut task_entry = TaskEntryViewModel {
+            id: format!("instruction-{}", row_index),
+            repository: String::new(),
+            branch: String::new(),
+            models: vec![],
+            created_at: chrono::Utc::now().to_rfc3339(),
+            height: 5, // Fixed height for instruction entry
+            controls: ah_tui::view_model::TaskEntryControlsViewModel {
+                repository_button: ah_tui::view_model::ButtonViewModel {
+                    text: "Repository".to_string(),
+                    is_focused: false,
+                    style: ah_tui::view_model::ButtonStyle::Normal,
+                },
+                branch_button: ah_tui::view_model::ButtonViewModel {
+                    text: "Branch".to_string(),
+                    is_focused: false,
+                    style: ah_tui::view_model::ButtonStyle::Normal,
+                },
+                model_button: ah_tui::view_model::ButtonViewModel {
+                    text: "Model".to_string(),
+                    is_focused: false,
+                    style: ah_tui::view_model::ButtonStyle::Normal,
+                },
+                go_button: ah_tui::view_model::ButtonViewModel {
+                    text: "Go".to_string(),
+                    is_focused: false,
+                    style: ah_tui::view_model::ButtonStyle::Normal,
+                },
+            },
+            save_state: DraftSaveState::Unsaved,
+            description: textarea,
+            focus_element: FocusElement::TaskDescription,
+            auto_save_timer: None,
+        };
+
+        self.instruction_entry = Some(task_entry);
     }
 
-    /// Cancel the current instruction overlay
+    /// Cancel the current instruction entry
     pub fn cancel_instruction_overlay(&mut self) {
-        self.instruction_overlay = None;
+        self.instruction_entry = None;
     }
 
-    /// Submit the current instruction overlay
-    pub fn submit_instruction_overlay(&mut self) -> Option<(usize, String)> {
-        if let Some(overlay) = self.instruction_overlay.take() {
-            Some((overlay.row_index, overlay.text))
+    /// Submit the current instruction entry
+    pub fn submit_instruction_overlay(&mut self) -> Option<String> {
+        if let Some(task_entry) = self.instruction_entry.take() {
+            // Get the instruction text from the description field
+            let instruction = task_entry.description.lines().join("\n").trim().to_string();
+            if instruction.is_empty() {
+                None
+            } else {
+                Some(instruction)
+            }
         } else {
             None
         }
     }
 
-    /// Update the instruction overlay text
-    pub fn update_instruction_text(&mut self, text: String) {
-        if let Some(ref mut overlay) = self.instruction_overlay {
-            let text_len = text.len();
-            overlay.text = text;
-            overlay.cursor_pos = text_len;
+    /// Handle keyboard input for the instruction entry
+    pub fn handle_instruction_key(&mut self, key: KeyEvent) -> bool {
+        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+
+        if let Some(ref mut task_entry) = self.instruction_entry {
+            // Handle basic text editing keys directly
+            match key.code {
+                KeyCode::Char(c) => {
+                    // Regular character input - use textarea's input method directly
+                    task_entry.description.input(key);
+                    return true;
+                }
+                KeyCode::Backspace => {
+                    // Handle backspace
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::DeleteCharacterBackward,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                KeyCode::Enter => {
+                    // Submit the instruction
+                    return false; // Let the caller handle submission
+                }
+                KeyCode::Esc => {
+                    // Cancel the instruction
+                    self.cancel_instruction_overlay();
+                    return true;
+                }
+                KeyCode::Left => {
+                    // Move cursor left
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::MoveBackwardOneCharacter,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                KeyCode::Right => {
+                    // Move cursor right
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::MoveForwardOneCharacter,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                KeyCode::Up => {
+                    // Move cursor up
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::MoveToPreviousLine,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                KeyCode::Down => {
+                    // Move cursor down
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::MoveToNextLine,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                KeyCode::Home => {
+                    // Move to beginning of line
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::MoveToBeginningOfLine,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                KeyCode::End => {
+                    // Move to end of line
+                    task_entry.handle_keyboard_operation(
+                        ah_tui::settings::KeyboardOperation::MoveToEndOfLine,
+                        &key,
+                        |textarea, needs_redraw| {
+                            *needs_redraw = true;
+                        },
+                    );
+                    return true;
+                }
+                _ => {
+                    // Other keys not handled
+                    return false;
+                }
+            }
         }
+        false
     }
 
     /// Start incremental search
@@ -357,9 +488,9 @@ impl TerminalViewer {
         // Render terminal content
         self.render_terminal_content(frame, terminal_area, snapshots);
 
-        // Render instruction overlay if active
-        if let Some(ref overlay) = self.instruction_overlay {
-            self.render_instruction_overlay(frame, overlay.clone());
+        // Render instruction entry if active
+        if let Some(ref task_entry) = self.instruction_entry {
+            self.render_instruction_overlay(frame, task_entry);
         }
 
         // Render search overlay if active
@@ -522,10 +653,10 @@ impl TerminalViewer {
     }
 
     /// Render instruction overlay
-    fn render_instruction_overlay(&self, frame: &mut Frame, overlay: InstructionOverlay) {
+    fn render_instruction_overlay(&self, frame: &mut Frame, task_entry: &TaskEntryViewModel) {
         let area = frame.area();
-        let overlay_height = 3;
-        let overlay_width = 60;
+        let overlay_height = 8; // Height for the task entry
+        let overlay_width = 80; // Width for the task entry
         let overlay_area = Rect {
             x: (area.width - overlay_width) / 2,
             y: (area.height - overlay_height) / 2,
@@ -533,17 +664,20 @@ impl TerminalViewer {
             height: overlay_height,
         };
 
-        let title = if overlay.is_new {
-            "New Instruction"
-        } else {
-            "Edit Instruction"
+        // Create a simple theme for the instruction entry
+        let theme = Theme {
+            primary: Color::Cyan,
+            bg: Color::Black,
+            text: Color::White,
+            border: Color::Gray,
+            error: Color::Red,
+            success: Color::Green,
+            warning: Color::Yellow,
+            ..Default::default()
         };
-        let block = Block::default().title(title).borders(Borders::ALL);
 
-        let text = Paragraph::new(overlay.text.as_str()).block(block).wrap(Wrap { trim: false });
-
-        frame.render_widget(Clear, overlay_area);
-        frame.render_widget(text, overlay_area);
+        // Render the task entry using the draft card renderer
+        let _ = render_draft_card(frame, overlay_area, task_entry, &theme, true);
     }
 
     /// Render search overlay
@@ -570,7 +704,7 @@ impl TerminalViewer {
             self.scroll_offset,
             self.total_rows,
             snapshots.len(),
-            if self.instruction_overlay.is_active() {
+            if self.instruction_entry.is_active() {
                 "EDITING"
             } else if self.search_mode.is_some() {
                 "SEARCH"
@@ -587,12 +721,12 @@ impl TerminalViewer {
     }
 }
 
-/// Extension trait for Option<InstructionOverlay>
-trait InstructionOverlayExt {
+/// Extension trait for Option<TaskEntryViewModel>
+trait InstructionEntryExt {
     fn is_active(&self) -> bool;
 }
 
-impl InstructionOverlayExt for Option<InstructionOverlay> {
+impl InstructionEntryExt for Option<TaskEntryViewModel> {
     fn is_active(&self) -> bool {
         self.is_some()
     }
@@ -603,11 +737,16 @@ pub struct ViewerEventLoop {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
     viewer: TerminalViewer,
     snapshots: Vec<Snapshot>,
+    task_manager: std::sync::Arc<dyn TaskManager>,
 }
 
 impl ViewerEventLoop {
     /// Create a new event loop
-    pub fn new(viewer: TerminalViewer, snapshots: Vec<Snapshot>) -> io::Result<Self> {
+    pub fn new(
+        viewer: TerminalViewer,
+        snapshots: Vec<Snapshot>,
+        task_manager: std::sync::Arc<dyn TaskManager>,
+    ) -> io::Result<Self> {
         let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend)?;
 
@@ -615,7 +754,55 @@ impl ViewerEventLoop {
             terminal,
             viewer,
             snapshots,
+            task_manager,
         })
+    }
+
+    /// Create a new task from an instruction submitted at the current viewer position
+    async fn create_task_from_instruction(&self, instruction: String) {
+        // Find the snapshot that corresponds to the current viewer position
+        // For now, use the most recent snapshot as a placeholder
+        let current_snapshot = self.snapshots.last();
+
+        if let Some(snapshot) = current_snapshot {
+            tracing::info!(
+                "Creating task from instruction at snapshot {} (byte offset: {}): {}",
+                snapshot.id,
+                snapshot.anchor_byte,
+                instruction
+            );
+
+            // TODO: TaskLaunchParams needs to be extended to support starting from a snapshot
+            // For now, create a basic task with default parameters
+            // In the future, this should include snapshot information so the agent
+            // can resume from that point in the recorded session
+            let params = match ah_core::TaskLaunchParams::new(
+                ".".to_string(),    // Default repository (current directory)
+                "main".to_string(), // Default branch
+                instruction,
+                vec![ah_domain_types::SelectedModel {
+                    name: "Claude 3.5 Sonnet".to_string(),
+                    count: 1,
+                }],
+            ) {
+                Ok(params) => params,
+                Err(e) => {
+                    tracing::error!("Failed to create task launch params: {}", e);
+                    return;
+                }
+            };
+
+            match self.task_manager.launch_task(params).await {
+                ah_core::TaskLaunchResult::Success { task_id } => {
+                    tracing::info!("Successfully launched task {} from instruction", task_id);
+                }
+                ah_core::TaskLaunchResult::Failure { error } => {
+                    tracing::error!("Failed to launch task from instruction: {}", error);
+                }
+            }
+        } else {
+            tracing::warn!("No snapshots available, cannot create task from instruction");
+        }
     }
 
     /// Run the event loop until quit
@@ -650,12 +837,29 @@ impl ViewerEventLoop {
 
     /// Handle keyboard input, returns true if should quit
     async fn handle_key(&mut self, key: KeyEvent) -> io::Result<bool> {
+        // If instruction entry is active, delegate all input to it first
+        if self.viewer.instruction_entry.is_active() {
+            if self.viewer.handle_instruction_key(key) {
+                // Key was handled by instruction entry
+                return Ok(false);
+            }
+            // Special handling for Enter to submit
+            if key.code == KeyCode::Enter {
+                if let Some(instruction) = self.viewer.submit_instruction_overlay() {
+                    // Create new task through TaskManager starting from current snapshot
+                    // This will spawn a new agent session from the snapshot at the current cursor position
+                    self.create_task_from_instruction(instruction).await;
+                }
+            }
+            return Ok(false);
+        }
+
         match key.code {
             KeyCode::Char('q') => {
                 return Ok(true); // Quit
             }
             KeyCode::Char('i') if key.modifiers.is_empty() => {
-                // Start instruction overlay (will be at current cursor position)
+                // Start instruction entry (will be at current cursor position)
                 // For now, start at row 0
                 self.viewer.start_instruction_overlay(0, None);
             }
@@ -663,16 +867,8 @@ impl ViewerEventLoop {
                 self.viewer.start_search();
             }
             KeyCode::Esc => {
-                if self.viewer.instruction_overlay.is_active() {
-                    self.viewer.cancel_instruction_overlay();
-                } else if self.viewer.search_mode.is_some() {
+                if self.viewer.search_mode.is_some() {
                     self.viewer.exit_search();
-                }
-            }
-            KeyCode::Enter => {
-                if let Some((row, instruction)) = self.viewer.submit_instruction_overlay() {
-                    // TODO: Submit instruction to recorder
-                    tracing::debug!("Submitted instruction at row {}: {}", row, instruction);
                 }
             }
             KeyCode::PageUp => {

@@ -38,17 +38,17 @@
 //! - **Presentation Only**: Focus on visual appearance and user experience
 //! - **Testable**: Rendering logic can be tested independently
 
-use crate::view_model::{MouseAction, TaskCardTypeEnum, ViewModel};
-use ah_core::TaskStatus;
-use ah_core::task_manager::TaskEvent;
-use ah_domain_types::TaskState;
-use ah_domain_types::task::ToolStatus;
 use crate::view::autocomplete::render_autocomplete;
 use crate::view::draft_card;
 use crate::view::{HitTestRegistry, Theme, ViewCache};
 use crate::view_model::AgentActivityRow;
 use crate::view_model::{DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel};
 use crate::view_model::{FocusElement, TaskCardType};
+use crate::view_model::{MouseAction, TaskCardTypeEnum, ViewModel};
+use ah_core::TaskStatus;
+use ah_core::task_manager::TaskEvent;
+use ah_domain_types::TaskState;
+use ah_domain_types::task::ToolStatus;
 use ratatui::{prelude::*, widgets::*};
 use ratatui_image::StatefulImage;
 

@@ -55,15 +55,8 @@
 //! ```
 
 use crate::Settings;
-use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
 use crate::WorkspaceFilesEnumerator;
-use ah_core::task_manager::{
-    SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
-};
-use ah_domain_types::task::ToolStatus;
-use ah_domain_types::{
-    DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskInfo, TaskState,
-};
+use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
 use crate::view_model::FilterBarViewModel;
 use crate::view_model::autocomplete::{AutocompleteKeyResult, InlineAutocomplete};
 use crate::view_model::{
@@ -71,6 +64,13 @@ use crate::view_model::{
     DraftSaveState, FilterControl, FilterOptions, FocusElement, ModalState, SearchMode,
     TaskCardType, TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionViewModel,
     TaskMetadataViewModel,
+};
+use ah_core::task_manager::{
+    SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
+};
+use ah_domain_types::task::ToolStatus;
+use ah_domain_types::{
+    DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskInfo, TaskState,
 };
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 use futures::stream::StreamExt;
@@ -1717,35 +1717,13 @@ impl ViewModel {
                 // Home key: move cursor to beginning of line in text area
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
-                            use tui_textarea::CursorMove;
-                            let before = card.description.cursor();
-
-                            // Handle shift+home selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::Head);
-                            if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
+                        return card.handle_keyboard_operation(
+                            operation,
+                            key,
+                            |textarea, needs_redraw| {
+                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
+                            },
+                        );
                     }
                 }
                 false
@@ -1754,35 +1732,13 @@ impl ViewModel {
                 // End key: move cursor to end of line in text area
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
-                            use tui_textarea::CursorMove;
-                            let before = card.description.cursor();
-
-                            // Handle shift+end selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::End);
-                            if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
+                        return card.handle_keyboard_operation(
+                            operation,
+                            key,
+                            |textarea, needs_redraw| {
+                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
+                            },
+                        );
                     }
                 }
                 false
@@ -1813,36 +1769,13 @@ impl ViewModel {
                 // Default: move cursor forward one character in text area
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
-                            use tui_textarea::CursorMove;
-                            let before = card.description.cursor();
-
-                            // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::Forward);
-
-                            if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
+                        return card.handle_keyboard_operation(
+                            operation,
+                            key,
+                            |textarea, needs_redraw| {
+                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
+                            },
+                        );
                     }
                 }
                 false
@@ -1873,36 +1806,13 @@ impl ViewModel {
                 // Default: move cursor backward one character in text area
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
-                            use tui_textarea::CursorMove;
-                            let before = card.description.cursor();
-
-                            // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::Back);
-
-                            if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
+                        return card.handle_keyboard_operation(
+                            operation,
+                            key,
+                            |textarea, needs_redraw| {
+                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
+                            },
+                        );
                     }
                 }
                 false
@@ -1911,36 +1821,13 @@ impl ViewModel {
                 // Ctrl+Right: move cursor forward one word in text area
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
-                            use tui_textarea::CursorMove;
-                            let before = card.description.cursor();
-
-                            // Handle shift+ctrl+arrow selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::WordForward);
-
-                            if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
+                        return card.handle_keyboard_operation(
+                            operation,
+                            key,
+                            |textarea, needs_redraw| {
+                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
+                            },
+                        );
                     }
                 }
                 false

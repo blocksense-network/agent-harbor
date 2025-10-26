@@ -420,7 +420,10 @@ mod tests {
         std::env::remove_var("TERM_PROGRAM");
 
         // Test ITERM_SESSION_ID detection
-        std::env::set_var("ITERM_SESSION_ID", "w0t0p0:12345678-1234-5678-9ABC-123456789ABC");
+        std::env::set_var(
+            "ITERM_SESSION_ID",
+            "w0t0p0:12345678-1234-5678-9ABC-123456789ABC",
+        );
         assert!(is_in_iterm2());
         assert!(is_in_terminal());
 

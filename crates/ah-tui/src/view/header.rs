@@ -8,16 +8,13 @@
 
 use image::{DynamicImage, GenericImageView, ImageReader};
 use ratatui::{prelude::*, widgets::*};
-use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
+use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
 use std::io::Cursor;
 
 /// Initialize logo rendering components (Picker and StatefulProtocol)
 pub fn initialize_logo_rendering(
     bg_color: ratatui::style::Color,
-) -> (
-    Option<Picker>,
-    Option<StatefulProtocol>,
-) {
+) -> (Option<Picker>, Option<StatefulProtocol>) {
     // Try to create a picker that detects terminal graphics capabilities
     let picker = match Picker::from_query_stdio() {
         Ok(picker) => Some(picker),
@@ -61,10 +58,7 @@ fn color_to_rgb_components(color: ratatui::style::Color) -> (u8, u8, u8) {
 }
 
 /// Compose a transparent image onto a solid background color.
-fn precompose_on_background(
-    image: DynamicImage,
-    bg_color: ratatui::style::Color,
-) -> DynamicImage {
+fn precompose_on_background(image: DynamicImage, bg_color: ratatui::style::Color) -> DynamicImage {
     let (r, g, b) = color_to_rgb_components(bg_color);
     let rgba_logo = image.to_rgba8();
     let (width, height) = rgba_logo.dimensions();

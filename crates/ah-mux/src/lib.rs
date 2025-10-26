@@ -8,43 +8,43 @@
 
 pub mod detection;
 
-#[cfg(feature = "kitty")]
-pub mod kitty;
-pub mod iterm2;
-pub mod tmux;
-#[cfg(feature = "screen")]
-pub mod screen;
-#[cfg(feature = "wezterm")]
-pub mod wezterm;
-#[cfg(feature = "zellij")]
-pub mod zellij;
-#[cfg(all(feature = "tilix", target_os = "linux"))]
-pub mod tilix;
-#[cfg(feature = "windows-terminal")]
-pub mod windows_terminal;
-#[cfg(feature = "ghostty")]
-pub mod ghostty;
-#[cfg(feature = "vim")]
-pub mod vim;
-#[cfg(feature = "neovim")]
-pub mod neovim;
 #[cfg(feature = "emacs")]
 pub mod emacs;
+#[cfg(feature = "ghostty")]
+pub mod ghostty;
+pub mod iterm2;
+#[cfg(feature = "kitty")]
+pub mod kitty;
+#[cfg(feature = "neovim")]
+pub mod neovim;
+#[cfg(feature = "screen")]
+pub mod screen;
+#[cfg(all(feature = "tilix", target_os = "linux"))]
+pub mod tilix;
+pub mod tmux;
+#[cfg(feature = "vim")]
+pub mod vim;
+#[cfg(feature = "wezterm")]
+pub mod wezterm;
+#[cfg(feature = "windows-terminal")]
+pub mod windows_terminal;
+#[cfg(feature = "zellij")]
+pub mod zellij;
 
+pub use iterm2::ITerm2Multiplexer;
 #[cfg(feature = "kitty")]
 pub use kitty::KittyMultiplexer;
-pub use iterm2::ITerm2Multiplexer;
-pub use tmux::TmuxMultiplexer;
 #[cfg(feature = "screen")]
 pub use screen::ScreenMultiplexer;
-#[cfg(feature = "wezterm")]
-pub use wezterm::WezTermMultiplexer;
-#[cfg(feature = "zellij")]
-pub use zellij::ZellijMultiplexer;
 #[cfg(all(feature = "tilix", target_os = "linux"))]
 pub use tilix::TilixMultiplexer;
+pub use tmux::TmuxMultiplexer;
+#[cfg(feature = "wezterm")]
+pub use wezterm::WezTermMultiplexer;
 #[cfg(feature = "windows-terminal")]
 pub use windows_terminal::WindowsTerminalMultiplexer;
+#[cfg(feature = "zellij")]
+pub use zellij::ZellijMultiplexer;
 #[cfg(feature = "ghostty")]
 pub mod ghostty;
 #[cfg(feature = "kitty")]
@@ -279,7 +279,10 @@ pub fn available_multiplexers() -> Vec<(String, Box<dyn Multiplexer + Send + Syn
     #[cfg(target_os = "macos")]
     if let Ok(iterm2) = iterm2::ITerm2Multiplexer::new() {
         if iterm2.is_available() {
-            multiplexers.push(("iterm2".to_string(), Box::new(iterm2) as Box<dyn Multiplexer + Send + Sync>));
+            multiplexers.push((
+                "iterm2".to_string(),
+                Box::new(iterm2) as Box<dyn Multiplexer + Send + Sync>,
+            ));
         }
     }
 

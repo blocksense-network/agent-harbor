@@ -4,13 +4,13 @@
 //! Scenario-based initial render test
 
 use ah_core::TaskManager;
-use ah_rest_mock_client::MockRestClient;
-use ah_test_scenarios::{Scenario, ScenarioTerminal};
-use ah_tui::settings::Settings;
-use ah_tui::view_model::ViewModel;
 use ah_core::WorkspaceFilesEnumerator;
 use ah_repo::VcsRepo;
-use ah_tui::{create_test_terminal};
+use ah_rest_mock_client::MockRestClient;
+use ah_test_scenarios::{Scenario, ScenarioTerminal};
+use ah_tui::create_test_terminal;
+use ah_tui::settings::Settings;
+use ah_tui::view_model::ViewModel;
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use ratatui::widgets::ListState;
 use std::sync::Arc;
@@ -66,11 +66,7 @@ async fn test_tui_initial_screen_golden() -> anyhow::Result<()> {
         .unwrap() // project root
         .join("target")
         .join("debug")
-        .join(if cfg!(windows) {
-            "ah.exe"
-        } else {
-            "ah"
-        });
+        .join(if cfg!(windows) { "ah.exe" } else { "ah" });
 
     // Create a test runner for the ah CLI binary with dashboard command
     let mut runner = TestedTerminalProgram::new(binary_path.to_string_lossy().as_ref())
@@ -96,7 +92,10 @@ async fn test_tui_initial_screen_golden() -> anyhow::Result<()> {
         }
         Err(e) => {
             // Process likely exited early - this is a test failure
-            return Err(anyhow::anyhow!("Dashboard failed to initialize or exited early: {}", e));
+            return Err(anyhow::anyhow!(
+                "Dashboard failed to initialize or exited early: {}",
+                e
+            ));
         }
     }
 
@@ -132,11 +131,7 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
         .unwrap() // project root
         .join("target")
         .join("debug")
-        .join(if cfg!(windows) {
-            "ah.exe"
-        } else {
-            "ah"
-        });
+        .join(if cfg!(windows) { "ah.exe" } else { "ah" });
 
     // Create a test runner for the ah CLI binary with dashboard command
     let mut runner = TestedTerminalProgram::new(binary_path.to_string_lossy().as_ref())
@@ -151,7 +146,9 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 
     // Try to read and parse the screen output
     // If this fails, it likely means the process exited early due to initialization failure
-    runner.read_and_parse().await
+    runner
+        .read_and_parse()
+        .await
         .map_err(|e| anyhow::anyhow!("Dashboard failed to initialize or exited early: {}", e))?;
 
     // Capture initial screen

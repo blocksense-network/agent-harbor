@@ -9,13 +9,13 @@
 
 use crossbeam_channel as chan;
 use crossterm::{
-    event::{Event, KeyEventKind, MouseButton, MouseEventKind},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
     event::{
-        DisableMouseCapture, EnableMouseCapture,
-        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
+    event::{Event, KeyEventKind, MouseButton, MouseEventKind},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -42,11 +42,10 @@ static KB_FLAGS_PUSHED: AtomicBool = AtomicBool::new(false);
 static MOUSE_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
 
 use crate::{
-    view::{self, header, modals, HitTestRegistry},
-    view_model::{MouseAction, Msg as ViewModelMsg, ViewModel},
-    WorkspaceFilesEnumerator,
-    Theme, ViewCache,
+    Theme, ViewCache, WorkspaceFilesEnumerator,
     settings::Settings,
+    view::{self, HitTestRegistry, header, modals},
+    view_model::{MouseAction, Msg as ViewModelMsg, ViewModel},
 };
 use ah_core::TaskManager;
 use ah_workflows::WorkspaceWorkflowsEnumerator;
@@ -117,9 +116,7 @@ fn cleanup_terminal() {
 }
 
 /// Run the dashboard application with injected dependencies
-pub async fn run_dashboard(
-    deps: DashboardDependencies,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn std::error::Error>> {
     // Setup terminal
     setup_terminal()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;

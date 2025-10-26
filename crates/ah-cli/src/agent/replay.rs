@@ -8,6 +8,8 @@
 // the original timing.
 
 use crate::agent::record::CliGutterPosition;
+use ah_core::{AgentExecutionConfig, local_task_manager::GenericLocalTaskManager};
+use ah_mux::TmuxMultiplexer;
 use ah_recorder::viewer::GutterPosition;
 use ah_recorder::{ReplayResult, TerminalViewer, ViewerConfig, ViewerEventLoop, replay_ahr_file};
 use anyhow::{Context, Result};
@@ -163,8 +165,17 @@ async fn run_viewer_mode(ahr_path: &PathBuf, gutter: &CliGutterPosition) -> Resu
     // Create terminal viewer
     let viewer = TerminalViewer::new(terminal_state, config);
 
+    // Create local task manager for instruction-based task creation
+    let agent_config = AgentExecutionConfig {
+        config_file: None, // Use default configuration
+    };
+    let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
+        GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
+            .expect("Failed to create local task manager"),
+    );
+
     // Create event loop for the viewer
-    let mut event_loop = ViewerEventLoop::new(viewer, replay_result.snapshots)
+    let mut event_loop = ViewerEventLoop::new(viewer, replay_result.snapshots, task_manager)
         .context("Failed to create viewer event loop")?;
 
     // Run the viewer event loop

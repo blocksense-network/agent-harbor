@@ -19,21 +19,46 @@ pub mod view_model;
 pub use error::*;
 pub use golden::*;
 pub use msg::*;
-pub use settings::{FontStyle, KeyboardLocalization, KeyboardOperation, KeyboardShortcut, KeyMatcher, MetaKey, Platform, SelectionDialogStyle, Settings};
+pub use settings::{
+    FontStyle, KeyMatcher, KeyboardLocalization, KeyboardOperation, KeyboardShortcut, MetaKey,
+    Platform, SelectionDialogStyle, Settings,
+};
 pub use task::{ButtonFocus, ModalState, ModelSelection, Task, TaskState};
 
 // Re-export workspace files enumerator types from ah-core
 pub use ah_core::{RepositoryFile, WorkspaceFilesEnumerator};
 pub use view::{Theme, ViewCache};
 pub use view_model::{
-    AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
-    DraftSaveState, FilterOptions, FocusElement, SearchMode, TaskCardType,
-    TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionViewModel, TaskMetadataViewModel,
-    TaskStatusFilter, TimeRangeFilter,
+    AgentActivityRow,
+    AutoSaveState,
+    ButtonStyle,
+    ButtonViewModel,
+    DeliveryIndicator,
+    DraftSaveState,
+    FilterOptions,
+    FocusElement,
+    FooterAction,
+    ModalType,
+    ModalViewModel,
+    ModelOptionViewModel,
     // Dashboard ViewModel types
-    MouseAction, Msg, ViewModel, FooterAction, ModalType, ModalViewModel,
-    ModelOptionViewModel, SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel,
-    TaskCardInfo, TaskCardTypeEnum, TaskItem,
+    MouseAction,
+    Msg,
+    SearchMode,
+    SettingsFieldType,
+    SettingsFieldViewModel,
+    StatusBarViewModel,
+    TaskCardInfo,
+    TaskCardType,
+    TaskCardTypeEnum,
+    TaskEntryControlsViewModel,
+    TaskEntryViewModel,
+    TaskExecutionViewModel,
+    TaskItem,
+    TaskMetadataViewModel,
+    TaskStatusFilter,
+    TimeRangeFilter,
+    ViewModel,
 };
 
 use ratatui::{Terminal, backend::TestBackend};

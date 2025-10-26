@@ -28,7 +28,7 @@ pub use pty::{PtyEvent, PtyRecorder, PtyRecorderConfig, RecordingSession, Termin
 pub use snapshots::{
     SharedSnapshotsWriter, Snapshot, SnapshotsReader, SnapshotsWriter, create_shared_writer,
 };
-pub use viewer::{InstructionOverlay, SearchState, TerminalViewer, ViewerConfig, ViewerEventLoop};
+pub use viewer::{SearchState, TerminalViewer, ViewerConfig, ViewerEventLoop};
 pub use writer::{AhrWriter, WriterConfig, now_ns};
 
 pub mod reader;

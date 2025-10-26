@@ -6,6 +6,8 @@
 // Spawns a command under a PTY, captures output to .ahr file format,
 // and provides a basic viewer for monitoring the session.
 
+use ah_core::{AgentExecutionConfig, local_task_manager::GenericLocalTaskManager};
+use ah_mux::TmuxMultiplexer;
 use ah_recorder::viewer::GutterPosition;
 use ah_recorder::{
     AhrWriter, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalViewer, ViewerConfig,
@@ -213,6 +215,15 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
     let recorder_handle = recorder.start_capture();
     let mut session = RecordingSession::new(recorder_handle, rx, writer, &pty_config);
 
+    // Create local task manager for instruction-based task creation
+    let agent_config = AgentExecutionConfig {
+        config_file: None, // Use default configuration
+    };
+    let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
+        GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
+            .expect("Failed to create local task manager"),
+    );
+
     // Set up viewer if not in headless mode
     let viewer_handle = if !args.headless {
         info!("Setting up live viewer");
@@ -229,7 +240,7 @@ pub async fn execute(args: RecordArgs) -> Result<()> {
         let viewer = TerminalViewer::new(session.terminal(), viewer_config);
 
         // Create event loop for the viewer
-        let mut event_loop = ViewerEventLoop::new(viewer, Vec::new()) // Start with empty snapshots, will be updated dynamically
+        let mut event_loop = ViewerEventLoop::new(viewer, Vec::new(), task_manager.clone()) // Start with empty snapshots, will be updated dynamically
             .context("Failed to create viewer event loop")?;
 
         // Spawn viewer in background thread

@@ -18,6 +18,11 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 
+# Agent Harbor workspace crates
+ah-core = { path = "../ah-core" }
+ah-domain-types = { path = "../ah-domain-types" }
+ah-tui = { path = "../ah-tui" }
+
 # Recording-specific dependencies
 portable-pty = "0.8"
 vt100 = "0.15"
@@ -25,6 +30,7 @@ brotli = "7.0"
 byteorder = "1.5"
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+tui-textarea = { path = "../../vendor/tui-textarea", features = ["search"] }
 
 # SSZ serialization for IPC
 ethereum_ssz = { workspace = true }

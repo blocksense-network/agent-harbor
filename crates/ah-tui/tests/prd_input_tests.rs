@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ah_core::TaskManager;
-use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
-use ah_rest_mock_client::MockRestClient;
-use ah_tui::view_model::FocusElement;
-use ah_tui::view_model::{FilterControl, Msg, MouseAction, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel, ViewModel};
-use ah_tui::settings::{KeyboardOperation, Settings};
 use ah_core::{RepositoryFile, WorkspaceFilesEnumerator};
+use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_repo::VcsRepo;
+use ah_rest_mock_client::MockRestClient;
+use ah_tui::settings::{KeyboardOperation, Settings};
+use ah_tui::view_model::FocusElement;
+use ah_tui::view_model::{
+    FilterControl, MouseAction, Msg, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
+    ViewModel,
+};
 use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -30,8 +33,10 @@ impl WorkspaceWorkflowsEnumerator for MockWorkspaceWorkflows {
 }
 
 fn new_view_model() -> ViewModel {
-    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
-    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(MockWorkspaceWorkflows);
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+        Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+        Arc::new(MockWorkspaceWorkflows);
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
     let settings = Settings::default();
 
