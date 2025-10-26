@@ -782,6 +782,27 @@ repomix-agentfs:
         --header-text "AgentFS Complete Implementation and Specification" \
         --include "{{REPOMIX_AGENTFS_PATTERNS}}"
 
+# Create a repomix snapshot of the LLM API Proxy crate
+repomix-llm-api-proxy:
+    @echo "📦 Creating LLM API Proxy repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    @echo "Generating LLM API Proxy crate bundle..."
+    repomix \
+        crates/llm-api-proxy \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-LLM-API-Proxy.md \
+        --style markdown \
+        --header-text "LLM API Proxy - Complete Implementation and Specification"
+    @echo "Adding Scenario-Format.md specification..."
+    repomix \
+        specs/Public \
+        --include "Scenario-Format.md" \
+        --output {{REPOMIX_OUT_DIR}}/scenario-temp.md \
+        --style markdown \
+        --header-text "Scenario Format Specification"
+    @echo "Combining bundles..."
+    @tail -n +3 {{REPOMIX_OUT_DIR}}/scenario-temp.md >> {{REPOMIX_OUT_DIR}}/Agent-Harbor-LLM-API-Proxy.md
+    @rm {{REPOMIX_OUT_DIR}}/scenario-temp.md
+
 # Run overlay tests with E2E enforcement verification
 test-overlays:
     just build-overlay-tests

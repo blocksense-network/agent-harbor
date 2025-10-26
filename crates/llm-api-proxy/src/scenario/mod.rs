@@ -45,51 +45,25 @@
 //! 7. llmResponse Grouping: Multiple response elements can be grouped into single API responses
 //! 8. Tool Evolution Tracking: Failed validations automatically save requests for historical tracking
 //!
-//! ## ALGORITHM:
+//! ## CONTENT-BASED SCENARIO MATCHING:
+//!
+//! The scenario player analyzes conversation history to find scenario events that match
+//! the actual user inputs and tool results, then returns the appropriate following responses.
+//! This allows agents to make extra requests without breaking the scenario flow.
 //!
 //! ```text
-//! FOR each API request with api_key:
-//!     IF api_key not seen before:
-//!         Create new session with scenario timeline
-//!         Reset timeline to beginning
+//! FOR each API request with conversation history:
+//!     IF scenario not started:
+//!         Check if request contains meaningful content, start scenario if so
 //!
-//!     Get current session for api_key:
+//!     Analyze last message in conversation history:
+//!         IF role == "user": extract user input content, find matching userInputs event
+//!                            in scenario, return the immediately following llmResponse.
+//!         IF role == "tool": extract tool result content, find matching agentToolUse event
+//!                            in scenario, return the immediately following llmResponse.
 //!
-//!     Skip events that don't generate API responses, advance to next response-generating event/group
-//!     WHILE there are more events AND current event is not response-generating:
-//!         CASE event.type:
-//!             "complete" -> Mark scenario as completed (handled by test harness)
-//!             "merge" -> Mark session for merging (handled by test harness)
-//!             "advanceMs" -> Advance logical time (handled by test harness)
-//!             "userInputs" -> Simulate user input (handled by test harness)
-//!             "userCommands" -> Execute user command (handled by test harness)
-//!             "userEdits" -> Apply user file edits (handled by test harness)
-//!         Advance to next event
-//!
-//!     IF no more events:
-//!         Return final assistant message
-//!
-//!     // Collect all response elements for this turn (supports both grouped and individual events)
-//!     response_parts = []
-//!     IF current_event.type == "llmResponse":
-//!         // Grouped response: collect all sub-events and execute assertions (see below)
-//!         response_parts.extend(current_event.sub_events)
-//!     ELSE IF current_event.type in ["think", "runCmd", "grep", "readFile", "listDir", "find", "sed", "agentEdits", "assistant"]:
-//!         // Individual response: treat as single-element group (legacy support)
-//!         response_parts.append(current_event)
-//!
-//!     // Note: Tools validation is performed when the CLIENT makes API requests,
-//!     // not during scenario processing. The server validates that tool definitions
-//!     // sent by the coding agent in tool_calls match the current tools profile.
-//!
-//!     // Coalesce response parts based on LLM API style (OpenAI vs Anthropic)
-//!     // OpenAI: thinking -> internal (not in response), text + tool_calls -> assistant message
-//!     // Anthropic: thinking + text + tool_calls -> content blocks in single response
-//!     api_response = coalesce_response_parts(response_parts, llm_api_style)
-//!
-//!     Return api_response
-//!
-//!     Advance session timeline pointer past consumed event(s)
+//!     IF no matching scenario event found:
+//!         Return minimal response (agent made unexpected request)
 //! ```
 //!
 //! The test server processes timeline events in order, executing assertions
@@ -842,6 +816,19 @@ pub struct ServerConfig {
     pub coalesce_thinking_with_tool_use: Option<bool>,
 }
 
+/// What the agent is currently expecting based on conversation history
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentExpectation {
+    /// Agent expects tool execution results (after assistant message with tool calls)
+    ToolResults,
+    /// Agent expects user input (after assistant message without tool calls)
+    UserInput,
+    /// Agent expects assistant response (after user message)
+    AssistantResponse,
+    /// Agent expects next response (after tool result - could be assistant or user)
+    NextResponse,
+}
+
 /// Timeline event (unified event sequence)
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(untagged)]
@@ -859,6 +846,8 @@ pub enum TimelineEvent {
     },
     /// Assertion event for verifying filesystem state and other conditions
     Assert { assert: AssertionData },
+    /// Error event for modeling error conditions (rate limiting, invalid requests, etc.)
+    Error { error: ErrorData },
 }
 
 /// Response element in an LLM response
@@ -873,6 +862,12 @@ pub enum ResponseElement {
         #[serde(rename = "agentToolUse")]
         agent_tool_use: ToolUseData,
     },
+    /// Tool result event (for multi-turn conversations)
+    #[serde(rename = "toolResult")]
+    ToolResult { tool_result: ToolResultData },
+    /// Error event (generates LLM API error response)
+    #[serde(rename = "error")]
+    Error { error: ErrorData },
     /// File edits event
     AgentEdits {
         #[serde(rename = "agentEdits")]
@@ -896,6 +891,16 @@ pub struct ToolUseData {
     pub progress: Option<Vec<ProgressStep>>,
     pub result: Option<serde_yaml::Value>,
     pub status: Option<String>,
+}
+
+/// Tool result data (for multi-turn conversations)
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ToolResultData {
+    #[serde(rename = "toolCallId")]
+    pub tool_call_id: String,
+    pub content: serde_yaml::Value,
+    #[serde(default)]
+    pub is_error: bool,
 }
 
 /// Progress step
@@ -978,6 +983,17 @@ pub struct GitCommitAssertion {
     pub message_contains: Option<String>,
 }
 
+/// Error data for modeling error conditions
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ErrorData {
+    #[serde(rename = "errorType")]
+    pub error_type: String,
+    pub status_code: Option<u16>,
+    pub message: String,
+    pub details: Option<serde_yaml::Value>,
+    pub retry_after_seconds: Option<u32>,
+}
+
 /// Tool call generated from scenario events
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ToolCall {
@@ -998,6 +1014,7 @@ struct AggregatedResponse {
 pub enum ResponsePart {
     Think(Vec<ThinkingStep>),
     ToolUse(ToolUseData),
+    ToolResult(ToolResultData),
     FileEdit(FileEditData),
     Assistant(Vec<AssistantStep>),
 }
@@ -1047,18 +1064,600 @@ impl ScenarioSession {
             self.scenario_started = true;
         }
 
-        // Follow the algorithm: skip non-response events, collect response parts
-        let response_parts = self.collect_response_parts(scenario)?;
-        let aggregated = self.process_response_parts(response_parts)?;
+        // Analyze what the agent is currently expecting based on conversation history
+        let expectation = self.analyze_agent_expectation(request)?;
 
-        // Generate API response based on client format and streaming preference
-        let response = if request.streaming {
-            self.generate_streaming_response(aggregated, request.client_format)?
+        // Find the next appropriate scenario event based on agent expectation
+        self.find_next_scenario_event(
+            scenario,
+            expectation,
+            request,
+            request.client_format,
+            request.streaming,
+        )
+    }
+
+    /// Find the next scenario event that matches the agent's current expectation
+    fn find_next_scenario_event(
+        &mut self,
+        scenario: &Scenario,
+        expectation: AgentExpectation,
+        request: &ProxyRequest,
+        client_format: crate::converters::ApiFormat,
+        streaming: bool,
+    ) -> Result<ProxyResponse> {
+        match expectation {
+            AgentExpectation::AssistantResponse => {
+                // Agent sent a user message - try content-based matching first, then fall back to sequential
+                match self.find_response_for_user_input(scenario, request, client_format, streaming)
+                {
+                    Ok(response) => Ok(response),
+                    Err(_) => {
+                        self.find_next_sequential_response(scenario, client_format, streaming)
+                    }
+                }
+            }
+            AgentExpectation::NextResponse => {
+                // Agent sent a tool result - try content-based matching first, then fall back to sequential
+                match self.find_response_for_tool_result(
+                    scenario,
+                    request,
+                    client_format,
+                    streaming,
+                ) {
+                    Ok(response) => Ok(response),
+                    Err(_) => {
+                        self.find_next_sequential_response(scenario, client_format, streaming)
+                    }
+                }
+            }
+            AgentExpectation::ToolResults | AgentExpectation::UserInput => {
+                // These are handled by the test harness, not the mock LLM API server
+                // Return a minimal response to keep the connection alive
+                self.generate_minimal_response(client_format)
+            }
+        }
+    }
+
+    /// Find the llmResponse that follows a matching userInput event
+    fn find_response_for_user_input(
+        &mut self,
+        scenario: &Scenario,
+        request: &ProxyRequest,
+        client_format: crate::converters::ApiFormat,
+        streaming: bool,
+    ) -> Result<ProxyResponse> {
+        // Extract user input content from the last message
+        let user_content = self.extract_last_user_content(request)?;
+
+        // Scan timeline from beginning to find matching userInput and its following llmResponse
+        for (idx, event) in scenario.timeline.iter().enumerate() {
+            if let TimelineEvent::Event(data) = event {
+                if let Some(user_inputs) = data.get("userInputs") {
+                    // Check if this userInputs event matches our user content
+                    if self.user_input_matches(user_inputs, &user_content)? {
+                        // Found matching userInput, look for the next llmResponse
+                        for next_idx in (idx + 1)..scenario.timeline.len() {
+                            match &scenario.timeline[next_idx] {
+                                TimelineEvent::LlmResponse { llm_response } => {
+                                    // Found the following llmResponse - process it
+                                    let mut response_parts = Vec::new();
+                                    for element in llm_response {
+                                        match element {
+                                            ResponseElement::Error { error } => {
+                                                return self.generate_error_response(
+                                                    error.clone(),
+                                                    client_format,
+                                                );
+                                            }
+                                            _ => {
+                                                let part = self
+                                                    .response_element_to_response_part(&element)?;
+                                                response_parts.push(part);
+                                            }
+                                        }
+                                    }
+                                    let aggregated = self.process_response_parts(response_parts)?;
+                                    return if streaming {
+                                        self.generate_streaming_response(aggregated, client_format)
+                                    } else {
+                                        self.generate_api_response(aggregated, client_format)
+                                    };
+                                }
+                                TimelineEvent::Event(data) => {
+                                    if let Some(llm_response_value) = data.get("llmResponse") {
+                                        let llm_response: Vec<ResponseElement> =
+                                            serde_yaml::from_value(llm_response_value.clone())
+                                                .map_err(|e| Error::Scenario {
+                                                    message: format!(
+                                                        "Failed to parse llmResponse: {}",
+                                                        e
+                                                    ),
+                                                })?;
+                                        let mut response_parts = Vec::new();
+                                        for element in llm_response {
+                                            match element {
+                                                ResponseElement::Error { error } => {
+                                                    return self.generate_error_response(
+                                                        error.clone(),
+                                                        client_format,
+                                                    );
+                                                }
+                                                _ => {
+                                                    let part = self
+                                                        .response_element_to_response_part(
+                                                            &element,
+                                                        )?;
+                                                    response_parts.push(part);
+                                                }
+                                            }
+                                        }
+                                        let aggregated =
+                                            self.process_response_parts(response_parts)?;
+                                        return if streaming {
+                                            self.generate_streaming_response(
+                                                aggregated,
+                                                client_format,
+                                            )
+                                        } else {
+                                            self.generate_api_response(aggregated, client_format)
+                                        };
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        return Err(Error::Scenario {
+                            message: "Found matching userInput but no following llmResponse"
+                                .to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Err(Error::Scenario {
+            message: format!("No matching userInput found for content: {}", user_content),
+        })
+    }
+
+    /// Find the llmResponse that follows a matching tool execution event
+    fn find_response_for_tool_result(
+        &mut self,
+        scenario: &Scenario,
+        request: &ProxyRequest,
+        client_format: crate::converters::ApiFormat,
+        streaming: bool,
+    ) -> Result<ProxyResponse> {
+        // Extract tool result content from the last message
+        let tool_content = self.extract_last_tool_content(request)?;
+
+        // Scan timeline to find matching agentToolUse and its following llmResponse
+        for (idx, event) in scenario.timeline.iter().enumerate() {
+            if let TimelineEvent::Event(data) = event {
+                if let Some(agent_tool_use) = data.get("agentToolUse") {
+                    // Check if this tool use matches our tool result
+                    if self.tool_execution_matches(agent_tool_use, &tool_content)? {
+                        // Found matching tool execution, look for the next llmResponse
+                        for next_idx in (idx + 1)..scenario.timeline.len() {
+                            match &scenario.timeline[next_idx] {
+                                TimelineEvent::LlmResponse { llm_response } => {
+                                    // Found the following llmResponse - process it
+                                    let mut response_parts = Vec::new();
+                                    for element in llm_response {
+                                        match element {
+                                            ResponseElement::Error { error } => {
+                                                return self.generate_error_response(
+                                                    error.clone(),
+                                                    client_format,
+                                                );
+                                            }
+                                            _ => {
+                                                let part = self
+                                                    .response_element_to_response_part(&element)?;
+                                                response_parts.push(part);
+                                            }
+                                        }
+                                    }
+                                    let aggregated = self.process_response_parts(response_parts)?;
+                                    return if streaming {
+                                        self.generate_streaming_response(aggregated, client_format)
+                                    } else {
+                                        self.generate_api_response(aggregated, client_format)
+                                    };
+                                }
+                                TimelineEvent::Event(data) => {
+                                    if let Some(llm_response_value) = data.get("llmResponse") {
+                                        let llm_response: Vec<ResponseElement> =
+                                            serde_yaml::from_value(llm_response_value.clone())
+                                                .map_err(|e| Error::Scenario {
+                                                    message: format!(
+                                                        "Failed to parse llmResponse: {}",
+                                                        e
+                                                    ),
+                                                })?;
+                                        let mut response_parts = Vec::new();
+                                        for element in llm_response {
+                                            match element {
+                                                ResponseElement::Error { error } => {
+                                                    return self.generate_error_response(
+                                                        error.clone(),
+                                                        client_format,
+                                                    );
+                                                }
+                                                _ => {
+                                                    let part = self
+                                                        .response_element_to_response_part(
+                                                            &element,
+                                                        )?;
+                                                    response_parts.push(part);
+                                                }
+                                            }
+                                        }
+                                        let aggregated =
+                                            self.process_response_parts(response_parts)?;
+                                        return if streaming {
+                                            self.generate_streaming_response(
+                                                aggregated,
+                                                client_format,
+                                            )
+                                        } else {
+                                            self.generate_api_response(aggregated, client_format)
+                                        };
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        return Err(Error::Scenario {
+                            message: "Found matching tool execution but no following llmResponse"
+                                .to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Err(Error::Scenario {
+            message: format!(
+                "No matching tool execution found for content: {:?}",
+                tool_content
+            ),
+        })
+    }
+
+    /// Extract content from the last user message
+    fn extract_last_user_content(&self, request: &ProxyRequest) -> Result<String> {
+        let messages =
+            request.payload.get("messages").and_then(|m| m.as_array()).ok_or_else(|| {
+                Error::Scenario {
+                    message: "No messages found in request payload".to_string(),
+                }
+            })?;
+
+        let last_message = messages.last().ok_or_else(|| Error::Scenario {
+            message: "Empty messages array".to_string(),
+        })?;
+
+        let role =
+            last_message
+                .get("role")
+                .and_then(|r| r.as_str())
+                .ok_or_else(|| Error::Scenario {
+                    message: "Message missing role field".to_string(),
+                })?;
+
+        if role != "user" {
+            return Err(Error::Scenario {
+                message: format!("Expected user message, got: {}", role),
+            });
+        }
+
+        let content = last_message.get("content").ok_or_else(|| Error::Scenario {
+            message: "User message missing content field".to_string(),
+        })?;
+
+        match content {
+            serde_json::Value::String(text) => Ok(text.clone()),
+            serde_json::Value::Array(blocks) => {
+                // Handle array content (e.g., Anthropic format)
+                let mut text_parts = Vec::new();
+                for block in blocks {
+                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                        text_parts.push(text.to_string());
+                    }
+                }
+                Ok(text_parts.join("\n"))
+            }
+            _ => Err(Error::Scenario {
+                message: "Unsupported content format in user message".to_string(),
+            }),
+        }
+    }
+
+    /// Extract tool result content from the last tool message
+    fn extract_last_tool_content(&self, request: &ProxyRequest) -> Result<serde_json::Value> {
+        let messages =
+            request.payload.get("messages").and_then(|m| m.as_array()).ok_or_else(|| {
+                Error::Scenario {
+                    message: "No messages found in request payload".to_string(),
+                }
+            })?;
+
+        let last_message = messages.last().ok_or_else(|| Error::Scenario {
+            message: "Empty messages array".to_string(),
+        })?;
+
+        let role =
+            last_message
+                .get("role")
+                .and_then(|r| r.as_str())
+                .ok_or_else(|| Error::Scenario {
+                    message: "Message missing role field".to_string(),
+                })?;
+
+        if role != "tool" {
+            return Err(Error::Scenario {
+                message: format!("Expected tool message, got: {}", role),
+            });
+        }
+
+        let content = last_message.get("content").ok_or_else(|| Error::Scenario {
+            message: "Tool message missing content field".to_string(),
+        })?;
+
+        Ok(content.clone())
+    }
+
+    /// Check if a scenario userInputs event matches the actual user input content
+    fn user_input_matches(
+        &self,
+        scenario_user_inputs: &serde_yaml::Value,
+        actual_content: &str,
+    ) -> Result<bool> {
+        // Handle the scenario userInputs format: [[milliseconds, "text"], ...]
+        let inputs_array = scenario_user_inputs.as_sequence().ok_or_else(|| Error::Scenario {
+            message: "userInputs should be an array".to_string(),
+        })?;
+
+        for input_item in inputs_array {
+            if let Some(input_array) = input_item.as_sequence() {
+                if input_array.len() >= 2 {
+                    if let Some(text) = input_array[1].as_str() {
+                        // Simple substring match - could be made more sophisticated
+                        if actual_content.contains(text) {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Check if a scenario agentToolUse event matches the actual tool result content
+    fn tool_execution_matches(
+        &self,
+        scenario_tool_use: &serde_yaml::Value,
+        actual_tool_content: &serde_json::Value,
+    ) -> Result<bool> {
+        // For now, do a simple check - look for the expected result in the scenario
+        // This could be enhanced to match tool_call_id, tool_name, etc.
+
+        // Extract expected result from scenario tool use
+        if let Some(result) = scenario_tool_use.get("result") {
+            match (result, actual_tool_content) {
+                (serde_yaml::Value::String(expected), serde_json::Value::String(actual)) => {
+                    // Simple string match
+                    Ok(expected == actual)
+                }
+                (serde_yaml::Value::String(expected), serde_json::Value::Array(content_blocks)) => {
+                    // Check if any content block contains the expected result
+                    for block in content_blocks {
+                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                            if text.contains(expected) {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                    Ok(false)
+                }
+                _ => {
+                    // For other formats, just return true for now (could be enhanced)
+                    Ok(true)
+                }
+            }
         } else {
-            self.generate_api_response(aggregated, request.client_format)?
-        };
+            // If no expected result in scenario, accept any tool result
+            Ok(true)
+        }
+    }
 
-        Ok(response)
+    /// Find the next response in the scenario sequentially (fallback for backward compatibility)
+    fn find_next_sequential_response(
+        &mut self,
+        scenario: &Scenario,
+        client_format: crate::converters::ApiFormat,
+        streaming: bool,
+    ) -> Result<ProxyResponse> {
+        // Scan through the scenario timeline from current position for any response event
+        while self.current_event_index < scenario.timeline.len() {
+            let event = &scenario.timeline[self.current_event_index];
+
+            match event {
+                TimelineEvent::LlmResponse { llm_response } => {
+                    // Found an llmResponse - process it
+                    let mut response_parts = Vec::new();
+                    for element in llm_response {
+                        match element {
+                            ResponseElement::Error { error } => {
+                                return self.generate_error_response(error.clone(), client_format);
+                            }
+                            _ => {
+                                let part = self.response_element_to_response_part(&element)?;
+                                response_parts.push(part);
+                            }
+                        }
+                    }
+                    self.current_event_index += 1;
+                    let aggregated = self.process_response_parts(response_parts)?;
+                    return if streaming {
+                        self.generate_streaming_response(aggregated, client_format)
+                    } else {
+                        self.generate_api_response(aggregated, client_format)
+                    };
+                }
+                TimelineEvent::Event(data) => {
+                    // Check for llmResponse events
+                    if let Some(llm_response_value) = data.get("llmResponse") {
+                        let llm_response: Vec<ResponseElement> =
+                            serde_yaml::from_value(llm_response_value.clone()).map_err(|e| {
+                                Error::Scenario {
+                                    message: format!("Failed to parse llmResponse: {}", e),
+                                }
+                            })?;
+                        self.current_event_index += 1;
+                        let mut response_parts = Vec::new();
+                        for element in llm_response {
+                            match element {
+                                ResponseElement::Error { error } => {
+                                    return self
+                                        .generate_error_response(error.clone(), client_format);
+                                }
+                                _ => {
+                                    let part = self.response_element_to_response_part(&element)?;
+                                    response_parts.push(part);
+                                }
+                            }
+                        }
+                        let aggregated = self.process_response_parts(response_parts)?;
+                        return if streaming {
+                            self.generate_streaming_response(aggregated, client_format)
+                        } else {
+                            self.generate_api_response(aggregated, client_format)
+                        };
+                    }
+                    // Check for agentToolUse events
+                    if let Some(agent_tool_use_value) = data.get("agentToolUse") {
+                        let agent_tool_use: ToolUseData =
+                            serde_yaml::from_value(agent_tool_use_value.clone()).map_err(|e| {
+                                Error::Scenario {
+                                    message: format!("Failed to parse agentToolUse: {}", e),
+                                }
+                            })?;
+                        self.current_event_index += 1;
+                        let response_part = ResponsePart::ToolUse(agent_tool_use);
+                        let aggregated = self.process_response_parts(vec![response_part])?;
+                        return if streaming {
+                            self.generate_streaming_response(aggregated, client_format)
+                        } else {
+                            self.generate_api_response(aggregated, client_format)
+                        };
+                    }
+                    // Check for agentEdits events
+                    if let Some(agent_edits_value) = data.get("agentEdits") {
+                        let agent_edits: FileEditData =
+                            serde_yaml::from_value(agent_edits_value.clone()).map_err(|e| {
+                                Error::Scenario {
+                                    message: format!("Failed to parse agentEdits: {}", e),
+                                }
+                            })?;
+                        self.current_event_index += 1;
+                        let response_part = ResponsePart::FileEdit(agent_edits);
+                        let aggregated = self.process_response_parts(vec![response_part])?;
+                        return if streaming {
+                            self.generate_streaming_response(aggregated, client_format)
+                        } else {
+                            self.generate_api_response(aggregated, client_format)
+                        };
+                    }
+                    // Check for old-style assistant events
+                    if let Some(assistant_steps) = data.get("assistant") {
+                        let steps: Vec<AssistantStep> =
+                            serde_yaml::from_value(assistant_steps.clone()).map_err(|e| {
+                                Error::Scenario {
+                                    message: format!("Failed to parse assistant steps: {}", e),
+                                }
+                            })?;
+                        self.current_event_index += 1;
+                        let aggregated =
+                            self.process_response_parts(vec![ResponsePart::Assistant(steps)])?;
+                        return if streaming {
+                            self.generate_streaming_response(aggregated, client_format)
+                        } else {
+                            self.generate_api_response(aggregated, client_format)
+                        };
+                    }
+                    // Skip other events
+                    self.current_event_index += 1;
+                }
+                // Skip control events, assertions, etc.
+                _ => {
+                    self.current_event_index += 1;
+                }
+            }
+        }
+
+        // No more responses found - return minimal response without advancing scenario
+        self.generate_minimal_response(client_format)
+    }
+
+    /// Analyze conversation history to determine what the agent is currently expecting
+    fn analyze_agent_expectation(&self, request: &ProxyRequest) -> Result<AgentExpectation> {
+        // Extract messages from request payload
+        let messages =
+            request.payload.get("messages").and_then(|m| m.as_array()).ok_or_else(|| {
+                Error::Scenario {
+                    message: "No messages found in request payload".to_string(),
+                }
+            })?;
+
+        if messages.is_empty() {
+            return Err(Error::Scenario {
+                message: "Empty messages array in request".to_string(),
+            });
+        }
+
+        // Get the last message
+        let last_message = messages.last().unwrap();
+
+        // Determine expectation based on last message role and content
+        let role =
+            last_message
+                .get("role")
+                .and_then(|r| r.as_str())
+                .ok_or_else(|| Error::Scenario {
+                    message: "Message missing role field".to_string(),
+                })?;
+
+        match role {
+            "assistant" => {
+                // Check if assistant message has tool calls
+                if let Some(tool_calls) = last_message.get("tool_calls") {
+                    if tool_calls.is_array() && !tool_calls.as_array().unwrap().is_empty() {
+                        return Ok(AgentExpectation::ToolResults);
+                    }
+                }
+                // Assistant message without tool calls - agent expects user input
+                Ok(AgentExpectation::UserInput)
+            }
+            "user" => {
+                // User message - agent expects assistant response
+                Ok(AgentExpectation::AssistantResponse)
+            }
+            "tool" => {
+                // Tool result - agent expects next response (could be assistant or user input)
+                Ok(AgentExpectation::NextResponse)
+            }
+            "system" => {
+                // System message - shouldn't normally happen at the end, but treat as expecting assistant response
+                Ok(AgentExpectation::AssistantResponse)
+            }
+            _ => Err(Error::Scenario {
+                message: format!("Unknown message role: {}", role),
+            }),
+        }
     }
 
     /// Check if a request contains meaningful content that should trigger scenario playback
@@ -1190,145 +1789,6 @@ impl ScenarioSession {
         }
     }
 
-    /// Collect response parts from the current scenario event (equivalent to Python _collect_response_parts)
-    fn collect_response_parts(&mut self, scenario: &Scenario) -> Result<Vec<ResponsePart>> {
-        let mut response_parts = Vec::new();
-
-        // Process events that should execute before the next response (assertions, control events)
-        while self.current_event_index < scenario.timeline.len() {
-            let current_event = &scenario.timeline[self.current_event_index];
-
-            // Check if this is a response-generating event
-            let event_type = self.get_event_type(current_event);
-
-            match event_type.as_deref() {
-                // Skip non-response-generating events (handled by test harness)
-                Some("complete") | Some("merge") | Some("advanceMs") | Some("userInputs")
-                | Some("userCommands") | Some("userEdits") => {
-                    self.current_event_index += 1;
-                    continue;
-                }
-                // Execute assertions before next response to verify expected outcomes
-                Some("assert") => {
-                    self.execute_assertion(current_event)?;
-                    self.current_event_index += 1;
-                    continue;
-                }
-                // Individual response events
-                Some("think") | Some("runCmd") | Some("grep") | Some("readFile")
-                | Some("listDir") | Some("find") | Some("sed") | Some("editFile")
-                | Some("writeFile") | Some("task") | Some("webFetch") | Some("webSearch")
-                | Some("todoWrite") | Some("notebookEdit") | Some("exitPlanMode")
-                | Some("bashOutput") | Some("killShell") | Some("slashCommand")
-                | Some("agentEdits") | Some("agentToolUse") | Some("assistant") => {
-                    let part = self.event_to_response_part(current_event)?;
-                    response_parts.push(part);
-                    self.current_event_index += 1;
-                    break;
-                }
-                // Grouped response event
-                Some("llmResponse") => {
-                    match current_event {
-                        TimelineEvent::LlmResponse { llm_response } => {
-                            for element in llm_response {
-                                let part = self.response_element_to_response_part(element)?;
-                                response_parts.push(part);
-                            }
-                        }
-                        TimelineEvent::Event(data) => {
-                            // Handle llmResponse parsed as generic Event
-                            if let Some(serde_yaml::Value::Sequence(elements)) =
-                                data.get("llmResponse")
-                            {
-                                for element_value in elements {
-                                    // Try to deserialize each element as ResponseElement
-                                    let element: ResponseElement = serde_yaml::from_value(
-                                        element_value.clone(),
-                                    )
-                                    .map_err(|e| Error::Scenario {
-                                        message: format!("Failed to parse response element: {}", e),
-                                    })?;
-                                    let part = self.response_element_to_response_part(&element)?;
-                                    response_parts.push(part);
-                                }
-                            }
-                        }
-                        _ => {
-                            return Err(Error::Scenario {
-                                message: "Expected LlmResponse event".to_string(),
-                            });
-                        }
-                    }
-                    self.current_event_index += 1;
-                    break;
-                }
-                _ => {
-                    // Unknown event type - skip
-                    self.current_event_index += 1;
-                    continue;
-                }
-            }
-        }
-
-        // If no response parts were collected (scenario ended), provide a default interactive response
-        if response_parts.is_empty() && self.current_event_index >= scenario.timeline.len() {
-            // Scenario has ended - provide a default response to keep the session interactive
-            response_parts.push(ResponsePart::Assistant(vec![AssistantStep(
-                1000,
-                "I'm ready to help with your next coding task. What would you like to do?"
-                    .to_string(),
-            )]));
-        }
-
-        Ok(response_parts)
-    }
-
-    /// Convert timeline event to response part
-    fn event_to_response_part(&self, event: &TimelineEvent) -> Result<ResponsePart> {
-        match event {
-            TimelineEvent::Event(data) => {
-                if let Some(think_steps) = data.get("think") {
-                    let steps: Vec<ThinkingStep> = serde_yaml::from_value(think_steps.clone())
-                        .map_err(|e| Error::Scenario {
-                            message: format!("Failed to parse think steps: {}", e),
-                        })?;
-                    Ok(ResponsePart::Think(steps))
-                } else if let Some(tool_data) = data.get("agentToolUse") {
-                    let tool_data: ToolUseData = serde_yaml::from_value(tool_data.clone())
-                        .map_err(|e| Error::Scenario {
-                            message: format!("Failed to parse tool use data: {}", e),
-                        })?;
-                    Ok(ResponsePart::ToolUse(tool_data))
-                } else if let Some(edit_data) = data.get("agentEdits") {
-                    let edit_data: FileEditData = serde_yaml::from_value(edit_data.clone())
-                        .map_err(|e| Error::Scenario {
-                            message: format!("Failed to parse file edit data: {}", e),
-                        })?;
-                    Ok(ResponsePart::FileEdit(edit_data))
-                } else if let Some(assistant_steps) = data.get("assistant") {
-                    let steps: Vec<AssistantStep> = serde_yaml::from_value(assistant_steps.clone())
-                        .map_err(|e| Error::Scenario {
-                            message: format!("Failed to parse assistant steps: {}", e),
-                        })?;
-                    Ok(ResponsePart::Assistant(steps))
-                } else {
-                    Err(Error::Scenario {
-                        message: "Unsupported event type in timeline".to_string(),
-                    })
-                }
-            }
-            TimelineEvent::Control { .. } => Err(Error::Scenario {
-                message: "Control events should be filtered out".to_string(),
-            }),
-            TimelineEvent::LlmResponse { .. } => Err(Error::Scenario {
-                message: "llmResponse should be handled separately".to_string(),
-            }),
-            TimelineEvent::Assert { .. } => Err(Error::Scenario {
-                message: "Assert events should be handled separately".to_string(),
-            }),
-        }
-    }
-
     /// Convert response element to response part
     fn response_element_to_response_part(&self, element: &ResponseElement) -> Result<ResponsePart> {
         match element {
@@ -1336,6 +1796,15 @@ impl ScenarioSession {
             ResponseElement::AgentToolUse {
                 agent_tool_use: tool_data,
             } => Ok(ResponsePart::ToolUse(tool_data.clone())),
+            ResponseElement::ToolResult { tool_result } => {
+                Ok(ResponsePart::ToolResult(tool_result.clone()))
+            }
+            ResponseElement::Error { error } => {
+                // Error elements within llmResponse should generate error responses
+                Err(Error::Scenario {
+                    message: format!("LLM API error: {} - {}", error.error_type, error.message),
+                })
+            }
             ResponseElement::AgentEdits {
                 agent_edits: edit_data,
             } => Ok(ResponsePart::FileEdit(edit_data.clone())),
@@ -1370,6 +1839,11 @@ impl ScenarioSession {
                     ) {
                         aggregate.tool_calls.push(call);
                     }
+                }
+                ResponsePart::ToolResult(_result_data) => {
+                    // Tool results are handled by the client/agent, not the mock server
+                    // They appear as user messages in subsequent turns
+                    // For now, we skip them in response generation
                 }
                 ResponsePart::FileEdit(edit_data) => {
                     let mut args = HashMap::new();
@@ -1605,120 +2079,47 @@ impl ScenarioSession {
         })
     }
 
-    /// Execute assertion event to verify filesystem state and other conditions
-    fn execute_assertion(&self, event: &TimelineEvent) -> Result<()> {
-        match event {
-            TimelineEvent::Assert { assert } => {
-                // Execute filesystem assertions
-                if let Some(fs_assertions) = &assert.fs {
-                    self.execute_filesystem_assertions(fs_assertions)?;
-                }
-                // Note: Other assertion types (text, json, git) are not yet implemented
-                // They would be handled here in the future
-            }
-            TimelineEvent::Event(data) => {
-                // Handle legacy assert events in Event format
-                if let Some(assert_value) = data.get("assert") {
-                    let assertion_data: AssertionData =
-                        serde_yaml::from_value(assert_value.clone()).map_err(|e| {
-                            Error::Scenario {
-                                message: format!("Failed to parse legacy assert event: {}", e),
-                            }
-                        })?;
+    /// Generate error response from error data
+    fn generate_error_response(
+        &self,
+        error_data: ErrorData,
+        client_format: crate::converters::ApiFormat,
+    ) -> Result<ProxyResponse> {
+        let status_code = error_data.status_code.unwrap_or(400);
+        let mut headers = HashMap::new();
 
-                    // Execute filesystem assertions
-                    if let Some(fs_assertions) = &assertion_data.fs {
-                        self.execute_filesystem_assertions(fs_assertions)?;
+        if let Some(retry_after) = error_data.retry_after_seconds {
+            headers.insert("retry-after".to_string(), retry_after.to_string());
+        }
+
+        let payload = match client_format {
+            crate::converters::ApiFormat::Anthropic => {
+                serde_json::json!({
+                    "type": "error",
+                    "error": {
+                        "type": error_data.error_type,
+                        "message": error_data.message
                     }
-                    // Note: Other assertion types (text, json, git) are not yet implemented
-                    // They would be handled here in the future
-                } else {
-                    return Err(Error::Scenario {
-                        message: "Invalid assertion event format".to_string(),
-                    });
-                }
+                })
             }
-            _ => {
-                return Err(Error::Scenario {
-                    message: "Not an assertion event".to_string(),
-                });
+            crate::converters::ApiFormat::OpenAI
+            | crate::converters::ApiFormat::OpenAIResponses => {
+                serde_json::json!({
+                    "error": {
+                        "type": error_data.error_type,
+                        "message": error_data.message,
+                        "details": error_data.details
+                    }
+                })
             }
         };
 
-        Ok(())
-    }
-
-    /// Execute filesystem assertions (fs.exists and fs.notExists)
-    fn execute_filesystem_assertions(&self, assertions: &FilesystemAssertions) -> Result<()> {
-        // Check files/directories that must exist
-        if let Some(exists_paths) = &assertions.exists {
-            for path_str in exists_paths {
-                let path = std::path::Path::new(path_str);
-                if !path.exists() {
-                    return Err(Error::Scenario {
-                        message: format!(
-                            "Filesystem assertion failed: path '{}' does not exist",
-                            path_str
-                        ),
-                    });
-                }
-                println!("✓ Filesystem assertion passed: '{}' exists", path_str);
-            }
-        }
-
-        // Check files/directories that must not exist
-        if let Some(not_exists_paths) = &assertions.not_exists {
-            for path_str in not_exists_paths {
-                let path = std::path::Path::new(path_str);
-                if path.exists() {
-                    return Err(Error::Scenario {
-                        message: format!(
-                            "Filesystem assertion failed: path '{}' exists but should not",
-                            path_str
-                        ),
-                    });
-                }
-                println!(
-                    "✓ Filesystem assertion passed: '{}' does not exist",
-                    path_str
-                );
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Get event type from timeline event
-    fn get_event_type(&self, event: &TimelineEvent) -> Option<String> {
-        match event {
-            TimelineEvent::Event(data) => {
-                // For legacy events, check for type field or infer from keys
-                if let Some(serde_yaml::Value::String(type_str)) = data.get("type") {
-                    Some(type_str.clone())
-                } else {
-                    // Infer from keys
-                    let keys: Vec<&String> = data.keys().collect();
-                    if keys.contains(&&"llmResponse".to_string()) {
-                        Some("llmResponse".to_string())
-                    } else if keys.contains(&&"think".to_string()) {
-                        Some("think".to_string())
-                    } else if keys.contains(&&"agentToolUse".to_string()) {
-                        Some("agentToolUse".to_string())
-                    } else if keys.contains(&&"agentEdits".to_string()) {
-                        Some("agentEdits".to_string())
-                    } else if keys.contains(&&"assistant".to_string()) {
-                        Some("assistant".to_string())
-                    } else if keys.contains(&&"assert".to_string()) {
-                        Some("assert".to_string())
-                    } else {
-                        None
-                    }
-                }
-            }
-            TimelineEvent::Control { event_type, .. } => Some(event_type.clone()),
-            TimelineEvent::LlmResponse { .. } => Some("llmResponse".to_string()),
-            TimelineEvent::Assert { .. } => Some("assert".to_string()),
-        }
+        Ok(ProxyResponse {
+            status: status_code,
+            payload,
+            headers,
+            sse_data: None,
+        })
     }
 
     /// Generate streaming response with SSE events
@@ -1757,13 +2158,13 @@ impl ScenarioSession {
                 sse_events.push(format!("event: message_start\ndata: {}\n\n", message_start));
 
                 // Generate thinking blocks if present
-                for thinking_step in &thinking_steps {
+                for (thinking_idx, thinking_step) in thinking_steps.iter().enumerate() {
                     let ThinkingStep(_, text) = thinking_step;
 
                     // Content block start for thinking
                     let content_block_start = serde_json::json!({
                         "type": "content_block_start",
-                        "index": 0,
+                        "index": thinking_idx,
                         "content_block": {
                             "type": "thinking",
                             "thinking": "",
@@ -1775,12 +2176,12 @@ impl ScenarioSession {
                         content_block_start
                     ));
 
-                    // Content block deltas for thinking text (chunked)
-                    let chunks = self.chunk_text(text, 20); // Chunk into ~20 char pieces
+                    // Content block deltas for thinking text (realistic chunking)
+                    let chunks = self.chunk_text(text, client_format);
                     for chunk in chunks {
                         let content_block_delta = serde_json::json!({
                             "type": "content_block_delta",
-                            "index": 0,
+                            "index": thinking_idx,
                             "delta": {
                                 "type": "thinking_delta",
                                 "thinking": chunk
@@ -1795,7 +2196,7 @@ impl ScenarioSession {
                     // Content block stop
                     let content_block_stop = serde_json::json!({
                         "type": "content_block_stop",
-                        "index": 0
+                        "index": thinking_idx
                     });
                     sse_events.push(format!(
                         "event: content_block_stop\ndata: {}\n\n",
@@ -1803,11 +2204,14 @@ impl ScenarioSession {
                     ));
                 }
 
+                // Calculate the starting index for text content after thinking blocks
+                let text_start_index = thinking_steps.len();
+
                 // Generate assistant text blocks if present
                 if !assistant_text.is_empty() {
                     let content_block_start = serde_json::json!({
                         "type": "content_block_start",
-                        "index": 1,
+                        "index": text_start_index,
                         "content_block": {
                             "type": "text",
                             "text": ""
@@ -1818,12 +2222,12 @@ impl ScenarioSession {
                         content_block_start
                     ));
 
-                    // Content block deltas for assistant text
-                    let chunks = self.chunk_text(&assistant_text, 30);
+                    // Content block deltas for assistant text (realistic chunking)
+                    let chunks = self.chunk_text(&assistant_text, client_format);
                     for chunk in chunks {
                         let content_block_delta = serde_json::json!({
                             "type": "content_block_delta",
-                            "index": 1,
+                            "index": text_start_index,
                             "delta": {
                                 "type": "text_delta",
                                 "text": chunk
@@ -1838,7 +2242,7 @@ impl ScenarioSession {
                     // Content block stop
                     let content_block_stop = serde_json::json!({
                         "type": "content_block_stop",
-                        "index": 1
+                        "index": text_start_index
                     });
                     sse_events.push(format!(
                         "event: content_block_stop\ndata: {}\n\n",
@@ -1850,9 +2254,11 @@ impl ScenarioSession {
                 for (i, tool_call) in tool_calls.iter().enumerate() {
                     let tool_index = if thinking_steps.is_empty() && assistant_text.is_empty() {
                         i
+                    } else if thinking_steps.is_empty() || assistant_text.is_empty() {
+                        thinking_steps.len() + (if assistant_text.is_empty() { 0 } else { 1 })
                     } else {
-                        i + 1
-                    };
+                        thinking_steps.len() + 1
+                    } + i;
                     let content_block_start = serde_json::json!({
                         "type": "content_block_start",
                         "index": tool_index,
@@ -1920,8 +2326,8 @@ impl ScenarioSession {
                 });
                 sse_events.push(format!("data: {}\n\n", chunk));
 
-                // Send content chunks
-                let chunks = self.chunk_text(&assistant_text, 20);
+                // Send content chunks (realistic chunking)
+                let chunks = self.chunk_text(&assistant_text, client_format);
                 for chunk_text in chunks {
                     let choice = serde_json::json!({
                         "index": 0,
@@ -1981,8 +2387,8 @@ impl ScenarioSession {
                 });
                 sse_events.push(format!("data: {}\n\n", response));
 
-                // Content deltas
-                let chunks = self.chunk_text(&assistant_text, 20);
+                // Content deltas (realistic chunking)
+                let chunks = self.chunk_text(&assistant_text, client_format);
                 for chunk_text in chunks {
                     let output_item = serde_json::json!({
                         "type": "message",
@@ -2045,13 +2451,36 @@ impl ScenarioSession {
         })
     }
 
-    /// Helper function to chunk text into smaller pieces for streaming
-    fn chunk_text(&self, text: &str, chunk_size: usize) -> Vec<String> {
-        text.chars()
-            .collect::<Vec<char>>()
-            .chunks(chunk_size)
-            .map(|chunk| chunk.iter().collect::<String>())
-            .collect()
+    /// Helper function to chunk text into realistic pieces for streaming based on API style
+    fn chunk_text(&self, text: &str, client_format: crate::converters::ApiFormat) -> Vec<String> {
+        // Different chunking strategies based on API provider behavior
+        let (min_chunk_size, max_chunk_size) = match client_format {
+            // Anthropic tends to emit larger chunks (5-15 characters)
+            crate::converters::ApiFormat::Anthropic => (5, 15),
+            // OpenAI emits smaller chunks (1-3 characters)
+            crate::converters::ApiFormat::OpenAI
+            | crate::converters::ApiFormat::OpenAIResponses => (1, 3),
+        };
+
+        let mut chunks = Vec::new();
+        let chars: Vec<char> = text.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            // Vary chunk size slightly for realism
+            let chunk_size = if chars.len() - i <= min_chunk_size {
+                chars.len() - i // Last chunk gets remaining characters
+            } else {
+                let variation = (i % 3) as usize; // Simple pseudo-random variation
+                (min_chunk_size + variation).min(max_chunk_size).min(chars.len() - i)
+            };
+
+            let chunk: String = chars[i..i + chunk_size].iter().collect();
+            chunks.push(chunk);
+            i += chunk_size;
+        }
+
+        chunks
     }
 }
 

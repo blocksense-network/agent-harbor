@@ -1942,3 +1942,301 @@ expect:
         Some(&"no-cache".to_string())
     );
 }
+
+#[tokio::test]
+async fn test_extra_queries_dont_break_scenario() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a simple scenario
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("robust_scenario.yaml");
+
+    let scenario_content = r#"
+name: robust_scenario
+timeline:
+  - userInputs:
+      - [100, "hello"]
+      - [150, "hi there"]
+  - llmResponse:
+      - assistant:
+          - [200, "Hello! How can I help you?"]
+  - userInputs:
+      - [100, "show me the files"]
+      - [150, "list directory"]
+  - llmResponse:
+      - assistant:
+          - [200, "I'll show you the files in the current directory."]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = llm_api_proxy::config::ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = std::sync::Arc::new(tokio::sync::RwLock::new(config));
+
+    let mut player = llm_api_proxy::scenario::ScenarioPlayer::new(config).await.unwrap();
+
+    // Test 1: Extra query not in scenario should return minimal response
+    let request1 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "what is the weather today"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test1".to_string(),
+        streaming: false,
+    };
+
+    // This should succeed and return a minimal response without consuming scenario responses
+    let response1 = player.play_request(&request1).await.unwrap();
+    assert_eq!(response1.status, 200);
+    assert!(response1.payload.is_object());
+    // Should contain basic response structure
+    assert!(response1.payload.get("choices").is_some());
+
+    // Test 2: Another extra query should also return minimal response
+    let request2 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "tell me a joke"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test2".to_string(),
+        streaming: false,
+    };
+
+    let response2 = player.play_request(&request2).await.unwrap();
+    assert_eq!(response2.status, 200);
+    assert!(response2.payload.is_object());
+
+    // Test 3: Query matching first userInputs should get the corresponding response
+    let request3 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "hello"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test3".to_string(),
+        streaming: false,
+    };
+
+    let response3 = player.play_request(&request3).await.unwrap();
+    assert_eq!(response3.status, 200);
+    let content3 = response3.payload["choices"][0]["message"]["content"].as_str().unwrap();
+    assert_eq!(content3, "Hello! How can I help you?");
+
+    // Test 4: Another extra query after scenario interaction should still work
+    let request4 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "unrelated question"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test4".to_string(),
+        streaming: false,
+    };
+
+    let response4 = player.play_request(&request4).await.unwrap();
+    assert_eq!(response4.status, 200);
+    assert!(response4.payload.is_object());
+
+    // Test 5: Query matching second userInputs should get the corresponding response
+    let request5 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "show me the files"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test5".to_string(),
+        streaming: false,
+    };
+
+    let response5 = player.play_request(&request5).await.unwrap();
+    assert_eq!(response5.status, 200);
+    let content5 = response5.payload["choices"][0]["message"]["content"].as_str().unwrap();
+    assert_eq!(
+        content5,
+        "I'll show you the files in the current directory."
+    );
+}
+
+#[tokio::test]
+async fn test_extra_tool_results_dont_break_scenario() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a scenario that expects tool results
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("extra_tools_scenario.yaml");
+
+    let scenario_content = r#"
+name: extra_tools_scenario
+timeline:
+  - assistant:
+      - [100, "Run test command"]
+  - agentToolUse:
+      toolName: "runCmd"
+      args:
+        cmd: "echo test"
+      result: "test"
+      status: "ok"
+  - llmResponse:
+      - assistant:
+          - [200, "Test completed successfully"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = llm_api_proxy::config::ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = std::sync::Arc::new(tokio::sync::RwLock::new(config));
+
+    let mut player = llm_api_proxy::scenario::ScenarioPlayer::new(config).await.unwrap();
+
+    // Test 1: First get the assistant response with tool call
+    let request1 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "run test"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test1".to_string(),
+        streaming: false,
+    };
+
+    let response1 = player.play_request(&request1).await.unwrap();
+    assert_eq!(response1.status, 200);
+    let content1 = response1.payload["choices"][0]["message"]["content"].as_str().unwrap();
+    assert_eq!(content1, "Run test command");
+
+    // Test 2: Extra unrelated tool result should not break the scenario
+    let request2 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({
+            "messages": [
+                {"role": "user", "content": "run test"},
+                {"role": "assistant", "content": "Run test command", "tool_calls": [{"id": "call1", "type": "function", "function": {"name": "runCmd", "arguments": "{\"cmd\":\"echo test\"}"}}]},
+                {"role": "tool", "tool_call_id": "call1", "content": "unrelated tool result"}
+            ]
+        }),
+        headers: std::collections::HashMap::new(),
+        request_id: "test2".to_string(),
+        streaming: false,
+    };
+
+    // This should succeed and return a minimal response without breaking the scenario
+    let response2 = player.play_request(&request2).await.unwrap();
+    assert_eq!(response2.status, 200);
+    assert!(response2.payload.is_object());
+
+    // Test 3: Now the correct tool result should still work
+    let request3 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({
+            "messages": [
+                {"role": "user", "content": "run test"},
+                {"role": "assistant", "content": "Run test command", "tool_calls": [{"id": "call1", "type": "function", "function": {"name": "runCmd", "arguments": "{\"cmd\":\"echo test\"}"}}]},
+                {"role": "tool", "tool_call_id": "call1", "content": "test"}
+            ]
+        }),
+        headers: std::collections::HashMap::new(),
+        request_id: "test3".to_string(),
+        streaming: false,
+    };
+
+    let response3 = player.play_request(&request3).await.unwrap();
+    assert_eq!(response3.status, 200);
+    let content3 = response3.payload["choices"][0]["message"]["content"].as_str().unwrap();
+    assert_eq!(content3, "Test completed successfully");
+}
+
+#[tokio::test]
+async fn test_out_of_order_user_inputs() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a scenario that has multiple user inputs
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("out_of_order_scenario.yaml");
+
+    let scenario_content = r#"
+name: out_of_order_scenario
+timeline:
+  - userInputs:
+      - [100, "first command"]
+  - llmResponse:
+      - assistant:
+          - [200, "First response"]
+  - userInputs:
+      - [100, "second command"]
+  - llmResponse:
+      - assistant:
+          - [200, "Second response"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = llm_api_proxy::config::ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    let config = std::sync::Arc::new(tokio::sync::RwLock::new(config));
+
+    let mut player = llm_api_proxy::scenario::ScenarioPlayer::new(config).await.unwrap();
+
+    // Test 1: Send second command first - should not match anything
+    let request1 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "second command"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test1".to_string(),
+        streaming: false,
+    };
+
+    let response1 = player.play_request(&request1).await.unwrap();
+    assert_eq!(response1.status, 200);
+    // Should be minimal response since no match found
+
+    // Test 2: Send first command - should match and work
+    let request2 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "first command"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test2".to_string(),
+        streaming: false,
+    };
+
+    let response2 = player.play_request(&request2).await.unwrap();
+    assert_eq!(response2.status, 200);
+    let content = response2.payload["choices"][0]["message"]["content"].as_str().unwrap();
+    assert_eq!(content, "First response");
+
+    // Test 3: Send second command again - should still not match since we already consumed the first userInputs
+    let request3 = llm_api_proxy::proxy::ProxyRequest {
+        client_format: llm_api_proxy::converters::ApiFormat::OpenAI,
+        mode: llm_api_proxy::proxy::ProxyMode::Scenario,
+        payload: serde_json::json!({"messages": [{"role": "user", "content": "second command"}]}),
+        headers: std::collections::HashMap::new(),
+        request_id: "test3".to_string(),
+        streaming: false,
+    };
+
+    let response3 = player.play_request(&request3).await.unwrap();
+    assert_eq!(response3.status, 200);
+    // Should be minimal response since the first userInputs block was already consumed
+}

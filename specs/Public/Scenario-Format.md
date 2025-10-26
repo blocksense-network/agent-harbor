@@ -142,12 +142,33 @@ Anthropic). When the client requests streaming responses, the server
 automatically converts this into a sequence of incremental streaming events
 with preserved timing.
 
+**Important**: When an `llmResponse` event is immediately followed by
+`agentToolUse` events in the timeline, the mock LLM API server must include
+tool use suggestions in the LLM response using the appropriate API format
+(OpenAI `tool_calls` array or Anthropic `tool_use` content blocks). This
+ensures that real agents receive tool use instructions as part of their LLM
+responses.
+
+**Legacy Migration**: Scenarios that currently place `agentToolUse` events
+within `llmResponse` blocks must move them outside as separate `agentActions`
+events. The presence of subsequent `agentToolUse` events automatically triggers
+tool use inclusion in the LLM response.
+
 - `think`: Array of `[milliseconds, text]` pairs for agent thinking events. For
   OpenAI API style: thinking is processed internally but **NOT included in API
   responses** (matches OpenAI's behavior where thinking is never exposed). For
   Anthropic API style: thinking is exposed as separate "thinking" blocks in
   the response content array.
 - `assistant`: Array of `[milliseconds, text]` pairs for assistant responses
+- `error`: Error response element for modeling LLM API error conditions (rate
+  limiting, invalid requests, etc.). Generates an appropriate HTTP error response
+  from the mock LLM API server. Fields:
+  - `errorType`: String identifier for the error type (e.g., "rate_limit_exceeded",
+    "invalid_request", "tool_not_found")
+  - `statusCode`: Optional HTTP status code (defaults to 400)
+  - `message`: Human-readable error message
+  - `details`: Optional structured error details (JSON value)
+  - `retryAfterSeconds`: Optional retry-after header value for rate limiting
 
 #### Agent Action Events (`agentActions`)
 
@@ -277,6 +298,8 @@ Runners MAY extend assertions; unknown keys are ignored with a warning.
 
 Scenarios use a unified timeline containing all events (agent actions, user inputs, assertions, screenshots, etc.):
 
+- **Timeline Progression**: Time advances through `advanceMs` events, establishing absolute timestamps
+- **Delta Timing**: Event-internal timing values are millisecond deltas from the current timeline position
 - **Agent Events** execute sequentially and consume time based on their millisecond values
 - **User Events** (userInputs, userEdits, userCommand) can execute concurrently with agent events
 - **Test Events** (assert, screenshot) execute at specific timeline points
@@ -337,7 +360,7 @@ simulation and tool execution.
 
 **Event Processing Summary:**
 
-- `llmResponse` → Mock-Agent (simulated output only)
+- `llmResponse` → Mock-Agent (simulated output only, including error responses)
 - `agentActions` → Mock-Agent (real execution)
 - `userActions` → Test Executor (simulated user interactions)
 - Test/Control events → Test Executor
@@ -398,7 +421,7 @@ and tool use.
 **Event Processing Summary:**
 
 - `llmResponse` → Mock LLM API Server (converted to real API responses for the
-  agent)
+  agent, including error responses)
 - `agentActions` → Real Agent (executes actual tools and file operations)
 - `userActions` → Test Executor (simulates user interactions with real agent)
 - Test/Control events → Test Executor
@@ -440,13 +463,13 @@ event streaming behavior with realistic timing.
 
 **Test Executor:**
 
-- May be used to simulate a stremed events sessions with a remote Agent Harbor REST server
+- May be used to simulate a streamed events sessions with a remote Agent Harbor REST server
 - Doesn't process `assert` events in this mode as real-side effects are not produced.
 - Handles `screenshot` events if testing visual components
 
 **Event Processing Summary:**
 
-- `llmResponse` → Mock API Server (streamed as SSE events)
+- `llmResponse` → Mock API Server (streamed as SSE events, including error events)
 - `agentActions` → Mock API Server (simulated execution via `toolExecution`
   details)
 - `userActions` → Mock API Server (streamed as user interaction events)
@@ -454,7 +477,7 @@ event streaming behavior with realistic timing.
 
 **Example Timeline:**
 
-```yaml
+````yaml
 timeline:
   # LLM Response Events - API level interactions
   - llmResponse:
@@ -506,7 +529,19 @@ timeline:
         exists: ['main.py']
   - screenshot: 'after_edits'
   - advanceMs: 1000 # Must be >= max concurrent event times
-```
+
+**Example with Error Response:**
+
+```yaml
+timeline:
+  # LLM response that generates an error
+  - llmResponse:
+      - error:
+          errorType: 'rate_limit_exceeded'
+          statusCode: 429
+          message: 'Rate limit exceeded. Please try again later.'
+          retryAfterSeconds: 60
+````
 
 **Example with Tool Execution Details (Simulation Mode):**
 
@@ -556,7 +591,7 @@ timeline:
   # User interaction during execution
   - userActions:
       - userInputs:
-          - [700, 'q']  # User presses 'q' during test execution
+          - [700, 'q'] # User presses 'q' during test execution
         target: 'tui'
 
   - advanceMs: 1000
@@ -564,6 +599,11 @@ timeline:
 
 **Timing Rules:**
 
+- **Timeline Progression**: Time advances through `advanceMs` events, which set the
+  absolute timestamp for subsequent events
+- **Delta Timing**: Numeric time values within event blocks (thinking pairs,
+  progress updates, tool execution events, etc.) are millisecond deltas from
+  the absolute timestamp established by the most recent `advanceMs` event
 - Agent events never overlap (sequential execution)
 - User and test events can execute concurrently with agent events
 - `advanceMs` ensures proper synchronization: `advanceMs >= max(time_from_concurrent_events)`
