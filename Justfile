@@ -260,7 +260,8 @@ build-overlay-test-binaries:
 
 # Build interpose shim test binaries (agentfs-interpose-test-helper, agentfs-interpose-mock-daemon)
 build-interpose-test-binaries:
-    echo "Interpose test binaries moved to agentfs-interpose-e2e-tests crate - run separately"
+    cargo build --bin agentfs-interpose-test-helper --bin agentfs-interpose-mock-daemon
+    cargo build -p agentfs-interpose-shim
 
 # Build sbx-helper binary
 build-sbx-helper:
