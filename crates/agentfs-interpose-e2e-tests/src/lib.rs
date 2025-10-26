@@ -1,45 +1,91 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
-#![cfg(target_os = "macos")]
 
 pub mod handshake;
 
+use ssz::{Decode, Encode};
+
+// Common functions available on all platforms
+pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
+    data.as_ssz_bytes()
+}
+
+pub fn decode_ssz_message<T: Decode>(data: &[u8]) -> Result<T, ssz::DecodeError> {
+    T::from_ssz_bytes(data)
+}
+
+pub fn find_daemon_path() -> std::path::PathBuf {
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("target")
+        .join(&profile);
+
+    let direct = root.join("agentfs-interpose-mock-daemon");
+    assert!(
+        direct.exists(),
+        "Mock daemon binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.",
+        direct.display()
+    );
+
+    direct
+}
+
+#[cfg(target_os = "macos")]
 use once_cell::sync::{Lazy, OnceCell};
+#[cfg(target_os = "macos")]
 use std::collections::HashMap;
+#[cfg(target_os = "macos")]
 use std::ffi::{CStr, OsStr};
+#[cfg(target_os = "macos")]
 use std::io::{BufRead, Read, Write};
+#[cfg(target_os = "macos")]
 use std::os::fd::AsRawFd;
+#[cfg(target_os = "macos")]
 use std::os::unix::io::RawFd;
+#[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
+#[cfg(target_os = "macos")]
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::Command;
+#[cfg(target_os = "macos")]
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "macos")]
 use std::time::Duration;
+#[cfg(target_os = "macos")]
 use std::{fs, thread};
 
+#[cfg(target_os = "macos")]
 use agentfs_proto::*;
+#[cfg(target_os = "macos")]
 use handshake::*;
-use ssz::{Decode, Encode};
 
 // For dlsym to get original function pointers
 #[cfg(target_os = "macos")]
 use libc::{RTLD_NEXT, dlsym};
 
+#[cfg(target_os = "macos")]
 const LOG_PREFIX: &str = "[agentfs-interpose-e2e]";
+#[cfg(target_os = "macos")]
 const DEFAULT_BANNER: &str = "AgentFS interpose shim loaded";
 
+#[cfg(target_os = "macos")]
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
 #[cfg(target_os = "macos")]
 static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 static ENV_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
+#[cfg(target_os = "macos")]
 #[cfg(test)]
 fn set_env_var(key: &str, value: &str) {
     unsafe { std::env::set_var(key, value) };
 }
 
+#[cfg(target_os = "macos")]
 fn remove_env_var(key: &str) {
     unsafe { std::env::remove_var(key) };
 }
@@ -54,7 +100,12 @@ fn remove_env_var(key: &str) {
 ///
 /// The test_helper binary itself contains rich assertions and will exit with
 /// non-zero status if AgentFS behavior doesn't match expectations.
-fn execute_test_scenario(socket_path: &std::path::Path, command: &str, args: &[&str]) -> std::process::ExitStatus {
+#[cfg(target_os = "macos")]
+fn execute_test_scenario(
+    socket_path: &std::path::Path,
+    command: &str,
+    args: &[&str],
+) -> std::process::ExitStatus {
     let helper = find_helper_binary();
 
     // Make sure the main test process doesn't try to handshake
@@ -78,8 +129,7 @@ fn execute_test_scenario(socket_path: &std::path::Path, command: &str, args: &[&
         cmd.arg(arg);
     }
 
-    let output = cmd.output()
-        .expect(&format!("failed to run {} test", command));
+    let output = cmd.output().expect(&format!("failed to run {} test", command));
 
     println!("Test stdout: {}", String::from_utf8_lossy(&output.stdout));
     println!("Test stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -96,7 +146,11 @@ fn execute_test_scenario(socket_path: &std::path::Path, command: &str, args: &[&
 ///
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
-fn query_daemon_state_structured(socket_path: &std::path::Path, request: Request) -> Result<Response, String> {
+#[cfg(target_os = "macos")]
+fn query_daemon_state_structured(
+    socket_path: &std::path::Path,
+    request: Request,
+) -> Result<Response, String> {
     use std::os::unix::net::UnixStream;
 
     let mut stream = UnixStream::connect(socket_path)
@@ -127,12 +181,18 @@ fn query_daemon_state_structured(socket_path: &std::path::Path, request: Request
 
     let handshake_bytes = encode_ssz_message(&handshake);
     let handshake_len = handshake_bytes.len() as u32;
-    stream.write_all(&handshake_len.to_le_bytes()).map_err(|e| format!("Send handshake length: {}", e))?;
-    stream.write_all(&handshake_bytes).map_err(|e| format!("Send handshake: {}", e))?;
+    stream
+        .write_all(&handshake_len.to_le_bytes())
+        .map_err(|e| format!("Send handshake length: {}", e))?;
+    stream
+        .write_all(&handshake_bytes)
+        .map_err(|e| format!("Send handshake: {}", e))?;
 
     // Read handshake ack
     let mut ack_buf = [0u8; 3];
-    stream.read_exact(&mut ack_buf).map_err(|e| format!("Read handshake ack: {}", e))?;
+    stream
+        .read_exact(&mut ack_buf)
+        .map_err(|e| format!("Read handshake ack: {}", e))?;
     let ack = String::from_utf8_lossy(&ack_buf);
     if !ack.contains("OK") {
         return Err(format!("Handshake failed: {}", ack));
@@ -143,41 +203,42 @@ fn query_daemon_state_structured(socket_path: &std::path::Path, request: Request
     let request_len = request_bytes.len() as u32;
     let length_bytes = request_len.to_le_bytes();
 
-    stream.write_all(&length_bytes).map_err(|e| format!("Send request length: {}", e))?;
+    stream
+        .write_all(&length_bytes)
+        .map_err(|e| format!("Send request length: {}", e))?;
     stream.write_all(&request_bytes).map_err(|e| format!("Send request: {}", e))?;
 
     // Read response
     let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).map_err(|e| format!("Read response length: {}", e))?;
+    stream
+        .read_exact(&mut len_buf)
+        .map_err(|e| format!("Read response length: {}", e))?;
     let response_len = u32::from_le_bytes(len_buf) as usize;
     let mut response_buf = vec![0u8; response_len];
-    stream.read_exact(&mut response_buf).map_err(|e| format!("Read response: {}", e))?;
+    stream
+        .read_exact(&mut response_buf)
+        .map_err(|e| format!("Read response: {}", e))?;
 
     decode_ssz_message::<Response>(&response_buf)
         .map_err(|e| format!("Failed to decode response: {:?}", e))
 }
 
+#[cfg(target_os = "macos")]
 fn log_message(msg: &str) {
     eprintln!("{} {}", LOG_PREFIX, msg);
 }
 
+#[cfg(target_os = "macos")]
 fn encode_ssz<T: Encode>(value: &T) -> Vec<u8> {
     value.as_ssz_bytes()
 }
 
+#[cfg(target_os = "macos")]
 fn decode_ssz<T: Decode>(bytes: &[u8]) -> Result<T, ssz::DecodeError> {
     T::from_ssz_bytes(bytes)
 }
 
-// SSZ encoding/decoding functions for interpose communication
-pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
-    data.as_ssz_bytes()
-}
-
-pub fn decode_ssz_message<T: Decode>(data: &[u8]) -> Result<T, ssz::DecodeError> {
-    T::from_ssz_bytes(data)
-}
-
+#[cfg(target_os = "macos")]
 pub fn find_dylib_path() -> PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -209,6 +270,7 @@ pub fn find_dylib_path() -> PathBuf {
     );
 }
 
+#[cfg(target_os = "macos")]
 pub fn find_helper_binary() -> PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -227,24 +289,7 @@ pub fn find_helper_binary() -> PathBuf {
     direct
 }
 
-pub fn find_daemon_path() -> PathBuf {
-    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("target")
-        .join(&profile);
-
-    let direct = root.join("agentfs-interpose-mock-daemon");
-    assert!(
-        direct.exists(),
-        "Mock daemon binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.",
-        direct.display()
-    );
-
-    direct
-}
-
+#[cfg(target_os = "macos")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,35 +506,44 @@ mod tests {
         // Execute the test scenario - the helper binary tests file operations
         // File operations may fail due to FsCore/real filesystem disconnect, but interposition works
         let small_file = test_dir.join("small.txt");
-        let status = execute_test_scenario(&socket_path, "basic-open", &[small_file.to_str().unwrap()]);
+        let status =
+            execute_test_scenario(&socket_path, "basic-open", &[small_file.to_str().unwrap()]);
 
         // The test should complete - file operations may fail but interposition should work
         // We accept both success and failure with exit code 1 (from file access issues)
-        assert!(status.success() || status.code() == Some(1), "File operations test should complete");
+        assert!(
+            status.success() || status.code() == Some(1),
+            "File operations test should complete"
+        );
 
         // Verify daemon state - should have registered the test process
-        let processes_response = query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
+        let processes_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
         match processes_response {
-            Response::DaemonState(DaemonStateResponseWrapper { response }) => {
-                match response {
-                    DaemonStateResponse::Processes(processes) => {
-                        println!("Daemon processes state: {} processes", processes.len());
-                        assert!(processes.iter().any(|p| p.os_pid == 12345), "Daemon should have registered the test process");
-                    }
-                    _ => panic!("Expected processes response"),
+            Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
+                DaemonStateResponse::Processes(processes) => {
+                    println!("Daemon processes state: {} processes", processes.len());
+                    assert!(
+                        processes.iter().any(|p| p.os_pid == 12345),
+                        "Daemon should have registered the test process"
+                    );
                 }
-            }
+                _ => panic!("Expected processes response"),
+            },
             _ => panic!("Expected daemon state response"),
         }
 
         // Verify daemon stats - should show some activity
-        let stats_response = query_daemon_state_structured(&socket_path, Request::daemon_state_stats()).unwrap();
+        let stats_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_stats()).unwrap();
         match stats_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::Stats(stats) => {
-                        println!("Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
-                                stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage);
+                        println!(
+                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
+                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        );
                         // Stats should be valid (non-negative values)
                         assert!(stats.branches >= 0, "Branches should be non-negative");
                         assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
@@ -507,18 +561,31 @@ mod tests {
 
         // Test filesystem state query - should show that FsCore state capture works
         // File operations may not create persistent state due to FsCore/real filesystem disconnect
-        let fs_response = query_daemon_state_structured(&socket_path, Request::daemon_state_filesystem(5, true, 1024)).unwrap();
+        let fs_response = query_daemon_state_structured(
+            &socket_path,
+            Request::daemon_state_filesystem(5, true, 1024),
+        )
+        .unwrap();
         match fs_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::FilesystemState(filesystem_state) => {
-                        println!("Daemon filesystem state: {} entries", filesystem_state.entries.len());
+                        println!(
+                            "Daemon filesystem state: {} entries",
+                            filesystem_state.entries.len()
+                        );
 
                         // Verify that FsCore state capture works - it should contain at least the root
-                        assert!(!filesystem_state.entries.is_empty(), "Filesystem state should contain some entries");
+                        assert!(
+                            !filesystem_state.entries.is_empty(),
+                            "Filesystem state should contain some entries"
+                        );
 
                         // Verify the state capture mechanism works
-                        println!("Verified FsCore filesystem state capture works ({} entries)", filesystem_state.entries.len());
+                        println!(
+                            "Verified FsCore filesystem state capture works ({} entries)",
+                            filesystem_state.entries.len()
+                        );
                     }
                     _ => panic!("Expected filesystem response"),
                 }
@@ -556,34 +623,40 @@ mod tests {
         let file1 = test_dir.join("file1.txt");
         let file2 = test_dir.join("file2.txt");
         let file3 = test_dir.join("file3.txt");
-        let status = execute_test_scenario(&socket_path, "directory-ops", &[test_dir.to_str().unwrap()]);
+        let status =
+            execute_test_scenario(&socket_path, "directory-ops", &[test_dir.to_str().unwrap()]);
 
         // Verify the helper program executed successfully
         assert!(status.success(), "Directory operations test should succeed");
 
         // Verify daemon state - should have registered the test process
-        let processes_response = query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
+        let processes_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
         match processes_response {
-            Response::DaemonState(DaemonStateResponseWrapper { response }) => {
-                match response {
-                    DaemonStateResponse::Processes(processes) => {
-                        println!("Daemon processes state: {} processes", processes.len());
-                        assert!(processes.iter().any(|p| p.os_pid == 12345), "Daemon should have registered the test process");
-                    }
-                    _ => panic!("Expected processes response"),
+            Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
+                DaemonStateResponse::Processes(processes) => {
+                    println!("Daemon processes state: {} processes", processes.len());
+                    assert!(
+                        processes.iter().any(|p| p.os_pid == 12345),
+                        "Daemon should have registered the test process"
+                    );
                 }
-            }
+                _ => panic!("Expected processes response"),
+            },
             _ => panic!("Expected daemon state response"),
         }
 
         // Verify daemon stats - should show some activity
-        let stats_response = query_daemon_state_structured(&socket_path, Request::daemon_state_stats()).unwrap();
+        let stats_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_stats()).unwrap();
         match stats_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::Stats(stats) => {
-                        println!("Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
-                                stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage);
+                        println!(
+                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
+                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        );
                         // Stats should be valid (non-negative values)
                         assert!(stats.branches >= 0, "Branches should be non-negative");
                         assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
@@ -601,16 +674,26 @@ mod tests {
         // Test filesystem state query - should show the files created by test_helper
         // Now that directory operations are fully delegated to FsCore, the files created by test_helper
         // through interposed operations should appear in FsCore's overlay
-        let fs_response = query_daemon_state_structured(&socket_path, Request::daemon_state_filesystem(5, true, 1024)).unwrap();
+        let fs_response = query_daemon_state_structured(
+            &socket_path,
+            Request::daemon_state_filesystem(5, true, 1024),
+        )
+        .unwrap();
         match fs_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::FilesystemState(filesystem_state) => {
-                        println!("Daemon filesystem state: {} entries", filesystem_state.entries.len());
+                        println!(
+                            "Daemon filesystem state: {} entries",
+                            filesystem_state.entries.len()
+                        );
 
                         // Directory operations work - files created by test_helper exist in FsCore
                         // but may not appear in filesystem state due to path resolution issues
-                        println!("Verified FsCore filesystem state capture works ({} entries)", filesystem_state.entries.len());
+                        println!(
+                            "Verified FsCore filesystem state capture works ({} entries)",
+                            filesystem_state.entries.len()
+                        );
                     }
                     _ => panic!("Expected filesystem response"),
                 }
@@ -647,42 +730,61 @@ mod tests {
 
         // Execute the test scenario - the helper binary tests readlink interposition
         // Readlink interposition may have issues, but the test verifies shim loading
-        let status = execute_test_scenario(&socket_path, "readlink-test", &["/nonexistent-symlink.txt"]);
+        let status =
+            execute_test_scenario(&socket_path, "readlink-test", &["/nonexistent-symlink.txt"]);
 
         // The test should complete - readlink interposition may fail but shim should load
         // We accept both success and failure with exit code 1 (from interposition issues)
-        assert!(status.success() || status.code() == Some(1), "Readlink test should complete");
+        assert!(
+            status.success() || status.code() == Some(1),
+            "Readlink test should complete"
+        );
 
         // Verify daemon state - should have registered the test process
-        let processes_response = query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
+        let processes_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
         match processes_response {
-            Response::DaemonState(DaemonStateResponseWrapper { response }) => {
-                match response {
-                    DaemonStateResponse::Processes(processes) => {
-                        println!("Daemon processes state: {} processes", processes.len());
-                        assert!(processes.iter().any(|p| p.os_pid == 12345), "Daemon should have registered the test process");
-                    }
-                    _ => panic!("Expected processes response"),
+            Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
+                DaemonStateResponse::Processes(processes) => {
+                    println!("Daemon processes state: {} processes", processes.len());
+                    assert!(
+                        processes.iter().any(|p| p.os_pid == 12345),
+                        "Daemon should have registered the test process"
+                    );
                 }
-            }
+                _ => panic!("Expected processes response"),
+            },
             _ => panic!("Expected daemon state response"),
         }
 
         // Test filesystem state query - should show that FsCore state capture works
         // Now that readlink operations are fully delegated to FsCore, we verify that
         // the state capture mechanism works properly
-        let fs_response = query_daemon_state_structured(&socket_path, Request::daemon_state_filesystem(5, true, 1024)).unwrap();
+        let fs_response = query_daemon_state_structured(
+            &socket_path,
+            Request::daemon_state_filesystem(5, true, 1024),
+        )
+        .unwrap();
         match fs_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::FilesystemState(filesystem_state) => {
-                        println!("Daemon filesystem state: {} entries", filesystem_state.entries.len());
+                        println!(
+                            "Daemon filesystem state: {} entries",
+                            filesystem_state.entries.len()
+                        );
 
                         // Verify that FsCore state capture works - it should contain at least the root
-                        assert!(!filesystem_state.entries.is_empty(), "Filesystem state should contain some entries");
+                        assert!(
+                            !filesystem_state.entries.is_empty(),
+                            "Filesystem state should contain some entries"
+                        );
 
                         // Verify the state capture mechanism works
-                        println!("Verified FsCore filesystem state capture works ({} entries)", filesystem_state.entries.len());
+                        println!(
+                            "Verified FsCore filesystem state capture works ({} entries)",
+                            filesystem_state.entries.len()
+                        );
                     }
                     _ => panic!("Expected filesystem response"),
                 }

@@ -25,10 +25,9 @@ use agentfs_proto::*;
 
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
-    DaemonStateProcessesRequest, DaemonStateStatsRequest, DaemonStateFilesystemRequest,
-    DaemonStateResponseWrapper, DaemonStateResponse, FilesystemQuery, FilesystemState,
-    FsStats, ProcessInfo, DirReadRequest, DirCloseRequest, FdDupRequest, PathOpRequest,
-    DirEntry,
+    DaemonStateFilesystemRequest, DaemonStateProcessesRequest, DaemonStateResponse,
+    DaemonStateResponseWrapper, DaemonStateStatsRequest, DirCloseRequest, DirEntry, DirReadRequest,
+    FdDupRequest, FilesystemQuery, FilesystemState, FsStats, PathOpRequest, ProcessInfo,
 };
 
 // Use handshake types and functions from the main crate
@@ -38,9 +37,9 @@ use agentfs_interpose_e2e_tests::{decode_ssz_message, encode_ssz_message};
 /// Real AgentFS daemon using the core filesystem
 struct AgentFsDaemon {
     core: FsCore,
-    processes: HashMap<u32, PID>, // pid -> registered PID
+    processes: HashMap<u32, PID>,       // pid -> registered PID
     opened_files: HashMap<String, u32>, // path -> open count (for testing)
-    opened_dirs: HashMap<String, u32>, // path -> open count (for testing)
+    opened_dirs: HashMap<String, u32>,  // path -> open count (for testing)
 }
 
 impl AgentFsDaemon {
@@ -143,7 +142,10 @@ impl AgentFsDaemon {
 
         match self.core.opendir(&pid, path_obj) {
             Ok(handle_id) => {
-                println!("AgentFsDaemon: FsCore opendir succeeded for {}, handle_id={}", path, handle_id.0);
+                println!(
+                    "AgentFsDaemon: FsCore opendir succeeded for {}, handle_id={}",
+                    path, handle_id.0
+                );
                 // Track the directory access for filesystem state verification
                 *self.opened_dirs.entry(path.clone()).or_insert(0) += 1;
                 Ok(handle_id.0 as u64) // Return FsCore handle ID
@@ -164,18 +166,27 @@ impl AgentFsDaemon {
 
         match self.core.readlink(&pid, path_obj) {
             Ok(target) => {
-                println!("AgentFsDaemon: FsCore readlink succeeded for {}, target: {}", path, target);
+                println!(
+                    "AgentFsDaemon: FsCore readlink succeeded for {}, target: {}",
+                    path, target
+                );
                 Ok(target)
             }
             Err(e) => {
-                println!("AgentFsDaemon: FsCore readlink failed for {}: {:?}", path, e);
+                println!(
+                    "AgentFsDaemon: FsCore readlink failed for {}: {:?}",
+                    path, e
+                );
                 Err(format!("readlink failed: {:?}", e))
             }
         }
     }
 
     fn handle_dir_read(&mut self, handle: u64, client_pid: u32) -> Result<Vec<DirEntry>, String> {
-        println!("AgentFsDaemon: dir_read(handle={}, pid={})", handle, client_pid);
+        println!(
+            "AgentFsDaemon: dir_read(handle={}, pid={})",
+            handle, client_pid
+        );
 
         // Use FsCore to read from the directory handle
         let pid = agentfs_core::PID::new(client_pid);
@@ -183,14 +194,17 @@ impl AgentFsDaemon {
 
         match self.core.readdir(&pid, handle_id) {
             Ok(Some(entry)) => {
-                println!("AgentFsDaemon: dir_read succeeded, got entry: {}", entry.name);
+                println!(
+                    "AgentFsDaemon: dir_read succeeded, got entry: {}",
+                    entry.name
+                );
                 // Convert from agentfs_core::DirEntry to agentfs_proto::messages::DirEntry
                 let proto_entry = DirEntry {
                     name: entry.name.into_bytes(),
                     kind: match entry.is_dir {
                         true => 1, // directory
                         false => match entry.is_symlink {
-                            true => 2, // symlink
+                            true => 2,  // symlink
                             false => 0, // file
                         },
                     },
@@ -209,7 +223,10 @@ impl AgentFsDaemon {
     }
 
     fn handle_dir_close(&mut self, handle: u64, client_pid: u32) -> Result<(), String> {
-        println!("AgentFsDaemon: dir_close(handle={}, pid={})", handle, client_pid);
+        println!(
+            "AgentFsDaemon: dir_close(handle={}, pid={})",
+            handle, client_pid
+        );
 
         // Use FsCore to close the directory handle
         let pid = agentfs_core::PID::new(client_pid);
@@ -236,8 +253,17 @@ impl AgentFsDaemon {
         Ok(fd)
     }
 
-    fn handle_path_op(&mut self, path: String, operation: String, args: Option<Vec<u8>>, client_pid: u32) -> Result<Option<String>, String> {
-        println!("AgentFsDaemon: path_op(path={}, op={}, pid={})", path, operation, client_pid);
+    fn handle_path_op(
+        &mut self,
+        path: String,
+        operation: String,
+        args: Option<Vec<u8>>,
+        client_pid: u32,
+    ) -> Result<Option<String>, String> {
+        println!(
+            "AgentFsDaemon: path_op(path={}, op={}, pid={})",
+            path, operation, client_pid
+        );
 
         // Use FsCore to handle path operations
         let pid = agentfs_core::PID::new(client_pid);
@@ -265,10 +291,11 @@ impl AgentFsDaemon {
         }
     }
 
-
     /// Get processes state
     fn get_daemon_state_processes(&self) -> Result<DaemonStateResponseWrapper, String> {
-        let processes: Vec<agentfs_proto::ProcessInfo> = self.processes.iter()
+        let processes: Vec<agentfs_proto::ProcessInfo> = self
+            .processes
+            .iter()
             .map(|(os_pid, registered_pid)| agentfs_proto::ProcessInfo {
                 os_pid: *os_pid,
                 registered_pid: format!("{:?}", registered_pid).into_bytes(),
@@ -296,7 +323,10 @@ impl AgentFsDaemon {
     }
 
     /// Get filesystem state
-    fn get_daemon_state_filesystem(&self, query: &FilesystemQuery) -> Result<DaemonStateResponseWrapper, String> {
+    fn get_daemon_state_filesystem(
+        &self,
+        query: &FilesystemQuery,
+    ) -> Result<DaemonStateResponseWrapper, String> {
         let filesystem_state = self.capture_filesystem_state(query)?;
         Ok(DaemonStateResponseWrapper {
             response: DaemonStateResponse::FilesystemState(filesystem_state),
@@ -383,13 +413,21 @@ impl AgentFsDaemon {
                             }
                         }
                         Err(e) => {
-                            println!("AgentFsDaemon: failed to read directory {}: {:?}", current_path.display(), e);
+                            println!(
+                                "AgentFsDaemon: failed to read directory {}: {:?}",
+                                current_path.display(),
+                                e
+                            );
                         }
                     }
                 }
             }
             Err(e) => {
-                println!("AgentFsDaemon: failed to get attributes for {}: {:?}", current_path.display(), e);
+                println!(
+                    "AgentFsDaemon: failed to get attributes for {}: {:?}",
+                    current_path.display(),
+                    e
+                );
             }
         }
 
@@ -423,8 +461,9 @@ impl AgentFsDaemon {
                     }
 
                     let entry = if dir_entry.is_symlink {
-                        let target = self.core.readlink(pid, &full_path)
-                            .map_err(|e| format!("Failed to read symlink {}: {:?}", full_path.display(), e))?;
+                        let target = self.core.readlink(pid, &full_path).map_err(|e| {
+                            format!("Failed to read symlink {}: {:?}", full_path.display(), e)
+                        })?;
 
                         FilesystemEntry {
                             path: full_path.to_string_lossy().as_bytes().to_vec(),
@@ -435,7 +474,13 @@ impl AgentFsDaemon {
                         }
                     } else if dir_entry.is_dir {
                         // Recursively capture subdirectory
-                        self.capture_overlay_entries(pid, &full_path, query, current_depth + 1, entries)?;
+                        self.capture_overlay_entries(
+                            pid,
+                            &full_path,
+                            query,
+                            current_depth + 1,
+                            entries,
+                        )?;
 
                         FilesystemEntry {
                             path: full_path.to_string_lossy().as_bytes().to_vec(),
@@ -467,7 +512,9 @@ impl AgentFsDaemon {
 
                             if let Ok(handle_id) = self.core.open(pid, &full_path, &open_opts) {
                                 let mut buffer = vec![0u8; attrs.len as usize];
-                                if let Ok(bytes_read) = self.core.read(pid, handle_id, 0, &mut buffer) {
+                                if let Ok(bytes_read) =
+                                    self.core.read(pid, handle_id, 0, &mut buffer)
+                                {
                                     if bytes_read > 0 {
                                         entry.content = Some(buffer[..bytes_read].to_vec());
                                     }
@@ -487,7 +534,12 @@ impl AgentFsDaemon {
     }
 
     /// Capture directory structure from the real filesystem (for testing)
-    fn capture_directory_from_filesystem(&self, dir_path: &str, query: &FilesystemQuery, entries: &mut Vec<FilesystemEntry>) -> Result<(), String> {
+    fn capture_directory_from_filesystem(
+        &self,
+        dir_path: &str,
+        query: &FilesystemQuery,
+        entries: &mut Vec<FilesystemEntry>,
+    ) -> Result<(), String> {
         let path = std::path::Path::new(dir_path);
         if !path.exists() || !path.is_dir() {
             return Ok(());
@@ -507,7 +559,14 @@ impl AgentFsDaemon {
     }
 
     /// Recursively walk a directory and add entries
-    fn walk_directory_recursive(&self, full_path: &std::path::Path, relative_path: &str, query: &FilesystemQuery, depth: u32, entries: &mut Vec<FilesystemEntry>) -> Result<(), String> {
+    fn walk_directory_recursive(
+        &self,
+        full_path: &std::path::Path,
+        relative_path: &str,
+        query: &FilesystemQuery,
+        depth: u32,
+        entries: &mut Vec<FilesystemEntry>,
+    ) -> Result<(), String> {
         if depth >= query.max_depth {
             return Ok(());
         }
@@ -521,7 +580,11 @@ impl AgentFsDaemon {
                         let entry_relative_path = if relative_path == "/" {
                             format!("/{}", entry_name_owned)
                         } else {
-                            format!("{}/{}", relative_path.trim_end_matches('/'), entry_name_owned)
+                            format!(
+                                "{}/{}",
+                                relative_path.trim_end_matches('/'),
+                                entry_name_owned
+                            )
                         };
 
                         if entry_path.is_dir() {
@@ -535,7 +598,13 @@ impl AgentFsDaemon {
                             });
 
                             // Recurse into subdirectory
-                            self.walk_directory_recursive(&entry_path, &entry_relative_path, query, depth + 1, entries)?;
+                            self.walk_directory_recursive(
+                                &entry_path,
+                                &entry_relative_path,
+                                query,
+                                depth + 1,
+                                entries,
+                            )?;
                         } else if entry_path.is_file() {
                             // Add file with content if small enough
                             if let Ok(metadata) = entry_path.metadata() {
@@ -575,7 +644,12 @@ impl AgentFsDaemon {
     }
 
     /// Scan temp directory for test directories and files (for testing)
-    fn scan_for_test_dirs_and_files(&self, temp_path: &std::path::Path, query: &FilesystemQuery, entries: &mut Vec<FilesystemEntry>) -> Result<(), String> {
+    fn scan_for_test_dirs_and_files(
+        &self,
+        temp_path: &std::path::Path,
+        query: &FilesystemQuery,
+        entries: &mut Vec<FilesystemEntry>,
+    ) -> Result<(), String> {
         eprintln!("AgentFsDaemon: ENTERING scan_for_test_dirs_and_files");
         match std::fs::read_dir(temp_path) {
             Ok(dir_entries) => {
@@ -587,24 +661,46 @@ impl AgentFsDaemon {
                             found_dirs += 1;
                             // Check if this looks like a test directory
                             let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                            eprintln!("AgentFsDaemon: found dir: {} (len: {})", dir_name, dir_name.len());
+                            eprintln!(
+                                "AgentFsDaemon: found dir: {} (len: {})",
+                                dir_name,
+                                dir_name.len()
+                            );
                             let starts_with_tmp = dir_name.starts_with(".tmp");
                             let len_check = dir_name.len() >= 10;
                             let is_test_dir = dir_name == "agentfs_readlink_test";
-                            eprintln!("AgentFsDaemon: starts_with .tmp: {}, len >= 10: {}, is_test_dir: {}", starts_with_tmp, len_check, is_test_dir);
+                            eprintln!(
+                                "AgentFsDaemon: starts_with .tmp: {}, len >= 10: {}, is_test_dir: {}",
+                                starts_with_tmp, len_check, is_test_dir
+                            );
                             if (starts_with_tmp && len_check) || is_test_dir {
                                 // This looks like a temp directory created by the test
-                                eprintln!("AgentFsDaemon: CONDITION MET - scanning test temp dir: {}", dir_name);
-                                eprintln!("AgentFsDaemon: about to call scan_test_directory for path: {:?}", path);
+                                eprintln!(
+                                    "AgentFsDaemon: CONDITION MET - scanning test temp dir: {}",
+                                    dir_name
+                                );
+                                eprintln!(
+                                    "AgentFsDaemon: about to call scan_test_directory for path: {:?}",
+                                    path
+                                );
                                 match self.scan_test_directory(&path, query, entries) {
-                                    Ok(_) => eprintln!("AgentFsDaemon: scan_test_directory succeeded for {}", dir_name),
-                                    Err(e) => eprintln!("AgentFsDaemon: scan_test_directory failed for {}: {}", dir_name, e),
+                                    Ok(_) => eprintln!(
+                                        "AgentFsDaemon: scan_test_directory succeeded for {}",
+                                        dir_name
+                                    ),
+                                    Err(e) => eprintln!(
+                                        "AgentFsDaemon: scan_test_directory failed for {}: {}",
+                                        dir_name, e
+                                    ),
                                 }
                             }
                         }
                     }
                 }
-                println!("AgentFsDaemon: found {} directories in temp dir", found_dirs);
+                println!(
+                    "AgentFsDaemon: found {} directories in temp dir",
+                    found_dirs
+                );
                 Ok(())
             }
             Err(e) => {
@@ -615,9 +711,17 @@ impl AgentFsDaemon {
     }
 
     /// Scan a test directory for files and subdirectories
-    fn scan_test_directory(&self, dir_path: &std::path::Path, query: &FilesystemQuery, entries: &mut Vec<FilesystemEntry>) -> Result<(), String> {
+    fn scan_test_directory(
+        &self,
+        dir_path: &std::path::Path,
+        query: &FilesystemQuery,
+        entries: &mut Vec<FilesystemEntry>,
+    ) -> Result<(), String> {
         let dir_path_str = dir_path.to_string_lossy().to_string();
-        eprintln!("AgentFsDaemon: === SCANNING TEST DIRECTORY: {} ===", dir_path_str);
+        eprintln!(
+            "AgentFsDaemon: === SCANNING TEST DIRECTORY: {} ===",
+            dir_path_str
+        );
 
         // Add the directory itself
         entries.push(FilesystemEntry {
@@ -635,7 +739,10 @@ impl AgentFsDaemon {
                 let mut found_symlinks = 0;
                 eprintln!("AgentFsDaemon: reading directory: {}", dir_path.display());
                 let all_entries: Vec<_> = contents.collect();
-                eprintln!("AgentFsDaemon: directory has {} total entries", all_entries.len());
+                eprintln!(
+                    "AgentFsDaemon: directory has {} total entries",
+                    all_entries.len()
+                );
 
                 for (i, entry) in all_entries.iter().enumerate() {
                     eprintln!("AgentFsDaemon: entry {}: {:?}", i, entry);
@@ -650,8 +757,15 @@ impl AgentFsDaemon {
                         if path.is_dir() {
                             if file_name == "test_dir" || file_name == "test_files" {
                                 // This is a test directory we want to capture
-                                println!("AgentFsDaemon: found test dir {}, capturing it", file_name);
-                                self.capture_directory_from_filesystem(&entry_path_str, query, entries)?;
+                                println!(
+                                    "AgentFsDaemon: found test dir {}, capturing it",
+                                    file_name
+                                );
+                                self.capture_directory_from_filesystem(
+                                    &entry_path_str,
+                                    query,
+                                    entries,
+                                )?;
                             } else {
                                 // Add the directory itself
                                 entries.push(FilesystemEntry {
@@ -698,16 +812,24 @@ impl AgentFsDaemon {
                         }
                     }
                 }
-                eprintln!("AgentFsDaemon: scan_test_directory found {} files, {} symlinks in {}", found_files, found_symlinks, dir_path.display());
+                eprintln!(
+                    "AgentFsDaemon: scan_test_directory found {} files, {} symlinks in {}",
+                    found_files,
+                    found_symlinks,
+                    dir_path.display()
+                );
                 Ok(())
             }
             Err(e) => {
-                eprintln!("AgentFsDaemon: failed to read directory {}: {:?}", dir_path.display(), e);
+                eprintln!(
+                    "AgentFsDaemon: failed to read directory {}: {:?}",
+                    dir_path.display(),
+                    e
+                );
                 Ok(())
             }
         }
     }
-
 }
 
 fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, client_pid: u32) {
@@ -756,190 +878,214 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
 
     // Try to decode as regular request
     match decode_ssz_message::<Request>(&msg_buf) {
-            Ok(request) => {
-                match request {
-                    Request::FdOpen((version, fd_open_req)) => {
-                        let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_fd_open(
-                            path,
-                            fd_open_req.flags,
-                            fd_open_req.mode,
-                            client_pid,
-                        ) {
-                            Ok(fd) => {
-                                // For now, send a simple success response with the fd number
-                                // TODO: Implement proper SCM_RIGHTS
-                                let response = Response::fd_open(fd as u32);
-                                send_response(&mut stream, &response);
-                                // Close our copy of the fd
-                                unsafe {
-                                    libc::close(fd);
-                                }
-                            }
-                            Err(e) => {
-                                let response =
-                                    Response::error(format!("fd_open failed: {}", e), Some(2));
-                                send_response(&mut stream, &response);
+        Ok(request) => {
+            match request {
+                Request::FdOpen((version, fd_open_req)) => {
+                    let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_fd_open(
+                        path,
+                        fd_open_req.flags,
+                        fd_open_req.mode,
+                        client_pid,
+                    ) {
+                        Ok(fd) => {
+                            // For now, send a simple success response with the fd number
+                            // TODO: Implement proper SCM_RIGHTS
+                            let response = Response::fd_open(fd as u32);
+                            send_response(&mut stream, &response);
+                            // Close our copy of the fd
+                            unsafe {
+                                libc::close(fd);
                             }
                         }
-                    }
-                    Request::DirOpen((version, dir_open_req)) => {
-                        let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_dir_open(path, client_pid) {
-                            Ok(handle) => {
-                                let response = Response::dir_open(handle);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                let response = Response::error(format!("dir_open failed: {}", e), Some(2));
-                                send_response(&mut stream, &response);
-                            }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fd_open failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
                         }
-                    }
-                    Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: version }) => {
-                        let daemon = daemon.lock().unwrap();
-                        match daemon.get_daemon_state_processes() {
-                            Ok(response) => {
-                                let response = Response::DaemonState(response);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                let response = Response::error(format!("daemon_state_processes failed: {}", e), Some(4));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::DaemonStateStats(DaemonStateStatsRequest { data: version }) => {
-                        let daemon = daemon.lock().unwrap();
-                        match daemon.get_daemon_state_stats() {
-                            Ok(response) => {
-                                let response = Response::DaemonState(response);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                let response = Response::error(format!("daemon_state_stats failed: {}", e), Some(4));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::Readlink((version, readlink_req)) => {
-                        let path = String::from_utf8_lossy(&readlink_req.path).to_string();
-                        println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_readlink(path, client_pid) {
-                            Ok(target) => {
-                                println!("AgentFsDaemon: readlink succeeded, target: {}", target);
-                                let response = Response::readlink(target);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                println!("AgentFsDaemon: readlink failed: {}", e);
-                                let response = Response::error(format!("readlink failed: {}", e), Some(2));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::DirRead((version, dir_read_req)) => {
-                        let handle = dir_read_req.handle;
-                        println!("AgentFsDaemon: dir_read(handle={})", handle);
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_dir_read(handle, client_pid) {
-                            Ok(entries) => {
-                                println!("AgentFsDaemon: dir_read succeeded, {} entries", entries.len());
-                                let response = Response::dir_read(entries);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                println!("AgentFsDaemon: dir_read failed: {}", e);
-                                let response = Response::error(format!("dir_read failed: {}", e), Some(3));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::DirClose((version, dir_close_req)) => {
-                        let handle = dir_close_req.handle;
-                        println!("AgentFsDaemon: dir_close(handle={})", handle);
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_dir_close(handle, client_pid) {
-                            Ok(()) => {
-                                println!("AgentFsDaemon: dir_close succeeded");
-                                let response = Response::dir_close();
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                println!("AgentFsDaemon: dir_close failed: {}", e);
-                                let response = Response::error(format!("dir_close failed: {}", e), Some(3));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::FdDup((version, fd_dup_req)) => {
-                        let fd = fd_dup_req.fd;
-                        println!("AgentFsDaemon: fd_dup(fd={})", fd);
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_fd_dup(fd, client_pid) {
-                            Ok(duped_fd) => {
-                                println!("AgentFsDaemon: fd_dup succeeded, new fd: {}", duped_fd);
-                                let response = Response::fd_dup(duped_fd);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                println!("AgentFsDaemon: fd_dup failed: {}", e);
-                                let response = Response::error(format!("fd_dup failed: {}", e), Some(2));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::PathOp((version, path_op_req)) => {
-                        let path = String::from_utf8_lossy(&path_op_req.path).to_string();
-                        let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
-                        println!("AgentFsDaemon: path_op(path={}, op={})", path, operation);
-                        let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_path_op(path, operation, path_op_req.args, client_pid) {
-                            Ok(result) => {
-                                println!("AgentFsDaemon: path_op succeeded");
-                                let response = Response::path_op(result);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                println!("AgentFsDaemon: path_op failed: {}", e);
-                                let response = Response::error(format!("path_op failed: {}", e), Some(4));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    Request::DaemonStateFilesystem(DaemonStateFilesystemRequest { query }) => {
-                        println!("AgentFsDaemon: processing filesystem state query with max_depth={}, include_overlay={}, max_file_size={}",
-                            query.max_depth, query.include_overlay, query.max_file_size);
-                        let daemon = daemon.lock().unwrap();
-                        match daemon.get_daemon_state_filesystem(&query) {
-                            Ok(response) => {
-                                let entry_count = match &response.response {
-                                    DaemonStateResponse::FilesystemState(filesystem_state) => filesystem_state.entries.len(),
-                                    _ => 0,
-                                };
-                                println!("AgentFsDaemon: filesystem state query successful, {} entries", entry_count);
-                                let response = Response::DaemonState(response);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                println!("AgentFsDaemon: filesystem state query failed: {}", e);
-                                let response = Response::error(format!("daemon_state_filesystem failed: {}", e), Some(4));
-                                send_response(&mut stream, &response);
-                            }
-                        }
-                    }
-                    _ => {
-                        let response = Response::error("unsupported request".to_string(), Some(3));
-                        send_response(&mut stream, &response);
                     }
                 }
-            }
-            Err(e) => {
+                Request::DirOpen((version, dir_open_req)) => {
+                    let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dir_open(path, client_pid) {
+                        Ok(handle) => {
+                            let response = Response::dir_open(handle);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("dir_open failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: version }) => {
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.get_daemon_state_processes() {
+                        Ok(response) => {
+                            let response = Response::DaemonState(response);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(
+                                format!("daemon_state_processes failed: {}", e),
+                                Some(4),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DaemonStateStats(DaemonStateStatsRequest { data: version }) => {
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.get_daemon_state_stats() {
+                        Ok(response) => {
+                            let response = Response::DaemonState(response);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(
+                                format!("daemon_state_stats failed: {}", e),
+                                Some(4),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Readlink((version, readlink_req)) => {
+                    let path = String::from_utf8_lossy(&readlink_req.path).to_string();
+                    println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_readlink(path, client_pid) {
+                        Ok(target) => {
+                            println!("AgentFsDaemon: readlink succeeded, target: {}", target);
+                            let response = Response::readlink(target);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            println!("AgentFsDaemon: readlink failed: {}", e);
+                            let response =
+                                Response::error(format!("readlink failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DirRead((version, dir_read_req)) => {
+                    let handle = dir_read_req.handle;
+                    println!("AgentFsDaemon: dir_read(handle={})", handle);
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dir_read(handle, client_pid) {
+                        Ok(entries) => {
+                            println!(
+                                "AgentFsDaemon: dir_read succeeded, {} entries",
+                                entries.len()
+                            );
+                            let response = Response::dir_read(entries);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            println!("AgentFsDaemon: dir_read failed: {}", e);
+                            let response =
+                                Response::error(format!("dir_read failed: {}", e), Some(3));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DirClose((version, dir_close_req)) => {
+                    let handle = dir_close_req.handle;
+                    println!("AgentFsDaemon: dir_close(handle={})", handle);
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dir_close(handle, client_pid) {
+                        Ok(()) => {
+                            println!("AgentFsDaemon: dir_close succeeded");
+                            let response = Response::dir_close();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            println!("AgentFsDaemon: dir_close failed: {}", e);
+                            let response =
+                                Response::error(format!("dir_close failed: {}", e), Some(3));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::FdDup((version, fd_dup_req)) => {
+                    let fd = fd_dup_req.fd;
+                    println!("AgentFsDaemon: fd_dup(fd={})", fd);
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_fd_dup(fd, client_pid) {
+                        Ok(duped_fd) => {
+                            println!("AgentFsDaemon: fd_dup succeeded, new fd: {}", duped_fd);
+                            let response = Response::fd_dup(duped_fd);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            println!("AgentFsDaemon: fd_dup failed: {}", e);
+                            let response =
+                                Response::error(format!("fd_dup failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::PathOp((version, path_op_req)) => {
+                    let path = String::from_utf8_lossy(&path_op_req.path).to_string();
+                    let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
+                    println!("AgentFsDaemon: path_op(path={}, op={})", path, operation);
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_path_op(path, operation, path_op_req.args, client_pid) {
+                        Ok(result) => {
+                            println!("AgentFsDaemon: path_op succeeded");
+                            let response = Response::path_op(result);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            println!("AgentFsDaemon: path_op failed: {}", e);
+                            let response =
+                                Response::error(format!("path_op failed: {}", e), Some(4));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DaemonStateFilesystem(DaemonStateFilesystemRequest { query }) => {
+                    println!(
+                        "AgentFsDaemon: processing filesystem state query with max_depth={}, include_overlay={}, max_file_size={}",
+                        query.max_depth, query.include_overlay, query.max_file_size
+                    );
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.get_daemon_state_filesystem(&query) {
+                        Ok(response) => {
+                            let entry_count = match &response.response {
+                                DaemonStateResponse::FilesystemState(filesystem_state) => {
+                                    filesystem_state.entries.len()
+                                }
+                                _ => 0,
+                            };
+                            println!(
+                                "AgentFsDaemon: filesystem state query successful, {} entries",
+                                entry_count
+                            );
+                            let response = Response::DaemonState(response);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            println!("AgentFsDaemon: filesystem state query failed: {}", e);
+                            let response = Response::error(
+                                format!("daemon_state_filesystem failed: {}", e),
+                                Some(4),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                _ => {
+                    let response = Response::error("unsupported request".to_string(), Some(3));
+                    send_response(&mut stream, &response);
+                }
             }
         }
+        Err(e) => {}
+    }
 }
 
 fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
@@ -963,7 +1109,7 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
         unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as libc::c_uint) } as usize;
     let mut cmsg_buf = vec![0u8; cmsg_space];
     msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
-    msg.msg_controllen = cmsg_buf.len() as libc::c_uint;
+    msg.msg_controllen = cmsg_buf.len() as usize;
 
     let cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
     if cmsg.is_null() {
@@ -971,7 +1117,7 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
     }
 
     unsafe {
-        (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<RawFd>() as libc::c_uint);
+        (*cmsg).cmsg_len = std::mem::size_of::<libc::cmsghdr>() + std::mem::size_of::<RawFd>();
         (*cmsg).cmsg_level = libc::SOL_SOCKET;
         (*cmsg).cmsg_type = libc::SCM_RIGHTS;
         *(libc::CMSG_DATA(cmsg) as *mut RawFd) = fd;

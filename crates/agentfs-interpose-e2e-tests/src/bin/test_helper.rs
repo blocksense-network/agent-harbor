@@ -32,7 +32,9 @@ fn main() {
         }
         _ => {
             eprintln!("Unknown command: {}", command);
-            eprintln!("Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, dummy");
+            eprintln!(
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, dummy"
+            );
             std::process::exit(1);
         }
     }
@@ -54,7 +56,11 @@ fn test_basic_open(args: &[String]) {
         let test_content = b"Hello, World from interpose test!";
 
         // Create/truncate file using interposed open
-        let fd = libc::open(c_filename.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC, 0o644);
+        let fd = libc::open(
+            c_filename.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
         if fd < 0 {
             let err = std::io::Error::last_os_error();
             eprintln!("Failed to create file '{}': {}", filename, err);
@@ -62,7 +68,11 @@ fn test_basic_open(args: &[String]) {
         }
 
         // Write content using interposed write
-        let bytes_written = libc::write(fd, test_content.as_ptr() as *const libc::c_void, test_content.len());
+        let bytes_written = libc::write(
+            fd,
+            test_content.as_ptr() as *const libc::c_void,
+            test_content.len(),
+        );
         if bytes_written < 0 || bytes_written as usize != test_content.len() {
             let err = std::io::Error::last_os_error();
             eprintln!("Failed to write file: {}", err);
@@ -77,7 +87,10 @@ fn test_basic_open(args: &[String]) {
             std::process::exit(1);
         }
 
-        println!("Successfully created file with {} bytes", test_content.len());
+        println!(
+            "Successfully created file with {} bytes",
+            test_content.len()
+        );
     }
 
     // Now read back the file using interposed functions
@@ -115,12 +128,20 @@ fn test_basic_open(args: &[String]) {
         // Verify content matches what we wrote
         let expected_content = b"Hello, World from interpose test!";
         if bytes_read as usize != expected_content.len() {
-            eprintln!("Content length mismatch: expected {}, got {}", expected_content.len(), bytes_read);
+            eprintln!(
+                "Content length mismatch: expected {}, got {}",
+                expected_content.len(),
+                bytes_read
+            );
             libc::close(fd);
             std::process::exit(1);
         }
         if &buffer[..bytes_read as usize] != expected_content {
-            eprintln!("Content mismatch: expected {:?}, got {:?}", expected_content, &buffer[..bytes_read as usize]);
+            eprintln!(
+                "Content mismatch: expected {:?}, got {:?}",
+                expected_content,
+                &buffer[..bytes_read as usize]
+            );
             libc::close(fd);
             std::process::exit(1);
         }
@@ -343,23 +364,47 @@ fn test_directory_operations(args: &[String]) {
         let test_content3 = b"content3";
 
         // Create file1
-        let fd1 = libc::open(c_file1.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC, 0o644);
+        let fd1 = libc::open(
+            c_file1.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
         if fd1 >= 0 {
-            libc::write(fd1, test_content1.as_ptr() as *const libc::c_void, test_content1.len());
+            libc::write(
+                fd1,
+                test_content1.as_ptr() as *const libc::c_void,
+                test_content1.len(),
+            );
             libc::close(fd1);
         }
 
         // Create file2
-        let fd2 = libc::open(c_file2.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC, 0o644);
+        let fd2 = libc::open(
+            c_file2.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
         if fd2 >= 0 {
-            libc::write(fd2, test_content2.as_ptr() as *const libc::c_void, test_content2.len());
+            libc::write(
+                fd2,
+                test_content2.as_ptr() as *const libc::c_void,
+                test_content2.len(),
+            );
             libc::close(fd2);
         }
 
         // Create file3
-        let fd3 = libc::open(c_file3.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC, 0o644);
+        let fd3 = libc::open(
+            c_file3.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
         if fd3 >= 0 {
-            libc::write(fd3, test_content3.as_ptr() as *const libc::c_void, test_content3.len());
+            libc::write(
+                fd3,
+                test_content3.as_ptr() as *const libc::c_void,
+                test_content3.len(),
+            );
             libc::close(fd3);
         }
 
@@ -396,7 +441,10 @@ fn test_directory_operations(args: &[String]) {
 
         // Directory operations completed successfully - files may exist in FsCore overlay
         // but directory listing shows real filesystem contents (FsCore doesn't merge overlays)
-        println!("Directory listing completed - found {} entries", entry_count);
+        println!(
+            "Directory listing completed - found {} entries",
+            entry_count
+        );
 
         // Test closedir interception
         println!("Testing closedir interception...");
@@ -407,7 +455,10 @@ fn test_directory_operations(args: &[String]) {
             std::process::exit(1);
         }
 
-        println!("Directory operations completed successfully - found {} entries", entry_count);
+        println!(
+            "Directory operations completed successfully - found {} entries",
+            entry_count
+        );
     }
 }
 
@@ -426,11 +477,7 @@ fn test_readlink(args: &[String]) {
         // Test readlink interception on the specified path
         // This will test that readlink is properly interposed even if the symlink doesn't exist
         let mut buffer = [0i8; 4096]; // 4KB buffer for link target
-        let result = libc::readlink(
-            c_link_path.as_ptr(),
-            buffer.as_mut_ptr(),
-            buffer.len(),
-        );
+        let result = libc::readlink(c_link_path.as_ptr(), buffer.as_mut_ptr(), buffer.len());
 
         // readlink should fail for a non-existent symlink, but the interposition should work
         if result >= 0 {
@@ -439,12 +486,16 @@ fn test_readlink(args: &[String]) {
             let target = std::str::from_utf8(std::slice::from_raw_parts(
                 buffer.as_ptr() as *const u8,
                 target_len,
-            )).unwrap_or("<invalid utf8>");
+            ))
+            .unwrap_or("<invalid utf8>");
             println!("readlink unexpectedly succeeded - target: {}", target);
         } else {
             // Expected case: readlink fails for non-existent symlink
             let err = std::io::Error::last_os_error();
-            println!("readlink failed as expected (symlink doesn't exist): {}", err);
+            println!(
+                "readlink failed as expected (symlink doesn't exist): {}",
+                err
+            );
         }
 
         println!("Readlink interposition test completed successfully!");

@@ -13,14 +13,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-
 // SSZ imports
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
 
 // AgentFS proto imports
-use agentfs_proto::*;
 use agentfs_proto::messages::DirEntry;
+use agentfs_proto::*;
 
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
@@ -409,16 +408,22 @@ mod interpose {
     fn send_dir_open_request(path: &CStr) -> Result<u64, String> {
         let stream_arc = {
             let stream_guard = STREAM.lock().unwrap();
-            log_message(&format!("STREAM.lock() returned: {:?}", stream_guard.as_ref().map(|_| "Some(arc)")));
+            log_message(&format!(
+                "STREAM.lock() returned: {:?}",
+                stream_guard.as_ref().map(|_| "Some(arc)")
+            ));
             match stream_guard.as_ref() {
                 Some(arc) => {
                     log_message("STREAM found, sending dir_open request");
                     Arc::clone(arc)
-                },
+                }
                 None => {
-                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original opendir");
@@ -436,7 +441,9 @@ mod interpose {
 
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+            stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes))
                 .map_err(|e| format!("send dir_open request: {e}"))?;
         }
 
@@ -445,29 +452,34 @@ mod interpose {
         let mut msg_buf: Vec<u8>;
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read response length: {e}"))?;
+            stream_guard
+                .read_exact(&mut len_buf)
+                .map_err(|e| format!("read response length: {e}"))?;
             let msg_len = u32::from_le_bytes(len_buf) as usize;
             msg_buf = vec![0u8; msg_len];
-            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read response: {e}"))?;
+            stream_guard
+                .read_exact(&mut msg_buf)
+                .map_err(|e| format!("read response: {e}"))?;
         }
 
         // Decode the response
         let dir_handle = match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => {
-                match response {
-                    Response::DirOpen(dir_response) => {
-                        let handle = dir_response.handle;
-                        log_message(&format!("received dir handle {}", handle));
-                        handle
-                    }
-                    Response::Error(err) => {
-                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
-                    }
-                    _ => {
-                        return Err("unexpected response type".to_string());
-                    }
+            Ok(response) => match response {
+                Response::DirOpen(dir_response) => {
+                    let handle = dir_response.handle;
+                    log_message(&format!("received dir handle {}", handle));
+                    handle
                 }
-            }
+                Response::Error(err) => {
+                    return Err(format!(
+                        "daemon error: {}",
+                        String::from_utf8_lossy(&err.error)
+                    ));
+                }
+                _ => {
+                    return Err("unexpected response type".to_string());
+                }
+            },
             Err(e) => {
                 return Err(format!("decode response failed: {:?}", e));
             }
@@ -483,9 +495,12 @@ mod interpose {
             match stream_guard.as_ref() {
                 Some(arc) => Arc::clone(arc),
                 None => {
-                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original readdir");
@@ -501,7 +516,9 @@ mod interpose {
 
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+            stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes))
                 .map_err(|e| format!("send dir_read request: {e}"))?;
         }
 
@@ -510,28 +527,36 @@ mod interpose {
         let mut msg_buf: Vec<u8>;
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read dir_read response length: {e}"))?;
+            stream_guard
+                .read_exact(&mut len_buf)
+                .map_err(|e| format!("read dir_read response length: {e}"))?;
             let msg_len = u32::from_le_bytes(len_buf) as usize;
             msg_buf = vec![0u8; msg_len];
-            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read dir_read response: {e}"))?;
+            stream_guard
+                .read_exact(&mut msg_buf)
+                .map_err(|e| format!("read dir_read response: {e}"))?;
         }
 
         // Decode the response
         let entries = match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => {
-                match response {
-                    Response::DirRead(dir_read_response) => {
-                        log_message(&format!("received {} directory entries", dir_read_response.entries.len()));
-                        dir_read_response.entries
-                    }
-                    Response::Error(err) => {
-                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
-                    }
-                    _ => {
-                        return Err("unexpected response type".to_string());
-                    }
+            Ok(response) => match response {
+                Response::DirRead(dir_read_response) => {
+                    log_message(&format!(
+                        "received {} directory entries",
+                        dir_read_response.entries.len()
+                    ));
+                    dir_read_response.entries
                 }
-            }
+                Response::Error(err) => {
+                    return Err(format!(
+                        "daemon error: {}",
+                        String::from_utf8_lossy(&err.error)
+                    ));
+                }
+                _ => {
+                    return Err("unexpected response type".to_string());
+                }
+            },
             Err(e) => {
                 return Err(format!("decode response failed: {:?}", e));
             }
@@ -547,9 +572,12 @@ mod interpose {
             match stream_guard.as_ref() {
                 Some(arc) => Arc::clone(arc),
                 None => {
-                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original closedir");
@@ -565,7 +593,9 @@ mod interpose {
 
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+            stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes))
                 .map_err(|e| format!("send dir_close request: {e}"))?;
         }
 
@@ -574,31 +604,30 @@ mod interpose {
         let mut msg_buf: Vec<u8>;
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read dir_close response length: {e}"))?;
+            stream_guard
+                .read_exact(&mut len_buf)
+                .map_err(|e| format!("read dir_close response length: {e}"))?;
             let msg_len = u32::from_le_bytes(len_buf) as usize;
             msg_buf = vec![0u8; msg_len];
-            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read dir_close response: {e}"))?;
+            stream_guard
+                .read_exact(&mut msg_buf)
+                .map_err(|e| format!("read dir_close response: {e}"))?;
         }
 
         // Decode the response
         match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => {
-                match response {
-                    Response::DirClose(_) => {
-                        log_message("received dir_close response");
-                        Ok(())
-                    }
-                    Response::Error(err) => {
-                        Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)))
-                    }
-                    _ => {
-                        Err("unexpected response type".to_string())
-                    }
+            Ok(response) => match response {
+                Response::DirClose(_) => {
+                    log_message("received dir_close response");
+                    Ok(())
                 }
-            }
-            Err(e) => {
-                Err(format!("decode response failed: {:?}", e))
-            }
+                Response::Error(err) => Err(format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                )),
+                _ => Err("unexpected response type".to_string()),
+            },
+            Err(e) => Err(format!("decode response failed: {:?}", e)),
         }
     }
 
@@ -606,16 +635,22 @@ mod interpose {
     fn send_readlink_request(path: &CStr) -> Result<String, String> {
         let stream_arc = {
             let stream_guard = STREAM.lock().unwrap();
-            log_message(&format!("STREAM.lock() returned: {:?}", stream_guard.as_ref().map(|_| "Some(arc)")));
+            log_message(&format!(
+                "STREAM.lock() returned: {:?}",
+                stream_guard.as_ref().map(|_| "Some(arc)")
+            ));
             match stream_guard.as_ref() {
                 Some(arc) => {
                     log_message("STREAM found, sending readlink request");
                     Arc::clone(arc)
-                },
+                }
                 None => {
-                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original readlink");
@@ -633,7 +668,9 @@ mod interpose {
 
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+            stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes))
                 .map_err(|e| format!("send readlink request: {e}"))?;
         }
 
@@ -642,29 +679,34 @@ mod interpose {
         let mut msg_buf: Vec<u8>;
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read response length: {e}"))?;
+            stream_guard
+                .read_exact(&mut len_buf)
+                .map_err(|e| format!("read response length: {e}"))?;
             let msg_len = u32::from_le_bytes(len_buf) as usize;
             msg_buf = vec![0u8; msg_len];
-            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read response: {e}"))?;
+            stream_guard
+                .read_exact(&mut msg_buf)
+                .map_err(|e| format!("read response: {e}"))?;
         }
 
         // Decode the response
         let link_target = match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => {
-                match response {
-                    Response::Readlink(readlink_response) => {
-                        let target = String::from_utf8_lossy(&readlink_response.target).into_owned();
-                        log_message(&format!("received link target '{}'", target));
-                        target
-                    }
-                    Response::Error(err) => {
-                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
-                    }
-                    _ => {
-                        return Err("unexpected response type".to_string());
-                    }
+            Ok(response) => match response {
+                Response::Readlink(readlink_response) => {
+                    let target = String::from_utf8_lossy(&readlink_response.target).into_owned();
+                    log_message(&format!("received link target '{}'", target));
+                    target
                 }
-            }
+                Response::Error(err) => {
+                    return Err(format!(
+                        "daemon error: {}",
+                        String::from_utf8_lossy(&err.error)
+                    ));
+                }
+                _ => {
+                    return Err("unexpected response type".to_string());
+                }
+            },
             Err(e) => {
                 return Err(format!("decode response failed: {:?}", e));
             }
@@ -1043,4 +1085,3 @@ mod interpose {
     // Note: _INODE64 variants are not implemented as they require symbol names with '$'
     // which is not valid in Rust function names. The base functions handle the common case.
 }
-

@@ -184,6 +184,9 @@ impl TuiArgs {
                 | TerminalEnvironment::Neovim
                 | TerminalEnvironment::Vim
                 | TerminalEnvironment::Emacs => {} // Continue checking
+                // Catch any other variants (e.g., platform-specific ones)
+                #[allow(unreachable_patterns)]
+                _ => {} // Continue checking
             }
         }
 

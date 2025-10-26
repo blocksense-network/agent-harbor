@@ -61,7 +61,7 @@ pub(crate) enum HandleType {
         deleted: bool, // For delete-on-close semantics
     },
     Directory {
-        position: usize, // Index into directory entries
+        position: usize,        // Index into directory entries
         entries: Vec<DirEntry>, // Cached directory entries
     },
 }
@@ -1407,7 +1407,10 @@ impl FsCore {
 
             // Only check file handles for share mode conflicts
             match &handle.kind {
-                HandleType::File { options: handle_options, deleted } => {
+                HandleType::File {
+                    options: handle_options,
+                    deleted,
+                } => {
                     if *deleted {
                         continue;
                     }

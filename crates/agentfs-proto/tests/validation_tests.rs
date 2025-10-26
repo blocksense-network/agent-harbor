@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use agentfs_proto::*;
-use ssz::{Encode, Decode};
+use ssz::{Decode, Encode};
 
 /// Helper function to encode SSZ messages for testing
 fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {

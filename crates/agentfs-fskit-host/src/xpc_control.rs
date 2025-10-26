@@ -76,9 +76,15 @@ impl XpcControlService {
             Request::Readlink(_) => todo!("Readlink not implemented for XPC control"),
             Request::PathOp(_) => todo!("PathOp not implemented for XPC control"),
             Request::InterposeSetGet(_) => todo!("InterposeSetGet not implemented for XPC control"),
-            Request::DaemonStateProcesses(_) => todo!("DaemonStateProcesses not implemented for XPC control"),
-            Request::DaemonStateStats(_) => todo!("DaemonStateStats not implemented for XPC control"),
-            Request::DaemonStateFilesystem(_) => todo!("DaemonStateFilesystem not implemented for XPC control"),
+            Request::DaemonStateProcesses(_) => {
+                todo!("DaemonStateProcesses not implemented for XPC control")
+            }
+            Request::DaemonStateStats(_) => {
+                todo!("DaemonStateStats not implemented for XPC control")
+            }
+            Request::DaemonStateFilesystem(_) => {
+                todo!("DaemonStateFilesystem not implemented for XPC control")
+            }
         }
     }
 
