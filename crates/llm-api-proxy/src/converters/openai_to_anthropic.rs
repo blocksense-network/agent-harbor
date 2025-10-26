@@ -75,6 +75,9 @@ pub fn convert_request(
         });
     }
 
+    // Validate message alternation after system message extraction
+    validate_message_alternation(&converted_messages, &mut warnings);
+
     #[allow(deprecated)]
     let legacy_max_tokens = request.max_tokens;
     let max_tokens = request
@@ -256,8 +259,50 @@ pub fn convert_stream_chunk(
         }));
     }
 
-    if choice.delta.tool_calls.as_ref().map(|calls| !calls.is_empty()).unwrap_or(false) {
-        warnings.push("Streaming tool call deltas are not currently converted".to_string());
+    // Handle streaming tool call deltas
+    if let Some(tool_calls) = &choice.delta.tool_calls {
+        if let Some(tool_call) = tool_calls.first() {
+            if let Some(function) = &tool_call.function {
+                // Handle tool call ID (start of tool call)
+                if let Some(id) = &tool_call.id {
+                    if let (Some(name), Some(arguments)) = (&function.name, &function.arguments) {
+                        // This is a complete tool call start - create ContentBlockStart
+                        if !arguments.is_empty() {
+                            // First send ContentBlockStart
+                            let start_event = anthropic::StreamEvent::ContentBlockStart {
+                                index: 0,
+                                content_block: anthropic::ContentBlock::ToolUse {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    input: serde_json::from_str(arguments)
+                                        .unwrap_or_else(|_| json!({})),
+                                },
+                            };
+                            return Ok(Some(ConversionResponse {
+                                payload: start_event,
+                                warnings,
+                            }));
+                        }
+                    }
+                } else {
+                    // Handle tool call argument continuation
+                    if let Some(arguments) = &function.arguments {
+                        if !arguments.is_empty() {
+                            let event = anthropic::StreamEvent::ContentBlockDelta {
+                                index: 0,
+                                delta: anthropic::ContentBlockDelta::InputJsonDelta {
+                                    partial_json: arguments.clone(),
+                                },
+                            };
+                            return Ok(Some(ConversionResponse {
+                                payload: event,
+                                warnings,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(None)
@@ -352,6 +397,55 @@ pub fn convert_stream_event(
         payload: chunk,
         warnings,
     }))
+}
+
+/// Validate that messages alternate properly between user and assistant roles
+/// after system messages have been extracted to the system parameter
+fn validate_message_alternation(messages: &[anthropic::Message], warnings: &mut Vec<String>) {
+    use anthropic::Role;
+
+    if messages.is_empty() {
+        return;
+    }
+
+    // Check if first message is from assistant (should be user first, but assistant responses can start conversations)
+    if matches!(messages[0].role, Role::Assistant) {
+        warnings.push(
+            "Conversation starts with assistant message, which may indicate missing user context"
+                .to_string(),
+        );
+    }
+
+    // Validate alternation for the rest of the conversation
+    for (i, message) in messages.iter().enumerate() {
+        if i == 0 {
+            continue;
+        }
+
+        let prev_role = &messages[i - 1].role;
+        let curr_role = &message.role;
+
+        // Messages should alternate between User and Assistant
+        match (prev_role, curr_role) {
+            (Role::User, Role::Assistant) | (Role::Assistant, Role::User) => {
+                // Valid alternation
+            }
+            (Role::User, Role::User) => {
+                warnings.push(format!(
+                    "Consecutive user messages detected at positions {} and {}",
+                    i - 1,
+                    i
+                ));
+            }
+            (Role::Assistant, Role::Assistant) => {
+                warnings.push(format!(
+                    "Consecutive assistant messages detected at positions {} and {}",
+                    i - 1,
+                    i
+                ));
+            }
+        }
+    }
 }
 
 fn extract_system_content(
@@ -546,8 +640,15 @@ fn convert_image_part(image: openai::ImageUrl) -> Option<anthropic::ImageSource>
             media_type: media_type.to_string(),
             data,
         })
+    } else if url.starts_with("http://") || url.starts_with("https://") {
+        // Handle URL images - Anthropic supports URLs directly
+        Some(anthropic::ImageSource {
+            type_: "url".to_string(),
+            media_type: "image/jpeg".to_string(), // Default, could be inferred from URL
+            data: url,
+        })
     } else {
-        // Anthropic SDK currently expects inline base64 images.
+        // Unsupported image format
         None
     }
 }

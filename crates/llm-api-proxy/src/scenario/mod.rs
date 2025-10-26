@@ -1922,10 +1922,9 @@ impl ScenarioSession {
         if !tool_calls.is_empty() {
             let openai_tool_calls: Vec<serde_json::Value> = tool_calls
                 .into_iter()
-                .enumerate()
-                .map(|(idx, call)| {
+                .map(|call| {
                     serde_json::json!({
-                        "id": format!("call_{}", idx),
+                        "id": call.id,
                         "type": "function",
                         "function": {
                             "name": call.name,
@@ -1954,8 +1953,8 @@ impl ScenarioSession {
             "model": "gpt-4o-mini",
             "choices": choices,
             "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
                 "total_tokens": 150
             }
         });
@@ -1981,7 +1980,6 @@ impl ScenarioSession {
             content.push(serde_json::json!({
                 "type": "thinking",
                 "thinking": step.1,
-                "signature": format!("sig_{}", uuid::Uuid::new_v4().simple()),
             }));
         }
 
@@ -2167,8 +2165,7 @@ impl ScenarioSession {
                         "index": thinking_idx,
                         "content_block": {
                             "type": "thinking",
-                            "thinking": "",
-                            "signature": format!("sig_{}", uuid::Uuid::new_v4().simple())
+                            "thinking": ""
                         }
                     });
                     sse_events.push(format!(

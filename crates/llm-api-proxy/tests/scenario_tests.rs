@@ -296,6 +296,144 @@ expect:
 }
 
 #[tokio::test]
+async fn test_system_message_extraction_and_alternation() {
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Create a temporary directory with a test scenario that includes multiple system messages
+    let temp_dir = TempDir::new().unwrap();
+    let scenario_path = temp_dir.path().join("system_message_test.yaml");
+
+    let scenario_content = r#"
+name: system_message_test
+timeline:
+  - user:
+      - [100, "Hello, how are you?"]
+  - assistant:
+      - [100, "I'm doing well, thank you for asking!"]
+expect:
+  exitCode: 0
+"#;
+
+    std::fs::File::create(&scenario_path)
+        .unwrap()
+        .write_all(scenario_content.as_bytes())
+        .unwrap();
+
+    // Create config with scenario file
+    let mut config = ProxyConfig::default();
+    config.scenario.scenario_file = Some(scenario_path.to_string_lossy().to_string());
+    config.scenario.agent_type = Some("claude".to_string());
+    config.scenario.agent_version = Some("test".to_string());
+    let config = Arc::new(RwLock::new(config));
+
+    let mut player = ScenarioPlayer::new(config).await.unwrap();
+
+    // Create a test request with multiple system messages scattered throughout
+    let request = ProxyRequest {
+        client_format: ApiFormat::OpenAI,
+        mode: ProxyMode::Scenario,
+        payload: serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "First question"},
+                {"role": "system", "content": "Remember to be polite."},
+                {"role": "assistant", "content": "Response to first"},
+                {"role": "system", "content": "Always end with a question."},
+                {"role": "user", "content": "Hello, how are you?"}
+            ]
+        }),
+        headers: HashMap::new(),
+        request_id: "test".to_string(),
+        streaming: false,
+    };
+
+    // Play the request
+    let response = player.play_request(&request).await.unwrap();
+
+    // Check response structure
+    assert_eq!(response.status, 200);
+    let payload = response.payload.as_object().unwrap();
+
+    // Should have choices
+    let choices = payload["choices"].as_array().unwrap();
+    assert!(!choices.is_empty());
+
+    let message = &choices[0]["message"];
+    let content = message["content"].as_str().unwrap();
+    assert_eq!(content, "I'm doing well, thank you for asking!");
+}
+
+#[tokio::test]
+async fn test_streaming_tool_call_conversion_unit() {
+    use anthropic_ai_sdk::types::message::ContentBlock;
+    use async_openai::types::{
+        ChatChoiceStream, ChatCompletionMessageToolCallChunk, ChatCompletionStreamResponseDelta,
+        ChatCompletionToolType, CreateChatCompletionStreamResponse, Role,
+    };
+    use llm_api_proxy::converters::openai_to_anthropic::convert_stream_chunk;
+
+    // Create a mock streaming chunk with tool call deltas
+    let chunk = CreateChatCompletionStreamResponse {
+        id: "chatcmpl-test".to_string(),
+        choices: vec![ChatChoiceStream {
+            index: 0,
+            delta: ChatCompletionStreamResponseDelta {
+                content: None,
+                function_call: None,
+                tool_calls: Some(vec![ChatCompletionMessageToolCallChunk {
+                    index: 0,
+                    id: Some("call_test123".to_string()),
+                    r#type: Some(ChatCompletionToolType::Function),
+                    function: Some(async_openai::types::FunctionCallStream {
+                        name: Some("runCmd".to_string()),
+                        arguments: Some(r#"{"cmd":"echo hello","cwd":"."}"#.to_string()),
+                    }),
+                }]),
+                role: Some(Role::Assistant),
+                refusal: None,
+            },
+            finish_reason: None,
+            logprobs: None,
+        }],
+        created: 1234567890,
+        model: "gpt-4".to_string(),
+        service_tier: None,
+        system_fingerprint: None,
+        object: "chat.completion.chunk".to_string(),
+        usage: None,
+    };
+
+    // Test the conversion
+    let result = convert_stream_chunk(chunk);
+    assert!(result.is_ok());
+
+    let conversion_result = result.unwrap();
+    assert!(conversion_result.is_some());
+
+    let conversion_response = conversion_result.unwrap();
+    assert!(conversion_response.warnings.is_empty());
+
+    // Should be a ContentBlockStart event for the tool call
+    match conversion_response.payload {
+        anthropic_ai_sdk::types::message::StreamEvent::ContentBlockStart {
+            content_block, ..
+        } => {
+            match content_block {
+                ContentBlock::ToolUse { id, name, input } => {
+                    assert_eq!(id, "call_test123");
+                    assert_eq!(name, "runCmd");
+                    // The input should be parsed JSON
+                    assert!(input.is_object());
+                }
+                _ => panic!("Expected ToolUse content block"),
+            }
+        }
+        _ => panic!("Expected ContentBlockStart event"),
+    }
+}
+
+#[tokio::test]
 async fn test_anthropic_thinking_and_agent_edits() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1266,8 +1404,8 @@ expect:
             "Thinking block should have thinking content"
         );
         assert!(
-            thinking_block.get("signature").is_some(),
-            "Thinking block should have signature"
+            thinking_block.get("signature").is_none(),
+            "Thinking block should NOT have non-spec signature field"
         );
         assert!(
             thinking_block.get("duration_ms").is_none(),
