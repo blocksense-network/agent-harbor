@@ -70,8 +70,15 @@ impl XpcControlService {
             Request::BranchBind((_, req)) => self.handle_branch_bind(req).await,
             Request::FdOpen(_) => todo!("FdOpen not implemented for XPC control"),
             Request::FdDup(_) => todo!("FdDup not implemented for XPC control"),
+            Request::DirOpen(_) => todo!("DirOpen not implemented for XPC control"),
+            Request::DirRead(_) => todo!("DirRead not implemented for XPC control"),
+            Request::DirClose(_) => todo!("DirClose not implemented for XPC control"),
+            Request::Readlink(_) => todo!("Readlink not implemented for XPC control"),
             Request::PathOp(_) => todo!("PathOp not implemented for XPC control"),
             Request::InterposeSetGet(_) => todo!("InterposeSetGet not implemented for XPC control"),
+            Request::DaemonStateProcesses(_) => todo!("DaemonStateProcesses not implemented for XPC control"),
+            Request::DaemonStateStats(_) => todo!("DaemonStateStats not implemented for XPC control"),
+            Request::DaemonStateFilesystem(_) => todo!("DaemonStateFilesystem not implemented for XPC control"),
         }
     }
 

@@ -13,14 +13,21 @@ use ssz_derive::{Decode, Encode};
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 #[ssz(enum_behaviour = "union")]
 pub enum Request {
-    SnapshotCreate((Vec<u8>, SnapshotCreateRequest)), // (version, request)
-    SnapshotList(Vec<u8>),                            // version
-    BranchCreate((Vec<u8>, BranchCreateRequest)),     // (version, request)
-    BranchBind((Vec<u8>, BranchBindRequest)),         // (version, request)
-    FdOpen((Vec<u8>, FdOpenRequest)),                 // (version, request)
-    FdDup((Vec<u8>, FdDupRequest)),                   // (version, request)
-    PathOp((Vec<u8>, PathOpRequest)),                 // (version, request)
-    InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
+    SnapshotCreate((Vec<u8>, SnapshotCreateRequest)),    // (version, request)
+    SnapshotList(Vec<u8>),                               // version
+    BranchCreate((Vec<u8>, BranchCreateRequest)),        // (version, request)
+    BranchBind((Vec<u8>, BranchBindRequest)),            // (version, request)
+    FdOpen((Vec<u8>, FdOpenRequest)),                    // (version, request)
+    FdDup((Vec<u8>, FdDupRequest)),                      // (version, request)
+    DirOpen((Vec<u8>, DirOpenRequest)),                  // (version, request)
+    DirRead((Vec<u8>, DirReadRequest)),                  // (version, request)
+    DirClose((Vec<u8>, DirCloseRequest)),                // (version, request)
+    Readlink((Vec<u8>, ReadlinkRequest)),                // (version, request)
+    PathOp((Vec<u8>, PathOpRequest)),                    // (version, request)
+    InterposeSetGet((Vec<u8>, InterposeSetGetRequest)),  // (version, request)
+    DaemonStateProcesses(DaemonStateProcessesRequest),   // version - for testing
+    DaemonStateStats(DaemonStateStatsRequest),           // version - for testing
+    DaemonStateFilesystem(DaemonStateFilesystemRequest), // dummy data - for testing
 }
 
 /// Response union - operation-specific success responses or errors
@@ -33,8 +40,13 @@ pub enum Response {
     BranchBind(BranchBindResponse),
     FdOpen(FdOpenResponse),
     FdDup(FdDupResponse),
+    DirOpen(DirOpenResponse),
+    DirRead(DirReadResponse),
+    DirClose(DirCloseResponse),
+    Readlink(ReadlinkResponse),
     PathOp(PathOpResponse),
     InterposeSetGet(InterposeSetGetResponse),
+    DaemonState(DaemonStateResponseWrapper),
     Error(ErrorResponse),
 }
 
@@ -133,6 +145,158 @@ pub struct FdDupRequest {
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct FdDupResponse {
     pub fd: u32,
+}
+
+/// DirOpen request payload for directory operations
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirOpenRequest {
+    pub path: Vec<u8>,
+}
+
+/// DirOpen response payload with directory handle
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirOpenResponse {
+    pub handle: u64,
+}
+
+/// DirRead request payload for reading directory entries
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirReadRequest {
+    pub handle: u64,
+}
+
+/// DirRead response payload with directory entries
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirReadResponse {
+    pub entries: Vec<DirEntry>,
+}
+
+/// DirClose request payload for closing directory handles
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirCloseRequest {
+    pub handle: u64,
+}
+
+/// DirClose response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirCloseResponse {}
+
+/// Readlink request payload for reading symbolic links
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ReadlinkRequest {
+    pub path: Vec<u8>,
+}
+
+/// Readlink response payload with link target
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ReadlinkResponse {
+    pub target: Vec<u8>,
+}
+
+/// Directory entry information
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirEntry {
+    pub name: Vec<u8>,
+    pub kind: u8, // 0=file, 1=directory, 2=symlink
+}
+
+/// Empty struct for queries without parameters
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct EmptyQuery {
+    pub dummy: u8,
+}
+
+/// Wrapper for daemon state processes request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateProcessesRequest {
+    pub data: Vec<u8>,
+}
+
+/// Wrapper for daemon state stats request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateStatsRequest {
+    pub data: Vec<u8>,
+}
+
+/// Wrapper for daemon state filesystem request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateFilesystemRequest {
+    pub query: FilesystemQuery,
+}
+
+/// Daemon state query types - using struct with discriminant
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateQuery {
+    pub discriminant: u32, // 0=Processes, 1=Stats, 2=FilesystemState
+    pub filesystem_params: Option<FilesystemQuery>,
+}
+
+/// Filesystem state query parameters
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FilesystemQuery {
+    pub max_depth: u32,
+    pub include_overlay: u32, // 0 = false, 1 = true
+    pub max_file_size: u32, // max bytes to include in content
+}
+
+/// Daemon state response types - using enum for SSZ union
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+#[ssz(enum_behaviour = "union")]
+pub enum DaemonStateResponse {
+    Processes(Vec<ProcessInfo>),
+    Stats(FsStats),
+    FilesystemState(FilesystemState),
+}
+
+/// Process information for daemon state
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ProcessInfo {
+    pub os_pid: u32,
+    pub registered_pid: Vec<u8>, // String representation
+}
+
+/// Filesystem statistics
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FsStats {
+    pub branches: u32,
+    pub snapshots: u32,
+    pub open_handles: u32,
+    pub memory_usage: u64, // bytes_in_memory
+}
+
+/// Complete filesystem state as sorted flattened list
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FilesystemState {
+    pub entries: Vec<FilesystemEntry>, // sorted by path for binary search
+}
+
+/// Individual filesystem entry in flattened list
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FilesystemEntry {
+    pub path: Vec<u8>, // full path as UTF-8 bytes
+    pub kind: FileKind,
+    pub size: u64, // file size, 0 for directories/symlinks
+    pub content: Option<Vec<u8>>, // file content if small enough
+    pub target: Option<Vec<u8>>, // symlink target as UTF-8 bytes
+}
+
+/// File type enumeration - using discriminant
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FileKind {
+    pub discriminant: u32, // 0=File, 1=Directory, 2=Symlink
+}
+
+
+/// Daemon state request for testing (query daemon internal state)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateRequest {
+    pub query: DaemonStateQuery,
+}
+
+/// Daemon state response with internal daemon information
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateResponseWrapper {
+    pub response: DaemonStateResponse,
 }
 
 /// PathOp request payload for path-based operations
@@ -354,6 +518,61 @@ impl Request {
         Self::FdDup((b"1".to_vec(), FdDupRequest { fd }))
     }
 
+    pub fn dir_open(path: String) -> Self {
+        Self::DirOpen((
+            b"1".to_vec(),
+            DirOpenRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn dir_read(handle: u64) -> Self {
+        Self::DirRead((
+            b"1".to_vec(),
+            DirReadRequest { handle },
+        ))
+    }
+
+    pub fn dir_close(handle: u64) -> Self {
+        Self::DirClose((
+            b"1".to_vec(),
+            DirCloseRequest { handle },
+        ))
+    }
+
+    pub fn readlink(path: String) -> Self {
+        Self::Readlink((
+            b"1".to_vec(),
+            ReadlinkRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn daemon_state_processes() -> Self {
+        Self::DaemonStateProcesses(DaemonStateProcessesRequest {
+            data: b"1".to_vec(),
+        })
+    }
+
+          pub fn daemon_state_stats() -> Self {
+              Self::DaemonStateStats(DaemonStateStatsRequest {
+                  data: b"1".to_vec(),
+              })
+          }
+
+          pub fn daemon_state_filesystem(max_depth: u32, include_overlay: bool, max_file_size: u32) -> Self {
+              Self::DaemonStateFilesystem(DaemonStateFilesystemRequest {
+                  query: FilesystemQuery {
+                      max_depth,
+                      include_overlay: if include_overlay { 1 } else { 0 },
+                      max_file_size,
+                  },
+              })
+          }
+
+
     pub fn path_op(path: String, operation: String, args: Option<String>) -> Self {
         Self::PathOp((
             b"1".to_vec(),
@@ -400,6 +619,43 @@ impl Response {
     pub fn fd_dup(fd: u32) -> Self {
         Self::FdDup(FdDupResponse { fd })
     }
+
+    pub fn dir_open(handle: u64) -> Self {
+        Self::DirOpen(DirOpenResponse { handle })
+    }
+
+    pub fn dir_read(entries: Vec<DirEntry>) -> Self {
+        Self::DirRead(DirReadResponse { entries })
+    }
+
+    pub fn dir_close() -> Self {
+        Self::DirClose(DirCloseResponse {})
+    }
+
+    pub fn readlink(target: String) -> Self {
+        Self::Readlink(ReadlinkResponse {
+            target: target.into_bytes(),
+        })
+    }
+
+    pub fn daemon_state_processes(processes: Vec<ProcessInfo>) -> Self {
+        Self::DaemonState(DaemonStateResponseWrapper {
+            response: DaemonStateResponse::Processes(processes),
+        })
+    }
+
+          pub fn daemon_state_stats(stats: FsStats) -> Self {
+              Self::DaemonState(DaemonStateResponseWrapper {
+                  response: DaemonStateResponse::Stats(stats),
+              })
+          }
+
+          pub fn daemon_state_filesystem(state: FilesystemState) -> Self {
+              Self::DaemonState(DaemonStateResponseWrapper {
+                  response: DaemonStateResponse::FilesystemState(state),
+              })
+          }
+
 
     pub fn path_op(result: Option<String>) -> Self {
         Self::PathOp(PathOpResponse {
@@ -530,5 +786,27 @@ impl FsDirEntry {
             is_symlink,
             len,
         }
+    }
+}
+
+// Helper constructors for directory entries (protocol level)
+impl DirEntry {
+    pub fn new(name: String, kind: u8) -> Self {
+        Self {
+            name: name.into_bytes(),
+            kind,
+        }
+    }
+
+    pub fn file(name: String) -> Self {
+        Self::new(name, 0)
+    }
+
+    pub fn directory(name: String) -> Self {
+        Self::new(name, 1)
+    }
+
+    pub fn symlink(name: String) -> Self {
+        Self::new(name, 2)
     }
 }

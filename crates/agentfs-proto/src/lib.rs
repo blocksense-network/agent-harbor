@@ -44,5 +44,17 @@ pub use messages::{
     SnapshotInfo,
     SnapshotListRequest,
     SnapshotListResponse,
+    // Daemon state types
+    DaemonStateQuery,
+    DaemonStateResponse,
+    DaemonStateRequest,
+    DaemonStateResponseWrapper,
+    EmptyQuery,
+    FsStats,
+    ProcessInfo,
+    FilesystemQuery,
+    FilesystemState,
+    FilesystemEntry,
+    FileKind,
 };
 pub use validation::*;

@@ -1,8 +1,10 @@
-#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 use once_cell::sync::{Lazy, OnceCell};
+use std::collections::HashMap;
 use std::ffi::{CStr, OsStr};
 use std::io::{BufRead, Read, Write};
 use std::os::fd::AsRawFd;
@@ -11,9 +13,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-// For dlsym to get original function pointers
-#[cfg(target_os = "macos")]
-use libc::{RTLD_NEXT, dlsym};
 
 // SSZ imports
 use ssz::{Decode, Encode};
@@ -21,6 +20,7 @@ use ssz_derive::{Decode, Encode};
 
 // AgentFS proto imports
 use agentfs_proto::*;
+use agentfs_proto::messages::DirEntry;
 
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
@@ -36,6 +36,8 @@ const DEFAULT_BANNER: &str = "AgentFS interpose shim loaded";
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
 #[cfg(target_os = "macos")]
 static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
+
+// Directory handles are now managed by FsCore directly
 
 #[cfg(test)]
 static ENV_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -403,6 +405,274 @@ mod interpose {
     use std::mem;
     use std::os::unix::io::FromRawFd;
 
+    /// Send dir_open request and receive directory handle
+    fn send_dir_open_request(path: &CStr) -> Result<u64, String> {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            log_message(&format!("STREAM.lock() returned: {:?}", stream_guard.as_ref().map(|_| "Some(arc)")));
+            match stream_guard.as_ref() {
+                Some(arc) => {
+                    log_message("STREAM found, sending dir_open request");
+                    Arc::clone(arc)
+                },
+                None => {
+                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original opendir");
+                        return Err("not connected to AgentFS control socket".to_string());
+                    }
+                }
+            }
+        };
+
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::dir_open(path_str);
+
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+                .map_err(|e| format!("send dir_open request: {e}"))?;
+        }
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read response length: {e}"))?;
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read response: {e}"))?;
+        }
+
+        // Decode the response
+        let dir_handle = match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => {
+                match response {
+                    Response::DirOpen(dir_response) => {
+                        let handle = dir_response.handle;
+                        log_message(&format!("received dir handle {}", handle));
+                        handle
+                    }
+                    Response::Error(err) => {
+                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
+                    }
+                    _ => {
+                        return Err("unexpected response type".to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("decode response failed: {:?}", e));
+            }
+        };
+
+        Ok(dir_handle)
+    }
+
+    /// Send dir_read request and receive directory entries
+    fn send_dir_read_request(handle: u64) -> Result<Vec<DirEntry>, String> {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            match stream_guard.as_ref() {
+                Some(arc) => Arc::clone(arc),
+                None => {
+                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original readdir");
+                        return Err("not connected to AgentFS control socket".to_string());
+                    }
+                }
+            }
+        };
+
+        let request = Request::dir_read(handle);
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+                .map_err(|e| format!("send dir_read request: {e}"))?;
+        }
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read dir_read response length: {e}"))?;
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read dir_read response: {e}"))?;
+        }
+
+        // Decode the response
+        let entries = match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => {
+                match response {
+                    Response::DirRead(dir_read_response) => {
+                        log_message(&format!("received {} directory entries", dir_read_response.entries.len()));
+                        dir_read_response.entries
+                    }
+                    Response::Error(err) => {
+                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
+                    }
+                    _ => {
+                        return Err("unexpected response type".to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("decode response failed: {:?}", e));
+            }
+        };
+
+        Ok(entries)
+    }
+
+    /// Send dir_close request
+    fn send_dir_close_request(handle: u64) -> Result<(), String> {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            match stream_guard.as_ref() {
+                Some(arc) => Arc::clone(arc),
+                None => {
+                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original closedir");
+                        return Err("not connected to AgentFS control socket".to_string());
+                    }
+                }
+            }
+        };
+
+        let request = Request::dir_close(handle);
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+                .map_err(|e| format!("send dir_close request: {e}"))?;
+        }
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read dir_close response length: {e}"))?;
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read dir_close response: {e}"))?;
+        }
+
+        // Decode the response
+        match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => {
+                match response {
+                    Response::DirClose(_) => {
+                        log_message("received dir_close response");
+                        Ok(())
+                    }
+                    Response::Error(err) => {
+                        Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)))
+                    }
+                    _ => {
+                        Err("unexpected response type".to_string())
+                    }
+                }
+            }
+            Err(e) => {
+                Err(format!("decode response failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Send readlink request and receive link target
+    fn send_readlink_request(path: &CStr) -> Result<String, String> {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            log_message(&format!("STREAM.lock() returned: {:?}", stream_guard.as_ref().map(|_| "Some(arc)")));
+            match stream_guard.as_ref() {
+                Some(arc) => {
+                    log_message("STREAM found, sending readlink request");
+                    Arc::clone(arc)
+                },
+                None => {
+                    let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!("STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original readlink");
+                        return Err("not connected to AgentFS control socket".to_string());
+                    }
+                }
+            }
+        };
+
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::readlink(path_str);
+
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.write_all(&ssz_len.to_le_bytes()).and_then(|_| stream_guard.write_all(&ssz_bytes))
+                .map_err(|e| format!("send readlink request: {e}"))?;
+        }
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.read_exact(&mut len_buf).map_err(|e| format!("read response length: {e}"))?;
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+            stream_guard.read_exact(&mut msg_buf).map_err(|e| format!("read response: {e}"))?;
+        }
+
+        // Decode the response
+        let link_target = match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => {
+                match response {
+                    Response::Readlink(readlink_response) => {
+                        let target = String::from_utf8_lossy(&readlink_response.target).into_owned();
+                        log_message(&format!("received link target '{}'", target));
+                        target
+                    }
+                    Response::Error(err) => {
+                        return Err(format!("daemon error: {}", String::from_utf8_lossy(&err.error)));
+                    }
+                    _ => {
+                        return Err("unexpected response type".to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("decode response failed: {:?}", e));
+            }
+        };
+
+        Ok(link_target)
+    }
+
     /// Send fd_open request and receive file descriptor via SCM_RIGHTS
     fn send_fd_open_request(path: &CStr, flags: c_int, mode: mode_t) -> Result<RawFd, String> {
         let stream_arc = {
@@ -544,163 +814,229 @@ mod interpose {
     }
 
     /// Interposed open function
-    #[no_mangle]
-    pub extern "C" fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int {
-        if path.is_null() {
-            return -1;
-        }
-
-        let c_path = unsafe { CStr::from_ptr(path) };
-
-        log_message(&format!(
-            "interposing open({}, {:#x}, {:#o})",
-            c_path.to_string_lossy(),
-            flags,
-            mode
-        ));
-
-        match send_fd_open_request(c_path, flags, mode) {
-            Ok(fd) => {
-                log_message(&format!("fd_open succeeded, returning fd {}", fd));
-                fd as c_int
+    redhook::hook! {
+        unsafe fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
+            if path.is_null() {
+                return -1;
             }
-            Err(err) => {
-                log_message(&format!(
-                    "fd_open failed: {}, falling back to original",
-                    err
-                ));
-                // Fall back to original implementation using dlsym
-                #[cfg(target_os = "macos")]
-                if let Some(original_open) = *ORIGINAL_OPEN {
-                    unsafe { original_open(path, flags, mode) }
-                } else {
-                    log_message("dlsym failed for open, returning error");
-                    -1
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing open({}, {:#x}, {:#o})", c_path.to_string_lossy(), flags, mode));
+
+            match send_fd_open_request(c_path, flags, mode) {
+                Ok(fd) => {
+                    log_message(&format!("fd_open succeeded, returning fd {}", fd));
+                    fd as c_int
                 }
-                #[cfg(not(target_os = "macos"))]
-                unsafe {
-                    libc::open(path, flags, mode as libc::c_uint)
+                Err(err) => {
+                    log_message(&format!("fd_open failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(open)(path, flags, mode)
                 }
             }
         }
     }
 
     /// Interposed openat function
-    #[no_mangle]
-    pub extern "C" fn openat(
-        dirfd: c_int,
-        path: *const c_char,
-        flags: c_int,
-        mode: mode_t,
-    ) -> c_int {
-        if path.is_null() {
-            return -1;
-        }
+    redhook::hook! {
+        unsafe fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_openat {
+            if path.is_null() {
+                return -1;
+            }
 
-        let c_path = unsafe { CStr::from_ptr(path) };
+            let c_path = unsafe { CStr::from_ptr(path) };
 
-        log_message(&format!(
-            "interposing openat({}, {}, {:#x}, {:#o})",
-            dirfd,
-            c_path.to_string_lossy(),
-            flags,
-            mode
-        ));
+            log_message(&format!("interposing openat({}, {}, {:#x}, {:#o})", dirfd, c_path.to_string_lossy(), flags, mode));
 
-        // For now, fall back to original - openat forwarding needs more complex path resolution
-        #[cfg(target_os = "macos")]
-        if let Some(original_openat) = *ORIGINAL_OPENAT {
-            unsafe { original_openat(dirfd, path, flags, mode) }
-        } else {
-            log_message("dlsym failed for openat, returning error");
-            -1
-        }
-        #[cfg(not(target_os = "macos"))]
-        unsafe {
-            libc::openat(dirfd, path, flags, mode as libc::c_uint)
+            // For now, fall back to original - openat forwarding needs more complex path resolution
+            redhook::real!(openat)(dirfd, path, flags, mode)
         }
     }
 
     /// Interposed creat function
-    #[no_mangle]
-    pub extern "C" fn creat(path: *const c_char, mode: mode_t) -> c_int {
-        if path.is_null() {
-            return -1;
-        }
-
-        let c_path = unsafe { CStr::from_ptr(path) };
-        let flags = libc::O_CREAT | libc::O_TRUNC | libc::O_WRONLY;
-
-        log_message(&format!(
-            "interposing creat({}, {:#o})",
-            c_path.to_string_lossy(),
-            mode
-        ));
-
-        match send_fd_open_request(c_path, flags, mode) {
-            Ok(fd) => {
-                log_message(&format!("fd_open succeeded, returning fd {}", fd));
-                fd as c_int
+    redhook::hook! {
+        unsafe fn creat(path: *const c_char, mode: mode_t) -> c_int => my_creat {
+            if path.is_null() {
+                return -1;
             }
-            Err(err) => {
-                log_message(&format!(
-                    "fd_open failed: {}, falling back to original",
-                    err
-                ));
-                #[cfg(target_os = "macos")]
-                if let Some(original_creat) = *ORIGINAL_CREAT {
-                    unsafe { original_creat(path, mode) }
-                } else {
-                    log_message("dlsym failed for creat, returning error");
-                    -1
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let flags = libc::O_CREAT | libc::O_TRUNC | libc::O_WRONLY;
+
+            log_message(&format!("interposing creat({}, {:#o})", c_path.to_string_lossy(), mode));
+
+            match send_fd_open_request(c_path, flags, mode) {
+                Ok(fd) => {
+                    log_message(&format!("fd_open succeeded, returning fd {}", fd));
+                    fd as c_int
                 }
-                #[cfg(not(target_os = "macos"))]
-                unsafe {
-                    libc::creat(path, mode)
+                Err(err) => {
+                    log_message(&format!("fd_open failed: {}, falling back to original", err));
+                    redhook::real!(creat)(path, mode)
                 }
             }
         }
     }
 
     /// Interposed fopen function
-    #[no_mangle]
-    pub extern "C" fn fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE {
-        log_message("interposing fopen() - not yet implemented, falling back to original");
+    redhook::hook! {
+        unsafe fn fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE => my_fopen {
+            log_message("interposing fopen() - not yet implemented, falling back to original");
 
-        // For now, fall back to original
-        #[cfg(target_os = "macos")]
-        if let Some(original_fopen) = *ORIGINAL_FOPEN {
-            unsafe { original_fopen(filename, mode) }
-        } else {
-            log_message("dlsym failed for fopen, returning null");
-            std::ptr::null_mut()
-        }
-        #[cfg(not(target_os = "macos"))]
-        unsafe {
-            libc::fopen(filename, mode)
+            // For now, fall back to original
+            redhook::real!(fopen)(filename, mode)
         }
     }
 
     /// Interposed freopen function
-    #[no_mangle]
-    pub extern "C" fn freopen(
-        filename: *const c_char,
-        mode: *const c_char,
-        stream: *mut libc::FILE,
-    ) -> *mut libc::FILE {
-        log_message("interposing freopen() - not yet implemented, falling back to original");
+    redhook::hook! {
+        unsafe fn freopen(filename: *const c_char, mode: *const c_char, stream: *mut libc::FILE) -> *mut libc::FILE => my_freopen {
+            log_message("interposing freopen() - not yet implemented, falling back to original");
 
-        // For now, fall back to original
-        #[cfg(target_os = "macos")]
-        if let Some(original_freopen) = *ORIGINAL_FREOPEN {
-            unsafe { original_freopen(filename, mode, stream) }
-        } else {
-            log_message("dlsym failed for freopen, returning null");
-            std::ptr::null_mut()
+            // For now, fall back to original
+            redhook::real!(freopen)(filename, mode, stream)
         }
-        #[cfg(not(target_os = "macos"))]
-        unsafe {
-            libc::freopen(filename, mode, stream)
+    }
+
+    /// Interposed opendir function
+    redhook::hook! {
+        unsafe fn opendir(dirname: *const c_char) -> *mut libc::DIR => my_opendir {
+            if dirname.is_null() {
+                return std::ptr::null_mut();
+            }
+
+            let c_path = unsafe { CStr::from_ptr(dirname) };
+            log_message(&format!("interposing opendir({})", c_path.to_string_lossy()));
+
+            // Try to create directory handle with AgentFS entries
+            match send_dir_open_request(c_path) {
+                Ok(fscore_handle) => {
+                    log_message(&format!("FsCore returned directory handle {}", fscore_handle));
+                    // Return the FsCore handle directly as a DIR pointer
+                    // This is safe because we're intercepting all directory operations
+                    let dir_ptr = fscore_handle as *mut libc::DIR;
+                    log_message(&format!("returning FsCore DIR pointer: {:?}", dir_ptr));
+                    dir_ptr
+                }
+                Err(err) => {
+                    log_message(&format!("failed to create AgentFS directory handle: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(opendir)(dirname)
+                }
+            }
+        }
+    }
+
+    /// Interposed fdopendir function
+    redhook::hook! {
+        unsafe fn fdopendir(fd: c_int) -> *mut libc::DIR => my_fdopendir {
+            log_message(&format!("interposing fdopendir({}) - not yet implemented, falling back to original", fd));
+
+            // For now, fall back to original
+            redhook::real!(fdopendir)(fd)
+        }
+    }
+
+    /// Interposed readdir function
+    redhook::hook! {
+        unsafe fn readdir(dirp: *mut libc::DIR) -> *mut libc::dirent => my_readdir {
+            log_message(&format!("interposing readdir({:?})", dirp));
+
+            // The DIR pointer contains the FsCore handle ID
+            let fscore_handle = dirp as u64;
+
+            // Send DirRead request to get the next entry
+            match send_dir_read_request(fscore_handle) {
+                Ok(entries) => {
+                    if entries.is_empty() {
+                        log_message("readdir: reached end of directory");
+                        return std::ptr::null_mut(); // End of directory
+                    }
+
+                    let entry = &entries[0];
+                    log_message(&format!("readdir: returning entry {}", String::from_utf8_lossy(&entry.name)));
+
+                    // For now, return null since we don't have proper dirent allocation
+                    // In a full implementation, we'd allocate a libc::dirent and fill it
+                    std::ptr::null_mut()
+                }
+                Err(err) => {
+                    log_message(&format!("dir_read failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(readdir)(dirp)
+                }
+            }
+        }
+    }
+
+    /// Interposed closedir function
+    redhook::hook! {
+        unsafe fn closedir(dirp: *mut libc::DIR) -> c_int => my_closedir {
+            log_message(&format!("interposing closedir({:?})", dirp));
+
+            // The DIR pointer contains the FsCore handle ID
+            let fscore_handle = dirp as u64;
+
+            // Send DirClose request to FsCore
+            match send_dir_close_request(fscore_handle) {
+                Ok(()) => {
+                    log_message(&format!("FsCore closedir succeeded for handle {}", fscore_handle));
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("dir_close failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(closedir)(dirp)
+                }
+            }
+        }
+    }
+
+    /// Interposed readlink function
+    redhook::hook! {
+        unsafe fn readlink(pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlink {
+            if pathname.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(pathname) };
+            log_message(&format!("interposing readlink({}, bufsiz={})", c_path.to_string_lossy(), bufsiz));
+
+            match send_readlink_request(c_path) {
+                Ok(link_target) => {
+                    // Copy the link target to the provided buffer
+                    let target_bytes = link_target.as_bytes();
+                    let copy_len = std::cmp::min(target_bytes.len(), bufsiz);
+                    if !buf.is_null() && copy_len > 0 {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(target_bytes.as_ptr() as *const c_char, buf, copy_len);
+                        }
+                    }
+                    log_message(&format!("readlink succeeded, returning {} bytes", copy_len));
+                    copy_len as libc::ssize_t
+                }
+                Err(err) => {
+                    log_message(&format!("readlink failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(readlink)(pathname, buf, bufsiz)
+                }
+            }
+        }
+    }
+
+    /// Interposed readlinkat function
+    redhook::hook! {
+        unsafe fn readlinkat(dirfd: c_int, pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlinkat {
+            if pathname.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(pathname) };
+            log_message(&format!("interposing readlinkat({}, {}, bufsiz={}) - not yet implemented, falling back to original", dirfd, c_path.to_string_lossy(), bufsiz));
+
+            // For now, fall back to original
+            redhook::real!(readlinkat)(dirfd, pathname, buf, bufsiz)
         }
     }
 
@@ -708,116 +1044,3 @@ mod interpose {
     // which is not valid in Rust function names. The base functions handle the common case.
 }
 
-// DYLD interposition structure for macOS
-#[cfg(target_os = "macos")]
-#[repr(C)]
-struct Interpose {
-    new_func: *const libc::c_void,
-    old_func: *const libc::c_void,
-}
-
-// Safety: This is required for DYLD interposition table
-#[cfg(target_os = "macos")]
-unsafe impl Sync for Interpose {}
-
-// DYLD interposition table for macOS
-// Note: This uses the __DATA,__interpose section which DYLD automatically processes
-#[cfg(target_os = "macos")]
-#[link_section = "__DATA,__interpose"]
-#[used]
-static INTERPOSE_TABLE: [Interpose; 5] = [
-    Interpose {
-        new_func: interpose::open as *const libc::c_void,
-        old_func: libc::open as *const libc::c_void,
-    },
-    Interpose {
-        new_func: interpose::openat as *const libc::c_void,
-        old_func: libc::openat as *const libc::c_void,
-    },
-    Interpose {
-        new_func: interpose::creat as *const libc::c_void,
-        old_func: libc::creat as *const libc::c_void,
-    },
-    Interpose {
-        new_func: interpose::fopen as *const libc::c_void,
-        old_func: libc::fopen as *const libc::c_void,
-    },
-    Interpose {
-        new_func: interpose::freopen as *const libc::c_void,
-        old_func: libc::freopen as *const libc::c_void,
-    },
-];
-
-// Original function pointers obtained via dlsym
-#[cfg(target_os = "macos")]
-static ORIGINAL_OPEN: Lazy<
-    Option<unsafe extern "C" fn(*const libc::c_char, libc::c_int, libc::mode_t) -> libc::c_int>,
-> = Lazy::new(|| unsafe {
-    let ptr = dlsym(RTLD_NEXT, b"open\0".as_ptr() as *const libc::c_char);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(std::mem::transmute(ptr))
-    }
-});
-
-#[cfg(target_os = "macos")]
-static ORIGINAL_OPENAT: Lazy<
-    Option<
-        unsafe extern "C" fn(
-            libc::c_int,
-            *const libc::c_char,
-            libc::c_int,
-            libc::mode_t,
-        ) -> libc::c_int,
-    >,
-> = Lazy::new(|| unsafe {
-    let ptr = dlsym(RTLD_NEXT, b"openat\0".as_ptr() as *const libc::c_char);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(std::mem::transmute(ptr))
-    }
-});
-
-#[cfg(target_os = "macos")]
-static ORIGINAL_CREAT: Lazy<
-    Option<unsafe extern "C" fn(*const libc::c_char, libc::mode_t) -> libc::c_int>,
-> = Lazy::new(|| unsafe {
-    let ptr = dlsym(RTLD_NEXT, b"creat\0".as_ptr() as *const libc::c_char);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(std::mem::transmute(ptr))
-    }
-});
-
-#[cfg(target_os = "macos")]
-static ORIGINAL_FOPEN: Lazy<
-    Option<unsafe extern "C" fn(*const libc::c_char, *const libc::c_char) -> *mut libc::FILE>,
-> = Lazy::new(|| unsafe {
-    let ptr = dlsym(RTLD_NEXT, b"fopen\0".as_ptr() as *const libc::c_char);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(std::mem::transmute(ptr))
-    }
-});
-
-#[cfg(target_os = "macos")]
-static ORIGINAL_FREOPEN: Lazy<
-    Option<
-        unsafe extern "C" fn(
-            *const libc::c_char,
-            *const libc::c_char,
-            *mut libc::FILE,
-        ) -> *mut libc::FILE,
-    >,
-> = Lazy::new(|| unsafe {
-    let ptr = dlsym(RTLD_NEXT, b"freopen\0".as_ptr() as *const libc::c_char);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(std::mem::transmute(ptr))
-    }
-});

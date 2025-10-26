@@ -23,6 +23,12 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         | Request::BranchBind((version, _))
         | Request::FdOpen((version, _))
         | Request::FdDup((version, _))
+        | Request::DirOpen((version, _))
+        | Request::DirRead((version, _))
+        | Request::DirClose((version, _))
+        | Request::Readlink((version, _))
+        | Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: version })
+        | Request::DaemonStateStats(DaemonStateStatsRequest { data: version })
         | Request::PathOp((version, _))
         | Request::InterposeSetGet((version, _)) => {
             if version != b"1" {
@@ -34,6 +40,10 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
             if version != b"1" {
                 return Err(ValidationError::Schema("version must be '1'".to_string()));
             }
+            Ok(())
+        }
+        Request::DaemonStateFilesystem(DaemonStateFilesystemRequest { query: _ }) => {
+            // No version validation for filesystem queries (testing only)
             Ok(())
         }
     }
@@ -50,6 +60,11 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
         | Response::BranchBind(_)
         | Response::FdOpen(_)
         | Response::FdDup(_)
+        | Response::DirOpen(_)
+        | Response::DirRead(_)
+        | Response::DirClose(_)
+        | Response::Readlink(_)
+        | Response::DaemonState(_)
         | Response::PathOp(_)
         | Response::InterposeSetGet(_)
         | Response::Error(_) => Ok(()),

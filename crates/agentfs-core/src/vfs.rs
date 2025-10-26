@@ -53,14 +53,25 @@ pub(crate) struct Node {
     pub xattrs: HashMap<String, Vec<u8>>, // Extended attributes
 }
 
-/// Open file handle
+/// Handle types
+#[derive(Debug)]
+pub(crate) enum HandleType {
+    File {
+        options: OpenOptions,
+        deleted: bool, // For delete-on-close semantics
+    },
+    Directory {
+        position: usize, // Index into directory entries
+        entries: Vec<DirEntry>, // Cached directory entries
+    },
+}
+
+/// Open handle (file or directory)
 #[derive(Debug)]
 pub(crate) struct Handle {
     pub id: HandleId,
     pub node_id: NodeId,
-    pub position: u64,
-    pub options: OpenOptions,
-    pub deleted: bool, // For delete-on-close semantics
+    pub kind: HandleType,
 }
 
 /// Snapshot containing immutable tree state
@@ -1107,9 +1118,10 @@ impl FsCore {
         let handle = Handle {
             id: handle_id,
             node_id: file_node_id,
-            position: 0,
-            options: opts.clone(),
-            deleted: false,
+            kind: HandleType::File {
+                options: opts.clone(),
+                deleted: false,
+            },
         };
 
         self.handles.lock().unwrap().insert(handle_id, handle);
@@ -1146,9 +1158,10 @@ impl FsCore {
             let handle = Handle {
                 id: handle_id,
                 node_id,
-                position: 0,
-                options: opts.clone(),
-                deleted: false,
+                kind: HandleType::File {
+                    options: opts.clone(),
+                    deleted: false,
+                },
             };
 
             self.handles.lock().unwrap().insert(handle_id, handle);
@@ -1203,9 +1216,10 @@ impl FsCore {
         let handle = Handle {
             id: handle_id,
             node_id,
-            position: 0,
-            options: opts.clone(),
-            deleted: false,
+            kind: HandleType::File {
+                options: opts.clone(),
+                deleted: false,
+            },
         };
         self.handles.lock().unwrap().insert(handle_id, handle);
         Ok(handle_id)
@@ -1227,6 +1241,12 @@ impl FsCore {
         let handles = self.handles.lock().unwrap();
         let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
 
+        // Ensure this is a file handle
+        let options = match &handle.kind {
+            HandleType::File { options, .. } => options,
+            HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+        };
+
         // Permission check for read
         if self.config.security.enforce_posix_permissions {
             if let Some(user) = self.user_for_process(pid) {
@@ -1238,7 +1258,7 @@ impl FsCore {
             }
         }
 
-        if !handle.options.read {
+        if !options.read {
             return Err(FsError::AccessDenied);
         }
 
@@ -1269,6 +1289,12 @@ impl FsCore {
         let mut handles = self.handles.lock().unwrap();
         let handle = handles.get_mut(&handle_id).ok_or(FsError::InvalidArgument)?;
 
+        // Ensure this is a file handle
+        let options = match &handle.kind {
+            HandleType::File { options, .. } => options,
+            HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+        };
+
         // Permission check for write
         if self.config.security.enforce_posix_permissions {
             if let Some(user) = self.user_for_process(pid) {
@@ -1280,7 +1306,7 @@ impl FsCore {
             }
         }
 
-        if !handle.options.write {
+        if !options.write {
             return Err(FsError::AccessDenied);
         }
 
@@ -1375,18 +1401,30 @@ impl FsCore {
         let handles = self.handles.lock().unwrap();
 
         for handle in handles.values() {
-            if handle.node_id != node_id || handle.deleted {
+            if handle.node_id != node_id {
                 continue;
             }
 
-            // Check each requested access type against existing handle's share modes
-            if options.read && !handle.options.share.contains(&ShareMode::Read) {
-                return true;
+            // Only check file handles for share mode conflicts
+            match &handle.kind {
+                HandleType::File { options: handle_options, deleted } => {
+                    if *deleted {
+                        continue;
+                    }
+
+                    // Check each requested access type against existing handle's share modes
+                    if options.read && !handle_options.share.contains(&ShareMode::Read) {
+                        return true;
+                    }
+                    if options.write && !handle_options.share.contains(&ShareMode::Write) {
+                        return true;
+                    }
+                    // Note: Delete access conflicts are typically checked at delete time, not open time
+                }
+                HandleType::Directory { .. } => {
+                    // Directory handles don't participate in share mode conflicts
+                }
             }
-            if options.write && !handle.options.share.contains(&ShareMode::Write) {
-                return true;
-            }
-            // Note: Delete access conflicts are typically checked at delete time, not open time
         }
 
         false
@@ -1394,14 +1432,17 @@ impl FsCore {
 
     /// Get the stream name for a handle (empty string for unnamed/default stream)
     fn get_stream_name(handle: &Handle) -> &str {
-        handle.options.stream.as_deref().unwrap_or("")
+        match &handle.kind {
+            HandleType::File { options, .. } => options.stream.as_deref().unwrap_or(""),
+            HandleType::Directory { .. } => "",
+        }
     }
 
     pub fn close(&self, _pid: &PID, handle_id: HandleId) -> FsResult<()> {
         let mut handles = self.handles.lock().unwrap();
         let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
         let node_id = handle.node_id;
-        let was_deleted = handle.deleted;
+        let was_deleted = matches!(handle.kind, HandleType::File { deleted: true, .. });
 
         handles.remove(&handle_id);
 
@@ -1858,6 +1899,74 @@ impl FsCore {
         }
     }
 
+    /// Open a directory handle
+    pub fn opendir(&self, pid: &PID, path: &Path) -> FsResult<HandleId> {
+        // Resolve the path to get the node
+        let (node_id, _) = self.resolve_path(pid, path)?;
+
+        // Permission check for read access
+        if self.config.security.enforce_posix_permissions {
+            if let Some(user) = self.user_for_process(pid) {
+                let nodes = self.nodes.lock().unwrap();
+                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+                if !self.allowed_for_user(node, &user, true, false, false) {
+                    return Err(FsError::AccessDenied);
+                }
+            }
+        }
+
+        // Read directory entries
+        let entries = self.readdir_plus(pid, path)?;
+
+        // Create directory handle
+        let handle_id = self.allocate_handle_id();
+        let handle = Handle {
+            id: handle_id,
+            node_id,
+            kind: HandleType::Directory {
+                position: 0,
+                entries: entries.into_iter().map(|(entry, _)| entry).collect(),
+            },
+        };
+
+        self.handles.lock().unwrap().insert(handle_id, handle);
+        Ok(handle_id)
+    }
+
+    /// Read from a directory handle
+    pub fn readdir(&self, _pid: &PID, handle_id: HandleId) -> FsResult<Option<DirEntry>> {
+        let mut handles = self.handles.lock().unwrap();
+        let handle = handles.get_mut(&handle_id).ok_or(FsError::InvalidArgument)?;
+
+        match &mut handle.kind {
+            HandleType::Directory { position, entries } => {
+                if *position >= entries.len() {
+                    Ok(None) // End of directory
+                } else {
+                    let entry = entries[*position].clone();
+                    *position += 1;
+                    Ok(Some(entry))
+                }
+            }
+            HandleType::File { .. } => Err(FsError::InvalidArgument),
+        }
+    }
+
+    /// Close a directory handle
+    pub fn closedir(&self, _pid: &PID, handle_id: HandleId) -> FsResult<()> {
+        let mut handles = self.handles.lock().unwrap();
+        let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
+
+        // Ensure this is a directory handle
+        match handle.kind {
+            HandleType::Directory { .. } => {
+                handles.remove(&handle_id);
+                Ok(())
+            }
+            HandleType::File { .. } => Err(FsError::InvalidArgument),
+        }
+    }
+
     // Extended attributes operations
     pub fn xattr_get(&self, pid: &PID, path: &Path, name: &str) -> FsResult<Vec<u8>> {
         let (node_id, _) = self.resolve_path(pid, path)?;
@@ -1946,10 +2055,12 @@ impl FsCore {
         let has_open_handles = handles.values().any(|h| h.node_id == node_id);
 
         if has_open_handles {
-            // Mark all handles to this file as deleted
+            // Mark all file handles to this file as deleted
             for handle in handles.values_mut() {
                 if handle.node_id == node_id {
-                    handle.deleted = true;
+                    if let HandleType::File { deleted, .. } = &mut handle.kind {
+                        *deleted = true;
+                    }
                 }
             }
         } else {
