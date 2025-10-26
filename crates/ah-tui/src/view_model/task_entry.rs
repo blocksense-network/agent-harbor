@@ -4,9 +4,109 @@
 //! Task Entry ViewModel - for draft/editable task cards
 
 use super::{ButtonViewModel, DraftSaveState, FocusElement};
+
+/// Result of handling a keyboard operation in TaskEntryViewModel
+#[derive(Debug, PartialEq, Eq)]
+pub enum KeyboardOperationResult {
+    /// The operation was handled normally, continue processing
+    Handled,
+    /// The operation was not handled, pass to next handler
+    NotHandled,
+    /// A task was launched and the draft card should be cleaned up
+    TaskLaunched,
+}
 use crate::settings::KeyboardOperation;
 use ah_domain_types::SelectedModel;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
+
+/// Focus elements within a draft card
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardFocusElement {
+    TaskDescription,
+    RepositorySelector,
+    BranchSelector,
+    ModelSelector,
+    GoButton,
+}
+
+/// Macro that generates a list of all keyboard operations handled by the task entry module.
+/// This is used by dashboard_model.rs to determine which operations should be delegated
+/// to the task entry's handle_keyboard_operation method.
+#[macro_export]
+macro_rules! HandledKeyboardOperations {
+    () => {
+        crate::settings::KeyboardOperation::MoveToBeginningOfLine
+            | crate::settings::KeyboardOperation::MoveToEndOfLine
+            | crate::settings::KeyboardOperation::MoveForwardOneCharacter
+            | crate::settings::KeyboardOperation::MoveBackwardOneCharacter
+            | crate::settings::KeyboardOperation::MoveForwardOneWord
+            | crate::settings::KeyboardOperation::MoveBackwardOneWord
+            | crate::settings::KeyboardOperation::DeleteWordForward
+            | crate::settings::KeyboardOperation::DeleteWordBackward
+            | crate::settings::KeyboardOperation::MoveToPreviousLine
+            | crate::settings::KeyboardOperation::MoveToNextLine
+            | crate::settings::KeyboardOperation::DeleteCharacterBackward
+            | crate::settings::KeyboardOperation::DeleteCharacterForward
+            | crate::settings::KeyboardOperation::OpenNewLine
+            | crate::settings::KeyboardOperation::Cut
+            | crate::settings::KeyboardOperation::Copy
+            | crate::settings::KeyboardOperation::Paste
+            | crate::settings::KeyboardOperation::Undo
+            | crate::settings::KeyboardOperation::Redo
+            | crate::settings::KeyboardOperation::DeleteToEndOfLine
+            | crate::settings::KeyboardOperation::DeleteToBeginningOfLine
+            | crate::settings::KeyboardOperation::SelectAll
+            | crate::settings::KeyboardOperation::MoveToBeginningOfSentence
+            | crate::settings::KeyboardOperation::MoveToEndOfSentence
+            | crate::settings::KeyboardOperation::MoveToBeginningOfDocument
+            | crate::settings::KeyboardOperation::MoveToEndOfDocument
+            | crate::settings::KeyboardOperation::MoveToBeginningOfParagraph
+            | crate::settings::KeyboardOperation::MoveToEndOfParagraph
+            | crate::settings::KeyboardOperation::SelectWordUnderCursor
+            | crate::settings::KeyboardOperation::SetMark
+            | crate::settings::KeyboardOperation::ScrollDownOneScreen
+            | crate::settings::KeyboardOperation::ScrollUpOneScreen
+            | crate::settings::KeyboardOperation::RecenterScreenOnCursor
+            | crate::settings::KeyboardOperation::DuplicateLineSelection
+            | crate::settings::KeyboardOperation::ToggleComment
+            | crate::settings::KeyboardOperation::MoveLineUp
+            | crate::settings::KeyboardOperation::MoveLineDown
+            | crate::settings::KeyboardOperation::IndentRegion
+            | crate::settings::KeyboardOperation::DedentRegion
+            | crate::settings::KeyboardOperation::UppercaseWord
+            | crate::settings::KeyboardOperation::LowercaseWord
+            | crate::settings::KeyboardOperation::CapitalizeWord
+            | crate::settings::KeyboardOperation::JoinLines
+            | crate::settings::KeyboardOperation::Bold
+            | crate::settings::KeyboardOperation::Italic
+            | crate::settings::KeyboardOperation::Underline
+            | crate::settings::KeyboardOperation::CycleThroughClipboard
+            | crate::settings::KeyboardOperation::TransposeCharacters
+            | crate::settings::KeyboardOperation::TransposeWords
+            | crate::settings::KeyboardOperation::IncrementalSearchForward
+            | crate::settings::KeyboardOperation::IncrementalSearchBackward
+            | crate::settings::KeyboardOperation::FindNext
+            | crate::settings::KeyboardOperation::FindPrevious
+            | crate::settings::KeyboardOperation::IndentOrComplete
+    };
+}
+
+/// Trait for managing autocomplete functionality and card interactions in the task entry.
+/// This allows the task entry to interact with autocomplete and the broader UI without
+/// knowing the specific implementation details.
+pub trait AutocompleteManager {
+    /// Show autocomplete suggestions with the given prefix.
+    fn show(&mut self, prefix: &str);
+
+    /// Hide the autocomplete suggestions.
+    fn hide(&mut self);
+
+    /// Called after textarea content changes to update autocomplete state.
+    fn after_textarea_change(&mut self, textarea: &tui_textarea::TextArea);
+
+    /// Set the needs_redraw flag
+    fn set_needs_redraw(&mut self);
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskEntryControlsViewModel {
@@ -28,25 +128,21 @@ pub struct TaskEntryViewModel {
     pub controls: TaskEntryControlsViewModel,
     pub save_state: DraftSaveState,
     pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
-    pub focus_element: FocusElement,                  // Current focus within this card
+    pub focus_element: CardFocusElement,              // Current focus within this card
     pub auto_save_timer: Option<std::time::Instant>,  // Timer for auto-save functionality
 }
 
 impl TaskEntryViewModel {
     /// Handle a keyboard operation on the task entry's description textarea
-    /// Returns true if the operation was handled
-    pub fn handle_keyboard_operation<F>(
+    pub fn handle_keyboard_operation(
         &mut self,
         operation: KeyboardOperation,
         key: &KeyEvent,
-        on_textarea_change: F,
-    ) -> bool
-    where
-        F: FnOnce(&tui_textarea::TextArea, &mut bool),
-    {
+        autocomplete_manager: &mut dyn AutocompleteManager,
+    ) -> KeyboardOperationResult {
         // Only handle operations when focused on the task description
-        if self.focus_element != FocusElement::TaskDescription {
-            return false;
+        if self.focus_element != CardFocusElement::TaskDescription {
+            return KeyboardOperationResult::NotHandled;
         }
 
         match operation {
@@ -71,10 +167,9 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::Head);
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.set_needs_redraw();
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToEndOfLine => {
                 // End key: move cursor to end of line in text area
@@ -97,10 +192,9 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::End);
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.set_needs_redraw();
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveForwardOneCharacter => {
                 // Right arrow: move cursor forward one character in text area
@@ -124,10 +218,9 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::Forward);
 
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.set_needs_redraw();
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveBackwardOneCharacter => {
                 // Left arrow: move cursor backward one character in text area
@@ -151,10 +244,9 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::Back);
 
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.set_needs_redraw();
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveForwardOneWord => {
                 // Ctrl+Right: move cursor forward one word in text area
@@ -178,10 +270,9 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::WordForward);
 
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveBackwardOneWord => {
                 // Ctrl+Left: move cursor backward one word in text area
@@ -205,10 +296,9 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::WordBack);
 
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::DeleteWordForward => {
                 // Ctrl+Delete: delete word forward
@@ -216,10 +306,9 @@ impl TaskEntryViewModel {
                 self.description.delete_next_word();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::DeleteWordBackward => {
                 // Ctrl+Backspace: delete word backward
@@ -227,10 +316,9 @@ impl TaskEntryViewModel {
                 self.description.delete_word();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToPreviousLine => {
                 // Up arrow: move cursor up in the text area
@@ -254,12 +342,12 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::Up);
                 let new_cursor = self.description.cursor();
                 if new_cursor != old_cursor {
-                    // Cursor moved successfully within text area
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
-                    true
+                    // Cursor moved, operation was handled
+                    autocomplete_manager.set_needs_redraw();
+                    KeyboardOperationResult::Handled
                 } else {
-                    false // Cursor couldn't move up, let caller handle navigation
+                    // Cursor didn't move, operation was not handled
+                    KeyboardOperationResult::NotHandled
                 }
             }
             KeyboardOperation::MoveToNextLine => {
@@ -283,13 +371,12 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::Down);
                 let new_cursor = self.description.cursor();
-                if new_cursor != old_cursor {
-                    // Cursor moved successfully within text area
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
-                    true
+                if new_cursor.0 > old_cursor.0 {
+                    // Cursor moved to a next line (successful navigation within text area)
+                    autocomplete_manager.set_needs_redraw();
+                    KeyboardOperationResult::Handled
                 } else {
-                    false // Cursor couldn't move down, let caller handle navigation
+                    KeyboardOperationResult::NotHandled // Cursor couldn't move to next line, let caller handle navigation
                 }
             }
             KeyboardOperation::DeleteCharacterBackward => {
@@ -300,10 +387,9 @@ impl TaskEntryViewModel {
                 self.description.input(key_event);
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::DeleteCharacterForward => {
                 // Delete key
@@ -313,19 +399,17 @@ impl TaskEntryViewModel {
                 self.description.input(key_event);
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::OpenNewLine => {
                 // Shift+Enter: add newline to description
                 use ratatui::crossterm::event::{KeyCode, KeyEvent};
                 let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
                 self.description.input(key_event);
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Cut => {
                 // Cut selected text
@@ -333,15 +417,14 @@ impl TaskEntryViewModel {
                 self.description.cut();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Copy => {
                 // Copy selected text
                 self.description.copy();
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Paste => {
                 // Paste from clipboard
@@ -349,10 +432,9 @@ impl TaskEntryViewModel {
                 self.description.paste();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Undo => {
                 // Undo last operation
@@ -360,10 +442,9 @@ impl TaskEntryViewModel {
                 self.description.undo();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Redo => {
                 // Redo last operation
@@ -371,10 +452,9 @@ impl TaskEntryViewModel {
                 self.description.redo();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::DeleteToEndOfLine => {
                 // Delete from cursor to end of line
@@ -382,10 +462,9 @@ impl TaskEntryViewModel {
                 self.description.delete_line_by_end();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::DeleteToBeginningOfLine => {
                 // Delete from cursor to beginning of line
@@ -393,17 +472,15 @@ impl TaskEntryViewModel {
                 self.description.delete_line_by_head();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::SelectAll => {
                 // Select all text
                 self.description.select_all();
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToBeginningOfSentence => {
                 // Move to beginning of sentence (approximated as beginning of line)
@@ -426,10 +503,9 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::Head);
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToEndOfSentence => {
                 // Move to end of sentence (approximated as end of line)
@@ -452,10 +528,9 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::End);
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToBeginningOfDocument => {
                 // Move to beginning of document (first line, first character)
@@ -489,10 +564,9 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::Head);
 
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToEndOfDocument => {
                 // Move to end of document (last line, last character)
@@ -526,10 +600,9 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::End);
 
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToBeginningOfParagraph => {
                 // Move to beginning of paragraph (approximated as beginning of current line)
@@ -552,10 +625,9 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::Head);
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveToEndOfParagraph => {
                 // Move to end of paragraph (approximated as end of current line)
@@ -578,36 +650,34 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::End);
                 if self.description.cursor() != before {
-                    let mut needs_redraw = false;
-                    on_textarea_change(&self.description, &mut needs_redraw);
+                    autocomplete_manager.after_textarea_change(&self.description);
                 }
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::SelectWordUnderCursor => {
                 // Select word under cursor
                 // For now, just select all as a simple approximation
                 // A more sophisticated implementation would find word boundaries
                 self.description.select_all();
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::SetMark => {
                 // Set mark for selection (CUA style selection start)
                 self.description.start_selection();
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::ScrollDownOneScreen => {
                 // Scroll viewport down one screen (PageDown)
                 use tui_textarea::Scrolling;
                 self.description.scroll(Scrolling::PageDown);
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::ScrollUpOneScreen => {
                 // Scroll viewport up one screen (PageUp)
                 use tui_textarea::Scrolling;
                 self.description.scroll(Scrolling::PageUp);
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::RecenterScreenOnCursor => {
                 // Recenter cursor in middle of screen (Ctrl+L)
@@ -621,7 +691,7 @@ impl TaskEntryViewModel {
 
                 // Scroll to center cursor
                 self.description.scroll((target_top as i16, 0));
-                true
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::DuplicateLineSelection => {
                 // Duplicate line/selection (Ctrl+D) - copy and paste below
@@ -637,9 +707,8 @@ impl TaskEntryViewModel {
                     self.description.insert_str(&current_line);
                 }
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::ToggleComment => {
                 // Toggle comment (Ctrl+/) - add/remove comment markers from lines
@@ -684,9 +753,8 @@ impl TaskEntryViewModel {
                 // Replace the lines in textarea
                 // This is a simplified approach - in practice you'd need to handle this more carefully
                 // For now, we'll just implement a basic version
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true // Placeholder - full implementation would modify textarea content
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled // Placeholder - full implementation would modify textarea content
             }
             KeyboardOperation::MoveLineUp => {
                 // Move line up (Alt+↑) - cut and reinsert above previous line
@@ -695,7 +763,7 @@ impl TaskEntryViewModel {
 
                 // Can't move first line up
                 if cursor_row == 0 {
-                    return false;
+                    return KeyboardOperationResult::NotHandled;
                 }
 
                 // Select current line (simplified - would need proper line selection)
@@ -714,9 +782,8 @@ impl TaskEntryViewModel {
                 // Paste above the current line
                 self.description.paste();
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::MoveLineDown => {
                 // Move line down (Alt+↓) - cut and reinsert below next line
@@ -725,7 +792,7 @@ impl TaskEntryViewModel {
 
                 // Can't move last line down
                 if cursor_row >= lines.len().saturating_sub(1) {
-                    return false;
+                    return KeyboardOperationResult::NotHandled;
                 }
 
                 // Select current line (simplified)
@@ -744,9 +811,8 @@ impl TaskEntryViewModel {
                 self.description.insert_newline();
                 self.description.paste();
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::IndentRegion => {
                 // Indent region (Ctrl+]) - insert spaces at start of selected lines
@@ -761,9 +827,8 @@ impl TaskEntryViewModel {
 
                 // Insert 4 spaces (or tab) at start of each line
                 // This is simplified - full implementation would need to modify textarea content directly
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true // Placeholder
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled // Placeholder
             }
             KeyboardOperation::DedentRegion => {
                 // Dedent region (Ctrl+[) - remove spaces from start of selected lines
@@ -778,9 +843,8 @@ impl TaskEntryViewModel {
 
                 // Remove up to 4 spaces from start of each line
                 // This is simplified - full implementation would need to modify textarea content directly
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true // Placeholder
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled // Placeholder
             }
             KeyboardOperation::UppercaseWord => {
                 // Uppercase word (Alt+U) - transform word at/after cursor to uppercase
@@ -834,9 +898,8 @@ impl TaskEntryViewModel {
                     }
                 }
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::LowercaseWord => {
                 // Lowercase word (Alt+L) - transform word at/after cursor to lowercase
@@ -890,9 +953,8 @@ impl TaskEntryViewModel {
                     }
                 }
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::CapitalizeWord => {
                 // Capitalize word (Alt+C) - capitalize word at/after cursor
@@ -921,14 +983,13 @@ impl TaskEntryViewModel {
                         // Replace the selection
                         self.description.paste();
 
-                        let mut needs_redraw = false;
-                        on_textarea_change(&self.description, &mut needs_redraw);
-                        true
+                        autocomplete_manager.after_textarea_change(&self.description);
+                        KeyboardOperationResult::Handled
                     } else {
-                        false
+                        KeyboardOperationResult::NotHandled
                     }
                 } else {
-                    false
+                    KeyboardOperationResult::NotHandled
                 }
             }
             KeyboardOperation::JoinLines => {
@@ -937,9 +998,8 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(tui_textarea::CursorMove::End);
                 self.description.delete_next_char(); // This should delete the newline
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Bold => {
                 // Bold (Ctrl+B) - wrap selection or next word with **
@@ -961,9 +1021,8 @@ impl TaskEntryViewModel {
                     self.description.move_cursor(tui_textarea::CursorMove::Back);
                 }
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Italic => {
                 // Italic (Ctrl+I) - wrap selection or next word with *
@@ -981,9 +1040,8 @@ impl TaskEntryViewModel {
                     self.description.move_cursor(tui_textarea::CursorMove::Back);
                 }
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::Underline => {
                 // Underline (Ctrl+U) - wrap selection with <u> tags
@@ -1004,16 +1062,14 @@ impl TaskEntryViewModel {
                     self.description.move_cursor(tui_textarea::CursorMove::Back);
                 }
 
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::CycleThroughClipboard => {
                 // Cycle through clipboard (Alt+Y) - cycle through yank ring
                 // This would require implementing a yank ring - simplified for now
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true // Placeholder
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled // Placeholder
             }
             KeyboardOperation::TransposeCharacters => {
                 // Transpose characters (Ctrl+T) - swap character before cursor with character after
@@ -1021,51 +1077,49 @@ impl TaskEntryViewModel {
                 self.description.delete_next_char();
                 self.description.move_cursor(tui_textarea::CursorMove::Forward);
                 // Full implementation would need to save characters and swap them
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true // Placeholder
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled // Placeholder
             }
             KeyboardOperation::TransposeWords => {
                 // Transpose words (Alt+T) - swap word before cursor with word after
                 // Simplified implementation - would need complex word boundary detection
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true // Placeholder
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled // Placeholder
             }
             KeyboardOperation::IncrementalSearchForward => {
                 // Incremental search forward (Ctrl+S) - start search mode
                 // Set search pattern (would need search dialog/input in real implementation)
                 let _ = self.description.set_search_pattern("search_term".to_string());
                 let _ = self.description.search_forward(false);
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::IncrementalSearchBackward => {
                 // Incremental search backward (Ctrl+R) - start reverse search mode
                 // Set search pattern and search backward
                 let _ = self.description.set_search_pattern("search_term".to_string());
                 let _ = self.description.search_back(false);
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::FindNext => {
                 // Find next (F3) - jump to next search match
                 let _ = self.description.search_forward(false);
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
             }
             KeyboardOperation::FindPrevious => {
                 // Find previous (Shift+F3) - jump to previous search match
                 let _ = self.description.search_back(false);
-                let mut needs_redraw = false;
-                on_textarea_change(&self.description, &mut needs_redraw);
-                true
+                autocomplete_manager.after_textarea_change(&self.description);
+                KeyboardOperationResult::Handled
+            }
+            KeyboardOperation::IndentOrComplete => {
+                // Enter: signal that task should be launched (handled by caller)
+                KeyboardOperationResult::TaskLaunched
             }
             // Operations that don't apply to text editing
-            _ => false,
+            _ => KeyboardOperationResult::NotHandled,
         }
     }
 }

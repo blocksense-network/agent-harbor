@@ -164,7 +164,7 @@ fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
     let log_hint = log_path.display().to_string();
 
     let mut vm = build_view_model();
-    vm.focus_element = FocusElement::TaskDescription;
+    vm.focus_element = FocusElement::DraftTask(0);
     vm.open_modal(ModalState::Settings);
 
     let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());

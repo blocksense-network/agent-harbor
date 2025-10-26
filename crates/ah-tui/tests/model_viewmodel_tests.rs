@@ -16,6 +16,7 @@ use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, T
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::KeyboardOperation;
+use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{DraftSaveState, FocusElement, ModalState, ViewModel};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -80,7 +81,7 @@ mod viewmodel_tests {
 
         // Check that the draft card's internal focus starts on TaskDescription
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
         // Tab from draft task should cycle through the card's internal controls
@@ -89,32 +90,32 @@ mod viewmodel_tests {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         // But internal focus should move to RepositorySelector
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::RepositorySelector);
+            assert_eq!(card.focus_element, CardFocusElement::RepositorySelector);
         }
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::BranchSelector);
+            assert_eq!(card.focus_element, CardFocusElement::BranchSelector);
         }
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::ModelSelector);
+            assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
         }
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::GoButton);
+            assert_eq!(card.focus_element, CardFocusElement::GoButton);
         }
 
         // Next tab should cycle back to TaskDescription
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
     }
 
@@ -132,32 +133,32 @@ mod viewmodel_tests {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         // But internal focus should move to GoButton
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::GoButton);
+            assert_eq!(card.focus_element, CardFocusElement::GoButton);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::ModelSelector);
+            assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::BranchSelector);
+            assert_eq!(card.focus_element, CardFocusElement::BranchSelector);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::RepositorySelector);
+            assert_eq!(card.focus_element, CardFocusElement::RepositorySelector);
         }
 
         // Next shift+tab should cycle back to TaskDescription
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
     }
 
@@ -171,7 +172,7 @@ mod viewmodel_tests {
 
         // Verify the card's internal focus is on TaskDescription
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
         // Type some text - should work because card internal focus is TaskDescription
@@ -252,24 +253,25 @@ mod viewmodel_tests {
         // Test PRD requirement: Enter key activates modal dialogs for selectors
         let mut vm = create_test_view_model();
 
-        // Test repository selector (global focus)
-        vm.focus_element = FocusElement::RepositorySelector;
+        // Test repository selector (card internal focus)
+        vm.focus_element = FocusElement::DraftTask(0);
+        vm.draft_cards[0].focus_element = CardFocusElement::RepositorySelector;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::RepositorySearch);
 
         // Reset modal state
         vm.modal_state = ModalState::None;
 
-        // Test branch selector (global focus)
-        vm.focus_element = FocusElement::BranchSelector;
+        // Test branch selector (card internal focus)
+        vm.draft_cards[0].focus_element = CardFocusElement::BranchSelector;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::BranchSearch);
 
         // Reset modal state
         vm.modal_state = ModalState::None;
 
-        // Test model selector (global focus)
-        vm.focus_element = FocusElement::ModelSelector;
+        // Test model selector (card internal focus)
+        vm.draft_cards[0].focus_element = CardFocusElement::ModelSelector;
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::ModelSearch);
 
@@ -292,7 +294,7 @@ mod viewmodel_tests {
 
         // Initially, card internal focus should be on TaskDescription
         if let Some(card) = vm.draft_cards.get(0) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
         // Enter with TaskDescription focused should launch task (same as Go button)
@@ -302,7 +304,7 @@ mod viewmodel_tests {
 
         // Now test with repository selector focused internally
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.focus_element = FocusElement::RepositorySelector;
+            card.focus_element = CardFocusElement::RepositorySelector;
         }
         vm.modal_state = ModalState::None; // Reset modal state
         vm.status_bar.error_message = None; // Reset error
@@ -312,7 +314,7 @@ mod viewmodel_tests {
 
         // Test branch selector
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.focus_element = FocusElement::BranchSelector;
+            card.focus_element = CardFocusElement::BranchSelector;
         }
         vm.modal_state = ModalState::None;
 
@@ -321,7 +323,7 @@ mod viewmodel_tests {
 
         // Test model selector
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.focus_element = FocusElement::ModelSelector;
+            card.focus_element = CardFocusElement::ModelSelector;
         }
         vm.modal_state = ModalState::None;
 
@@ -330,7 +332,7 @@ mod viewmodel_tests {
 
         // Test go button
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.focus_element = FocusElement::GoButton;
+            card.focus_element = CardFocusElement::GoButton;
         }
         vm.modal_state = ModalState::None;
 
@@ -345,7 +347,7 @@ mod viewmodel_tests {
         let log_hint = log_path.display().to_string();
 
         let mut vm = create_test_view_model();
-        vm.focus_element = FocusElement::TaskDescription;
+        vm.focus_element = FocusElement::DraftTask(0);
 
         // First ESC should arm the exit confirmation state
         assert!(
@@ -410,7 +412,7 @@ mod viewmodel_tests {
         let mut vm = create_test_view_model();
 
         // Try to launch without description
-        vm.focus_element = FocusElement::GoButton;
+        vm.focus_element = FocusElement::DraftTask(0);
 
         // Should fail validation
         assert!(!vm.handle_go_button()); // Should return false for validation failure
@@ -424,7 +426,7 @@ mod viewmodel_tests {
         let mut vm = create_test_view_model();
 
         // Add description and clear models
-        vm.focus_element = FocusElement::TaskDescription;
+        vm.focus_element = FocusElement::DraftTask(0);
         vm.handle_char_input('T');
         vm.handle_char_input('e');
         vm.handle_char_input('s');
@@ -435,7 +437,7 @@ mod viewmodel_tests {
             card.models.clear();
         }
 
-        vm.focus_element = FocusElement::GoButton;
+        vm.focus_element = FocusElement::DraftTask(0);
 
         // Should fail validation
         assert!(!vm.handle_go_button()); // Should return false for validation failure
@@ -452,7 +454,8 @@ mod viewmodel_tests {
 
         // Send Ctrl+N
         let ctrl_n_event = key_event(KeyCode::Char('n'), KeyModifiers::CONTROL);
-        assert!(vm.handle_key_event(ctrl_n_event));
+        let result = vm.handle_key_event(ctrl_n_event);
+        assert!(result);
 
         // Should have created a new draft task
         assert_eq!(vm.draft_cards.len(), initial_draft_count + 1);
@@ -463,7 +466,7 @@ mod viewmodel_tests {
         );
         // The new card's internal focus should be on TaskDescription
         if let Some(card) = vm.draft_cards.get(initial_draft_count) {
-            assert_eq!(card.focus_element, FocusElement::TaskDescription);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
     }
 

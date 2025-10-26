@@ -66,6 +66,17 @@ use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::{fmt, pin::Pin};
 
+/// Starting point for task execution - defines where to start the task from
+#[derive(Debug, Clone, PartialEq)]
+pub enum StartingPoint {
+    /// Start from a repository branch (traditional approach)
+    RepositoryBranch { repository: String, branch: String },
+    /// Start from a specific repository commit
+    RepositoryCommit { repository: String, commit: String },
+    /// Start from a filesystem snapshot
+    FilesystemSnapshot { snapshot_id: String },
+}
+
 /// Parameters for launching a task
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskLaunchParams {
@@ -256,6 +267,17 @@ pub trait TaskManager: Send + Sync {
     /// Real implementations may involve network calls, process spawning,
     /// or other async operations.
     async fn launch_task(&self, params: TaskLaunchParams) -> TaskLaunchResult;
+
+    /// Launch a task from a specific starting point
+    ///
+    /// This allows launching tasks from filesystem snapshots or specific commits,
+    /// which is useful for replay scenarios.
+    async fn launch_task_from_starting_point(
+        &self,
+        starting_point: StartingPoint,
+        description: &str,
+        models: &[SelectedModel],
+    ) -> TaskLaunchResult;
 
     /// Get a stream of task events for the given task ID
     ///

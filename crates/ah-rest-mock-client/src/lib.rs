@@ -428,6 +428,31 @@ impl TaskManager for MockRestClient {
         }
     }
 
+    async fn launch_task_from_starting_point(
+        &self,
+        starting_point: ah_core::task_manager::StartingPoint,
+        description: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> ah_core::task_manager::TaskLaunchResult {
+        // For now, only support RepositoryBranch starting point
+        match starting_point {
+            ah_core::task_manager::StartingPoint::RepositoryBranch { repository, branch } => {
+                let params = ah_core::task_manager::TaskLaunchParams::new(
+                    repository,
+                    branch,
+                    description.to_string(),
+                    models.to_vec(),
+                )
+                .unwrap_or_else(|e| panic!("Invalid parameters: {}", e));
+
+                self.launch_task(params).await
+            }
+            _ => ah_core::task_manager::TaskLaunchResult::Failure {
+                error: "Starting point not supported in mock client".to_string(),
+            },
+        }
+    }
+
     fn description(&self) -> &str {
         "Mock REST Client (for testing TaskManager interface)"
     }

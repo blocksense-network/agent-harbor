@@ -54,11 +54,13 @@
 //!   (selection, focus)                                     (drafts, executions)
 //! ```
 
+use crate::HandledKeyboardOperations;
 use crate::Settings;
 use crate::WorkspaceFilesEnumerator;
 use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
 use crate::view_model::FilterBarViewModel;
 use crate::view_model::autocomplete::{AutocompleteKeyResult, InlineAutocomplete};
+use crate::view_model::task_entry::{AutocompleteManager, CardFocusElement};
 use crate::view_model::{
     AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
     DraftSaveState, FilterControl, FilterOptions, FocusElement, ModalState, SearchMode,
@@ -73,6 +75,7 @@ use ah_domain_types::{
     DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskInfo, TaskState,
 };
 use ah_workflows::WorkspaceWorkflowsEnumerator;
+use chrono;
 use futures::stream::StreamExt;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
@@ -227,11 +230,10 @@ impl ViewModel {
         }
 
         let textarea_active = match self.focus_element {
-            FocusElement::TaskDescription => true,
             FocusElement::DraftTask(idx) => self
                 .draft_cards
                 .get(idx)
-                .map(|card| card.focus_element == FocusElement::TaskDescription)
+                .map(|card| card.focus_element == CardFocusElement::TaskDescription)
                 .unwrap_or(false),
             _ => false,
         };
@@ -328,31 +330,29 @@ impl ViewModel {
         // Implement PRD-compliant tab navigation for draft cards
         match self.focus_element {
             FocusElement::DraftTask(idx) => {
-                // When on a draft task, Tab should cycle through the card's internal controls
+                // Handle tab navigation within the draft card
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     match card.focus_element {
-                        FocusElement::TaskDescription => {
-                            card.focus_element = FocusElement::RepositorySelector;
+                        CardFocusElement::TaskDescription => {
+                            card.focus_element = CardFocusElement::RepositorySelector;
                         }
-                        FocusElement::RepositorySelector => {
-                            card.focus_element = FocusElement::BranchSelector;
+                        CardFocusElement::RepositorySelector => {
+                            card.focus_element = CardFocusElement::BranchSelector;
                         }
-                        FocusElement::BranchSelector => {
-                            card.focus_element = FocusElement::ModelSelector;
+                        CardFocusElement::BranchSelector => {
+                            card.focus_element = CardFocusElement::ModelSelector;
                         }
-                        FocusElement::ModelSelector => {
-                            card.focus_element = FocusElement::GoButton;
+                        CardFocusElement::ModelSelector => {
+                            card.focus_element = CardFocusElement::GoButton;
                         }
-                        FocusElement::GoButton => {
-                            card.focus_element = FocusElement::TaskDescription; // Cycle back to start
-                        }
-                        _ => {
-                            card.focus_element = FocusElement::RepositorySelector;
+                        CardFocusElement::GoButton => {
+                            card.focus_element = CardFocusElement::TaskDescription;
                         }
                     }
-                    return true;
+                    true
+                } else {
+                    false
                 }
-                false
             }
             // For other global focus elements, handle normally
             FocusElement::SettingsButton => {
@@ -378,32 +378,29 @@ impl ViewModel {
         // Implement PRD-compliant shift+tab navigation for draft cards (reverse order)
         match self.focus_element {
             FocusElement::DraftTask(idx) => {
-                // When on a draft task, Shift+Tab should cycle through the card's internal controls in reverse
+                // Handle shift+tab navigation within the draft card (reverse order)
                 if let Some(card) = self.draft_cards.get_mut(idx) {
-                    let old_internal_focus = card.focus_element;
                     match card.focus_element {
-                        FocusElement::TaskDescription => {
-                            card.focus_element = FocusElement::GoButton;
+                        CardFocusElement::TaskDescription => {
+                            card.focus_element = CardFocusElement::GoButton;
                         }
-                        FocusElement::GoButton => {
-                            card.focus_element = FocusElement::ModelSelector;
+                        CardFocusElement::GoButton => {
+                            card.focus_element = CardFocusElement::ModelSelector;
                         }
-                        FocusElement::ModelSelector => {
-                            card.focus_element = FocusElement::BranchSelector;
+                        CardFocusElement::ModelSelector => {
+                            card.focus_element = CardFocusElement::BranchSelector;
                         }
-                        FocusElement::BranchSelector => {
-                            card.focus_element = FocusElement::RepositorySelector;
+                        CardFocusElement::BranchSelector => {
+                            card.focus_element = CardFocusElement::RepositorySelector;
                         }
-                        FocusElement::RepositorySelector => {
-                            card.focus_element = FocusElement::TaskDescription; // Cycle back to end
-                        }
-                        _ => {
-                            card.focus_element = FocusElement::GoButton;
+                        CardFocusElement::RepositorySelector => {
+                            card.focus_element = CardFocusElement::TaskDescription;
                         }
                     }
-                    return true;
+                    true
+                } else {
+                    false
                 }
-                false
             }
             // For other global focus elements, handle normally
             FocusElement::SettingsButton => {
@@ -516,14 +513,9 @@ impl ViewModel {
 
         // Allow text input when focused on draft-related elements
         match self.focus_element {
-            FocusElement::TaskDescription
-            | FocusElement::RepositorySelector
-            | FocusElement::BranchSelector
-            | FocusElement::ModelSelector
-            | FocusElement::GoButton
-            | FocusElement::DraftTask(_) => {
-                // Support editing the description when focused on TaskDescription or any DraftTask
-                if let FocusElement::TaskDescription = self.focus_element {
+            FocusElement::DraftTask(_) => {
+                // Support editing the description when focused on any DraftTask
+                if let FocusElement::DraftTask(0) = self.focus_element {
                     // Get the first (and currently only) draft card
                     if let Some(card) = self.draft_cards.get_mut(0) {
                         // Feed the character to the textarea widget
@@ -544,7 +536,7 @@ impl ViewModel {
                 } else if let FocusElement::DraftTask(idx) = self.focus_element {
                     // When a draft task is focused, edit its description only if internal focus is on text area
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Feed the character to the textarea widget
                             use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                             let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
@@ -561,6 +553,8 @@ impl ViewModel {
                             return true;
                         }
                     }
+                    // TODO: Aren't these the same?
+                    // The duplication seems legacy of removing the TaskDescription focus state
                 }
             }
             _ => {}
@@ -661,51 +655,53 @@ impl ViewModel {
             }
         }
 
-        match self.focus_element {
-            FocusElement::TaskDescription => {
-                // Note: tui-textarea automatically deletes selected text when backspace is pressed
-
-                // Get the first (and currently only) draft card
-                if let Some(card) = self.draft_cards.get_mut(0) {
-                    // Feed backspace to the textarea widget
-                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                    let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
-                    self.autocomplete.notify_text_input();
-                    card.description.input(key_event);
-
-                    self.autocomplete
-                        .after_textarea_change(&card.description, &mut self.needs_redraw);
-
-                    card.save_state = DraftSaveState::Unsaved;
-                    // Reset auto-save timer
-                    card.auto_save_timer = Some(std::time::Instant::now());
-                    return true;
-                }
-            }
-            FocusElement::DraftTask(idx) => {
-                // Note: tui-textarea automatically deletes selected text when backspace is pressed
-
-                // When a draft task is focused, edit its description only if internal focus is on text area
-                if let Some(card) = self.draft_cards.get_mut(idx) {
-                    if card.focus_element == FocusElement::TaskDescription {
-                        // Feed backspace to the textarea widget
-                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                        let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
-                        self.autocomplete.notify_text_input();
-                        card.description.input(key_event);
-
-                        self.autocomplete
-                            .after_textarea_change(&card.description, &mut self.needs_redraw);
-
-                        card.save_state = DraftSaveState::Unsaved;
-                        // Reset auto-save timer
-                        card.auto_save_timer = Some(std::time::Instant::now());
-                        return true;
+        // Handle backspace on draft cards
+        if let FocusElement::DraftTask(idx) = self.focus_element {
+            if let Some(card) = self.draft_cards.get_mut(idx) {
+                if card.focus_element == CardFocusElement::TaskDescription {
+                    // Delegate directly to task entry for backspace
+                    struct AutocompleteManagerImpl<'a> {
+                        autocomplete: &'a mut InlineAutocomplete,
+                        needs_redraw: &'a mut bool,
                     }
+
+                    impl<'a> AutocompleteManager for AutocompleteManagerImpl<'a> {
+                        fn show(&mut self, _prefix: &str) {
+                            // The autocomplete shows itself automatically
+                        }
+
+                        fn hide(&mut self) {
+                            self.autocomplete.close(&mut false); // We don't use this
+                        }
+
+                        fn after_textarea_change(&mut self, textarea: &tui_textarea::TextArea) {
+                            self.autocomplete.after_textarea_change(textarea, self.needs_redraw);
+                        }
+
+                        fn set_needs_redraw(&mut self) {
+                            *self.needs_redraw = true;
+                        }
+                    }
+
+                    let mut autocomplete_manager = AutocompleteManagerImpl {
+                        autocomplete: &mut self.autocomplete,
+                        needs_redraw: &mut self.needs_redraw,
+                    };
+
+                    let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
+                    return matches!(
+                        card.handle_keyboard_operation(
+                            KeyboardOperation::DeleteCharacterBackward,
+                            &key_event,
+                            &mut autocomplete_manager
+                        ),
+                        crate::view_model::task_entry::KeyboardOperationResult::Handled
+                            | crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched
+                    );
                 }
             }
-            _ => {}
         }
+
         false
     }
 
@@ -799,143 +795,60 @@ impl ViewModel {
             }
         }
 
-        match self.focus_element {
-            FocusElement::TaskDescription => {
-                // Note: tui-textarea automatically deletes selected text when delete is pressed
-
-                // Get the first (and currently only) draft card
-                if let Some(card) = self.draft_cards.get_mut(0) {
-                    // Feed delete to the textarea widget
-                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                    let key_event = KeyEvent::new(KeyCode::Delete, KeyModifiers::empty());
-                    self.autocomplete.notify_text_input();
-                    card.description.input(key_event);
-
-                    self.autocomplete
-                        .after_textarea_change(&card.description, &mut self.needs_redraw);
-
-                    card.save_state = DraftSaveState::Unsaved;
-                    // Reset auto-save timer
-                    card.auto_save_timer = Some(std::time::Instant::now());
-                    return true;
-                }
-            }
-            FocusElement::DraftTask(idx) => {
-                // Note: tui-textarea automatically deletes selected text when delete is pressed
-
-                // When a draft task is focused, edit its description only if internal focus is on text area
-                if let Some(card) = self.draft_cards.get_mut(idx) {
-                    if card.focus_element == FocusElement::TaskDescription {
-                        // Feed delete to the textarea widget
-                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                        let key_event = KeyEvent::new(KeyCode::Delete, KeyModifiers::empty());
-                        self.autocomplete.notify_text_input();
-                        card.description.input(key_event);
-
-                        self.autocomplete
-                            .after_textarea_change(&card.description, &mut self.needs_redraw);
-
-                        card.save_state = DraftSaveState::Unsaved;
-                        // Reset auto-save timer
-                        card.auto_save_timer = Some(std::time::Instant::now());
-                        return true;
-                    }
-                }
-            }
-            _ => {}
-        }
+        // Delete handling is now done by early delegation to task_entry
         false
     }
 
     /// Handle enter key (including shift+enter for newlines)
     pub fn handle_enter(&mut self, shift: bool) -> bool {
-        match self.focus_element {
-            FocusElement::DraftTask(idx) => {
-                // Handle Enter on a draft card based on its internal focus
-                if let Some(card) = self.draft_cards.get(idx) {
-                    match card.focus_element {
-                        FocusElement::TaskDescription => {
-                            if shift {
-                                // Shift+Enter: add newline to description
-                                if let Some(card) = self.draft_cards.get_mut(idx) {
-                                    use ratatui::crossterm::event::{
-                                        KeyCode, KeyEvent, KeyModifiers,
-                                    };
-                                    let key_event =
-                                        KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
-                                    self.autocomplete.notify_text_input();
-                                    card.description.input(key_event);
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                    card.save_state = DraftSaveState::Unsaved;
-                                    card.auto_save_timer = Some(std::time::Instant::now());
-                                    return true;
-                                }
-                            } else {
-                                // Enter: launch task (same as Go button)
-                                return self.handle_go_button();
-                            }
-                        }
-                        FocusElement::RepositorySelector => {
-                            self.open_modal(ModalState::RepositorySearch);
-                            return true;
-                        }
-                        FocusElement::BranchSelector => {
-                            self.open_modal(ModalState::BranchSearch);
-                            return true;
-                        }
-                        FocusElement::ModelSelector => {
-                            self.open_modal(ModalState::ModelSearch);
-                            return true;
-                        }
-                        FocusElement::GoButton => {
-                            return self.handle_go_button();
-                        }
-                        _ => return false,
-                    }
-                }
-                false
-            }
-            FocusElement::TaskDescription => {
-                if shift {
-                    // Shift+Enter: add newline to description
-                    // Get the first (and currently only) draft card
-                    if let Some(card) = self.draft_cards.get_mut(0) {
-                        // Feed enter to the textarea widget
-                        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                        let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
-                        self.autocomplete.notify_text_input();
-                        card.description.input(key_event);
-                        self.autocomplete
-                            .after_textarea_change(&card.description, &mut self.needs_redraw);
+        // Handle Enter on draft cards based on internal focus
+        if let FocusElement::DraftTask(idx) = self.focus_element {
+            if let Some(card) = self.draft_cards.get(idx) {
+                match card.focus_element {
+                    CardFocusElement::TaskDescription => {
+                        // Enter on TaskDescription: launch task (or add newline with Shift+Enter)
+                        if shift {
+                            // Shift+Enter: add newline to description
+                            use crate::settings::KeyboardOperation;
+                            use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-                        card.save_state = DraftSaveState::Unsaved;
-                        card.auto_save_timer = Some(std::time::Instant::now());
+                            let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT);
+                            return self.handle_keyboard_operation(
+                                KeyboardOperation::OpenNewLine,
+                                &key_event,
+                            );
+                        } else {
+                            // Regular Enter: launch task
+                            use crate::settings::KeyboardOperation;
+                            use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+                            let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+                            return self.handle_keyboard_operation(
+                                KeyboardOperation::IndentOrComplete,
+                                &key_event,
+                            );
+                        }
+                    }
+                    CardFocusElement::RepositorySelector => {
+                        self.open_modal(ModalState::RepositorySearch);
                         return true;
                     }
-                    return false; // No draft card found
-                } else {
-                    // Enter: launch task (same as Go button)
-                    return self.handle_go_button();
+                    CardFocusElement::BranchSelector => {
+                        self.open_modal(ModalState::BranchSearch);
+                        return true;
+                    }
+                    CardFocusElement::ModelSelector => {
+                        self.open_modal(ModalState::ModelSearch);
+                        return true;
+                    }
+                    CardFocusElement::GoButton => {
+                        return self.handle_go_button();
+                    }
                 }
             }
-            FocusElement::GoButton => {
-                return self.handle_go_button();
-            }
-            FocusElement::RepositorySelector => {
-                self.open_modal(ModalState::RepositorySearch);
-                return true;
-            }
-            FocusElement::BranchSelector => {
-                self.open_modal(ModalState::BranchSearch);
-                return true;
-            }
-            FocusElement::ModelSelector => {
-                self.open_modal(ModalState::ModelSearch);
-                return true;
-            }
+        }
+
+        match self.focus_element {
             FocusElement::SettingsButton => {
                 self.open_modal(ModalState::Settings);
                 return true;
@@ -988,7 +901,7 @@ impl ViewModel {
                 };
 
                 let new_card =
-                    create_draft_card_from_task(new_draft, FocusElement::TaskDescription);
+                    create_draft_card_from_task(new_draft, CardFocusElement::TaskDescription);
                 self.draft_cards.push(new_card);
                 let new_index = self.draft_cards.len() - 1;
                 self.focus_element = FocusElement::DraftTask(new_index); // Focus on the new draft task
@@ -1350,7 +1263,7 @@ impl ViewModel {
 
         // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
         let initial_global_focus = FocusElement::DraftTask(0); // Focus on the single draft task
-        let initial_card_focus = FocusElement::TaskDescription; // Initially focus the text area within the card
+        let initial_card_focus = CardFocusElement::TaskDescription; // Initially focus the text area within the card
 
         // Create task collections - cards contain the domain objects
         let draft_cards = vec![create_draft_card_from_task(
@@ -1518,102 +1431,6 @@ impl ViewModel {
         Ok(())
     }
 
-    /// Translate a KeyEvent to a KeyboardOperation by consulting the user's configured key bindings
-    fn key_event_to_operation(&self, key: &KeyEvent) -> Option<KeyboardOperation> {
-        use crate::settings::*;
-        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
-
-        // Special hardcoded handling for Ctrl+N (new draft) - bypass keymap
-        if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
-            if mods.contains(KeyModifiers::CONTROL) {
-                return None; // Let it be handled as character input for new draft
-            }
-        }
-
-        // Special hardcoded handling for Ctrl+D (duplicate line) - for testing
-        if let (KeyCode::Char('d'), mods) = (key.code, key.modifiers) {
-            if mods.contains(KeyModifiers::CONTROL) {
-                return Some(KeyboardOperation::DuplicateLineSelection);
-            }
-        }
-
-        // Get the keymap configuration from settings
-        let keymap = self.settings.keymap();
-
-        // Check all possible keyboard operations to see if any match this key event
-        // This approach allows users to fully customize their key bindings
-
-        // Define all operations we care about in the TUI
-        // These are operations that have default key bindings defined
-        let operations_to_check = vec![
-            KeyboardOperation::MoveToPreviousLine,         // Up arrow
-            KeyboardOperation::MoveToNextLine,             // Down arrow
-            KeyboardOperation::MoveToNextField,            // Tab
-            KeyboardOperation::MoveToPreviousField,        // Shift+Tab
-            KeyboardOperation::MoveToBeginningOfLine,      // Home
-            KeyboardOperation::MoveToEndOfLine,            // End
-            KeyboardOperation::MoveForwardOneCharacter,    // Right arrow
-            KeyboardOperation::MoveBackwardOneCharacter,   // Left arrow
-            KeyboardOperation::MoveForwardOneWord,         // Ctrl+Right
-            KeyboardOperation::MoveBackwardOneWord,        // Ctrl+Left
-            KeyboardOperation::MoveToBeginningOfSentence,  // Alt+A
-            KeyboardOperation::MoveToEndOfSentence,        // Alt+E
-            KeyboardOperation::ScrollDownOneScreen,        // PageDown
-            KeyboardOperation::ScrollUpOneScreen,          // PageUp
-            KeyboardOperation::RecenterScreenOnCursor,     // Ctrl+L
-            KeyboardOperation::MoveToBeginningOfDocument,  // Ctrl+Home
-            KeyboardOperation::MoveToEndOfDocument,        // Ctrl+End
-            KeyboardOperation::MoveToBeginningOfParagraph, // Alt+{
-            KeyboardOperation::MoveToEndOfParagraph,       // Alt+}
-            KeyboardOperation::DeleteCharacterBackward,    // Backspace
-            KeyboardOperation::DeleteCharacterForward,     // Delete
-            KeyboardOperation::DeleteWordForward,          // Ctrl+Delete
-            KeyboardOperation::DeleteWordBackward,         // Ctrl+Backspace
-            KeyboardOperation::DeleteToEndOfLine,          // Ctrl+K
-            KeyboardOperation::DeleteToBeginningOfLine,    // Ctrl+U
-            KeyboardOperation::Cut,                        // Ctrl+X
-            KeyboardOperation::Copy,                       // Ctrl+C
-            KeyboardOperation::Paste,                      // Ctrl+V
-            KeyboardOperation::CycleThroughClipboard,      // Alt+Y
-            KeyboardOperation::Undo,                       // Ctrl+Z
-            KeyboardOperation::Redo,                       // Ctrl+Y
-            KeyboardOperation::OpenNewLine,                // Shift+Enter
-            KeyboardOperation::TransposeCharacters,        // Ctrl+T
-            KeyboardOperation::TransposeWords,             // Alt+T
-            KeyboardOperation::UppercaseWord,              // Alt+U
-            KeyboardOperation::LowercaseWord,              // Alt+L
-            KeyboardOperation::CapitalizeWord,             // Alt+C
-            KeyboardOperation::JoinLines,                  // Alt+^
-            KeyboardOperation::Bold,                       // Ctrl+B
-            KeyboardOperation::Italic,                     // Ctrl+I
-            KeyboardOperation::Underline,                  // Ctrl+U
-            KeyboardOperation::ToggleComment,              // Ctrl+/
-            KeyboardOperation::DuplicateLineSelection,     // Ctrl+D
-            KeyboardOperation::MoveLineUp,                 // Alt+Up
-            KeyboardOperation::MoveLineDown,               // Alt+Down
-            KeyboardOperation::IndentRegion,               // Ctrl+]
-            KeyboardOperation::DedentRegion,               // Ctrl+[
-            KeyboardOperation::IncrementalSearchForward,   // Ctrl+S
-            KeyboardOperation::IncrementalSearchBackward,  // Ctrl+R
-            KeyboardOperation::FindNext,                   // F3
-            KeyboardOperation::FindPrevious,               // Shift+F3
-            KeyboardOperation::SelectAll,                  // Ctrl+A
-            KeyboardOperation::SelectWordUnderCursor,      // Alt+@
-            KeyboardOperation::SetMark,                    // Ctrl+Space
-            KeyboardOperation::DismissOverlay,             // Escape
-        ];
-
-        // Find the first operation that matches this key event
-        for operation in operations_to_check {
-            if keymap.matches(operation, key) {
-                return Some(operation);
-            }
-        }
-
-        // No configured operation matched
-        None
-    }
-
     /// Handle keyboard events by translating to KeyboardOperation and dispatching
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         use ratatui::crossterm::event::{KeyCode, KeyModifiers};
@@ -1622,38 +1439,10 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
-        // Special handling for Ctrl+N (new draft) - check before keymap lookup
-        if let (KeyCode::Char('n'), mods) = (key.code, key.modifiers) {
-            if mods.contains(KeyModifiers::CONTROL) {
-                return self.handle_ctrl_n();
-            }
-        }
-
-        // Handle autocomplete keys when focused on TaskDescription
-        if matches!(self.focus_element, FocusElement::TaskDescription) {
-            if let Some(card) = self.draft_cards.get_mut(0) {
-                match self.autocomplete.handle_key_event(
-                    &key,
-                    &mut card.description,
-                    &mut self.needs_redraw,
-                ) {
-                    AutocompleteKeyResult::Consumed { text_changed } => {
-                        if text_changed {
-                            self.autocomplete.notify_text_input();
-                            self.autocomplete
-                                .after_textarea_change(&card.description, &mut self.needs_redraw);
-                        }
-                        return true;
-                    }
-                    AutocompleteKeyResult::Ignored => {
-                        // Continue with normal key handling
-                    }
-                }
-            }
-        }
-
         // First try to translate the key event to a keyboard operation
-        if let Some(operation) = self.key_event_to_operation(&key) {
+        if let Some(operation) =
+            crate::view_model::input::key_event_to_operation(&key, &self.settings)
+        {
             tracing::trace!("key_event_to_operation: {:?} -> {:?}", key, operation);
             return self.handle_keyboard_operation(operation, &key);
         } else {
@@ -1698,6 +1487,144 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
+        // Early delegation: if task description is being edited and operation is handled by task entry, delegate it
+        // But skip delegation if there's an active modal (modal should handle operations first)
+        // Note: Navigation operations like MoveToNextLine/MoveToPreviousLine are handled separately for navigation
+        let draft_idx = if self.active_modal.is_some() {
+            None
+        } else {
+            match self.focus_element {
+                FocusElement::DraftTask(0) => {
+                    // For DraftTask(0), delegate operations unless they are application actions
+                    match operation {
+                        KeyboardOperation::NewDraft => None,
+                        _ => Some(0),
+                    }
+                }
+                FocusElement::DraftTask(idx) => {
+                    // For draft tasks, delegate operations based on the card's internal focus state
+                    if let Some(card) = self.draft_cards.get(idx) {
+                        if card.focus_element == CardFocusElement::TaskDescription {
+                            // When actively editing text in the task description, delegate text editing operations
+                            // including navigation operations (they become cursor movement operations)
+                            Some(idx)
+                        } else {
+                            // When the card is selected but not in text editing mode,
+                            // only delegate operations that make sense for the card as a whole
+                            // Navigation operations should be handled by the dashboard for moving between cards
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        };
+
+        if let Some(idx) = draft_idx {
+            if let Some(card) = self.draft_cards.get_mut(idx) {
+                // Delegate all handled operations to task entry
+                if matches!(operation, HandledKeyboardOperations!()) {
+                    struct AutocompleteManagerImpl<'a> {
+                        autocomplete: &'a mut InlineAutocomplete,
+                        needs_redraw: &'a mut bool,
+                    }
+
+                    impl<'a> AutocompleteManager for AutocompleteManagerImpl<'a> {
+                        fn show(&mut self, _prefix: &str) {
+                            // The autocomplete shows itself automatically
+                        }
+
+                        fn hide(&mut self) {
+                            self.autocomplete.close(&mut false); // We don't use this
+                        }
+
+                        fn after_textarea_change(&mut self, textarea: &tui_textarea::TextArea) {
+                            self.autocomplete.after_textarea_change(textarea, self.needs_redraw);
+                        }
+
+                        fn set_needs_redraw(&mut self) {
+                            *self.needs_redraw = true;
+                        }
+                    }
+
+                    let mut manager = AutocompleteManagerImpl {
+                        autocomplete: &mut self.autocomplete,
+                        needs_redraw: &mut self.needs_redraw,
+                    };
+
+                    let result = card.handle_keyboard_operation(operation, key, &mut manager);
+
+                    match result {
+                        crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched => {
+                            // Task launching requested - validate and launch
+                            let description = card.description.lines().join("\n");
+                            if description.trim().is_empty() {
+                                self.status_bar.error_message =
+                                    Some("Task description is required".to_string());
+                                return false; // Validation failed
+                            }
+                            if card.models.is_empty() {
+                                self.status_bar.error_message =
+                                    Some("At least one AI model must be selected".to_string());
+                                return false; // Validation failed
+                            }
+
+                            // We need to spawn the async task launch
+                            let task_manager = self.task_manager.clone();
+                            let params = ah_core::task_manager::TaskLaunchParams::new(
+                                card.repository.clone(),
+                                card.branch.clone(),
+                                description,
+                                card.models.clone(),
+                            )
+                            .unwrap_or_else(|e| {
+                                panic!("Invalid task parameters after validation: {}", e)
+                            });
+
+                            tokio::spawn(async move {
+                                let _ = task_manager.launch_task(params).await;
+                            });
+
+                            // Clear any previous error and show success
+                            self.status_bar.error_message = None;
+                            self.status_bar.status_message =
+                                Some("Task launched successfully".to_string());
+
+                            // Clean up the draft card - replace it with a new empty one
+                            // This simulates what the user described: "the draft card will be superceded by an active card; If it was the last draft card, a new one will be created"
+                            let new_draft_task = DraftTask {
+                                id: format!("draft_{}", chrono::Utc::now().timestamp()),
+                                description: String::new(),
+                                repository: card.repository.clone(), // Keep the same repo/branch for convenience
+                                branch: card.branch.clone(),
+                                models: card.models.clone(), // Keep the same models
+                                created_at: chrono::Utc::now()
+                                    .format("%Y-%m-%d %H:%M:%S")
+                                    .to_string(),
+                            };
+                            self.draft_cards[idx] = create_draft_card_from_task(
+                                new_draft_task,
+                                CardFocusElement::TaskDescription,
+                            );
+                            // Keep focus on the new draft card
+                            self.focus_element = FocusElement::DraftTask(idx);
+
+                            return true;
+                        }
+                        crate::view_model::task_entry::KeyboardOperationResult::Handled => {
+                            return true;
+                        }
+                        crate::view_model::task_entry::KeyboardOperationResult::NotHandled => {
+                            // Continue to other logic below
+                        }
+                    }
+                    // If not handled, continue to ViewModel's own logic below
+                }
+            }
+        }
+
         match operation {
             KeyboardOperation::MoveToNextField => {
                 if self.handle_overlay_navigation(NavigationDirection::Next) {
@@ -1713,38 +1640,8 @@ impl ViewModel {
                 // Shift+Tab key: move backward between controls within current focus element
                 self.focus_previous_control()
             }
-            KeyboardOperation::MoveToBeginningOfLine => {
-                // Home key: move cursor to beginning of line in text area
-                if let FocusElement::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        return card.handle_keyboard_operation(
-                            operation,
-                            key,
-                            |textarea, needs_redraw| {
-                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
-                            },
-                        );
-                    }
-                }
-                false
-            }
-            KeyboardOperation::MoveToEndOfLine => {
-                // End key: move cursor to end of line in text area
-                if let FocusElement::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        return card.handle_keyboard_operation(
-                            operation,
-                            key,
-                            |textarea, needs_redraw| {
-                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
-                            },
-                        );
-                    }
-                }
-                false
-            }
             KeyboardOperation::MoveForwardOneCharacter => {
-                // Right arrow: handle filter navigation or move cursor forward in text area
+                // Right arrow: handle filter navigation
 
                 // Handle filter navigation
                 match self.focus_element {
@@ -1766,18 +1663,6 @@ impl ViewModel {
                     _ => {}
                 }
 
-                // Default: move cursor forward one character in text area
-                if let FocusElement::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        return card.handle_keyboard_operation(
-                            operation,
-                            key,
-                            |textarea, needs_redraw| {
-                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
-                            },
-                        );
-                    }
-                }
                 false
             }
             KeyboardOperation::MoveBackwardOneCharacter => {
@@ -1803,240 +1688,24 @@ impl ViewModel {
                     _ => {}
                 }
 
-                // Default: move cursor backward one character in text area
-                if let FocusElement::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        return card.handle_keyboard_operation(
-                            operation,
-                            key,
-                            |textarea, needs_redraw| {
-                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
-                            },
-                        );
-                    }
-                }
-                false
-            }
-            KeyboardOperation::MoveForwardOneWord => {
-                // Ctrl+Right: move cursor forward one word in text area
-                if let FocusElement::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        return card.handle_keyboard_operation(
-                            operation,
-                            key,
-                            |textarea, needs_redraw| {
-                                self.autocomplete.after_textarea_change(textarea, needs_redraw);
-                            },
-                        );
-                    }
-                }
-                false
-            }
-            KeyboardOperation::MoveBackwardOneWord => {
-                // Ctrl+Left: move cursor backward one word in text area
-                if let FocusElement::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
-                            use tui_textarea::CursorMove;
-                            let before = card.description.cursor();
-
-                            // Handle shift+ctrl+arrow selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::WordBack);
-
-                            if card.description.cursor() != before {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                }
-                false
-            }
-            KeyboardOperation::DeleteWordForward => {
-                // Ctrl+Delete: delete word forward
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        // Get the first (and currently only) draft card
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            // Use tui-textarea's built-in word deletion method
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.delete_next_word();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                // Use tui-textarea's built-in word deletion method
-                                let before_text = card.description.lines().join("\\n");
-                                card.description.delete_next_word();
-                                let after_text = card.description.lines().join("\\n");
-                                if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                }
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                false
-            }
-            KeyboardOperation::DeleteWordBackward => {
-                // Ctrl+Backspace: delete word backward
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        // Get the first (and currently only) draft card
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            // Use tui-textarea's built-in word deletion method
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.delete_word();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                // Use tui-textarea's built-in word deletion method
-                                let before_text = card.description.lines().join("\\n");
-                                card.description.delete_word();
-                                let after_text = card.description.lines().join("\\n");
-                                if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                }
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+                // Task entry handling is now done by early delegation
                 false
             }
             KeyboardOperation::MoveToPreviousLine => {
                 if self.handle_overlay_navigation(NavigationDirection::Previous) {
                     return true;
                 }
-                match self.focus_element {
-                    FocusElement::DraftTask(idx) => {
-                        // First try to move cursor up in the draft card's text area
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            use tui_textarea::CursorMove;
-                            let old_cursor = card.description.cursor();
-
-                            // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::Up);
-                            let new_cursor = card.description.cursor();
-                            if new_cursor != old_cursor {
-                                // Cursor moved successfully within text area
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                                return true;
-                            }
-                        }
-                        // Cursor can't move up, navigate to settings button
-                        self.navigate_up_hierarchy()
-                    }
-                    _ => self.navigate_up_hierarchy(),
-                }
+                // Task entry handling is done by early delegation
+                // If we reach here, navigate up hierarchy
+                self.navigate_up_hierarchy()
             }
             KeyboardOperation::MoveToNextLine => {
                 if self.handle_overlay_navigation(NavigationDirection::Next) {
                     return true;
                 }
-                match self.focus_element {
-                    FocusElement::DraftTask(idx) => {
-                        // First try to move cursor down in the draft card's text area
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            use tui_textarea::CursorMove;
-                            let old_cursor = card.description.cursor();
-
-                            // Handle shift+arrow selection (CUA style)
-                            let shift_pressed = key
-                                .modifiers
-                                .contains(ratatui::crossterm::event::KeyModifiers::SHIFT);
-                            if shift_pressed {
-                                // Start selection if not already active
-                                if card.description.selection_range().is_none() {
-                                    card.description.start_selection();
-                                }
-                            } else {
-                                // Clear any existing selection when moving without shift
-                                if card.description.selection_range().is_some() {
-                                    card.description.cancel_selection();
-                                }
-                            }
-
-                            card.description.move_cursor(CursorMove::Down);
-                            let new_cursor = card.description.cursor();
-                            if new_cursor != old_cursor {
-                                // Cursor moved successfully within text area
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                                return true;
-                            }
-                        }
-                        // Cursor can't move down, navigate down hierarchy
-                        self.navigate_down_hierarchy()
-                    }
-                    _ => self.navigate_down_hierarchy(),
-                }
+                // Task entry handling is done by early delegation
+                // If we reach here, navigate down hierarchy
+                self.navigate_down_hierarchy()
             }
             KeyboardOperation::DeleteCharacterBackward => {
                 // Backspace
@@ -2051,195 +1720,13 @@ impl ViewModel {
                 self.handle_enter(true)
             }
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
-            KeyboardOperation::Cut => {
-                // Cut selected text
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.cut();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                let before_text = card.description.lines().join("\\n");
-                                card.description.cut();
-                                let after_text = card.description.lines().join("\\n");
-                                if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                }
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                false
-            }
-            KeyboardOperation::Copy => {
-                // Copy selected text
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            card.description.copy();
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                card.description.copy();
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                false
-            }
-            KeyboardOperation::Paste => {
-                // Paste from clipboard
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.paste();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                let before_text = card.description.lines().join("\\n");
-                                card.description.paste();
-                                let after_text = card.description.lines().join("\\n");
-                                if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                }
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                false
-            }
-            KeyboardOperation::Undo => {
-                // Undo last operation
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.undo();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                let before_text = card.description.lines().join("\\n");
-                                card.description.undo();
-                                let after_text = card.description.lines().join("\\n");
-                                if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                }
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                false
-            }
-            KeyboardOperation::Redo => {
-                // Redo last operation
-                match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.redo();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
-                    FocusElement::DraftTask(idx) => {
-                        if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
-                                let before_text = card.description.lines().join("\\n");
-                                card.description.redo();
-                                let after_text = card.description.lines().join("\\n");
-                                if before_text != after_text {
-                                    self.autocomplete.after_textarea_change(
-                                        &card.description,
-                                        &mut self.needs_redraw,
-                                    );
-                                }
-                                return true;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                false
-            }
+            KeyboardOperation::NewDraft => self.handle_ctrl_n(),
             KeyboardOperation::DeleteToEndOfLine => {
                 // Delete from cursor to end of line
                 match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.delete_line_by_end();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
                     FocusElement::DraftTask(idx) => {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
+                            if card.focus_element == CardFocusElement::TaskDescription {
                                 let before_text = card.description.lines().join("\\n");
                                 card.description.delete_line_by_end();
                                 let after_text = card.description.lines().join("\\n");
@@ -2260,23 +1747,9 @@ impl ViewModel {
             KeyboardOperation::DeleteToBeginningOfLine => {
                 // Delete from cursor to beginning of line
                 match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            let before_text = card.description.lines().join("\\n");
-                            card.description.delete_line_by_head();
-                            let after_text = card.description.lines().join("\\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
-                            }
-                            return true;
-                        }
-                    }
                     FocusElement::DraftTask(idx) => {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
+                            if card.focus_element == CardFocusElement::TaskDescription {
                                 let before_text = card.description.lines().join("\\n");
                                 card.description.delete_line_by_head();
                                 let after_text = card.description.lines().join("\\n");
@@ -2297,17 +1770,9 @@ impl ViewModel {
             KeyboardOperation::SelectAll => {
                 // Select all text
                 match self.focus_element {
-                    FocusElement::TaskDescription => {
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            card.description.select_all();
-                            self.autocomplete
-                                .after_textarea_change(&card.description, &mut self.needs_redraw);
-                            return true;
-                        }
-                    }
                     FocusElement::DraftTask(idx) => {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
-                            if card.focus_element == FocusElement::TaskDescription {
+                            if card.focus_element == CardFocusElement::TaskDescription {
                                 card.description.select_all();
                                 self.autocomplete.after_textarea_change(
                                     &card.description,
@@ -2325,7 +1790,7 @@ impl ViewModel {
                 // Move to beginning of sentence (approximated as beginning of line)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
 
@@ -2362,7 +1827,7 @@ impl ViewModel {
                 // Move to end of sentence (approximated as end of line)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
 
@@ -2399,7 +1864,7 @@ impl ViewModel {
                 // Move to beginning of document (first line, first character)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
 
@@ -2447,7 +1912,7 @@ impl ViewModel {
                 // Move to end of document (last line, last character)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
 
@@ -2495,7 +1960,7 @@ impl ViewModel {
                 // Move to beginning of paragraph (approximated as beginning of current line)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
 
@@ -2532,7 +1997,7 @@ impl ViewModel {
                 // Move to end of paragraph (approximated as end of current line)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
                             let before = card.description.cursor();
 
@@ -2569,7 +2034,7 @@ impl ViewModel {
                 // Select word under cursor
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // For now, just select all as a simple approximation
                             // A more sophisticated implementation would find word boundaries
                             card.description.select_all();
@@ -2585,7 +2050,7 @@ impl ViewModel {
                 // Set mark for selection (CUA style selection start)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Start selection at current cursor position
                             card.description.start_selection();
                             return true;
@@ -2598,7 +2063,7 @@ impl ViewModel {
                 // Scroll viewport down one screen (PageDown)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::Scrolling;
                             card.description.scroll(Scrolling::PageDown);
                             return true;
@@ -2611,7 +2076,7 @@ impl ViewModel {
                 // Scroll viewport up one screen (PageUp)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::Scrolling;
                             card.description.scroll(Scrolling::PageUp);
                             return true;
@@ -2624,7 +2089,7 @@ impl ViewModel {
                 // Recenter cursor in middle of screen (Ctrl+L)
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current cursor line and viewport height
                             let cursor = card.description.cursor();
                             let lines = card.description.lines();
@@ -2645,7 +2110,7 @@ impl ViewModel {
                 // Toggle comment (Ctrl+/) - add/remove comment markers from lines
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             let lines = card.description.lines();
                             let cursor_row = card.description.cursor().0 as usize;
                             let cursor_col = card.description.cursor().1 as usize;
@@ -2699,7 +2164,7 @@ impl ViewModel {
                 // Duplicate line/selection (Ctrl+D) - copy and paste below
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             let (cursor_row, _) = card.description.cursor();
                             let lines = card.description.lines();
 
@@ -2724,7 +2189,7 @@ impl ViewModel {
                 // Move line up (Alt+↑) - cut and reinsert above previous line
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             let cursor_row = card.description.cursor().0 as usize;
                             let lines = card.description.lines();
 
@@ -2761,7 +2226,7 @@ impl ViewModel {
                 // Move line down (Alt+↓) - cut and reinsert below next line
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             let cursor_row = card.description.cursor().0 as usize;
                             let lines = card.description.lines();
 
@@ -2798,7 +2263,7 @@ impl ViewModel {
                 // Indent region (Ctrl+]) - insert spaces at start of selected lines
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Get selection range or current line
                             let (_start_line, _end_line) =
                                 if let Some(range) = card.description.selection_range() {
@@ -2820,7 +2285,7 @@ impl ViewModel {
                 // Dedent region (Ctrl+[) - remove spaces from start of selected lines
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Get selection range or current line
                             let (_start_line, _end_line) =
                                 if let Some(range) = card.description.selection_range() {
@@ -2842,7 +2307,7 @@ impl ViewModel {
                 // Uppercase word (Alt+U) - transform word at/after cursor to uppercase
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current line and cursor position
                             let lines = card.description.lines();
                             let (cursor_row, cursor_col) = card.description.cursor();
@@ -2912,7 +2377,7 @@ impl ViewModel {
                 // Lowercase word (Alt+L) - transform word at/after cursor to lowercase
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current line and cursor position
                             let lines = card.description.lines();
                             let (cursor_row, cursor_col) = card.description.cursor();
@@ -2982,7 +2447,7 @@ impl ViewModel {
                 // Capitalize word (Alt+C) - capitalize word at/after cursor
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Select word at/after cursor
                             card.description.start_selection();
                             card.description.move_cursor(tui_textarea::CursorMove::WordForward);
@@ -3022,7 +2487,7 @@ impl ViewModel {
                 // Join lines (Alt+^) - delete newline between lines
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Move cursor to end of line and delete newline
                             card.description.move_cursor(tui_textarea::CursorMove::End);
                             card.description.delete_next_char(); // This should delete the newline
@@ -3039,7 +2504,7 @@ impl ViewModel {
                 // Bold (Ctrl+B) - wrap selection or next word with **
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             if card.description.selection_range().is_some() {
                                 // Copy selection to yank buffer
                                 card.description.copy();
@@ -3070,7 +2535,7 @@ impl ViewModel {
                 // Italic (Ctrl+I) - wrap selection or next word with *
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             if card.description.selection_range().is_some() {
                                 // Copy selection to yank buffer
                                 card.description.copy();
@@ -3097,7 +2562,7 @@ impl ViewModel {
                 // Underline (Ctrl+U) - wrap selection with <u> tags
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             if card.description.selection_range().is_some() {
                                 // Copy selection to yank buffer
                                 card.description.copy();
@@ -3129,7 +2594,7 @@ impl ViewModel {
                 // This would require implementing a yank ring - simplified for now
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Placeholder - would need yank ring implementation
                             return true;
                         }
@@ -3141,7 +2606,7 @@ impl ViewModel {
                 // Transpose characters (Ctrl+T) - swap character before cursor with character after
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Simplified implementation
                             card.description.move_cursor(tui_textarea::CursorMove::Back);
                             card.description.delete_next_char();
@@ -3157,7 +2622,7 @@ impl ViewModel {
                 // Transpose words (Alt+T) - swap word before cursor with word after
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Simplified implementation - would need complex word boundary detection
                             return true; // Placeholder
                         }
@@ -3169,7 +2634,7 @@ impl ViewModel {
                 // Incremental search forward (Ctrl+S) - start search mode
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Set search pattern (would need search dialog/input in real implementation)
                             card.description.set_search_pattern("search_term".to_string());
                             card.description.search_forward(false);
@@ -3183,7 +2648,7 @@ impl ViewModel {
                 // Incremental search backward (Ctrl+R) - start reverse search mode
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             // Set search pattern and search backward
                             card.description.set_search_pattern("search_term".to_string());
                             card.description.search_back(false);
@@ -3197,7 +2662,7 @@ impl ViewModel {
                 // Find next (F3) - jump to next search match
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             card.description.search_forward(false);
                             return true;
                         }
@@ -3209,7 +2674,7 @@ impl ViewModel {
                 // Find previous (Shift+F3) - jump to previous search match
                 if let FocusElement::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == FocusElement::TaskDescription {
+                        if card.focus_element == CardFocusElement::TaskDescription {
                             card.description.search_back(false);
                             return true;
                         }
@@ -3334,18 +2799,18 @@ impl ViewModel {
 
     /// Close autocomplete if focus is moving away from textarea elements
     pub fn close_autocomplete_if_leaving_textarea(&mut self, new_focus: FocusElement) {
-        let was_on_textarea = matches!(self.focus_element, FocusElement::TaskDescription)
-            || matches!(self.focus_element, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == FocusElement::TaskDescription));
+        let was_on_textarea = matches!(self.focus_element, FocusElement::DraftTask(0))
+            || matches!(self.focus_element, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
 
-        let moving_to_textarea = matches!(new_focus, FocusElement::TaskDescription)
-            || matches!(new_focus, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == FocusElement::TaskDescription));
+        let moving_to_textarea = matches!(new_focus, FocusElement::DraftTask(0))
+            || matches!(new_focus, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
 
         if was_on_textarea && !moving_to_textarea {
             self.autocomplete.close(&mut self.needs_redraw);
             // Cancel any active text selection when leaving textarea
             if let FocusElement::DraftTask(idx) = self.focus_element {
                 if let Some(card) = self.draft_cards.get_mut(idx) {
-                    if card.focus_element == FocusElement::TaskDescription
+                    if card.focus_element == CardFocusElement::TaskDescription
                         && card.description.selection_range().is_some()
                     {
                         card.description.cancel_selection();
@@ -3365,8 +2830,8 @@ impl ViewModel {
         self.last_textarea_area = Some(*textarea_area);
 
         // Focus on the draft task description if not already focused
-        if !matches!(self.focus_element, FocusElement::TaskDescription) {
-            self.focus_element = FocusElement::TaskDescription;
+        if !matches!(self.focus_element, FocusElement::DraftTask(0)) {
+            self.focus_element = FocusElement::DraftTask(0);
         }
 
         // Calculate relative position within textarea
@@ -3408,7 +2873,7 @@ impl ViewModel {
                 self.selected_card = idx;
                 let new_focus = if idx == 0 {
                     // Draft card - focus on description
-                    FocusElement::TaskDescription
+                    FocusElement::DraftTask(0)
                 } else {
                     // Regular task card - idx is offset by 1, so array index is idx - 1
                     FocusElement::ExistingTask(idx - 1)
@@ -3436,13 +2901,13 @@ impl ViewModel {
                 self.open_modal(ModalState::ModelSearch);
             }
             MouseAction::LaunchTask => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::GoButton);
-                self.focus_element = FocusElement::GoButton;
+                self.close_autocomplete_if_leaving_textarea(FocusElement::DraftTask(0));
+                self.focus_element = FocusElement::DraftTask(0);
                 self.handle_go_button();
             }
             MouseAction::FocusDraftTextarea(_idx) => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::TaskDescription);
-                self.focus_element = FocusElement::TaskDescription;
+                self.close_autocomplete_if_leaving_textarea(FocusElement::DraftTask(0));
+                self.focus_element = FocusElement::DraftTask(0);
             }
             _ => {
                 // TODO: Handle other mouse actions like ActivateGoButton, StopTask, EditFilter, Footer
@@ -3769,7 +3234,8 @@ impl ViewModel {
                     }], // Default model
                     created_at: draft_info.created_at,
                 };
-                let draft_card = create_draft_card_from_task(draft, self.focus_element);
+                let draft_card =
+                    create_draft_card_from_task(draft, CardFocusElement::TaskDescription);
                 self.draft_cards.push(draft_card);
             }
         }
@@ -3940,7 +3406,8 @@ impl ViewModel {
                 };
 
                 // Create a new draft card with the embedded task
-                let new_card = create_draft_card_from_task(draft_task, self.focus_element);
+                let new_card =
+                    create_draft_card_from_task(draft_task, CardFocusElement::TaskDescription);
                 self.draft_cards.insert(0, new_card);
 
                 // Update UI
@@ -4096,7 +3563,7 @@ impl ViewModel {
             if let FocusElement::DraftTask(idx) = self.focus_element {
                 if !matches!(new_focus, FocusElement::DraftTask(_)) {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        card.focus_element = FocusElement::TaskDescription;
+                        card.focus_element = CardFocusElement::TaskDescription;
                     }
                 }
             }
@@ -4162,7 +3629,7 @@ impl ViewModel {
             if let FocusElement::DraftTask(idx) = self.focus_element {
                 if !matches!(new_focus, FocusElement::DraftTask(_)) {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        card.focus_element = FocusElement::TaskDescription;
+                        card.focus_element = CardFocusElement::TaskDescription;
                     }
                 }
             }
@@ -4205,7 +3672,7 @@ fn create_draft_card_textarea(text: &str) -> tui_textarea::TextArea<'static> {
 /// Create a draft card from a DraftTask
 pub fn create_draft_card_from_task(
     task: DraftTask,
-    focus_element: FocusElement,
+    focus_element: CardFocusElement,
 ) -> TaskEntryViewModel {
     let description = create_draft_card_textarea(&task.description);
 
@@ -4311,7 +3778,7 @@ fn create_task_card_from_execution(
         metadata,
         height: 1, // Will be calculated in the view layer
         card_type,
-        focus_element: FocusElement::GoButton, // Default focus for task cards
+        focus_element: FocusElement::SettingsButton, // Default focus for task cards (not used)
     }
 }
 
@@ -4368,7 +3835,7 @@ fn create_draft_card_view_models(
                 controls,
                 save_state: DraftSaveState::Unsaved,
                 description: textarea,
-                focus_element,
+                focus_element: CardFocusElement::TaskDescription,
                 auto_save_timer: None,
             }
         })
@@ -4379,7 +3846,6 @@ fn create_draft_card_view_models(
 fn create_task_card_view_models(
     draft_tasks: &[DraftTask],
     task_executions: &[TaskExecution],
-    focus_element: FocusElement,
     settings: &Settings,
 ) -> Vec<TaskExecutionViewModel> {
     let visible_tasks = TaskItem::all_tasks_from_state(draft_tasks, task_executions);
@@ -4437,7 +3903,7 @@ fn create_task_card_view_models(
                         metadata,
                         height: calculate_card_height(&task_execution, settings),
                         card_type,
-                        focus_element,
+                        focus_element: FocusElement::SettingsButton,
                     }
                 }
                 TaskItem::Draft(_) => {

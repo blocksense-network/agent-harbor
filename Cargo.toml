@@ -125,9 +125,6 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 # URL parsing
 url = "2.5"
 
-# Text input widget for TUI
-tui-textarea = "0.7"
-
 # Base64 encoding
 base64 = "0.22"
 

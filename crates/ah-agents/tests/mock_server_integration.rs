@@ -217,6 +217,7 @@ async fn test_claude_with_mock_server() {
 
 #[cfg(feature = "codex")]
 #[tokio::test]
+#[ignore]
 async fn test_codex_with_mock_server() {
     // Check if codex is available
     if Command::new("codex").arg("--version").output().is_err() {

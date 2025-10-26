@@ -276,6 +276,41 @@ where
         }
     }
 
+    async fn launch_task_from_starting_point(
+        &self,
+        starting_point: crate::task_manager::StartingPoint,
+        description: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> crate::task_manager::TaskLaunchResult {
+        // For now, only support RepositoryBranch starting point
+        // TODO: Implement support for RepositoryCommit and FilesystemSnapshot
+        match starting_point {
+            crate::task_manager::StartingPoint::RepositoryBranch { repository, branch } => {
+                match crate::task_manager::TaskLaunchParams::new(
+                    repository,
+                    branch,
+                    description.to_string(),
+                    models.to_vec(),
+                ) {
+                    Ok(params) => self.launch_task(params).await,
+                    Err(e) => crate::task_manager::TaskLaunchResult::Failure {
+                        error: format!("Invalid parameters: {}", e),
+                    },
+                }
+            }
+            crate::task_manager::StartingPoint::RepositoryCommit { .. } => {
+                crate::task_manager::TaskLaunchResult::Failure {
+                    error: "RepositoryCommit starting point not yet implemented".to_string(),
+                }
+            }
+            crate::task_manager::StartingPoint::FilesystemSnapshot { .. } => {
+                crate::task_manager::TaskLaunchResult::Failure {
+                    error: "FilesystemSnapshot starting point not yet implemented".to_string(),
+                }
+            }
+        }
+    }
+
     fn description(&self) -> &str {
         "Local Task Manager - executes tasks directly on this machine"
     }

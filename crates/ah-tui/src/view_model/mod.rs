@@ -57,6 +57,7 @@
 
 pub mod autocomplete;
 pub mod dashboard_model;
+pub mod input;
 pub mod task_entry;
 pub mod task_execution;
 
@@ -80,11 +81,6 @@ use ratatui::style::Color;
 // Common UI types used across view models
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FocusElement {
-    TaskDescription,
-    RepositorySelector,
-    BranchSelector,
-    ModelSelector,
-    GoButton,
     SettingsButton,
     FilterBarSeparator,
     FilterBarLine,

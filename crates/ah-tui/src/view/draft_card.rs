@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use super::Theme;
+use crate::view_model::task_entry::CardFocusElement;
 use crate::view_model::{FocusElement, TaskEntryViewModel};
 
 /// Geometry describing interactive regions inside a rendered draft card.
@@ -182,7 +183,7 @@ pub fn render_draft_card_content(
         .split(button_area);
 
     let repo_style =
-        if is_selected && matches!(card.focus_element, FocusElement::RepositorySelector) {
+        if is_selected && matches!(card.focus_element, CardFocusElement::RepositorySelector) {
             theme.focused_style()
         } else {
             Style::default()
@@ -191,26 +192,27 @@ pub fn render_draft_card_content(
                 .add_modifier(Modifier::BOLD)
         };
 
-    let branch_style = if is_selected && matches!(card.focus_element, FocusElement::BranchSelector)
-    {
-        theme.focused_style()
-    } else {
-        Style::default()
-            .fg(theme.primary)
-            .bg(theme.surface)
-            .add_modifier(Modifier::BOLD)
-    };
+    let branch_style =
+        if is_selected && matches!(card.focus_element, CardFocusElement::BranchSelector) {
+            theme.focused_style()
+        } else {
+            Style::default()
+                .fg(theme.primary)
+                .bg(theme.surface)
+                .add_modifier(Modifier::BOLD)
+        };
 
-    let model_style = if is_selected && matches!(card.focus_element, FocusElement::ModelSelector) {
-        theme.focused_style()
-    } else {
-        Style::default()
-            .fg(theme.primary)
-            .bg(theme.surface)
-            .add_modifier(Modifier::BOLD)
-    };
+    let model_style =
+        if is_selected && matches!(card.focus_element, CardFocusElement::ModelSelector) {
+            theme.focused_style()
+        } else {
+            Style::default()
+                .fg(theme.primary)
+                .bg(theme.surface)
+                .add_modifier(Modifier::BOLD)
+        };
 
-    let go_style = if is_selected && matches!(card.focus_element, FocusElement::GoButton) {
+    let go_style = if is_selected && matches!(card.focus_element, CardFocusElement::GoButton) {
         Style::default().fg(Color::Black).bg(theme.accent).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)

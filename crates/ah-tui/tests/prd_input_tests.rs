@@ -8,6 +8,7 @@ use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
 use ah_tui::view_model::FocusElement;
+use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
     FilterControl, MouseAction, Msg, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
     ViewModel,
@@ -120,20 +121,20 @@ mod keyboard {
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
         assert_eq!(
             vm.draft_cards[0].focus_element,
-            FocusElement::RepositorySelector
+            CardFocusElement::RepositorySelector
         );
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
         assert_eq!(
             vm.draft_cards[0].focus_element,
-            FocusElement::BranchSelector
+            CardFocusElement::BranchSelector
         );
 
         let back_tab_event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
         vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousField, &back_tab_event);
         assert_eq!(
             vm.draft_cards[0].focus_element,
-            FocusElement::RepositorySelector
+            CardFocusElement::RepositorySelector
         );
     }
 
@@ -238,10 +239,10 @@ mod keyboard {
     fn enter_in_draft_focuses_textarea_then_launches() {
         let mut vm = new_view_model();
         vm.focus_element = FocusElement::DraftTask(0);
-        vm.draft_cards[0].focus_element = FocusElement::RepositorySelector;
+        vm.draft_cards[0].focus_element = CardFocusElement::RepositorySelector;
 
         if let Some(card) = vm.draft_cards.first_mut() {
-            card.focus_element = FocusElement::TaskDescription;
+            card.focus_element = CardFocusElement::TaskDescription;
         }
 
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -249,7 +250,7 @@ mod keyboard {
         }
 
         vm.handle_enter(false);
-        assert_eq!(vm.focus_element, FocusElement::GoButton);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
     }
 
     #[test]
@@ -584,7 +585,7 @@ mod mouse {
 
         click(&mut vm, MouseAction::LaunchTask, sample_bounds(), 2, 1);
 
-        assert_eq!(vm.focus_element, FocusElement::GoButton);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         assert_eq!(
             vm.status_bar.status_message.as_deref(),
             Some("Task launched successfully")
@@ -603,7 +604,7 @@ mod mouse {
 
         click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 6);
 
-        assert_eq!(vm.focus_element, FocusElement::TaskDescription);
+        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
         assert_eq!(vm.last_textarea_area, Some(bounds));
     }
 
@@ -1617,9 +1618,25 @@ mod mouse {
         // Set focus to the draft task
         vm.focus_element = FocusElement::DraftTask(0);
 
+        // Ensure the card's internal focus is on TaskDescription
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.focus_element = ah_tui::view_model::task_entry::CardFocusElement::TaskDescription;
+        }
+
         // Type some text
         if let Some(card) = vm.draft_cards.first_mut() {
-            card.description.insert_str("first line\nsecond line");
+            // Create textarea with the desired lines
+            let lines = vec!["first line".to_string(), "second line".to_string()];
+            card.description = tui_textarea::TextArea::new(lines);
+            // Remove underline styling from textarea
+            card.description.set_style(
+                ratatui::style::Style::default()
+                    .remove_modifier(ratatui::style::Modifier::UNDERLINED),
+            );
+            card.description.set_cursor_line_style(ratatui::style::Style::default());
+            // Move cursor to the beginning of the first line
+            card.description.move_cursor(tui_textarea::CursorMove::Top);
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
         }
 
         // Get initial line count
@@ -1629,9 +1646,7 @@ mod mouse {
             0
         };
 
-        // Move to first line
-        send_key(&mut vm, KeyCode::Up, KeyModifiers::empty());
-        send_key(&mut vm, KeyCode::Home, KeyModifiers::empty()); // Ensure we're at the start of the line
+        // Cursor is already positioned on the first line // Ensure we're at the start of the line
 
         // Press Ctrl+D to duplicate line
         send_key(&mut vm, KeyCode::Char('d'), KeyModifiers::CONTROL);

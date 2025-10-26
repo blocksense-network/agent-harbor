@@ -12,9 +12,9 @@ use ah_core::WorkspaceFilesEnumerator;
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
-use ah_tui::view_model::FocusElement;
-use ah_tui::view_model::ViewModel;
 use ah_tui::view_model::autocomplete::{InlineAutocomplete, Item, Provider, Trigger};
+use ah_tui::view_model::task_entry::CardFocusElement;
+use ah_tui::view_model::{FocusElement, ViewModel};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -114,7 +114,8 @@ fn autocomplete_navigation_wraps_for_keyboard_operations() {
     let log_hint = log_path.display().to_string();
 
     let mut vm = build_view_model();
-    vm.focus_element = FocusElement::TaskDescription;
+    vm.focus_element = FocusElement::DraftTask(0);
+    vm.draft_cards[0].focus_element = CardFocusElement::TaskDescription;
     prepare_autocomplete(&mut vm, Trigger::Slash, &["alpha", "beta", "gamma"]);
 
     writeln!(log, "Initial menu: {:?}", vm.autocomplete.menu_state()).expect("write log");
@@ -194,7 +195,8 @@ fn caret_movement_closes_autocomplete_menu() {
     let log_hint = log_path.display().to_string();
 
     let mut vm = build_view_model();
-    vm.focus_element = FocusElement::TaskDescription;
+    vm.focus_element = FocusElement::DraftTask(0);
+    vm.draft_cards[0].focus_element = CardFocusElement::TaskDescription;
     prepare_autocomplete(&mut vm, Trigger::Slash, &["alpha", "beta"]);
 
     assert!(

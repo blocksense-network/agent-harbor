@@ -13,6 +13,7 @@ use crate::snapshots::Snapshot;
 use ah_core::TaskManager;
 use ah_tui::Theme;
 use ah_tui::view::draft_card::render_draft_card;
+use ah_tui::view_model::input::key_event_to_operation;
 use ah_tui::view_model::{FocusElement, TaskEntryViewModel};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, MouseButton, MouseEvent};
 use ratatui::{
@@ -215,7 +216,7 @@ impl TerminalViewer {
             },
             save_state: DraftSaveState::Unsaved,
             description: textarea,
-            focus_element: FocusElement::TaskDescription,
+            focus_element: ah_tui::view_model::task_entry::CardFocusElement::TaskDescription,
             auto_save_timer: None,
         };
 
@@ -244,106 +245,38 @@ impl TerminalViewer {
 
     /// Handle keyboard input for the instruction entry
     pub fn handle_instruction_key(&mut self, key: KeyEvent) -> bool {
-        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
-
         if let Some(ref mut task_entry) = self.instruction_entry {
-            // Handle basic text editing keys directly
-            match key.code {
-                KeyCode::Char(c) => {
-                    // Regular character input - use textarea's input method directly
-                    task_entry.description.input(key);
-                    return true;
+            // Try to map to keyboard operation
+            let settings = ah_tui::Settings::default();
+            if let Some(operation) = key_event_to_operation(&key, &settings) {
+                // Create a dummy autocomplete manager for recorder
+                struct RecorderAutocompleteManager;
+                impl ah_tui::view_model::task_entry::AutocompleteManager for RecorderAutocompleteManager {
+                    fn show(&mut self, _prefix: &str) {}
+                    fn hide(&mut self) {}
+                    fn after_textarea_change(&mut self, _textarea: &tui_textarea::TextArea) {
+                        // Recorder doesn't need to handle redraw
+                    }
+                    fn set_needs_redraw(&mut self) {
+                        // Recorder doesn't need redraw
+                    }
                 }
-                KeyCode::Backspace => {
-                    // Handle backspace
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::DeleteCharacterBackward,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                KeyCode::Enter => {
-                    // Submit the instruction
-                    return false; // Let the caller handle submission
-                }
-                KeyCode::Esc => {
-                    // Cancel the instruction
-                    self.cancel_instruction_overlay();
-                    return true;
-                }
-                KeyCode::Left => {
-                    // Move cursor left
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::MoveBackwardOneCharacter,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                KeyCode::Right => {
-                    // Move cursor right
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::MoveForwardOneCharacter,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                KeyCode::Up => {
-                    // Move cursor up
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::MoveToPreviousLine,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                KeyCode::Down => {
-                    // Move cursor down
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::MoveToNextLine,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                KeyCode::Home => {
-                    // Move to beginning of line
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::MoveToBeginningOfLine,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                KeyCode::End => {
-                    // Move to end of line
-                    task_entry.handle_keyboard_operation(
-                        ah_tui::settings::KeyboardOperation::MoveToEndOfLine,
-                        &key,
-                        |textarea, needs_redraw| {
-                            *needs_redraw = true;
-                        },
-                    );
-                    return true;
-                }
-                _ => {
-                    // Other keys not handled
-                    return false;
-                }
+
+                let mut needs_redraw = false;
+                let mut manager = RecorderAutocompleteManager;
+
+                return matches!(
+                    task_entry.handle_keyboard_operation(operation, &key, &mut manager,),
+                    ah_tui::view_model::task_entry::KeyboardOperationResult::Handled
+                        | ah_tui::view_model::task_entry::KeyboardOperationResult::TaskLaunched
+                );
+            }
+
+            // Handle character input directly
+            if let ratatui::crossterm::event::KeyCode::Char(_) = key.code {
+                // Regular character input - use textarea's input method directly
+                task_entry.description.input(key);
+                return true;
             }
         }
         false

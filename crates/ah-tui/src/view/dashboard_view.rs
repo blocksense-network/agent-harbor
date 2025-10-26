@@ -406,7 +406,7 @@ pub fn render(
     }
 
     // Handle cursor positioning for focused text areas (exact same as main.rs)
-    if matches!(view_model.focus_element, FocusElement::TaskDescription) {
+    if matches!(view_model.focus_element, FocusElement::DraftTask(0)) {
         // Find the focused draft card
         if let Some(card) = view_model.draft_cards.first() {
             if let Some(textarea_area) = find_textarea_area_for_card(view_model, card, tasks_area) {

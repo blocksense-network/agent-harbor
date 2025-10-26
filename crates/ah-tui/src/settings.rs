@@ -139,6 +139,9 @@ pub enum KeyboardOperation {
     SetMark,
     SelectWordUnderCursor,
     SelectAll,
+
+    // Application Actions
+    NewDraft,
 }
 
 impl KeyboardOperation {
@@ -212,6 +215,7 @@ impl KeyboardOperation {
             KeyboardOperation::SetMark => "shortcut-set-mark",
             KeyboardOperation::SelectAll => "shortcut-select-all",
             KeyboardOperation::SelectWordUnderCursor => "shortcut-select-word-under-cursor",
+            KeyboardOperation::NewDraft => "shortcut-new-draft",
         }
     }
 
@@ -281,6 +285,7 @@ impl KeyboardOperation {
             KeyboardOperation::SetMark => "Set mark for selection",
             KeyboardOperation::SelectAll => "Select all text",
             KeyboardOperation::SelectWordUnderCursor => "Select word under cursor",
+            KeyboardOperation::NewDraft => "Create new draft task",
         }
     }
 }
@@ -706,7 +711,7 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToNextLine,
-                vec!["Down".to_string(), "Ctrl+N".to_string()],
+                vec!["Down".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToNextField,
@@ -988,6 +993,11 @@ impl KeymapConfig {
                 KeyboardOperation::FindPrevious,
                 vec!["Shift+F3".to_string(), "Cmd+Shift+G".to_string()],
             ),
+            // Application Actions
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::NewDraft,
+                vec!["Ctrl+N".to_string()],
+            ),
         ]
     }
 
@@ -1007,6 +1017,7 @@ impl KeymapConfig {
             KeyboardOperation::MoveToPreviousField => &self.move_to_previous_field,
             KeyboardOperation::DismissOverlay => &self.dismiss_overlay,
             KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
+            KeyboardOperation::NewDraft => &self.new_draft,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
             KeyboardOperation::MoveBackwardOneWord => &self.move_backward_one_word,
@@ -1100,6 +1111,7 @@ impl KeymapConfig {
             KeyboardOperation::SelectWordUnderCursor => {
                 self.select_word_under_cursor.clone().unwrap_or_default()
             }
+            KeyboardOperation::NewDraft => self.new_draft.clone().unwrap_or_default(),
             KeyboardOperation::MoveToPreviousLine => {
                 self.move_to_previous_line.clone().unwrap_or_default()
             }
@@ -1293,6 +1305,7 @@ impl Default for KeymapConfig {
             find_previous: None,
             set_mark: None,
             select_all: None,
+            new_draft: None,
         };
 
         // Populate the config with parsed default bindings
@@ -1333,6 +1346,7 @@ impl Default for KeymapConfig {
                     KeyboardOperation::SelectWordUnderCursor => {
                         config.select_word_under_cursor = Some(matchers)
                     }
+                    KeyboardOperation::NewDraft => config.new_draft = Some(matchers),
                     KeyboardOperation::MoveToPreviousLine => {
                         config.move_to_previous_line = Some(matchers)
                     }
@@ -1526,6 +1540,9 @@ pub struct KeymapConfig {
     // Mark and Region
     pub set_mark: Option<Vec<KeyMatcher>>,
     pub select_all: Option<Vec<KeyMatcher>>,
+
+    // Application Actions
+    pub new_draft: Option<Vec<KeyMatcher>>,
 }
 
 /// Main settings configuration structure
