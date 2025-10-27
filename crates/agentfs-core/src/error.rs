@@ -26,6 +26,8 @@ pub enum FsError {
     Busy,
     #[error("too many open files")]
     TooManyOpenFiles,
+    #[error("bad file descriptor")]
+    BadFileDescriptor,
     #[error("no space left")]
     NoSpace,
     #[error("io error: {0}")]

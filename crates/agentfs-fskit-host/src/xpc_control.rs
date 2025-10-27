@@ -85,6 +85,26 @@ impl XpcControlService {
             Request::DaemonStateFilesystem(_) => {
                 todo!("DaemonStateFilesystem not implemented for XPC control")
             }
+            // Metadata operations not implemented for XPC control
+            Request::Stat(_) => todo!("Stat not implemented for XPC control"),
+            Request::Lstat(_) => todo!("Lstat not implemented for XPC control"),
+            Request::Fstat(_) => todo!("Fstat not implemented for XPC control"),
+            Request::Fstatat(_) => todo!("Fstatat not implemented for XPC control"),
+            Request::Chmod(_) => todo!("Chmod not implemented for XPC control"),
+            Request::Fchmod(_) => todo!("Fchmod not implemented for XPC control"),
+            Request::Fchmodat(_) => todo!("Fchmodat not implemented for XPC control"),
+            Request::Chown(_) => todo!("Chown not implemented for XPC control"),
+            Request::Lchown(_) => todo!("Lchown not implemented for XPC control"),
+            Request::Fchown(_) => todo!("Fchown not implemented for XPC control"),
+            Request::Fchownat(_) => todo!("Fchownat not implemented for XPC control"),
+            Request::Utimes(_) => todo!("Utimes not implemented for XPC control"),
+            Request::Futimes(_) => todo!("Futimes not implemented for XPC control"),
+            Request::Utimensat(_) => todo!("Utimensat not implemented for XPC control"),
+            Request::Futimens(_) => todo!("Futimens not implemented for XPC control"),
+            Request::Truncate(_) => todo!("Truncate not implemented for XPC control"),
+            Request::Ftruncate(_) => todo!("Ftruncate not implemented for XPC control"),
+            Request::Statfs(_) => todo!("Statfs not implemented for XPC control"),
+            Request::Fstatfs(_) => todo!("Fstatfs not implemented for XPC control"),
         }
     }
 

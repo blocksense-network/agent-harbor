@@ -3,6 +3,7 @@
 
 //! Control plane message types for AgentFS
 
+// Note: Using u32 for serialization instead of c_int to work with SSZ
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
 
@@ -23,6 +24,25 @@ pub enum Request {
     DirRead((Vec<u8>, DirReadRequest)),               // (version, request)
     DirClose((Vec<u8>, DirCloseRequest)),             // (version, request)
     Readlink((Vec<u8>, ReadlinkRequest)),             // (version, request)
+    Stat((Vec<u8>, StatRequest)),                     // (version, request)
+    Lstat((Vec<u8>, LstatRequest)),                   // (version, request)
+    Fstat((Vec<u8>, FstatRequest)),                   // (version, request)
+    Fstatat((Vec<u8>, FstatatRequest)),               // (version, request)
+    Chmod((Vec<u8>, ChmodRequest)),                   // (version, request)
+    Fchmod((Vec<u8>, FchmodRequest)),                 // (version, request)
+    Fchmodat((Vec<u8>, FchmodatRequest)),             // (version, request)
+    Chown((Vec<u8>, ChownRequest)),                   // (version, request)
+    Lchown((Vec<u8>, LchownRequest)),                 // (version, request)
+    Fchown((Vec<u8>, FchownRequest)),                 // (version, request)
+    Fchownat((Vec<u8>, FchownatRequest)),             // (version, request)
+    Utimes((Vec<u8>, UtimesRequest)),                 // (version, request)
+    Futimes((Vec<u8>, FutimesRequest)),               // (version, request)
+    Utimensat((Vec<u8>, UtimensatRequest)),           // (version, request)
+    Futimens((Vec<u8>, FutimensRequest)),             // (version, request)
+    Truncate((Vec<u8>, TruncateRequest)),             // (version, request)
+    Ftruncate((Vec<u8>, FtruncateRequest)),           // (version, request)
+    Statfs((Vec<u8>, StatfsRequest)),                 // (version, request)
+    Fstatfs((Vec<u8>, FstatfsRequest)),               // (version, request)
     PathOp((Vec<u8>, PathOpRequest)),                 // (version, request)
     InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
     DaemonStateProcesses(DaemonStateProcessesRequest), // version - for testing
@@ -44,6 +64,25 @@ pub enum Response {
     DirRead(DirReadResponse),
     DirClose(DirCloseResponse),
     Readlink(ReadlinkResponse),
+    Stat(StatResponse),
+    Lstat(LstatResponse),
+    Fstat(FstatResponse),
+    Fstatat(FstatatResponse),
+    Chmod(ChmodResponse),
+    Fchmod(FchmodResponse),
+    Fchmodat(FchmodatResponse),
+    Chown(ChownResponse),
+    Lchown(LchownResponse),
+    Fchown(FchownResponse),
+    Fchownat(FchownatResponse),
+    Utimes(UtimesResponse),
+    Futimes(FutimesResponse),
+    Utimensat(UtimensatResponse),
+    Futimens(FutimensResponse),
+    Truncate(TruncateResponse),
+    Ftruncate(FtruncateResponse),
+    Statfs(StatfsResponse),
+    Fstatfs(FstatfsResponse),
     PathOp(PathOpResponse),
     InterposeSetGet(InterposeSetGetResponse),
     DaemonState(DaemonStateResponseWrapper),
@@ -191,6 +230,277 @@ pub struct ReadlinkRequest {
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct ReadlinkResponse {
     pub target: Vec<u8>,
+}
+
+/// Stat structure representing file attributes (similar to libc::stat)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct StatData {
+    pub st_dev: u64,        // Device ID
+    pub st_ino: u64,        // Inode number
+    pub st_mode: u32,       // File mode
+    pub st_nlink: u32,      // Number of hard links
+    pub st_uid: u32,        // User ID
+    pub st_gid: u32,        // Group ID
+    pub st_rdev: u64,       // Device ID (special files)
+    pub st_size: u64,       // File size (using u64, handle negative as needed)
+    pub st_blksize: u32,    // Block size
+    pub st_blocks: u64,     // Number of blocks
+    pub st_atime: u64,      // Access time (seconds)
+    pub st_atime_nsec: u32, // Access time (nanoseconds)
+    pub st_mtime: u64,      // Modification time (seconds)
+    pub st_mtime_nsec: u32, // Modification time (nanoseconds)
+    pub st_ctime: u64,      // Change time (seconds)
+    pub st_ctime_nsec: u32, // Change time (nanoseconds)
+}
+
+/// Timespec structure for nanosecond-precision timestamps
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct TimespecData {
+    pub tv_sec: u64,  // Seconds (using u64, handle negative as needed)
+    pub tv_nsec: u32, // Nanoseconds
+}
+
+/// Statfs structure representing filesystem statistics (similar to libc::statfs)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct StatfsData {
+    pub f_bsize: u32,   // Block size
+    pub f_frsize: u32,  // Fragment size
+    pub f_blocks: u64,  // Total blocks
+    pub f_bfree: u64,   // Free blocks
+    pub f_bavail: u64,  // Available blocks
+    pub f_files: u64,   // Total inodes
+    pub f_ffree: u64,   // Free inodes
+    pub f_favail: u64,  // Available inodes
+    pub f_fsid: u32,    // Filesystem ID
+    pub f_flag: u64,    // Mount flags
+    pub f_namemax: u32, // Maximum filename length
+}
+
+/// Stat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct StatRequest {
+    pub path: Vec<u8>,
+}
+
+/// Stat response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct StatResponse {
+    pub stat: StatData,
+}
+
+/// Lstat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LstatRequest {
+    pub path: Vec<u8>,
+}
+
+/// Lstat response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LstatResponse {
+    pub stat: StatData,
+}
+
+/// Fstat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FstatRequest {
+    pub fd: u32,
+}
+
+/// Fstat response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FstatResponse {
+    pub stat: StatData,
+}
+
+/// Fstatat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FstatatRequest {
+    pub dirfd: u32,
+    pub path: Vec<u8>,
+    pub flags: u32,
+}
+
+/// Fstatat response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FstatatResponse {
+    pub stat: StatData,
+}
+
+/// Chmod request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ChmodRequest {
+    pub path: Vec<u8>,
+    pub mode: u32,
+}
+
+/// Chmod response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ChmodResponse {}
+
+/// Fchmod request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchmodRequest {
+    pub fd: u32,
+    pub mode: u32,
+}
+
+/// Fchmod response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchmodResponse {}
+
+/// Fchmodat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchmodatRequest {
+    pub dirfd: u32,
+    pub path: Vec<u8>,
+    pub mode: u32,
+    pub flags: u32,
+}
+
+/// Fchmodat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchmodatResponse {}
+
+/// Chown request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ChownRequest {
+    pub path: Vec<u8>,
+    pub uid: u32,
+    pub gid: u32,
+}
+
+/// Chown response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ChownResponse {}
+
+/// Lchown request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LchownRequest {
+    pub path: Vec<u8>,
+    pub uid: u32,
+    pub gid: u32,
+}
+
+/// Lchown response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LchownResponse {}
+
+/// Fchown request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchownRequest {
+    pub fd: u32,
+    pub uid: u32,
+    pub gid: u32,
+}
+
+/// Fchown response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchownResponse {}
+
+/// Fchownat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchownatRequest {
+    pub dirfd: u32,
+    pub path: Vec<u8>,
+    pub uid: u32,
+    pub gid: u32,
+    pub flags: u32,
+}
+
+/// Fchownat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchownatResponse {}
+
+/// Utimes request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UtimesRequest {
+    pub path: Vec<u8>,
+    pub times: Option<(TimespecData, TimespecData)>, // (atime, mtime), None for current time
+}
+
+/// Utimes response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UtimesResponse {}
+
+/// Futimes request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FutimesRequest {
+    pub fd: u32,
+    pub times: Option<(TimespecData, TimespecData)>, // (atime, mtime), None for current time
+}
+
+/// Futimes response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FutimesResponse {}
+
+/// Utimensat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UtimensatRequest {
+    pub dirfd: u32,
+    pub path: Vec<u8>,
+    pub times: Option<(TimespecData, TimespecData)>, // (atime, mtime), None for current time
+    pub flags: u32,
+}
+
+/// Utimensat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UtimensatResponse {}
+
+/// Futimens request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FutimensRequest {
+    pub fd: u32,
+    pub times: Option<(TimespecData, TimespecData)>, // (atime, mtime), None for current time
+}
+
+/// Futimens response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FutimensResponse {}
+
+/// Truncate request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct TruncateRequest {
+    pub path: Vec<u8>,
+    pub length: u64,
+}
+
+/// Truncate response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct TruncateResponse {}
+
+/// Ftruncate request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FtruncateRequest {
+    pub fd: u32,
+    pub length: u64,
+}
+
+/// Ftruncate response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FtruncateResponse {}
+
+/// Statfs request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct StatfsRequest {
+    pub path: Vec<u8>,
+}
+
+/// Statfs response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct StatfsResponse {
+    pub statfs: StatfsData,
+}
+
+/// Fstatfs request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FstatfsRequest {
+    pub fd: u32,
+}
+
+/// Fstatfs response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FstatfsResponse {
+    pub statfs: StatfsData,
 }
 
 /// Directory entry information
@@ -543,6 +853,166 @@ impl Request {
         ))
     }
 
+    pub fn stat(path: String) -> Self {
+        Self::Stat((
+            b"1".to_vec(),
+            StatRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn lstat(path: String) -> Self {
+        Self::Lstat((
+            b"1".to_vec(),
+            LstatRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn fstat(fd: u32) -> Self {
+        Self::Fstat((b"1".to_vec(), FstatRequest { fd }))
+    }
+
+    pub fn fstatat(dirfd: u32, path: String, flags: u32) -> Self {
+        Self::Fstatat((
+            b"1".to_vec(),
+            FstatatRequest {
+                dirfd,
+                path: path.into_bytes(),
+                flags,
+            },
+        ))
+    }
+
+    pub fn chmod(path: String, mode: u32) -> Self {
+        Self::Chmod((
+            b"1".to_vec(),
+            ChmodRequest {
+                path: path.into_bytes(),
+                mode,
+            },
+        ))
+    }
+
+    pub fn fchmod(fd: u32, mode: u32) -> Self {
+        Self::Fchmod((b"1".to_vec(), FchmodRequest { fd, mode }))
+    }
+
+    pub fn fchmodat(dirfd: u32, path: String, mode: u32, flags: u32) -> Self {
+        Self::Fchmodat((
+            b"1".to_vec(),
+            FchmodatRequest {
+                dirfd,
+                path: path.into_bytes(),
+                mode,
+                flags,
+            },
+        ))
+    }
+
+    pub fn chown(path: String, uid: u32, gid: u32) -> Self {
+        Self::Chown((
+            b"1".to_vec(),
+            ChownRequest {
+                path: path.into_bytes(),
+                uid,
+                gid,
+            },
+        ))
+    }
+
+    pub fn lchown(path: String, uid: u32, gid: u32) -> Self {
+        Self::Lchown((
+            b"1".to_vec(),
+            LchownRequest {
+                path: path.into_bytes(),
+                uid,
+                gid,
+            },
+        ))
+    }
+
+    pub fn fchown(fd: u32, uid: u32, gid: u32) -> Self {
+        Self::Fchown((b"1".to_vec(), FchownRequest { fd, uid, gid }))
+    }
+
+    pub fn fchownat(dirfd: u32, path: String, uid: u32, gid: u32, flags: u32) -> Self {
+        Self::Fchownat((
+            b"1".to_vec(),
+            FchownatRequest {
+                dirfd,
+                path: path.into_bytes(),
+                uid,
+                gid,
+                flags,
+            },
+        ))
+    }
+
+    pub fn utimes(path: String, times: Option<(TimespecData, TimespecData)>) -> Self {
+        Self::Utimes((
+            b"1".to_vec(),
+            UtimesRequest {
+                path: path.into_bytes(),
+                times,
+            },
+        ))
+    }
+
+    pub fn futimes(fd: u32, times: Option<(TimespecData, TimespecData)>) -> Self {
+        Self::Futimes((b"1".to_vec(), FutimesRequest { fd, times }))
+    }
+
+    pub fn utimensat(
+        dirfd: u32,
+        path: String,
+        times: Option<(TimespecData, TimespecData)>,
+        flags: u32,
+    ) -> Self {
+        Self::Utimensat((
+            b"1".to_vec(),
+            UtimensatRequest {
+                dirfd,
+                path: path.into_bytes(),
+                times,
+                flags,
+            },
+        ))
+    }
+
+    pub fn futimens(fd: u32, times: Option<(TimespecData, TimespecData)>) -> Self {
+        Self::Futimens((b"1".to_vec(), FutimensRequest { fd, times }))
+    }
+
+    pub fn truncate(path: String, length: u64) -> Self {
+        Self::Truncate((
+            b"1".to_vec(),
+            TruncateRequest {
+                path: path.into_bytes(),
+                length,
+            },
+        ))
+    }
+
+    pub fn ftruncate(fd: u32, length: u64) -> Self {
+        Self::Ftruncate((b"1".to_vec(), FtruncateRequest { fd, length }))
+    }
+
+    pub fn statfs(path: String) -> Self {
+        Self::Statfs((
+            b"1".to_vec(),
+            StatfsRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn fstatfs(fd: u32) -> Self {
+        Self::Fstatfs((b"1".to_vec(), FstatfsRequest { fd }))
+    }
+
     pub fn daemon_state_processes() -> Self {
         Self::DaemonStateProcesses(DaemonStateProcessesRequest {
             data: b"1".to_vec(),
@@ -632,6 +1102,82 @@ impl Response {
         Self::Readlink(ReadlinkResponse {
             target: target.into_bytes(),
         })
+    }
+
+    pub fn stat(stat: StatData) -> Self {
+        Self::Stat(StatResponse { stat })
+    }
+
+    pub fn lstat(stat: StatData) -> Self {
+        Self::Lstat(LstatResponse { stat })
+    }
+
+    pub fn fstat(stat: StatData) -> Self {
+        Self::Fstat(FstatResponse { stat })
+    }
+
+    pub fn fstatat(stat: StatData) -> Self {
+        Self::Fstatat(FstatatResponse { stat })
+    }
+
+    pub fn chmod() -> Self {
+        Self::Chmod(ChmodResponse {})
+    }
+
+    pub fn fchmod() -> Self {
+        Self::Fchmod(FchmodResponse {})
+    }
+
+    pub fn fchmodat() -> Self {
+        Self::Fchmodat(FchmodatResponse {})
+    }
+
+    pub fn chown() -> Self {
+        Self::Chown(ChownResponse {})
+    }
+
+    pub fn lchown() -> Self {
+        Self::Lchown(LchownResponse {})
+    }
+
+    pub fn fchown() -> Self {
+        Self::Fchown(FchownResponse {})
+    }
+
+    pub fn fchownat() -> Self {
+        Self::Fchownat(FchownatResponse {})
+    }
+
+    pub fn utimes() -> Self {
+        Self::Utimes(UtimesResponse {})
+    }
+
+    pub fn futimes() -> Self {
+        Self::Futimes(FutimesResponse {})
+    }
+
+    pub fn utimensat() -> Self {
+        Self::Utimensat(UtimensatResponse {})
+    }
+
+    pub fn futimens() -> Self {
+        Self::Futimens(FutimensResponse {})
+    }
+
+    pub fn truncate() -> Self {
+        Self::Truncate(TruncateResponse {})
+    }
+
+    pub fn ftruncate() -> Self {
+        Self::Ftruncate(FtruncateResponse {})
+    }
+
+    pub fn statfs(statfs: StatfsData) -> Self {
+        Self::Statfs(StatfsResponse { statfs })
+    }
+
+    pub fn fstatfs(statfs: StatfsData) -> Self {
+        Self::Fstatfs(FstatfsResponse { statfs })
     }
 
     pub fn daemon_state_processes(processes: Vec<ProcessInfo>) -> Self {

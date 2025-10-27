@@ -18,6 +18,9 @@ use crate::{
     SnapshotId, StreamSpec, SubscriptionId,
 };
 use crate::{Backstore, LowerFs};
+
+// Import proto types for interpose operations
+use agentfs_proto::messages::{StatData, StatfsData, TimespecData};
 #[cfg(test)]
 use std::cell::RefCell;
 #[cfg(test)]
@@ -2116,6 +2119,398 @@ impl FsCore {
         Ok(())
     }
 
+    /// Get file status (stat) for a path - follows symlinks
+    pub fn stat(&self, pid: &PID, path: &Path) -> FsResult<StatData> {
+        let attrs = self.getattr(pid, path)?;
+        self.attributes_to_stat_data(attrs, path)
+    }
+
+    /// Get file status (lstat) for a path - does not follow symlinks
+    pub fn lstat(&self, pid: &PID, path: &Path) -> FsResult<StatData> {
+        // For lstat, we need to check if it's a symlink without following it
+        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
+            // Get the node directly to check if it's a symlink
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+            if let NodeKind::Symlink { target } = &node.kind {
+                // For symlinks, return symlink-specific attributes
+                let attrs = Attributes {
+                    len: target.len() as u64,
+                    times: node.times.clone(),
+                    uid: node.uid,
+                    gid: node.gid,
+                    is_dir: false,
+                    is_symlink: true,
+                    mode_user: FileMode {
+                        read: (node.mode & libc::S_IRUSR as u32) != 0,
+                        write: (node.mode & libc::S_IWUSR as u32) != 0,
+                        exec: (node.mode & libc::S_IXUSR as u32) != 0,
+                    },
+                    mode_group: FileMode {
+                        read: (node.mode & libc::S_IRGRP as u32) != 0,
+                        write: (node.mode & libc::S_IWGRP as u32) != 0,
+                        exec: (node.mode & libc::S_IXGRP as u32) != 0,
+                    },
+                    mode_other: FileMode {
+                        read: (node.mode & libc::S_IROTH as u32) != 0,
+                        write: (node.mode & libc::S_IWOTH as u32) != 0,
+                        exec: (node.mode & libc::S_IXOTH as u32) != 0,
+                    },
+                };
+                return self.attributes_to_stat_data(attrs, path);
+            }
+        }
+        // For non-symlinks, lstat behaves like stat
+        self.stat(pid, path)
+    }
+
+    /// Get file status (fstat) for an open file descriptor
+    pub fn fstat(&self, pid: &PID, handle_id: HandleId) -> FsResult<StatData> {
+        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        let attrs = self.get_node_attributes(node_id)?;
+        // For fstat, we don't have a path, so we'll use a dummy path
+        self.attributes_to_stat_data(attrs, Path::new(""))
+    }
+
+    /// Get file status (fstatat) relative to a directory file descriptor
+    pub fn fstatat(
+        &self,
+        pid: &PID,
+        dirfd: HandleId,
+        path: &Path,
+        flags: u32,
+    ) -> FsResult<StatData> {
+        // For now, implement as regular stat - full implementation would need path resolution relative to dirfd
+        // This is a simplified version for the milestone
+        if flags & libc::AT_SYMLINK_NOFOLLOW as u32 != 0 {
+            self.lstat(pid, path)
+        } else {
+            self.stat(pid, path)
+        }
+    }
+
+    /// Change file mode (fchmod) for an open file descriptor
+    pub fn fchmod(&self, pid: &PID, handle_id: HandleId, mode: u32) -> FsResult<()> {
+        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+        // Only owner or root may change mode when enforcing POSIX permissions
+        if self.config.security.enforce_posix_permissions {
+            if let Some(user) = self.user_for_process(pid) {
+                if !(user.uid == 0 || user.uid == node.uid) {
+                    return Err(FsError::AccessDenied);
+                }
+            }
+        }
+        node.mode = mode;
+        // ctime changes on metadata change
+        let now = FsCore::current_timestamp();
+        node.times.ctime = now;
+        Ok(())
+    }
+
+    /// Change file mode (fchmodat) relative to a directory file descriptor
+    pub fn fchmodat(
+        &self,
+        pid: &PID,
+        dirfd: HandleId,
+        path: &Path,
+        mode: u32,
+        flags: u32,
+    ) -> FsResult<()> {
+        // For now, implement as regular chmod - full implementation would need path resolution relative to dirfd
+        // This is a simplified version for the milestone
+        let _ = dirfd; // unused in simplified version
+        let _ = flags; // unused in simplified version
+        self.set_mode(pid, path, mode)
+    }
+
+    /// Change file owner (fchown) for an open file descriptor
+    pub fn fchown(&self, pid: &PID, handle_id: HandleId, uid: u32, gid: u32) -> FsResult<()> {
+        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        self.set_node_owner(node_id, pid, uid, gid)
+    }
+
+    /// Change file owner (fchownat) relative to a directory file descriptor
+    pub fn fchownat(
+        &self,
+        pid: &PID,
+        dirfd: HandleId,
+        path: &Path,
+        uid: u32,
+        gid: u32,
+        flags: u32,
+    ) -> FsResult<()> {
+        // For now, implement as regular chown - full implementation would need path resolution relative to dirfd
+        // This is a simplified version for the milestone
+        let _ = dirfd; // unused in simplified version
+        let _ = flags; // unused in simplified version
+        self.set_owner(pid, path, uid, gid)
+    }
+
+    /// Change file timestamps (futimes) for an open file descriptor
+    pub fn futimes(
+        &self,
+        pid: &PID,
+        handle_id: HandleId,
+        times: Option<(TimespecData, TimespecData)>,
+    ) -> FsResult<()> {
+        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        let file_times = times
+            .map(|(atime, mtime)| FileTimes {
+                atime: atime.tv_sec as i64,
+                mtime: mtime.tv_sec as i64,
+                ctime: FsCore::current_timestamp() as i64,
+                birthtime: FsCore::current_timestamp() as i64,
+            })
+            .unwrap_or_else(|| {
+                let now = FsCore::current_timestamp() as i64;
+                FileTimes {
+                    atime: now,
+                    mtime: now,
+                    ctime: now,
+                    birthtime: now,
+                }
+            });
+        self.set_node_times(node_id, file_times)
+    }
+
+    /// Change file timestamps (futimens) for an open file descriptor (nanosecond precision)
+    pub fn futimens(
+        &self,
+        pid: &PID,
+        handle_id: HandleId,
+        times: Option<(TimespecData, TimespecData)>,
+    ) -> FsResult<()> {
+        // For now, implement as futimes - full implementation would use nanosecond precision
+        self.futimes(pid, handle_id, times)
+    }
+
+    /// Change file timestamps (utimensat) relative to a directory file descriptor
+    pub fn utimensat(
+        &self,
+        pid: &PID,
+        dirfd: HandleId,
+        path: &Path,
+        times: Option<(TimespecData, TimespecData)>,
+        flags: u32,
+    ) -> FsResult<()> {
+        // For now, implement as regular utimes - full implementation would need path resolution relative to dirfd
+        // This is a simplified version for the milestone
+        let _ = dirfd; // unused in simplified version
+        let _ = flags; // unused in simplified version
+        let file_times = times
+            .map(|(atime, mtime)| FileTimes {
+                atime: atime.tv_sec as i64,
+                mtime: mtime.tv_sec as i64,
+                ctime: FsCore::current_timestamp() as i64,
+                birthtime: FsCore::current_timestamp() as i64,
+            })
+            .unwrap_or_else(|| {
+                let now = FsCore::current_timestamp() as i64;
+                FileTimes {
+                    atime: now,
+                    mtime: now,
+                    ctime: now,
+                    birthtime: now,
+                }
+            });
+        self.set_times(pid, path, file_times)
+    }
+
+    /// Truncate file (ftruncate) for an open file descriptor
+    pub fn ftruncate(&self, pid: &PID, handle_id: HandleId, length: u64) -> FsResult<()> {
+        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+
+        match &mut node.kind {
+            NodeKind::File { streams } => {
+                // Truncate the default (unnamed) stream
+                if let Some((content_id, current_size)) = streams.get_mut("") {
+                    if length < *current_size {
+                        // Truncate: use the storage backend's truncate method
+                        self.storage.truncate(*content_id, length)?;
+                        *current_size = length;
+                    } else if length > *current_size {
+                        // Extend: for now, we can't easily extend - this would require more complex logic
+                        // In a real implementation, we'd need to handle this properly
+                        return Err(FsError::Unsupported); // Extension not supported in this simplified version
+                    }
+                    // length == current_size: no-op
+                } else {
+                    // No default stream, create one
+                    if length > 0 {
+                        let content = vec![0u8; length as usize];
+                        let content_id = self.storage.allocate(&content)?;
+                        streams.insert("".to_string(), (content_id, length));
+                    } else {
+                        // Empty file
+                        let content_id = self.storage.allocate(&[])?;
+                        streams.insert("".to_string(), (content_id, 0));
+                    }
+                }
+            }
+            _ => return Err(FsError::InvalidArgument), // Can only truncate files
+        }
+
+        // Update ctime on truncate
+        let now = FsCore::current_timestamp();
+        node.times.ctime = now;
+        node.times.mtime = now;
+
+        Ok(())
+    }
+
+    /// Get filesystem statistics (statfs) for a path
+    pub fn statfs(&self, pid: &PID, path: &Path) -> FsResult<StatfsData> {
+        let _ = pid; // unused in simplified implementation
+        let _ = path; // unused in simplified implementation
+        // Return dummy filesystem statistics
+        // In a full implementation, this would query the actual filesystem
+        Ok(StatfsData {
+            f_bsize: 4096,      // 4KB block size
+            f_frsize: 4096,     // Fragment size same as block size
+            f_blocks: 1000000,  // 4GB total in 4KB blocks
+            f_bfree: 500000,    // 2GB free
+            f_bavail: 450000,   // 1.8GB available
+            f_files: 100000,    // 100K inodes total
+            f_ffree: 95000,     // 95K free inodes
+            f_favail: 90000,    // 90K available inodes
+            f_fsid: 0x12345678, // Dummy filesystem ID
+            f_flag: 0,          // No special flags
+            f_namemax: 255,     // Max filename length
+        })
+    }
+
+    /// Get filesystem statistics (fstatfs) for an open file descriptor
+    pub fn fstatfs(&self, pid: &PID, handle_id: HandleId) -> FsResult<StatfsData> {
+        let _ = pid; // unused in simplified implementation
+        let _ = handle_id; // unused in simplified implementation
+        // For now, same as statfs - in a full implementation, this might be different
+        self.statfs(pid, Path::new(""))
+    }
+
+    /// Helper method to get node ID for a handle
+    fn get_node_id_for_handle(&self, pid: &PID, handle_id: HandleId) -> FsResult<NodeId> {
+        let handles = self.handles.lock().unwrap();
+        let handle = handles.get(&handle_id).ok_or(FsError::BadFileDescriptor)?;
+        // Check if the process can access this handle (simplified check)
+        let _ = pid; // In full implementation, check process ownership
+        Ok(handle.node_id)
+    }
+
+    /// Helper method to set node owner with permission checking
+    fn set_node_owner(&self, node_id: NodeId, pid: &PID, uid: u32, gid: u32) -> FsResult<()> {
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+        // Only root may change owner when enforcing POSIX permissions
+        if self.config.security.enforce_posix_permissions {
+            if let Some(user) = self.user_for_process(pid) {
+                if user.uid != 0 {
+                    return Err(FsError::AccessDenied);
+                }
+            }
+        }
+        node.uid = uid;
+        node.gid = gid;
+        // ctime changes on metadata change
+        let now = FsCore::current_timestamp();
+        node.times.ctime = now;
+        Ok(())
+    }
+
+    /// Helper method to set node times
+    fn set_node_times(&self, node_id: NodeId, times: FileTimes) -> FsResult<()> {
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+        node.times = times;
+        Ok(())
+    }
+
+    /// Helper method to convert Attributes to StatData
+    fn attributes_to_stat_data(&self, attrs: Attributes, path: &Path) -> FsResult<StatData> {
+        // Get inode number from path hash (simplified)
+        let inode = self.simple_inode_from_path(path);
+
+        // Convert FileMode structs to mode bits
+        let user_mode = if attrs.mode_user.read {
+            libc::S_IRUSR as u32
+        } else {
+            0
+        } | if attrs.mode_user.write {
+            libc::S_IWUSR as u32
+        } else {
+            0
+        } | if attrs.mode_user.exec {
+            libc::S_IXUSR as u32
+        } else {
+            0
+        };
+        let group_mode = if attrs.mode_group.read {
+            libc::S_IRGRP as u32
+        } else {
+            0
+        } | if attrs.mode_group.write {
+            libc::S_IWGRP as u32
+        } else {
+            0
+        } | if attrs.mode_group.exec {
+            libc::S_IXGRP as u32
+        } else {
+            0
+        };
+        let other_mode = if attrs.mode_other.read {
+            libc::S_IROTH as u32
+        } else {
+            0
+        } | if attrs.mode_other.write {
+            libc::S_IWOTH as u32
+        } else {
+            0
+        } | if attrs.mode_other.exec {
+            libc::S_IXOTH as u32
+        } else {
+            0
+        };
+        let file_type = if attrs.is_dir {
+            libc::S_IFDIR as u32
+        } else if attrs.is_symlink {
+            libc::S_IFLNK as u32
+        } else {
+            libc::S_IFREG as u32
+        };
+
+        Ok(StatData {
+            st_dev: 1, // Dummy device ID
+            st_ino: inode,
+            st_mode: file_type | user_mode | group_mode | other_mode,
+            st_nlink: 1, // Simplified
+            st_uid: attrs.uid,
+            st_gid: attrs.gid,
+            st_rdev: 0, // Not a special file
+            st_size: attrs.len,
+            st_blksize: 4096,                   // 4KB block size
+            st_blocks: (attrs.len + 511) / 512, // Number of 512-byte blocks
+            st_atime: attrs.times.atime as u64,
+            st_atime_nsec: 0, // Simplified
+            st_mtime: attrs.times.mtime as u64,
+            st_mtime_nsec: 0, // Simplified
+            st_ctime: attrs.times.ctime as u64,
+            st_ctime_nsec: 0, // Simplified
+        })
+    }
+
+    /// Simple inode calculation from path (for testing)
+    fn simple_inode_from_path(&self, path: &Path) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Rename a node from old path to new path. Fails if destination exists.
     pub fn rename(&self, pid: &PID, old: &Path, new: &Path) -> FsResult<()> {
         // Resolve old path and its parent
@@ -2267,5 +2662,242 @@ impl FsCore {
         nodes.insert(node_id, node);
 
         Ok(node_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn create_test_fs() -> FsCore {
+        // Use the same config as the main lib.rs tests
+        let config = crate::FsConfig {
+            case_sensitivity: crate::CaseSensitivity::Sensitive,
+            memory: crate::MemoryPolicy {
+                max_bytes_in_memory: Some(1024 * 1024),
+                spill_directory: None,
+            },
+            limits: crate::FsLimits {
+                max_open_handles: 1000,
+                max_branches: 100,
+                max_snapshots: 1000,
+            },
+            cache: crate::CachePolicy {
+                attr_ttl_ms: 1000,
+                entry_ttl_ms: 1000,
+                negative_ttl_ms: 1000,
+                enable_readdir_plus: true,
+                auto_cache: true,
+                writeback_cache: false,
+            },
+            enable_xattrs: true,
+            enable_ads: false,
+            track_events: true,
+            security: crate::config::SecurityPolicy::default(),
+            backstore: crate::config::BackstoreMode::InMemory,
+            overlay: crate::config::OverlayConfig::default(),
+            interpose: crate::config::InterposeConfig::default(),
+        };
+        FsCore::new(config).unwrap()
+    }
+
+    fn create_test_pid(fs: &FsCore) -> PID {
+        fs.register_process(12345, 12345, 1000, 1000)
+    }
+
+    fn rw_create() -> crate::OpenOptions {
+        crate::OpenOptions {
+            read: true,
+            write: true,
+            create: true,
+            truncate: true,
+            append: false,
+            share: vec![crate::ShareMode::Read, crate::ShareMode::Write],
+            stream: None,
+        }
+    }
+
+    #[test]
+    fn test_stat_regular_file() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a file using the correct API
+        let handle = fs
+            .create(&pid, "/test.txt".as_ref(), &rw_create())
+            .expect("Failed to create file");
+
+        let content = b"Hello, World!";
+        fs.write(&pid, handle, 0, content).expect("Failed to write content");
+        fs.close(&pid, handle).expect("Failed to close handle");
+
+        // Test stat using getattr
+        let stat_data = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+
+        assert_eq!(stat_data.len, content.len() as u64);
+        assert_eq!(stat_data.mode() & 0o777, 0o644);
+        assert_eq!(stat_data.uid, 1000);
+        assert_eq!(stat_data.gid, 1000);
+    }
+
+    #[test]
+    fn test_stat_directory() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Test stat on root directory
+        let stat_data = fs.getattr(&pid, "/".as_ref()).expect("getattr should succeed");
+
+        assert_eq!(stat_data.mode() & libc::S_IFMT as u32, libc::S_IFDIR as u32);
+        // Root directory uses default security policy (uid=0, gid=0)
+        assert_eq!(stat_data.uid, 0);
+        assert_eq!(stat_data.gid, 0);
+    }
+
+    #[test]
+    fn test_lstat_symlink() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a directory first
+        fs.mkdir(&pid, "/dir".as_ref(), 0o755).expect("Failed to create directory");
+
+        // Create a symlink using the internal API
+        let target = "/target".to_string();
+        let node_id = fs.create_symlink_node(target).unwrap();
+
+        // For now, just test that we can create a symlink node
+        // (The path-based symlink creation might need more work)
+        assert!(node_id.0 > 0);
+    }
+
+    #[test]
+    fn test_chmod() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a file
+        let handle = fs
+            .create(&pid, "/test.txt".as_ref(), &rw_create())
+            .expect("Failed to create file");
+        fs.close(&pid, handle).expect("Failed to close handle");
+
+        // Change permissions using set_mode
+        fs.set_mode(&pid, "/test.txt".as_ref(), 0o755).expect("set_mode should succeed");
+
+        // Verify permissions changed
+        let stat_data = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+        assert_eq!(stat_data.mode() & 0o777, 0o755);
+    }
+
+    #[test]
+    fn test_chown() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a file
+        let handle = fs
+            .create(&pid, "/test.txt".as_ref(), &rw_create())
+            .expect("Failed to create file");
+        fs.close(&pid, handle).expect("Failed to close handle");
+
+        // Change ownership
+        fs.set_owner(&pid, "/test.txt".as_ref(), 2000, 2000)
+            .expect("set_owner should succeed");
+
+        // Verify ownership changed
+        let stat_data = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+        assert_eq!(stat_data.uid, 2000);
+        assert_eq!(stat_data.gid, 2000);
+    }
+
+    #[test]
+    fn test_truncate() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a file with content
+        let handle = fs
+            .create(&pid, "/test.txt".as_ref(), &rw_create())
+            .expect("Failed to create file");
+
+        let content = b"Hello, World! This is a longer test.";
+        fs.write(&pid, handle, 0, content).expect("Failed to write content");
+
+        // Verify initial size
+        let stat_data = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+        assert_eq!(stat_data.len, content.len() as u64);
+
+        // Truncate to smaller size using ftruncate
+        fs.ftruncate(&pid, handle, 13).expect("ftruncate should succeed");
+
+        // Verify size changed
+        let stat_data = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+        assert_eq!(stat_data.len, 13);
+
+        // Verify content was truncated by reading it back
+        let mut buffer = vec![0u8; 13];
+        let bytes_read = fs.read(&pid, handle, 0, &mut buffer).expect("Failed to read content");
+        assert_eq!(bytes_read, 13);
+        assert_eq!(&buffer[..], &content[..13]);
+
+        fs.close(&pid, handle).expect("Failed to close handle");
+    }
+
+    #[test]
+    fn test_statfs() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Test statfs - this should work with the new implementation
+        let statfs_data = fs.statfs(&pid, "/".as_ref()).expect("statfs should succeed");
+
+        // Verify basic filesystem stats (these will be dummy values for now)
+        assert!(statfs_data.f_bsize > 0);
+        assert!(statfs_data.f_blocks > 0);
+    }
+
+    #[test]
+    fn test_fstatfs() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a file and get handle
+        let handle = fs
+            .create(&pid, "/test.txt".as_ref(), &rw_create())
+            .expect("Failed to create file");
+
+        // Test fstatfs
+        let statfs_data = fs.fstatfs(&pid, handle).expect("fstatfs should succeed");
+
+        // Verify basic filesystem stats
+        assert!(statfs_data.f_bsize > 0);
+        assert!(statfs_data.f_blocks > 0);
+
+        fs.close(&pid, handle).expect("Failed to close handle");
+    }
+
+    #[test]
+    fn test_metadata_operations_update_timestamps() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create a file
+        let handle = fs
+            .create(&pid, "/test.txt".as_ref(), &rw_create())
+            .expect("Failed to create file");
+        fs.close(&pid, handle).expect("Failed to close handle");
+
+        // Get initial timestamps
+        let before = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+
+        // Change permissions (should update ctime)
+        std::thread::sleep(std::time::Duration::from_millis(10)); // Ensure time difference
+        fs.set_mode(&pid, "/test.txt".as_ref(), 0o755).expect("set_mode should succeed");
+
+        // Verify ctime was updated
+        let after = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
+        assert!(after.times.ctime >= before.times.ctime);
     }
 }

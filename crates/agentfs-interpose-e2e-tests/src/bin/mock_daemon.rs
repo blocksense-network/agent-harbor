@@ -15,7 +15,7 @@ use libc;
 
 // AgentFS core imports
 use agentfs_core::{
-    FsCore, PID,
+    FsCore, HandleId, OpenOptions, PID,
     config::{FsConfig, InterposeConfig},
     error::FsResult,
 };
@@ -27,7 +27,8 @@ use agentfs_proto::*;
 use agentfs_proto::messages::{
     DaemonStateFilesystemRequest, DaemonStateProcessesRequest, DaemonStateResponse,
     DaemonStateResponseWrapper, DaemonStateStatsRequest, DirCloseRequest, DirEntry, DirReadRequest,
-    FdDupRequest, FilesystemQuery, FilesystemState, FsStats, PathOpRequest, ProcessInfo,
+    FdDupRequest, FilesystemQuery, FilesystemState, FsStats, PathOpRequest, ProcessInfo, StatData,
+    StatfsData, TimespecData,
 };
 
 // Use handshake types and functions from the main crate
@@ -1074,6 +1075,398 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 format!("daemon_state_filesystem failed: {}", e),
                                 Some(4),
                             );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                // Metadata operations
+                Request::Stat((version, stat_req)) => {
+                    let path = String::from_utf8_lossy(&stat_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.core.stat(&daemon.processes[&client_pid], path.as_ref()) {
+                        Ok(stat_data) => {
+                            let response = Response::stat(stat_data);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(format!("stat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Lstat((version, lstat_req)) => {
+                    let path = String::from_utf8_lossy(&lstat_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.core.lstat(&daemon.processes[&client_pid], path.as_ref()) {
+                        Ok(stat_data) => {
+                            let response = Response::lstat(stat_data);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(format!("lstat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fstat((version, fstat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(fstat_req.fd as u64);
+                    match daemon.core.fstat(&daemon.processes[&client_pid], handle_id) {
+                        Ok(stat_data) => {
+                            let response = Response::fstat(stat_data);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(format!("fstat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fstatat((version, fstatat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
+                    let dirfd = HandleId(fstatat_req.dirfd as u64);
+                    match daemon.core.fstatat(
+                        &daemon.processes[&client_pid],
+                        dirfd,
+                        path.as_ref(),
+                        fstatat_req.flags,
+                    ) {
+                        Ok(stat_data) => {
+                            let response = Response::fstatat(stat_data);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fstatat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Chmod((version, chmod_req)) => {
+                    let path = String::from_utf8_lossy(&chmod_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.core.set_mode(
+                        &daemon.processes[&client_pid],
+                        path.as_ref(),
+                        chmod_req.mode,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::chmod();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(format!("chmod failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fchmod((version, fchmod_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(fchmod_req.fd as u64);
+                    match daemon.core.fchmod(
+                        &daemon.processes[&client_pid],
+                        handle_id,
+                        fchmod_req.mode,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::fchmod();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fchmod failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fchmodat((version, fchmodat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
+                    let dirfd = HandleId(fchmodat_req.dirfd as u64);
+                    match daemon.core.fchmodat(
+                        &daemon.processes[&client_pid],
+                        dirfd,
+                        path.as_ref(),
+                        fchmodat_req.mode,
+                        fchmodat_req.flags,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::fchmodat();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fchmodat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Chown((version, chown_req)) => {
+                    let path = String::from_utf8_lossy(&chown_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.core.set_owner(
+                        &daemon.processes[&client_pid],
+                        path.as_ref(),
+                        chown_req.uid,
+                        chown_req.gid,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::chown();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(format!("chown failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Lchown((version, lchown_req)) => {
+                    let path = String::from_utf8_lossy(&lchown_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    // For now, use regular chown (lchown would be different for symlinks)
+                    match daemon.core.set_owner(
+                        &daemon.processes[&client_pid],
+                        path.as_ref(),
+                        lchown_req.uid,
+                        lchown_req.gid,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::lchown();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("lchown failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fchown((version, fchown_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(fchown_req.fd as u64);
+                    match daemon.core.fchown(
+                        &daemon.processes[&client_pid],
+                        handle_id,
+                        fchown_req.uid,
+                        fchown_req.gid,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::fchown();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fchown failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fchownat((version, fchownat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
+                    let dirfd = HandleId(fchownat_req.dirfd as u64);
+                    match daemon.core.fchownat(
+                        &daemon.processes[&client_pid],
+                        dirfd,
+                        path.as_ref(),
+                        fchownat_req.uid,
+                        fchownat_req.gid,
+                        fchownat_req.flags,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::fchownat();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fchownat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Utimes((version, utimes_req)) => {
+                    let path = String::from_utf8_lossy(&utimes_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    // For path-based utimes, we need to open the file first
+                    match daemon.core.create(
+                        &daemon.processes[&client_pid],
+                        path.as_ref(),
+                        &OpenOptions {
+                            read: true,
+                            write: false,
+                            create: false,
+                            truncate: false,
+                            append: false,
+                            share: vec![],
+                            stream: None,
+                        },
+                    ) {
+                        Ok(handle) => {
+                            let times = utimes_req.times.map(|t| (t.0, t.1));
+                            match daemon.core.futimes(&daemon.processes[&client_pid], handle, times)
+                            {
+                                Ok(()) => {
+                                    daemon.core.close(&daemon.processes[&client_pid], handle).ok();
+                                    let response = Response::utimes();
+                                    send_response(&mut stream, &response);
+                                }
+                                Err(e) => {
+                                    daemon.core.close(&daemon.processes[&client_pid], handle).ok();
+                                    let response =
+                                        Response::error(format!("utimes failed: {}", e), Some(2));
+                                    send_response(&mut stream, &response);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let response = Response::error(
+                                format!("utimes failed to open file: {}", e),
+                                Some(2),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Futimes((version, futimes_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(futimes_req.fd as u64);
+                    let times = futimes_req.times.map(|t| (t.0, t.1));
+                    match daemon.core.futimes(&daemon.processes[&client_pid], handle_id, times) {
+                        Ok(()) => {
+                            let response = Response::futimes();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("futimes failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Utimensat((version, utimensat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let path = String::from_utf8_lossy(&utimensat_req.path).to_string();
+                    let dirfd = HandleId(utimensat_req.dirfd as u64);
+                    let times = utimensat_req.times.map(|t| (t.0, t.1));
+                    match daemon.core.futimens(&daemon.processes[&client_pid], dirfd, times) {
+                        Ok(()) => {
+                            let response = Response::utimensat();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("utimensat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Futimens((version, futimens_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(futimens_req.fd as u64);
+                    let times = futimens_req.times.map(|t| (t.0, t.1));
+                    match daemon.core.futimens(&daemon.processes[&client_pid], handle_id, times) {
+                        Ok(()) => {
+                            let response = Response::futimens();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("futimens failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Truncate((version, truncate_req)) => {
+                    let path = String::from_utf8_lossy(&truncate_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    // For path-based truncate, we need to open the file first
+                    match daemon.core.create(
+                        &daemon.processes[&client_pid],
+                        path.as_ref(),
+                        &OpenOptions {
+                            read: true,
+                            write: true,
+                            create: false,
+                            truncate: false,
+                            append: false,
+                            share: vec![],
+                            stream: None,
+                        },
+                    ) {
+                        Ok(handle) => {
+                            match daemon.core.ftruncate(
+                                &daemon.processes[&client_pid],
+                                handle,
+                                truncate_req.length,
+                            ) {
+                                Ok(()) => {
+                                    daemon.core.close(&daemon.processes[&client_pid], handle).ok();
+                                    let response = Response::truncate();
+                                    send_response(&mut stream, &response);
+                                }
+                                Err(e) => {
+                                    daemon.core.close(&daemon.processes[&client_pid], handle).ok();
+                                    let response =
+                                        Response::error(format!("truncate failed: {}", e), Some(2));
+                                    send_response(&mut stream, &response);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let response = Response::error(
+                                format!("truncate failed to open file: {}", e),
+                                Some(2),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Ftruncate((version, ftruncate_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(ftruncate_req.fd as u64);
+                    match daemon.core.ftruncate(
+                        &daemon.processes[&client_pid],
+                        handle_id,
+                        ftruncate_req.length,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::ftruncate();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("ftruncate failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Statfs((version, statfs_req)) => {
+                    let path = String::from_utf8_lossy(&statfs_req.path).to_string();
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.core.statfs(&daemon.processes[&client_pid], path.as_ref()) {
+                        Ok(statfs_data) => {
+                            let response = Response::statfs(statfs_data);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("statfs failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Fstatfs((version, fstatfs_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let handle_id = HandleId(fstatfs_req.fd as u64);
+                    match daemon.core.fstatfs(&daemon.processes[&client_pid], handle_id) {
+                        Ok(statfs_data) => {
+                            let response = Response::fstatfs(statfs_data);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("fstatfs failed: {}", e), Some(2));
                             send_response(&mut stream, &response);
                         }
                     }

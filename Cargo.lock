@@ -23,6 +23,7 @@ dependencies = [
 name = "agentfs-core"
 version = "0.1.0"
 dependencies = [
+ "agentfs-proto",
  "anyhow",
  "hex",
  "libc",
@@ -150,10 +151,10 @@ dependencies = [
 name = "agentfs-proto"
 version = "0.1.0"
 dependencies = [
- "agentfs-core",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "lazy_static",
+ "libc",
  "serde",
  "tempfile",
  "thiserror 1.0.69",

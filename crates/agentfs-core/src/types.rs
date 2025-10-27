@@ -188,6 +188,55 @@ pub struct Attributes {
     pub mode_other: FileMode,
 }
 
+impl Attributes {
+    /// Convert the mode fields to a numeric Unix mode
+    pub fn mode(&self) -> u32 {
+        let mut mode = 0u32;
+
+        // Add file type
+        if self.is_dir {
+            mode |= libc::S_IFDIR as u32;
+        } else if self.is_symlink {
+            mode |= libc::S_IFLNK as u32;
+        } else {
+            mode |= libc::S_IFREG as u32;
+        }
+
+        // Add permissions
+        if self.mode_user.read {
+            mode |= libc::S_IRUSR as u32;
+        }
+        if self.mode_user.write {
+            mode |= libc::S_IWUSR as u32;
+        }
+        if self.mode_user.exec {
+            mode |= libc::S_IXUSR as u32;
+        }
+
+        if self.mode_group.read {
+            mode |= libc::S_IRGRP as u32;
+        }
+        if self.mode_group.write {
+            mode |= libc::S_IWGRP as u32;
+        }
+        if self.mode_group.exec {
+            mode |= libc::S_IXGRP as u32;
+        }
+
+        if self.mode_other.read {
+            mode |= libc::S_IROTH as u32;
+        }
+        if self.mode_other.write {
+            mode |= libc::S_IWOTH as u32;
+        }
+        if self.mode_other.exec {
+            mode |= libc::S_IXOTH as u32;
+        }
+
+        mode
+    }
+}
+
 /// Directory entry information
 #[derive(Clone, Debug)]
 pub struct DirEntry {
@@ -211,7 +260,7 @@ pub struct StreamSpec {
 }
 
 /// File open options
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct OpenOptions {
     pub read: bool,
     pub write: bool,
