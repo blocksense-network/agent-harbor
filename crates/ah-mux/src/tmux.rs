@@ -169,7 +169,7 @@ impl Multiplexer for TmuxMultiplexer {
 
     fn split_pane(
         &self,
-        window: &WindowId,
+        window: Option<&WindowId>,
         target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,
@@ -194,12 +194,13 @@ impl Multiplexer for TmuxMultiplexer {
             args.extend_from_slice(&["-c".to_string(), cwd.to_string_lossy().to_string()]);
         }
 
-        // Target the specific pane or window
-        let target_spec = match target {
-            Some(pane) => pane.clone(),
-            None => window.clone(),
-        };
-        args.extend_from_slice(&["-t".to_string(), target_spec]);
+        // Target the specific pane or window (or current window if None)
+        if let Some(target_spec) = target {
+            args.extend_from_slice(&["-t".to_string(), target_spec.clone()]);
+        } else if let Some(window_id) = window {
+            args.extend_from_slice(&["-t".to_string(), window_id.clone()]);
+        }
+        // If both target and window are None, tmux will operate on the current window
 
         // Add initial command if specified
         if let Some(cmd) = initial_cmd {
@@ -275,6 +276,31 @@ impl Multiplexer for TmuxMultiplexer {
         }
 
         Ok(windows)
+    }
+
+    fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
+        // TMUX_PANE contains the current pane ID in format: %<pane_index>
+        // But we need it in session:window.pane format
+        if let Ok(pane_index) = std::env::var("TMUX_PANE") {
+            // Get current window information
+            let output = self.run_tmux_command(&[
+                "display-message",
+                "-p",
+                "#{session_name}:#{window_index}.#{pane_index}",
+            ])?;
+            let current_pane = output.trim().to_string();
+            Ok(Some(current_pane))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
+        // Get current window in session:window format
+        let output =
+            self.run_tmux_command(&["display-message", "-p", "#{session_name}:#{window_index}"])?;
+        let current_window = output.trim().to_string();
+        Ok(Some(current_window))
     }
 
     fn list_panes(&self, window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
@@ -482,7 +508,7 @@ mod tests {
             // Split horizontally
             let new_pane = tmux
                 .split_pane(
-                    &window_id,
+                    Some(&window_id),
                     Some(&initial_pane),
                     SplitDirection::Horizontal,
                     Some(60), // 60% for left pane
@@ -544,7 +570,7 @@ mod tests {
             // Split vertically
             let new_pane = tmux
                 .split_pane(
-                    &window_id,
+                    Some(&window_id),
                     Some(&initial_pane),
                     SplitDirection::Vertical,
                     Some(70),
@@ -585,7 +611,7 @@ mod tests {
             // Split with initial command that should keep the pane alive
             let new_pane = tmux
                 .split_pane(
-                    &window_id,
+                    Some(&window_id),
                     Some(&initial_pane),
                     SplitDirection::Horizontal,
                     None,
@@ -698,7 +724,7 @@ mod tests {
             let pane1 = format!("{}.0", window2);
             let pane2 = tmux
                 .split_pane(
-                    &window2,
+                    Some(&window2),
                     Some(&pane1),
                     SplitDirection::Horizontal,
                     None,
@@ -859,7 +885,7 @@ mod tests {
             // Create a 3-pane layout: editor (left), agent (top-right), logs (bottom-right)
             let agent_pane = tmux
                 .split_pane(
-                    &window_id,
+                    Some(&window_id),
                     Some(&pane0),
                     SplitDirection::Horizontal,
                     Some(70), // 70% for editor
@@ -880,7 +906,7 @@ mod tests {
 
             let logs_pane = tmux
                 .split_pane(
-                    &window_id,
+                    Some(&window_id),
                     Some(&agent_pane),
                     SplitDirection::Vertical,
                     Some(60), // 60% for agent, 40% for logs

@@ -80,7 +80,7 @@ impl Multiplexer for ScreenMultiplexer {
 
     fn split_pane(
         &self,
-        window: &WindowId,
+        window: Option<&WindowId>,
         _target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,

@@ -105,7 +105,7 @@ impl Multiplexer for WindowsTerminalMultiplexer {
 
     fn split_pane(
         &self,
-        _window: &WindowId,
+        _window: Option<&WindowId>,
         _target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,

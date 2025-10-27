@@ -60,6 +60,7 @@ use ah_domain_types::{
     ToolStatus,
 };
 use ah_local_db::models::DraftRecord;
+use ah_mux_core::SplitMode;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::stream::Stream;
@@ -84,6 +85,8 @@ pub struct TaskLaunchParams {
     pub branch: String,
     pub description: String,
     pub models: Vec<SelectedModel>,
+    pub split_mode: SplitMode,
+    pub focus: bool,
 }
 
 impl TaskLaunchParams {
@@ -102,6 +105,36 @@ impl TaskLaunchParams {
         branch: String,
         description: String,
         models: Vec<SelectedModel>,
+    ) -> Result<Self, String> {
+        Self::new_with_split_mode(repository, branch, description, models, SplitMode::None)
+    }
+
+    /// Create new TaskLaunchParams with split view option
+    pub fn new_with_split_view(
+        repository: String,
+        branch: String,
+        description: String,
+        models: Vec<SelectedModel>,
+        split_view: bool,
+    ) -> Result<Self, String> {
+        Self::new_with_split_view_and_focus(
+            repository,
+            branch,
+            description,
+            models,
+            split_view,
+            false,
+        )
+    }
+
+    /// Create new TaskLaunchParams with split view and focus options
+    pub fn new_with_split_view_and_focus(
+        repository: String,
+        branch: String,
+        description: String,
+        models: Vec<SelectedModel>,
+        split_view: bool,
+        focus: bool,
     ) -> Result<Self, String> {
         // Validate description
         if description.trim().is_empty() {
@@ -133,6 +166,74 @@ impl TaskLaunchParams {
             branch,
             description,
             models,
+            split_mode: if split_view {
+                SplitMode::Auto
+            } else {
+                SplitMode::None
+            },
+            focus,
+        })
+    }
+
+    /// Create new TaskLaunchParams with split mode option
+    pub fn new_with_split_mode(
+        repository: String,
+        branch: String,
+        description: String,
+        models: Vec<SelectedModel>,
+        split_mode: SplitMode,
+    ) -> Result<Self, String> {
+        Self::new_with_split_mode_and_focus(
+            repository,
+            branch,
+            description,
+            models,
+            split_mode,
+            false,
+        )
+    }
+
+    /// Create new TaskLaunchParams with split mode and focus options
+    pub fn new_with_split_mode_and_focus(
+        repository: String,
+        branch: String,
+        description: String,
+        models: Vec<SelectedModel>,
+        split_mode: SplitMode,
+        focus: bool,
+    ) -> Result<Self, String> {
+        // Validate description
+        if description.trim().is_empty() {
+            return Err("Task description cannot be empty".to_string());
+        }
+
+        // Validate models
+        if models.is_empty() {
+            return Err("At least one model must be selected".to_string());
+        }
+
+        // Validate repository
+        if repository.trim().is_empty() {
+            return Err("Repository cannot be empty".to_string());
+        }
+
+        // Validate branch
+        if branch.trim().is_empty() {
+            return Err("Branch cannot be empty".to_string());
+        }
+
+        // Validate repository URL format
+        if let Err(e) = url::Url::parse(&repository) {
+            return Err(format!("Invalid repository URL: {}", e));
+        }
+
+        Ok(Self {
+            repository,
+            branch,
+            description,
+            models,
+            split_mode,
+            focus,
         })
     }
 

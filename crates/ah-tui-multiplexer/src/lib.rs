@@ -6,7 +6,7 @@
 //! This crate provides AH-specific functionality on top of the low-level
 //! multiplexer trait, including standard layouts and task management.
 
-use ah_mux_core::*;
+use ah_mux_core::{SplitMode, *};
 use std::collections::HashMap;
 
 /// Handle to a multiplexer session with role-based pane management
@@ -31,6 +31,8 @@ pub struct LayoutConfig<'a> {
     pub editor_cmd: Option<&'a str>, // Default: $EDITOR or preferred editor
     pub agent_cmd: &'a str,
     pub log_cmd: Option<&'a str>, // Optional separate log command
+    pub split_mode: SplitMode,    // How to split the view
+    pub focus: bool,              // Whether to switch focus to the new task window/pane
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -62,17 +64,30 @@ impl<M: Multiplexer> AwMultiplexer<M> {
     }
 
     /// Create a standard AH task layout with editor (left) and agent (right) panes
+    /// The split_mode determines how the view is split
     pub fn create_task_layout(&self, config: &LayoutConfig) -> Result<LayoutHandle, AwMuxError> {
         let title = format!("ah-task-{}", config.task_id);
 
-        // Create new window
-        let window_opts = WindowOptions {
-            title: Some(&title),
-            cwd: Some(config.working_dir),
-            profile: None,
-            focus: true,
+        let window_id = match config.split_mode {
+            SplitMode::None => {
+                // Create new window
+                let window_opts = WindowOptions {
+                    title: Some(&title),
+                    cwd: Some(config.working_dir),
+                    profile: None,
+                    focus: true,
+                };
+                self.mux.open_window(&window_opts)?
+            }
+            SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
+                // Split the current window
+                self.mux.current_window()?.ok_or_else(|| {
+                    AwMuxError::Layout(
+                        "Not running in a multiplexer window, cannot create split view".to_string(),
+                    )
+                })?
+            }
         };
-        let window_id = self.mux.open_window(&window_opts)?;
 
         let mut panes = HashMap::new();
 
@@ -89,11 +104,17 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         )?;
         panes.insert(PaneRole::Editor, editor_pane);
 
-        // Split for agent pane (right side)
+        // Split for agent pane
+        let split_direction = match config.split_mode {
+            SplitMode::Horizontal => SplitDirection::Horizontal,
+            SplitMode::Vertical => SplitDirection::Vertical,
+            SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
+        };
+
         let agent_pane = self.mux.split_pane(
-            &window_id,
+            None, // Split the current window
             None, // Split the window itself
-            SplitDirection::Horizontal,
+            split_direction,
             Some(70), // 70% for editor, 30% for agent
             &CommandOptions {
                 cwd: Some(config.working_dir),
@@ -106,10 +127,10 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         // Optional log pane at bottom
         if let Some(log_cmd) = config.log_cmd {
             let log_pane = self.mux.split_pane(
-                &window_id,
+                None, // Split the current window
                 Some(&panes[&PaneRole::Agent]),
-                SplitDirection::Vertical,
-                Some(70), // 70% agent, 30% logs
+                SplitDirection::Vertical, // Always vertical for logs (bottom)
+                Some(70),                 // 70% agent, 30% logs
                 &CommandOptions {
                     cwd: Some(config.working_dir),
                     env: None,
@@ -117,6 +138,17 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 Some(log_cmd),
             )?;
             panes.insert(PaneRole::Logs, log_pane);
+        }
+
+        // Handle focus switching if requested
+        if config.focus {
+            // Focus on the agent pane by default for new tasks
+            if let Some(agent_pane) = panes.get(&PaneRole::Agent) {
+                let _ = self.mux.focus_pane(agent_pane);
+            } else {
+                // If no agent pane, focus the window
+                let _ = self.mux.focus_window(&window_id);
+            }
         }
 
         Ok(LayoutHandle { window_id, panes })

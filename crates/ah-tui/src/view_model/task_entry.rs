@@ -13,9 +13,15 @@ pub enum KeyboardOperationResult {
     /// The operation was not handled, pass to next handler
     NotHandled,
     /// A task was launched and the draft card should be cleaned up
-    TaskLaunched,
+    TaskLaunched {
+        /// How to split the view
+        split_mode: SplitMode,
+        /// Whether to switch multiplexer focus to the new task
+        focus: bool,
+    },
 }
 use crate::settings::KeyboardOperation;
+use ah_core::SplitMode;
 use ah_domain_types::SelectedModel;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
 
@@ -88,6 +94,11 @@ macro_rules! HandledKeyboardOperations {
             | crate::settings::KeyboardOperation::FindNext
             | crate::settings::KeyboardOperation::FindPrevious
             | crate::settings::KeyboardOperation::IndentOrComplete
+            | crate::settings::KeyboardOperation::CreateAndFocus
+            | crate::settings::KeyboardOperation::CreateInSplitView
+            | crate::settings::KeyboardOperation::CreateInSplitViewAndFocus
+            | crate::settings::KeyboardOperation::CreateInHorizontalSplit
+            | crate::settings::KeyboardOperation::CreateInVerticalSplit
     };
 }
 
@@ -1116,7 +1127,45 @@ impl TaskEntryViewModel {
             }
             KeyboardOperation::IndentOrComplete => {
                 // Enter: signal that task should be launched (handled by caller)
-                KeyboardOperationResult::TaskLaunched
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode: SplitMode::None,
+                    focus: false,
+                }
+            }
+            KeyboardOperation::CreateAndFocus => {
+                // Alt+Enter: signal that task should be launched and focused (handled by caller)
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode: SplitMode::None,
+                    focus: true,
+                }
+            }
+            KeyboardOperation::CreateInSplitView => {
+                // Ctrl+Enter: signal that task should be launched in split view (handled by caller)
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode: SplitMode::Auto,
+                    focus: false,
+                }
+            }
+            KeyboardOperation::CreateInSplitViewAndFocus => {
+                // Ctrl+Alt+Enter: signal that task should be launched in split view and focused (handled by caller)
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode: SplitMode::Auto,
+                    focus: true,
+                }
+            }
+            KeyboardOperation::CreateInHorizontalSplit => {
+                // Ctrl+Shift+Enter: signal that task should be launched in horizontal split (handled by caller)
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode: SplitMode::Horizontal,
+                    focus: false,
+                }
+            }
+            KeyboardOperation::CreateInVerticalSplit => {
+                // Ctrl+Shift+Alt+Enter: signal that task should be launched in vertical split (handled by caller)
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode: SplitMode::Vertical,
+                    focus: false,
+                }
             }
             // Operations that don't apply to text editing
             _ => KeyboardOperationResult::NotHandled,

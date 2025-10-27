@@ -90,7 +90,7 @@ impl Multiplexer for ZellijMultiplexer {
 
     fn split_pane(
         &self,
-        window: &WindowId,
+        window: Option<&WindowId>,
         _target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,
@@ -102,7 +102,9 @@ impl Multiplexer for ZellijMultiplexer {
         // For now, we'll use `zellij run` to create a new pane.
 
         let mut cmd = Command::new("zellij");
-        cmd.arg("--session").arg(window);
+        if let Some(session) = window {
+            cmd.arg("--session").arg(session);
+        }
         cmd.arg("run");
 
         if let Some(cwd) = opts.cwd {

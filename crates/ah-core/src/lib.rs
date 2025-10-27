@@ -50,6 +50,8 @@ pub use push::{PushHandler, PushOptions, parse_push_to_remote_flag};
 /// Database integration for persistence.
 pub use db::DatabaseManager;
 
+/// Re-export SplitMode from ah-mux-core for convenience
+pub use ah_mux_core::SplitMode;
 /// Task manager abstraction for different execution modes (local, remote, mock).
 pub use task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,

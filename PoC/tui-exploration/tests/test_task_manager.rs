@@ -25,6 +25,8 @@ async fn test_mock_rest_client_launches_successful_task() {
             name: "Claude".to_string(),
             count: 1,
         }],
+        split_view: false,
+        focus: false,
     };
 
     let result = manager.launch_task(params).await;
@@ -44,6 +46,8 @@ async fn test_mock_rest_client_validates_empty_description() {
             name: "Claude".to_string(),
             count: 1,
         }],
+        split_view: false,
+        focus: false,
     };
 
     let result = manager.launch_task(params).await;
@@ -60,6 +64,8 @@ async fn test_mock_rest_client_validates_empty_models() {
         branch: "main".to_string(),
         description: "Test task".to_string(),
         models: vec![],
+        split_view: false,
+        focus: false,
     };
 
     let result = manager.launch_task(params).await;
@@ -82,6 +88,8 @@ async fn test_mock_rest_client_handles_simulated_failures() {
             name: "Claude".to_string(),
             count: 1,
         }],
+        split_view: false,
+        focus: false,
     };
 
     let result = manager.launch_task(params).await;
@@ -101,6 +109,8 @@ async fn test_mock_task_manager_generates_deterministic_task_ids() {
             name: "Claude".to_string(),
             count: 1,
         }],
+        split_view: false,
+        focus: false,
     };
 
     let params2 = params1.clone();

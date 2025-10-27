@@ -961,7 +961,7 @@ impl Multiplexer for KittyMultiplexer {
 
     fn split_pane(
         &self,
-        window: &WindowId,
+        window: Option<&WindowId>,
         target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,
@@ -982,12 +982,13 @@ impl Multiplexer for KittyMultiplexer {
             args.extend_from_slice(&["--size".to_string(), format!("{}%", p)]);
         }
 
-        // Target the specific pane/window if specified
+        // Target the specific pane/window if specified, otherwise operate on current window
         if let Some(target_pane) = target {
             args.extend_from_slice(&["--match".to_string(), format!("id:{}", target_pane)]);
-        } else {
-            args.extend_from_slice(&["--match".to_string(), format!("id:{}", window)]);
+        } else if let Some(window_id) = window {
+            args.extend_from_slice(&["--match".to_string(), format!("id:{}", window_id)]);
         }
+        // If neither target nor window is specified, kitty will operate on the current window
 
         // Add working directory if specified
         if let Some(cwd) = opts.cwd {

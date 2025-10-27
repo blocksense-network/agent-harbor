@@ -142,6 +142,11 @@ pub enum KeyboardOperation {
 
     // Application Actions
     NewDraft,
+    CreateAndFocus,
+    CreateInSplitView,
+    CreateInSplitViewAndFocus,
+    CreateInHorizontalSplit,
+    CreateInVerticalSplit,
 }
 
 impl KeyboardOperation {
@@ -216,6 +221,13 @@ impl KeyboardOperation {
             KeyboardOperation::SelectAll => "shortcut-select-all",
             KeyboardOperation::SelectWordUnderCursor => "shortcut-select-word-under-cursor",
             KeyboardOperation::NewDraft => "shortcut-new-draft",
+            KeyboardOperation::CreateAndFocus => "shortcut-create-and-focus",
+            KeyboardOperation::CreateInSplitView => "shortcut-create-in-split-view",
+            KeyboardOperation::CreateInSplitViewAndFocus => {
+                "shortcut-create-in-split-view-and-focus"
+            }
+            KeyboardOperation::CreateInHorizontalSplit => "shortcut-create-in-horizontal-split",
+            KeyboardOperation::CreateInVerticalSplit => "shortcut-create-in-vertical-split",
         }
     }
 
@@ -286,6 +298,11 @@ impl KeyboardOperation {
             KeyboardOperation::SelectAll => "Select all text",
             KeyboardOperation::SelectWordUnderCursor => "Select word under cursor",
             KeyboardOperation::NewDraft => "Create new draft task",
+            KeyboardOperation::CreateAndFocus => "Create task and focus",
+            KeyboardOperation::CreateInSplitView => "Create task in split view",
+            KeyboardOperation::CreateInSplitViewAndFocus => "Create task in split view and focus",
+            KeyboardOperation::CreateInHorizontalSplit => "Create task in horizontal split",
+            KeyboardOperation::CreateInVerticalSplit => "Create task in vertical split",
         }
     }
 }
@@ -998,6 +1015,26 @@ impl KeymapConfig {
                 KeyboardOperation::NewDraft,
                 vec!["Ctrl+N".to_string()],
             ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CreateAndFocus,
+                vec!["Alt+Enter".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CreateInSplitView,
+                vec!["Ctrl+Enter".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CreateInSplitViewAndFocus,
+                vec!["Ctrl+Alt+Enter".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CreateInHorizontalSplit,
+                vec!["Ctrl+Shift+Enter".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::CreateInVerticalSplit,
+                vec!["Ctrl+Shift+Alt+Enter".to_string()],
+            ),
         ]
     }
 
@@ -1018,6 +1055,11 @@ impl KeymapConfig {
             KeyboardOperation::DismissOverlay => &self.dismiss_overlay,
             KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
             KeyboardOperation::NewDraft => &self.new_draft,
+            KeyboardOperation::CreateAndFocus => &self.create_and_focus,
+            KeyboardOperation::CreateInSplitView => &self.create_in_split_view,
+            KeyboardOperation::CreateInSplitViewAndFocus => &self.create_in_split_view_and_focus,
+            KeyboardOperation::CreateInHorizontalSplit => &self.create_in_horizontal_split,
+            KeyboardOperation::CreateInVerticalSplit => &self.create_in_vertical_split,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
             KeyboardOperation::MoveBackwardOneWord => &self.move_backward_one_word,
@@ -1112,6 +1154,19 @@ impl KeymapConfig {
                 self.select_word_under_cursor.clone().unwrap_or_default()
             }
             KeyboardOperation::NewDraft => self.new_draft.clone().unwrap_or_default(),
+            KeyboardOperation::CreateAndFocus => self.create_and_focus.clone().unwrap_or_default(),
+            KeyboardOperation::CreateInSplitView => {
+                self.create_in_split_view.clone().unwrap_or_default()
+            }
+            KeyboardOperation::CreateInSplitViewAndFocus => {
+                self.create_in_split_view_and_focus.clone().unwrap_or_default()
+            }
+            KeyboardOperation::CreateInHorizontalSplit => {
+                self.create_in_horizontal_split.clone().unwrap_or_default()
+            }
+            KeyboardOperation::CreateInVerticalSplit => {
+                self.create_in_vertical_split.clone().unwrap_or_default()
+            }
             KeyboardOperation::MoveToPreviousLine => {
                 self.move_to_previous_line.clone().unwrap_or_default()
             }
@@ -1306,6 +1361,11 @@ impl Default for KeymapConfig {
             set_mark: None,
             select_all: None,
             new_draft: None,
+            create_and_focus: None,
+            create_in_split_view: None,
+            create_in_split_view_and_focus: None,
+            create_in_horizontal_split: None,
+            create_in_vertical_split: None,
         };
 
         // Populate the config with parsed default bindings
@@ -1347,6 +1407,19 @@ impl Default for KeymapConfig {
                         config.select_word_under_cursor = Some(matchers)
                     }
                     KeyboardOperation::NewDraft => config.new_draft = Some(matchers),
+                    KeyboardOperation::CreateAndFocus => config.create_and_focus = Some(matchers),
+                    KeyboardOperation::CreateInSplitView => {
+                        config.create_in_split_view = Some(matchers)
+                    }
+                    KeyboardOperation::CreateInSplitViewAndFocus => {
+                        config.create_in_split_view_and_focus = Some(matchers)
+                    }
+                    KeyboardOperation::CreateInHorizontalSplit => {
+                        config.create_in_horizontal_split = Some(matchers)
+                    }
+                    KeyboardOperation::CreateInVerticalSplit => {
+                        config.create_in_vertical_split = Some(matchers)
+                    }
                     KeyboardOperation::MoveToPreviousLine => {
                         config.move_to_previous_line = Some(matchers)
                     }
@@ -1543,6 +1616,11 @@ pub struct KeymapConfig {
 
     // Application Actions
     pub new_draft: Option<Vec<KeyMatcher>>,
+    pub create_and_focus: Option<Vec<KeyMatcher>>,
+    pub create_in_split_view: Option<Vec<KeyMatcher>>,
+    pub create_in_split_view_and_focus: Option<Vec<KeyMatcher>>,
+    pub create_in_horizontal_split: Option<Vec<KeyMatcher>>,
+    pub create_in_vertical_split: Option<Vec<KeyMatcher>>,
 }
 
 /// Main settings configuration structure

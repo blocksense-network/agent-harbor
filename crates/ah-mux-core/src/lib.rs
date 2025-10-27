@@ -16,6 +16,18 @@ pub enum SplitDirection {
     Vertical,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SplitMode {
+    /// No splitting - create new window
+    None,
+    /// Split horizontally (side by side)
+    Horizontal,
+    /// Split vertically (top/bottom)
+    Vertical,
+    /// Auto - let the multiplexer decide the best split direction
+    Auto,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct WindowOptions<'a> {
     pub title: Option<&'a str>,
@@ -56,9 +68,10 @@ pub trait Multiplexer {
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError>;
 
     /// Split the given target pane (or initial window) and return the new PaneId.
+    /// If window is None, splits the active/current window.
     fn split_pane(
         &self,
-        window: &WindowId,
+        window: Option<&WindowId>,
         target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,
@@ -84,6 +97,20 @@ pub trait Multiplexer {
 
     /// Discover panes within a window (best effort).
     fn list_panes(&self, window: &WindowId) -> Result<Vec<PaneId>, MuxError>;
+
+    /// Get the current pane ID that this process is running in (best effort).
+    /// Returns None if not in a multiplexer or if detection fails.
+    fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
+        let _ = self;
+        Ok(None)
+    }
+
+    /// Get the current window ID that this process is running in (best effort).
+    /// Returns None if not in a multiplexer or if detection fails.
+    fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
+        let _ = self;
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

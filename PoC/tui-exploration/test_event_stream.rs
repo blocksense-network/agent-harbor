@@ -27,6 +27,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Claude".to_string(),
             count: 1,
         }],
+        split_view: false,
+        focus: false,
     };
 
     let result = manager.launch_task(params).await;

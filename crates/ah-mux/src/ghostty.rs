@@ -102,7 +102,7 @@ impl Multiplexer for GhosttyMultiplexer {
 
     fn split_pane(
         &self,
-        _window: &WindowId,
+        _window: Option<&WindowId>,
         _target: Option<&PaneId>,
         _dir: SplitDirection,
         _percent: Option<u8>,

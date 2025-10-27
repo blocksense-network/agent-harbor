@@ -130,7 +130,7 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
         println!("  Step 3: Testing pane splitting...");
 
         let pane_id = mux.split_pane(
-            &window_id,
+            Some(&window_id),
             None,
             SplitDirection::Vertical,
             Some(50),

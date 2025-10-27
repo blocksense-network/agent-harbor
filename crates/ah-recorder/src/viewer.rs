@@ -268,7 +268,7 @@ impl TerminalViewer {
                 return matches!(
                     task_entry.handle_keyboard_operation(operation, &key, &mut manager,),
                     ah_tui::view_model::task_entry::KeyboardOperationResult::Handled
-                        | ah_tui::view_model::task_entry::KeyboardOperationResult::TaskLaunched
+                        | ah_tui::view_model::task_entry::KeyboardOperationResult::TaskLaunched { .. }
                 );
             }
 

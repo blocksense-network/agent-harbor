@@ -9,7 +9,7 @@
 //! behavior and configurable delays.
 
 use ah_core::{
-    SaveDraftResult, TaskEvent, TaskExecutionStatus, TaskLaunchParams, TaskLaunchResult,
+    SaveDraftResult, SplitMode, TaskEvent, TaskExecutionStatus, TaskLaunchParams, TaskLaunchResult,
     TaskManager,
 };
 use ah_domain_types::{
@@ -479,6 +479,8 @@ impl ah_core::RestApiClient for MockRestClient {
                 name: request.agent.agent_type.clone(),
                 count: 1,
             }],
+            split_mode: SplitMode::None, // Mock client doesn't support split view
+            focus: false,                // Mock client doesn't support focus
         };
 
         match self.launch_task(params).await {
@@ -1200,6 +1202,8 @@ mod tests {
                 name: "Claude".to_string(),
                 count: 1,
             }],
+            split_mode: SplitMode::None,
+            focus: false,
         };
 
         let result = client.launch_task(params).await;
@@ -1219,6 +1223,8 @@ mod tests {
                 name: "Claude".to_string(),
                 count: 1,
             }],
+            split_mode: SplitMode::None,
+            focus: false,
         };
 
         let result = client.launch_task(params).await;
@@ -1235,6 +1241,8 @@ mod tests {
             branch: "main".to_string(),
             description: "Test task".to_string(),
             models: vec![],
+            split_mode: SplitMode::None,
+            focus: false,
         };
 
         let result = client.launch_task(params).await;
@@ -1257,6 +1265,8 @@ mod tests {
                 name: "Claude".to_string(),
                 count: 1,
             }],
+            split_mode: SplitMode::None,
+            focus: false,
         };
 
         let result = client.launch_task(params).await;

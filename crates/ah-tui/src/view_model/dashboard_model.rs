@@ -696,7 +696,7 @@ impl ViewModel {
                             &mut autocomplete_manager
                         ),
                         crate::view_model::task_entry::KeyboardOperationResult::Handled
-                            | crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched
+                            | crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched { .. }
                     );
                 }
             }
@@ -1557,7 +1557,10 @@ impl ViewModel {
                     let result = card.handle_keyboard_operation(operation, key, &mut manager);
 
                     match result {
-                        crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched => {
+                        crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched {
+                            split_mode,
+                            focus,
+                        } => {
                             // Task launching requested - validate and launch
                             let description = card.description.lines().join("\n");
                             if description.trim().is_empty() {
@@ -1573,11 +1576,13 @@ impl ViewModel {
 
                             // We need to spawn the async task launch
                             let task_manager = self.task_manager.clone();
-                            let params = ah_core::task_manager::TaskLaunchParams::new(
+                            let params = ah_core::task_manager::TaskLaunchParams::new_with_split_mode_and_focus(
                                 card.repository.clone(),
                                 card.branch.clone(),
                                 description,
                                 card.models.clone(),
+                                split_mode,
+                                focus,
                             )
                             .unwrap_or_else(|e| {
                                 panic!("Invalid task parameters after validation: {}", e)
@@ -1589,8 +1594,15 @@ impl ViewModel {
 
                             // Clear any previous error and show success
                             self.status_bar.error_message = None;
-                            self.status_bar.status_message =
-                                Some("Task launched successfully".to_string());
+                            let message = match (split_mode, focus) {
+                                (ah_core::SplitMode::None, false) => "Task launched successfully",
+                                (_, false) => "Task launched in split view successfully",
+                                (ah_core::SplitMode::None, true) => {
+                                    "Task launched and focused successfully"
+                                }
+                                (_, true) => "Task launched in split view and focused successfully",
+                            };
+                            self.status_bar.status_message = Some(message.to_string());
 
                             // Clean up the draft card - replace it with a new empty one
                             // This simulates what the user described: "the draft card will be superceded by an active card; If it was the last draft card, a new one will be created"
@@ -3330,65 +3342,6 @@ impl ViewModel {
     }
 
     // Domain business logic methods (moved from Model)
-
-    /// Launch a task by draft ID
-    pub async fn launch_task(&mut self, draft_id: &str) -> Result<(), String> {
-        if let Some(card) = self.draft_cards.iter().find(|c| c.id == draft_id) {
-            if !card.description.lines().join("\n").trim().is_empty() && !card.models.is_empty() {
-                // Set loading state
-                self.loading_task_creation = true;
-
-                // In real implementation, this would send a network request
-                // For now, we simulate success by calling the task manager directly
-                let params = TaskLaunchParams {
-                    description: card.description.lines().join("\n"),
-                    repository: card.repository.clone(),
-                    branch: card.branch.clone(),
-                    models: card.models.clone(),
-                };
-
-                match self.task_manager.launch_task(params).await {
-                    TaskLaunchResult::Success { task_id } => {
-                        // Create a new task execution
-                        let task_execution = TaskExecution {
-                            id: task_id.clone(),
-                            repository: card.repository.clone(),
-                            branch: card.branch.clone(),
-                            agents: card.models.clone(),
-                            state: TaskState::Active,
-                            timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-                            activity: vec![],
-                            delivery_status: vec![],
-                        };
-
-                        // Create a new task card with the embedded task execution
-                        let task_card =
-                            create_task_card_from_execution(task_execution, &self.settings);
-                        self.task_cards.push(task_card);
-
-                        // Start listening to task events
-                        self.start_task_event_consumption(&task_id);
-
-                        // Clear loading state
-                        self.loading_task_creation = false;
-
-                        // Update UI
-                        self.refresh_task_cards();
-
-                        Ok(())
-                    }
-                    TaskLaunchResult::Failure { error } => {
-                        self.loading_task_creation = false;
-                        Err(error)
-                    }
-                }
-            } else {
-                Ok(())
-            }
-        } else {
-            Ok(())
-        }
-    }
 
     /// Create a new draft task
     pub fn create_new_draft_task(&mut self, draft_id: &str) {

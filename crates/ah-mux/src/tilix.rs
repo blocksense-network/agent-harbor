@@ -102,7 +102,7 @@ impl Multiplexer for TilixMultiplexer {
 
     fn split_pane(
         &self,
-        _window: &WindowId,
+        _window: Option<&WindowId>,
         _target: Option<&PaneId>,
         dir: SplitDirection,
         _percent: Option<u8>,

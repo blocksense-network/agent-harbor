@@ -87,6 +87,8 @@ where
             editor_cmd: Some("bash"), // Default to bash for editor pane
             agent_cmd: &agent_cmd,
             log_cmd: None, // No separate log command for now
+            split_mode: params.split_mode,
+            focus: params.focus,
         };
 
         match self.multiplexer.create_task_layout(&layout_config) {
