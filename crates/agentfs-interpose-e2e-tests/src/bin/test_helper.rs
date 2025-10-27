@@ -27,6 +27,7 @@ fn main() {
         "directory-ops" => test_directory_operations(test_args),
         "readlink-test" => test_readlink(test_args),
         "metadata-ops" => test_metadata_operations(test_args),
+        "namespace-ops" => test_namespace_operations(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
             println!("Dummy command executed");
@@ -34,7 +35,7 @@ fn main() {
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!(
-                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, dummy"
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, dummy"
             );
             std::process::exit(1);
         }
@@ -775,5 +776,166 @@ fn test_metadata_operations(args: &[String]) {
         }
 
         println!("All metadata operations tests completed successfully!");
+    }
+}
+
+fn test_namespace_operations(args: &[String]) {
+    if args.is_empty() {
+        eprintln!("Usage: namespace-ops <test_directory>");
+        std::process::exit(1);
+    }
+
+    let test_dir = &args[0];
+    println!(
+        "Testing namespace mutation operations in directory: {}",
+        test_dir
+    );
+
+    unsafe {
+        // Create test files and directories
+        let file1_path = format!("{}/file1.txt", test_dir);
+        let file2_path = format!("{}/file2.txt", test_dir);
+        let link_path = format!("{}/hardlink.txt", test_dir);
+        let symlink_path = format!("{}/symlink.txt", test_dir);
+        let renamed_path = format!("{}/renamed.txt", test_dir);
+        let subdir_path = format!("{}/subdir", test_dir);
+        let subdir_renamed_path = format!("{}/subdir_renamed", test_dir);
+
+        let c_file1 = std::ffi::CString::new(file1_path.as_str()).unwrap();
+        let c_file2 = std::ffi::CString::new(file2_path.as_str()).unwrap();
+        let c_link = std::ffi::CString::new(link_path.as_str()).unwrap();
+        let c_symlink = std::ffi::CString::new(symlink_path.as_str()).unwrap();
+        let c_renamed = std::ffi::CString::new(renamed_path.as_str()).unwrap();
+        let c_subdir = std::ffi::CString::new(subdir_path.as_str()).unwrap();
+        let c_subdir_renamed = std::ffi::CString::new(subdir_renamed_path.as_str()).unwrap();
+
+        // Create initial test file
+        println!("Creating initial test file...");
+        let fd1 = libc::open(
+            c_file1.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
+        if fd1 < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to create file1: {}", err);
+            std::process::exit(1);
+        }
+        let content1 = b"File 1 content";
+        libc::write(
+            fd1,
+            content1.as_ptr() as *const libc::c_void,
+            content1.len(),
+        );
+        libc::close(fd1);
+
+        // Test link (hard link)
+        println!("Testing link (hard link)...");
+        let link_result = libc::link(c_file1.as_ptr(), c_link.as_ptr());
+        if link_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("link failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("link succeeded");
+
+        // Test symlink
+        println!("Testing symlink...");
+        let symlink_result = libc::symlink(c_file1.as_ptr(), c_symlink.as_ptr());
+        if symlink_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("symlink failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("symlink succeeded");
+
+        // Test mkdir
+        println!("Testing mkdir...");
+        let mkdir_result = libc::mkdir(c_subdir.as_ptr(), 0o755);
+        if mkdir_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("mkdir failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("mkdir succeeded");
+
+        // Test rename (file)
+        println!("Testing rename (file)...");
+        let rename_result = libc::rename(c_file1.as_ptr(), c_renamed.as_ptr());
+        if rename_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("rename failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("rename succeeded");
+
+        // Test rename (directory)
+        println!("Testing rename (directory)...");
+        let rename_dir_result = libc::rename(c_subdir.as_ptr(), c_subdir_renamed.as_ptr());
+        if rename_dir_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("rename directory failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("rename directory succeeded");
+
+        // Verify the rename worked by checking the renamed file exists
+        let verify_fd = libc::open(c_renamed.as_ptr(), libc::O_RDONLY, 0);
+        if verify_fd < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to verify renamed file exists: {}", err);
+            std::process::exit(1);
+        }
+
+        let mut buffer = [0u8; 16];
+        let bytes_read = libc::read(
+            verify_fd,
+            buffer.as_mut_ptr() as *mut libc::c_void,
+            buffer.len(),
+        );
+        if bytes_read < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to read renamed file: {}", err);
+            libc::close(verify_fd);
+            std::process::exit(1);
+        }
+
+        let read_content = &buffer[0..bytes_read as usize];
+        if read_content != content1 {
+            eprintln!(
+                "Renamed file content mismatch: expected {:?}, got {:?}",
+                content1, read_content
+            );
+            libc::close(verify_fd);
+            std::process::exit(1);
+        }
+        libc::close(verify_fd);
+        println!("Renamed file verified successfully");
+
+        // Test unlink (regular file)
+        println!("Testing unlink...");
+        let unlink_result = libc::unlink(c_link.as_ptr());
+        if unlink_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("unlink failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("unlink succeeded");
+
+        // Test remove (alias for unlink)
+        println!("Testing remove...");
+        let remove_result = libc::remove(c_symlink.as_ptr());
+        if remove_result < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("remove failed: {}", err);
+            std::process::exit(1);
+        }
+        println!("remove succeeded");
+
+        // Clean up remaining files
+        libc::unlink(c_renamed.as_ptr());
+        libc::unlink(c_subdir_renamed.as_ptr()); // Clean up directory
+
+        println!("All namespace mutation operations tests completed successfully!");
     }
 }

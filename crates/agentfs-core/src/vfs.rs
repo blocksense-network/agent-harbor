@@ -2626,6 +2626,198 @@ impl FsCore {
         Ok(())
     }
 
+    /// Create a hard link
+    pub fn link(&self, pid: &PID, old_path: &Path, new_path: &Path) -> FsResult<()> {
+        // Resolve the source file
+        let (node_id, _) = self.resolve_path(pid, old_path)?;
+        let nodes = self.nodes.lock().unwrap();
+        let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+
+        // Cannot hard link directories
+        if let NodeKind::Directory { .. } = &node.kind {
+            return Err(FsError::IsADirectory);
+        }
+        drop(nodes);
+
+        // Check if the link path already exists
+        if self.resolve_path(pid, new_path).is_ok() {
+            return Err(FsError::AlreadyExists);
+        }
+
+        // Get parent directory of new path
+        let parent_path = new_path.parent().ok_or(FsError::InvalidArgument)?;
+        let link_name = new_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or(FsError::InvalidName)?
+            .to_string();
+
+        let (parent_id, _) = self.resolve_path(pid, parent_path)?;
+
+        // Permission checks
+        if self.config.security.enforce_posix_permissions {
+            if let Some(user) = self.user_for_process(pid) {
+                let nodes = self.nodes.lock().unwrap();
+                let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
+                let source_node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+
+                // Check write access to parent directory
+                if !self.allowed_for_user(parent_node, &user, false, true, true) {
+                    return Err(FsError::AccessDenied);
+                }
+
+                // Check read access to source file
+                if !self.allowed_for_user(source_node, &user, true, false, false) {
+                    return Err(FsError::AccessDenied);
+                }
+            }
+        }
+
+        // Add link to parent directory
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            if let Some(parent_node) = nodes.get_mut(&parent_id) {
+                if let NodeKind::Directory { children } = &mut parent_node.kind {
+                    children.insert(link_name, node_id);
+                    parent_node.times.ctime = Self::current_timestamp();
+                } else {
+                    return Err(FsError::NotADirectory);
+                }
+            }
+
+            // Increment link count
+            if let Some(node) = nodes.get_mut(&node_id) {
+                node.times.ctime = Self::current_timestamp();
+            }
+        }
+
+        // Emit event
+        let path_str = new_path.to_string_lossy().to_string();
+        self.emit_event(EventKind::Created { path: path_str });
+
+        Ok(())
+    }
+
+    /// Create a hard link with dirfd (relative to directory)
+    pub fn linkat(
+        &self,
+        pid: &PID,
+        old_dirfd: u32,
+        old_path: &Path,
+        new_dirfd: u32,
+        new_path: &Path,
+        flags: u32,
+    ) -> FsResult<()> {
+        // For now, implement basic version - full implementation would need to handle AT_FDCWD and flags
+        // This is a simplified version that treats dirfd as absolute paths for now
+        let old_full_path = if old_dirfd == libc::AT_FDCWD as u32 {
+            old_path.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        let new_full_path = if new_dirfd == libc::AT_FDCWD as u32 {
+            new_path.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        self.link(pid, &old_full_path, &new_full_path)
+    }
+
+    /// Create a symbolic link with dirfd (relative to directory)
+    pub fn symlinkat(
+        &self,
+        pid: &PID,
+        target: &str,
+        new_dirfd: u32,
+        linkpath: &Path,
+    ) -> FsResult<()> {
+        // For now, implement basic version - full implementation would need to handle AT_FDCWD
+        let full_linkpath = if new_dirfd == libc::AT_FDCWD as u32 {
+            linkpath.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        self.symlink(pid, target, &full_linkpath)
+    }
+
+    /// Rename with dirfd (relative to directory)
+    pub fn renameat(
+        &self,
+        pid: &PID,
+        old_dirfd: u32,
+        old_path: &Path,
+        new_dirfd: u32,
+        new_path: &Path,
+    ) -> FsResult<()> {
+        // For now, implement basic version - full implementation would need to handle AT_FDCWD
+        let old_full_path = if old_dirfd == libc::AT_FDCWD as u32 {
+            old_path.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        let new_full_path = if new_dirfd == libc::AT_FDCWD as u32 {
+            new_path.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        self.rename(pid, &old_full_path, &new_full_path)
+    }
+
+    /// macOS-specific rename with extended flags
+    pub fn renameatx_np(
+        &self,
+        pid: &PID,
+        old_dirfd: u32,
+        old_path: &Path,
+        new_dirfd: u32,
+        new_path: &Path,
+        flags: u32,
+    ) -> FsResult<()> {
+        // For now, implement as regular rename - full implementation would handle macOS-specific flags
+        self.renameat(pid, old_dirfd, old_path, new_dirfd, new_path)
+    }
+
+    /// Unlink with dirfd (relative to directory)
+    pub fn unlinkat(&self, pid: &PID, dirfd: u32, path: &Path, flags: u32) -> FsResult<()> {
+        // For now, implement basic version - full implementation would need to handle AT_FDCWD and flags
+        let full_path = if dirfd == libc::AT_FDCWD as u32 {
+            path.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        self.unlink(pid, &full_path)
+    }
+
+    /// Remove (alias for unlink)
+    pub fn remove(&self, pid: &PID, path: &Path) -> FsResult<()> {
+        self.unlink(pid, path)
+    }
+
+    /// Create directory with dirfd (relative to directory)
+    pub fn mkdirat(&self, pid: &PID, dirfd: u32, path: &Path, mode: u32) -> FsResult<()> {
+        // For now, implement basic version - full implementation would need to handle AT_FDCWD
+        let full_path = if dirfd == libc::AT_FDCWD as u32 {
+            path.to_path_buf()
+        } else {
+            // TODO: Implement proper dirfd resolution
+            return Err(FsError::NotImplemented);
+        };
+
+        self.mkdir(pid, &full_path, mode)
+    }
+
     /// Read a symbolic link
     pub fn readlink(&self, pid: &PID, path: &Path) -> FsResult<String> {
         let (node_id, _) = self.resolve_path(pid, path)?;

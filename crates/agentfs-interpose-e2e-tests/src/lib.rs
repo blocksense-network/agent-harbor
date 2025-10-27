@@ -866,4 +866,77 @@ mod tests {
         // Stop daemon
         daemon.kill().unwrap();
     }
+
+    #[test]
+    fn interpose_end_to_end_namespace_operations() {
+        let _lock = ENV_GUARD.lock().unwrap();
+        let dir = tempdir().unwrap();
+
+        // Create test directory for the test_helper to create files in
+        let test_dir = dir.path().join("test_namespace");
+        fs::create_dir(&test_dir).unwrap();
+
+        // Start mock daemon
+        let socket_path = dir.path().join("agentfs.sock");
+        let daemon_path = find_daemon_path();
+        let mut daemon = Command::new(&daemon_path)
+            .arg(&socket_path)
+            .spawn()
+            .expect("failed to start mock daemon");
+
+        // Give daemon time to start
+        thread::sleep(Duration::from_millis(500));
+
+        // Execute the test scenario - the helper binary tests namespace mutation operations
+        let status =
+            execute_test_scenario(&socket_path, "namespace-ops", &[test_dir.to_str().unwrap()]);
+
+        // The test should succeed - all namespace operations should work through interposition
+        assert!(status.success(), "Namespace operations test should succeed");
+
+        // Verify daemon state - should have registered the test process
+        let processes_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
+        match processes_response {
+            Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
+                DaemonStateResponse::Processes(processes) => {
+                    println!("Daemon processes state: {} processes", processes.len());
+                    assert!(
+                        processes.iter().any(|p| p.os_pid == 12345),
+                        "Daemon should have registered the test process"
+                    );
+                }
+                _ => panic!("Expected processes response"),
+            },
+            _ => panic!("Expected daemon state response"),
+        }
+
+        // Verify daemon stats - should show some activity
+        let stats_response =
+            query_daemon_state_structured(&socket_path, Request::daemon_state_stats()).unwrap();
+        match stats_response {
+            Response::DaemonState(DaemonStateResponseWrapper { response }) => {
+                match response {
+                    DaemonStateResponse::Stats(stats) => {
+                        println!(
+                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
+                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        );
+                        // Stats should be valid (non-negative values)
+                        assert!(stats.branches >= 0, "Branches should be non-negative");
+                        assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
+                    }
+                    _ => panic!("Expected stats response"),
+                }
+            }
+            _ => panic!("Expected daemon state response"),
+        }
+
+        // Namespace operations completed successfully - all operations should have been intercepted
+        // and handled through the AgentFS daemon
+        println!("Namespace mutation operations completed successfully through interposition");
+
+        // Stop daemon
+        daemon.kill().unwrap();
+    }
 }

@@ -34,6 +34,8 @@ pub enum FsError {
     Io(#[from] io::Error),
     #[error("unsupported")]
     Unsupported,
+    #[error("not implemented")]
+    NotImplemented,
 }
 
 pub type FsResult<T> = Result<T, FsError>;

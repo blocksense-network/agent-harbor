@@ -43,6 +43,18 @@ pub enum Request {
     Ftruncate((Vec<u8>, FtruncateRequest)),           // (version, request)
     Statfs((Vec<u8>, StatfsRequest)),                 // (version, request)
     Fstatfs((Vec<u8>, FstatfsRequest)),               // (version, request)
+    Rename((Vec<u8>, RenameRequest)),                 // (version, request)
+    Renameat((Vec<u8>, RenameatRequest)),             // (version, request)
+    RenameatxNp((Vec<u8>, RenameatxNpRequest)),       // (version, request)
+    Link((Vec<u8>, LinkRequest)),                     // (version, request)
+    Linkat((Vec<u8>, LinkatRequest)),                 // (version, request)
+    Symlink((Vec<u8>, SymlinkRequest)),               // (version, request)
+    Symlinkat((Vec<u8>, SymlinkatRequest)),           // (version, request)
+    Unlink((Vec<u8>, UnlinkRequest)),                 // (version, request)
+    Unlinkat((Vec<u8>, UnlinkatRequest)),             // (version, request)
+    Remove((Vec<u8>, RemoveRequest)),                 // (version, request)
+    Mkdir((Vec<u8>, MkdirRequest)),                   // (version, request)
+    Mkdirat((Vec<u8>, MkdiratRequest)),               // (version, request)
     PathOp((Vec<u8>, PathOpRequest)),                 // (version, request)
     InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
     DaemonStateProcesses(DaemonStateProcessesRequest), // version - for testing
@@ -83,6 +95,18 @@ pub enum Response {
     Ftruncate(FtruncateResponse),
     Statfs(StatfsResponse),
     Fstatfs(FstatfsResponse),
+    Rename(RenameResponse),
+    Renameat(RenameatResponse),
+    RenameatxNp(RenameatxNpResponse),
+    Link(LinkResponse),
+    Linkat(LinkatResponse),
+    Symlink(SymlinkResponse),
+    Symlinkat(SymlinkatResponse),
+    Unlink(UnlinkResponse),
+    Unlinkat(UnlinkatResponse),
+    Remove(RemoveResponse),
+    Mkdir(MkdirResponse),
+    Mkdirat(MkdiratResponse),
     PathOp(PathOpResponse),
     InterposeSetGet(InterposeSetGetResponse),
     DaemonState(DaemonStateResponseWrapper),
@@ -502,6 +526,147 @@ pub struct FstatfsRequest {
 pub struct FstatfsResponse {
     pub statfs: StatfsData,
 }
+
+/// Rename request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RenameRequest {
+    pub old_path: Vec<u8>,
+    pub new_path: Vec<u8>,
+}
+
+/// Rename response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RenameResponse {}
+
+/// Renameat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RenameatRequest {
+    pub old_dirfd: u32,
+    pub old_path: Vec<u8>,
+    pub new_dirfd: u32,
+    pub new_path: Vec<u8>,
+}
+
+/// Renameat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RenameatResponse {}
+
+/// RenameatxNp request payload (macOS-specific)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RenameatxNpRequest {
+    pub old_dirfd: u32,
+    pub old_path: Vec<u8>,
+    pub new_dirfd: u32,
+    pub new_path: Vec<u8>,
+    pub flags: u32,
+}
+
+/// RenameatxNp response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RenameatxNpResponse {}
+
+/// Link request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LinkRequest {
+    pub old_path: Vec<u8>,
+    pub new_path: Vec<u8>,
+}
+
+/// Link response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LinkResponse {}
+
+/// Linkat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LinkatRequest {
+    pub old_dirfd: u32,
+    pub old_path: Vec<u8>,
+    pub new_dirfd: u32,
+    pub new_path: Vec<u8>,
+    pub flags: u32,
+}
+
+/// Linkat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LinkatResponse {}
+
+/// Symlink request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SymlinkRequest {
+    pub target: Vec<u8>,
+    pub linkpath: Vec<u8>,
+}
+
+/// Symlink response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SymlinkResponse {}
+
+/// Symlinkat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SymlinkatRequest {
+    pub target: Vec<u8>,
+    pub new_dirfd: u32,
+    pub linkpath: Vec<u8>,
+}
+
+/// Symlinkat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SymlinkatResponse {}
+
+/// Unlink request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UnlinkRequest {
+    pub path: Vec<u8>,
+}
+
+/// Unlink response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UnlinkResponse {}
+
+/// Unlinkat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UnlinkatRequest {
+    pub dirfd: u32,
+    pub path: Vec<u8>,
+    pub flags: u32,
+}
+
+/// Unlinkat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UnlinkatResponse {}
+
+/// Remove request payload (alias for unlink)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RemoveRequest {
+    pub path: Vec<u8>,
+}
+
+/// Remove response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RemoveResponse {}
+
+/// Mkdir request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct MkdirRequest {
+    pub path: Vec<u8>,
+    pub mode: u32,
+}
+
+/// Mkdir response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct MkdirResponse {}
+
+/// Mkdirat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct MkdiratRequest {
+    pub dirfd: u32,
+    pub path: Vec<u8>,
+    pub mode: u32,
+}
+
+/// Mkdirat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct MkdiratResponse {}
 
 /// Directory entry information
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
@@ -1059,6 +1224,147 @@ impl Request {
             },
         ))
     }
+
+    pub fn rename(old_path: String, new_path: String) -> Self {
+        Self::Rename((
+            b"1".to_vec(),
+            RenameRequest {
+                old_path: old_path.into_bytes(),
+                new_path: new_path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn renameat(old_dirfd: u32, old_path: String, new_dirfd: u32, new_path: String) -> Self {
+        Self::Renameat((
+            b"1".to_vec(),
+            RenameatRequest {
+                old_dirfd,
+                old_path: old_path.into_bytes(),
+                new_dirfd,
+                new_path: new_path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn renameatx_np(
+        old_dirfd: u32,
+        old_path: String,
+        new_dirfd: u32,
+        new_path: String,
+        flags: u32,
+    ) -> Self {
+        Self::RenameatxNp((
+            b"1".to_vec(),
+            RenameatxNpRequest {
+                old_dirfd,
+                old_path: old_path.into_bytes(),
+                new_dirfd,
+                new_path: new_path.into_bytes(),
+                flags,
+            },
+        ))
+    }
+
+    pub fn link(old_path: String, new_path: String) -> Self {
+        Self::Link((
+            b"1".to_vec(),
+            LinkRequest {
+                old_path: old_path.into_bytes(),
+                new_path: new_path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn linkat(
+        old_dirfd: u32,
+        old_path: String,
+        new_dirfd: u32,
+        new_path: String,
+        flags: u32,
+    ) -> Self {
+        Self::Linkat((
+            b"1".to_vec(),
+            LinkatRequest {
+                old_dirfd,
+                old_path: old_path.into_bytes(),
+                new_dirfd,
+                new_path: new_path.into_bytes(),
+                flags,
+            },
+        ))
+    }
+
+    pub fn symlink(target: String, linkpath: String) -> Self {
+        Self::Symlink((
+            b"1".to_vec(),
+            SymlinkRequest {
+                target: target.into_bytes(),
+                linkpath: linkpath.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn symlinkat(target: String, new_dirfd: u32, linkpath: String) -> Self {
+        Self::Symlinkat((
+            b"1".to_vec(),
+            SymlinkatRequest {
+                target: target.into_bytes(),
+                new_dirfd,
+                linkpath: linkpath.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn unlink(path: String) -> Self {
+        Self::Unlink((
+            b"1".to_vec(),
+            UnlinkRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn unlinkat(dirfd: u32, path: String, flags: u32) -> Self {
+        Self::Unlinkat((
+            b"1".to_vec(),
+            UnlinkatRequest {
+                dirfd,
+                path: path.into_bytes(),
+                flags,
+            },
+        ))
+    }
+
+    pub fn remove(path: String) -> Self {
+        Self::Remove((
+            b"1".to_vec(),
+            RemoveRequest {
+                path: path.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn mkdir(path: String, mode: u32) -> Self {
+        Self::Mkdir((
+            b"1".to_vec(),
+            MkdirRequest {
+                path: path.into_bytes(),
+                mode,
+            },
+        ))
+    }
+
+    pub fn mkdirat(dirfd: u32, path: String, mode: u32) -> Self {
+        Self::Mkdirat((
+            b"1".to_vec(),
+            MkdiratRequest {
+                dirfd,
+                path: path.into_bytes(),
+                mode,
+            },
+        ))
+    }
 }
 
 impl Response {
@@ -1208,6 +1514,54 @@ impl Response {
         Self::InterposeSetGet(InterposeSetGetResponse {
             value: value.into_bytes(),
         })
+    }
+
+    pub fn rename() -> Self {
+        Self::Rename(RenameResponse {})
+    }
+
+    pub fn renameat() -> Self {
+        Self::Renameat(RenameatResponse {})
+    }
+
+    pub fn renameatx_np() -> Self {
+        Self::RenameatxNp(RenameatxNpResponse {})
+    }
+
+    pub fn link() -> Self {
+        Self::Link(LinkResponse {})
+    }
+
+    pub fn linkat() -> Self {
+        Self::Linkat(LinkatResponse {})
+    }
+
+    pub fn symlink() -> Self {
+        Self::Symlink(SymlinkResponse {})
+    }
+
+    pub fn symlinkat() -> Self {
+        Self::Symlinkat(SymlinkatResponse {})
+    }
+
+    pub fn unlink() -> Self {
+        Self::Unlink(UnlinkResponse {})
+    }
+
+    pub fn unlinkat() -> Self {
+        Self::Unlinkat(UnlinkatResponse {})
+    }
+
+    pub fn remove() -> Self {
+        Self::Remove(RemoveResponse {})
+    }
+
+    pub fn mkdir() -> Self {
+        Self::Mkdir(MkdirResponse {})
+    }
+
+    pub fn mkdirat() -> Self {
+        Self::Mkdirat(MkdiratResponse {})
     }
 
     pub fn error(message: String, code: Option<u32>) -> Self {

@@ -2246,4 +2246,596 @@ mod interpose {
             }
         }
     }
+
+    /// Send rename request
+    fn send_rename_request(old_path: &CStr, new_path: &CStr) -> Result<(), String> {
+        let old_path_str = old_path.to_string_lossy().into_owned();
+        let new_path_str = new_path.to_string_lossy().into_owned();
+        let request = Request::rename(old_path_str, new_path_str);
+
+        send_request(request, |response| match response {
+            Response::Rename(_) => {
+                log_message("received rename response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send renameat request
+    fn send_renameat_request(
+        old_dirfd: c_int,
+        old_path: &CStr,
+        new_dirfd: c_int,
+        new_path: &CStr,
+    ) -> Result<(), String> {
+        let old_path_str = old_path.to_string_lossy().into_owned();
+        let new_path_str = new_path.to_string_lossy().into_owned();
+        let request = Request::renameat(
+            old_dirfd as u32,
+            old_path_str,
+            new_dirfd as u32,
+            new_path_str,
+        );
+
+        send_request(request, |response| match response {
+            Response::Renameat(_) => {
+                log_message("received renameat response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send renameatx_np request (macOS-specific)
+    fn send_renameatx_np_request(
+        old_dirfd: c_int,
+        old_path: &CStr,
+        new_dirfd: c_int,
+        new_path: &CStr,
+        flags: c_int,
+    ) -> Result<(), String> {
+        let old_path_str = old_path.to_string_lossy().into_owned();
+        let new_path_str = new_path.to_string_lossy().into_owned();
+        let request = Request::renameatx_np(
+            old_dirfd as u32,
+            old_path_str,
+            new_dirfd as u32,
+            new_path_str,
+            flags as u32,
+        );
+
+        send_request(request, |response| match response {
+            Response::RenameatxNp(_) => {
+                log_message("received renameatx_np response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send link request
+    fn send_link_request(old_path: &CStr, new_path: &CStr) -> Result<(), String> {
+        let old_path_str = old_path.to_string_lossy().into_owned();
+        let new_path_str = new_path.to_string_lossy().into_owned();
+        let request = Request::link(old_path_str, new_path_str);
+
+        send_request(request, |response| match response {
+            Response::Link(_) => {
+                log_message("received link response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send linkat request
+    fn send_linkat_request(
+        old_dirfd: c_int,
+        old_path: &CStr,
+        new_dirfd: c_int,
+        new_path: &CStr,
+        flags: c_int,
+    ) -> Result<(), String> {
+        let old_path_str = old_path.to_string_lossy().into_owned();
+        let new_path_str = new_path.to_string_lossy().into_owned();
+        let request = Request::linkat(
+            old_dirfd as u32,
+            old_path_str,
+            new_dirfd as u32,
+            new_path_str,
+            flags as u32,
+        );
+
+        send_request(request, |response| match response {
+            Response::Linkat(_) => {
+                log_message("received linkat response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send symlink request
+    fn send_symlink_request(target: &CStr, linkpath: &CStr) -> Result<(), String> {
+        let target_str = target.to_string_lossy().into_owned();
+        let linkpath_str = linkpath.to_string_lossy().into_owned();
+        let request = Request::symlink(target_str, linkpath_str);
+
+        send_request(request, |response| match response {
+            Response::Symlink(_) => {
+                log_message("received symlink response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send symlinkat request
+    fn send_symlinkat_request(
+        target: &CStr,
+        new_dirfd: c_int,
+        linkpath: &CStr,
+    ) -> Result<(), String> {
+        let target_str = target.to_string_lossy().into_owned();
+        let linkpath_str = linkpath.to_string_lossy().into_owned();
+        let request = Request::symlinkat(target_str, new_dirfd as u32, linkpath_str);
+
+        send_request(request, |response| match response {
+            Response::Symlinkat(_) => {
+                log_message("received symlinkat response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send unlink request
+    fn send_unlink_request(path: &CStr) -> Result<(), String> {
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::unlink(path_str);
+
+        send_request(request, |response| match response {
+            Response::Unlink(_) => {
+                log_message("received unlink response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send unlinkat request
+    fn send_unlinkat_request(dirfd: c_int, path: &CStr, flags: c_int) -> Result<(), String> {
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::unlinkat(dirfd as u32, path_str, flags as u32);
+
+        send_request(request, |response| match response {
+            Response::Unlinkat(_) => {
+                log_message("received unlinkat response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send remove request (alias for unlink)
+    fn send_remove_request(path: &CStr) -> Result<(), String> {
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::remove(path_str);
+
+        send_request(request, |response| match response {
+            Response::Remove(_) => {
+                log_message("received remove response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send mkdir request
+    fn send_mkdir_request(path: &CStr, mode: mode_t) -> Result<(), String> {
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::mkdir(path_str, mode as u32);
+
+        send_request(request, |response| match response {
+            Response::Mkdir(_) => {
+                log_message("received mkdir response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Send mkdirat request
+    fn send_mkdirat_request(dirfd: c_int, path: &CStr, mode: mode_t) -> Result<(), String> {
+        let path_str = path.to_string_lossy().into_owned();
+        let request = Request::mkdirat(dirfd as u32, path_str, mode as u32);
+
+        send_request(request, |response| match response {
+            Response::Mkdirat(_) => {
+                log_message("received mkdirat response");
+                Some(())
+            }
+            Response::Error(err) => {
+                log_message(&format!(
+                    "daemon error: {}",
+                    String::from_utf8_lossy(&err.error)
+                ));
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Interposed rename function
+    redhook::hook! {
+        unsafe fn rename(old_path: *const c_char, new_path: *const c_char) -> c_int => my_rename {
+            if old_path.is_null() || new_path.is_null() {
+                return -1;
+            }
+
+            let c_old_path = unsafe { CStr::from_ptr(old_path) };
+            let c_new_path = unsafe { CStr::from_ptr(new_path) };
+            log_message(&format!("interposing rename({}, {})", c_old_path.to_string_lossy(), c_new_path.to_string_lossy()));
+
+            match send_rename_request(c_old_path, c_new_path) {
+                Ok(()) => {
+                    log_message("rename succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("rename failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(rename)(old_path, new_path)
+                }
+            }
+        }
+    }
+
+    /// Interposed renameat function
+    redhook::hook! {
+        unsafe fn renameat(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char) -> c_int => my_renameat {
+            if old_path.is_null() || new_path.is_null() {
+                return -1;
+            }
+
+            let c_old_path = unsafe { CStr::from_ptr(old_path) };
+            let c_new_path = unsafe { CStr::from_ptr(new_path) };
+            log_message(&format!("interposing renameat({}, {}, {}, {})", old_dirfd, c_old_path.to_string_lossy(), new_dirfd, c_new_path.to_string_lossy()));
+
+            match send_renameat_request(old_dirfd, c_old_path, new_dirfd, c_new_path) {
+                Ok(()) => {
+                    log_message("renameat succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("renameat failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(renameat)(old_dirfd, old_path, new_dirfd, new_path)
+                }
+            }
+        }
+    }
+
+    /// Interposed renameatx_np function (macOS-specific)
+    redhook::hook! {
+        unsafe fn renameatx_np(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: libc::c_uint) -> c_int => my_renameatx_np {
+            if old_path.is_null() || new_path.is_null() {
+                return -1;
+            }
+
+            let c_old_path = unsafe { CStr::from_ptr(old_path) };
+            let c_new_path = unsafe { CStr::from_ptr(new_path) };
+            log_message(&format!("interposing renameatx_np({}, {}, {}, {}, {:#x})", old_dirfd, c_old_path.to_string_lossy(), new_dirfd, c_new_path.to_string_lossy(), flags));
+
+            match send_renameatx_np_request(old_dirfd, c_old_path, new_dirfd, c_new_path, flags as c_int) {
+                Ok(()) => {
+                    log_message("renameatx_np succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("renameatx_np failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(renameatx_np)(old_dirfd, old_path, new_dirfd, new_path, flags)
+                }
+            }
+        }
+    }
+
+    /// Interposed link function
+    redhook::hook! {
+        unsafe fn link(old_path: *const c_char, new_path: *const c_char) -> c_int => my_link {
+            if old_path.is_null() || new_path.is_null() {
+                return -1;
+            }
+
+            let c_old_path = unsafe { CStr::from_ptr(old_path) };
+            let c_new_path = unsafe { CStr::from_ptr(new_path) };
+            log_message(&format!("interposing link({}, {})", c_old_path.to_string_lossy(), c_new_path.to_string_lossy()));
+
+            match send_link_request(c_old_path, c_new_path) {
+                Ok(()) => {
+                    log_message("link succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("link failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(link)(old_path, new_path)
+                }
+            }
+        }
+    }
+
+    /// Interposed linkat function
+    redhook::hook! {
+        unsafe fn linkat(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: c_int) -> c_int => my_linkat {
+            if old_path.is_null() || new_path.is_null() {
+                return -1;
+            }
+
+            let c_old_path = unsafe { CStr::from_ptr(old_path) };
+            let c_new_path = unsafe { CStr::from_ptr(new_path) };
+            log_message(&format!("interposing linkat({}, {}, {}, {}, {:#x})", old_dirfd, c_old_path.to_string_lossy(), new_dirfd, c_new_path.to_string_lossy(), flags));
+
+            match send_linkat_request(old_dirfd, c_old_path, new_dirfd, c_new_path, flags) {
+                Ok(()) => {
+                    log_message("linkat succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("linkat failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(linkat)(old_dirfd, old_path, new_dirfd, new_path, flags)
+                }
+            }
+        }
+    }
+
+    /// Interposed symlink function
+    redhook::hook! {
+        unsafe fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int => my_symlink {
+            if target.is_null() || linkpath.is_null() {
+                return -1;
+            }
+
+            let c_target = unsafe { CStr::from_ptr(target) };
+            let c_linkpath = unsafe { CStr::from_ptr(linkpath) };
+            log_message(&format!("interposing symlink({}, {})", c_target.to_string_lossy(), c_linkpath.to_string_lossy()));
+
+            match send_symlink_request(c_target, c_linkpath) {
+                Ok(()) => {
+                    log_message("symlink succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("symlink failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(symlink)(target, linkpath)
+                }
+            }
+        }
+    }
+
+    /// Interposed symlinkat function
+    redhook::hook! {
+        unsafe fn symlinkat(target: *const c_char, new_dirfd: c_int, linkpath: *const c_char) -> c_int => my_symlinkat {
+            if target.is_null() || linkpath.is_null() {
+                return -1;
+            }
+
+            let c_target = unsafe { CStr::from_ptr(target) };
+            let c_linkpath = unsafe { CStr::from_ptr(linkpath) };
+            log_message(&format!("interposing symlinkat({}, {}, {})", c_target.to_string_lossy(), new_dirfd, c_linkpath.to_string_lossy()));
+
+            match send_symlinkat_request(c_target, new_dirfd, c_linkpath) {
+                Ok(()) => {
+                    log_message("symlinkat succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("symlinkat failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(symlinkat)(target, new_dirfd, linkpath)
+                }
+            }
+        }
+    }
+
+    /// Interposed unlink function
+    redhook::hook! {
+        unsafe fn unlink(path: *const c_char) -> c_int => my_unlink {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            log_message(&format!("interposing unlink({})", c_path.to_string_lossy()));
+
+            match send_unlink_request(c_path) {
+                Ok(()) => {
+                    log_message("unlink succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("unlink failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(unlink)(path)
+                }
+            }
+        }
+    }
+
+    /// Interposed unlinkat function
+    redhook::hook! {
+        unsafe fn unlinkat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int => my_unlinkat {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            log_message(&format!("interposing unlinkat({}, {}, {:#x})", dirfd, c_path.to_string_lossy(), flags));
+
+            match send_unlinkat_request(dirfd, c_path, flags) {
+                Ok(()) => {
+                    log_message("unlinkat succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("unlinkat failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(unlinkat)(dirfd, path, flags)
+                }
+            }
+        }
+    }
+
+    /// Interposed remove function (alias for unlink)
+    redhook::hook! {
+        unsafe fn remove(path: *const c_char) -> c_int => my_remove {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            log_message(&format!("interposing remove({})", c_path.to_string_lossy()));
+
+            match send_remove_request(c_path) {
+                Ok(()) => {
+                    log_message("remove succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("remove failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(remove)(path)
+                }
+            }
+        }
+    }
+
+    /// Interposed mkdir function
+    redhook::hook! {
+        unsafe fn mkdir(path: *const c_char, mode: mode_t) -> c_int => my_mkdir {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            log_message(&format!("interposing mkdir({}, {:#o})", c_path.to_string_lossy(), mode));
+
+            match send_mkdir_request(c_path, mode) {
+                Ok(()) => {
+                    log_message("mkdir succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("mkdir failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(mkdir)(path, mode)
+                }
+            }
+        }
+    }
+
+    /// Interposed mkdirat function
+    redhook::hook! {
+        unsafe fn mkdirat(dirfd: c_int, path: *const c_char, mode: mode_t) -> c_int => my_mkdirat {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            log_message(&format!("interposing mkdirat({}, {}, {:#o})", dirfd, c_path.to_string_lossy(), mode));
+
+            match send_mkdirat_request(dirfd, c_path, mode) {
+                Ok(()) => {
+                    log_message("mkdirat succeeded");
+                    0 // Success
+                }
+                Err(err) => {
+                    log_message(&format!("mkdirat failed: {}, falling back to original", err));
+                    // Fall back to original function
+                    redhook::real!(mkdirat)(dirfd, path, mode)
+                }
+            }
+        }
+    }
 }

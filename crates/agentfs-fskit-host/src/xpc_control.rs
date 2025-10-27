@@ -105,6 +105,18 @@ impl XpcControlService {
             Request::Ftruncate(_) => todo!("Ftruncate not implemented for XPC control"),
             Request::Statfs(_) => todo!("Statfs not implemented for XPC control"),
             Request::Fstatfs(_) => todo!("Fstatfs not implemented for XPC control"),
+            Request::Rename(_) => todo!("Rename not implemented for XPC control"),
+            Request::Renameat(_) => todo!("Renameat not implemented for XPC control"),
+            Request::RenameatxNp(_) => todo!("RenameatxNp not implemented for XPC control"),
+            Request::Link(_) => todo!("Link not implemented for XPC control"),
+            Request::Linkat(_) => todo!("Linkat not implemented for XPC control"),
+            Request::Symlink(_) => todo!("Symlink not implemented for XPC control"),
+            Request::Symlinkat(_) => todo!("Symlinkat not implemented for XPC control"),
+            Request::Unlink(_) => todo!("Unlink not implemented for XPC control"),
+            Request::Unlinkat(_) => todo!("Unlinkat not implemented for XPC control"),
+            Request::Remove(_) => todo!("Remove not implemented for XPC control"),
+            Request::Mkdir(_) => todo!("Mkdir not implemented for XPC control"),
+            Request::Mkdirat(_) => todo!("Mkdirat not implemented for XPC control"),
         }
     }
 
