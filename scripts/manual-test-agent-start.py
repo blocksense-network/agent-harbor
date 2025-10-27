@@ -29,26 +29,19 @@ import threading
 import time
 from pathlib import Path
 
+# Import shared utilities
+from test_utils import (
+    setup_script_logging,
+    find_project_root,
+    find_zfs_mount_point,
+    print_dry_run_header,
+    print_command_info
+)
+
 # Note: We check for yaml availability in create_process_compose_config
 # to handle cases where the script runs with system python but commands use nix python
 
 
-def setup_script_logging(user_home_dir):
-    """Set up logging for the script itself."""
-    script_log_file = user_home_dir / "script.log"
-
-    # Configure logging to both file and console
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(script_log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-
-    logging.info(f"Script logging initialized. Log file: {script_log_file}")
-    return script_log_file
 
 
 class MockServerManager:
@@ -723,15 +716,22 @@ Examples:
     # Determine scenario name for working directory
     scenario_name = args.scenario if args.scenario else "default"
 
-    # Set up working directory
+    # Set up working directory - prefer ZFS test filesystem if available
     if args.working_dir:
         working_dir = Path(args.working_dir)
     else:
-        # Create working directory in stable location relative to project root
-        project_root = find_project_root()
-        stable_base = project_root / "test-runs"
-        stable_base.mkdir(exist_ok=True)
-        working_dir = stable_base / f"test-{scenario_name}"
+        # Try to use ZFS test filesystem first
+        zfs_mount = find_zfs_mount_point()
+        if zfs_mount:
+            working_dir = zfs_mount / f"test-{scenario_name}"
+            print(f"Using ZFS test filesystem at: {zfs_mount}")
+        else:
+            # Fall back to project-relative test-runs directory
+            project_root = find_project_root()
+            stable_base = project_root / "test-runs"
+            stable_base.mkdir(exist_ok=True)
+            working_dir = stable_base / f"test-{scenario_name}"
+            print("ZFS test filesystem not available, using project test-runs directory")
 
     # Create user-home directory early for logging
     user_home_dir = working_dir / "user-home"
@@ -781,42 +781,36 @@ Examples:
         return
 
     if args.dry_run:
-        print("DRY RUN - Commands that would be executed:")
-        print("=" * 50)
+        print_dry_run_header()
 
         # Print mock server command
         if "mock-server" in config.get("processes", {}):
             server_proc = config["processes"]["mock-server"]
-            print("Mock Server Command:")
-            print(f"  Working Directory: {server_proc.get('working_dir', 'current')}")
-            print(f"  Command: {server_proc['command']}")
-            if "environment" in server_proc and server_proc["environment"]:
-                print("  Environment Variables:")
-                for env_var in server_proc["environment"]:
-                    print(f"    {env_var}")
-            print()
+            print_command_info(
+                "Mock Server Command",
+                server_proc['command'],
+                working_dir=server_proc.get('working_dir', 'current'),
+                environment=server_proc.get("environment", [])
+            )
 
         # Print ah agent command
         if "ah-agent" in config.get("processes", {}):
             agent_proc = config["processes"]["ah-agent"]
-            print("AH Agent Command:")
-            print(f"  Working Directory: {agent_proc.get('working_dir', 'current')}")
-            print(f"  Command: {agent_proc['command']}")
-            if "environment" in agent_proc and agent_proc["environment"]:
-                print("  Environment Variables:")
-                for env_var in agent_proc["environment"]:
-                    print(f"    {env_var}")
-            print()
-
+            print_command_info(
+                "AH Agent Command",
+                agent_proc['command'],
+                working_dir=agent_proc.get('working_dir', 'current'),
+                environment=agent_proc.get("environment", [])
+            )
 
         # Print process-compose command
-        print("Process Compose Command:")
         if args.foreground:
-            print(f"  process-compose run ah-agent --config {config_path}")
+            process_compose_cmd = f"process-compose run ah-agent --config {config_path}"
         else:
             tui_flag = "" if args.tui else " --tui=false"
-            print(f"  process-compose up --config {config_path}{tui_flag}")
-        print()
+            process_compose_cmd = f"process-compose up --config {config_path}{tui_flag}"
+
+        print_command_info("Process Compose Command", process_compose_cmd)
 
         print("Working directory setup:")
         print(f"  Test working directory: {working_dir}")

@@ -391,6 +391,10 @@ manual-test-agent-start *args:
 manual-test-ah-agent-record *args:
     ./scripts/manual-test-agent-start.py --record {{args}}
 
+# Launch manual TUI test script for testing TUI functionality
+manual-test-tui *args:
+    ./scripts/manual-test-tui.py {{args}}
+
 # Run WebUI E2E tests in headed mode (visible browser)
 webui-test-headed:
     yarn workspace ah-webui-e2e-tests run test:headed
