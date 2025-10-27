@@ -484,7 +484,8 @@ repomix-webui:
         --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-WebUI.md \
         --style markdown \
         --header-text "WebUI Complete Implementation and Specification" \
-        --include "{{REPOMIX_WEBUI_PATTERNS}}"
+        --include "{{REPOMIX_WEBUI_PATTERNS}}" \
+        --ignore ".direnv/**"
 
 # Create repomix bundle of all specs files
 repomix-specs:
@@ -719,7 +720,8 @@ repomix-tui:
         --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-TUI.md \
         --style markdown \
         --header-text "TUI Complete Implementation and Specification" \
-        --include "{{REPOMIX_TUI_PATTERNS}}"
+        --include "{{REPOMIX_TUI_PATTERNS}}" \
+        --ignore ".direnv/**"
 
 # TUI Exploration PoC include patterns as a multiline string
 REPOMIX_TUI_EXPLORATION_PATTERNS := replace("""
@@ -769,7 +771,8 @@ repomix-agentfs-specs:
         --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-AgentFS-Specs.md \
         --style markdown \
         --header-text "AgentFS Specifications and Related Documentation" \
-        --include "{{REPOMIX_AGENTFS_SPECS_PATTERNS}}"
+        --include "{{REPOMIX_AGENTFS_SPECS_PATTERNS}}" \
+        --ignore ".direnv/**"
 
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
 repomix-agentfs:
@@ -786,22 +789,13 @@ repomix-agentfs:
 repomix-llm-api-proxy:
     @echo "📦 Creating LLM API Proxy repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
-    @echo "Generating LLM API Proxy crate bundle..."
     repomix \
-        crates/llm-api-proxy \
+        . \
         --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-LLM-API-Proxy.md \
         --style markdown \
-        --header-text "LLM API Proxy - Complete Implementation and Specification"
-    @echo "Adding Scenario-Format.md specification..."
-    repomix \
-        specs/Public \
-        --include "Scenario-Format.md" \
-        --output {{REPOMIX_OUT_DIR}}/scenario-temp.md \
-        --style markdown \
-        --header-text "Scenario Format Specification"
-    @echo "Combining bundles..."
-    @tail -n +3 {{REPOMIX_OUT_DIR}}/scenario-temp.md >> {{REPOMIX_OUT_DIR}}/Agent-Harbor-LLM-API-Proxy.md
-    @rm {{REPOMIX_OUT_DIR}}/scenario-temp.md
+        --header-text "LLM API Proxy - Complete Implementation and Specification" \
+        --include "crates/llm-api-proxy/**,specs/Public/Scenario-Format.md" \
+        --ignore ".direnv/**"
 
 # Run overlay tests with E2E enforcement verification
 test-overlays:
