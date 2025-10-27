@@ -471,6 +471,28 @@ pub struct RepositoryBranchesResponse {
     pub branches: Vec<BranchInfo>,
 }
 
+/// File information for repository file listing
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct RepositoryFile {
+    /// File path
+    pub path: String,
+    /// Additional file details (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Repository files response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct RepositoryFilesResponse {
+    /// Repository ID
+    #[serde(rename = "repositoryId")]
+    pub repository_id: String,
+    /// List of files
+    pub files: Vec<RepositoryFile>,
+}
+
 /// Workspace summary
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

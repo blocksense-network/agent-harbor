@@ -60,6 +60,8 @@ pub fn openapi_schema() -> utoipa::openapi::OpenApi {
             Repository,
             BranchInfo,
             RepositoryBranchesResponse,
+            RepositoryFile,
+            RepositoryFilesResponse,
             Workspace,
             SessionInfoResponse,
             FleetInfo,

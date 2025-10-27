@@ -22,6 +22,7 @@ pub mod local_task_manager;
 pub mod push;
 pub mod remote_branches_enumerator;
 pub mod remote_repositories_enumerator;
+pub mod remote_workspace_files_enumerator;
 pub mod repositories_enumerator;
 pub mod rest_task_manager;
 pub mod session;
@@ -59,13 +60,14 @@ pub use db::DatabaseManager;
 /// Re-export SplitMode from ah-mux-core for convenience
 pub use ah_mux_core::SplitMode;
 /// Task manager abstraction for different execution modes (local, remote, mock).
-pub use task_manager::{
-    SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
-};
+pub use task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 
 /// Local task manager for direct execution on the local machine.
 /// Uses a dynamic multiplexer implementation.
 pub use local_task_manager::LocalTaskManager;
+
+/// Workspace file enumeration for repositories.
+pub use remote_workspace_files_enumerator::RemoteWorkspaceFilesEnumerator;
 
 /// Re-export domain types
 pub use ah_domain_types::{LogLevel, TaskExecutionStatus, ToolStatus};

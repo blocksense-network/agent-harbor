@@ -333,9 +333,10 @@ mod keyboard {
 
         let vm = new_view_model();
 
-        // ViewModel creates 1 draft card initially with ID "current"
+        // ViewModel creates 1 draft card initially with a UUID ID
         assert_eq!(vm.draft_cards.len(), 1);
-        assert_eq!(vm.draft_cards[0].id, "current");
+        assert_ne!(vm.draft_cards[0].id, "current"); // Should be a UUID, not "current"
+        assert!(vm.draft_cards[0].id.len() == 36); // UUID format: 8-4-4-4-12 = 36 chars
         assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "");
     }
 

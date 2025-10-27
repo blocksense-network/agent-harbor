@@ -66,6 +66,15 @@ use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::{fmt, pin::Pin};
 
+/// Result of a draft task save operation
+#[derive(Debug, Clone, PartialEq)]
+pub enum SaveDraftResult {
+    /// The draft was successfully saved
+    Success,
+    /// The save operation failed with an error message
+    Failure { error: String },
+}
+
 /// Starting point for task execution - defines where to start the task from
 #[derive(Debug, Clone, PartialEq)]
 pub enum StartingPoint {
@@ -343,13 +352,6 @@ pub enum TaskEvent {
         description: Option<String>,
         ts: DateTime<Utc>,
     },
-}
-
-/// Result of saving a draft task
-#[derive(Debug, Clone, PartialEq)]
-pub enum SaveDraftResult {
-    Success,
-    Failure { error: String },
 }
 
 /// Abstract trait for task launching functionality

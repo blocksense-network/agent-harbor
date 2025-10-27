@@ -69,9 +69,8 @@ use crate::view_model::{
 };
 use ah_core::branches_enumerator::BranchesEnumerator;
 use ah_core::repositories_enumerator::RepositoriesEnumerator;
-use ah_core::task_manager::{
-    SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
-};
+use ah_core::task_manager::SaveDraftResult;
+use ah_core::task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 use ah_domain_types::task::ToolStatus;
 use ah_domain_types::{
     DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskInfo, TaskState,
@@ -84,6 +83,7 @@ use ratatui::style::{Modifier, Style};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
+use uuid;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
 
@@ -893,20 +893,12 @@ impl ViewModel {
         if !self.draft_cards.is_empty() {
             // Create a new draft task based on the first (current) draft
             if let Some(current_card) = self.draft_cards.get(0) {
-                let new_draft = DraftTask {
-                    id: format!("draft_{}", chrono::Utc::now().timestamp()),
-                    description: String::new(),
-                    repository: current_card.repository.clone(),
-                    branch: current_card.branch.clone(),
-                    models: current_card.models.clone(),
-                    created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-                };
-
-                let new_card = create_draft_card_from_task(
-                    new_draft,
+                let new_card = self.create_draft_task(
+                    String::new(), // empty description
+                    current_card.repository.clone(),
+                    current_card.branch.clone(),
+                    current_card.models.clone(),
                     CardFocusElement::TaskDescription,
-                    Some(self.repositories_enumerator.clone()),
-                    Some(self.branches_enumerator.clone()),
                 );
                 self.draft_cards.push(new_card);
                 let new_index = self.draft_cards.len() - 1;
@@ -915,6 +907,53 @@ impl ViewModel {
             }
         }
         false
+    }
+
+    /// Create a new draft task with the specified parameters
+    pub fn create_draft_task(
+        &self,
+        description: String,
+        repository: String,
+        branch: String,
+        models: Vec<SelectedModel>,
+        focus_element: CardFocusElement,
+    ) -> TaskEntryViewModel {
+        Self::create_draft_task_internal(
+            description,
+            repository,
+            branch,
+            models,
+            focus_element,
+            Some(self.repositories_enumerator.clone()),
+            Some(self.branches_enumerator.clone()),
+        )
+    }
+
+    /// Internal helper to create a draft task (static version for initialization)
+    fn create_draft_task_internal(
+        description: String,
+        repository: String,
+        branch: String,
+        models: Vec<SelectedModel>,
+        focus_element: CardFocusElement,
+        repositories_enumerator: Option<Arc<dyn RepositoriesEnumerator>>,
+        branches_enumerator: Option<Arc<dyn BranchesEnumerator>>,
+    ) -> TaskEntryViewModel {
+        let draft_task = DraftTask {
+            id: uuid::Uuid::new_v4().to_string(),
+            description,
+            repository,
+            branch,
+            models,
+            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        };
+
+        create_draft_card_from_task(
+            draft_task,
+            focus_element,
+            repositories_enumerator,
+            branches_enumerator,
+        )
     }
 
     /// Handle auto-save timer tick
@@ -1203,17 +1242,19 @@ impl ViewModel {
             branches_enumerator,
             settings,
             false,
+            None,
         )
     }
 
     /// Create a new ViewModel with background loading enabled
-    pub fn new_with_background_loading(
+    pub fn new_with_background_loading_and_current_repo(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
+        current_repository: Option<String>,
     ) -> Self {
         Self::new_internal(
             workspace_files,
@@ -1223,6 +1264,7 @@ impl ViewModel {
             branches_enumerator,
             settings,
             true,
+            current_repository,
         )
     }
 
@@ -1234,6 +1276,7 @@ impl ViewModel {
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
         with_background_loading: bool,
+        current_repository: Option<String>,
     ) -> Self {
         // Initialize available options (will be populated asynchronously)
         let available_repositories = vec![];
@@ -1281,45 +1324,46 @@ impl ViewModel {
             (None, None, None, None, None, None, None, None)
         };
 
-        // Create initial draft card with embedded domain object
-        let initial_draft = DraftTask {
-            id: "current".to_string(),
-            description: String::new(),
-            repository: "blocksense/agent-harbor".to_string(),
-            branch: "main".to_string(),
-            models: vec![SelectedModel {
-                name: "Claude 3.5 Sonnet".to_string(),
-                count: 1,
-            }],
-            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        };
-
         // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
         let initial_global_focus = FocusElement::DraftTask(0); // Focus on the single draft task
         let initial_card_focus = CardFocusElement::TaskDescription; // Initially focus the text area within the card
 
-        // Create task collections - cards contain the domain objects
-        let draft_cards = vec![create_draft_card_from_task(
-            initial_draft.clone(),
+        // Create initial draft card
+        let draft_cards = vec![Self::create_draft_task_internal(
+            String::new(), // empty description
+            current_repository.unwrap_or_else(|| "blocksense/agent-harbor".to_string()),
+            "main".to_string(),
+            vec![SelectedModel {
+                name: "Claude 3.5 Sonnet".to_string(),
+                count: 1,
+            }],
             initial_card_focus,
             Some(Arc::clone(&repositories_enumerator)),
             Some(Arc::clone(&branches_enumerator)),
         )];
         let task_cards = vec![]; // Start with no task cards
 
-        let focused_draft = &initial_draft;
+        // Extract the initial draft task for modal initialization
+        let initial_draft_task = DraftTask {
+            id: draft_cards[0].id.clone(),
+            description: draft_cards[0].description.lines().join("\n"),
+            repository: draft_cards[0].repository.clone(),
+            branch: draft_cards[0].branch.clone(),
+            models: draft_cards[0].models.clone(),
+            created_at: draft_cards[0].created_at.clone(),
+        };
         let active_modal = create_modal_view_model(
             ModalState::None,
             &available_repositories,
             &available_branches,
             &available_models,
-            &Some(initial_draft.clone()),
+            &Some(initial_draft_task.clone()),
             settings.activity_rows(),
             true,
             false,
         );
         let footer = create_footer_view_model(
-            Some(focused_draft),
+            Some(&initial_draft_task.clone()),
             initial_global_focus,
             ModalState::None,
             &settings,
@@ -3445,39 +3489,6 @@ impl ViewModel {
     }
 
     // Domain business logic methods (moved from Model)
-
-    /// Create a new draft task
-    pub fn create_new_draft_task(&mut self, draft_id: &str) {
-        if let Some(card_index) = self.draft_cards.iter().position(|c| c.id == draft_id) {
-            let current_card = &self.draft_cards[card_index];
-            let current_description = current_card.description.lines().join("\n");
-            if !current_description.trim().is_empty() {
-                let draft_task = DraftTask {
-                    id: format!("draft_{}", chrono::Utc::now().timestamp()),
-                    description: current_description,
-                    repository: current_card.repository.clone(),
-                    branch: current_card.branch.clone(),
-                    models: current_card.models.clone(),
-                    created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-                };
-
-                // Create a new draft card with the embedded task
-                let new_card = create_draft_card_from_task(
-                    draft_task,
-                    CardFocusElement::TaskDescription,
-                    Some(self.repositories_enumerator.clone()),
-                    Some(self.branches_enumerator.clone()),
-                );
-                self.draft_cards.insert(0, new_card);
-
-                // Update UI
-                self.refresh_draft_cards();
-
-                // Update UI for the cleared draft
-                self.refresh_draft_cards();
-            }
-        }
-    }
 
     /// Delete a task by its index in the combined draft + task list
     pub fn delete_task_by_index(&mut self, combined_index: usize) {

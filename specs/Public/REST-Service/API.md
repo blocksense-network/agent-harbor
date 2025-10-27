@@ -1399,6 +1399,34 @@ Accepted event types (minimum set):
 
   The server retrieves branch information by querying the local VCS repository associated with the given repository ID. Results may be cached to improve performance for repeated queries.
 
+#### Repository Files
+
+- `GET /api/v1/repositories/{id}/files` → List files tracked by VCS for a specific repository.
+
+  Response `200 OK`:
+
+  ```json
+  {
+    "repositoryId": "repo_001",
+    "files": [
+      {
+        "path": "src/main.rs",
+        "detail": "Tracked file"
+      },
+      {
+        "path": "Cargo.toml",
+        "detail": "Tracked file"
+      },
+      {
+        "path": "README.md",
+        "detail": "Tracked file"
+      }
+    ]
+  }
+  ```
+
+  The server retrieves file information by running VCS commands (e.g., `git ls-files`) on the local repository associated with the given repository ID. Files are streamed incrementally to avoid large response payloads.
+
 #### Draft Task Management
 
 Drafts allow users to save incomplete task configurations for later completion and persistence across browser sessions.
@@ -1468,6 +1496,7 @@ Drafts allow users to save incomplete task configurations for later completion a
   - `GET /api/v1/projects` → List known projects per tenant for filtering.
   - `GET /api/v1/repos?tenantId=<id>&projectId=<id>` → Returns repositories the service has indexed (from historical tasks or explicit imports). Each item includes `id`, `displayName`, `scmProvider`, `remoteUrl`, `defaultBranch`, and `lastUsedAt`, mirroring common REST patterns for repository catalogs.
   - `GET /api/v1/repositories/{id}/branches` → List branches for a specific repository. Returns branch information including names, default branch status, and last commit info.
+  - `GET /api/v1/repositories/{id}/files` → List files tracked by VCS for a specific repository. Returns file paths and metadata.
   - `GET /api/v1/workspaces?status=active` → Lists provisioned workspaces with metadata.
   - `GET /api/v1/workspaces/{id}` → Detailed view including workspace repository URLs, storage usage, task history, etc.
 

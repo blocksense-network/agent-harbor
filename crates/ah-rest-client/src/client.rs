@@ -3,8 +3,8 @@
 
 //! Main REST API client implementation
 
+use ah_domain_types::SelectedModel;
 use ah_rest_api_contract::*;
-use futures::StreamExt;
 use reqwest::{Client as HttpClient, Method, Response};
 use serde::{Deserialize, de::DeserializeOwned};
 use url::Url;
@@ -191,7 +191,7 @@ impl RestClient {
         &self,
         tenant_id: Option<&str>,
         project_id: Option<&str>,
-    ) -> RestClientResult<Vec<Repository>> {
+    ) -> RestClientResult<Vec<ah_rest_api_contract::Repository>> {
         let mut url = "/api/v1/repositories".to_string();
         let mut params = Vec::new();
 
@@ -220,6 +220,15 @@ impl RestClient {
         Ok(response.branches)
     }
 
+    pub async fn get_repository_files(
+        &self,
+        repository_id: &str,
+    ) -> RestClientResult<Vec<RepositoryFile>> {
+        let url = format!("/api/v1/repositories/{}/files", repository_id);
+        let response: RepositoryFilesResponse = self.get(&url).await?;
+        Ok(response.files)
+    }
+
     /// List workspaces
     pub async fn list_workspaces(&self, status: Option<&str>) -> RestClientResult<Vec<Workspace>> {
         let mut url = "/api/v1/workspaces".to_string();
@@ -236,6 +245,70 @@ impl RestClient {
         self.get(&url).await
     }
 
+    /// Save a draft task
+    pub async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> RestClientResult<()> {
+        // Convert selected models to agent config
+        let agent = if let Some(first_model) = models.first() {
+            AgentConfig {
+                agent_type: first_model.name.clone(),
+                version: "latest".to_string(),
+                settings: std::collections::HashMap::new(),
+            }
+        } else {
+            return Err(RestClientError::UnexpectedResponse(
+                "No model selected".to_string(),
+            ));
+        };
+
+        // Create repo config
+        let repo = RepoConfig {
+            mode: RepoMode::Git,
+            url: Some(url::Url::parse(repository).map_err(|e| {
+                RestClientError::UnexpectedResponse(format!("Invalid repository URL: {}", e))
+            })?),
+            branch: Some(branch.to_string()),
+            commit: None,
+        };
+
+        // Create the draft request
+        let draft_request = CreateTaskRequest {
+            tenant_id: None,
+            project_id: None,
+            prompt: description.to_string(),
+            repo,
+            agent,
+            runtime: RuntimeConfig {
+                runtime_type: RuntimeType::Local,
+                devcontainer_path: None,
+                resources: None,
+            },
+            workspace: None,
+            delivery: None,
+            labels: std::collections::HashMap::new(),
+            webhooks: vec![],
+        };
+
+        // If draft_id is "draft-123" (placeholder), this is a new draft, so POST to create
+        // Otherwise, it's an update, so PUT to the specific draft ID
+        if draft_id == "draft-123" || draft_id.is_empty() {
+            // Create new draft
+            let _: serde_json::Value = self.post("/api/v1/drafts", &draft_request).await?;
+        } else {
+            // Update existing draft
+            let url = format!("/api/v1/drafts/{}", draft_id);
+            let _: serde_json::Value = self.put(&url, &draft_request).await?;
+        }
+
+        Ok(())
+    }
+
     // Private helper methods
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> RestClientResult<T> {
@@ -248,6 +321,14 @@ impl RestClient {
         body: &B,
     ) -> RestClientResult<T> {
         self.request(Method::POST, path, Some(body)).await
+    }
+
+    async fn put<T: DeserializeOwned, B: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> RestClientResult<T> {
+        self.request(Method::PUT, path, Some(body)).await
     }
 
     async fn post_empty(&self, path: &str) -> RestClientResult<()> {

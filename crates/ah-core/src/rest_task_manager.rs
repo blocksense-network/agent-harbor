@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
 
-use crate::{SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
+use crate::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 use ah_domain_types::{LogLevel, TaskExecutionStatus, ToolStatus};
 
 /// Trait for REST API clients that can be used with RestTaskManager
@@ -73,6 +73,22 @@ pub trait RestApiClient: Send + Sync {
         &self,
         repository_id: &str,
     ) -> Result<Vec<ah_rest_api_contract::BranchInfo>, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Save a draft task
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Get files for a repository
+    async fn get_repository_files(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<ah_rest_api_contract::RepositoryFile>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 /// Generic TaskManager implementation for REST API clients
@@ -359,21 +375,6 @@ where
         }
     }
 
-    async fn save_draft_task(
-        &self,
-        draft_id: &str,
-        description: &str,
-        repository: &str,
-        branch: &str,
-        models: &[SelectedModel],
-    ) -> SaveDraftResult {
-        // Note: The current REST API doesn't have draft task persistence
-        // This would need to be implemented in the server first
-        // For now, we'll simulate success but warn that it's not actually persisted
-        tracing::warn!("Draft task persistence not yet implemented in REST API");
-        SaveDraftResult::Success
-    }
-
     async fn launch_task_from_starting_point(
         &self,
         starting_point: crate::task_manager::StartingPoint,
@@ -406,6 +407,26 @@ where
                     error: "FilesystemSnapshot starting point not yet implemented".to_string(),
                 }
             }
+        }
+    }
+
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> crate::task_manager::SaveDraftResult {
+        match self
+            .client
+            .save_draft_task(draft_id, description, repository, branch, models)
+            .await
+        {
+            Ok(()) => crate::task_manager::SaveDraftResult::Success,
+            Err(e) => crate::task_manager::SaveDraftResult::Failure {
+                error: format!("Failed to save draft to remote server: {}", e),
+            },
         }
     }
 
@@ -481,6 +502,29 @@ impl RestApiClient for ah_rest_client::RestClient {
     ) -> Result<Vec<ah_rest_api_contract::BranchInfo>, Box<dyn std::error::Error + Send + Sync>>
     {
         self.get_repository_branches(repository_id)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.save_draft_task(draft_id, description, repository, branch, models)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn get_repository_files(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<ah_rest_api_contract::RepositoryFile>, Box<dyn std::error::Error + Send + Sync>>
+    {
+        self.get_repository_files(repository_id)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }

@@ -4,9 +4,13 @@
 //! Business logic services
 
 use crate::models::{InternalSession, SessionStore};
-use ah_core::{BranchesEnumerator, local_branches_enumerator::LocalBranchesEnumerator};
+use ah_core::{
+    BranchesEnumerator, WorkspaceFilesEnumerator,
+    local_branches_enumerator::LocalBranchesEnumerator,
+};
 use ah_local_db::Database;
 use ah_rest_api_contract::*;
+use futures::StreamExt;
 use std::sync::Arc;
 
 /// Session service for managing session lifecycle
@@ -153,5 +157,46 @@ impl RepositoryService {
                 last_commit: branch.last_commit,
             })
             .collect())
+    }
+
+    /// Get files for a repository
+    pub async fn get_repository_files(
+        &self,
+        repository_id: &str,
+    ) -> anyhow::Result<Vec<ah_core::workspace_files_enumerator::RepositoryFile>> {
+        use ah_core::DatabaseManager;
+        let db_manager = DatabaseManager::with_database((*self.database).clone());
+
+        // Get repository info from database
+        let repo_record = db_manager
+            .get_repository_by_id(repository_id.parse::<i64>()?)
+            .map_err(|e| anyhow::anyhow!("Database error: {}", e))?
+            .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repository_id))?;
+
+        let root_path = repo_record
+            .root_path
+            .ok_or_else(|| anyhow::anyhow!("Repository has no root path: {}", repository_id))?;
+
+        // Use VcsRepo to get files
+        let vcs_repo = ah_repo::VcsRepo::new(&root_path)
+            .map_err(|e| anyhow::anyhow!("Failed to open repository at {}: {}", root_path, e))?;
+
+        let mut stream = vcs_repo
+            .stream_repository_files()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to stream repository files: {}", e))?;
+
+        let mut files = Vec::new();
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(file) => files.push(ah_core::workspace_files_enumerator::RepositoryFile {
+                    path: file.path,
+                    detail: file.detail,
+                }),
+                Err(e) => return Err(anyhow::anyhow!("Error reading file: {}", e)),
+            }
+        }
+
+        Ok(files)
     }
 }

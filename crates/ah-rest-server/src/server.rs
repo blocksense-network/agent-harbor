@@ -129,6 +129,10 @@ impl Server {
                 "/repositories/:id/branches",
                 get(handlers::repositories::get_repository_branches),
             )
+            .route(
+                "/repositories/:id/files",
+                get(handlers::repositories::get_repository_files),
+            )
             // Workspaces
             .route("/workspaces", get(handlers::workspaces::list_workspaces))
             .route("/workspaces/:id", get(handlers::workspaces::get_workspace))

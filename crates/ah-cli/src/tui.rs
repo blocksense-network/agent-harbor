@@ -5,8 +5,8 @@
 
 use ah_core::{
     AgentExecutionConfig, LocalBranchesEnumerator, LocalRepositoriesEnumerator,
-    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, WorkspaceFilesEnumerator,
-    local_task_manager::GenericLocalTaskManager,
+    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, RemoteWorkspaceFilesEnumerator,
+    WorkspaceFilesEnumerator, local_task_manager::GenericLocalTaskManager,
 };
 use ah_mux::{
     TmuxMultiplexer,
@@ -397,6 +397,30 @@ impl TuiArgs {
             anyhow::bail!("--remote-server is required when using authentication");
         }
 
+        // Get workspace directory for repository detection
+        let workspace_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+        // Create VcsRepo instance for repository detection
+        let vcs_repo = VcsRepo::new(&workspace_dir).unwrap();
+
+        // Detect current repository
+        let current_repository = Some(
+            vcs_repo
+                .root()
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+        );
+
+        // Create database manager for enumerators
+        let db_manager =
+            ah_core::DatabaseManager::new().expect("Failed to create database manager");
+
+        // Register the detected repository in the database
+        // Ignore errors - repository might already be registered
+        let _ = db_manager.get_or_create_repo(&vcs_repo);
+
         // Create service dependencies based on remote server configuration
         let deps = if let Some(server_url) = remote_server {
             // Remote server mode
@@ -419,11 +443,12 @@ impl TuiArgs {
                 ah_core::rest_task_manager::GenericRestTaskManager::new(rest_client.clone()),
             );
 
-            // For remote mode, we need remote workspace files and workflows
-            // TODO: Implement remote WorkspaceFiles and WorkspaceWorkflowsEnumerator
-            // For now, we'll use local implementations
+            // Use RemoteWorkspaceFilesEnumerator for remote mode
             let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-                Arc::new(VcsRepo::new(&std::path::Path::new(".").to_path_buf()).unwrap());
+                Arc::new(RemoteWorkspaceFilesEnumerator::new(
+                    rest_client.clone(),
+                    current_repository.clone().unwrap_or_else(|| "unknown".to_string()),
+                ));
             let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
                 Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
 
@@ -432,9 +457,8 @@ impl TuiArgs {
                 ah_core::RemoteRepositoriesEnumerator::new(rest_client.clone(), server_url.clone()),
             );
             let branches_enumerator: Arc<dyn ah_core::BranchesEnumerator> = Arc::new(
-                ah_core::RemoteBranchesEnumerator::new(rest_client, server_url),
+                ah_core::RemoteBranchesEnumerator::new(rest_client.clone(), server_url.clone()),
             );
-
             DashboardDependencies {
                 workspace_files,
                 workspace_workflows,
@@ -442,6 +466,7 @@ impl TuiArgs {
                 repositories_enumerator,
                 branches_enumerator,
                 settings: Settings::default(),
+                current_repository,
             }
         } else {
             // Local mode
@@ -450,15 +475,18 @@ impl TuiArgs {
             // Create local service dependencies
             let workspace_dir =
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-                match VcsRepo::new(&workspace_dir) {
-                    Ok(vcs_repo) => Arc::new(vcs_repo),
-                    Err(_) => {
-                        // If not a git repository, we could return an error or use a mock
-                        // For now, let's just panic since the dashboard expects a valid repo
-                        panic!("Current directory is not a git repository");
-                    }
-                };
+
+            // Detect current repository and ensure it's in the database
+            let detected_repo_result = VcsRepo::new(&workspace_dir);
+
+            let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = match detected_repo_result {
+                Ok(vcs_repo) => Arc::new(vcs_repo),
+                Err(_) => {
+                    // If not a git repository, we could return an error or use a mock
+                    // For now, let's just panic since the dashboard expects a valid repo
+                    panic!("Current directory is not a git repository");
+                }
+            };
             let config = WorkflowConfig::default();
             let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(
                 WorkflowProcessor::for_repo(config, &workspace_dir)
@@ -486,10 +514,6 @@ impl TuiArgs {
                 }
             }
 
-            // Create database manager for enumerators
-            let db_manager =
-                ah_core::DatabaseManager::new().expect("Failed to create database manager");
-
             let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
                 GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
                     .expect("Failed to create local task manager"),
@@ -500,7 +524,7 @@ impl TuiArgs {
                 ah_core::LocalRepositoriesEnumerator::new(db_manager.clone()),
             );
             let branches_enumerator: Arc<dyn ah_core::BranchesEnumerator> =
-                Arc::new(ah_core::LocalBranchesEnumerator::new(db_manager));
+                Arc::new(ah_core::LocalBranchesEnumerator::new(db_manager.clone()));
 
             DashboardDependencies {
                 workspace_files,
@@ -509,6 +533,7 @@ impl TuiArgs {
                 repositories_enumerator,
                 branches_enumerator,
                 settings: Settings::default(),
+                current_repository,
             }
         };
 

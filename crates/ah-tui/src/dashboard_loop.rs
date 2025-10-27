@@ -58,6 +58,8 @@ pub struct DashboardDependencies {
     pub repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator>,
     pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,
     pub settings: Settings,
+    /// Currently detected repository (if any) to be selected by default
+    pub current_repository: Option<String>,
 }
 
 /// Setup terminal for TUI
@@ -141,13 +143,14 @@ pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn st
     }));
 
     // Initialize MVVM components with injected dependencies
-    let mut view_model = ViewModel::new_with_background_loading(
+    let mut view_model = ViewModel::new_with_background_loading_and_current_repo(
         deps.workspace_files,
         deps.workspace_workflows,
         deps.task_manager,
         deps.repositories_enumerator,
         deps.branches_enumerator,
         deps.settings,
+        deps.current_repository,
     );
 
     // Start background loading of workspace data

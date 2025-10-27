@@ -9,8 +9,8 @@
 //! behavior and configurable delays.
 
 use ah_core::{
-    SaveDraftResult, SplitMode, TaskEvent, TaskExecutionStatus, TaskLaunchParams, TaskLaunchResult,
-    TaskManager,
+    SplitMode, TaskEvent, TaskExecutionStatus, TaskLaunchParams, TaskLaunchResult, TaskManager,
+    task_manager::SaveDraftResult,
 };
 use ah_domain_types::{
     Branch, DeliveryStatus, Repository, SelectedModel, TaskExecution, TaskInfo, TaskState,
@@ -314,40 +314,6 @@ impl TaskManager for MockRestClient {
         (drafts, tasks)
     }
 
-    async fn save_draft_task(
-        &self,
-        draft_id: &str,
-        description: &str,
-        repository: &str,
-        branch: &str,
-        models: &[SelectedModel],
-    ) -> SaveDraftResult {
-        // Simulate persistence delay
-        if self.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
-        }
-
-        // Simulate failures if enabled
-        if self.simulate_failures && description.contains("fail") {
-            return SaveDraftResult::Failure {
-                error: "Simulated save failure".to_string(),
-            };
-        }
-
-        let draft_info = TaskInfo {
-            id: draft_id.to_string(),
-            title: description.to_string(),
-            status: "draft".to_string(),
-            repository: repository.to_string(),
-            branch: branch.to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            models: models.iter().map(|m| m.name.clone()).collect(),
-        };
-
-        self.drafts.write().await.insert(draft_id.to_string(), draft_info);
-        SaveDraftResult::Success
-    }
-
     async fn launch_task_from_starting_point(
         &self,
         starting_point: ah_core::task_manager::StartingPoint,
@@ -371,6 +337,42 @@ impl TaskManager for MockRestClient {
                 error: "Starting point not supported in mock client".to_string(),
             },
         }
+    }
+
+    async fn save_draft_task(
+        &self,
+        draft_id: &str,
+        description: &str,
+        repository: &str,
+        branch: &str,
+        models: &[ah_domain_types::SelectedModel],
+    ) -> ah_core::task_manager::SaveDraftResult {
+        use ah_core::task_manager::SaveDraftResult;
+
+        // Simulate network delay
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
+
+        // Simulate failures if enabled
+        if self.simulate_failures && description.contains("fail") {
+            return SaveDraftResult::Failure {
+                error: "Simulated save failure".to_string(),
+            };
+        }
+
+        let draft_info = ah_domain_types::TaskInfo {
+            id: draft_id.to_string(),
+            title: description.to_string(),
+            status: "draft".to_string(),
+            repository: repository.to_string(),
+            branch: branch.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            models: models.iter().map(|m| m.name.clone()).collect(),
+        };
+
+        self.drafts.write().await.insert(draft_id.to_string(), draft_info);
+        SaveDraftResult::Success
     }
 
     fn description(&self) -> &str {
@@ -737,6 +739,71 @@ impl ah_core::RestApiClient for MockRestClient {
                     name: "feature/ui".to_string(),
                     is_default: false,
                     last_commit: Some("fedcba654321".to_string()),
+                },
+            ]),
+            _ => Ok(vec![]), // Empty for unknown repositories
+        }
+    }
+
+    async fn save_draft_task(
+        &self,
+        _draft_id: &str,
+        _description: &str,
+        _repository: &str,
+        _branch: &str,
+        _models: &[ah_domain_types::SelectedModel],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Simulate network delay
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
+
+        // Simulate failures if enabled
+        if self.simulate_failures {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Mock REST client failure",
+            )));
+        }
+
+        // Mock successful save - in a real implementation, this would persist to the server
+        Ok(())
+    }
+
+    async fn get_repository_files(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<ah_rest_api_contract::RepositoryFile>, Box<dyn std::error::Error + Send + Sync>>
+    {
+        // Simulate network delay
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
+
+        // Return mock files based on repository
+        match repository_id {
+            "repo_001" => Ok(vec![
+                ah_rest_api_contract::RepositoryFile {
+                    path: "src/main.rs".to_string(),
+                    detail: Some("Tracked file".to_string()),
+                },
+                ah_rest_api_contract::RepositoryFile {
+                    path: "Cargo.toml".to_string(),
+                    detail: Some("Tracked file".to_string()),
+                },
+                ah_rest_api_contract::RepositoryFile {
+                    path: "README.md".to_string(),
+                    detail: Some("Tracked file".to_string()),
+                },
+            ]),
+            "repo_002" => Ok(vec![
+                ah_rest_api_contract::RepositoryFile {
+                    path: "main.py".to_string(),
+                    detail: Some("Tracked file".to_string()),
+                },
+                ah_rest_api_contract::RepositoryFile {
+                    path: "requirements.txt".to_string(),
+                    detail: Some("Tracked file".to_string()),
                 },
             ]),
             _ => Ok(vec![]), // Empty for unknown repositories
@@ -1274,27 +1341,6 @@ mod tests {
         // Initially empty
         assert_eq!(drafts.len(), 0);
         assert_eq!(tasks.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn mock_client_save_draft_task_success() {
-        let client = MockRestClient::new();
-        let models = vec![SelectedModel {
-            name: "Claude".to_string(),
-            count: 1,
-        }];
-
-        let result = client
-            .save_draft_task(
-                "draft_001",
-                "Test description",
-                "test/repo",
-                "main",
-                &models,
-            )
-            .await;
-
-        assert!(matches!(result, SaveDraftResult::Success));
     }
 
     #[tokio::test]

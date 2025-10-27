@@ -7,18 +7,15 @@
 //! with clean separation between Model (business logic), ViewModel (UI logic),
 //! and View (rendering).
 
+use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
-use ah_core::{TaskManager, WorkspaceFilesEnumerator};
 use ah_tui::{
-    dashboard_loop::{run_dashboard, DashboardDependencies},
+    dashboard_loop::{DashboardDependencies, run_dashboard},
     settings::Settings,
 };
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
-use std::{
-    fs::OpenOptions,
-    sync::Arc,
-};
+use std::{fs::OpenOptions, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create mock service dependencies
     let workspace_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(VcsRepo::new(&workspace_dir).unwrap());
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+        Arc::new(VcsRepo::new(&workspace_dir).unwrap());
     let config = WorkflowConfig::default();
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(
         WorkflowProcessor::for_repo(config, &workspace_dir)
@@ -53,7 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workspace_files,
         workspace_workflows,
         task_manager,
+        repositories_enumerator: Arc::new(MockRestClient::with_mock_data()),
+        branches_enumerator: Arc::new(MockRestClient::with_mock_data()),
         settings,
+        current_repository: None,
     };
 
     // Run the dashboard (handles its own signal/panic handling)
