@@ -1109,7 +1109,14 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
         unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as libc::c_uint) } as usize;
     let mut cmsg_buf = vec![0u8; cmsg_space];
     msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
-    msg.msg_controllen = cmsg_buf.len() as usize;
+    #[cfg(target_os = "linux")]
+    {
+        msg.msg_controllen = cmsg_buf.len() as usize;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        msg.msg_controllen = cmsg_buf.len() as libc::c_uint;
+    }
 
     let cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
     if cmsg.is_null() {
@@ -1117,7 +1124,14 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
     }
 
     unsafe {
-        (*cmsg).cmsg_len = std::mem::size_of::<libc::cmsghdr>() + std::mem::size_of::<RawFd>();
+        #[cfg(target_os = "linux")]
+        {
+            (*cmsg).cmsg_len = std::mem::size_of::<libc::cmsghdr>() + std::mem::size_of::<RawFd>();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<RawFd>() as libc::c_uint);
+        }
         (*cmsg).cmsg_level = libc::SOL_SOCKET;
         (*cmsg).cmsg_type = libc::SCM_RIGHTS;
         *(libc::CMSG_DATA(cmsg) as *mut RawFd) = fd;
