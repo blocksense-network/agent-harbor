@@ -57,9 +57,14 @@ pub enum Request {
     Mkdirat((Vec<u8>, MkdiratRequest)),               // (version, request)
     PathOp((Vec<u8>, PathOpRequest)),                 // (version, request)
     InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
-    DaemonStateProcesses(DaemonStateProcessesRequest), // version - for testing
-    DaemonStateStats(DaemonStateStatsRequest),        // version - for testing
-    DaemonStateFilesystem(DaemonStateFilesystemRequest), // dummy data - for testing
+    DirfdOpenDir((Vec<u8>, DirfdOpenDirRequest)),     // (version, request) - register directory fd
+    DirfdCloseFd((Vec<u8>, DirfdCloseFdRequest)),     // (version, request) - close fd mapping
+    DirfdDupFd((Vec<u8>, DirfdDupFdRequest)),         // (version, request) - duplicate fd mapping
+    DirfdSetCwd((Vec<u8>, DirfdSetCwdRequest)), // (version, request) - set current working directory
+    DirfdResolvePath((Vec<u8>, DirfdResolvePathRequest)), // (version, request) - resolve dirfd to path
+    DaemonStateProcesses(DaemonStateProcessesRequest),    // version - for testing
+    DaemonStateStats(DaemonStateStatsRequest),            // version - for testing
+    DaemonStateFilesystem(DaemonStateFilesystemRequest),  // dummy data - for testing
 }
 
 /// Response union - operation-specific success responses or errors
@@ -109,6 +114,11 @@ pub enum Response {
     Mkdirat(MkdiratResponse),
     PathOp(PathOpResponse),
     InterposeSetGet(InterposeSetGetResponse),
+    DirfdOpenDir(DirfdOpenDirResponse),
+    DirfdCloseFd(DirfdCloseFdResponse),
+    DirfdDupFd(DirfdDupFdResponse),
+    DirfdSetCwd(DirfdSetCwdResponse),
+    DirfdResolvePath(DirfdResolvePathResponse),
     DaemonState(DaemonStateResponseWrapper),
     Error(ErrorResponse),
 }
@@ -339,7 +349,6 @@ pub struct FstatResponse {
 /// Fstatat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct FstatatRequest {
-    pub dirfd: u32,
     pub path: Vec<u8>,
     pub flags: u32,
 }
@@ -375,7 +384,6 @@ pub struct FchmodResponse {}
 /// Fchmodat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct FchmodatRequest {
-    pub dirfd: u32,
     pub path: Vec<u8>,
     pub mode: u32,
     pub flags: u32,
@@ -424,7 +432,6 @@ pub struct FchownResponse {}
 /// Fchownat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct FchownatRequest {
-    pub dirfd: u32,
     pub path: Vec<u8>,
     pub uid: u32,
     pub gid: u32,
@@ -460,7 +467,6 @@ pub struct FutimesResponse {}
 /// Utimensat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct UtimensatRequest {
-    pub dirfd: u32,
     pub path: Vec<u8>,
     pub times: Option<(TimespecData, TimespecData)>, // (atime, mtime), None for current time
     pub flags: u32,
@@ -541,9 +547,7 @@ pub struct RenameResponse {}
 /// Renameat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct RenameatRequest {
-    pub old_dirfd: u32,
     pub old_path: Vec<u8>,
-    pub new_dirfd: u32,
     pub new_path: Vec<u8>,
 }
 
@@ -579,9 +583,7 @@ pub struct LinkResponse {}
 /// Linkat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct LinkatRequest {
-    pub old_dirfd: u32,
     pub old_path: Vec<u8>,
-    pub new_dirfd: u32,
     pub new_path: Vec<u8>,
     pub flags: u32,
 }
@@ -605,7 +607,6 @@ pub struct SymlinkResponse {}
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct SymlinkatRequest {
     pub target: Vec<u8>,
-    pub new_dirfd: u32,
     pub linkpath: Vec<u8>,
 }
 
@@ -626,7 +627,6 @@ pub struct UnlinkResponse {}
 /// Unlinkat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct UnlinkatRequest {
-    pub dirfd: u32,
     pub path: Vec<u8>,
     pub flags: u32,
 }
@@ -659,7 +659,6 @@ pub struct MkdirResponse {}
 /// Mkdirat request payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct MkdiratRequest {
-    pub dirfd: u32,
     pub path: Vec<u8>,
     pub mode: u32,
 }
@@ -798,6 +797,66 @@ pub struct InterposeSetGetRequest {
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct InterposeSetGetResponse {
     pub value: Vec<u8>, // current/updated configuration value
+}
+
+/// DirfdOpenDir request payload - register a directory file descriptor
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdOpenDirRequest {
+    pub pid: u32,      // Process ID
+    pub path: Vec<u8>, // Directory path that was opened
+    pub fd: u64,       // File descriptor number
+}
+
+/// DirfdOpenDir response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdOpenDirResponse {}
+
+/// DirfdCloseFd request payload - close a file descriptor mapping
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdCloseFdRequest {
+    pub pid: u32, // Process ID
+    pub fd: u64,  // File descriptor number
+}
+
+/// DirfdCloseFd response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdCloseFdResponse {}
+
+/// DirfdDupFd request payload - duplicate a file descriptor mapping
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdDupFdRequest {
+    pub pid: u32,    // Process ID
+    pub old_fd: u64, // Old file descriptor number
+    pub new_fd: u64, // New file descriptor number
+}
+
+/// DirfdDupFd response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdDupFdResponse {}
+
+/// DirfdSetCwd request payload - set current working directory
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdSetCwdRequest {
+    pub pid: u32,     // Process ID
+    pub cwd: Vec<u8>, // New current working directory path
+}
+
+/// DirfdSetCwd response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdSetCwdResponse {}
+
+/// DirfdResolvePath request payload - resolve dirfd + relative path
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdResolvePathRequest {
+    pub pid: u32,               // Process ID
+    pub dirfd: u64,             // Directory file descriptor
+    pub relative_path: Vec<u8>, // Relative path to resolve
+}
+
+/// DirfdResolvePath response payload with resolved absolute path
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DirfdResolvePathResponse {
+    pub resolved_path: Vec<u8>, // Absolute resolved path
 }
 
 /// Filesystem operation request union
@@ -1040,11 +1099,10 @@ impl Request {
         Self::Fstat((b"1".to_vec(), FstatRequest { fd }))
     }
 
-    pub fn fstatat(dirfd: u32, path: String, flags: u32) -> Self {
+    pub fn fstatat(path: String, flags: u32) -> Self {
         Self::Fstatat((
             b"1".to_vec(),
             FstatatRequest {
-                dirfd,
                 path: path.into_bytes(),
                 flags,
             },
@@ -1065,11 +1123,10 @@ impl Request {
         Self::Fchmod((b"1".to_vec(), FchmodRequest { fd, mode }))
     }
 
-    pub fn fchmodat(dirfd: u32, path: String, mode: u32, flags: u32) -> Self {
+    pub fn fchmodat(path: String, mode: u32, flags: u32) -> Self {
         Self::Fchmodat((
             b"1".to_vec(),
             FchmodatRequest {
-                dirfd,
                 path: path.into_bytes(),
                 mode,
                 flags,
@@ -1103,11 +1160,10 @@ impl Request {
         Self::Fchown((b"1".to_vec(), FchownRequest { fd, uid, gid }))
     }
 
-    pub fn fchownat(dirfd: u32, path: String, uid: u32, gid: u32, flags: u32) -> Self {
+    pub fn fchownat(path: String, uid: u32, gid: u32, flags: u32) -> Self {
         Self::Fchownat((
             b"1".to_vec(),
             FchownatRequest {
-                dirfd,
                 path: path.into_bytes(),
                 uid,
                 gid,
@@ -1131,7 +1187,6 @@ impl Request {
     }
 
     pub fn utimensat(
-        dirfd: u32,
         path: String,
         times: Option<(TimespecData, TimespecData)>,
         flags: u32,
@@ -1139,7 +1194,6 @@ impl Request {
         Self::Utimensat((
             b"1".to_vec(),
             UtimensatRequest {
-                dirfd,
                 path: path.into_bytes(),
                 times,
                 flags,
@@ -1225,6 +1279,53 @@ impl Request {
         ))
     }
 
+    pub fn dirfd_open_dir(pid: u32, path: String, fd: u64) -> Self {
+        Self::DirfdOpenDir((
+            b"1".to_vec(),
+            DirfdOpenDirRequest {
+                pid,
+                path: path.into_bytes(),
+                fd,
+            },
+        ))
+    }
+
+    pub fn dirfd_close_fd(pid: u32, fd: u64) -> Self {
+        Self::DirfdCloseFd((b"1".to_vec(), DirfdCloseFdRequest { pid, fd }))
+    }
+
+    pub fn dirfd_dup_fd(pid: u32, old_fd: u64, new_fd: u64) -> Self {
+        Self::DirfdDupFd((
+            b"1".to_vec(),
+            DirfdDupFdRequest {
+                pid,
+                old_fd,
+                new_fd,
+            },
+        ))
+    }
+
+    pub fn dirfd_set_cwd(pid: u32, cwd: String) -> Self {
+        Self::DirfdSetCwd((
+            b"1".to_vec(),
+            DirfdSetCwdRequest {
+                pid,
+                cwd: cwd.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn dirfd_resolve_path(pid: u32, dirfd: u64, relative_path: String) -> Self {
+        Self::DirfdResolvePath((
+            b"1".to_vec(),
+            DirfdResolvePathRequest {
+                pid,
+                dirfd,
+                relative_path: relative_path.into_bytes(),
+            },
+        ))
+    }
+
     pub fn rename(old_path: String, new_path: String) -> Self {
         Self::Rename((
             b"1".to_vec(),
@@ -1235,13 +1336,11 @@ impl Request {
         ))
     }
 
-    pub fn renameat(old_dirfd: u32, old_path: String, new_dirfd: u32, new_path: String) -> Self {
+    pub fn renameat(old_path: String, new_path: String) -> Self {
         Self::Renameat((
             b"1".to_vec(),
             RenameatRequest {
-                old_dirfd,
                 old_path: old_path.into_bytes(),
-                new_dirfd,
                 new_path: new_path.into_bytes(),
             },
         ))
@@ -1276,19 +1375,11 @@ impl Request {
         ))
     }
 
-    pub fn linkat(
-        old_dirfd: u32,
-        old_path: String,
-        new_dirfd: u32,
-        new_path: String,
-        flags: u32,
-    ) -> Self {
+    pub fn linkat(old_path: String, new_path: String, flags: u32) -> Self {
         Self::Linkat((
             b"1".to_vec(),
             LinkatRequest {
-                old_dirfd,
                 old_path: old_path.into_bytes(),
-                new_dirfd,
                 new_path: new_path.into_bytes(),
                 flags,
             },
@@ -1305,12 +1396,11 @@ impl Request {
         ))
     }
 
-    pub fn symlinkat(target: String, new_dirfd: u32, linkpath: String) -> Self {
+    pub fn symlinkat(target: String, linkpath: String) -> Self {
         Self::Symlinkat((
             b"1".to_vec(),
             SymlinkatRequest {
                 target: target.into_bytes(),
-                new_dirfd,
                 linkpath: linkpath.into_bytes(),
             },
         ))
@@ -1325,11 +1415,10 @@ impl Request {
         ))
     }
 
-    pub fn unlinkat(dirfd: u32, path: String, flags: u32) -> Self {
+    pub fn unlinkat(path: String, flags: u32) -> Self {
         Self::Unlinkat((
             b"1".to_vec(),
             UnlinkatRequest {
-                dirfd,
                 path: path.into_bytes(),
                 flags,
             },
@@ -1355,11 +1444,10 @@ impl Request {
         ))
     }
 
-    pub fn mkdirat(dirfd: u32, path: String, mode: u32) -> Self {
+    pub fn mkdirat(path: String, mode: u32) -> Self {
         Self::Mkdirat((
             b"1".to_vec(),
             MkdiratRequest {
-                dirfd,
                 path: path.into_bytes(),
                 mode,
             },
@@ -1513,6 +1601,28 @@ impl Response {
     pub fn interpose_setget(value: String) -> Self {
         Self::InterposeSetGet(InterposeSetGetResponse {
             value: value.into_bytes(),
+        })
+    }
+
+    pub fn dirfd_open_dir() -> Self {
+        Self::DirfdOpenDir(DirfdOpenDirResponse {})
+    }
+
+    pub fn dirfd_close_fd() -> Self {
+        Self::DirfdCloseFd(DirfdCloseFdResponse {})
+    }
+
+    pub fn dirfd_dup_fd() -> Self {
+        Self::DirfdDupFd(DirfdDupFdResponse {})
+    }
+
+    pub fn dirfd_set_cwd() -> Self {
+        Self::DirfdSetCwd(DirfdSetCwdResponse {})
+    }
+
+    pub fn dirfd_resolve_path(resolved_path: String) -> Self {
+        Self::DirfdResolvePath(DirfdResolvePathResponse {
+            resolved_path: resolved_path.into_bytes(),
         })
     }
 

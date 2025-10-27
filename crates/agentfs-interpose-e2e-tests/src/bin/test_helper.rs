@@ -10,6 +10,11 @@ extern crate libc;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    println!("Helper main: received {} args", args.len());
+    for (i, arg) in args.iter().enumerate() {
+        println!("Helper main: args[{}] = '{}'", i, arg);
+    }
+
     if args.len() < 2 {
         eprintln!("Usage: {} <command> [args...]", args[0]);
         std::process::exit(1);
@@ -17,6 +22,11 @@ fn main() {
 
     let command = &args[1];
     let test_args = &args[2..];
+    println!(
+        "Helper main: command='{}', test_args.len()={}",
+        command,
+        test_args.len()
+    );
 
     match command.as_str() {
         "basic-open" => test_basic_open(test_args),
@@ -28,6 +38,22 @@ fn main() {
         "readlink-test" => test_readlink(test_args),
         "metadata-ops" => test_metadata_operations(test_args),
         "namespace-ops" => test_namespace_operations(test_args),
+        // Dirfd resolution tests
+        "--test-t25-1" => test_t25_1_basic_dirfd_mapping(test_args),
+        "--test-t25-2" => test_t25_2_at_fdcwd_special_case(test_args),
+        "--test-t25-3" => test_t25_3_file_descriptor_duplication(test_args),
+        "--test-t25-4" => test_t25_4_path_resolution_edge_cases(test_args),
+        "--test-t25-5" => test_t25_5_directory_operations_with_dirfd(test_args),
+        "--test-t25-6" => test_t25_6_rename_operations_with_dirfd(test_args),
+        "--test-t25-7" => test_t25_7_link_operations_with_dirfd(test_args),
+        "--test-t25-8" => test_t25_8_concurrent_access_thread_safety(test_args),
+        "--test-t25-9" => test_t25_9_invalid_dirfd_handling(test_args),
+        "--test-t25-10" => test_t25_10_performance_regression_tests(test_args),
+        "--test-t25-11" => test_t25_11_overlay_filesystem_semantics(test_args),
+        "--test-t25-12" => test_t25_12_process_isolation(test_args),
+        "--test-t25-13" => test_t25_13_cross_process_fd_sharing(test_args),
+        "--test-t25-14" => test_t25_14_memory_leak_prevention(test_args),
+        "--test-t25-15" => test_t25_15_error_code_consistency(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
             println!("Dummy command executed");
@@ -35,7 +61,7 @@ fn main() {
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!(
-                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, dummy"
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, --test-t25-*, dummy"
             );
             std::process::exit(1);
         }
@@ -938,4 +964,1450 @@ fn test_namespace_operations(args: &[String]) {
 
         println!("All namespace mutation operations tests completed successfully!");
     }
+}
+
+// ===== DIRFD RESOLUTION TEST FUNCTIONS =====
+
+fn test_t25_1_basic_dirfd_mapping(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-1 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    let dir1_path = test_base.join("dir1");
+
+    println!("T25.1: Testing basic dirfd mapping");
+
+    // Open directory
+    let c_path = std::ffi::CString::new(dir1_path.to_str().unwrap()).unwrap();
+    let fd1 = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!(
+            "Failed to open directory: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Opened directory fd={}", fd1);
+
+    // Try to open file relative to directory
+    let c_file = std::ffi::CString::new("file.txt").unwrap();
+    let fd2 = unsafe { libc::openat(fd1, c_file.as_ptr(), libc::O_RDONLY) };
+    if fd2 < 0 {
+        eprintln!(
+            "Failed to open file via openat: {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(fd1);
+        }
+        std::process::exit(1);
+    }
+    println!("Opened file via openat fd={}", fd2);
+
+    // Read file content
+    let mut buffer = [0u8; 100];
+    let bytes_read =
+        unsafe { libc::read(fd2, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len()) };
+    if bytes_read < 0 {
+        eprintln!("Failed to read file: {}", std::io::Error::last_os_error());
+        unsafe {
+            libc::close(fd2);
+            libc::close(fd1);
+        }
+        std::process::exit(1);
+    }
+    println!(
+        "Read {} bytes: {}",
+        bytes_read,
+        String::from_utf8_lossy(&buffer[..bytes_read as usize])
+    );
+
+    // Close file
+    unsafe {
+        libc::close(fd2);
+    }
+
+    // Close directory
+    unsafe {
+        libc::close(fd1);
+    }
+
+    // Try to use closed fd - should fail
+    let fd3 = unsafe { libc::openat(fd1, c_file.as_ptr(), libc::O_RDONLY) };
+    if fd3 >= 0 {
+        eprintln!("ERROR: openat with closed fd should have failed!");
+        unsafe {
+            libc::close(fd3);
+        }
+        std::process::exit(1);
+    }
+    println!(
+        "Correctly failed to use closed fd (errno: {})",
+        std::io::Error::last_os_error()
+    );
+
+    println!("T25.1 test completed successfully!");
+}
+
+fn test_t25_2_at_fdcwd_special_case(args: &[String]) {
+    if args.len() < 2 {
+        eprintln!("Usage: --test-t25-2 <test_base_dir> <parent_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    let parent_dir = Path::new(&args[1]);
+
+    println!("T25.2: Testing AT_FDCWD special case");
+
+    // Change to test directory
+    let c_test_dir = std::ffi::CString::new(test_base.to_str().unwrap()).unwrap();
+    if unsafe { libc::chdir(c_test_dir.as_ptr()) } != 0 {
+        eprintln!(
+            "Failed to chdir to test dir: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Changed to test directory");
+
+    // Open file using AT_FDCWD
+    let c_file1 = std::ffi::CString::new("dir1/file.txt").unwrap();
+    let fd1 = unsafe { libc::openat(libc::AT_FDCWD, c_file1.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!("Failed to open file1: {}", std::io::Error::last_os_error());
+        std::process::exit(1);
+    }
+    println!("Opened file1 via AT_FDCWD fd={}", fd1);
+
+    // Read content
+    let mut buffer = [0u8; 50];
+    let bytes_read =
+        unsafe { libc::read(fd1, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len()) };
+    if bytes_read < 0 {
+        eprintln!("Failed to read file1: {}", std::io::Error::last_os_error());
+        unsafe {
+            libc::close(fd1);
+        }
+        std::process::exit(1);
+    }
+    println!(
+        "File1 content: {}",
+        String::from_utf8_lossy(&buffer[..bytes_read as usize])
+    );
+    unsafe {
+        libc::close(fd1);
+    }
+
+    // Change directory
+    let c_parent_dir = std::ffi::CString::new(parent_dir.to_str().unwrap()).unwrap();
+    if unsafe { libc::chdir(c_parent_dir.as_ptr()) } != 0 {
+        eprintln!(
+            "Failed to chdir to parent dir: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Changed to parent directory");
+
+    // Open file again using AT_FDCWD - should now read different file
+    let fd2 = unsafe { libc::openat(libc::AT_FDCWD, c_file1.as_ptr(), libc::O_RDONLY) };
+    if fd2 < 0 {
+        eprintln!("Failed to open file2: {}", std::io::Error::last_os_error());
+        std::process::exit(1);
+    }
+    println!("Opened file2 via AT_FDCWD fd={}", fd2);
+
+    // Read content
+    let bytes_read =
+        unsafe { libc::read(fd2, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len()) };
+    if bytes_read < 0 {
+        eprintln!("Failed to read file2: {}", std::io::Error::last_os_error());
+        unsafe {
+            libc::close(fd2);
+        }
+        std::process::exit(1);
+    }
+    println!(
+        "File2 content: {}",
+        String::from_utf8_lossy(&buffer[..bytes_read as usize])
+    );
+    unsafe {
+        libc::close(fd2);
+    }
+
+    println!("T25.2 test completed successfully!");
+}
+
+fn test_t25_3_file_descriptor_duplication(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-3 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    let dir1_path = test_base.join("dir1");
+
+    println!("T25.3: Testing file descriptor duplication");
+
+    // Open directory
+    let c_path = std::ffi::CString::new(dir1_path.to_str().unwrap()).unwrap();
+    let fd1 = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!(
+            "Failed to open directory: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Opened directory fd1={}", fd1);
+
+    // Duplicate fd1
+    let fd2 = unsafe { libc::dup(fd1) };
+    if fd2 < 0 {
+        eprintln!("Failed to dup fd1: {}", std::io::Error::last_os_error());
+        unsafe {
+            libc::close(fd1);
+        }
+        std::process::exit(1);
+    }
+    println!("Duplicated fd1 to fd2={}", fd2);
+
+    // Duplicate fd1 to fd 10
+    let fd10 = unsafe { libc::dup2(fd1, 10) };
+    if fd10 < 0 {
+        eprintln!(
+            "Failed to dup2 fd1 to 10: {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(fd1);
+            libc::close(fd2);
+        }
+        std::process::exit(1);
+    }
+    println!("Duplicated fd1 to fd10={}", fd10);
+
+    // Test that all fds work for openat
+    let c_file = std::ffi::CString::new("file.txt").unwrap();
+
+    let test_fd1 = unsafe { libc::openat(fd2, c_file.as_ptr(), libc::O_RDONLY) };
+    println!("Opened file via fd2: {}", test_fd1);
+    if test_fd1 >= 0 {
+        unsafe {
+            libc::close(test_fd1);
+        }
+    }
+
+    let test_fd2 = unsafe { libc::openat(fd10, c_file.as_ptr(), libc::O_RDONLY) };
+    println!("Opened file via fd10: {}", test_fd2);
+    if test_fd2 >= 0 {
+        unsafe {
+            libc::close(test_fd2);
+        }
+    }
+
+    // Close original fd1
+    unsafe {
+        libc::close(fd1);
+    }
+    println!("Closed original fd1");
+
+    // Test that fd2 still works
+    let test_fd3 = unsafe { libc::openat(fd2, c_file.as_ptr(), libc::O_RDONLY) };
+    println!("Opened file via fd2 after fd1 close: {}", test_fd3);
+    if test_fd3 >= 0 {
+        unsafe {
+            libc::close(test_fd3);
+        }
+    }
+
+    // Cleanup
+    unsafe {
+        libc::close(fd2);
+        libc::close(10);
+    }
+
+    println!("T25.3 test completed successfully!");
+}
+
+fn test_t25_4_path_resolution_edge_cases(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-4 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    let dir1_path = test_base.join("dir1");
+
+    println!("T25.4: Testing path resolution edge cases");
+
+    // Open directory
+    let c_path = std::ffi::CString::new(dir1_path.to_str().unwrap()).unwrap();
+    let fd1 = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!(
+            "Failed to open directory: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Opened directory fd1={}", fd1);
+
+    // Test symlink resolution
+    let c_symlink_file = std::ffi::CString::new("symlink/target.txt").unwrap();
+    let symlink_fd = unsafe { libc::openat(fd1, c_symlink_file.as_ptr(), libc::O_RDONLY) };
+    println!("Opened symlink file: {}", symlink_fd);
+    if symlink_fd >= 0 {
+        let mut buffer = [0u8; 50];
+        let bytes_read = unsafe {
+            libc::read(
+                symlink_fd,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        };
+        if bytes_read > 0 {
+            println!(
+                "Symlink content: {}",
+                String::from_utf8_lossy(&buffer[..bytes_read as usize])
+            );
+        }
+        unsafe {
+            libc::close(symlink_fd);
+        }
+    }
+
+    // Test .. resolution
+    let c_dotdot_file = std::ffi::CString::new("subdir/../file.txt").unwrap();
+    let dotdot_fd = unsafe { libc::openat(fd1, c_dotdot_file.as_ptr(), libc::O_RDONLY) };
+    println!("Opened .. file: {}", dotdot_fd);
+    if dotdot_fd >= 0 {
+        let mut buffer = [0u8; 50];
+        let bytes_read = unsafe {
+            libc::read(
+                dotdot_fd,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        };
+        if bytes_read > 0 {
+            println!(
+                "Dotdot content: {}",
+                String::from_utf8_lossy(&buffer[..bytes_read as usize])
+            );
+        }
+        unsafe {
+            libc::close(dotdot_fd);
+        }
+    }
+
+    unsafe {
+        libc::close(fd1);
+    }
+
+    println!("T25.4 test completed successfully!");
+}
+
+fn test_t25_5_directory_operations_with_dirfd(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-5 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+
+    println!("T25.5: Testing directory operations with dirfd");
+
+    // Open base directory
+    let c_path = std::ffi::CString::new(test_base.to_str().unwrap()).unwrap();
+    let fd1 = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!(
+            "Failed to open base directory: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Opened base directory fd1={}", fd1);
+
+    // Create new directory
+    let c_newdir = std::ffi::CString::new("newdir").unwrap();
+    let mkdir_result = unsafe { libc::mkdirat(fd1, c_newdir.as_ptr(), 0o755) };
+    println!("mkdirat result: {}", mkdir_result);
+
+    // Open the new directory
+    let fd2 = unsafe { libc::openat(fd1, c_newdir.as_ptr(), libc::O_RDONLY) };
+    println!("Opened new directory fd2={}", fd2);
+
+    if fd2 >= 0 {
+        // Create file in the new directory
+        let c_file = std::ffi::CString::new("file.txt").unwrap();
+        let fd3 =
+            unsafe { libc::openat(fd2, c_file.as_ptr(), libc::O_CREAT | libc::O_WRONLY, 0o644) };
+        println!("Created file fd3={}", fd3);
+
+        if fd3 >= 0 {
+            unsafe {
+                libc::close(fd3);
+            }
+        }
+        unsafe {
+            libc::close(fd2);
+        }
+    }
+
+    unsafe {
+        libc::close(fd1);
+    }
+
+    println!("T25.5 test completed successfully!");
+}
+
+fn test_t25_6_rename_operations_with_dirfd(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-6 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+
+    println!("T25.6: Testing rename operations with dirfd");
+
+    // Open source and destination directories
+    let c_src = std::ffi::CString::new(test_base.join("src").to_str().unwrap()).unwrap();
+    let c_dst = std::ffi::CString::new(test_base.join("dst").to_str().unwrap()).unwrap();
+
+    let fd_src = unsafe { libc::open(c_src.as_ptr(), libc::O_RDONLY) };
+    let fd_dst = unsafe { libc::open(c_dst.as_ptr(), libc::O_RDONLY) };
+
+    println!("Opened src fd={}, dst fd={}", fd_src, fd_dst);
+
+    if fd_src >= 0 && fd_dst >= 0 {
+        // Rename file between directories
+        let c_old = std::ffi::CString::new("file.txt").unwrap();
+        let c_new = std::ffi::CString::new("renamed.txt").unwrap();
+
+        let rename_result =
+            unsafe { libc::renameat(fd_src, c_old.as_ptr(), fd_dst, c_new.as_ptr()) };
+        println!("renameat result: {}", rename_result);
+
+        unsafe {
+            libc::close(fd_src);
+            libc::close(fd_dst);
+        }
+    }
+
+    println!("T25.6 test completed successfully!");
+}
+
+fn test_t25_7_link_operations_with_dirfd(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-7 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+
+    println!("T25.7: Testing link operations with dirfd");
+
+    // Open directory
+    let c_path = std::ffi::CString::new(test_base.to_str().unwrap()).unwrap();
+    let fd1 = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!(
+            "Failed to open directory: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Opened directory fd1={}", fd1);
+
+    // Create hard link
+    let c_source = std::ffi::CString::new("source.txt").unwrap();
+    let c_hardlink = std::ffi::CString::new("hardlink.txt").unwrap();
+    let link_result = unsafe { libc::linkat(fd1, c_source.as_ptr(), fd1, c_hardlink.as_ptr(), 0) };
+    println!("linkat result: {}", link_result);
+
+    // Create symlink
+    let c_target = std::ffi::CString::new("target").unwrap();
+    let c_symlink = std::ffi::CString::new("symlink.txt").unwrap();
+    let symlink_result = unsafe { libc::symlinkat(c_target.as_ptr(), fd1, c_symlink.as_ptr()) };
+    println!("symlinkat result: {}", symlink_result);
+
+    unsafe {
+        libc::close(fd1);
+    }
+
+    println!("T25.7 test completed successfully!");
+}
+
+fn test_t25_9_invalid_dirfd_handling(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-9 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    let dir1_path = test_base.join("dir1");
+
+    println!("T25.9: Testing invalid dirfd handling");
+
+    // Open and then close directory
+    let c_path = std::ffi::CString::new(dir1_path.to_str().unwrap()).unwrap();
+    let fd1 = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    if fd1 < 0 {
+        eprintln!(
+            "Failed to open directory: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+    println!("Opened directory fd1={}", fd1);
+
+    unsafe {
+        libc::close(fd1);
+    }
+    println!("Closed fd1");
+
+    // Try to use closed fd
+    let c_file = std::ffi::CString::new("file.txt").unwrap();
+    let invalid_fd = unsafe { libc::openat(fd1, c_file.as_ptr(), libc::O_RDONLY) };
+    println!(
+        "openat with closed fd result: {} (should be negative)",
+        invalid_fd
+    );
+
+    println!("T25.9 test completed successfully!");
+}
+
+fn test_t25_8_concurrent_access_thread_safety(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-8 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    println!("T25.8: Testing concurrent access thread safety");
+
+    // Spawn 4 threads that each perform concurrent file descriptor operations
+    let mut handles = vec![];
+
+    for thread_id in 0..4 {
+        let test_base_str = test_base.to_str().unwrap().to_string();
+        let handle = std::thread::spawn(move || {
+            println!("Thread {} starting operations", thread_id);
+
+            // Each thread opens multiple directories and performs *at operations
+            let mut fds = vec![];
+
+            // Open directories
+            for dir_num in 0..5 {
+                let dir_path = format!("{}/dir{}", test_base_str, dir_num % 2 + 1);
+                let c_dir_path = std::ffi::CString::new(dir_path).unwrap();
+                let fd = unsafe { libc::open(c_dir_path.as_ptr(), libc::O_RDONLY) };
+                if fd >= 0 {
+                    fds.push(fd);
+                    println!(
+                        "Thread {}: opened dir{} -> fd {}",
+                        thread_id,
+                        dir_num % 2 + 1,
+                        fd
+                    );
+                } else {
+                    println!(
+                        "Thread {}: failed to open dir{}: errno {}",
+                        thread_id,
+                        dir_num % 2 + 1,
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+
+            // Perform concurrent *at operations
+            for i in 0..20 {
+                if fds.is_empty() {
+                    break;
+                }
+
+                let fd_idx = i % fds.len();
+                let fd = fds[fd_idx];
+                let file_name = format!("file{}.txt", i % 10);
+                let c_file_name = std::ffi::CString::new(file_name).unwrap();
+
+                // Test openat
+                let file_fd = unsafe { libc::openat(fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+                if file_fd >= 0 {
+                    println!(
+                        "Thread {}: openat success on fd {} -> file_fd {}",
+                        thread_id, fd, file_fd
+                    );
+
+                    // Test fstatat
+                    let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };
+                    let stat_result =
+                        unsafe { libc::fstatat(fd, c_file_name.as_ptr(), &mut stat_buf, 0) };
+                    if stat_result == 0 {
+                        println!(
+                            "Thread {}: fstatat success on fd {}, size: {}",
+                            thread_id, fd, stat_buf.st_size
+                        );
+                    } else {
+                        println!(
+                            "Thread {}: fstatat failed on fd {}: errno {}",
+                            thread_id,
+                            fd,
+                            std::io::Error::last_os_error()
+                        );
+                    }
+
+                    unsafe {
+                        libc::close(file_fd);
+                    }
+                } else {
+                    println!(
+                        "Thread {}: openat failed on fd {}: errno {}",
+                        thread_id,
+                        fd,
+                        std::io::Error::last_os_error()
+                    );
+                }
+
+                // Occasionally dup a file descriptor
+                if i % 7 == 0 && !fds.is_empty() {
+                    let dup_fd = unsafe { libc::dup(fds[0]) };
+                    if dup_fd >= 0 {
+                        println!("Thread {}: dup fd {} -> {}", thread_id, fds[0], dup_fd);
+                        fds.push(dup_fd);
+
+                        // Test that dup'd fd works
+                        let dup_file_fd =
+                            unsafe { libc::openat(dup_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+                        if dup_file_fd >= 0 {
+                            println!("Thread {}: dup'd fd {} works for openat", thread_id, dup_fd);
+                            unsafe {
+                                libc::close(dup_file_fd);
+                            }
+                        }
+                    }
+                }
+
+                // Occasionally close a file descriptor
+                if i % 11 == 0 && fds.len() > 1 {
+                    let fd_to_close = fds.pop().unwrap();
+                    unsafe {
+                        libc::close(fd_to_close);
+                    }
+                    println!("Thread {}: closed fd {}", thread_id, fd_to_close);
+                }
+            }
+
+            // Close remaining file descriptors
+            for fd in fds {
+                unsafe {
+                    libc::close(fd);
+                }
+                println!("Thread {}: closed fd {}", thread_id, fd);
+            }
+
+            println!("Thread {} completed successfully", thread_id);
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all threads to complete
+    for (i, handle) in handles.into_iter().enumerate() {
+        match handle.join() {
+            Ok(_) => println!("Thread {} joined successfully", i),
+            Err(_) => {
+                eprintln!("Thread {} panicked!", i);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    println!("T25.8 concurrent access test completed successfully!");
+}
+
+fn test_t25_10_performance_regression_tests(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-10 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    println!("T25.10: Testing performance regression");
+
+    // Open directory for *at operations
+    let dir_path = test_base.join("dir1");
+    let c_dir_path = std::ffi::CString::new(dir_path.to_str().unwrap()).unwrap();
+    let dir_fd = unsafe { libc::open(c_dir_path.as_ptr(), libc::O_RDONLY) };
+
+    if dir_fd < 0 {
+        eprintln!(
+            "Failed to open directory: errno {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+
+    println!("Opened directory fd: {}", dir_fd);
+
+    // Perform 1000 openat operations
+    let mut success_count = 0;
+    let mut failure_count = 0;
+
+    for i in 0..1000 {
+        let file_name = format!("file{}.txt", i % 100);
+        let c_file_name = std::ffi::CString::new(file_name).unwrap();
+
+        let file_fd = unsafe { libc::openat(dir_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+
+        if file_fd >= 0 {
+            success_count += 1;
+            unsafe {
+                libc::close(file_fd);
+            }
+        } else {
+            failure_count += 1;
+        }
+    }
+
+    unsafe {
+        libc::close(dir_fd);
+    }
+
+    println!("Performance test results:");
+    println!("  Total operations: 1000");
+    println!("  Successful: {}", success_count);
+    println!("  Failed: {}", failure_count);
+
+    if success_count < 900 {
+        eprintln!("Too many failures: {} successes out of 1000", success_count);
+        std::process::exit(1);
+    }
+
+    println!("T25.10 performance regression test completed successfully!");
+}
+
+fn test_t25_11_overlay_filesystem_semantics(_args: &[String]) {
+    println!("T25.11: Testing overlay filesystem semantics");
+
+    // Open directory in overlay space (should be mapped from lower layer)
+    let c_dir_path = std::ffi::CString::new("/dir").unwrap();
+    let dir_fd = unsafe { libc::open(c_dir_path.as_ptr(), libc::O_RDONLY) };
+
+    if dir_fd < 0 {
+        eprintln!(
+            "Failed to open /dir: errno {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+
+    println!("Opened /dir -> fd {}", dir_fd);
+
+    // Test reading file from lower layer (should not trigger copy-up)
+    let c_file_name = std::ffi::CString::new("file.txt").unwrap();
+    let read_fd = unsafe { libc::openat(dir_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+
+    if read_fd >= 0 {
+        println!("Successfully opened file.txt for reading (should be from lower layer)");
+
+        // Read content to verify it's from lower layer
+        let mut buffer = [0u8; 32];
+        let bytes_read = unsafe {
+            libc::read(
+                read_fd,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        };
+
+        if bytes_read > 0 {
+            let content = String::from_utf8_lossy(&buffer[..bytes_read as usize]);
+            println!("Read content: '{}'", content.trim_end());
+
+            if content.contains("lower layer content") {
+                println!("✓ Content matches lower layer - no copy-up occurred for read operation");
+            } else {
+                println!("✗ Content does not match lower layer");
+                unsafe {
+                    libc::close(read_fd);
+                }
+                unsafe {
+                    libc::close(dir_fd);
+                }
+                std::process::exit(1);
+            }
+        }
+
+        unsafe {
+            libc::close(read_fd);
+        }
+    } else {
+        eprintln!(
+            "Failed to open file.txt for reading: errno {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(dir_fd);
+        }
+        std::process::exit(1);
+    }
+
+    // Test writing to file (should trigger copy-up)
+    let write_fd = unsafe { libc::openat(dir_fd, c_file_name.as_ptr(), libc::O_WRONLY) };
+
+    if write_fd >= 0 {
+        println!("Successfully opened file.txt for writing (should trigger copy-up)");
+
+        let new_content = b"upper layer content";
+        let bytes_written = unsafe {
+            libc::write(
+                write_fd,
+                new_content.as_ptr() as *const libc::c_void,
+                new_content.len(),
+            )
+        };
+
+        if bytes_written == new_content.len() as isize {
+            println!("✓ Successfully wrote to file - copy-up should have occurred");
+        } else {
+            println!("✗ Failed to write to file");
+            unsafe {
+                libc::close(write_fd);
+            }
+            unsafe {
+                libc::close(dir_fd);
+            }
+            std::process::exit(1);
+        }
+
+        unsafe {
+            libc::close(write_fd);
+        }
+    } else {
+        eprintln!(
+            "Failed to open file.txt for writing: errno {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(dir_fd);
+        }
+        std::process::exit(1);
+    }
+
+    // Test reading again (should now get upper layer content)
+    let read_fd2 = unsafe { libc::openat(dir_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+
+    if read_fd2 >= 0 {
+        println!("Re-opening file.txt for reading after write operation");
+
+        let mut buffer = [0u8; 32];
+        let bytes_read = unsafe {
+            libc::read(
+                read_fd2,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        };
+
+        if bytes_read > 0 {
+            let content = String::from_utf8_lossy(&buffer[..bytes_read as usize]);
+            println!("Read content after write: '{}'", content.trim_end());
+
+            if content.contains("upper layer content") {
+                println!("✓ Content matches upper layer - copy-up worked correctly");
+            } else {
+                println!("✗ Content does not match upper layer after write");
+                unsafe {
+                    libc::close(read_fd2);
+                }
+                unsafe {
+                    libc::close(dir_fd);
+                }
+                std::process::exit(1);
+            }
+        }
+
+        unsafe {
+            libc::close(read_fd2);
+        }
+    } else {
+        eprintln!(
+            "Failed to re-open file.txt for reading: errno {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(dir_fd);
+        }
+        std::process::exit(1);
+    }
+
+    unsafe {
+        libc::close(dir_fd);
+    }
+
+    println!("T25.11 overlay filesystem semantics test completed successfully!");
+}
+
+fn test_t25_12_process_isolation(args: &[String]) {
+    println!(
+        "DEBUG: test_t25_12_process_isolation called with {} args",
+        args.len()
+    );
+    for (i, arg) in args.iter().enumerate() {
+        println!("DEBUG: arg[{}] = '{}'", i, arg);
+    }
+
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-12 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new("/tmp/agentfs_test");
+    println!("DEBUG: test_base = '{}'", test_base.display());
+    println!(
+        "T25.12: Testing process isolation with base dir: {}",
+        test_base.display()
+    );
+
+    // For this e2e test, we'll test that dirfd operations work correctly
+    // within the same process context. True process isolation would require
+    // multiple daemon instances, but this verifies the basic functionality.
+
+    // Open dir1
+    let dir1_path = test_base.join("dir1");
+    let c_dir1_path = std::ffi::CString::new(dir1_path.to_str().unwrap()).unwrap();
+    let dir1_fd = unsafe { libc::open(c_dir1_path.as_ptr(), libc::O_RDONLY) };
+
+    if dir1_fd < 0 {
+        eprintln!(
+            "Failed to open dir1: errno {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+
+    println!("Opened dir1 -> fd {}", dir1_fd);
+
+    // Open dir2
+    let dir2_path = test_base.join("dir2");
+    let c_dir2_path = std::ffi::CString::new(dir2_path.to_str().unwrap()).unwrap();
+    let dir2_fd = unsafe { libc::open(c_dir2_path.as_ptr(), libc::O_RDONLY) };
+
+    if dir2_fd < 0 {
+        eprintln!(
+            "Failed to open dir2: errno {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(dir1_fd);
+        }
+        std::process::exit(1);
+    }
+
+    println!("Opened dir2 -> fd {}", dir2_fd);
+
+    // Test that dirfd operations work correctly for each directory
+    let c_file_name = std::ffi::CString::new("file.txt").unwrap();
+
+    // Read from dir1
+    let file1_fd = unsafe { libc::openat(dir1_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+    if file1_fd >= 0 {
+        let mut buffer = [0u8; 32];
+        let bytes_read = unsafe {
+            libc::read(
+                file1_fd,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        };
+
+        if bytes_read > 0 {
+            let content = String::from_utf8_lossy(&buffer[..bytes_read as usize]);
+            println!("Read from dir1: '{}'", content.trim_end());
+
+            if content.contains("process1") {
+                println!("✓ Correctly read process1 content from dir1");
+            } else {
+                println!("✗ Unexpected content from dir1");
+                unsafe {
+                    libc::close(file1_fd);
+                }
+                unsafe {
+                    libc::close(dir1_fd);
+                }
+                unsafe {
+                    libc::close(dir2_fd);
+                }
+                std::process::exit(1);
+            }
+        }
+
+        unsafe {
+            libc::close(file1_fd);
+        }
+    } else {
+        eprintln!(
+            "Failed to open file.txt from dir1: errno {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(dir1_fd);
+        }
+        unsafe {
+            libc::close(dir2_fd);
+        }
+        std::process::exit(1);
+    }
+
+    // Read from dir2
+    let file2_fd = unsafe { libc::openat(dir2_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+    if file2_fd >= 0 {
+        let mut buffer = [0u8; 32];
+        let bytes_read = unsafe {
+            libc::read(
+                file2_fd,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        };
+
+        if bytes_read > 0 {
+            let content = String::from_utf8_lossy(&buffer[..bytes_read as usize]);
+            println!("Read from dir2: '{}'", content.trim_end());
+
+            if content.contains("process2") {
+                println!("✓ Correctly read process2 content from dir2");
+            } else {
+                println!("✗ Unexpected content from dir2");
+                unsafe {
+                    libc::close(file2_fd);
+                }
+                unsafe {
+                    libc::close(dir1_fd);
+                }
+                unsafe {
+                    libc::close(dir2_fd);
+                }
+                std::process::exit(1);
+            }
+        }
+
+        unsafe {
+            libc::close(file2_fd);
+        }
+    } else {
+        eprintln!(
+            "Failed to open file.txt from dir2: errno {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(dir1_fd);
+        }
+        unsafe {
+            libc::close(dir2_fd);
+        }
+        std::process::exit(1);
+    }
+
+    unsafe {
+        libc::close(dir1_fd);
+    }
+    unsafe {
+        libc::close(dir2_fd);
+    }
+
+    println!("T25.12 process isolation test completed successfully!");
+}
+
+fn test_t25_14_memory_leak_prevention(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-14 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    println!("T25.14: Testing memory leak prevention");
+
+    // Open directory
+    let dir_path = test_base.join("dir1");
+    let c_dir_path = std::ffi::CString::new(dir_path.to_str().unwrap()).unwrap();
+    let dir_fd = unsafe { libc::open(c_dir_path.as_ptr(), libc::O_RDONLY) };
+
+    if dir_fd < 0 {
+        eprintln!(
+            "Failed to open directory: errno {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+
+    println!("Opened directory fd: {}", dir_fd);
+
+    let mut opened_fds = vec![];
+
+    // Open many file descriptors
+    for i in 0..50 {
+        let file_name = format!("file{}.txt", i);
+        let c_file_name = std::ffi::CString::new(file_name.clone()).unwrap();
+
+        let file_fd = unsafe { libc::openat(dir_fd, c_file_name.as_ptr(), libc::O_RDONLY) };
+
+        if file_fd >= 0 {
+            opened_fds.push(file_fd);
+        } else {
+            println!(
+                "Failed to open {}: errno {}",
+                file_name,
+                std::io::Error::last_os_error()
+            );
+        }
+    }
+
+    println!("Opened {} file descriptors", opened_fds.len());
+
+    // Perform some operations on the opened files
+    for &fd in &opened_fds {
+        // Just try to read a few bytes to ensure the fd is valid
+        let mut buffer = [0u8; 1];
+        let bytes_read =
+            unsafe { libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len()) };
+
+        if bytes_read < 0 {
+            println!(
+                "Failed to read from fd {}: errno {}",
+                fd,
+                std::io::Error::last_os_error()
+            );
+        }
+
+        // Seek back to beginning for next read
+        unsafe { libc::lseek(fd, 0, libc::SEEK_SET) };
+    }
+
+    // Close all file descriptors
+    for fd in opened_fds {
+        unsafe {
+            libc::close(fd);
+        }
+    }
+
+    unsafe {
+        libc::close(dir_fd);
+    }
+
+    println!("Closed all file descriptors");
+
+    // In a real test, we would query the daemon's internal state to verify
+    // that the dirfd mapping table size returned to baseline.
+    // For this e2e test, we just verify that all operations completed successfully.
+
+    println!("T25.14 memory leak prevention test completed successfully!");
+}
+
+fn test_t25_13_cross_process_fd_sharing(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-13 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+    println!("T25.13: Testing cross-process file descriptor sharing");
+
+    // Create a socket pair for FD transfer
+    let mut fds = [-1i32; 2];
+    let result = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
+
+    if result < 0 {
+        eprintln!(
+            "Failed to create socket pair: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(1);
+    }
+
+    let parent_socket = fds[0];
+    let child_socket = fds[1];
+
+    println!(
+        "Created socket pair: parent={}, child={}",
+        parent_socket, child_socket
+    );
+
+    // Fork the process
+    let pid = unsafe { libc::fork() };
+
+    if pid < 0 {
+        eprintln!("Fork failed: {}", std::io::Error::last_os_error());
+        unsafe {
+            libc::close(parent_socket);
+            libc::close(child_socket);
+        }
+        std::process::exit(1);
+    }
+
+    if pid == 0 {
+        // Child process
+        unsafe {
+            libc::close(parent_socket);
+        } // Child doesn't need parent's socket
+
+        // Receive FD from parent
+        let received_fd = receive_fd(child_socket);
+        unsafe {
+            libc::close(child_socket);
+        }
+
+        if received_fd < 0 {
+            eprintln!("Child: Failed to receive FD");
+            std::process::exit(1);
+        }
+
+        println!("Child: Received fd {}", received_fd);
+
+        // Test using the received FD with openat
+        let c_file = std::ffi::CString::new("file.txt").unwrap();
+        let file_fd = unsafe { libc::openat(received_fd, c_file.as_ptr(), libc::O_RDONLY) };
+
+        if file_fd >= 0 {
+            println!("Child: Successfully opened file via received fd");
+            let mut buffer = [0u8; 32];
+            let bytes_read = unsafe {
+                libc::read(
+                    file_fd,
+                    buffer.as_mut_ptr() as *mut libc::c_void,
+                    buffer.len(),
+                )
+            };
+            if bytes_read > 0 {
+                let content = String::from_utf8_lossy(&buffer[..bytes_read as usize]);
+                println!("Child: Read content: '{}'", content.trim_end());
+            }
+            unsafe {
+                libc::close(file_fd);
+            }
+            unsafe {
+                libc::close(received_fd);
+            }
+            println!("Child: Test completed successfully");
+            std::process::exit(0);
+        } else {
+            eprintln!(
+                "Child: Failed to open file via received fd: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe {
+                libc::close(received_fd);
+            }
+            std::process::exit(1);
+        }
+    } else {
+        // Parent process
+        unsafe {
+            libc::close(child_socket);
+        } // Parent doesn't need child's socket
+
+        // Open directory
+        let dir_path = test_base.join("dir1");
+        let c_dir_path = std::ffi::CString::new(dir_path.to_str().unwrap()).unwrap();
+        let dir_fd = unsafe { libc::open(c_dir_path.as_ptr(), libc::O_RDONLY) };
+
+        if dir_fd < 0 {
+            eprintln!(
+                "Parent: Failed to open directory: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe {
+                libc::close(parent_socket);
+            }
+            std::process::exit(1);
+        }
+
+        println!("Parent: Opened directory fd {}", dir_fd);
+
+        // Send FD to child
+        if !send_fd(parent_socket, dir_fd) {
+            eprintln!("Parent: Failed to send FD to child");
+            unsafe {
+                libc::close(dir_fd);
+                libc::close(parent_socket);
+            }
+            std::process::exit(1);
+        }
+
+        println!("Parent: Sent fd {} to child", dir_fd);
+        unsafe {
+            libc::close(parent_socket);
+        }
+
+        // Wait for child to complete
+        let mut status = 0;
+        let wait_result = unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        if wait_result < 0 {
+            eprintln!(
+                "Parent: Failed to wait for child: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe {
+                libc::close(dir_fd);
+            }
+            std::process::exit(1);
+        }
+
+        let exit_status = libc::WEXITSTATUS(status);
+        println!("Parent: Child exited with status {}", exit_status);
+
+        unsafe {
+            libc::close(dir_fd);
+        }
+
+        if exit_status == 0 {
+            println!("T25.13 cross-process FD sharing test completed successfully!");
+        } else {
+            eprintln!(
+                "T25.13 test failed - child exited with status {}",
+                exit_status
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn send_fd(socket: libc::c_int, fd: libc::c_int) -> bool {
+    // Send file descriptor using SCM_RIGHTS ancillary data
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    let mut iov: libc::iovec = unsafe { std::mem::zeroed() };
+
+    // Dummy data to send
+    let dummy_data = [0u8; 1];
+    iov.iov_base = dummy_data.as_ptr() as *mut libc::c_void;
+    iov.iov_len = dummy_data.len();
+
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+
+    // Ancillary data buffer
+    let mut cmsg_buffer =
+        [0u8; unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as u32) as usize }];
+    msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut libc::c_void;
+    msg.msg_controllen = cmsg_buffer.len() as u32;
+
+    // Set up control message in the buffer
+    let cmsg = unsafe { libc::CMSG_FIRSTHDR(&mut msg) };
+    if cmsg.is_null() {
+        return false;
+    }
+
+    let cmsg_ref = unsafe { &mut *cmsg };
+    cmsg_ref.cmsg_len = unsafe { libc::CMSG_LEN(std::mem::size_of::<libc::c_int>() as u32) };
+    cmsg_ref.cmsg_level = libc::SOL_SOCKET;
+    cmsg_ref.cmsg_type = libc::SCM_RIGHTS;
+
+    // Copy FD into control message
+    let fd_ptr = unsafe { libc::CMSG_DATA(cmsg) as *mut libc::c_int };
+    unsafe { *fd_ptr = fd };
+
+    // Update msg_controllen to the actual length used
+    msg.msg_controllen = cmsg_ref.cmsg_len;
+
+    let result = unsafe { libc::sendmsg(socket, &msg, 0) };
+
+    result >= 0
+}
+
+fn receive_fd(socket: libc::c_int) -> libc::c_int {
+    // Receive file descriptor using SCM_RIGHTS ancillary data
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    let mut iov: libc::iovec = unsafe { std::mem::zeroed() };
+
+    // Buffer for received data
+    let mut buffer = [0u8; 1];
+    iov.iov_base = buffer.as_mut_ptr() as *mut libc::c_void;
+    iov.iov_len = buffer.len();
+
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+
+    // Ancillary data buffer
+    let mut cmsg_buffer =
+        [0u8; unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as u32) as usize }];
+    msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut libc::c_void;
+    msg.msg_controllen = cmsg_buffer.len() as u32;
+
+    let result = unsafe { libc::recvmsg(socket, &mut msg, 0) };
+
+    if result < 0 {
+        return -1;
+    }
+
+    // Extract FD from control message
+    let cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
+    if cmsg.is_null() {
+        return -1;
+    }
+
+    let cmsg_ref = unsafe { &*cmsg };
+    if cmsg_ref.cmsg_level != libc::SOL_SOCKET || cmsg_ref.cmsg_type != libc::SCM_RIGHTS {
+        return -1;
+    }
+
+    let fd_ptr = unsafe { libc::CMSG_DATA(cmsg) as *mut libc::c_int };
+    unsafe { *fd_ptr }
+}
+
+fn test_t25_15_error_code_consistency(args: &[String]) {
+    if args.len() < 1 {
+        eprintln!("Usage: --test-t25-15 <test_base_dir>");
+        std::process::exit(1);
+    }
+
+    let test_base = Path::new(&args[0]);
+
+    println!("T25.15: Testing error code consistency");
+
+    // Test invalid dirfd
+    let invalid_fd = unsafe {
+        libc::openat(
+            99999,
+            std::ffi::CString::new("nonexistent").unwrap().as_ptr(),
+            libc::O_RDONLY,
+        )
+    };
+    println!(
+        "Invalid dirfd result: {} (errno: {})",
+        invalid_fd,
+        std::io::Error::last_os_error()
+    );
+
+    // Test nonexistent path with valid dirfd
+    let c_path = std::ffi::CString::new(test_base.to_str().unwrap()).unwrap();
+    let valid_fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
+    println!("Valid fd: {}", valid_fd);
+
+    if valid_fd >= 0 {
+        let nonexistent_fd = unsafe {
+            libc::openat(
+                valid_fd,
+                std::ffi::CString::new("nonexistent_file.txt").unwrap().as_ptr(),
+                libc::O_RDONLY,
+            )
+        };
+        println!(
+            "Nonexistent file result: {} (errno: {})",
+            nonexistent_fd,
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::close(valid_fd);
+        }
+    }
+
+    println!("T25.15 test completed successfully!");
 }

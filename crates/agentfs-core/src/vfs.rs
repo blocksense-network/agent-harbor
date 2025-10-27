@@ -21,6 +21,56 @@ use crate::{Backstore, LowerFs};
 
 // Import proto types for interpose operations
 use agentfs_proto::messages::{StatData, StatfsData, TimespecData};
+
+// Directory file descriptor mapping for *at functions
+#[derive(Clone, Debug)]
+pub struct DirfdMapping {
+    /// Current working directory for AT_FDCWD resolution
+    cwd: std::path::PathBuf,
+    /// File descriptor to path mappings
+    fd_paths: HashMap<std::os::fd::RawFd, std::path::PathBuf>,
+}
+
+impl DirfdMapping {
+    pub fn new() -> Self {
+        Self {
+            cwd: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")),
+            fd_paths: HashMap::new(),
+        }
+    }
+
+    /// Get the path for a directory file descriptor
+    pub fn get_path(&self, dirfd: std::os::fd::RawFd) -> Option<&std::path::PathBuf> {
+        self.fd_paths.get(&dirfd)
+    }
+
+    /// Set the path for a directory file descriptor
+    pub fn set_path(&mut self, dirfd: std::os::fd::RawFd, path: std::path::PathBuf) {
+        self.fd_paths.insert(dirfd, path);
+    }
+
+    /// Remove a directory file descriptor mapping
+    pub fn remove_path(&mut self, dirfd: std::os::fd::RawFd) {
+        self.fd_paths.remove(&dirfd);
+    }
+
+    /// Update current working directory
+    pub fn set_cwd(&mut self, cwd: std::path::PathBuf) {
+        self.cwd = cwd;
+    }
+
+    /// Get current working directory
+    pub fn get_cwd(&self) -> &std::path::PathBuf {
+        &self.cwd
+    }
+
+    /// Duplicate file descriptor mapping
+    pub fn dup_fd(&mut self, old_fd: std::os::fd::RawFd, new_fd: std::os::fd::RawFd) {
+        if let Some(path) = self.fd_paths.get(&old_fd).cloned() {
+            self.fd_paths.insert(new_fd, path);
+        }
+    }
+}
 #[cfg(test)]
 use std::cell::RefCell;
 #[cfg(test)]
@@ -147,7 +197,8 @@ pub struct FsCore {
     process_identities: Mutex<HashMap<u32, User>>,              // Process ID -> security identity
     process_children: Mutex<HashMap<u32, Vec<u32>>>,            // Parent PID -> list of child PIDs
     process_parents: Mutex<HashMap<u32, u32>>,                  // Child PID -> parent PID
-    locks: Mutex<LockManager>,                                  // Byte-range lock manager
+    process_dirfd_mappings: Mutex<HashMap<u32, DirfdMapping>>, // Process ID -> directory fd mappings
+    locks: Mutex<LockManager>,                                 // Byte-range lock manager
     event_subscriptions: Mutex<HashMap<SubscriptionId, Arc<dyn EventSink>>>,
 }
 
@@ -197,6 +248,7 @@ impl FsCore {
             process_identities: Mutex::new(HashMap::new()), // No processes initially registered
             process_children: Mutex::new(HashMap::new()), // No process hierarchy initially
             process_parents: Mutex::new(HashMap::new()),  // No process hierarchy initially
+            process_dirfd_mappings: Mutex::new(HashMap::new()), // No dirfd mappings initially
             locks: Mutex::new(LockManager {
                 locks: HashMap::new(),
             }),
@@ -1003,6 +1055,94 @@ impl FsCore {
         let mut process_branches = self.process_branches.lock().unwrap();
         process_branches.remove(&pid);
         Ok(())
+    }
+
+    // Directory file descriptor mapping operations for *at functions
+    pub fn register_process_dirfd_mapping(&self, pid: u32) -> FsResult<()> {
+        let mut mappings = self.process_dirfd_mappings.lock().unwrap();
+        if !mappings.contains_key(&pid) {
+            mappings.insert(pid, DirfdMapping::new());
+        }
+        Ok(())
+    }
+
+    pub fn open_dir_fd(
+        &self,
+        pid: u32,
+        path: std::path::PathBuf,
+        fd: std::os::fd::RawFd,
+    ) -> FsResult<()> {
+        let mut mappings = self.process_dirfd_mappings.lock().unwrap();
+        let mapping = mappings.entry(pid).or_insert_with(DirfdMapping::new);
+        mapping.set_path(fd, path);
+        Ok(())
+    }
+
+    pub fn close_fd(&self, pid: u32, fd: std::os::fd::RawFd) -> FsResult<()> {
+        let mut mappings = self.process_dirfd_mappings.lock().unwrap();
+        if let Some(mapping) = mappings.get_mut(&pid) {
+            mapping.remove_path(fd);
+        }
+        Ok(())
+    }
+
+    pub fn dup_fd(
+        &self,
+        pid: u32,
+        old_fd: std::os::fd::RawFd,
+        new_fd: std::os::fd::RawFd,
+    ) -> FsResult<()> {
+        let mut mappings = self.process_dirfd_mappings.lock().unwrap();
+        if let Some(mapping) = mappings.get_mut(&pid) {
+            mapping.dup_fd(old_fd, new_fd);
+        }
+        Ok(())
+    }
+
+    pub fn set_process_cwd(&self, pid: u32, cwd: std::path::PathBuf) -> FsResult<()> {
+        let mut mappings = self.process_dirfd_mappings.lock().unwrap();
+        let mapping = mappings.entry(pid).or_insert_with(DirfdMapping::new);
+        mapping.set_cwd(cwd);
+        Ok(())
+    }
+
+    pub fn resolve_dirfd(
+        &self,
+        pid: u32,
+        dirfd: std::os::fd::RawFd,
+    ) -> FsResult<Option<std::path::PathBuf>> {
+        let mappings = self.process_dirfd_mappings.lock().unwrap();
+        if let Some(mapping) = mappings.get(&pid) {
+            match dirfd {
+                libc::AT_FDCWD => Ok(Some(mapping.get_cwd().clone())),
+                fd if fd >= 0 => Ok(mapping.get_path(fd).cloned()),
+                _ => Ok(None),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn resolve_path_with_dirfd(
+        &self,
+        pid: u32,
+        dirfd: std::os::fd::RawFd,
+        relative_path: &std::path::Path,
+    ) -> FsResult<std::path::PathBuf> {
+        let base_path = self.resolve_dirfd(pid, dirfd)?.ok_or(FsError::InvalidArgument)?;
+
+        let mut resolved_path = base_path.clone();
+        resolved_path.push(relative_path);
+
+        // Canonicalize the path to resolve . and .. components
+        match resolved_path.canonicalize() {
+            Ok(canonical) => Ok(canonical),
+            Err(_) => {
+                // If canonicalization fails, return the non-canonicalized path
+                // This allows operations on non-existent files to work correctly
+                Ok(resolved_path)
+            }
+        }
     }
 
     // Event subscription operations
@@ -2173,15 +2313,8 @@ impl FsCore {
     }
 
     /// Get file status (fstatat) relative to a directory file descriptor
-    pub fn fstatat(
-        &self,
-        pid: &PID,
-        dirfd: HandleId,
-        path: &Path,
-        flags: u32,
-    ) -> FsResult<StatData> {
-        // For now, implement as regular stat - full implementation would need path resolution relative to dirfd
-        // This is a simplified version for the milestone
+    pub fn fstatat(&self, pid: &PID, path: &Path, flags: u32) -> FsResult<StatData> {
+        // Now that path resolution is done client-side, this just calls stat/lstat with resolved path
         if flags & libc::AT_SYMLINK_NOFOLLOW as u32 != 0 {
             self.lstat(pid, path)
         } else {
@@ -2210,17 +2343,8 @@ impl FsCore {
     }
 
     /// Change file mode (fchmodat) relative to a directory file descriptor
-    pub fn fchmodat(
-        &self,
-        pid: &PID,
-        dirfd: HandleId,
-        path: &Path,
-        mode: u32,
-        flags: u32,
-    ) -> FsResult<()> {
-        // For now, implement as regular chmod - full implementation would need path resolution relative to dirfd
-        // This is a simplified version for the milestone
-        let _ = dirfd; // unused in simplified version
+    pub fn fchmodat(&self, pid: &PID, path: &Path, mode: u32, flags: u32) -> FsResult<()> {
+        // Now that path resolution is done client-side, this just calls set_mode with resolved path
         let _ = flags; // unused in simplified version
         self.set_mode(pid, path, mode)
     }
@@ -2232,18 +2356,8 @@ impl FsCore {
     }
 
     /// Change file owner (fchownat) relative to a directory file descriptor
-    pub fn fchownat(
-        &self,
-        pid: &PID,
-        dirfd: HandleId,
-        path: &Path,
-        uid: u32,
-        gid: u32,
-        flags: u32,
-    ) -> FsResult<()> {
-        // For now, implement as regular chown - full implementation would need path resolution relative to dirfd
-        // This is a simplified version for the milestone
-        let _ = dirfd; // unused in simplified version
+    pub fn fchownat(&self, pid: &PID, path: &Path, uid: u32, gid: u32, flags: u32) -> FsResult<()> {
+        // Now that path resolution is done client-side, this just calls set_owner with resolved path
         let _ = flags; // unused in simplified version
         self.set_owner(pid, path, uid, gid)
     }
@@ -2290,14 +2404,11 @@ impl FsCore {
     pub fn utimensat(
         &self,
         pid: &PID,
-        dirfd: HandleId,
         path: &Path,
         times: Option<(TimespecData, TimespecData)>,
         flags: u32,
     ) -> FsResult<()> {
-        // For now, implement as regular utimes - full implementation would need path resolution relative to dirfd
-        // This is a simplified version for the milestone
-        let _ = dirfd; // unused in simplified version
+        // Now that path resolution is done client-side, this just calls set_times with resolved path
         let _ = flags; // unused in simplified version
         let file_times = times
             .map(|(atime, mtime)| FileTimes {
@@ -2699,51 +2810,15 @@ impl FsCore {
     }
 
     /// Create a hard link with dirfd (relative to directory)
-    pub fn linkat(
-        &self,
-        pid: &PID,
-        old_dirfd: u32,
-        old_path: &Path,
-        new_dirfd: u32,
-        new_path: &Path,
-        flags: u32,
-    ) -> FsResult<()> {
-        // For now, implement basic version - full implementation would need to handle AT_FDCWD and flags
-        // This is a simplified version that treats dirfd as absolute paths for now
-        let old_full_path = if old_dirfd == libc::AT_FDCWD as u32 {
-            old_path.to_path_buf()
-        } else {
-            // TODO: Implement proper dirfd resolution
-            return Err(FsError::NotImplemented);
-        };
-
-        let new_full_path = if new_dirfd == libc::AT_FDCWD as u32 {
-            new_path.to_path_buf()
-        } else {
-            // TODO: Implement proper dirfd resolution
-            return Err(FsError::NotImplemented);
-        };
-
-        self.link(pid, &old_full_path, &new_full_path)
+    pub fn linkat(&self, pid: &PID, old_path: &Path, new_path: &Path, flags: u32) -> FsResult<()> {
+        // Now that path resolution is done client-side, this just calls link with resolved paths
+        self.link(pid, old_path, new_path)
     }
 
     /// Create a symbolic link with dirfd (relative to directory)
-    pub fn symlinkat(
-        &self,
-        pid: &PID,
-        target: &str,
-        new_dirfd: u32,
-        linkpath: &Path,
-    ) -> FsResult<()> {
-        // For now, implement basic version - full implementation would need to handle AT_FDCWD
-        let full_linkpath = if new_dirfd == libc::AT_FDCWD as u32 {
-            linkpath.to_path_buf()
-        } else {
-            // TODO: Implement proper dirfd resolution
-            return Err(FsError::NotImplemented);
-        };
-
-        self.symlink(pid, target, &full_linkpath)
+    pub fn symlinkat(&self, pid: &PID, target: &str, linkpath: &Path) -> FsResult<()> {
+        // Now that path resolution is done client-side, this just calls symlink with resolved linkpath
+        self.symlink(pid, target, linkpath)
     }
 
     /// Rename with dirfd (relative to directory)
@@ -2788,16 +2863,9 @@ impl FsCore {
     }
 
     /// Unlink with dirfd (relative to directory)
-    pub fn unlinkat(&self, pid: &PID, dirfd: u32, path: &Path, flags: u32) -> FsResult<()> {
-        // For now, implement basic version - full implementation would need to handle AT_FDCWD and flags
-        let full_path = if dirfd == libc::AT_FDCWD as u32 {
-            path.to_path_buf()
-        } else {
-            // TODO: Implement proper dirfd resolution
-            return Err(FsError::NotImplemented);
-        };
-
-        self.unlink(pid, &full_path)
+    pub fn unlinkat(&self, pid: &PID, path: &Path, flags: u32) -> FsResult<()> {
+        // Now that path resolution is done client-side, this just calls unlink with resolved path
+        self.unlink(pid, path)
     }
 
     /// Remove (alias for unlink)
@@ -2806,16 +2874,9 @@ impl FsCore {
     }
 
     /// Create directory with dirfd (relative to directory)
-    pub fn mkdirat(&self, pid: &PID, dirfd: u32, path: &Path, mode: u32) -> FsResult<()> {
-        // For now, implement basic version - full implementation would need to handle AT_FDCWD
-        let full_path = if dirfd == libc::AT_FDCWD as u32 {
-            path.to_path_buf()
-        } else {
-            // TODO: Implement proper dirfd resolution
-            return Err(FsError::NotImplemented);
-        };
-
-        self.mkdir(pid, &full_path, mode)
+    pub fn mkdirat(&self, pid: &PID, path: &Path, mode: u32) -> FsResult<()> {
+        // Now that path resolution is done client-side, this just calls mkdir with resolved path
+        self.mkdir(pid, path, mode)
     }
 
     /// Read a symbolic link

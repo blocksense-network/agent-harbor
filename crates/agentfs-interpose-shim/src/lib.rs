@@ -32,9 +32,116 @@ const ENV_LOG_LEVEL: &str = "AGENTFS_INTERPOSE_LOG";
 const ENV_FAIL_FAST: &str = "AGENTFS_INTERPOSE_FAIL_FAST";
 const DEFAULT_BANNER: &str = "AgentFS interpose shim loaded";
 
+/// Per-process directory file descriptor mapping
+#[derive(Clone, Debug)]
+struct DirfdMapping {
+    /// Current working directory for AT_FDCWD resolution
+    cwd: PathBuf,
+    /// File descriptor to path mappings
+    fd_paths: HashMap<RawFd, PathBuf>,
+}
+
+impl DirfdMapping {
+    fn new() -> Self {
+        Self {
+            cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+            fd_paths: HashMap::new(),
+        }
+    }
+
+    /// Get the path for a directory file descriptor
+    fn get_path(&self, dirfd: RawFd) -> Option<&PathBuf> {
+        self.fd_paths.get(&dirfd)
+    }
+
+    /// Set the path for a directory file descriptor
+    fn set_path(&mut self, dirfd: RawFd, path: PathBuf) {
+        self.fd_paths.insert(dirfd, path);
+    }
+
+    /// Remove a directory file descriptor mapping
+    fn remove_path(&mut self, dirfd: RawFd) {
+        self.fd_paths.remove(&dirfd);
+    }
+
+    /// Update current working directory
+    fn set_cwd(&mut self, cwd: PathBuf) {
+        self.cwd = cwd;
+    }
+
+    /// Duplicate file descriptor mapping
+    fn dup_fd(&mut self, old_fd: RawFd, new_fd: RawFd) {
+        if let Some(path) = self.fd_paths.get(&old_fd).cloned() {
+            self.fd_paths.insert(new_fd, path);
+        }
+    }
+}
+
+/// Execute a closure with access to the current process's dirfd mapping
+fn with_dirfd_mapping<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut DirfdMapping) -> R,
+{
+    let pid = std::process::id();
+    let mut global_map = DIRFD_MAPPING.lock().unwrap();
+
+    // Initialize mapping for this process if it doesn't exist
+    if !global_map.contains_key(&pid) {
+        global_map.insert(pid, DirfdMapping::new());
+    }
+
+    // Get mutable reference to the mapping and execute the closure
+    let mapping = global_map.get_mut(&pid).unwrap();
+    f(mapping)
+}
+
+/// Resolve a directory file descriptor to its path
+fn resolve_dirfd(dirfd: RawFd) -> Option<PathBuf> {
+    with_dirfd_mapping(|mapping| match dirfd {
+        libc::AT_FDCWD => Some(mapping.cwd.clone()),
+        fd if fd >= 0 => mapping.get_path(fd).cloned(),
+        _ => None,
+    })
+}
+
+/// Resolve a path by combining dirfd + relative path with symlink and .. handling
+fn resolve_path_with_dirfd(dirfd: RawFd, path: &CStr) -> Option<PathBuf> {
+    let base_path = resolve_dirfd(dirfd)?;
+    let relative_path = Path::new(path.to_str().ok()?);
+
+    // Combine base path with relative path
+    let mut resolved_path = base_path.clone();
+    resolved_path.push(relative_path);
+
+    // Canonicalize the path to resolve . and .. components
+    // Note: This follows symlinks, which is the expected behavior for most *at functions
+    match resolved_path.canonicalize() {
+        Ok(canonical) => Some(canonical),
+        Err(_) => {
+            // If canonicalization fails (e.g., path doesn't exist), return the non-canonicalized path
+            // This allows operations on non-existent files to work correctly
+            Some(resolved_path)
+        }
+    }
+}
+
+/// Helper function to resolve path for *at operations
+fn resolve_at_path(dirfd: RawFd, path: &CStr) -> PathBuf {
+    resolve_path_with_dirfd(dirfd, path).unwrap_or_else(|| {
+        // Fallback: construct path manually if resolution fails
+        resolve_dirfd(dirfd)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(path.to_str().unwrap_or(""))
+    })
+}
+
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
 #[cfg(target_os = "macos")]
 static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
+
+// Global directory file descriptor mapping keyed by process ID
+static DIRFD_MAPPING: std::sync::LazyLock<Mutex<HashMap<u32, DirfdMapping>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // Directory handles are now managed by FsCore directly
 
@@ -916,7 +1023,7 @@ mod interpose {
         Ok(())
     }
 
-    /// Interposed open function
+    /// Interposed open function (fd_open + fd tracking)
     redhook::hook! {
         unsafe fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
             if path.is_null() {
@@ -927,15 +1034,38 @@ mod interpose {
 
             log_message(&format!("interposing open({}, {:#x}, {:#o})", c_path.to_string_lossy(), flags, mode));
 
+            // First try fd_open request
             match send_fd_open_request(c_path, flags, mode) {
                 Ok(fd) => {
+                    // Track directory fd if needed
+                    if (flags & libc::O_DIRECTORY) != 0 {
+                        if let Ok(path_str) = c_path.to_str() {
+                            with_dirfd_mapping(|mapping| {
+                                let path_buf = PathBuf::from(path_str);
+                                let canonical_path = path_buf.canonicalize().unwrap_or(path_buf);
+                                mapping.set_path(fd, canonical_path);
+                                log_message(&format!("tracked directory fd {} -> {}", fd, path_str));
+                            });
+                        }
+                    }
                     log_message(&format!("fd_open succeeded, returning fd {}", fd));
                     fd as c_int
                 }
                 Err(err) => {
                     log_message(&format!("fd_open failed: {}, falling back to original", err));
-                    // Fall back to original function
-                    redhook::real!(open)(path, flags, mode)
+                    // Fall back to original function and track if it's a directory
+                    let result = redhook::real!(open)(path, flags, mode);
+                    if result >= 0 && (flags & libc::O_DIRECTORY) != 0 {
+                        if let Ok(path_str) = c_path.to_str() {
+                            with_dirfd_mapping(|mapping| {
+                                let path_buf = PathBuf::from(path_str);
+                                let canonical_path = path_buf.canonicalize().unwrap_or(path_buf);
+                                mapping.set_path(result, canonical_path);
+                                log_message(&format!("tracked directory fd {} -> {}", result, path_str));
+                            });
+                        }
+                    }
+                    result
                 }
             }
         }
@@ -1210,15 +1340,15 @@ mod interpose {
 
     /// Send fstatat request and receive file status relative to directory fd
     fn send_fstatat_request(dirfd: c_int, path: &CStr, flags: c_int) -> Result<StatData, String> {
-        let path_str = path.to_string_lossy().into_owned();
-        let request = Request::fstatat(dirfd as u32, path_str, flags as u32);
+        let resolved_path = resolve_at_path(dirfd, path);
+        let path_str = resolved_path.to_string_lossy().into_owned();
+        let request = Request::fstatat(path_str.clone(), flags as u32);
 
         send_request(request, |response| match response {
             Response::Fstatat(fstatat_response) => {
                 log_message(&format!(
-                    "received fstatat response for dirfd {}, path {}",
-                    dirfd,
-                    path.to_string_lossy()
+                    "received fstatat response for resolved path {}",
+                    path_str
                 ));
                 Some(fstatat_response.stat)
             }
@@ -1303,15 +1433,15 @@ mod interpose {
         gid: gid_t,
         flags: c_int,
     ) -> Result<(), String> {
-        let path_str = path.to_string_lossy().into_owned();
-        let request = Request::fchownat(dirfd as u32, path_str, uid, gid, flags as u32);
+        let resolved_path = resolve_at_path(dirfd, path);
+        let path_str = resolved_path.to_string_lossy().into_owned();
+        let request = Request::fchownat(path_str.clone(), uid, gid, flags as u32);
 
         send_request(request, |response| match response {
             Response::Fchownat(_) => {
                 log_message(&format!(
-                    "received fchownat response for dirfd {}, path {}",
-                    dirfd,
-                    path.to_string_lossy()
+                    "received fchownat response for resolved path {}",
+                    path_str
                 ));
                 Some(())
             }
@@ -1374,15 +1504,15 @@ mod interpose {
         mode: mode_t,
         flags: c_int,
     ) -> Result<(), String> {
-        let path_str = path.to_string_lossy().into_owned();
-        let request = Request::fchmodat(dirfd as u32, path_str, mode as u32, flags as u32);
+        let resolved_path = resolve_at_path(dirfd, path);
+        let path_str = resolved_path.to_string_lossy().into_owned();
+        let request = Request::fchmodat(path_str.clone(), mode as u32, flags as u32);
 
         send_request(request, |response| match response {
             Response::Fchmodat(_) => {
                 log_message(&format!(
-                    "received fchmodat response for dirfd {}, path {}",
-                    dirfd,
-                    path.to_string_lossy()
+                    "received fchmodat response for resolved path {}",
+                    path_str
                 ));
                 Some(())
             }
@@ -1551,7 +1681,8 @@ mod interpose {
         times: Option<&[timespec; 2]>,
         flags: c_int,
     ) -> Result<(), String> {
-        let path_str = path.to_string_lossy().into_owned();
+        let resolved_path = resolve_at_path(dirfd, path);
+        let path_str = resolved_path.to_string_lossy().into_owned();
         let times_data = times.map(|t| {
             (
                 TimespecData {
@@ -1564,14 +1695,13 @@ mod interpose {
                 },
             )
         });
-        let request = Request::utimensat(dirfd as u32, path_str, times_data, flags as u32);
+        let request = Request::utimensat(path_str.clone(), times_data, flags as u32);
 
         send_request(request, |response| match response {
             Response::Utimensat(_) => {
                 log_message(&format!(
-                    "received utimensat response for dirfd {}, path {}",
-                    dirfd,
-                    path.to_string_lossy()
+                    "received utimensat response for resolved path {}",
+                    path_str
                 ));
                 Some(())
             }
@@ -2276,14 +2406,11 @@ mod interpose {
         new_dirfd: c_int,
         new_path: &CStr,
     ) -> Result<(), String> {
-        let old_path_str = old_path.to_string_lossy().into_owned();
-        let new_path_str = new_path.to_string_lossy().into_owned();
-        let request = Request::renameat(
-            old_dirfd as u32,
-            old_path_str,
-            new_dirfd as u32,
-            new_path_str,
-        );
+        let old_resolved_path = resolve_at_path(old_dirfd, old_path);
+        let new_resolved_path = resolve_at_path(new_dirfd, new_path);
+        let old_path_str = old_resolved_path.to_string_lossy().into_owned();
+        let new_path_str = new_resolved_path.to_string_lossy().into_owned();
+        let request = Request::renameat(old_path_str, new_path_str);
 
         send_request(request, |response| match response {
             Response::Renameat(_) => {
@@ -2365,15 +2492,11 @@ mod interpose {
         new_path: &CStr,
         flags: c_int,
     ) -> Result<(), String> {
-        let old_path_str = old_path.to_string_lossy().into_owned();
-        let new_path_str = new_path.to_string_lossy().into_owned();
-        let request = Request::linkat(
-            old_dirfd as u32,
-            old_path_str,
-            new_dirfd as u32,
-            new_path_str,
-            flags as u32,
-        );
+        let old_resolved_path = resolve_at_path(old_dirfd, old_path);
+        let new_resolved_path = resolve_at_path(new_dirfd, new_path);
+        let old_path_str = old_resolved_path.to_string_lossy().into_owned();
+        let new_path_str = new_resolved_path.to_string_lossy().into_owned();
+        let request = Request::linkat(old_path_str, new_path_str, flags as u32);
 
         send_request(request, |response| match response {
             Response::Linkat(_) => {
@@ -2420,8 +2543,9 @@ mod interpose {
         linkpath: &CStr,
     ) -> Result<(), String> {
         let target_str = target.to_string_lossy().into_owned();
-        let linkpath_str = linkpath.to_string_lossy().into_owned();
-        let request = Request::symlinkat(target_str, new_dirfd as u32, linkpath_str);
+        let resolved_linkpath = resolve_at_path(new_dirfd, linkpath);
+        let linkpath_str = resolved_linkpath.to_string_lossy().into_owned();
+        let request = Request::symlinkat(target_str, linkpath_str);
 
         send_request(request, |response| match response {
             Response::Symlinkat(_) => {
@@ -2462,8 +2586,9 @@ mod interpose {
 
     /// Send unlinkat request
     fn send_unlinkat_request(dirfd: c_int, path: &CStr, flags: c_int) -> Result<(), String> {
-        let path_str = path.to_string_lossy().into_owned();
-        let request = Request::unlinkat(dirfd as u32, path_str, flags as u32);
+        let resolved_path = resolve_at_path(dirfd, path);
+        let path_str = resolved_path.to_string_lossy().into_owned();
+        let request = Request::unlinkat(path_str, flags as u32);
 
         send_request(request, |response| match response {
             Response::Unlinkat(_) => {
@@ -2525,8 +2650,9 @@ mod interpose {
 
     /// Send mkdirat request
     fn send_mkdirat_request(dirfd: c_int, path: &CStr, mode: mode_t) -> Result<(), String> {
-        let path_str = path.to_string_lossy().into_owned();
-        let request = Request::mkdirat(dirfd as u32, path_str, mode as u32);
+        let resolved_path = resolve_at_path(dirfd, path);
+        let path_str = resolved_path.to_string_lossy().into_owned();
+        let request = Request::mkdirat(path_str, mode as u32);
 
         send_request(request, |response| match response {
             Response::Mkdirat(_) => {
@@ -2836,6 +2962,105 @@ mod interpose {
                     redhook::real!(mkdirat)(dirfd, path, mode)
                 }
             }
+        }
+    }
+
+    /// Interposed close function (for fd tracking)
+    redhook::hook! {
+        unsafe fn close(fd: c_int) -> c_int => my_close_fd_tracking {
+            // Remove fd mapping before closing
+            with_dirfd_mapping(|mapping| {
+                mapping.remove_path(fd);
+                log_message(&format!("removed fd {} from tracking", fd));
+            });
+
+            redhook::real!(close)(fd)
+        }
+    }
+
+    /// Interposed dup function (for fd tracking)
+    redhook::hook! {
+        unsafe fn dup(oldfd: c_int) -> c_int => my_dup_fd_tracking {
+            let result = redhook::real!(dup)(oldfd);
+            if result >= 0 {
+                // Duplicate the fd mapping
+                with_dirfd_mapping(|mapping| {
+                    mapping.dup_fd(oldfd, result);
+                    log_message(&format!("duplicated fd {} -> {}", oldfd, result));
+                });
+            }
+            result
+        }
+    }
+
+    /// Interposed dup2 function (for fd tracking)
+    redhook::hook! {
+        unsafe fn dup2(oldfd: c_int, newfd: c_int) -> c_int => my_dup2_fd_tracking {
+            let result = redhook::real!(dup2)(oldfd, newfd);
+            if result >= 0 {
+                // Duplicate the fd mapping
+                with_dirfd_mapping(|mapping| {
+                    mapping.dup_fd(oldfd, newfd);
+                    log_message(&format!("duplicated fd {} -> {} with dup2", oldfd, newfd));
+                });
+            }
+            result
+        }
+    }
+
+    /// Interposed dup3 function (for fd tracking)
+    redhook::hook! {
+        unsafe fn dup3(oldfd: c_int, newfd: c_int, flags: c_int) -> c_int => my_dup3_fd_tracking {
+            let result = redhook::real!(dup3)(oldfd, newfd, flags);
+            if result >= 0 {
+                // Duplicate the fd mapping
+                with_dirfd_mapping(|mapping| {
+                    mapping.dup_fd(oldfd, newfd);
+                    log_message(&format!("duplicated fd {} -> {} with dup3", oldfd, newfd));
+                });
+            }
+            result
+        }
+    }
+
+    /// Interposed chdir function (for cwd tracking)
+    redhook::hook! {
+        unsafe fn chdir(path: *const c_char) -> c_int => my_chdir_fd_tracking {
+            if path.is_null() {
+                return redhook::real!(chdir)(path);
+            }
+
+            let result = redhook::real!(chdir)(path);
+            if result == 0 {
+                // Update current working directory
+                let c_path = unsafe { CStr::from_ptr(path) };
+                if let Ok(path_str) = c_path.to_str() {
+                    with_dirfd_mapping(|mapping| {
+                        let path_buf = PathBuf::from(path_str);
+                        let canonical_path = path_buf.canonicalize().unwrap_or(path_buf);
+                        mapping.set_cwd(canonical_path.clone());
+                        log_message(&format!("updated cwd to {}", canonical_path.display()));
+                    });
+                }
+            }
+            result
+        }
+    }
+
+    /// Interposed fchdir function (for cwd tracking)
+    redhook::hook! {
+        unsafe fn fchdir(fd: c_int) -> c_int => my_fchdir_fd_tracking {
+            let result = redhook::real!(fchdir)(fd);
+            if result == 0 {
+                // Update current working directory from fd
+                with_dirfd_mapping(|mapping| {
+                    if let Some(path) = mapping.get_path(fd).cloned() {
+                        mapping.set_cwd(path.clone());
+                        log_message(&format!("updated cwd to {} via fd {}", path.display(), fd));
+                    }
+                });
+            }
+            result
         }
     }
 }

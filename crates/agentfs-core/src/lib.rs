@@ -21,7 +21,7 @@ pub mod storage;
 pub mod vfs;
 
 // Re-export main types
-pub use vfs::{FsCore, PID};
+pub use vfs::{DirfdMapping, FsCore, PID};
 
 #[cfg(test)]
 mod tests {

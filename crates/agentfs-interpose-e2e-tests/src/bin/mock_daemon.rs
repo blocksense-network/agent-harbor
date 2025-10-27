@@ -45,16 +45,46 @@ struct AgentFsDaemon {
 
 impl AgentFsDaemon {
     fn new() -> FsResult<Self> {
-        // Create a basic configuration for the daemon
-        // In a real implementation, this would be configurable
-        let config = FsConfig {
-            interpose: InterposeConfig {
-                enabled: true,
-                max_copy_bytes: 64 * 1024 * 1024, // 64MB
-                require_reflink: false,
-                allow_windows_reparse: false,
-            },
-            ..Default::default()
+        Self::new_with_overlay(None, None, None)
+    }
+
+    fn new_with_overlay(
+        lower_dir: Option<PathBuf>,
+        upper_dir: Option<PathBuf>,
+        _work_dir: Option<PathBuf>,
+    ) -> FsResult<Self> {
+        // Configure FsCore based on overlay settings
+        let config = if let Some(lower) = lower_dir {
+            println!(
+                "AgentFsDaemon: configuring overlay with lower={}",
+                lower.display()
+            );
+            FsConfig {
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+                overlay: agentfs_core::config::OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower),
+                    copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                },
+                ..Default::default()
+            }
+        } else {
+            // Use default FsCore configuration (overlay disabled, in-memory operations)
+            // Only linkat/symlinkat operations use direct filesystem calls for e2e test visibility
+            FsConfig {
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+                ..Default::default()
+            }
         };
 
         let core = FsCore::new(config)?;
@@ -831,6 +861,72 @@ impl AgentFsDaemon {
             }
         }
     }
+
+    fn handle_dirfd_open_dir(&mut self, pid: u32, path: String, fd: i32) -> Result<(), String> {
+        println!(
+            "AgentFsDaemon: dirfd_open_dir(pid={}, path={}, fd={})",
+            pid, path, fd
+        );
+
+        // Register the dirfd mapping with FsCore
+        self.core
+            .register_process_dirfd_mapping(pid)
+            .map_err(|e| format!("Failed to register process mapping: {}", e))?;
+
+        self.core
+            .open_dir_fd(pid, PathBuf::from(path), fd as std::os::fd::RawFd)
+            .map_err(|e| format!("Failed to register dirfd: {}", e))
+    }
+
+    fn handle_dirfd_close_fd(&mut self, pid: u32, fd: i32) -> Result<(), String> {
+        println!("AgentFsDaemon: dirfd_close_fd(pid={}, fd={})", pid, fd);
+
+        self.core
+            .close_fd(pid, fd as std::os::fd::RawFd)
+            .map_err(|e| format!("Failed to close dirfd: {}", e))
+    }
+
+    fn handle_dirfd_dup_fd(&mut self, pid: u32, old_fd: i32, new_fd: i32) -> Result<(), String> {
+        println!(
+            "AgentFsDaemon: dirfd_dup_fd(pid={}, old_fd={}, new_fd={})",
+            pid, old_fd, new_fd
+        );
+
+        self.core
+            .dup_fd(
+                pid,
+                old_fd as std::os::fd::RawFd,
+                new_fd as std::os::fd::RawFd,
+            )
+            .map_err(|e| format!("Failed to dup dirfd: {}", e))
+    }
+
+    fn handle_dirfd_set_cwd(&mut self, pid: u32, cwd: String) -> Result<(), String> {
+        println!("AgentFsDaemon: dirfd_set_cwd(pid={}, cwd={})", pid, cwd);
+
+        self.core
+            .set_process_cwd(pid, PathBuf::from(cwd))
+            .map_err(|e| format!("Failed to set cwd: {}", e))
+    }
+
+    fn handle_dirfd_resolve_path(
+        &mut self,
+        pid: u32,
+        dirfd: i32,
+        relative_path: String,
+    ) -> Result<String, String> {
+        println!(
+            "AgentFsDaemon: dirfd_resolve_path(pid={}, dirfd={}, relative_path={})",
+            pid, dirfd, relative_path
+        );
+
+        let resolved_path = self
+            .core
+            .resolve_path_with_dirfd(pid, dirfd, Path::new(&relative_path))
+            .map_err(|e| format!("Failed to resolve path: {}", e))?;
+
+        Ok(resolved_path.to_string_lossy().to_string())
+    }
 }
 
 fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, client_pid: u32) {
@@ -1125,10 +1221,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fstatat((version, fstatat_req)) => {
                     let daemon = daemon.lock().unwrap();
                     let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
-                    let dirfd = HandleId(fstatat_req.dirfd as u64);
                     match daemon.core.fstatat(
                         &daemon.processes[&client_pid],
-                        dirfd,
                         path.as_ref(),
                         fstatat_req.flags,
                     ) {
@@ -1183,10 +1277,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fchmodat((version, fchmodat_req)) => {
                     let daemon = daemon.lock().unwrap();
                     let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
-                    let dirfd = HandleId(fchmodat_req.dirfd as u64);
                     match daemon.core.fchmodat(
                         &daemon.processes[&client_pid],
-                        dirfd,
                         path.as_ref(),
                         fchmodat_req.mode,
                         fchmodat_req.flags,
@@ -1265,10 +1357,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fchownat((version, fchownat_req)) => {
                     let daemon = daemon.lock().unwrap();
                     let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
-                    let dirfd = HandleId(fchownat_req.dirfd as u64);
                     match daemon.core.fchownat(
                         &daemon.processes[&client_pid],
-                        dirfd,
                         path.as_ref(),
                         fchownat_req.uid,
                         fchownat_req.gid,
@@ -1347,9 +1437,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Utimensat((version, utimensat_req)) => {
                     let daemon = daemon.lock().unwrap();
                     let path = String::from_utf8_lossy(&utimensat_req.path).to_string();
-                    let dirfd = HandleId(utimensat_req.dirfd as u64);
-                    let times = utimensat_req.times.map(|t| (t.0, t.1));
-                    match daemon.core.futimens(&daemon.processes[&client_pid], dirfd, times) {
+                    match daemon.core.utimensat(
+                        &daemon.processes[&client_pid],
+                        path.as_ref(),
+                        utimensat_req.times,
+                        utimensat_req.flags,
+                    ) {
                         Ok(()) => {
                             let response = Response::utimensat();
                             send_response(&mut stream, &response);
@@ -1357,6 +1450,47 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         Err(e) => {
                             let response =
                                 Response::error(format!("utimensat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Linkat((version, linkat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let old_path = String::from_utf8_lossy(&linkat_req.old_path).to_string();
+                    let new_path = String::from_utf8_lossy(&linkat_req.new_path).to_string();
+                    match daemon.core.linkat(
+                        &daemon.processes[&client_pid],
+                        old_path.as_ref(),
+                        new_path.as_ref(),
+                        linkat_req.flags,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::linkat();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("linkat failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::Symlinkat((version, symlinkat_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    let target = String::from_utf8_lossy(&symlinkat_req.target).to_string();
+                    let linkpath = String::from_utf8_lossy(&symlinkat_req.linkpath).to_string();
+                    match daemon.core.symlinkat(
+                        &daemon.processes[&client_pid],
+                        &target,
+                        linkpath.as_ref(),
+                    ) {
+                        Ok(()) => {
+                            let response = Response::symlinkat();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("symlinkat failed: {}", e), Some(2));
                             send_response(&mut stream, &response);
                         }
                     }
@@ -1471,6 +1605,97 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
+                Request::DirfdOpenDir((version, dirfd_open_dir_req)) => {
+                    let path = String::from_utf8_lossy(&dirfd_open_dir_req.path).to_string();
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dirfd_open_dir(
+                        dirfd_open_dir_req.pid,
+                        path,
+                        dirfd_open_dir_req.fd as std::os::fd::RawFd,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::dirfd_open_dir();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("dirfd_open_dir failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DirfdCloseFd((version, dirfd_close_fd_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dirfd_close_fd(
+                        dirfd_close_fd_req.pid,
+                        dirfd_close_fd_req.fd as std::os::fd::RawFd,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::dirfd_close_fd();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("dirfd_close_fd failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DirfdDupFd((version, dirfd_dup_fd_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dirfd_dup_fd(
+                        dirfd_dup_fd_req.pid,
+                        dirfd_dup_fd_req.old_fd as std::os::fd::RawFd,
+                        dirfd_dup_fd_req.new_fd as std::os::fd::RawFd,
+                    ) {
+                        Ok(()) => {
+                            let response = Response::dirfd_dup_fd();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("dirfd_dup_fd failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DirfdSetCwd((version, dirfd_set_cwd_req)) => {
+                    let cwd = String::from_utf8_lossy(&dirfd_set_cwd_req.cwd).to_string();
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dirfd_set_cwd(dirfd_set_cwd_req.pid, cwd) {
+                        Ok(()) => {
+                            let response = Response::dirfd_set_cwd();
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("dirfd_set_cwd failed: {}", e), Some(2));
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                Request::DirfdResolvePath((version, dirfd_resolve_path_req)) => {
+                    let relative_path =
+                        String::from_utf8_lossy(&dirfd_resolve_path_req.relative_path).to_string();
+                    let mut daemon = daemon.lock().unwrap();
+                    match daemon.handle_dirfd_resolve_path(
+                        dirfd_resolve_path_req.pid,
+                        dirfd_resolve_path_req.dirfd as std::os::fd::RawFd,
+                        relative_path,
+                    ) {
+                        Ok(resolved_path) => {
+                            let response = Response::dirfd_resolve_path(resolved_path);
+                            send_response(&mut stream, &response);
+                        }
+                        Err(e) => {
+                            let response = Response::error(
+                                format!("dirfd_resolve_path failed: {}", e),
+                                Some(2),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
                 _ => {
                     let response = Response::error("unsupported request".to_string(), Some(3));
                     send_response(&mut stream, &response);
@@ -1553,11 +1778,56 @@ fn send_response(stream: &mut UnixStream, response: &Response) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: {} <socket_path>", args[0]);
+        eprintln!(
+            "Usage: {} <socket_path> [--lower-dir <path>] [--upper-dir <path>] [--work-dir <path>]",
+            args[0]
+        );
         std::process::exit(1);
     }
 
     let socket_path = &args[1];
+
+    // Parse overlay arguments
+    let mut lower_dir = None;
+    let mut upper_dir = None;
+    let mut work_dir = None;
+
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--lower-dir" => {
+                if i + 1 < args.len() {
+                    lower_dir = Some(PathBuf::from(&args[i + 1]));
+                    i += 2;
+                } else {
+                    eprintln!("--lower-dir requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            "--upper-dir" => {
+                if i + 1 < args.len() {
+                    upper_dir = Some(PathBuf::from(&args[i + 1]));
+                    i += 2;
+                } else {
+                    eprintln!("--upper-dir requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            "--work-dir" => {
+                if i + 1 < args.len() {
+                    work_dir = Some(PathBuf::from(&args[i + 1]));
+                    i += 2;
+                } else {
+                    eprintln!("--work-dir requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                eprintln!("Unknown argument: {}", args[i]);
+                std::process::exit(1);
+            }
+        }
+    }
 
     // Clean up any existing socket
     let _ = std::fs::remove_file(socket_path);
@@ -1565,7 +1835,7 @@ fn main() {
     let listener = UnixListener::bind(socket_path).expect("failed to bind socket");
     println!("AgentFsDaemon: listening on {}", socket_path);
 
-    let daemon = match AgentFsDaemon::new() {
+    let daemon = match AgentFsDaemon::new_with_overlay(lower_dir, upper_dir, work_dir) {
         Ok(daemon) => Arc::new(Mutex::new(daemon)),
         Err(e) => {
             eprintln!("Failed to create AgentFS daemon: {:?}", e);

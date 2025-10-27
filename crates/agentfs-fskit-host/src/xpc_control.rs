@@ -117,6 +117,13 @@ impl XpcControlService {
             Request::Remove(_) => todo!("Remove not implemented for XPC control"),
             Request::Mkdir(_) => todo!("Mkdir not implemented for XPC control"),
             Request::Mkdirat(_) => todo!("Mkdirat not implemented for XPC control"),
+            Request::DirfdOpenDir(_) => todo!("DirfdOpenDir not implemented for XPC control"),
+            Request::DirfdCloseFd(_) => todo!("DirfdCloseFd not implemented for XPC control"),
+            Request::DirfdDupFd(_) => todo!("DirfdDupFd not implemented for XPC control"),
+            Request::DirfdSetCwd(_) => todo!("DirfdSetCwd not implemented for XPC control"),
+            Request::DirfdResolvePath(_) => {
+                todo!("DirfdResolvePath not implemented for XPC control")
+            }
         }
     }
 

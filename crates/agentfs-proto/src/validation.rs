@@ -61,7 +61,12 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         | Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: version })
         | Request::DaemonStateStats(DaemonStateStatsRequest { data: version })
         | Request::PathOp((version, _))
-        | Request::InterposeSetGet((version, _)) => {
+        | Request::InterposeSetGet((version, _))
+        | Request::DirfdOpenDir((version, _))
+        | Request::DirfdCloseFd((version, _))
+        | Request::DirfdDupFd((version, _))
+        | Request::DirfdSetCwd((version, _))
+        | Request::DirfdResolvePath((version, _)) => {
             if version != b"1" {
                 return Err(ValidationError::Schema("version must be '1'".to_string()));
             }
@@ -129,6 +134,11 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
         | Response::DaemonState(_)
         | Response::PathOp(_)
         | Response::InterposeSetGet(_)
+        | Response::DirfdOpenDir(_)
+        | Response::DirfdCloseFd(_)
+        | Response::DirfdDupFd(_)
+        | Response::DirfdSetCwd(_)
+        | Response::DirfdResolvePath(_)
         | Response::Error(_) => Ok(()),
     }
 }
