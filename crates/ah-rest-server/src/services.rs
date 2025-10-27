@@ -4,6 +4,8 @@
 //! Business logic services
 
 use crate::models::{InternalSession, SessionStore};
+use ah_core::{BranchesEnumerator, local_branches_enumerator::LocalBranchesEnumerator};
+use ah_local_db::Database;
 use ah_rest_api_contract::*;
 use std::sync::Arc;
 
@@ -122,4 +124,34 @@ impl TaskService {
     }
 
     // TODO: Implement draft task methods
+}
+
+/// Repository service for repository-related operations
+pub struct RepositoryService {
+    database: Arc<Database>,
+}
+
+impl RepositoryService {
+    pub fn new(database: Arc<Database>) -> Self {
+        Self { database }
+    }
+
+    /// Get branches for a repository
+    pub async fn get_repository_branches(
+        &self,
+        repository_id: &str,
+    ) -> anyhow::Result<Vec<BranchInfo>> {
+        use ah_core::DatabaseManager;
+        let db_manager = DatabaseManager::with_database((*self.database).clone());
+        let branches_enumerator = LocalBranchesEnumerator::new(db_manager);
+        let branches = branches_enumerator.list_branches(repository_id).await;
+        Ok(branches
+            .into_iter()
+            .map(|branch| BranchInfo {
+                name: branch.name,
+                is_default: branch.is_default,
+                last_commit: branch.last_commit,
+            })
+            .collect())
+    }
 }

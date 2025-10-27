@@ -446,6 +446,31 @@ pub struct Repository {
     pub last_used_at: Option<DateTime<Utc>>,
 }
 
+/// Branch information for repository branch listing
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct BranchInfo {
+    /// Branch name
+    pub name: String,
+    /// Whether this is the default branch
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+    /// Last commit hash (optional)
+    #[serde(rename = "lastCommit", skip_serializing_if = "Option::is_none")]
+    pub last_commit: Option<String>,
+}
+
+/// Repository branches response
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct RepositoryBranchesResponse {
+    /// Repository ID
+    #[serde(rename = "repositoryId")]
+    pub repository_id: String,
+    /// List of branches
+    pub branches: Vec<BranchInfo>,
+}
+
 /// Workspace summary
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

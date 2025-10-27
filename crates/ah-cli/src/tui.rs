@@ -4,7 +4,9 @@
 //! TUI command handling for the CLI
 
 use ah_core::{
-    AgentExecutionConfig, WorkspaceFilesEnumerator, local_task_manager::GenericLocalTaskManager,
+    AgentExecutionConfig, LocalBranchesEnumerator, LocalRepositoriesEnumerator,
+    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, WorkspaceFilesEnumerator,
+    local_task_manager::GenericLocalTaskManager,
 };
 use ah_mux::{
     TmuxMultiplexer,
@@ -414,7 +416,7 @@ impl TuiArgs {
 
             // Use RestTaskManager for remote mode
             let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
-                ah_core::rest_task_manager::GenericRestTaskManager::new(rest_client),
+                ah_core::rest_task_manager::GenericRestTaskManager::new(rest_client.clone()),
             );
 
             // For remote mode, we need remote workspace files and workflows
@@ -425,10 +427,20 @@ impl TuiArgs {
             let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
                 Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
 
+            // Create remote enumerators for remote mode
+            let repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator> = Arc::new(
+                ah_core::RemoteRepositoriesEnumerator::new(rest_client.clone(), server_url.clone()),
+            );
+            let branches_enumerator: Arc<dyn ah_core::BranchesEnumerator> = Arc::new(
+                ah_core::RemoteBranchesEnumerator::new(rest_client, server_url),
+            );
+
             DashboardDependencies {
                 workspace_files,
                 workspace_workflows,
                 task_manager,
+                repositories_enumerator,
+                branches_enumerator,
                 settings: Settings::default(),
             }
         } else {
@@ -474,15 +486,28 @@ impl TuiArgs {
                 }
             }
 
+            // Create database manager for enumerators
+            let db_manager =
+                ah_core::DatabaseManager::new().expect("Failed to create database manager");
+
             let task_manager: Arc<dyn ah_core::TaskManager> = Arc::new(
                 GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
                     .expect("Failed to create local task manager"),
             );
 
+            // Create local enumerators for local mode
+            let repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator> = Arc::new(
+                ah_core::LocalRepositoriesEnumerator::new(db_manager.clone()),
+            );
+            let branches_enumerator: Arc<dyn ah_core::BranchesEnumerator> =
+                Arc::new(ah_core::LocalBranchesEnumerator::new(db_manager));
+
             DashboardDependencies {
                 workspace_files,
                 workspace_workflows,
                 task_manager,
+                repositories_enumerator,
+                branches_enumerator,
                 settings: Settings::default(),
             }
         };

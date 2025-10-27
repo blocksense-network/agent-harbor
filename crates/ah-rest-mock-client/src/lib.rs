@@ -26,7 +26,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Mock REST client implementing the TaskManager trait
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MockRestClient {
     /// In-memory storage for tasks
     tasks: Arc<RwLock<HashMap<String, TaskInfo>>>,
@@ -348,86 +348,6 @@ impl TaskManager for MockRestClient {
         SaveDraftResult::Success
     }
 
-    async fn list_repositories(&self) -> Vec<Repository> {
-        // Simulate network delay
-        if self.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
-        }
-
-        vec![
-            Repository {
-                id: "repo_001".to_string(),
-                name: "myapp/backend".to_string(),
-                url: "https://github.com/user/myapp-backend".to_string(),
-                default_branch: "main".to_string(),
-            },
-            Repository {
-                id: "repo_002".to_string(),
-                name: "myapp/frontend".to_string(),
-                url: "https://github.com/user/myapp-frontend".to_string(),
-                default_branch: "main".to_string(),
-            },
-            Repository {
-                id: "repo_003".to_string(),
-                name: "myapp/mobile".to_string(),
-                url: "https://github.com/user/myapp-mobile".to_string(),
-                default_branch: "develop".to_string(),
-            },
-        ]
-    }
-
-    async fn list_branches(&self, repository_id: &str) -> Vec<Branch> {
-        // Simulate network delay
-        if self.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
-        }
-
-        match repository_id {
-            "repo_001" => vec![
-                Branch {
-                    name: "main".to_string(),
-                    is_default: true,
-                    last_commit: Some("abc123".to_string()),
-                },
-                Branch {
-                    name: "develop".to_string(),
-                    is_default: false,
-                    last_commit: Some("def456".to_string()),
-                },
-                Branch {
-                    name: "feature/auth".to_string(),
-                    is_default: false,
-                    last_commit: Some("ghi789".to_string()),
-                },
-            ],
-            "repo_002" => vec![
-                Branch {
-                    name: "main".to_string(),
-                    is_default: true,
-                    last_commit: Some("jkl012".to_string()),
-                },
-                Branch {
-                    name: "feature/ui".to_string(),
-                    is_default: false,
-                    last_commit: Some("mno345".to_string()),
-                },
-            ],
-            "repo_003" => vec![
-                Branch {
-                    name: "develop".to_string(),
-                    is_default: true,
-                    last_commit: Some("pqr678".to_string()),
-                },
-                Branch {
-                    name: "main".to_string(),
-                    is_default: false,
-                    last_commit: Some("stu901".to_string()),
-                },
-            ],
-            _ => vec![],
-        }
-    }
-
     async fn launch_task_from_starting_point(
         &self,
         starting_point: ah_core::task_manager::StartingPoint,
@@ -736,21 +656,91 @@ impl ah_core::RestApiClient for MockRestClient {
         _project_id: Option<&str>,
     ) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>
     {
-        // Get repositories from the mock client
-        let repos = ah_core::TaskManager::list_repositories(self).await;
+        // Simulate network delay
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
 
-        Ok(repos
-            .into_iter()
-            .map(|repo| ah_rest_api_contract::Repository {
-                id: repo.id,
-                display_name: repo.name,
+        // Return mock repositories
+        Ok(vec![
+            ah_rest_api_contract::Repository {
+                id: "repo_001".to_string(),
+                display_name: "myapp/backend".to_string(),
                 scm_provider: "git".to_string(),
-                remote_url: url::Url::parse(&repo.url)
+                remote_url: url::Url::parse("https://github.com/user/myapp-backend")
                     .unwrap_or_else(|_| url::Url::parse("https://example.com").unwrap()),
-                default_branch: repo.default_branch,
+                default_branch: "main".to_string(),
                 last_used_at: Some(chrono::Utc::now()),
-            })
-            .collect())
+            },
+            ah_rest_api_contract::Repository {
+                id: "repo_002".to_string(),
+                display_name: "myapp/frontend".to_string(),
+                scm_provider: "git".to_string(),
+                remote_url: url::Url::parse("https://github.com/user/myapp-frontend")
+                    .unwrap_or_else(|_| url::Url::parse("https://example.com").unwrap()),
+                default_branch: "main".to_string(),
+                last_used_at: Some(chrono::Utc::now()),
+            },
+            ah_rest_api_contract::Repository {
+                id: "repo_003".to_string(),
+                display_name: "myapp/mobile".to_string(),
+                scm_provider: "git".to_string(),
+                remote_url: url::Url::parse("https://github.com/user/myapp-mobile")
+                    .unwrap_or_else(|_| url::Url::parse("https://example.com").unwrap()),
+                default_branch: "develop".to_string(),
+                last_used_at: Some(chrono::Utc::now()),
+            },
+        ])
+    }
+
+    async fn get_repository_branches(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<ah_rest_api_contract::BranchInfo>, Box<dyn std::error::Error + Send + Sync>>
+    {
+        // Simulate network delay
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
+
+        // Return mock branches based on repository
+        match repository_id {
+            "repo_001" => Ok(vec![
+                ah_rest_api_contract::BranchInfo {
+                    name: "main".to_string(),
+                    is_default: true,
+                    last_commit: Some("a1b2c3d4e5f6".to_string()),
+                },
+                ah_rest_api_contract::BranchInfo {
+                    name: "develop".to_string(),
+                    is_default: false,
+                    last_commit: Some("f6e5d4c3b2a1".to_string()),
+                },
+                ah_rest_api_contract::BranchInfo {
+                    name: "feature/auth".to_string(),
+                    is_default: false,
+                    last_commit: Some("123456789abc".to_string()),
+                },
+            ]),
+            "repo_002" => Ok(vec![ah_rest_api_contract::BranchInfo {
+                name: "main".to_string(),
+                is_default: true,
+                last_commit: Some("abcdef123456".to_string()),
+            }]),
+            "repo_003" => Ok(vec![
+                ah_rest_api_contract::BranchInfo {
+                    name: "develop".to_string(),
+                    is_default: true,
+                    last_commit: Some("654321fedcba".to_string()),
+                },
+                ah_rest_api_contract::BranchInfo {
+                    name: "feature/ui".to_string(),
+                    is_default: false,
+                    last_commit: Some("fedcba654321".to_string()),
+                },
+            ]),
+            _ => Ok(vec![]), // Empty for unknown repositories
+        }
     }
 }
 
@@ -1190,6 +1180,7 @@ impl MockEventState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ah_core::RestApiClient;
 
     #[tokio::test]
     async fn mock_client_launches_successful_task() {
@@ -1309,24 +1300,24 @@ mod tests {
     #[tokio::test]
     async fn mock_client_list_repositories() {
         let client = MockRestClient::new();
-        let repos = client.list_repositories().await;
+        let repos = client.list_repositories(None, None).await.unwrap();
 
         assert_eq!(repos.len(), 3);
-        assert_eq!(repos[0].name, "myapp/backend");
-        assert_eq!(repos[1].name, "myapp/frontend");
-        assert_eq!(repos[2].name, "myapp/mobile");
+        assert_eq!(repos[0].display_name, "myapp/backend");
+        assert_eq!(repos[1].display_name, "myapp/frontend");
+        assert_eq!(repos[2].display_name, "myapp/mobile");
     }
 
     #[tokio::test]
-    async fn mock_client_list_branches() {
+    async fn mock_client_get_repository_branches() {
         let client = MockRestClient::new();
 
-        let branches = client.list_branches("repo_001").await;
+        let branches = client.get_repository_branches("repo_001").await.unwrap();
         assert_eq!(branches.len(), 3);
         assert_eq!(branches[0].name, "main");
         assert!(branches[0].is_default);
 
-        let branches = client.list_branches("unknown_repo").await;
+        let branches = client.get_repository_branches("unknown_repo").await.unwrap();
         assert_eq!(branches.len(), 0);
     }
 }

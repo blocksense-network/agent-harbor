@@ -67,6 +67,8 @@ use crate::view_model::{
     TaskCardType, TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionViewModel,
     TaskMetadataViewModel,
 };
+use ah_core::branches_enumerator::BranchesEnumerator;
+use ah_core::repositories_enumerator::RepositoriesEnumerator;
 use ah_core::task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
@@ -900,8 +902,12 @@ impl ViewModel {
                     created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 };
 
-                let new_card =
-                    create_draft_card_from_task(new_draft, CardFocusElement::TaskDescription);
+                let new_card = create_draft_card_from_task(
+                    new_draft,
+                    CardFocusElement::TaskDescription,
+                    Some(self.repositories_enumerator.clone()),
+                    Some(self.branches_enumerator.clone()),
+                );
                 self.draft_cards.push(new_card);
                 let new_index = self.draft_cards.len() - 1;
                 self.focus_element = FocusElement::DraftTask(new_index); // Focus on the new draft task
@@ -1131,6 +1137,8 @@ pub struct ViewModel {
     pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
     pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
     pub task_manager: Arc<dyn TaskManager>, // Task launching abstraction
+    pub repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
+    pub branches_enumerator: Arc<dyn BranchesEnumerator>,
 
     // Autocomplete system
     pub autocomplete: InlineAutocomplete,
@@ -1153,8 +1161,12 @@ pub struct ViewModel {
     // Background loading communication channels
     pub files_sender: Option<oneshot::Sender<Vec<String>>>,
     pub workflows_sender: Option<oneshot::Sender<Vec<String>>>,
+    pub repositories_sender: Option<oneshot::Sender<Vec<String>>>,
+    pub branches_sender: Option<oneshot::Sender<Vec<String>>>,
     pub files_receiver: Option<oneshot::Receiver<Vec<String>>>,
     pub workflows_receiver: Option<oneshot::Receiver<Vec<String>>>,
+    pub repositories_receiver: Option<oneshot::Receiver<Vec<String>>>,
+    pub branches_receiver: Option<oneshot::Receiver<Vec<String>>>,
 
     // Task collections - cards contain the domain objects
     pub draft_cards: Vec<TaskEntryViewModel>, // Draft tasks (editable)
@@ -1179,12 +1191,16 @@ impl ViewModel {
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
+        repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
+        branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
     ) -> Self {
         Self::new_internal(
             workspace_files,
             workspace_workflows,
             task_manager,
+            repositories_enumerator,
+            branches_enumerator,
             settings,
             false,
         )
@@ -1195,12 +1211,16 @@ impl ViewModel {
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
+        repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
+        branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
     ) -> Self {
         Self::new_internal(
             workspace_files,
             workspace_workflows,
             task_manager,
+            repositories_enumerator,
+            branches_enumerator,
             settings,
             true,
         )
@@ -1210,15 +1230,14 @@ impl ViewModel {
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
+        repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
+        branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
         with_background_loading: bool,
     ) -> Self {
-        // Initialize available options
-        let available_repositories = vec![
-            "blocksense/agent-harbor".to_string(),
-            "example/project".to_string(),
-        ];
-        let available_branches = vec!["main".to_string(), "develop".to_string()];
+        // Initialize available options (will be populated asynchronously)
+        let available_repositories = vec![];
+        let available_branches = vec![];
         let available_models = vec![
             "Claude 3.5 Sonnet".to_string(),
             "GPT-4".to_string(),
@@ -1234,19 +1253,33 @@ impl ViewModel {
         let workflows_loaded = false;
 
         // Create communication channels for background loading (only if enabled)
-        let (files_sender, files_receiver, workflows_sender, workflows_receiver) =
-            if with_background_loading {
-                let (files_sender, files_receiver) = oneshot::channel();
-                let (workflows_sender, workflows_receiver) = oneshot::channel();
-                (
-                    Some(files_sender),
-                    Some(files_receiver),
-                    Some(workflows_sender),
-                    Some(workflows_receiver),
-                )
-            } else {
-                (None, None, None, None)
-            };
+        let (
+            files_sender,
+            files_receiver,
+            workflows_sender,
+            workflows_receiver,
+            repositories_sender,
+            repositories_receiver,
+            branches_sender,
+            branches_receiver,
+        ) = if with_background_loading {
+            let (files_sender, files_receiver) = oneshot::channel();
+            let (workflows_sender, workflows_receiver) = oneshot::channel();
+            let (repositories_sender, repositories_receiver) = oneshot::channel();
+            let (branches_sender, branches_receiver) = oneshot::channel();
+            (
+                Some(files_sender),
+                Some(files_receiver),
+                Some(workflows_sender),
+                Some(workflows_receiver),
+                Some(repositories_sender),
+                Some(repositories_receiver),
+                Some(branches_sender),
+                Some(branches_receiver),
+            )
+        } else {
+            (None, None, None, None, None, None, None, None)
+        };
 
         // Create initial draft card with embedded domain object
         let initial_draft = DraftTask {
@@ -1269,6 +1302,8 @@ impl ViewModel {
         let draft_cards = vec![create_draft_card_from_task(
             initial_draft.clone(),
             initial_card_focus,
+            Some(Arc::clone(&repositories_enumerator)),
+            Some(Arc::clone(&branches_enumerator)),
         )];
         let task_cards = vec![]; // Start with no task cards
 
@@ -1321,8 +1356,12 @@ impl ViewModel {
             // Background loading communication channels
             files_sender,
             workflows_sender,
+            repositories_sender,
+            branches_sender,
             files_receiver,
             workflows_receiver,
+            repositories_receiver,
+            branches_receiver,
 
             draft_cards: draft_cards.clone(),
             task_cards: task_cards.clone(),
@@ -1361,6 +1400,8 @@ impl ViewModel {
             workspace_files: workspace_files.clone(),
             workspace_workflows: workspace_workflows.clone(),
             task_manager: task_manager.clone(),
+            repositories_enumerator: repositories_enumerator.clone(),
+            branches_enumerator: branches_enumerator.clone(),
 
             // Autocomplete system - initialize with empty providers for now
             autocomplete: InlineAutocomplete::new(),
@@ -1619,6 +1660,8 @@ impl ViewModel {
                             self.draft_cards[idx] = create_draft_card_from_task(
                                 new_draft_task,
                                 CardFocusElement::TaskDescription,
+                                Some(self.repositories_enumerator.clone()),
+                                Some(self.branches_enumerator.clone()),
                             );
                             // Keep focus on the new draft card
                             self.focus_element = FocusElement::DraftTask(idx);
@@ -2782,6 +2825,42 @@ impl ViewModel {
                 });
             }
         }
+
+        // Start loading repositories if not already loaded
+        if !self.loading_repositories {
+            self.loading_repositories = true;
+            let repositories_enumerator = Arc::clone(&self.repositories_enumerator);
+
+            // Take the sender to move into the async task
+            if let Some(sender) = self.repositories_sender.take() {
+                tokio::spawn(async move {
+                    let repositories = repositories_enumerator.list_repositories().await;
+                    let repository_names: Vec<String> =
+                        repositories.into_iter().map(|repo| repo.name).collect();
+                    // Send the loaded repositories back via the channel
+                    let _ = sender.send(repository_names);
+                });
+            }
+        }
+
+        // Start loading branches if not already loaded
+        if !self.loading_branches {
+            self.loading_branches = true;
+            let branches_enumerator = Arc::clone(&self.branches_enumerator);
+
+            // Take the sender to move into the async task
+            if let Some(sender) = self.branches_sender.take() {
+                tokio::spawn(async move {
+                    // For now, load branches for a default repository or empty list
+                    // TODO: This should be context-aware based on selected repository
+                    let branches = branches_enumerator.list_branches("").await;
+                    let branch_names: Vec<String> =
+                        branches.into_iter().map(|branch| branch.name).collect();
+                    // Send the loaded branches back via the channel
+                    let _ = sender.send(branch_names);
+                });
+            }
+        }
     }
 
     /// Check for completed background loading tasks and update state
@@ -2805,6 +2884,26 @@ impl ViewModel {
                 self.loading_workflows = false;
                 self.workflows_receiver = None;
                 self.needs_redraw = true; // Trigger redraw to update autocomplete
+            }
+        }
+
+        // Check if repositories have been loaded
+        if let Some(receiver) = self.repositories_receiver.as_mut() {
+            if let Ok(repositories) = receiver.try_recv() {
+                self.available_repositories = repositories;
+                self.loading_repositories = false;
+                self.repositories_receiver = None;
+                self.needs_redraw = true; // Trigger redraw to update UI
+            }
+        }
+
+        // Check if branches have been loaded
+        if let Some(receiver) = self.branches_receiver.as_mut() {
+            if let Ok(branches) = receiver.try_recv() {
+                self.available_branches = branches;
+                self.loading_branches = false;
+                self.branches_receiver = None;
+                self.needs_redraw = true; // Trigger redraw to update UI
             }
         }
     }
@@ -3246,8 +3345,12 @@ impl ViewModel {
                     }], // Default model
                     created_at: draft_info.created_at,
                 };
-                let draft_card =
-                    create_draft_card_from_task(draft, CardFocusElement::TaskDescription);
+                let draft_card = create_draft_card_from_task(
+                    draft,
+                    CardFocusElement::TaskDescription,
+                    Some(self.repositories_enumerator.clone()),
+                    Some(self.branches_enumerator.clone()),
+                );
                 self.draft_cards.push(draft_card);
             }
         }
@@ -3359,8 +3462,12 @@ impl ViewModel {
                 };
 
                 // Create a new draft card with the embedded task
-                let new_card =
-                    create_draft_card_from_task(draft_task, CardFocusElement::TaskDescription);
+                let new_card = create_draft_card_from_task(
+                    draft_task,
+                    CardFocusElement::TaskDescription,
+                    Some(self.repositories_enumerator.clone()),
+                    Some(self.branches_enumerator.clone()),
+                );
                 self.draft_cards.insert(0, new_card);
 
                 // Update UI
@@ -3626,6 +3733,8 @@ fn create_draft_card_textarea(text: &str) -> tui_textarea::TextArea<'static> {
 pub fn create_draft_card_from_task(
     task: DraftTask,
     focus_element: CardFocusElement,
+    repositories_enumerator: Option<Arc<dyn RepositoriesEnumerator>>,
+    branches_enumerator: Option<Arc<dyn BranchesEnumerator>>,
 ) -> TaskEntryViewModel {
     let description = create_draft_card_textarea(&task.description);
 
@@ -3673,6 +3782,8 @@ pub fn create_draft_card_from_task(
         description,
         focus_element,
         auto_save_timer: None,
+        repositories_enumerator,
+        branches_enumerator,
     }
 }
 
@@ -3790,6 +3901,8 @@ fn create_draft_card_view_models(
                 description: textarea,
                 focus_element: CardFocusElement::TaskDescription,
                 auto_save_timer: None,
+                repositories_enumerator: None,
+                branches_enumerator: None,
             }
         })
         .collect()

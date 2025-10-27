@@ -11,12 +11,18 @@ pub mod agent_binary;
 pub mod agent_executor;
 pub mod agent_tasks;
 pub mod agent_types;
+pub mod branches_enumerator;
 pub mod db;
 pub mod devshell;
 pub mod editor;
 pub mod error;
+pub mod local_branches_enumerator;
+pub mod local_repositories_enumerator;
 pub mod local_task_manager;
 pub mod push;
+pub mod remote_branches_enumerator;
+pub mod remote_repositories_enumerator;
+pub mod repositories_enumerator;
 pub mod rest_task_manager;
 pub mod session;
 pub mod task;
@@ -74,3 +80,21 @@ pub use rest_task_manager::{GenericRestTaskManager, RestApiClient, RestTaskManag
 pub use workspace_files_enumerator::{
     FileStream, RepositoryError, RepositoryFile, WorkspaceFilesEnumerator,
 };
+
+/// Repository enumeration for discovering available repositories.
+pub use repositories_enumerator::RepositoriesEnumerator;
+
+/// Branch enumeration for discovering branches within repositories.
+pub use branches_enumerator::BranchesEnumerator;
+
+/// Local repository enumerator implementation.
+pub use local_repositories_enumerator::LocalRepositoriesEnumerator;
+
+/// Remote repository enumerator implementation.
+pub use remote_repositories_enumerator::RemoteRepositoriesEnumerator;
+
+/// Local branch enumerator implementation.
+pub use local_branches_enumerator::LocalBranchesEnumerator;
+
+/// Remote branch enumerator implementation.
+pub use remote_branches_enumerator::RemoteBranchesEnumerator;

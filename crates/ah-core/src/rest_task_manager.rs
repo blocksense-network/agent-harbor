@@ -67,6 +67,12 @@ pub trait RestApiClient: Send + Sync {
         tenant_id: Option<&str>,
         project_id: Option<&str>,
     ) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Get branches for a repository
+    async fn get_repository_branches(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<ah_rest_api_contract::BranchInfo>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 /// Generic TaskManager implementation for REST API clients
@@ -368,59 +374,6 @@ where
         SaveDraftResult::Success
     }
 
-    async fn list_repositories(&self) -> Vec<DomainRepository> {
-        match self.client.list_repositories(None, None).await {
-            Ok(repos) => repos
-                .into_iter()
-                .map(|repo| ah_domain_types::Repository {
-                    id: repo.id,
-                    name: repo.display_name,
-                    url: repo.remote_url.to_string(),
-                    default_branch: repo.default_branch,
-                })
-                .collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list repositories: {}", e);
-                vec![]
-            }
-        }
-    }
-
-    async fn list_branches(&self, repository_id: &str) -> Vec<Branch> {
-        // The REST API doesn't currently have a specific endpoint for listing branches
-        // This would need to be added to the server
-        // For now, return a mock response
-        tracing::warn!("Branch listing not yet implemented in REST API, using mock data");
-
-        // Try to get repository info to determine default branch
-        let default_branch = match self.client.list_repositories(None, None).await {
-            Ok(repos) => repos
-                .into_iter()
-                .find(|r| r.id == repository_id)
-                .map(|r| r.default_branch)
-                .unwrap_or_else(|| "main".to_string()),
-            Err(_) => "main".to_string(),
-        };
-
-        vec![
-            Branch {
-                name: default_branch.clone(),
-                is_default: true,
-                last_commit: Some("HEAD".to_string()),
-            },
-            Branch {
-                name: "develop".to_string(),
-                is_default: false,
-                last_commit: Some("abc123".to_string()),
-            },
-            Branch {
-                name: "feature/task-manager".to_string(),
-                is_default: false,
-                last_commit: Some("def456".to_string()),
-            },
-        ]
-    }
-
     async fn launch_task_from_starting_point(
         &self,
         starting_point: crate::task_manager::StartingPoint,
@@ -518,6 +471,16 @@ impl RestApiClient for ah_rest_client::RestClient {
     ) -> Result<Vec<ah_rest_api_contract::Repository>, Box<dyn std::error::Error + Send + Sync>>
     {
         self.list_repositories(tenant_id, project_id)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    async fn get_repository_branches(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<ah_rest_api_contract::BranchInfo>, Box<dyn std::error::Error + Send + Sync>>
+    {
+        self.get_repository_branches(repository_id)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }

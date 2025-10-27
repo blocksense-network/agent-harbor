@@ -10,8 +10,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ah_core::TaskManager;
-use ah_core::WorkspaceFilesEnumerator;
+use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
 use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
@@ -28,9 +27,23 @@ fn create_test_view_model() -> ViewModel {
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
         Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
+    let mock_client = MockRestClient::new();
+    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
+        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
+    );
+    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+        ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
+    );
     let settings = ah_tui::settings::Settings::default();
 
-    ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
+    ViewModel::new(
+        workspace_files,
+        workspace_workflows,
+        task_manager,
+        repositories_enumerator,
+        branches_enumerator,
+        settings,
+    )
 }
 
 /// Helper function to create a test key event

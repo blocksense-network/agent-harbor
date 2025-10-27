@@ -1,8 +1,10 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_core::TaskManager;
-use ah_core::{RepositoryFile, WorkspaceFilesEnumerator};
+use ah_core::{
+    BranchesEnumerator, RepositoriesEnumerator, RepositoryFile, TaskManager,
+    WorkspaceFilesEnumerator,
+};
 use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
@@ -39,9 +41,23 @@ fn new_view_model() -> ViewModel {
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
         Arc::new(MockWorkspaceWorkflows);
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
+    let mock_client = MockRestClient::new();
+    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
+        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
+    );
+    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+        ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
+    );
     let settings = Settings::default();
 
-    ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
+    ViewModel::new(
+        workspace_files,
+        workspace_workflows,
+        task_manager,
+        repositories_enumerator,
+        branches_enumerator,
+        settings,
+    )
 }
 
 fn send_key(vm: &mut ViewModel, code: KeyCode, modifiers: KeyModifiers) {

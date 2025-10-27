@@ -21,9 +21,13 @@ pub enum KeyboardOperationResult {
     },
 }
 use crate::settings::KeyboardOperation;
-use ah_core::SplitMode;
+use ah_core::{
+    SplitMode, branches_enumerator::BranchesEnumerator,
+    repositories_enumerator::RepositoriesEnumerator,
+};
 use ah_domain_types::SelectedModel;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
+use std::sync::Arc;
 
 /// Focus elements within a draft card
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,6 +145,10 @@ pub struct TaskEntryViewModel {
     pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
     pub focus_element: CardFocusElement,              // Current focus within this card
     pub auto_save_timer: Option<std::time::Instant>,  // Timer for auto-save functionality
+
+    // Optional enumerators (None for agent record/replay scenarios)
+    pub repositories_enumerator: Option<Arc<dyn RepositoriesEnumerator>>,
+    pub branches_enumerator: Option<Arc<dyn BranchesEnumerator>>,
 }
 
 impl TaskEntryViewModel {

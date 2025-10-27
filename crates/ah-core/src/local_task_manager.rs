@@ -55,6 +55,11 @@ where
             multiplexer,
         })
     }
+
+    /// Get a clone of the database manager
+    pub fn db_manager(&self) -> DatabaseManager {
+        self.db_manager.clone()
+    }
 }
 
 #[async_trait]
@@ -183,98 +188,6 @@ where
             Err(e) => SaveDraftResult::Failure {
                 error: format!("Failed to save draft: {}", e),
             },
-        }
-    }
-
-    async fn list_repositories(&self) -> Vec<Repository> {
-        // Get repositories from the local database
-        match self.db_manager.list_repositories() {
-            Ok(repos) => repos
-                .into_iter()
-                .map(|repo_record| {
-                    let remote_url = repo_record.remote_url.as_ref();
-                    let root_path = repo_record.root_path.as_ref();
-                    Repository {
-                        id: repo_record.id.to_string(),
-                        name: remote_url
-                            .unwrap_or(&root_path.unwrap_or(&"Unknown".to_string()))
-                            .clone(),
-                        url: remote_url.unwrap_or(&"".to_string()).clone(),
-                        default_branch: repo_record
-                            .default_branch
-                            .unwrap_or_else(|| "main".to_string()),
-                    }
-                })
-                .collect(),
-            Err(e) => {
-                tracing::warn!("Failed to list repositories: {}", e);
-                Vec::new()
-            }
-        }
-    }
-
-    async fn list_branches(&self, repository_id: &str) -> Vec<Branch> {
-        // Parse repository ID as integer to get repo info from database
-        match repository_id.parse::<i64>() {
-            Ok(repo_id) => {
-                match self.db_manager.get_repository_by_id(repo_id) {
-                    Ok(Some(repo_record)) => {
-                        if let Some(root_path) = repo_record.root_path {
-                            // Use ah-repo to get branches from the actual repository
-                            match ah_repo::VcsRepo::new(&root_path) {
-                                Ok(repo) => {
-                                    match repo.branches() {
-                                        Ok(branch_names) => {
-                                            let default_branch = repo_record
-                                                .default_branch
-                                                .unwrap_or_else(|| "main".to_string());
-                                            branch_names
-                                                .into_iter()
-                                                .map(|name| Branch {
-                                                    name: name.clone(),
-                                                    is_default: name == default_branch,
-                                                    last_commit: None, // Could be populated if needed
-                                                })
-                                                .collect()
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                "Failed to get branches for repository {}: {}",
-                                                repository_id,
-                                                e
-                                            );
-                                            Vec::new()
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to open repository at {}: {}",
-                                        root_path,
-                                        e
-                                    );
-                                    Vec::new()
-                                }
-                            }
-                        } else {
-                            tracing::warn!("Repository {} has no root path", repository_id);
-                            Vec::new()
-                        }
-                    }
-                    Ok(None) => {
-                        tracing::warn!("Repository {} not found", repository_id);
-                        Vec::new()
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to get repository {}: {}", repository_id, e);
-                        Vec::new()
-                    }
-                }
-            }
-            Err(_) => {
-                tracing::warn!("Invalid repository ID: {}", repository_id);
-                Vec::new()
-            }
         }
     }
 

@@ -6,8 +6,10 @@
 //! This file contains tests organized by functional area:
 //! - Task Events: TaskEvent processing and activity line generation
 
-use ah_core::WorkspaceFilesEnumerator;
-use ah_core::{LogLevel, TaskEvent, TaskManager};
+use ah_core::{
+    BranchesEnumerator, LogLevel, RepositoriesEnumerator, TaskEvent, TaskManager,
+    WorkspaceFilesEnumerator,
+};
 use ah_domain_types::{TaskExecutionStatus, task::ToolStatus};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
@@ -30,10 +32,26 @@ mod event_processing_tests {
         let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
             Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
+        let mock_client = MockRestClient::new();
+        let repositories_enumerator: Arc<dyn RepositoriesEnumerator> =
+            Arc::new(ah_core::RemoteRepositoriesEnumerator::new(
+                mock_client.clone(),
+                "http://test".to_string(),
+            ));
+        let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+            ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
+        );
         let mut settings = Settings::default();
         settings.active_sessions_activity_rows = Some(3); // Set activity rows for testing
 
-        let mut vm = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
+        let mut vm = ViewModel::new(
+            workspace_files,
+            workspace_workflows,
+            task_manager,
+            repositories_enumerator,
+            branches_enumerator,
+            settings,
+        );
 
         // Add a test active task card manually
         use ah_domain_types::{TaskExecution, TaskState};
@@ -454,9 +472,25 @@ mod event_processing_tests {
             Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
         let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let task_manager = Arc::new(MockRestClient::new());
+        let mock_client = MockRestClient::new();
+        let repositories_enumerator: Arc<dyn RepositoriesEnumerator> =
+            Arc::new(ah_core::RemoteRepositoriesEnumerator::new(
+                mock_client.clone(),
+                "http://test".to_string(),
+            ));
+        let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+            ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
+        );
         let settings = Settings::default();
 
-        let mut vm = ViewModel::new(workspace_files, workspace_workflows, task_manager, settings);
+        let mut vm = ViewModel::new(
+            workspace_files,
+            workspace_workflows,
+            task_manager,
+            repositories_enumerator,
+            branches_enumerator,
+            settings,
+        );
 
         // The MockTaskManager creates draft cards, so we should have at least one
         assert!(!vm.draft_cards.is_empty());

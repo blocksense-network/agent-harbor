@@ -205,7 +205,13 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 fn normalize_screen_content(content: &str) -> String {
     let mut normalized = content.to_string();
 
-    // Normalize timestamps (if any)
+    // Normalize absolute timestamps (ISO 8601 format)
+    normalized = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z")
+        .unwrap()
+        .replace_all(&normalized, "[TIMESTAMP]")
+        .to_string();
+
+    // Normalize relative timestamps (if any)
     normalized = regex::Regex::new(r"\d+[smhd] ago")
         .unwrap()
         .replace_all(&normalized, "[TIME_AGO]")

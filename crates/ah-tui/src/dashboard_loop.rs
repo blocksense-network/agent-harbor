@@ -55,6 +55,8 @@ pub struct DashboardDependencies {
     pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
     pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
     pub task_manager: Arc<dyn TaskManager>,
+    pub repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator>,
+    pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,
     pub settings: Settings,
 }
 
@@ -143,6 +145,8 @@ pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn st
         deps.workspace_files,
         deps.workspace_workflows,
         deps.task_manager,
+        deps.repositories_enumerator,
+        deps.branches_enumerator,
         deps.settings,
     );
 

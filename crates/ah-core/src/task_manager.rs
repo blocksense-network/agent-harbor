@@ -56,8 +56,7 @@
 //! into domain messages for the Model.
 
 use ah_domain_types::{
-    Branch, LogLevel, Repository, SelectedModel, TaskExecution, TaskExecutionStatus, TaskInfo,
-    ToolStatus,
+    LogLevel, SelectedModel, TaskExecution, TaskExecutionStatus, TaskInfo, ToolStatus,
 };
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::SplitMode;
@@ -404,16 +403,6 @@ pub trait TaskManager: Send + Sync {
         branch: &str,
         models: &[SelectedModel],
     ) -> SaveDraftResult;
-
-    /// List available repositories/projects
-    ///
-    /// Returns repositories that can be used for task creation.
-    async fn list_repositories(&self) -> Vec<Repository>;
-
-    /// List branches for a specific repository
-    ///
-    /// Returns available branches for the given repository.
-    async fn list_branches(&self, repository_id: &str) -> Vec<Branch>;
 
     /// Get a human-readable description of this task manager
     fn description(&self) -> &str;

@@ -7,8 +7,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ah_core::TaskManager;
-use ah_core::WorkspaceFilesEnumerator;
+use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
@@ -76,9 +75,38 @@ fn build_view_model() -> ViewModel {
         Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
     let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
     let task_manager = Arc::new(MockRestClient::new());
+    let mock_client = MockRestClient::new();
+    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
+        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
+    );
+    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+        ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
+    );
     let settings = Settings::default();
 
-    ViewModel::new(workspace_files, workspace_workflows, task_manager, settings)
+    let mut vm = ViewModel::new(
+        workspace_files,
+        workspace_workflows,
+        task_manager,
+        repositories_enumerator,
+        branches_enumerator,
+        settings,
+    );
+
+    // For tests, synchronously populate the available repositories and branches
+    // since background loading doesn't run in test environment
+    vm.available_repositories = vec![
+        "myapp/backend".to_string(),
+        "myapp/frontend".to_string(),
+        "myapp/mobile".to_string(),
+    ];
+    vm.available_branches = vec![
+        "main".to_string(),
+        "develop".to_string(),
+        "feature/auth".to_string(),
+    ];
+
+    vm
 }
 
 fn prepare_autocomplete(vm: &mut ViewModel, trigger: Trigger, labels: &[&str]) {

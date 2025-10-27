@@ -12,6 +12,7 @@ use ah_repo::VcsRepo;
 use std::path::Path;
 
 /// Database manager for AH core operations.
+#[derive(Clone)]
 pub struct DatabaseManager {
     db: Database,
 }
@@ -27,6 +28,11 @@ impl DatabaseManager {
     pub fn with_path<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
         let db = Database::open(path)?;
         Ok(Self { db })
+    }
+
+    /// Create a database manager with an existing database instance.
+    pub fn with_database(db: Database) -> Self {
+        Self { db }
     }
 
     /// Get or create repository record.

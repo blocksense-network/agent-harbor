@@ -210,6 +210,16 @@ impl RestClient {
         self.get(&url).await
     }
 
+    /// Get branches for a repository
+    pub async fn get_repository_branches(
+        &self,
+        repository_id: &str,
+    ) -> RestClientResult<Vec<BranchInfo>> {
+        let url = format!("/api/v1/repositories/{}/branches", repository_id);
+        let response: RepositoryBranchesResponse = self.get(&url).await?;
+        Ok(response.branches)
+    }
+
     /// List workspaces
     pub async fn list_workspaces(&self, status: Option<&str>) -> RestClientResult<Vec<Workspace>> {
         let mut url = "/api/v1/workspaces".to_string();

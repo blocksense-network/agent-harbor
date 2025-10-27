@@ -153,17 +153,28 @@ pub fn render_draft_card_content(
         frame.render_widget(separator, separator_area);
     }
 
-    // Render buttons
-    let repo_button_text = if card.repository.is_empty() {
-        "📁 Repository".to_string()
+    // Render buttons - align repo/branch/models to left, Go to right
+    let has_enumerators =
+        card.repositories_enumerator.is_some() && card.branches_enumerator.is_some();
+
+    let repo_button_text = if has_enumerators {
+        if card.repository.is_empty() {
+            Some("📁 Repository".to_string())
+        } else {
+            Some(format!("📁 {}", card.repository))
+        }
     } else {
-        format!("📁 {}", card.repository)
+        None
     };
 
-    let branch_button_text = if card.branch.is_empty() {
-        "🌿 Branch".to_string()
+    let branch_button_text = if has_enumerators {
+        if card.branch.is_empty() {
+            Some("🌿 Branch".to_string())
+        } else {
+            Some(format!("🌿 {}", card.branch))
+        }
     } else {
-        format!("🌿 {}", card.branch)
+        None
     };
 
     let models_button_text = if card.models.is_empty() {
@@ -172,15 +183,36 @@ pub fn render_draft_card_content(
         format!("🤖 {} model(s)", card.models.len())
     };
 
-    let button_chunks = Layout::default()
+    // Calculate button positions: left buttons take available space, Go button to the right
+    let go_button_width = 6; // "⏎ Go" width
+    let left_buttons_width = button_area.width.saturating_sub(go_button_width);
+    let left_buttons_area = Rect {
+        x: button_area.x,
+        y: button_area.y,
+        width: left_buttons_width,
+        height: button_area.height,
+    };
+    let go_button_rect = Rect {
+        x: button_area.x + left_buttons_width,
+        y: button_area.y,
+        width: go_button_width,
+        height: button_area.height,
+    };
+
+    // Create layout for left buttons (repo, branch, models)
+    let left_button_constraints = if has_enumerators {
+        vec![
+            Constraint::Ratio(1, 3), // Repository
+            Constraint::Ratio(1, 3), // Branch
+            Constraint::Ratio(1, 3), // Models
+        ]
+    } else {
+        vec![Constraint::Ratio(1, 1)] // Models only
+    };
+    let left_button_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Ratio(3, 10),
-            Constraint::Ratio(3, 10),
-            Constraint::Ratio(3, 10),
-            Constraint::Ratio(1, 10),
-        ])
-        .split(button_area);
+        .constraints(left_button_constraints)
+        .split(left_buttons_area);
 
     let repo_style =
         if is_selected && matches!(card.focus_element, CardFocusElement::RepositorySelector) {
@@ -230,31 +262,50 @@ pub fn render_draft_card_content(
         );
     };
 
-    render_button(
-        button_chunks[0],
-        &repo_button_text,
-        repo_style,
-        Alignment::Left,
-    );
-    render_button(
-        button_chunks[1],
-        &branch_button_text,
-        branch_style,
-        Alignment::Left,
-    );
-    render_button(
-        button_chunks[2],
-        &models_button_text,
-        model_style,
-        Alignment::Left,
-    );
-    render_button(button_chunks[3], "⏎ Go", go_style, Alignment::Center);
+    // Render left buttons
+    let repository_button_rect = if let Some(ref repo_text) = repo_button_text {
+        render_button(
+            left_button_chunks[0],
+            repo_text,
+            repo_style,
+            Alignment::Left,
+        );
+        left_button_chunks[0]
+    } else {
+        Rect::default()
+    };
+
+    let branch_button_rect = if let Some(ref branch_text) = branch_button_text {
+        render_button(
+            left_button_chunks[1],
+            branch_text,
+            branch_style,
+            Alignment::Left,
+        );
+        left_button_chunks[1]
+    } else {
+        Rect::default()
+    };
+
+    let model_button_rect = {
+        let model_chunk_index = if has_enumerators { 2 } else { 0 };
+        render_button(
+            left_button_chunks[model_chunk_index],
+            &models_button_text,
+            model_style,
+            Alignment::Left,
+        );
+        left_button_chunks[model_chunk_index]
+    };
+
+    // Render Go button to the right
+    render_button(go_button_rect, "⏎ Go", go_style, Alignment::Center);
 
     DraftCardLayout {
         textarea: textarea_area,
-        repository_button: button_chunks[0],
-        branch_button: button_chunks[1],
-        model_button: button_chunks[2],
-        go_button: button_chunks[3],
+        repository_button: repository_button_rect,
+        branch_button: branch_button_rect,
+        model_button: model_button_rect,
+        go_button: go_button_rect,
     }
 }

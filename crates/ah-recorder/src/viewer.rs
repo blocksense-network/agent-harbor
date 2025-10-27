@@ -218,6 +218,8 @@ impl TerminalViewer {
             description: textarea,
             focus_element: ah_tui::view_model::task_entry::CardFocusElement::TaskDescription,
             auto_save_timer: None,
+            repositories_enumerator: None,
+            branches_enumerator: None,
         };
 
         self.instruction_entry = Some(task_entry);

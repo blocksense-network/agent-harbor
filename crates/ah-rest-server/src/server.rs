@@ -125,6 +125,10 @@ impl Server {
             // Projects and repositories
             .route("/projects", get(handlers::projects::list_projects))
             .route("/repos", get(handlers::projects::list_repositories))
+            .route(
+                "/repositories/:id/branches",
+                get(handlers::repositories::get_repository_branches),
+            )
             // Workspaces
             .route("/workspaces", get(handlers::workspaces::list_workspaces))
             .route("/workspaces/:id", get(handlers::workspaces::get_workspace))

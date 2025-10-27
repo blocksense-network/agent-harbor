@@ -1368,6 +1368,37 @@ Accepted event types (minimum set):
     - Executors register with the Remote Service when `ah serve` starts and send heartbeats including overlay status and addresses (MagicDNS/IP).
     - The `GET /executors` response includes `overlay`: `{ provider, address, magicName, state }` and `controller` hints (typically `server`).
 
+#### Repository Branches
+
+- `GET /api/v1/repositories/{id}/branches` → List branches for a specific repository.
+
+  Response `200 OK`:
+
+  ```json
+  {
+    "repositoryId": "repo_001",
+    "branches": [
+      {
+        "name": "main",
+        "is_default": true,
+        "last_commit": "a1b2c3d4..."
+      },
+      {
+        "name": "develop",
+        "is_default": false,
+        "last_commit": "e5f6g7h8..."
+      },
+      {
+        "name": "feature/auth",
+        "is_default": false,
+        "last_commit": "i9j0k1l2..."
+      }
+    ]
+  }
+  ```
+
+  The server retrieves branch information by querying the local VCS repository associated with the given repository ID. Results may be cached to improve performance for repeated queries.
+
 #### Draft Task Management
 
 Drafts allow users to save incomplete task configurations for later completion and persistence across browser sessions.
@@ -1436,6 +1467,7 @@ Drafts allow users to save incomplete task configurations for later completion a
   - `GET /api/v1/git/refs?url=<git_url>` → Cached branch/ref suggestions for `--target-branch` UX.
   - `GET /api/v1/projects` → List known projects per tenant for filtering.
   - `GET /api/v1/repos?tenantId=<id>&projectId=<id>` → Returns repositories the service has indexed (from historical tasks or explicit imports). Each item includes `id`, `displayName`, `scmProvider`, `remoteUrl`, `defaultBranch`, and `lastUsedAt`, mirroring common REST patterns for repository catalogs.
+  - `GET /api/v1/repositories/{id}/branches` → List branches for a specific repository. Returns branch information including names, default branch status, and last commit info.
   - `GET /api/v1/workspaces?status=active` → Lists provisioned workspaces with metadata.
   - `GET /api/v1/workspaces/{id}` → Detailed view including workspace repository URLs, storage usage, task history, etc.
 
