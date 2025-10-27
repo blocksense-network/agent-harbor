@@ -55,6 +55,33 @@ pub enum Request {
     Remove((Vec<u8>, RemoveRequest)),                 // (version, request)
     Mkdir((Vec<u8>, MkdirRequest)),                   // (version, request)
     Mkdirat((Vec<u8>, MkdiratRequest)),               // (version, request)
+    Getxattr((Vec<u8>, GetxattrRequest)),             // (version, request)
+    Lgetxattr((Vec<u8>, LgetxattrRequest)),           // (version, request)
+    Fgetxattr((Vec<u8>, FgetxattrRequest)),           // (version, request)
+    Setxattr((Vec<u8>, SetxattrRequest)),             // (version, request)
+    Lsetxattr((Vec<u8>, LsetxattrRequest)),           // (version, request)
+    Fsetxattr((Vec<u8>, FsetxattrRequest)),           // (version, request)
+    Listxattr((Vec<u8>, ListxattrRequest)),           // (version, request)
+    Llistxattr((Vec<u8>, LlistxattrRequest)),         // (version, request)
+    Flistxattr((Vec<u8>, FlistxattrRequest)),         // (version, request)
+    Removexattr((Vec<u8>, RemovexattrRequest)),       // (version, request)
+    Lremovexattr((Vec<u8>, LremovexattrRequest)),     // (version, request)
+    Fremovexattr((Vec<u8>, FremovexattrRequest)),     // (version, request)
+    AclGetFile((Vec<u8>, AclGetFileRequest)),         // (version, request)
+    AclSetFile((Vec<u8>, AclSetFileRequest)),         // (version, request)
+    AclGetFd((Vec<u8>, AclGetFdRequest)),             // (version, request)
+    AclSetFd((Vec<u8>, AclSetFdRequest)),             // (version, request)
+    AclDeleteDefFile((Vec<u8>, AclDeleteDefFileRequest)), // (version, request)
+    Chflags((Vec<u8>, ChflagsRequest)),               // (version, request)
+    Lchflags((Vec<u8>, LchflagsRequest)),             // (version, request)
+    Fchflags((Vec<u8>, FchflagsRequest)),             // (version, request)
+    Getattrlist((Vec<u8>, GetattrlistRequest)),       // (version, request)
+    Setattrlist((Vec<u8>, SetattrlistRequest)),       // (version, request)
+    Getattrlistbulk((Vec<u8>, GetattrlistbulkRequest)), // (version, request)
+    Copyfile((Vec<u8>, CopyfileRequest)),             // (version, request)
+    Fcopyfile((Vec<u8>, FcopyfileRequest)),           // (version, request)
+    Clonefile((Vec<u8>, ClonefileRequest)),           // (version, request)
+    Fclonefileat((Vec<u8>, FclonefileatRequest)),     // (version, request)
     PathOp((Vec<u8>, PathOpRequest)),                 // (version, request)
     InterposeSetGet((Vec<u8>, InterposeSetGetRequest)), // (version, request)
     DirfdOpenDir((Vec<u8>, DirfdOpenDirRequest)),     // (version, request) - register directory fd
@@ -112,6 +139,33 @@ pub enum Response {
     Remove(RemoveResponse),
     Mkdir(MkdirResponse),
     Mkdirat(MkdiratResponse),
+    Getxattr(GetxattrResponse),
+    Lgetxattr(LgetxattrResponse),
+    Fgetxattr(FgetxattrResponse),
+    Setxattr(SetxattrResponse),
+    Lsetxattr(LsetxattrResponse),
+    Fsetxattr(FsetxattrResponse),
+    Listxattr(ListxattrResponse),
+    Llistxattr(LlistxattrResponse),
+    Flistxattr(FlistxattrResponse),
+    Removexattr(RemovexattrResponse),
+    Lremovexattr(LremovexattrResponse),
+    Fremovexattr(FremovexattrResponse),
+    AclGetFile(AclGetFileResponse),
+    AclSetFile(AclSetFileResponse),
+    AclGetFd(AclGetFdResponse),
+    AclSetFd(AclSetFdResponse),
+    AclDeleteDefFile(AclDeleteDefFileResponse),
+    Chflags(ChflagsResponse),
+    Lchflags(LchflagsResponse),
+    Fchflags(FchflagsResponse),
+    Getattrlist(GetattrlistResponse),
+    Setattrlist(SetattrlistResponse),
+    Getattrlistbulk(GetattrlistbulkResponse),
+    Copyfile(CopyfileResponse),
+    Fcopyfile(FcopyfileResponse),
+    Clonefile(ClonefileResponse),
+    Fclonefileat(FclonefileatResponse),
     PathOp(PathOpResponse),
     InterposeSetGet(InterposeSetGetResponse),
     DirfdOpenDir(DirfdOpenDirResponse),
@@ -666,6 +720,339 @@ pub struct MkdiratRequest {
 /// Mkdirat response payload (empty on success)
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct MkdiratResponse {}
+
+/// Getxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct GetxattrRequest {
+    pub path: Vec<u8>,
+    pub name: Vec<u8>,
+}
+
+/// Getxattr response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct GetxattrResponse {
+    pub value: Vec<u8>,
+}
+
+/// Lgetxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LgetxattrRequest {
+    pub path: Vec<u8>,
+    pub name: Vec<u8>,
+}
+
+/// Lgetxattr response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LgetxattrResponse {
+    pub value: Vec<u8>,
+}
+
+/// Fgetxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FgetxattrRequest {
+    pub handle_id: u64,
+    pub name: Vec<u8>,
+}
+
+/// Fgetxattr response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FgetxattrResponse {
+    pub value: Vec<u8>,
+}
+
+/// Setxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SetxattrRequest {
+    pub path: Vec<u8>,
+    pub name: Vec<u8>,
+    pub value: Vec<u8>,
+    pub flags: u32,
+}
+
+/// Setxattr response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SetxattrResponse {}
+
+/// Lsetxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LsetxattrRequest {
+    pub path: Vec<u8>,
+    pub name: Vec<u8>,
+    pub value: Vec<u8>,
+    pub flags: u32,
+}
+
+/// Lsetxattr response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LsetxattrResponse {}
+
+/// Fsetxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FsetxattrRequest {
+    pub handle_id: u64,
+    pub name: Vec<u8>,
+    pub value: Vec<u8>,
+    pub flags: u32,
+}
+
+/// Fsetxattr response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FsetxattrResponse {}
+
+/// Listxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ListxattrRequest {
+    pub path: Vec<u8>,
+}
+
+/// Listxattr response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ListxattrResponse {
+    pub names: Vec<Vec<u8>>, // List of attribute names
+}
+
+/// Llistxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LlistxattrRequest {
+    pub path: Vec<u8>,
+}
+
+/// Llistxattr response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LlistxattrResponse {
+    pub names: Vec<Vec<u8>>, // List of attribute names
+}
+
+/// Flistxattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FlistxattrRequest {
+    pub handle_id: u64,
+}
+
+/// Flistxattr response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FlistxattrResponse {
+    pub names: Vec<Vec<u8>>, // List of attribute names
+}
+
+/// Removexattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RemovexattrRequest {
+    pub path: Vec<u8>,
+    pub name: Vec<u8>,
+}
+
+/// Removexattr response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct RemovexattrResponse {}
+
+/// Lremovexattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LremovexattrRequest {
+    pub path: Vec<u8>,
+    pub name: Vec<u8>,
+}
+
+/// Lremovexattr response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LremovexattrResponse {}
+
+/// Fremovexattr request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FremovexattrRequest {
+    pub handle_id: u64,
+    pub name: Vec<u8>,
+}
+
+/// Fremovexattr response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FremovexattrResponse {}
+
+/// AclGetFile request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclGetFileRequest {
+    pub path: Vec<u8>,
+    pub acl_type: u32, // ACL_TYPE_EXTENDED, etc.
+}
+
+/// AclGetFile response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclGetFileResponse {
+    pub acl_data: Vec<u8>, // Serialized ACL data
+}
+
+/// AclSetFile request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclSetFileRequest {
+    pub path: Vec<u8>,
+    pub acl_type: u32,     // ACL_TYPE_EXTENDED, etc.
+    pub acl_data: Vec<u8>, // Serialized ACL data
+}
+
+/// AclSetFile response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclSetFileResponse {}
+
+/// AclGetFd request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclGetFdRequest {
+    pub handle_id: u64,
+    pub acl_type: u32, // ACL_TYPE_EXTENDED, etc.
+}
+
+/// AclGetFd response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclGetFdResponse {
+    pub acl_data: Vec<u8>, // Serialized ACL data
+}
+
+/// AclSetFd request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclSetFdRequest {
+    pub handle_id: u64,
+    pub acl_type: u32,     // ACL_TYPE_EXTENDED, etc.
+    pub acl_data: Vec<u8>, // Serialized ACL data
+}
+
+/// AclSetFd response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclSetFdResponse {}
+
+/// AclDeleteDefFile request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclDeleteDefFileRequest {
+    pub path: Vec<u8>,
+}
+
+/// AclDeleteDefFile response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct AclDeleteDefFileResponse {}
+
+/// Chflags request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ChflagsRequest {
+    pub path: Vec<u8>,
+    pub flags: u32, // BSD flags (UF_*)
+}
+
+/// Chflags response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ChflagsResponse {}
+
+/// Lchflags request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LchflagsRequest {
+    pub path: Vec<u8>,
+    pub flags: u32, // BSD flags (UF_*)
+}
+
+/// Lchflags response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct LchflagsResponse {}
+
+/// Fchflags request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchflagsRequest {
+    pub handle_id: u64,
+    pub flags: u32, // BSD flags (UF_*)
+}
+
+/// Fchflags response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FchflagsResponse {}
+
+/// Getattrlist request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct GetattrlistRequest {
+    pub path: Vec<u8>,
+    pub attr_list: Vec<u8>, // Serialized attribute list structure
+    pub options: u32,       // FSOPT_* flags
+}
+
+/// Getattrlist response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct GetattrlistResponse {
+    pub attr_data: Vec<u8>, // Serialized attribute data
+}
+
+/// Setattrlist request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SetattrlistRequest {
+    pub path: Vec<u8>,
+    pub attr_list: Vec<u8>, // Serialized attribute list structure
+    pub attr_data: Vec<u8>, // Serialized attribute data to set
+    pub options: u32,       // FSOPT_* flags
+}
+
+/// Setattrlist response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SetattrlistResponse {}
+
+/// Getattrlistbulk request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct GetattrlistbulkRequest {
+    pub fd: u32,
+    pub attr_list: Vec<u8>, // Serialized attribute list structure
+    pub options: u32,       // FSOPT_* flags
+}
+
+/// Getattrlistbulk response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct GetattrlistbulkResponse {
+    pub entries: Vec<Vec<u8>>, // List of serialized attribute data entries
+}
+
+/// Copyfile request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct CopyfileRequest {
+    pub src_path: Vec<u8>,
+    pub dst_path: Vec<u8>,
+    pub state: Vec<u8>, // Serialized copyfile_state_t
+    pub flags: u32,     // COPYFILE_* flags
+}
+
+/// Copyfile response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct CopyfileResponse {}
+
+/// Fcopyfile request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FcopyfileRequest {
+    pub src_fd: u32,
+    pub dst_fd: u32,
+    pub state: Vec<u8>, // Serialized copyfile_state_t
+    pub flags: u32,     // COPYFILE_* flags
+}
+
+/// Fcopyfile response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FcopyfileResponse {}
+
+/// Clonefile request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ClonefileRequest {
+    pub src_path: Vec<u8>,
+    pub dst_path: Vec<u8>,
+    pub flags: u32, // CLONE_* flags
+}
+
+/// Clonefile response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct ClonefileResponse {}
+
+/// Fclonefileat request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FclonefileatRequest {
+    pub src_dirfd: u32,
+    pub src_path: Vec<u8>,
+    pub dst_dirfd: u32,
+    pub dst_path: Vec<u8>,
+    pub flags: u32, // CLONE_* flags
+}
+
+/// Fclonefileat response payload (empty on success)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FclonefileatResponse {}
 
 /// Directory entry information
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]

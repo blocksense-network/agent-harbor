@@ -18,8 +18,19 @@ use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
 
 // AgentFS proto imports
-use agentfs_proto::messages::{DirEntry, StatData, StatfsData, TimespecData};
+use agentfs_proto::messages::{
+    AclDeleteDefFileRequest, AclGetFdRequest, AclGetFileRequest, AclSetFdRequest,
+    AclSetFileRequest, ChflagsRequest, ClonefileRequest, CopyfileRequest, DirEntry,
+    FchflagsRequest, FclonefileatRequest, FcopyfileRequest, FgetxattrRequest, FlistxattrRequest,
+    FremovexattrRequest, FsetxattrRequest, GetattrlistRequest, GetattrlistbulkRequest,
+    GetxattrRequest, LchflagsRequest, LgetxattrRequest, ListxattrRequest, LlistxattrRequest,
+    LremovexattrRequest, LsetxattrRequest, RemovexattrRequest, SetattrlistRequest, SetxattrRequest,
+    StatData, StatfsData, TimespecData,
+};
 use agentfs_proto::*;
+
+// Error codes for interpose forwarding failures
+const FORWARDING_UNAVAILABLE: u32 = 1;
 
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
@@ -504,9 +515,33 @@ mod tests {
 mod interpose {
     use super::*;
     use libc::{
-        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, cmsghdr, gid_t, iovec,
-        mode_t, msghdr, off_t, timespec, uid_t,
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, c_void, cmsghdr, gid_t,
+        iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
     };
+
+    // ACL types - these may need to be defined manually for macOS
+    type acl_type_t = u32;
+    type acl_t = *mut c_void;
+
+    // attrlist types for getattrlist operations
+    #[repr(C)]
+    struct attrlist {
+        bitmapcount: u16,
+        reserved: u16,
+        commonattr: u32,
+        volattr: u32,
+        dirattr: u32,
+        fileattr: u32,
+        forkattr: u32,
+    }
+
+    // copyfile types for copyfile operations
+    type copyfile_state_t = *mut c_void;
+    type copyfile_flags_t = u32;
+
+    // Additional type aliases for macOS
+    type u_long = usize;
+    type u_int64_t = u64;
     use std::io::Read;
     use std::mem;
     use std::os::unix::io::FromRawFd;
@@ -3061,6 +3096,1013 @@ mod interpose {
                 });
             }
             result
+        }
+    }
+
+    /// Interposed getxattr function
+    redhook::hook! {
+        unsafe fn getxattr(path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t) -> ssize_t => my_getxattr {
+            if path.is_null() || name.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let c_name = unsafe { CStr::from_ptr(name) };
+
+            log_message(&format!("interposing getxattr({}, {}, {}, {})",
+                c_path.to_string_lossy(), c_name.to_string_lossy(), value as usize, size));
+
+            let request = GetxattrRequest {
+                path: c_path.to_bytes().to_vec(),
+                name: c_name.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Getxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Getxattr(resp) => Some(resp),
+                _ => None,
+            }) {
+                Ok(response) => {
+                    let value_len = response.value.len();
+                    if size == 0 {
+                        // Return required buffer size
+                        return value_len as ssize_t;
+                    } else if value.is_null() {
+                        return -1;
+                    } else if value_len > size {
+                        // Buffer too small
+                        unsafe { *libc::__error() = libc::ERANGE };
+                        return -1;
+                    } else {
+                        // Copy value to buffer
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                response.value.as_ptr(),
+                                value as *mut u8,
+                                value_len
+                            );
+                        }
+                        return value_len as ssize_t;
+                    }
+                }
+                Err(_) => {
+                    // Fallback to original function
+                    return redhook::real!(getxattr)(path, name, value, size);
+                }
+            }
+        }
+    }
+
+    /// Interposed lgetxattr function
+    redhook::hook! {
+        unsafe fn lgetxattr(path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_lgetxattr {
+            if path.is_null() || name.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let c_name = unsafe { CStr::from_ptr(name) };
+
+            log_message(&format!("interposing lgetxattr({}, {}, {}, {}, {}, {})",
+                c_path.to_string_lossy(), c_name.to_string_lossy(), value as usize, size, position, options));
+
+            let request = LgetxattrRequest {
+                path: c_path.to_bytes().to_vec(),
+                name: c_name.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Lgetxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Lgetxattr(resp) => Some(resp),
+                _ => None,
+            }) {
+                Ok(response) => {
+                    let value_len = response.value.len();
+                    if size == 0 {
+                        return value_len as ssize_t;
+                    } else if value.is_null() {
+                        return -1;
+                    } else if value_len > size {
+                        unsafe { *libc::__error() = libc::ERANGE };
+                        return -1;
+                    } else {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                response.value.as_ptr(),
+                                value as *mut u8,
+                                value_len
+                            );
+                        }
+                        return value_len as ssize_t;
+                    }
+                }
+                _ => {
+                    return redhook::real!(lgetxattr)(path, name, value, size, position, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed fgetxattr function
+    redhook::hook! {
+        unsafe fn fgetxattr(fd: c_int, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_fgetxattr {
+            if name.is_null() {
+                return -1;
+            }
+
+            let c_name = unsafe { CStr::from_ptr(name) };
+
+            log_message(&format!("interposing fgetxattr({}, {}, {}, {}, {}, {})",
+                fd, c_name.to_string_lossy(), value as usize, size, position, options));
+
+            let request = FgetxattrRequest {
+                handle_id: fd as u64, // For now, assume fd maps directly to handle_id
+                name: c_name.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Fgetxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Fgetxattr(resp) => Some(resp),
+                _ => None,
+            }) {
+                Ok(response) => {
+                    let value_len = response.value.len();
+                    if size == 0 {
+                        return value_len as ssize_t;
+                    } else if value.is_null() {
+                        return -1;
+                    } else if value_len > size {
+                        unsafe { *libc::__error() = libc::ERANGE };
+                        return -1;
+                    } else {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                response.value.as_ptr(),
+                                value as *mut u8,
+                                value_len
+                            );
+                        }
+                        return value_len as ssize_t;
+                    }
+                }
+                _ => {
+                    return redhook::real!(fgetxattr)(fd, name, value, size, position, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed setxattr function
+    redhook::hook! {
+        unsafe fn setxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_setxattr {
+            if path.is_null() || name.is_null() || value.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let c_name = unsafe { CStr::from_ptr(name) };
+            let value_slice = unsafe { std::slice::from_raw_parts(value as *const u8, size) };
+
+            log_message(&format!("interposing setxattr({}, {}, value[{}])",
+                c_path.to_string_lossy(), c_name.to_string_lossy(), size));
+
+            let request = SetxattrRequest {
+                path: c_path.to_bytes().to_vec(),
+                name: c_name.to_bytes().to_vec(),
+                value: value_slice.to_vec(),
+                flags: options as u32,
+            };
+
+            match send_request(Request::Setxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Setxattr(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                _ => {
+                    return redhook::real!(setxattr)(path, name, value, size, position, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed lsetxattr function
+    redhook::hook! {
+        unsafe fn lsetxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_lsetxattr {
+            if path.is_null() || name.is_null() || value.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let c_name = unsafe { CStr::from_ptr(name) };
+            let value_slice = unsafe { std::slice::from_raw_parts(value as *const u8, size) };
+
+            log_message(&format!("interposing lsetxattr({}, {}, value[{}])",
+                c_path.to_string_lossy(), c_name.to_string_lossy(), size));
+
+            let request = LsetxattrRequest {
+                path: c_path.to_bytes().to_vec(),
+                name: c_name.to_bytes().to_vec(),
+                value: value_slice.to_vec(),
+                flags: options as u32,
+            };
+
+            match send_request(Request::Lsetxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Lsetxattr(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                _ => {
+                    return redhook::real!(lsetxattr)(path, name, value, size, position, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed fsetxattr function
+    redhook::hook! {
+        unsafe fn fsetxattr(fd: c_int, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_fsetxattr {
+            if name.is_null() || value.is_null() {
+                return -1;
+            }
+
+            let c_name = unsafe { CStr::from_ptr(name) };
+            let value_slice = unsafe { std::slice::from_raw_parts(value as *const u8, size) };
+
+            log_message(&format!("interposing fsetxattr({}, {}, value[{}])",
+                fd, c_name.to_string_lossy(), size));
+
+            let request = FsetxattrRequest {
+                handle_id: fd as u64, // For now, assume fd maps directly to handle_id
+                name: c_name.to_bytes().to_vec(),
+                value: value_slice.to_vec(),
+                flags: options as u32,
+            };
+
+            match send_request(Request::Fsetxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Fsetxattr(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                _ => {
+                    return redhook::real!(fsetxattr)(fd, name, value, size, position, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed listxattr function
+    redhook::hook! {
+        unsafe fn listxattr(path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_listxattr {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing listxattr({}, {}, {}, {})",
+                c_path.to_string_lossy(), namebuf as usize, size, options));
+
+            let request = ListxattrRequest {
+                path: c_path.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Listxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Listxattr(resp) => Some(resp),
+                _ => None,
+            }) {
+                Ok(response) => {
+                    let names_data: Vec<u8> = response.names.into_iter().flatten().collect();
+                    let names_len = names_data.len();
+                    if size == 0 {
+                        return names_len as ssize_t;
+                    } else if namebuf.is_null() {
+                        return -1;
+                    } else if names_len > size {
+                        unsafe { *libc::__error() = libc::ERANGE };
+                        return -1;
+                    } else {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                names_data.as_ptr(),
+                                namebuf as *mut u8,
+                                names_len
+                            );
+                        }
+                        return names_len as ssize_t;
+                    }
+                }
+                _ => {
+                    return redhook::real!(listxattr)(path, namebuf, size, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed llistxattr function
+    redhook::hook! {
+        unsafe fn llistxattr(path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_llistxattr {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing llistxattr({}, {}, {}, {})",
+                c_path.to_string_lossy(), namebuf as usize, size, options));
+
+            let request = LlistxattrRequest {
+                path: c_path.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Llistxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Llistxattr(resp) => Some(resp),
+                _ => None,
+            }) {
+                Ok(response) => {
+                    let names_data: Vec<u8> = response.names.into_iter().flatten().collect();
+                    let names_len = names_data.len();
+                    if size == 0 {
+                        return names_len as ssize_t;
+                    } else if namebuf.is_null() {
+                        return -1;
+                    } else if names_len > size {
+                        unsafe { *libc::__error() = libc::ERANGE };
+                        return -1;
+                    } else {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                names_data.as_ptr(),
+                                namebuf as *mut u8,
+                                names_len
+                            );
+                        }
+                        return names_len as ssize_t;
+                    }
+                }
+                _ => {
+                    return redhook::real!(llistxattr)(path, namebuf, size, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed flistxattr function
+    redhook::hook! {
+        unsafe fn flistxattr(fd: c_int, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_flistxattr {
+            log_message(&format!("interposing flistxattr({}, {}, {}, {})",
+                fd, namebuf as usize, size, options));
+
+            let request = FlistxattrRequest {
+                handle_id: fd as u64, // For now, assume fd maps directly to handle_id
+            };
+
+            match send_request(Request::Flistxattr((b"1".to_vec(), request)), |response| match response {
+                Response::Flistxattr(resp) => Some(resp),
+                _ => None,
+            }) {
+                Ok(response) => {
+                    let names_data: Vec<u8> = response.names.into_iter().flatten().collect();
+                    let names_len = names_data.len();
+                    if size == 0 {
+                        return names_len as ssize_t;
+                    } else if namebuf.is_null() {
+                        return -1;
+                    } else if names_len > size {
+                        unsafe { *libc::__error() = libc::ERANGE };
+                        return -1;
+                    } else {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                names_data.as_ptr(),
+                                namebuf as *mut u8,
+                                names_len
+                            );
+                        }
+                        return names_len as ssize_t;
+                    }
+                }
+                _ => {
+                    return redhook::real!(flistxattr)(fd, namebuf, size, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed removexattr function
+    redhook::hook! {
+        unsafe fn removexattr(path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_removexattr {
+            if path.is_null() || name.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let c_name = unsafe { CStr::from_ptr(name) };
+
+            log_message(&format!("interposing removexattr({}, {}, {})",
+                c_path.to_string_lossy(), c_name.to_string_lossy(), options));
+
+            let request = RemovexattrRequest {
+                path: c_path.to_bytes().to_vec(),
+                name: c_name.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Removexattr((b"1".to_vec(), request)), |response| match response {
+                Response::Removexattr(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                _ => {
+                    return redhook::real!(removexattr)(path, name, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed lremovexattr function
+    redhook::hook! {
+        unsafe fn lremovexattr(path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_lremovexattr {
+            if path.is_null() || name.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+            let c_name = unsafe { CStr::from_ptr(name) };
+
+            log_message(&format!("interposing lremovexattr({}, {}, {})",
+                c_path.to_string_lossy(), c_name.to_string_lossy(), options));
+
+            let request = LremovexattrRequest {
+                path: c_path.to_bytes().to_vec(),
+                name: c_name.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Lremovexattr((b"1".to_vec(), request)), |response| match response {
+                Response::Lremovexattr(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                _ => {
+                    return redhook::real!(lremovexattr)(path, name, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed fremovexattr function
+    redhook::hook! {
+        unsafe fn fremovexattr(fd: c_int, name: *const c_char, options: c_int) -> c_int => my_fremovexattr {
+            if name.is_null() {
+                return -1;
+            }
+
+            let c_name = unsafe { CStr::from_ptr(name) };
+
+            log_message(&format!("interposing fremovexattr({}, {}, {})",
+                fd, c_name.to_string_lossy(), options));
+
+            let request = FremovexattrRequest {
+                handle_id: fd as u64, // For now, assume fd maps directly to handle_id
+                name: c_name.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::Fremovexattr((b"1".to_vec(), request)), |response| match response {
+                Response::Fremovexattr(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(fremovexattr)(fd, name, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed acl_get_file function
+    redhook::hook! {
+        unsafe fn acl_get_file(path: *const c_char, acl_type: acl_type_t) -> acl_t => my_acl_get_file {
+            if path.is_null() {
+                return std::ptr::null_mut();
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing acl_get_file({}, {})",
+                c_path.to_string_lossy(), acl_type));
+
+            let request = AclGetFileRequest {
+                path: c_path.to_bytes().to_vec(),
+                acl_type: acl_type as u32,
+            };
+
+            match send_request(Request::AclGetFile((b"1".to_vec(), request)), |response| match response {
+                Response::AclGetFile(resp) => Some(resp.acl_data),
+                _ => None,
+            }) {
+                Ok(acl_data) => {
+                    // Convert binary ACL data back to acl_t
+                    if !acl_data.is_empty() {
+                        1 as acl_t
+                    } else {
+                        std::ptr::null_mut()
+                    }
+                }
+                Err(_) => {
+                    return redhook::real!(acl_get_file)(path, acl_type);
+                }
+            }
+        }
+    }
+
+    /// Interposed acl_set_file function
+    redhook::hook! {
+        unsafe fn acl_set_file(path: *const c_char, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_file {
+            if path.is_null() || acl.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing acl_set_file({}, {}, {:p})",
+                c_path.to_string_lossy(), acl_type, acl));
+
+            // Convert acl_t to binary data
+            let acl_data = if acl == 1 as acl_t {
+                vec![1] // Dummy data
+            } else {
+                Vec::new()
+            };
+
+            let request = AclSetFileRequest {
+                path: c_path.to_bytes().to_vec(),
+                acl_type: acl_type as u32,
+                acl_data,
+            };
+
+            match send_request(Request::AclSetFile((b"1".to_vec(), request)), |response| match response {
+                Response::AclSetFile(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(acl_set_file)(path, acl_type, acl);
+                }
+            }
+        }
+    }
+
+    /// Interposed acl_get_fd function
+    redhook::hook! {
+        unsafe fn acl_get_fd(fd: c_int, acl_type: acl_type_t) -> acl_t => my_acl_get_fd {
+            log_message(&format!("interposing acl_get_fd({}, {})", fd, acl_type));
+
+            let request = AclGetFdRequest {
+                handle_id: fd as u64,
+                acl_type: acl_type as u32,
+            };
+
+            match send_request(Request::AclGetFd((b"1".to_vec(), request)), |response| match response {
+                Response::AclGetFd(resp) => Some(resp.acl_data),
+                _ => None,
+            }) {
+                Ok(acl_data) => {
+                    // Convert binary ACL data back to acl_t
+                    if !acl_data.is_empty() {
+                        1 as acl_t
+                    } else {
+                        std::ptr::null_mut()
+                    }
+                }
+                Err(_) => {
+                    return redhook::real!(acl_get_fd)(fd, acl_type);
+                }
+            }
+        }
+    }
+
+    /// Interposed acl_set_fd function
+    redhook::hook! {
+        unsafe fn acl_set_fd(fd: c_int, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_fd {
+            if acl.is_null() {
+                return -1;
+            }
+
+            log_message(&format!("interposing acl_set_fd({}, {}, {:p})", fd, acl_type, acl));
+
+            // Convert acl_t to binary data
+            let acl_data = if acl == 1 as acl_t {
+                vec![1] // Dummy data
+            } else {
+                Vec::new()
+            };
+
+            let request = AclSetFdRequest {
+                handle_id: fd as u64,
+                acl_type: acl_type as u32,
+                acl_data,
+            };
+
+            match send_request(Request::AclSetFd((b"1".to_vec(), request)), |response| match response {
+                Response::AclSetFd(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(acl_set_fd)(fd, acl_type, acl);
+                }
+            }
+        }
+    }
+
+    /// Interposed acl_delete_def_file function
+    redhook::hook! {
+        unsafe fn acl_delete_def_file(path: *const c_char) -> c_int => my_acl_delete_def_file {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing acl_delete_def_file({})",
+                c_path.to_string_lossy()));
+
+            let request = AclDeleteDefFileRequest {
+                path: c_path.to_bytes().to_vec(),
+            };
+
+            match send_request(Request::AclDeleteDefFile((b"1".to_vec(), request)), |response| match response {
+                Response::AclDeleteDefFile(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(acl_delete_def_file)(path);
+                }
+            }
+        }
+    }
+
+    /// Interposed chflags function
+    redhook::hook! {
+        unsafe fn chflags(path: *const c_char, flags: libc::c_uint) -> c_int => my_chflags {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing chflags({}, {:#x})",
+                c_path.to_string_lossy(), flags));
+
+            let request = ChflagsRequest {
+                path: c_path.to_bytes().to_vec(),
+                flags,
+            };
+
+            match send_request(Request::Chflags((b"1".to_vec(), request)), |response| match response {
+                Response::Chflags(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(chflags)(path, flags);
+                }
+            }
+        }
+    }
+
+    /// Interposed lchflags function
+    redhook::hook! {
+        unsafe fn lchflags(path: *const c_char, flags: libc::c_uint) -> c_int => my_lchflags {
+            if path.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing lchflags({}, {:#x})",
+                c_path.to_string_lossy(), flags));
+
+            let request = LchflagsRequest {
+                path: c_path.to_bytes().to_vec(),
+                flags,
+            };
+
+            match send_request(Request::Lchflags((b"1".to_vec(), request)), |response| match response {
+                Response::Lchflags(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(lchflags)(path, flags);
+                }
+            }
+        }
+    }
+
+    /// Interposed fchflags function
+    redhook::hook! {
+        unsafe fn fchflags(fd: c_int, flags: libc::c_uint) -> c_int => my_fchflags {
+            log_message(&format!("interposing fchflags({}, {:#x})", fd, flags));
+
+            let request = FchflagsRequest {
+                handle_id: fd as u64,
+                flags,
+            };
+
+            match send_request(Request::Fchflags((b"1".to_vec(), request)), |response| match response {
+                Response::Fchflags(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(fchflags)(fd, flags);
+                }
+            }
+        }
+    }
+
+    /// Interposed getattrlist function
+    redhook::hook! {
+        unsafe fn getattrlist(path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_getattrlist {
+            if path.is_null() || attr_list.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing getattrlist({}, attr_list={:p}, attr_buf={:p}, size={}, options={:#x})",
+                c_path.to_string_lossy(), attr_list, attr_buf, attr_buf_size, options));
+
+            // For now, serialize the attrlist structure as binary data
+            let attr_list_data = unsafe {
+                std::slice::from_raw_parts(attr_list as *const u8, std::mem::size_of::<attrlist>())
+            }.to_vec();
+
+            let request = GetattrlistRequest {
+                path: c_path.to_bytes().to_vec(),
+                attr_list: attr_list_data,
+                options: options as u32,
+            };
+
+            match send_request(Request::Getattrlist((b"1".to_vec(), request)), |response| match response {
+                Response::Getattrlist(resp) => Some(resp.attr_data),
+                _ => None,
+            }) {
+                Ok(attr_data) => {
+                    // Copy the result data back to the caller's buffer
+                    if !attr_buf.is_null() && attr_buf_size > 0 && attr_data.len() <= attr_buf_size {
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                attr_data.as_ptr(),
+                                attr_buf as *mut u8,
+                                attr_data.len()
+                            );
+                        }
+                        attr_data.len() as c_int
+                    } else if attr_buf_size == 0 {
+                        // Size query - return the required size
+                        attr_data.len() as c_int
+                    } else {
+                        -1 // Buffer too small or invalid
+                    }
+                }
+                Err(_) => {
+                    return redhook::real!(getattrlist)(path, attr_list, attr_buf, attr_buf_size, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed setattrlist function
+    redhook::hook! {
+        unsafe fn setattrlist(path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_setattrlist {
+            if path.is_null() || attr_list.is_null() {
+                return -1;
+            }
+
+            let c_path = unsafe { CStr::from_ptr(path) };
+
+            log_message(&format!("interposing setattrlist({}, attr_list={:p}, attr_buf={:p}, size={}, options={:#x})",
+                c_path.to_string_lossy(), attr_list, attr_buf, attr_buf_size, options));
+
+            // Serialize the attrlist structure
+            let attr_list_data = unsafe {
+                std::slice::from_raw_parts(attr_list as *const u8, std::mem::size_of::<attrlist>())
+            }.to_vec();
+
+            // Serialize the attribute buffer data
+            let attr_data = if !attr_buf.is_null() && attr_buf_size > 0 {
+                unsafe {
+                    std::slice::from_raw_parts(attr_buf as *const u8, attr_buf_size)
+                }.to_vec()
+            } else {
+                Vec::new()
+            };
+
+            let request = SetattrlistRequest {
+                path: c_path.to_bytes().to_vec(),
+                attr_list: attr_list_data,
+                attr_data,
+                options: options as u32,
+            };
+
+            match send_request(Request::Setattrlist((b"1".to_vec(), request)), |response| match response {
+                Response::Setattrlist(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(setattrlist)(path, attr_list, attr_buf, attr_buf_size, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed getattrlistbulk function
+    redhook::hook! {
+        unsafe fn getattrlistbulk(dirfd: c_int, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_int64_t) -> c_int => my_getattrlistbulk {
+            if attr_list.is_null() {
+                return -1;
+            }
+
+            log_message(&format!("interposing getattrlistbulk({}, attr_list={:p}, attr_buf={:p}, size={}, options={:#x})",
+                dirfd, attr_list, attr_buf, attr_buf_size, options));
+
+            // Serialize the attrlist structure
+            let attr_list_data = unsafe {
+                std::slice::from_raw_parts(attr_list as *const u8, std::mem::size_of::<attrlist>())
+            }.to_vec();
+
+            let request = GetattrlistbulkRequest {
+                fd: dirfd as u32,
+                attr_list: attr_list_data,
+                options: options as u32,
+            };
+
+            match send_request(Request::Getattrlistbulk((b"1".to_vec(), request)), |response| match response {
+                Response::Getattrlistbulk(resp) => Some(resp.entries),
+                _ => None,
+            }) {
+                Ok(entries) => {
+                    // For bulk operations, we need to pack multiple entries into the buffer
+                    // This is a simplified implementation
+                    if entries.is_empty() {
+                        0 // No more entries
+                    } else {
+                        // Copy first entry as an example
+                        if let Some(first_entry) = entries.first() {
+                            if !attr_buf.is_null() && attr_buf_size >= first_entry.len() {
+                                unsafe {
+                                    std::ptr::copy_nonoverlapping(
+                                        first_entry.as_ptr(),
+                                        attr_buf as *mut u8,
+                                        first_entry.len()
+                                    );
+                                }
+                                1 // One entry returned
+                            } else {
+                                -1 // Buffer too small
+                            }
+                        } else {
+                            0
+                        }
+                    }
+                }
+                Err(_) => {
+                    return redhook::real!(getattrlistbulk)(dirfd, attr_list, attr_buf, attr_buf_size, options);
+                }
+            }
+        }
+    }
+
+    /// Interposed copyfile function
+    redhook::hook! {
+        unsafe fn copyfile(from: *const c_char, to: *const c_char, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_copyfile {
+            if from.is_null() || to.is_null() {
+                return -1;
+            }
+
+            let c_from = unsafe { CStr::from_ptr(from) };
+            let c_to = unsafe { CStr::from_ptr(to) };
+
+            log_message(&format!("interposing copyfile({}, {}, state={:p}, flags={:#x})",
+                c_from.to_string_lossy(), c_to.to_string_lossy(), state, flags));
+
+            // Serialize copyfile state (simplified - real implementation would need to handle copyfile_state_t)
+            let state_data = if !state.is_null() {
+                vec![1] // Placeholder for state data
+            } else {
+                Vec::new()
+            };
+
+            let request = CopyfileRequest {
+                src_path: c_from.to_bytes().to_vec(),
+                dst_path: c_to.to_bytes().to_vec(),
+                state: state_data,
+                flags,
+            };
+
+            match send_request(Request::Copyfile((b"1".to_vec(), request)), |response| match response {
+                Response::Copyfile(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(copyfile)(from, to, state, flags);
+                }
+            }
+        }
+    }
+
+    /// Interposed fcopyfile function
+    redhook::hook! {
+        unsafe fn fcopyfile(from_fd: c_int, to_fd: c_int, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_fcopyfile {
+            log_message(&format!("interposing fcopyfile({}, {}, state={:p}, flags={:#x})",
+                from_fd, to_fd, state, flags));
+
+            // Serialize copyfile state (simplified)
+            let state_data = if !state.is_null() {
+                vec![1] // Placeholder for state data
+            } else {
+                Vec::new()
+            };
+
+            let request = FcopyfileRequest {
+                src_fd: from_fd as u32,
+                dst_fd: to_fd as u32,
+                state: state_data,
+                flags,
+            };
+
+            match send_request(Request::Fcopyfile((b"1".to_vec(), request)), |response| match response {
+                Response::Fcopyfile(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(fcopyfile)(from_fd, to_fd, state, flags);
+                }
+            }
+        }
+    }
+
+    /// Interposed clonefile function
+    redhook::hook! {
+        unsafe fn clonefile(from: *const c_char, to: *const c_char, flags: c_int) -> c_int => my_clonefile {
+            if from.is_null() || to.is_null() {
+                return -1;
+            }
+
+            let c_from = unsafe { CStr::from_ptr(from) };
+            let c_to = unsafe { CStr::from_ptr(to) };
+
+            log_message(&format!("interposing clonefile({}, {}, flags={})",
+                c_from.to_string_lossy(), c_to.to_string_lossy(), flags));
+
+            let request = ClonefileRequest {
+                src_path: c_from.to_bytes().to_vec(),
+                dst_path: c_to.to_bytes().to_vec(),
+                flags: flags as u32,
+            };
+
+            match send_request(Request::Clonefile((b"1".to_vec(), request)), |response| match response {
+                Response::Clonefile(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(clonefile)(from, to, flags);
+                }
+            }
+        }
+    }
+
+    /// Interposed fclonefileat function
+    redhook::hook! {
+        unsafe fn fclonefileat(from_fd: c_int, to_fd: c_int, to: *const c_char, flags: c_int) -> c_int => my_fclonefileat {
+            if to.is_null() {
+                return -1;
+            }
+
+            let c_to = unsafe { CStr::from_ptr(to) };
+
+            log_message(&format!("interposing fclonefileat({}, {}, {}, flags={})",
+                from_fd, to_fd, c_to.to_string_lossy(), flags));
+
+            let request = FclonefileatRequest {
+                src_dirfd: from_fd as u32,
+                src_path: Vec::new(), // Empty path for fd-based operation
+                dst_dirfd: to_fd as u32,
+                dst_path: c_to.to_bytes().to_vec(),
+                flags: flags as u32,
+            };
+
+            match send_request(Request::Fclonefileat((b"1".to_vec(), request)), |response| match response {
+                Response::Fclonefileat(_) => Some(()),
+                _ => None,
+            }) {
+                Ok(_) => 0,
+                Err(_) => {
+                    return redhook::real!(fclonefileat)(from_fd, to_fd, to, flags);
+                }
+            }
         }
     }
 }

@@ -1,6 +1,11 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use crate::transport::{
+    ControlTransport, build_interpose_get_request, build_interpose_set_request,
+    send_control_request,
+};
+use agentfs_proto::Response;
 use ah_fs_snapshots::{
     FsSnapshotProvider, ProviderCapabilities, SnapshotProviderKind, provider_for,
 };
@@ -98,6 +103,34 @@ pub enum BranchCommands {
 }
 
 #[derive(Subcommand)]
+pub enum InterposeCommands {
+    /// Get current interpose configuration
+    Get {
+        /// AgentFS mount point
+        #[arg(long)]
+        mount: Option<PathBuf>,
+    },
+    /// Set interpose configuration options
+    Set {
+        /// AgentFS mount point
+        #[arg(long)]
+        mount: Option<PathBuf>,
+
+        /// Enable/disable interpose mode
+        #[arg(long)]
+        enabled: Option<bool>,
+
+        /// Maximum file size for bounded copy (bytes)
+        #[arg(long)]
+        max_copy_bytes: Option<u64>,
+
+        /// Require reflink support for forwarding
+        #[arg(long)]
+        require_reflink: Option<bool>,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum AgentFsCommands {
     /// Run filesystem detection and report capabilities
     Status(StatusOptions),
@@ -116,6 +149,12 @@ pub enum AgentFsCommands {
         #[command(subcommand)]
         subcommand: BranchCommands,
     },
+
+    /// Interpose configuration operations
+    Interpose {
+        #[command(subcommand)]
+        subcommand: InterposeCommands,
+    },
 }
 
 impl AgentFsCommands {
@@ -133,6 +172,15 @@ impl AgentFsCommands {
                 BranchCommands::Exec { branch_id, command } => {
                     Self::branch_exec(branch_id, command).await
                 }
+            },
+            AgentFsCommands::Interpose { subcommand } => match subcommand {
+                InterposeCommands::Get { mount } => Self::interpose_get(mount).await,
+                InterposeCommands::Set {
+                    mount,
+                    enabled,
+                    max_copy_bytes,
+                    require_reflink,
+                } => Self::interpose_set(mount, enabled, max_copy_bytes, require_reflink).await,
             },
         }
     }
@@ -441,6 +489,150 @@ impl AgentFsCommands {
         println!("Command: {:?}", command);
         println!("Note: AgentFS branch execution not yet implemented in this milestone");
         println!("When implemented, this will run the command with the branch filesystem view");
+
+        Ok(())
+    }
+
+    async fn interpose_get(mount: Option<PathBuf>) -> Result<()> {
+        let mount_point =
+            mount.ok_or_else(|| anyhow!("Mount point is required for interpose operations"))?;
+
+        // Create control transport
+        let transport = ControlTransport::new(mount_point)?;
+
+        // Build and send get request for each configuration key
+        let keys = ["enabled", "max_copy_bytes", "require_reflink"];
+
+        println!("Current interpose configuration:");
+
+        for key in &keys {
+            let request = build_interpose_get_request(key.to_string());
+            match send_control_request(transport.clone(), request).await {
+                Ok(response) => match response {
+                    Response::InterposeSetGet(response) => {
+                        let value = String::from_utf8(response.value)
+                            .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
+                        println!("- {}: {}", key, value);
+                    }
+                    Response::Error(error_response) => {
+                        println!(
+                            "- {}: Error {}",
+                            key,
+                            String::from_utf8_lossy(&error_response.error)
+                        );
+                    }
+                    _ => {
+                        println!("- {}: Unexpected response type", key);
+                    }
+                },
+                Err(e) => {
+                    println!("- {}: Failed to query ({})", key, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn interpose_set(
+        mount: Option<PathBuf>,
+        enabled: Option<bool>,
+        max_copy_bytes: Option<u64>,
+        require_reflink: Option<bool>,
+    ) -> Result<()> {
+        let mount_point =
+            mount.ok_or_else(|| anyhow!("Mount point is required for interpose operations"))?;
+
+        // Create control transport
+        let transport = ControlTransport::new(mount_point)?;
+
+        println!("Setting interpose configuration:");
+
+        // Send set requests for each provided option
+        if let Some(enabled) = enabled {
+            let value = enabled.to_string();
+            let request = build_interpose_set_request("enabled".to_string(), value.clone());
+            match send_control_request(transport.clone(), request).await {
+                Ok(response) => match response {
+                    Response::InterposeSetGet(response) => {
+                        let updated_value = String::from_utf8(response.value)
+                            .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
+                        println!("- enabled: {} (confirmed: {})", value, updated_value);
+                    }
+                    Response::Error(error_response) => {
+                        println!(
+                            "- enabled: Failed to set - {}",
+                            String::from_utf8_lossy(&error_response.error)
+                        );
+                    }
+                    _ => {
+                        println!("- enabled: Unexpected response type");
+                    }
+                },
+                Err(e) => {
+                    println!("- enabled: Failed to set ({})", e);
+                }
+            }
+        }
+
+        if let Some(max_copy_bytes) = max_copy_bytes {
+            let value = max_copy_bytes.to_string();
+            let request = build_interpose_set_request("max_copy_bytes".to_string(), value.clone());
+            match send_control_request(transport.clone(), request).await {
+                Ok(response) => match response {
+                    Response::InterposeSetGet(response) => {
+                        let updated_value = String::from_utf8(response.value)
+                            .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
+                        println!("- max_copy_bytes: {} (confirmed: {})", value, updated_value);
+                    }
+                    Response::Error(error_response) => {
+                        println!(
+                            "- max_copy_bytes: Failed to set - {}",
+                            String::from_utf8_lossy(&error_response.error)
+                        );
+                    }
+                    _ => {
+                        println!("- max_copy_bytes: Unexpected response type");
+                    }
+                },
+                Err(e) => {
+                    println!("- max_copy_bytes: Failed to set ({})", e);
+                }
+            }
+        }
+
+        if let Some(require_reflink) = require_reflink {
+            let value = require_reflink.to_string();
+            let request = build_interpose_set_request("require_reflink".to_string(), value.clone());
+            match send_control_request(transport.clone(), request).await {
+                Ok(response) => match response {
+                    Response::InterposeSetGet(response) => {
+                        let updated_value = String::from_utf8(response.value)
+                            .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
+                        println!(
+                            "- require_reflink: {} (confirmed: {})",
+                            value, updated_value
+                        );
+                    }
+                    Response::Error(error_response) => {
+                        println!(
+                            "- require_reflink: Failed to set - {}",
+                            String::from_utf8_lossy(&error_response.error)
+                        );
+                    }
+                    _ => {
+                        println!("- require_reflink: Unexpected response type");
+                    }
+                },
+                Err(e) => {
+                    println!("- require_reflink: Failed to set ({})", e);
+                }
+            }
+        }
+
+        if enabled.is_none() && max_copy_bytes.is_none() && require_reflink.is_none() {
+            println!("No configuration options specified to set");
+        }
 
         Ok(())
     }

@@ -37,7 +37,18 @@ pub fn build_branch_bind_request(branch: String, pid: Option<u32>) -> Request {
     Request::branch_bind(branch, pid)
 }
 
+/// Build an interpose get request
+pub fn build_interpose_get_request(key: String) -> Request {
+    Request::interpose_setget(key, None)
+}
+
+/// Build an interpose set request
+pub fn build_interpose_set_request(key: String, value: String) -> Request {
+    Request::interpose_setget(key, Some(value))
+}
+
 /// Platform-specific transport for communicating with AgentFS adapters
+#[derive(Clone)]
 pub enum ControlTransport {
     #[cfg(unix)]
     Fuse { mount_point: PathBuf },

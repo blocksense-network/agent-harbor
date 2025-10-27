@@ -170,6 +170,10 @@ impl Backstore for InMemoryBackstore {
         Err(FsError::Unsupported)
     }
 
+    fn supports_native_reflink(&self) -> bool {
+        false
+    }
+
     fn reflink(&self, _from_path: &Path, _to_path: &Path) -> FsResult<()> {
         Err(FsError::Unsupported)
     }
@@ -324,6 +328,13 @@ impl Backstore for HostFsBackstore {
         // In a real implementation, this would check if the underlying filesystem
         // actually supports native snapshots and call the appropriate commands
         Err(FsError::Unsupported)
+    }
+
+    fn supports_native_reflink(&self) -> bool {
+        // For now, HostFs doesn't support native reflink (only copy fallback)
+        // In a real implementation, this would detect if the underlying filesystem
+        // supports native reflink operations (Btrfs FICLONE, APFS clonefile, etc.)
+        false
     }
 
     fn reflink(&self, from_path: &Path, to_path: &Path) -> FsResult<()> {

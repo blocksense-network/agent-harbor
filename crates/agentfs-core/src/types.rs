@@ -399,6 +399,9 @@ pub trait Backstore: Send + Sync {
     /// Create a native snapshot of the backstore if supported
     fn snapshot_native(&self, snapshot_name: &str) -> crate::error::FsResult<()>;
 
+    /// Check if this backstore supports native reflink/clone operations
+    fn supports_native_reflink(&self) -> bool;
+
     /// Create a reflink/clone of a file within the backstore
     fn reflink(
         &self,

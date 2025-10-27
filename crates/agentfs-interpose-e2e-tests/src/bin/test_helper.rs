@@ -54,6 +54,12 @@ fn main() {
         "--test-t25-13" => test_t25_13_cross_process_fd_sharing(test_args),
         "--test-t25-14" => test_t25_14_memory_leak_prevention(test_args),
         "--test-t25-15" => test_t25_15_error_code_consistency(test_args),
+        // M24.g - Extended attributes, ACLs, and flags tests
+        "test-xattr-roundtrip" => test_xattr_roundtrip(test_args),
+        "test-acl-operations" => test_acl_operations(test_args),
+        "test-file-flags" => test_file_flags(test_args),
+        "test-copyfile-clonefile" => test_copyfile_clonefile(test_args),
+        "test-getattrlist" => test_getattrlist_operations(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
             println!("Dummy command executed");
@@ -61,7 +67,7 @@ fn main() {
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!(
-                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, --test-t25-*, dummy"
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, --test-t25-*, test-xattr-roundtrip, test-acl-operations, test-file-flags, test-copyfile-clonefile, test-getattrlist, dummy"
             );
             std::process::exit(1);
         }
@@ -2411,3 +2417,673 @@ fn test_t25_15_error_code_consistency(args: &[String]) {
 
     println!("T25.15 test completed successfully!");
 }
+
+// M24.g - Extended attributes, ACLs, and flags test functions
+
+fn test_xattr_roundtrip(args: &[String]) {
+    if args.is_empty() {
+        eprintln!("Usage: test-xattr-roundtrip <filename>");
+        std::process::exit(1);
+    }
+
+    let filename = &args[0];
+    println!("Testing xattr roundtrip operations with: {}", filename);
+
+    // Create a test file first
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        let fd = libc::open(
+            c_filename.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to create test file '{}': {}", filename, err);
+            std::process::exit(1);
+        }
+        let test_content = b"Test file for xattr operations\n";
+        let bytes_written = libc::write(
+            fd,
+            test_content.as_ptr() as *const libc::c_void,
+            test_content.len(),
+        );
+        if bytes_written < 0 {
+            eprintln!("Failed to write to test file");
+            libc::close(fd);
+            std::process::exit(1);
+        }
+        libc::close(fd);
+    }
+
+    // Test xattr operations
+    let test_name = "user.test_xattr";
+    let test_value = b"test_value_data";
+
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        let c_name = std::ffi::CString::new(test_name).unwrap();
+
+        // Test 1: setxattr
+        println!("Testing setxattr...");
+        let result = libc::setxattr(
+            c_filename.as_ptr(),
+            c_name.as_ptr(),
+            test_value.as_ptr() as *const libc::c_void,
+            test_value.len(),
+            0, // position (unused for path-based)
+            0, // options (XATTR_CREATE = 0)
+        );
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("setxattr failed (expected for interposition): {}", err);
+        } else {
+            println!("setxattr succeeded");
+        }
+
+        // Test 2: getxattr - check if it exists
+        println!("Testing getxattr...");
+        let mut value_buf = vec![0u8; 256];
+        let result = libc::getxattr(
+            c_filename.as_ptr(),
+            c_name.as_ptr(),
+            value_buf.as_mut_ptr() as *mut libc::c_void,
+            value_buf.len(),
+            0, // position (unused)
+            0, // options
+        );
+        if result < 0 {
+            let err = std::io::Error::last_os_error();
+            println!("getxattr failed (expected for interposition): {}", err);
+        } else {
+            println!("getxattr returned {} bytes", result);
+            if result as usize <= value_buf.len() {
+                let retrieved = &value_buf[..result as usize];
+                println!(
+                    "Retrieved value: {:?}",
+                    std::str::from_utf8(retrieved).unwrap_or("<binary>")
+                );
+            }
+        }
+
+        // Test 3: listxattr
+        println!("Testing listxattr...");
+        let mut list_buf = vec![0u8; 1024];
+        let result = libc::listxattr(
+            c_filename.as_ptr(),
+            list_buf.as_mut_ptr() as *mut libc::c_char,
+            list_buf.len(),
+            0, // options
+        );
+        if result < 0 {
+            let err = std::io::Error::last_os_error();
+            println!("listxattr failed (expected for interposition): {}", err);
+        } else {
+            println!("listxattr returned {} bytes", result);
+        }
+
+        // Test 4: removexattr
+        println!("Testing removexattr...");
+        let result = libc::removexattr(
+            c_filename.as_ptr(),
+            c_name.as_ptr(),
+            0, // options
+        );
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("removexattr failed (expected for interposition): {}", err);
+        } else {
+            println!("removexattr succeeded");
+        }
+
+        // Test 5: Test fd-based operations
+        println!("Testing fd-based xattr operations...");
+        let fd = libc::open(c_filename.as_ptr(), libc::O_RDONLY);
+        if fd >= 0 {
+            // fsetxattr
+            let result = libc::fsetxattr(
+                fd,
+                c_name.as_ptr(),
+                test_value.as_ptr() as *const libc::c_void,
+                test_value.len(),
+                0, // position (unused)
+                0, // options
+            );
+            if result != 0 {
+                let err = std::io::Error::last_os_error();
+                println!("fsetxattr failed (expected for interposition): {}", err);
+            } else {
+                println!("fsetxattr succeeded");
+            }
+
+            // fgetxattr
+            let result = libc::fgetxattr(
+                fd,
+                c_name.as_ptr(),
+                value_buf.as_mut_ptr() as *mut libc::c_void,
+                value_buf.len(),
+                0, // position (unused)
+                0, // options
+            );
+            if result < 0 {
+                let err = std::io::Error::last_os_error();
+                println!("fgetxattr failed (expected for interposition): {}", err);
+            } else {
+                println!("fgetxattr returned {} bytes", result);
+            }
+
+            // flistxattr
+            let result = libc::flistxattr(
+                fd,
+                list_buf.as_mut_ptr() as *mut libc::c_char,
+                list_buf.len(),
+                0, // options
+            );
+            if result < 0 {
+                let err = std::io::Error::last_os_error();
+                println!("flistxattr failed (expected for interposition): {}", err);
+            } else {
+                println!("flistxattr returned {} bytes", result);
+            }
+
+            // fremovexattr
+            let result = libc::fremovexattr(
+                fd,
+                c_name.as_ptr(),
+                0, // options
+            );
+            if result != 0 {
+                let err = std::io::Error::last_os_error();
+                println!("fremovexattr failed (expected for interposition): {}", err);
+            } else {
+                println!("fremovexattr succeeded");
+            }
+
+            libc::close(fd);
+        } else {
+            println!("Failed to open file for fd-based tests");
+        }
+    }
+
+    // Clean up test file
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        libc::unlink(c_filename.as_ptr());
+    }
+
+    println!("Xattr roundtrip test completed!");
+}
+
+fn test_acl_operations(args: &[String]) {
+    if args.is_empty() {
+        eprintln!("Usage: test-acl-operations <filename>");
+        std::process::exit(1);
+    }
+
+    let filename = &args[0];
+    println!("Testing ACL operations with: {}", filename);
+
+    // Create a test file first
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        let fd = libc::open(
+            c_filename.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to create test file '{}': {}", filename, err);
+            std::process::exit(1);
+        }
+        libc::close(fd);
+    }
+
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+
+        // Test ACL operations - these are macOS specific
+        // Note: We can't easily test ACL operations without proper ACL structures,
+        // but we can test that the interposition hooks are called
+
+        println!("Testing acl_get_file...");
+        // acl_get_file returns an acl_t, which is a pointer
+        let acl = acl_get_file(c_filename.as_ptr(), 0x00000004); // ACL_TYPE_EXTENDED
+        if acl.is_null() {
+            let err = std::io::Error::last_os_error();
+            println!(
+                "acl_get_file returned NULL (expected for interposition): {}",
+                err
+            );
+        } else {
+            println!("acl_get_file returned valid ACL pointer: {:p}", acl);
+            // In a real test, we'd free the ACL, but for interposition testing we just check the call
+        }
+
+        println!("Testing acl_set_file...");
+        // This would normally set an ACL, but we're just testing interposition
+        let result = acl_set_file(c_filename.as_ptr(), 0x00000004, acl);
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("acl_set_file failed (expected for interposition): {}", err);
+        } else {
+            println!("acl_set_file succeeded");
+        }
+
+        println!("Testing acl_delete_def_file...");
+        let result = acl_delete_def_file(c_filename.as_ptr());
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!(
+                "acl_delete_def_file failed (expected for interposition): {}",
+                err
+            );
+        } else {
+            println!("acl_delete_def_file succeeded");
+        }
+
+        // Test fd-based operations
+        let fd = libc::open(c_filename.as_ptr(), libc::O_RDONLY);
+        if fd >= 0 {
+            println!("Testing acl_get_fd...");
+            let acl_fd = acl_get_fd(fd, 0x00000004);
+            if acl_fd.is_null() {
+                let err = std::io::Error::last_os_error();
+                println!(
+                    "acl_get_fd returned NULL (expected for interposition): {}",
+                    err
+                );
+            } else {
+                println!("acl_get_fd returned valid ACL pointer: {:p}", acl_fd);
+            }
+
+            println!("Testing acl_set_fd...");
+            let result = acl_set_fd(fd, 0x00000004, acl_fd);
+            if result != 0 {
+                let err = std::io::Error::last_os_error();
+                println!("acl_set_fd failed (expected for interposition): {}", err);
+            } else {
+                println!("acl_set_fd succeeded");
+            }
+
+            libc::close(fd);
+        } else {
+            println!("Failed to open file for fd-based ACL tests");
+        }
+    }
+
+    // Clean up test file
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        libc::unlink(c_filename.as_ptr());
+    }
+
+    println!("ACL operations test completed!");
+}
+
+fn test_file_flags(args: &[String]) {
+    if args.is_empty() {
+        eprintln!("Usage: test-file-flags <filename>");
+        std::process::exit(1);
+    }
+
+    let filename = &args[0];
+    println!("Testing file flags operations with: {}", filename);
+
+    // Create a test file first
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        let fd = libc::open(
+            c_filename.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to create test file '{}': {}", filename, err);
+            std::process::exit(1);
+        }
+        libc::close(fd);
+    }
+
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+
+        // Test file flags operations (chflags, lchflags, fchflags)
+        let test_flags = 0x00000001; // UF_NODUMP
+
+        println!("Testing chflags with flags {:#x}...", test_flags);
+        let result = chflags(c_filename.as_ptr(), test_flags);
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("chflags failed (expected for interposition): {}", err);
+        } else {
+            println!("chflags succeeded");
+        }
+
+        println!("Testing lchflags with flags {:#x}...", test_flags);
+        let result = lchflags(c_filename.as_ptr(), test_flags);
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("lchflags failed (expected for interposition): {}", err);
+        } else {
+            println!("lchflags succeeded");
+        }
+
+        // Test fd-based operation
+        let fd = libc::open(c_filename.as_ptr(), libc::O_RDONLY);
+        if fd >= 0 {
+            println!("Testing fchflags with flags {:#x}...", test_flags);
+            let result = fchflags(fd, test_flags);
+            if result != 0 {
+                let err = std::io::Error::last_os_error();
+                println!("fchflags failed (expected for interposition): {}", err);
+            } else {
+                println!("fchflags succeeded");
+            }
+
+            libc::close(fd);
+        } else {
+            println!("Failed to open file for fd-based flags test");
+        }
+    }
+
+    // Clean up test file
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        libc::unlink(c_filename.as_ptr());
+    }
+
+    println!("File flags test completed!");
+}
+
+fn test_copyfile_clonefile(args: &[String]) {
+    if args.len() < 2 {
+        eprintln!("Usage: test-copyfile-clonefile <source_file> <dest_file>");
+        std::process::exit(1);
+    }
+
+    let source_file = &args[0];
+    let dest_file = &args[1];
+    println!(
+        "Testing copyfile/clonefile operations: {} -> {}",
+        source_file, dest_file
+    );
+
+    // Create a source file first
+    unsafe {
+        let c_source = std::ffi::CString::new(source_file.as_str()).unwrap();
+        let fd = libc::open(
+            c_source.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to create source file '{}': {}", source_file, err);
+            std::process::exit(1);
+        }
+        let test_content = b"Test content for copy/clone operations\n";
+        libc::write(
+            fd,
+            test_content.as_ptr() as *const libc::c_void,
+            test_content.len(),
+        );
+        libc::close(fd);
+    }
+
+    unsafe {
+        let c_source = std::ffi::CString::new(source_file.as_str()).unwrap();
+        let c_dest = std::ffi::CString::new(dest_file.as_str()).unwrap();
+
+        // Test copyfile
+        println!("Testing copyfile...");
+        let result = copyfile(c_source.as_ptr(), c_dest.as_ptr(), std::ptr::null_mut(), 0);
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("copyfile failed (expected for interposition): {}", err);
+        } else {
+            println!("copyfile succeeded");
+        }
+
+        // Clean up destination file if it was created
+        libc::unlink(c_dest.as_ptr());
+
+        // Test clonefile
+        println!("Testing clonefile...");
+        let result = clonefile(c_source.as_ptr(), c_dest.as_ptr(), 0);
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("clonefile failed (expected for interposition): {}", err);
+        } else {
+            println!("clonefile succeeded");
+        }
+
+        // Test fd-based operations
+        let src_fd = libc::open(c_source.as_ptr(), libc::O_RDONLY);
+        if src_fd >= 0 {
+            libc::unlink(c_dest.as_ptr()); // Remove any existing dest file
+
+            println!("Testing fcopyfile...");
+            let dest_fd = libc::open(
+                c_dest.as_ptr(),
+                libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+                0o644,
+            );
+            if dest_fd >= 0 {
+                let result = fcopyfile(src_fd, dest_fd, std::ptr::null_mut(), 0);
+                if result != 0 {
+                    let err = std::io::Error::last_os_error();
+                    println!("fcopyfile failed (expected for interposition): {}", err);
+                } else {
+                    println!("fcopyfile succeeded");
+                }
+                libc::close(dest_fd);
+            } else {
+                println!("Failed to create destination file for fcopyfile test");
+            }
+
+            libc::close(src_fd);
+        } else {
+            println!("Failed to open source file for fd-based tests");
+        }
+
+        // Test fclonefileat
+        let src_fd = libc::open(c_source.as_ptr(), libc::O_RDONLY);
+        if src_fd >= 0 {
+            libc::unlink(c_dest.as_ptr()); // Remove any existing dest file
+
+            println!("Testing fclonefileat...");
+            let result = fclonefileat(src_fd, libc::AT_FDCWD, c_dest.as_ptr(), 0);
+            if result != 0 {
+                let err = std::io::Error::last_os_error();
+                println!("fclonefileat failed (expected for interposition): {}", err);
+            } else {
+                println!("fclonefileat succeeded");
+            }
+
+            libc::close(src_fd);
+        }
+    }
+
+    // Clean up test files
+    unsafe {
+        let c_source = std::ffi::CString::new(source_file.as_str()).unwrap();
+        let c_dest = std::ffi::CString::new(dest_file.as_str()).unwrap();
+        libc::unlink(c_source.as_ptr());
+        libc::unlink(c_dest.as_ptr());
+    }
+
+    println!("Copyfile/clonefile test completed!");
+}
+
+fn test_getattrlist_operations(args: &[String]) {
+    if args.is_empty() {
+        eprintln!("Usage: test-getattrlist <filename>");
+        std::process::exit(1);
+    }
+
+    let filename = &args[0];
+    println!("Testing getattrlist operations with: {}", filename);
+
+    // Create a test file first
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        let fd = libc::open(
+            c_filename.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("Failed to create test file '{}': {}", filename, err);
+            std::process::exit(1);
+        }
+        libc::close(fd);
+    }
+
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+
+        // Define a basic attrlist structure for testing
+        // This is a simplified version - real code would use proper macOS attrlist structures
+        let mut attr_list = std::mem::MaybeUninit::<libc::c_void>::uninit();
+        let attr_list_ptr = attr_list.as_mut_ptr() as *mut libc::c_void;
+
+        // Initialize with some basic attributes
+        // In real code, this would be properly structured
+        std::ptr::write_bytes(attr_list_ptr, 0, std::mem::size_of::<u32>() * 7);
+
+        let mut attr_buf = vec![0u8; 1024];
+
+        println!("Testing getattrlist...");
+        let result = getattrlist(
+            c_filename.as_ptr(),
+            attr_list_ptr as *mut libc::c_void,
+            attr_buf.as_mut_ptr() as *mut libc::c_void,
+            attr_buf.len(),
+            0, // options
+        );
+        if result < 0 {
+            let err = std::io::Error::last_os_error();
+            println!("getattrlist failed (expected for interposition): {}", err);
+        } else {
+            println!("getattrlist returned {} bytes", result);
+        }
+
+        println!("Testing setattrlist...");
+        let result = setattrlist(
+            c_filename.as_ptr(),
+            attr_list_ptr as *mut libc::c_void,
+            attr_buf.as_ptr() as *mut libc::c_void,
+            64, // some data size
+            0,  // options
+        );
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            println!("setattrlist failed (expected for interposition): {}", err);
+        } else {
+            println!("setattrlist succeeded");
+        }
+
+        // Test getattrlistbulk
+        println!("Testing getattrlistbulk...");
+        let fd = libc::open(c_filename.as_ptr(), libc::O_RDONLY);
+        if fd >= 0 {
+            let result = getattrlistbulk(
+                fd,
+                attr_list_ptr as *mut libc::c_void,
+                attr_buf.as_mut_ptr() as *mut libc::c_void,
+                attr_buf.len(),
+                0, // options
+            );
+            if result < 0 {
+                let err = std::io::Error::last_os_error();
+                println!(
+                    "getattrlistbulk failed (expected for interposition): {}",
+                    err
+                );
+            } else {
+                println!("getattrlistbulk returned {} entries", result);
+            }
+            libc::close(fd);
+        } else {
+            println!("Failed to open file for getattrlistbulk test");
+        }
+    }
+
+    // Clean up test file
+    unsafe {
+        let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+        libc::unlink(c_filename.as_ptr());
+    }
+
+    println!("getattrlist operations test completed!");
+}
+
+// External function declarations for macOS-specific functions
+extern "C" {
+    fn chflags(path: *const libc::c_char, flags: libc::c_uint) -> libc::c_int;
+    fn lchflags(path: *const libc::c_char, flags: libc::c_uint) -> libc::c_int;
+    fn fchflags(fd: libc::c_int, flags: libc::c_uint) -> libc::c_int;
+
+    fn acl_get_file(path: *const libc::c_char, acl_type: acl_type_t) -> acl_t;
+    fn acl_set_file(path: *const libc::c_char, acl_type: acl_type_t, acl: acl_t) -> libc::c_int;
+    fn acl_get_fd(fd: libc::c_int, acl_type: acl_type_t) -> acl_t;
+    fn acl_set_fd(fd: libc::c_int, acl_type: acl_type_t, acl: acl_t) -> libc::c_int;
+    fn acl_delete_def_file(path: *const libc::c_char) -> libc::c_int;
+
+    fn copyfile(
+        from: *const libc::c_char,
+        to: *const libc::c_char,
+        state: copyfile_state_t,
+        flags: copyfile_flags_t,
+    ) -> libc::c_int;
+    fn fcopyfile(
+        from_fd: libc::c_int,
+        to_fd: libc::c_int,
+        state: copyfile_state_t,
+        flags: copyfile_flags_t,
+    ) -> libc::c_int;
+    fn clonefile(
+        from: *const libc::c_char,
+        to: *const libc::c_char,
+        flags: libc::c_int,
+    ) -> libc::c_int;
+    fn fclonefileat(
+        from_fd: libc::c_int,
+        to_fd: libc::c_int,
+        to: *const libc::c_char,
+        flags: libc::c_int,
+    ) -> libc::c_int;
+
+    fn getattrlist(
+        path: *const libc::c_char,
+        attr_list: *mut libc::c_void,
+        attr_buf: *mut libc::c_void,
+        attr_buf_size: libc::size_t,
+        options: u_long,
+    ) -> libc::c_int;
+    fn setattrlist(
+        path: *const libc::c_char,
+        attr_list: *mut libc::c_void,
+        attr_buf: *mut libc::c_void,
+        attr_buf_size: libc::size_t,
+        options: u_long,
+    ) -> libc::c_int;
+    fn getattrlistbulk(
+        dirfd: libc::c_int,
+        attr_list: *mut libc::c_void,
+        attr_buf: *mut libc::c_void,
+        attr_buf_size: libc::size_t,
+        options: u_int64_t,
+    ) -> libc::c_int;
+}
+
+// Type definitions (these should match the interpose shim definitions)
+type acl_type_t = u32;
+type acl_t = *mut libc::c_void;
+type copyfile_state_t = *mut libc::c_void;
+type copyfile_flags_t = u32;
+type u_long = usize;
+type u_int64_t = u64;

@@ -124,6 +124,36 @@ impl XpcControlService {
             Request::DirfdResolvePath(_) => {
                 todo!("DirfdResolvePath not implemented for XPC control")
             }
+            // New M24.g operations - not implemented for XPC control yet
+            Request::Getxattr(_) => todo!("Getxattr not implemented for XPC control"),
+            Request::Lgetxattr(_) => todo!("Lgetxattr not implemented for XPC control"),
+            Request::Fgetxattr(_) => todo!("Fgetxattr not implemented for XPC control"),
+            Request::Setxattr(_) => todo!("Setxattr not implemented for XPC control"),
+            Request::Lsetxattr(_) => todo!("Lsetxattr not implemented for XPC control"),
+            Request::Fsetxattr(_) => todo!("Fsetxattr not implemented for XPC control"),
+            Request::Listxattr(_) => todo!("Listxattr not implemented for XPC control"),
+            Request::Llistxattr(_) => todo!("Llistxattr not implemented for XPC control"),
+            Request::Flistxattr(_) => todo!("Flistxattr not implemented for XPC control"),
+            Request::Removexattr(_) => todo!("Removexattr not implemented for XPC control"),
+            Request::Lremovexattr(_) => todo!("Lremovexattr not implemented for XPC control"),
+            Request::Fremovexattr(_) => todo!("Fremovexattr not implemented for XPC control"),
+            Request::AclGetFile(_) => todo!("AclGetFile not implemented for XPC control"),
+            Request::AclSetFile(_) => todo!("AclSetFile not implemented for XPC control"),
+            Request::AclGetFd(_) => todo!("AclGetFd not implemented for XPC control"),
+            Request::AclSetFd(_) => todo!("AclSetFd not implemented for XPC control"),
+            Request::AclDeleteDefFile(_) => {
+                todo!("AclDeleteDefFile not implemented for XPC control")
+            }
+            Request::Chflags(_) => todo!("Chflags not implemented for XPC control"),
+            Request::Lchflags(_) => todo!("Lchflags not implemented for XPC control"),
+            Request::Fchflags(_) => todo!("Fchflags not implemented for XPC control"),
+            Request::Getattrlist(_) => todo!("Getattrlist not implemented for XPC control"),
+            Request::Setattrlist(_) => todo!("Setattrlist not implemented for XPC control"),
+            Request::Getattrlistbulk(_) => todo!("Getattrlistbulk not implemented for XPC control"),
+            Request::Copyfile(_) => todo!("Copyfile not implemented for XPC control"),
+            Request::Fcopyfile(_) => todo!("Fcopyfile not implemented for XPC control"),
+            Request::Clonefile(_) => todo!("Clonefile not implemented for XPC control"),
+            Request::Fclonefileat(_) => todo!("Fclonefileat not implemented for XPC control"),
         }
     }
 

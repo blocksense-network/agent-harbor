@@ -1702,72 +1702,283 @@ mod tests {
     /// Test the interpose fd_open logic with various scenarios
     #[test]
     fn test_u18_fd_open_control_plane_logic() {
-        // Test scenarios for fd_open:
-        // 1. Reflink Success: Mock backstore with reflink support, lower-only path
-        // 2. Bounded Copy Success: Mock backstore without reflink, small file
-        // 3. Forwarding Declined (Too Large): Mock backstore without reflink, large file
-        // 4. Forwarding Declined (Policy): Mock with require_reflink=true, no reflink support
-
         let temp_dir = tempfile::TempDir::new().unwrap();
 
         // Create lower filesystem with test files
         let lower_dir = temp_dir.path().join("lower");
         std::fs::create_dir_all(&lower_dir).unwrap();
-        std::fs::write(lower_dir.join("small.txt"), b"small").unwrap();
+        std::fs::write(lower_dir.join("small.txt"), b"small content").unwrap();
         std::fs::write(lower_dir.join("large.txt"), vec![b'x'; 100 * 1024 * 1024]).unwrap(); // 100MB
 
-        // Test with interpose enabled
-        let mut config = FsConfig {
-            case_sensitivity: CaseSensitivity::Sensitive,
-            memory: MemoryPolicy {
-                max_bytes_in_memory: Some(1024 * 1024),
-                spill_directory: None,
-            },
-            limits: FsLimits {
-                max_open_handles: 1000,
-                max_branches: 100,
-                max_snapshots: 1000,
-            },
-            cache: CachePolicy {
-                attr_ttl_ms: 1000,
-                entry_ttl_ms: 1000,
-                negative_ttl_ms: 1000,
-                enable_readdir_plus: true,
-                auto_cache: true,
-                writeback_cache: false,
-            },
-            enable_xattrs: true,
-            enable_ads: false,
-            track_events: false,
-            security: crate::config::SecurityPolicy::default(),
-            backstore: BackstoreMode::HostFs {
-                root: temp_dir.path().join("backstore"),
-                prefer_native_snapshots: false,
-            },
-            overlay: OverlayConfig {
-                enabled: true,
-                lower_root: Some(temp_dir.path().join("lower")),
-                copyup_mode: CopyUpMode::Lazy,
-            },
-            interpose: InterposeConfig {
-                enabled: true,
-                max_copy_bytes: 1024 * 1024, // 1MB for testing
-                require_reflink: false,
-                allow_windows_reparse: false,
-            },
-        };
-        let core = FsCore::new(config).unwrap();
-        let pid = core.register_process(1000, 1000, 0, 0);
+        // Test with interpose enabled - Reflink Success scenario
+        {
+            let mut config = FsConfig {
+                case_sensitivity: CaseSensitivity::Sensitive,
+                memory: MemoryPolicy {
+                    max_bytes_in_memory: Some(1024 * 1024),
+                    spill_directory: None,
+                },
+                limits: FsLimits {
+                    max_open_handles: 1000,
+                    max_branches: 100,
+                    max_snapshots: 1000,
+                },
+                cache: CachePolicy {
+                    attr_ttl_ms: 1000,
+                    entry_ttl_ms: 1000,
+                    negative_ttl_ms: 1000,
+                    enable_readdir_plus: true,
+                    auto_cache: true,
+                    writeback_cache: false,
+                },
+                enable_xattrs: true,
+                enable_ads: false,
+                track_events: false,
+                security: crate::config::SecurityPolicy::default(),
+                backstore: BackstoreMode::HostFs {
+                    root: temp_dir.path().join("backstore1"),
+                    prefer_native_snapshots: false,
+                },
+                overlay: OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower_dir.clone()),
+                    copyup_mode: crate::config::CopyUpMode::Lazy,
+                },
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,           // Allow copy fallback
+                    allow_windows_reparse: false,
+                },
+            };
 
-        // Test that overlay getattr works for lower files
-        let attrs = core.getattr(&pid, "/small.txt".as_ref()).unwrap();
-        assert_eq!(attrs.len, 5); // "small" is 5 bytes
+            let core = FsCore::new(config).unwrap();
 
-        // Verify no upper entry created for getattr
-        assert!(!core.has_upper_entry(&pid, Path::new("/small.txt")).unwrap());
+            // Test fd_open on small file (should succeed with copy)
+            let result = core.fd_open(
+                1,
+                std::path::Path::new("/small.txt"),
+                libc::O_RDONLY as u32,
+                0o644,
+            );
+            match result {
+                Ok(fd) => {
+                    // Verify the file was copied to backstore and opened
+                    let backstore_path = temp_dir.path().join("backstore1/small.txt");
+                    assert!(
+                        backstore_path.exists(),
+                        "File should be copied to backstore"
+                    );
 
-        // Test that open still fails for interpose (not fully implemented)
-        assert!(core.open(&pid, "/small.txt".as_ref(), &ro()).is_err());
+                    // Verify content
+                    let content = std::fs::read_to_string(&backstore_path).unwrap();
+                    assert_eq!(content, "small content");
+
+                    // Close the file descriptor
+                    unsafe { libc::close(fd) };
+                }
+                Err(e) => panic!("fd_open should succeed for small file: {}", e),
+            }
+
+            // Test fd_open on large file (should fail due to size limit)
+            let result = core.fd_open(
+                1,
+                std::path::Path::new("/large.txt"),
+                libc::O_RDONLY as u32,
+                0o644,
+            );
+            match result {
+                Ok(_) => panic!("fd_open should fail for large file"),
+                Err(e) => assert!(
+                    e.contains("too large"),
+                    "Should fail with size error: {}",
+                    e
+                ),
+            }
+        }
+
+        // Test with require_reflink=true - Forwarding Declined (Policy) scenario
+        {
+            let mut config = FsConfig {
+                case_sensitivity: CaseSensitivity::Sensitive,
+                memory: MemoryPolicy {
+                    max_bytes_in_memory: Some(1024 * 1024),
+                    spill_directory: None,
+                },
+                limits: FsLimits {
+                    max_open_handles: 1000,
+                    max_branches: 100,
+                    max_snapshots: 1000,
+                },
+                cache: CachePolicy {
+                    attr_ttl_ms: 1000,
+                    entry_ttl_ms: 1000,
+                    negative_ttl_ms: 1000,
+                    enable_readdir_plus: true,
+                    auto_cache: true,
+                    writeback_cache: false,
+                },
+                enable_xattrs: true,
+                enable_ads: false,
+                track_events: false,
+                security: crate::config::SecurityPolicy::default(),
+                backstore: BackstoreMode::HostFs {
+                    root: temp_dir.path().join("backstore2"),
+                    prefer_native_snapshots: false,
+                },
+                overlay: OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower_dir.clone()),
+                    copyup_mode: crate::config::CopyUpMode::Lazy,
+                },
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: true, // Require reflink (which HostFs doesn't support)
+                    allow_windows_reparse: false,
+                },
+            };
+
+            let core = FsCore::new(config).unwrap();
+
+            // Test fd_open with require_reflink=true (should fail)
+            let result = core.fd_open(
+                1,
+                std::path::Path::new("/small.txt"),
+                libc::O_RDONLY as u32,
+                0o644,
+            );
+            match result {
+                Ok(_) => panic!("fd_open should fail when reflink is required but not supported"),
+                Err(e) => assert!(
+                    e.contains("Reflink required"),
+                    "Should fail with reflink error: {}",
+                    e
+                ),
+            }
+        }
+
+        // Test interpose disabled
+        {
+            let mut config = FsConfig {
+                case_sensitivity: CaseSensitivity::Sensitive,
+                memory: MemoryPolicy {
+                    max_bytes_in_memory: Some(1024 * 1024),
+                    spill_directory: None,
+                },
+                limits: FsLimits {
+                    max_open_handles: 1000,
+                    max_branches: 100,
+                    max_snapshots: 1000,
+                },
+                cache: CachePolicy {
+                    attr_ttl_ms: 1000,
+                    entry_ttl_ms: 1000,
+                    negative_ttl_ms: 1000,
+                    enable_readdir_plus: true,
+                    auto_cache: true,
+                    writeback_cache: false,
+                },
+                enable_xattrs: true,
+                enable_ads: false,
+                track_events: false,
+                security: crate::config::SecurityPolicy::default(),
+                backstore: BackstoreMode::HostFs {
+                    root: temp_dir.path().join("backstore3"),
+                    prefer_native_snapshots: false,
+                },
+                overlay: OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower_dir.clone()),
+                    copyup_mode: crate::config::CopyUpMode::Lazy,
+                },
+                interpose: InterposeConfig {
+                    enabled: false, // Interpose disabled
+                    max_copy_bytes: 64 * 1024 * 1024,
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+            };
+
+            let core = FsCore::new(config).unwrap();
+
+            // Test fd_open with interpose disabled (should fail)
+            let result = core.fd_open(
+                1,
+                std::path::Path::new("/small.txt"),
+                libc::O_RDONLY as u32,
+                0o644,
+            );
+            match result {
+                Ok(_) => panic!("fd_open should fail when interpose is disabled"),
+                Err(e) => assert!(
+                    e.contains("not enabled"),
+                    "Should fail with interpose disabled error: {}",
+                    e
+                ),
+            }
+        }
+
+        // Test write operations (should fail)
+        {
+            let mut config = FsConfig {
+                case_sensitivity: CaseSensitivity::Sensitive,
+                memory: MemoryPolicy {
+                    max_bytes_in_memory: Some(1024 * 1024),
+                    spill_directory: None,
+                },
+                limits: FsLimits {
+                    max_open_handles: 1000,
+                    max_branches: 100,
+                    max_snapshots: 1000,
+                },
+                cache: CachePolicy {
+                    attr_ttl_ms: 1000,
+                    entry_ttl_ms: 1000,
+                    negative_ttl_ms: 1000,
+                    enable_readdir_plus: true,
+                    auto_cache: true,
+                    writeback_cache: false,
+                },
+                enable_xattrs: true,
+                enable_ads: false,
+                track_events: false,
+                security: crate::config::SecurityPolicy::default(),
+                backstore: BackstoreMode::HostFs {
+                    root: temp_dir.path().join("backstore4"),
+                    prefer_native_snapshots: false,
+                },
+                overlay: OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower_dir.clone()),
+                    copyup_mode: crate::config::CopyUpMode::Lazy,
+                },
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024,
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+            };
+
+            let core = FsCore::new(config).unwrap();
+
+            // Test write operations (should fail)
+            let result = core.fd_open(
+                1,
+                std::path::Path::new("/small.txt"),
+                libc::O_WRONLY as u32,
+                0o644,
+            );
+            match result {
+                Ok(_) => panic!("fd_open should fail for write operations"),
+                Err(e) => assert!(
+                    e.contains("not yet supported"),
+                    "Should fail with write operations error: {}",
+                    e
+                ),
+            }
+        }
     }
 
     #[test]

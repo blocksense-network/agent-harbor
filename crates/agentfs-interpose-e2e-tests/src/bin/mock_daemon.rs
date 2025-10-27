@@ -119,48 +119,18 @@ impl AgentFsDaemon {
             path, flags, mode, os_pid
         );
 
-        // For interpose testing, we provide direct access to files in the test directory
-        // This simulates what the real AgentFS interpose mode would do - provide direct
-        // access to lower filesystem files without overlay semantics
-
-        // Convert flags to libc flags for direct open
-        let mut libc_flags = 0;
-
-        if (flags & (libc::O_RDONLY as u32)) != 0 {
-            libc_flags |= libc::O_RDONLY;
-        }
-        if (flags & (libc::O_WRONLY as u32)) != 0 {
-            libc_flags |= libc::O_WRONLY;
-        }
-        if (flags & (libc::O_RDWR as u32)) != 0 {
-            libc_flags |= libc::O_RDWR;
-        }
-        if (flags & (libc::O_CREAT as u32)) != 0 {
-            libc_flags |= libc::O_CREAT;
-        }
-        if (flags & (libc::O_TRUNC as u32)) != 0 {
-            libc_flags |= libc::O_TRUNC;
-        }
-        if (flags & (libc::O_APPEND as u32)) != 0 {
-            libc_flags |= libc::O_APPEND;
-        }
-
-        // For testing, we expect paths to be relative to a test directory
-        // The test will set up files in a known location
-        let c_path = std::ffi::CString::new(path.clone())
-            .map_err(|e| format!("invalid path '{}': {}", path, e))?;
-
-        // Use libc::open directly to get a real file descriptor
-        let fd = unsafe { libc::open(c_path.as_ptr(), libc_flags, mode as libc::c_uint) };
-
-        if fd == -1 {
-            let err = std::io::Error::last_os_error();
-            Err(format!("libc::open failed for '{}': {}", path, err))
-        } else {
-            println!("AgentFsDaemon: opened '{}' -> fd {}", path, fd);
-            // Record the file open for testing state tracking
-            *self.opened_files.entry(path.clone()).or_insert(0) += 1;
-            Ok(fd as RawFd)
+        // Use the real FsCore fd_open implementation
+        match self.core.fd_open(os_pid, std::path::Path::new(&path), flags, mode) {
+            Ok(fd) => {
+                println!("AgentFsDaemon: fd_open succeeded '{}' -> fd {}", path, fd);
+                // Record the file open for testing state tracking
+                *self.opened_files.entry(path.clone()).or_insert(0) += 1;
+                Ok(fd)
+            }
+            Err(e) => {
+                println!("AgentFsDaemon: fd_open failed '{}': {}", path, e);
+                Err(e)
+            }
         }
     }
 
