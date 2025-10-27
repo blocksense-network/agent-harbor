@@ -66,6 +66,9 @@ pub mod claude;
 #[cfg(feature = "codex")]
 pub mod codex;
 
+#[cfg(feature = "cursor-cli")]
+pub mod cursor;
+
 // Re-export core types
 pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
@@ -89,6 +92,11 @@ pub fn codex() -> codex::CodexAgent {
     codex::CodexAgent::new()
 }
 
+#[cfg(feature = "cursor-cli")]
+pub fn cursor_cli() -> cursor::CursorAgent {
+    cursor::CursorAgent::new()
+}
+
 /// Get an agent executor by name
 ///
 /// This function returns a boxed trait object for the requested agent.
@@ -110,6 +118,9 @@ pub fn agent_by_name(name: &str) -> Option<Box<dyn AgentExecutor>> {
         #[cfg(feature = "codex")]
         "codex" => Some(Box::new(codex::CodexAgent::new())),
 
+        #[cfg(feature = "cursor-cli")]
+        "cursor-cli" => Some(Box::new(cursor::CursorAgent::new())),
+
         _ => None,
     }
 }
@@ -124,6 +135,9 @@ pub fn available_agents() -> Vec<&'static str> {
     #[cfg(feature = "codex")]
     agents.push("codex");
 
+    #[cfg(feature = "cursor-cli")]
+    agents.push("cursor-cli");
+
     #[cfg(feature = "gemini")]
     agents.push("gemini");
 
@@ -132,9 +146,6 @@ pub fn available_agents() -> Vec<&'static str> {
 
     #[cfg(feature = "qwen")]
     agents.push("qwen");
-
-    #[cfg(feature = "cursor-cli")]
-    agents.push("cursor-cli");
 
     #[cfg(feature = "goose")]
     agents.push("goose");
@@ -187,12 +198,27 @@ mod tests {
         assert_eq!(agent.name(), "codex");
     }
 
+    #[cfg(feature = "cursor-cli")]
+    #[test]
+    fn test_cursor_cli_constructor() {
+        let agent = cursor_cli();
+        assert_eq!(agent.name(), "cursor-cli");
+    }
+
     #[cfg(feature = "claude")]
     #[test]
     fn test_agent_by_name_claude() {
         let agent = agent_by_name("claude");
         assert!(agent.is_some());
         assert_eq!(agent.unwrap().name(), "claude");
+    }
+
+    #[cfg(feature = "cursor-cli")]
+    #[test]
+    fn test_agent_by_name_cursor_cli() {
+        let agent = agent_by_name("cursor-cli");
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().name(), "cursor-cli");
     }
 
     #[test]

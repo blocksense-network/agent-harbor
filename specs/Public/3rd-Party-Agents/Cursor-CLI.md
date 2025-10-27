@@ -229,7 +229,7 @@ Cursor CLI authentication methods:
 
 **Primary authentication:**
 
-- `cursor-agent login`: Interactive authentication with Cursor account
+- `cursor-agent login`: Interactive authentication with Cursor account (opens browser, stores tokens locally)
 - `cursor-agent logout`: Sign out and clear stored authentication
 - `cursor-agent status`: Check authentication status
 
@@ -238,17 +238,31 @@ Cursor CLI authentication methods:
 - `--api-key <key>`: Command-line flag
 - `CURSOR_API_KEY`: Environment variable
 
-**Storage locations:**
+**Credential Storage:**
 
-- **Configuration directory**: `~/.cursor/` (Linux/macOS)
-- **Windows**: `%USERPROFILE%\.cursor\` or `%APPDATA%\cursor\`
-- Credentials stored after `cursor-agent login`
-- MCP server configs: `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global)
+Cursor CLI stores authentication tokens in a SQLite database shared with the Cursor GUI application:
 
-**Settings files:**
+**Database location:**
 
+- **macOS:** `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+- **Windows:** `%APPDATA%\Cursor\User\globalStorage\state.vscdb`
+- **Linux:** `~/.config/Cursor/User/globalStorage/state.vscdb`
+
+**Token storage in database:**
+
+- Table: `ItemTable`
+- Keys: `cursorAuth/accessToken`, `cursorAuth/refreshToken`, `cursorAuth/cachedEmail`
+- Values: JSON strings containing the actual tokens
+
+**Configuration files (separate from credentials):**
+
+- `~/.cursor/cli-config.json`: CLI settings and permissions
 - `~/.cursor/mcp.json`: MCP server configurations
-- Other configuration files likely in `~/.cursor/` directory
+- `<project>/.cursor/cli.json`: Per-project CLI settings
+
+**Agent Harbor credential handling:**
+
+Agent Harbor automatically extracts the access token from the system Cursor database and passes it via `--api-key` flag, avoiding the need to copy the entire SQLite database.
 
 ### Known issues and quirks
 

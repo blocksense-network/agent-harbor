@@ -838,6 +838,8 @@ ah health [OPTIONS]
 OPTIONS:
 --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
 Supported agent types (default: all)
+--with-credentials
+Include sensitive credential information in output (WARNING: exposes tokens/secrets)
 
 ```
 
@@ -845,9 +847,13 @@ Behavior:
 
 - Performs diagnostic health checks for the presence and login/auth status of configured agentic tools (e.g., Codex, Claude, Cursor, Windsurf, Copilot, OpenHands). For each tool, detect CLI/SDK presence and attempt a lightweight auth status probe (non‑destructive). Honors `supported-agents` from config/flags; default is `all`.
 
+- When `--with-credentials` is specified, full credential information (including tokens and secrets) is included in both human-readable and JSON output. This flag should be used with caution as it may expose sensitive authentication information.
+
 Output and exit codes:
 
 - Human‑readable table by default; `--json` emits `{ agent: { present, version, authenticated, details } }` per tool. Non‑zero exit if any requested agent tool is present but unauthenticated, unless `--quiet` and policy permit soft warnings.
+
+- When `--with-credentials` is used, JSON output includes an additional `token` field containing the actual credential value for authenticated agents.
 
 - The command also prints the detected terminal environment and the availability of supported terminal multiplexers.
 

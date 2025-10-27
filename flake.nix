@@ -387,6 +387,7 @@
         # Terminal recording and sharing
         pkgs.asciinema # Terminal session recorder
         pkgs.fzf
+        pkgs.sqlite # For examining the databases of Cursor and VS Code
 
         # ASCII art tools for logo conversion
         pkgs.chafa

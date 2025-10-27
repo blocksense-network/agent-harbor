@@ -8,6 +8,7 @@ use ah_mux::detection::{TerminalEnvironment, detect_terminal_environments};
 use ah_mux_core::Multiplexer;
 use clap::Args;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Arguments for the health command
 #[derive(Args)]
@@ -24,6 +25,13 @@ pub struct HealthArgs {
     /// Suppress warnings, only show errors
     #[arg(long, help = "Suppress warnings, only show errors")]
     quiet: bool,
+
+    /// Include sensitive credential information in output
+    #[arg(
+        long,
+        help = "Include sensitive credential information in output (WARNING: exposes tokens/secrets)"
+    )]
+    with_credentials: bool,
 }
 
 impl HealthArgs {
@@ -45,8 +53,8 @@ impl HealthArgs {
         // Terminal environment detection
         self.print_terminal_environment()?;
 
-        // TODO: Implement agent health checks
-        println!("⚠️  Agent health checks not yet implemented");
+        // Agent health checks
+        self.print_agent_health().await?;
         println!();
 
         Ok(())
@@ -56,10 +64,7 @@ impl HealthArgs {
     async fn run_json(&self) -> anyhow::Result<()> {
         let health_report = serde_json::json!({
             "terminal_environment": self.get_terminal_environment_json()?,
-            "agents": {
-                "status": "not_implemented",
-                "message": "Agent health checks not yet implemented"
-            }
+            "agents": self.get_agent_health_json().await?
         });
 
         println!("{}", serde_json::to_string_pretty(&health_report)?);
@@ -138,5 +143,114 @@ impl HealthArgs {
             "detected_environments": environments,
             "multiplexer_availability": multiplexers
         }))
+    }
+
+    /// Print agent health information
+    async fn print_agent_health(&self) -> anyhow::Result<()> {
+        println!("🤖 Agent Health");
+        println!("{:-<40}", "");
+
+        // Check Cursor CLI status
+        self.print_cursor_health().await?;
+
+        Ok(())
+    }
+
+    /// Print Cursor CLI health information
+    async fn print_cursor_health(&self) -> anyhow::Result<()> {
+        println!("Cursor CLI:");
+
+        // Check if cursor-agent is available
+        let cursor_available =
+            std::process::Command::new("cursor-agent").arg("--version").output().is_ok();
+
+        if !cursor_available {
+            println!("  ❌ cursor-agent not found in PATH");
+            return Ok(());
+        }
+
+        println!("  ✅ cursor-agent available");
+
+        // Check for database and extract token
+        match self.check_cursor_login_status() {
+            Ok(Some(token)) => {
+                if self.with_credentials {
+                    println!("  ✅ Logged in (session token: {})", token);
+                    println!(
+                        "  ⚠️  Note: This is a session token, not necessarily a Cursor API key"
+                    );
+                } else {
+                    println!(
+                        "  ✅ Logged in (session token present, use --with-credentials to display)"
+                    );
+                    println!(
+                        "  ⚠️  Note: Session tokens may not work with Cursor CLI --api-key flag"
+                    );
+                }
+            }
+            Ok(None) => {
+                println!("  ⚠️  Not logged in (no access token found)");
+            }
+            Err(e) => {
+                println!("  ❌ Failed to check login status: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check Cursor CLI login status and extract access token
+    fn check_cursor_login_status(&self) -> anyhow::Result<Option<String>> {
+        // Use the cursor agent to check login status
+        let cursor_agent = ah_agents::cursor_cli();
+        match cursor_agent.check_cursor_login_status() {
+            Ok(result) => Ok(result),
+            Err(e) => Err(anyhow::anyhow!(
+                "Failed to check cursor login status: {}",
+                e
+            )),
+        }
+    }
+
+    /// Get agent health information as JSON
+    async fn get_agent_health_json(&self) -> anyhow::Result<serde_json::Value> {
+        let cursor_status = self.get_cursor_health_json().await?;
+
+        Ok(serde_json::json!({
+            "cursor_cli": cursor_status
+        }))
+    }
+
+    /// Get Cursor CLI health information as JSON
+    async fn get_cursor_health_json(&self) -> anyhow::Result<serde_json::Value> {
+        // Check if cursor-agent is available
+        let cursor_available =
+            std::process::Command::new("cursor-agent").arg("--version").output().is_ok();
+
+        let mut cursor_info = serde_json::json!({
+            "available": cursor_available
+        });
+
+        if cursor_available {
+            match self.check_cursor_login_status() {
+                Ok(Some(token)) => {
+                    cursor_info["logged_in"] = serde_json::Value::Bool(true);
+                    cursor_info["session_token_length"] =
+                        serde_json::Value::Number(token.len().into());
+                    cursor_info["note"] = serde_json::Value::String("This is a session token extracted from Cursor's local database. It may not work with Cursor CLI's --api-key flag for API key authentication.".to_string());
+                    if self.with_credentials {
+                        cursor_info["session_token"] = serde_json::Value::String(token);
+                    }
+                }
+                Ok(None) => {
+                    cursor_info["logged_in"] = serde_json::Value::Bool(false);
+                }
+                Err(e) => {
+                    cursor_info["error"] = serde_json::Value::String(e.to_string());
+                }
+            }
+        }
+
+        Ok(cursor_info)
     }
 }

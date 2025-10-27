@@ -24,8 +24,9 @@ flate2 = "1.0"
 dirs = "5.0"
 regex = "1.10"
 chrono = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
 ureq = "2.9"
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 # Platform-specific credential management
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -44,7 +45,7 @@ reqwest = { version = "0.12", features = ["json"] }
 llm-api-proxy = { path = "../llm-api-proxy" }
 
 [features]
-default = ["claude", "codex"]
+default = ["claude", "codex", "cursor-cli"]
 # Feature gates for each agent backend
 claude = []
 codex = []

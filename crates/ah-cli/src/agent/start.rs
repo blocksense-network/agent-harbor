@@ -200,12 +200,9 @@ impl AgentStartArgs {
         let agent: Box<dyn AgentExecutor> = match agent_type {
             AgentType::Claude => Box::new(ah_agents::claude()),
             AgentType::Codex => Box::new(ah_agents::codex()),
+            AgentType::CursorCli => Box::new(ah_agents::cursor_cli()),
             // For agents not yet implemented in ah-agents, fall back to old logic
-            AgentType::Gemini
-            | AgentType::Opencode
-            | AgentType::Qwen
-            | AgentType::CursorCli
-            | AgentType::Goose => {
+            AgentType::Gemini | AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
                 return self.run_legacy_agent(agent_type).await;
             }
             AgentType::Mock => unreachable!(), // handled above
@@ -415,6 +412,7 @@ impl AgentStartArgs {
         let agent_name = match agent_type {
             AgentType::Claude => "claude",
             AgentType::Codex => "codex",
+            AgentType::CursorCli => "cursor-cli",
             _ => "unknown",
         };
 
@@ -427,7 +425,6 @@ impl AgentStartArgs {
             AgentType::Gemini => self.run_mock_agent().await,
             AgentType::Opencode => self.run_mock_agent().await,
             AgentType::Qwen => self.run_mock_agent().await,
-            AgentType::CursorCli => self.run_mock_agent().await,
             AgentType::Goose => self.run_mock_agent().await,
             _ => Ok(()),
         }
