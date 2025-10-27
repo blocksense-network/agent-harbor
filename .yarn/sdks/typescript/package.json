@@ -1,6 +1,3 @@
-// Copyright 2025 Schelling Point Labs Inc
-// SPDX-License-Identifier: AGPL-3.0-only
-
 {
   "name": "typescript",
   "version": "5.9.3-sdk",
