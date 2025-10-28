@@ -189,6 +189,10 @@ pub struct AgentStartArgs {
     #[arg(long)]
     pub claude_model: Option<String>,
 
+    /// Model to use specifically for Gemini agent (overrides --model)
+    #[arg(long)]
+    pub gemini_model: Option<String>,
+
     /// Additional writable paths to bind mount
     #[arg(long)]
     pub mount_rw: Vec<PathBuf>,
@@ -238,8 +242,9 @@ impl AgentStartArgs {
             AgentType::Codex => Box::new(ah_agents::codex()),
             AgentType::Copilot => Box::new(ah_agents::copilot_cli()),
             AgentType::CursorCli => Box::new(ah_agents::cursor_cli()),
+            AgentType::Gemini => Box::new(ah_agents::gemini()),
             // For agents not yet implemented in ah-agents, fall back to old logic
-            AgentType::Gemini | AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
+            AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
                 return self.run_legacy_agent(agent_type).await;
             }
             AgentType::Mock => unreachable!(), // handled above
@@ -312,6 +317,13 @@ impl AgentStartArgs {
                 "https://api.github.com",
                 vec![
                     serde_json::json!({"source_pattern": "copilot", "provider": "github", "model": "claude-sonnet-4-5-20250929"}),
+                ],
+            ),
+            AgentType::Gemini => (
+                "google",
+                "https://generativelanguage.googleapis.com/v1beta",
+                vec![
+                    serde_json::json!({"source_pattern": "gemini", "provider": "google", "model": "gemini-2.5-pro"}),
                 ],
             ),
             // For other agents, use OpenRouter as fallback
@@ -471,6 +483,14 @@ impl AgentStartArgs {
                     .or_else(|| self.model.clone())
                     .unwrap_or_else(|| "claude-sonnet-4.5".to_string())
             }
+
+            AgentType::Gemini => {
+                // gemini-model takes precedence over model
+                self.gemini_model
+                    .clone()
+                    .or_else(|| self.model.clone())
+                    .unwrap_or_else(|| "gemini-2.5-pro".to_string())
+            }
             // For other agents, use the general model flag or None
             _ => self.model.clone().unwrap_or_default(),
         };
@@ -498,6 +518,7 @@ impl AgentStartArgs {
             AgentType::Codex => "codex",
             AgentType::CursorCli => "cursor-cli",
             AgentType::Copilot => "copilot",
+            AgentType::Gemini => "gemini",
             _ => "unknown",
         };
 
@@ -507,7 +528,6 @@ impl AgentStartArgs {
     /// Run legacy agent implementations (not yet migrated to ah-agents)
     async fn run_legacy_agent(&self, agent_type: AgentType) -> anyhow::Result<()> {
         match agent_type {
-            AgentType::Gemini => self.run_mock_agent().await,
             AgentType::Opencode => self.run_mock_agent().await,
             AgentType::Qwen => self.run_mock_agent().await,
             AgentType::Goose => self.run_mock_agent().await,
