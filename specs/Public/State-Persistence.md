@@ -35,11 +35,11 @@ Earlier drafts described PID‑like JSON session records and a local daemon. The
 
 ## SQL Schema (SQLite dialect)
 
-This schema models repositories, workspaces, tasks, sessions, runtimes, agents, and events. Filesystem snapshots are provider‑authoritative (ZFS/Btrfs/Git/AgentFS) and are not duplicated in SQLite; the CLI may record minimal references in session events for convenience.
+This schema models repositories, workspaces, tasks, sessions, runtimes, agents, events, and access point executor state. Filesystem snapshots are provider‑authoritative (ZFS/Btrfs/Git/AgentFS) and are not duplicated in SQLite; the CLI may record minimal references in session events for convenience.
 
 ```sql
--- Schema versioning
-PRAGMA user_version = 1;
+-- Schema versioning (incremented to 2 for access point executor tables)
+PRAGMA user_version = 2;
 
 -- Repositories known to the system (local path and/or remote URL)
 CREATE TABLE IF NOT EXISTS repos (
@@ -144,6 +144,102 @@ CREATE TABLE IF NOT EXISTS kv (
   PRIMARY KEY (scope, k)
 );
 ```
+
+## Access Point Executor State
+
+The access point server (`ah agent access-point`) maintains executor state using a dual-layer architecture to optimize performance and reliability. This section defines what executor data is persisted and how it's managed.
+
+### Persistent State (Database)
+
+Permanent executor characteristics that survive server restarts are stored in SQLite:
+
+```sql
+-- Executor identity and enrollment
+CREATE TABLE IF NOT EXISTS executors (
+  executor_id         TEXT PRIMARY KEY,           -- SPIFFE ID (e.g., spiffe://org/ah/agent/node-123)
+  enrollment_timestamp TEXT NOT NULL,             -- ISO 8601 timestamp
+  identity_provider   TEXT NOT NULL,             -- spiffe|files|vault|exec
+  identity_metadata   TEXT,                       -- JSON: cert info, SPIFFE details, etc.
+  friendly_name       TEXT,                       -- Optional human-readable name
+  owner_user          TEXT,                       -- Who enrolled this executor
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- Hardware capabilities and resources (static)
+CREATE TABLE IF NOT EXISTS executor_capabilities (
+  executor_id         TEXT PRIMARY KEY REFERENCES executors(executor_id) ON DELETE CASCADE,
+  os_name             TEXT NOT NULL,              -- linux|macos|windows
+  os_version          TEXT NOT NULL,
+  architecture        TEXT NOT NULL,              -- x86_64|arm64|aarch64
+  cpu_cores           INTEGER NOT NULL,           -- Logical cores available
+  memory_bytes        INTEGER NOT NULL,           -- Total RAM in bytes
+  storage_bytes       INTEGER NOT NULL,           -- Ephemeral storage capacity
+  gpu_info            TEXT,                       -- JSON: [{vendor, model, vram, driver}]
+  supported_runtimes  TEXT NOT NULL,              -- JSON: ["devcontainer", "vm", "bare"]
+  supported_agents    TEXT NOT NULL,              -- JSON: ["claude", "codex", "openhands"]
+  network_tier        TEXT,                       -- bandwidth/latency classification
+  ssh_endpoint        TEXT,                       -- host:port for SSH tunneling
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- Labels, tags, and authorization policies (configurable)
+CREATE TABLE IF NOT EXISTS executor_metadata (
+  executor_id         TEXT PRIMARY KEY REFERENCES executors(executor_id) ON DELETE CASCADE,
+  labels              TEXT,                       -- JSON: {"region": "us-west", "gpu": "true"}
+  tags                TEXT,                       -- JSON: ["production", "high-mem"]
+  authorization_rules TEXT,                       -- JSON: user→executor→verb permissions
+  custom_config       TEXT,                       -- JSON: executor-specific settings
+  security_policy     TEXT,                       -- JSON: sandbox policies, auth rules
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- Historical enrollment and authorization events
+CREATE TABLE IF NOT EXISTS executor_history (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  executor_id         TEXT NOT NULL REFERENCES executors(executor_id) ON DELETE CASCADE,
+  event_type          TEXT NOT NULL,              -- enrolled|re_enrolled|revoked|disabled|etc.
+  event_data          TEXT,                       -- JSON: details about the event
+  event_timestamp     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_executor_history_executor_ts ON executor_history(executor_id, event_timestamp);
+```
+
+**Persistence Rules:**
+
+- Executor identity and capabilities are permanent and rarely change
+- Labels/tags can be updated by administrators
+- Historical events are retained for audit and debugging
+
+### Ephemeral State (In-Memory)
+
+Runtime state for active operations is maintained in memory only:
+
+- **Connection State**: Active QUIC connection handles, session status, connection quality metrics
+- **Heartbeat Data**: Recent timestamps, latency measurements, connection counters
+- **Session Assignments**: Current task allocations, resource reservations, fleet memberships
+- **Fleet Coordination**: Leader/follower roles, sync-fence status, active coordination operations
+
+**Ephemeral State Management:**
+
+- Automatically rebuilt from persistent data on server startup
+- Volatile by design - lost on server restart or crash
+- High-performance for runtime operations
+
+### State Synchronization
+
+The access point maintains consistency between persistent and ephemeral layers:
+
+- **Startup**: Load executor identities/capabilities from DB into memory
+- **Enrollment**: New executors written to DB, loaded into memory
+- **Updates**: Configuration changes persisted to DB, reflected in memory
+- **Cleanup**: Failed connections removed from memory, reconnection attempted
+- **Health Checks**: Ephemeral state validated against persistent configuration
+
+This dual-layer design ensures reliability (persistent data survives restarts) while maintaining performance (ephemeral data stays fast).
 
 ## Filesystem Snapshots
 
