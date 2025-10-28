@@ -481,7 +481,7 @@ webui/**
 """, "\n", ",")
 
 # Create repomix bundle of all WebUI-related files (specs + implementation)
-repomix-webui:
+repomix-webui *args:
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
         . \
@@ -489,21 +489,23 @@ repomix-webui:
         --style markdown \
         --header-text "WebUI Complete Implementation and Specification" \
         --include "{{REPOMIX_WEBUI_PATTERNS}}" \
-        --ignore ".direnv/**"
+        --ignore ".direnv/**" \
+        {{args}}
 
 # Create repomix bundle of all specs files
-repomix-specs:
+repomix-specs *args:
     mkdir -p {{REPOMIX_OUT_DIR}}
-    repomix specs/ -o {{REPOMIX_OUT_DIR}}/Agent-Harbor-Specs.md --style markdown --header-text "Agent Harbor Specifications"
+    repomix specs/ -o {{REPOMIX_OUT_DIR}}/Agent-Harbor-Specs.md --style markdown --header-text "Agent Harbor Specifications" {{args}}
 
 # Create repomix bundle of all Third-Party-Agents files
-repomix-agent-questions:
+repomix-agent-questions *args:
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
         specs/Public/3rd-Party-Agents/ \
         --output {{REPOMIX_OUT_DIR}}/Agent-Questions.md \
         --style markdown \
-        --header-text "Third-Party Agent Integration Questions and Research"
+        --header-text "Third-Party Agent Integration Questions and Research" \
+        {{args}}
 
 # Install Playwright browsers for E2E tests
 webui-install-browsers:
@@ -716,7 +718,7 @@ test_scenarios/**
 """, "\n", ",")
 
 # Create repomix bundle of all TUI-related files (specs + implementation)
-repomix-tui:
+repomix-tui *args:
     @echo "📦 Creating TUI repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
@@ -725,7 +727,8 @@ repomix-tui:
         --style markdown \
         --header-text "TUI Complete Implementation and Specification" \
         --include "{{REPOMIX_TUI_PATTERNS}}" \
-        --ignore ".direnv/**"
+        --ignore ".direnv/**" \
+        {{args}}
 
 # TUI Exploration PoC include patterns as a multiline string
 REPOMIX_TUI_EXPLORATION_PATTERNS := replace("""
@@ -735,7 +738,7 @@ specs/Public/TUI.status.md
 """, "\n", ",")
 
 # Create repomix bundle of TUI exploration PoC (implementation + related specs)
-repomix-tui-exploration:
+repomix-tui-exploration *args:
     @echo "📦 Creating TUI exploration PoC repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
@@ -744,7 +747,8 @@ repomix-tui-exploration:
         --style markdown \
         --header-text "TUI Exploration PoC - Interactive Dashboard Implementation" \
         --include "{{REPOMIX_TUI_EXPLORATION_PATTERNS}}" \
-        --ignore "PoC/tui-exploration/target/**"
+        --ignore "PoC/tui-exploration/target/**" \
+        {{args}}
 
 # AgentFS include patterns as a multiline string
 REPOMIX_AGENTFS_PATTERNS := replace("""
@@ -767,7 +771,7 @@ specs/Public/Schemas/agentfs-control.response.schema.json
 """, "\n", ",")
 
 # Create repomix bundle of AgentFS-related specs only (no implementation code)
-repomix-agentfs-specs:
+repomix-agentfs-specs *args:
     @echo "📦 Creating AgentFS specs repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
@@ -776,10 +780,11 @@ repomix-agentfs-specs:
         --style markdown \
         --header-text "AgentFS Specifications and Related Documentation" \
         --include "{{REPOMIX_AGENTFS_SPECS_PATTERNS}}" \
-        --ignore ".direnv/**"
+        --ignore ".direnv/**" \
+        {{args}}
 
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
-repomix-agentfs:
+repomix-agentfs *args:
     @echo "📦 Creating AgentFS repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
@@ -787,10 +792,11 @@ repomix-agentfs:
         --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-AgentFS.md \
         --style markdown \
         --header-text "AgentFS Complete Implementation and Specification" \
-        --include "{{REPOMIX_AGENTFS_PATTERNS}}"
+        --include "{{REPOMIX_AGENTFS_PATTERNS}}" \
+        {{args}}
 
 # Create a repomix snapshot of the LLM API Proxy crate
-repomix-llm-api-proxy:
+repomix-llm-api-proxy *args:
     @echo "📦 Creating LLM API Proxy repomix snapshot..."
     mkdir -p {{REPOMIX_OUT_DIR}}
     repomix \
@@ -799,7 +805,8 @@ repomix-llm-api-proxy:
         --style markdown \
         --header-text "LLM API Proxy - Complete Implementation and Specification" \
         --include "crates/llm-api-proxy/**,specs/Public/Scenario-Format.md" \
-        --ignore ".direnv/**"
+        --ignore ".direnv/**" \
+        {{args}}
 
 # Run overlay tests with E2E enforcement verification
 test-overlays:
