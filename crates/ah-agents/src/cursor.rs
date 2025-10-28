@@ -224,6 +224,12 @@ impl AgentExecutor for CursorAgent {
             cmd.env(key, value);
         }
 
+        // Configure output format
+        if config.json_output {
+            cmd.arg("--output-format");
+            cmd.arg("json");
+        }
+
         // NOTE: Don't set up piped stdio for cursor-agent - let it inherit stdio from parent
         // This works better with exec() and doesn't seem to be needed for cursor-agent
 
