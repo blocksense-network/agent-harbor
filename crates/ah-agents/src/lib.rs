@@ -69,6 +69,9 @@ pub mod codex;
 #[cfg(feature = "cursor-cli")]
 pub mod cursor;
 
+#[cfg(feature = "gemini")]
+pub mod gemini;
+
 // Re-export core types
 pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
@@ -97,6 +100,11 @@ pub fn cursor_cli() -> cursor::CursorAgent {
     cursor::CursorAgent::new()
 }
 
+#[cfg(feature = "gemini")]
+pub fn gemini() -> gemini::GeminiAgent {
+    gemini::GeminiAgent::new()
+}
+
 /// Get an agent executor by name
 ///
 /// This function returns a boxed trait object for the requested agent.
@@ -120,6 +128,9 @@ pub fn agent_by_name(name: &str) -> Option<Box<dyn AgentExecutor>> {
 
         #[cfg(feature = "cursor-cli")]
         "cursor-cli" => Some(Box::new(cursor::CursorAgent::new())),
+
+        #[cfg(feature = "gemini")]
+        "gemini" => Some(Box::new(gemini::GeminiAgent::new())),
 
         _ => None,
     }
@@ -205,6 +216,13 @@ mod tests {
         assert_eq!(agent.name(), "cursor-cli");
     }
 
+    #[cfg(feature = "gemini")]
+    #[test]
+    fn test_gemini_constructor() {
+        let agent = gemini();
+        assert_eq!(agent.name(), "gemini");
+    }
+
     #[cfg(feature = "claude")]
     #[test]
     fn test_agent_by_name_claude() {
@@ -219,6 +237,14 @@ mod tests {
         let agent = agent_by_name("cursor-cli");
         assert!(agent.is_some());
         assert_eq!(agent.unwrap().name(), "cursor-cli");
+    }
+
+    #[cfg(feature = "gemini")]
+    #[test]
+    fn test_agent_by_name_gemini() {
+        let agent = agent_by_name("gemini");
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().name(), "gemini");
     }
 
     #[test]
