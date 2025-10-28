@@ -195,6 +195,7 @@
             language = "system";
             pass_filenames = true;
             files = ''\.(c|cc|h|hpp|hh|cpp|go|rs|py|sh|bash|zsh|js|jsx|ts|tsx|yml|yaml|toml)$'';
+            excludes = [".yarn"];
 
             # Use bash -lc so we can run a small script
             entry = ''
