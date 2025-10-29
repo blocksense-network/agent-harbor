@@ -489,7 +489,6 @@ repomix-webui *args:
         --style markdown \
         --header-text "WebUI Complete Implementation and Specification" \
         --include "{{REPOMIX_WEBUI_PATTERNS}}" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # Create repomix bundle of all specs files
@@ -727,7 +726,6 @@ repomix-tui *args:
         --style markdown \
         --header-text "TUI Complete Implementation and Specification" \
         --include "{{REPOMIX_TUI_PATTERNS}}" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # TUI Exploration PoC include patterns as a multiline string
@@ -780,7 +778,6 @@ repomix-agentfs-specs *args:
         --style markdown \
         --header-text "AgentFS Specifications and Related Documentation" \
         --include "{{REPOMIX_AGENTFS_SPECS_PATTERNS}}" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
@@ -805,7 +802,6 @@ repomix-llm-api-proxy *args:
         --style markdown \
         --header-text "LLM API Proxy - Complete Implementation and Specification" \
         --include "crates/llm-api-proxy/**,specs/Public/Scenario-Format.md" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # Run overlay tests with E2E enforcement verification
