@@ -8,6 +8,22 @@ use agentfs_proto::messages::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+#[cfg(target_os = "macos")]
+use libc::{c_int, kevent as libc_kevent, timespec};
+
+// kqueue types and constants (macOS) - using libc types directly
+
+#[cfg(target_os = "macos")]
+const EVFILT_USER: i16 = -5; // user events
+#[cfg(target_os = "macos")]
+const EV_ADD: u16 = 0x0001; // add event to kq (implies enable)
+#[cfg(target_os = "macos")]
+const EV_ENABLE: u16 = 0x0004; // enable event
+#[cfg(target_os = "macos")]
+const EV_CLEAR: u16 = 0x0020; // disable event after reporting
+#[cfg(target_os = "macos")]
+const NOTE_TRIGGER: u32 = 0x01000000; // trigger the event
+
 // kqueue vnode event flags (macOS)
 const NOTE_DELETE: u32 = 0x00000001;
 const NOTE_WRITE: u32 = 0x00000002;
@@ -24,8 +40,13 @@ pub struct WatchService {
     kqueue_watches: Mutex<HashMap<(u32, u32, u64), KqueueWatchRegistration>>,
     /// Registered FSEvents watches: (pid, registration_id) -> FSEventsWatchRegistration
     fsevents_watches: Mutex<HashMap<(u32, u64), FSEventsWatchRegistration>>,
+    /// Doorbell idents for kqueues: (pid, kq_fd) -> doorbell_ident
+    doorbell_idents: Mutex<HashMap<(u32, u32), u64>>,
     /// Next registration ID to assign
     next_registration_id: Mutex<u64>,
+    /// Received kqueue file descriptors: (pid, kq_fd) -> actual_fd
+    #[cfg(target_os = "macos")]
+    kqueue_fds: Mutex<HashMap<(u32, u32), c_int>>,
 }
 
 /// Registration information for a kqueue watch
@@ -55,7 +76,10 @@ impl WatchService {
         Self {
             kqueue_watches: Mutex::new(HashMap::new()),
             fsevents_watches: Mutex::new(HashMap::new()),
+            doorbell_idents: Mutex::new(HashMap::new()),
             next_registration_id: Mutex::new(1),
+            #[cfg(target_os = "macos")]
+            kqueue_fds: Mutex::new(HashMap::new()),
         }
     }
 
@@ -129,14 +153,79 @@ impl WatchService {
         self.fsevents_watches.lock().unwrap().remove(&(pid, registration_id));
     }
 
+    /// Store a received kqueue file descriptor
+    #[cfg(target_os = "macos")]
+    pub fn store_kqueue_fd(&self, pid: u32, kq_fd: u32, actual_fd: c_int) {
+        self.kqueue_fds.lock().unwrap().insert((pid, kq_fd), actual_fd);
+    }
+
     /// Set doorbell identifier for a kqueue
     pub fn set_doorbell(&self, pid: u32, kq_fd: u32, doorbell_ident: u64) {
+        // Store in efficient lookup map
+        self.doorbell_idents.lock().unwrap().insert((pid, kq_fd), doorbell_ident);
+
+        // Also update in registrations for backward compatibility
         let mut watches = self.kqueue_watches.lock().unwrap();
         for (_, registration) in watches.iter_mut() {
             if registration.pid == pid && registration.kq_fd == kq_fd {
                 registration.doorbell_ident = Some(doorbell_ident);
             }
         }
+    }
+
+    /// Post a doorbell to wake up a kqueue
+    #[cfg(target_os = "macos")]
+    pub fn post_doorbell(&self, pid: u32, kq_fd: u32, payload_id: u64) -> Result<(), String> {
+        let watches = self.kqueue_watches.lock().unwrap();
+        let fds = self.kqueue_fds.lock().unwrap();
+
+        // Find the doorbell ident for this kqueue
+        let doorbell_ident = watches.values()
+            .find(|reg| reg.pid == pid && reg.kq_fd == kq_fd)
+            .and_then(|reg| reg.doorbell_ident);
+
+        // Get the actual kqueue FD
+        let actual_kq_fd = fds.get(&(pid, kq_fd));
+
+        match (doorbell_ident, actual_kq_fd) {
+            (Some(ident), Some(&kq_fd_actual)) => {
+                // Post EVFILT_USER NOTE_TRIGGER event to the kqueue
+                let mut kev = libc::kevent {
+                    ident: ident as usize,
+                    filter: EVFILT_USER as i16,
+                    flags: 0, // 0 means we're triggering, not adding
+                    fflags: NOTE_TRIGGER | ((payload_id & 0xFFFFFF) as u32),
+                    data: 0,
+                    udata: std::ptr::null_mut(),
+                };
+
+                let timeout = timespec { tv_sec: 0, tv_nsec: 0 };
+
+                unsafe {
+                    let result = libc_kevent(kq_fd_actual, &mut kev, 1, std::ptr::null_mut(), 0, &timeout);
+                    if result == -1 {
+                        Err(format!("kevent doorbell failed: {}", std::io::Error::last_os_error()))
+                    } else {
+                        tracing::debug!("Posted doorbell ident={:#x}, payload_id={} to kqueue fd={} for pid={}",
+                                      ident, payload_id, kq_fd, pid);
+                        Ok(())
+                    }
+                }
+            }
+            _ => {
+                tracing::debug!("Cannot post doorbell: missing ident or FD for pid={}, kq_fd={}", pid, kq_fd);
+                Ok(()) // Don't fail, just log
+            }
+        }
+    }
+
+    /// Post a doorbell to wake up a kqueue (fallback for non-macOS)
+    #[cfg(not(target_os = "macos"))]
+    pub fn post_doorbell(&self, pid: u32, kq_fd: u32, payload_id: u64) -> Result<(), String> {
+        // No-op on non-macOS platforms
+        tracing::debug!("Doorbell posting not implemented on this platform (pid={}, kq_fd={}, payload={})",
+                      pid, kq_fd, payload_id);
+        Ok(())
     }
 
     /// Get all kqueue watches for a process
@@ -159,6 +248,33 @@ impl WatchService {
             .filter(|reg| reg.pid == pid)
             .cloned()
             .collect()
+    }
+
+    /// Get the current doorbell ident for a given (pid, kq_fd)
+    pub fn get_doorbell_ident(&self, pid: u32, kq_fd: u32) -> u64 {
+        self.doorbell_idents.lock().unwrap().get(&(pid, kq_fd)).copied().unwrap_or(0)
+    }
+
+    /// Get the current doorbell ident for a given pid (legacy method, finds first match)
+    pub fn get_doorbell_ident_legacy(&self, pid: u32) -> u64 {
+        let watches = self.kqueue_watches.lock().unwrap();
+        for (_, registration) in watches.iter() {
+            if registration.pid == pid {
+                return registration.doorbell_ident.unwrap_or(0);
+            }
+        }
+        0 // No doorbell ident found
+    }
+
+    /// Find kqueue fd for a given pid (returns the first match)
+    pub fn find_kqueue_fd_for_pid(&self, pid: u32) -> Option<u32> {
+        let watches = self.kqueue_watches.lock().unwrap();
+        for (_, registration) in watches.iter() {
+            if registration.pid == pid {
+                return Some(registration.kq_fd);
+            }
+        }
+        None
     }
 }
 

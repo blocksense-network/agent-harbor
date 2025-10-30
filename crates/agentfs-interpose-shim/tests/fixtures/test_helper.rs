@@ -24,6 +24,7 @@ fn main() {
         "multiple-files" => test_multiple_files(test_args),
         "inode64-test" => test_inode64(test_args),
         "fopen-test" => test_fopen(test_args),
+        "kqueue-doorbell-test" => test_kqueue_doorbell(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
             println!("Dummy command executed");
@@ -31,7 +32,7 @@ fn main() {
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!(
-                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, dummy"
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, kqueue-doorbell-test, dummy"
             );
             std::process::exit(1);
         }
@@ -255,5 +256,34 @@ fn test_fopen(args: &[String]) {
 
             libc::fclose(file_ptr);
         }
+    }
+}
+
+fn test_kqueue_doorbell(_args: &[String]) {
+    println!("Testing kqueue doorbell mechanism");
+
+    #[cfg(target_os = "macos")]
+    unsafe {
+        // Test kqueue() interception
+        let kq_fd = libc::kqueue();
+        if kq_fd < 0 {
+            eprintln!("kqueue() failed: {}", std::io::Error::last_os_error());
+            std::process::exit(1);
+        }
+
+        println!("Successfully created kqueue with fd={}", kq_fd);
+
+        // Sleep for a moment to let the interception complete
+        libc::usleep(100000); // 100ms
+
+        // Clean up
+        libc::close(kq_fd);
+
+        println!("kqueue doorbell test completed successfully");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("kqueue doorbell test skipped (not on macOS)");
     }
 }

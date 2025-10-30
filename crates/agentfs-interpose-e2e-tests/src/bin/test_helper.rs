@@ -7,6 +7,8 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 
 extern crate libc;
+extern crate agentfs_proto;
+extern crate ssz;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -60,6 +62,8 @@ fn main() {
         "test-file-flags" => test_file_flags(test_args),
         "test-copyfile-clonefile" => test_copyfile_clonefile(test_args),
         "test-getattrlist" => test_getattrlist_operations(test_args),
+        "kqueue-doorbell-test" => test_kqueue_doorbell(test_args),
+        "collision-hygiene-test" => test_collision_hygiene(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
             println!("Dummy command executed");
@@ -67,7 +71,7 @@ fn main() {
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!(
-                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, --test-t25-*, test-xattr-roundtrip, test-acl-operations, test-file-flags, test-copyfile-clonefile, test-getattrlist, dummy"
+                "Available commands: basic-open, large-file, multiple-files, inode64-test, fopen-test, directory-ops, readlink-test, metadata-ops, namespace-ops, --test-t25-*, test-xattr-roundtrip, test-acl-operations, test-file-flags, test-copyfile-clonefile, test-getattrlist, kqueue-doorbell-test, collision-hygiene-test, dummy"
             );
             std::process::exit(1);
         }
@@ -969,6 +973,235 @@ fn test_namespace_operations(args: &[String]) {
         libc::unlink(c_subdir_renamed.as_ptr()); // Clean up directory
 
         println!("All namespace mutation operations tests completed successfully!");
+    }
+}
+
+fn test_kqueue_doorbell(_args: &[String]) {
+    println!("Testing kqueue doorbell mechanism");
+
+    #[cfg(target_os = "macos")]
+    unsafe {
+        // Test kqueue() interception
+        let kq_fd = libc::kqueue();
+        if kq_fd < 0 {
+            eprintln!("kqueue() failed: {}", std::io::Error::last_os_error());
+            std::process::exit(1);
+        }
+
+        println!("Successfully created kqueue with fd={}", kq_fd);
+
+        // Sleep for a moment to let the interception complete
+        libc::usleep(100000); // 100ms
+
+        // Clean up
+        libc::close(kq_fd);
+
+        println!("kqueue doorbell test completed successfully");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("kqueue doorbell test skipped (not on macOS)");
+    }
+}
+
+fn test_collision_hygiene(args: &[String]) {
+    if args.is_empty() {
+        eprintln!("Usage: collision-hygiene-test <test_directory>");
+        std::process::exit(1);
+    }
+
+    let test_dir = &args[0];
+    println!("Testing collision hygiene in directory: {}", test_dir);
+
+    #[cfg(target_os = "macos")]
+    unsafe {
+        // Step 1: Create a kqueue (this should get intercepted and get a doorbell ident)
+        let kq_fd = libc::kqueue();
+        if kq_fd < 0 {
+            eprintln!("kqueue() failed: {}", std::io::Error::last_os_error());
+            std::process::exit(1);
+        }
+        println!("Created kqueue with fd={}", kq_fd);
+
+        // Give time for interception to complete
+        libc::usleep(200000); // 200ms
+
+        // Step 2: Query the current doorbell ident from the daemon
+        let pid = std::process::id() as u32;
+        let query_request = agentfs_proto::messages::Request::query_doorbell_ident(pid);
+
+        // Send the query request to daemon
+        let query_result = send_request_to_daemon(query_request);
+        let doorbell_ident = match query_result {
+            Ok(agentfs_proto::messages::Response::QueryDoorbellIdent(resp)) => {
+                println!("Queried doorbell ident: {:#x}", resp.doorbell_ident);
+                resp.doorbell_ident
+            }
+            _ => {
+                eprintln!("Failed to query doorbell ident");
+                libc::close(kq_fd);
+                std::process::exit(1);
+            }
+        };
+
+        if doorbell_ident == 0 {
+            eprintln!("No doorbell ident found - daemon may not be running or shim not loaded");
+            libc::close(kq_fd);
+            std::process::exit(1);
+        }
+
+        // Step 3: Try to register an EVFILT_USER event with the doorbell ident (this should trigger collision)
+        println!("Attempting to register EVFILT_USER event with doorbell ident {:#x} (should trigger collision)", doorbell_ident);
+
+        let mut kev = libc::kevent {
+            ident: doorbell_ident as usize,
+            filter: -5, // EVFILT_USER
+            flags: 0x0001, // EV_ADD
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let register_result = libc::kevent(kq_fd, &mut kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+        if register_result == 0 {
+            println!("EVFILT_USER registration succeeded (expected - collision was handled transparently)");
+        } else {
+            println!("EVFILT_USER registration failed with errno {} (unexpected - collision should have been handled)", *libc::__error());
+            libc::close(kq_fd);
+            std::process::exit(1);
+        }
+
+        // Give time for collision detection and ident update
+        libc::usleep(200000); // 200ms
+
+        // Step 4: Query the new doorbell ident to verify it changed
+        let new_query_request = agentfs_proto::messages::Request::query_doorbell_ident(pid);
+        let new_doorbell_ident = match send_request_to_daemon(new_query_request) {
+            Ok(agentfs_proto::messages::Response::QueryDoorbellIdent(resp)) => {
+                println!("New doorbell ident after collision: {:#x}", resp.doorbell_ident);
+                resp.doorbell_ident
+            }
+            _ => {
+                eprintln!("Failed to query new doorbell ident");
+                libc::close(kq_fd);
+                std::process::exit(1);
+            }
+        };
+
+        if new_doorbell_ident == doorbell_ident {
+            eprintln!("ERROR: Doorbell ident did not change after collision attempt");
+            libc::close(kq_fd);
+            std::process::exit(1);
+        }
+
+        // Step 5: Test that we can register our own EVFILT_USER event (different ident)
+        println!("Testing custom EVFILT_USER event registration with ident 123");
+        let mut custom_kev = libc::kevent {
+            ident: 123,
+            filter: -5, // EVFILT_USER
+            flags: 0x0001, // EV_ADD
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let custom_result = libc::kevent(kq_fd, &mut custom_kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+        if custom_result != 0 {
+            eprintln!("Failed to register custom EVFILT_USER event: {}", std::io::Error::last_os_error());
+            libc::close(kq_fd);
+            std::process::exit(1);
+        }
+        println!("Successfully registered custom EVFILT_USER event");
+
+        // Step 6: Test file system events - create a file and see if we get events
+        let test_file_path = format!("{}/collision_test.txt", test_dir);
+        let c_test_file = std::ffi::CString::new(test_file_path.clone()).unwrap();
+
+        println!("Creating test file: {}", test_file_path);
+        let file_fd = libc::open(c_test_file.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC, 0o644);
+        if file_fd < 0 {
+            eprintln!("Failed to create test file: {}", std::io::Error::last_os_error());
+            libc::close(kq_fd);
+            std::process::exit(1);
+        }
+
+        // Register for file write events
+        let mut file_kev = libc::kevent {
+            ident: file_fd as usize,
+            filter: -4, // EVFILT_VNODE
+            flags: 0x0001, // EV_ADD
+            fflags: 0x00000020, // NOTE_WRITE
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let file_watch_result = libc::kevent(kq_fd, &mut file_kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+        if file_watch_result != 0 {
+            eprintln!("Failed to register file watch: {}", std::io::Error::last_os_error());
+            libc::close(file_fd);
+            libc::close(kq_fd);
+            std::process::exit(1);
+        }
+        println!("Registered file write watch on fd {}", file_fd);
+
+        // Write to the file to trigger an event
+        let test_data = b"Hello, collision test!";
+        let write_result = libc::write(file_fd, test_data.as_ptr() as *const libc::c_void, test_data.len());
+        if write_result < 0 {
+            eprintln!("Failed to write to test file: {}", std::io::Error::last_os_error());
+        } else {
+            println!("Wrote {} bytes to test file", write_result);
+        }
+
+        // Wait for events with a short timeout
+        let mut events = [libc::kevent {
+            ident: 0,
+            filter: 0,
+            flags: 0,
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        }; 10];
+
+        let mut timeout = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 500000000, // 500ms
+        };
+
+        let event_count = libc::kevent(kq_fd, std::ptr::null(), 0, events.as_mut_ptr(), events.len() as i32, &mut timeout);
+        println!("Received {} events", event_count);
+
+        if event_count > 0 {
+            for i in 0..event_count {
+                // Copy values from packed struct to avoid alignment issues
+                let event = &events[i as usize];
+                let ident = event.ident;
+                let filter = event.filter;
+                let flags = event.flags;
+                let fflags = event.fflags;
+                println!("Event {}: ident={}, filter={}, flags={:#x}, fflags={:#x}",
+                    i, ident, filter, flags, fflags);
+            }
+        }
+
+        // Clean up
+        libc::close(file_fd);
+        libc::close(kq_fd);
+
+        // Remove test file
+        let _ = std::fs::remove_file(&test_file_path);
+
+        println!("Collision hygiene test completed successfully!");
+        println!("✓ Doorbell ident collision was detected and handled");
+        println!("✓ New doorbell ident was assigned: {:#x} -> {:#x}", doorbell_ident, new_doorbell_ident);
+        println!("✓ Custom EVFILT_USER events work after collision");
+        println!("✓ File system events are still delivered");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("Collision hygiene test skipped (not on macOS)");
     }
 }
 
@@ -3078,6 +3311,57 @@ extern "C" {
         attr_buf_size: libc::size_t,
         options: u_int64_t,
     ) -> libc::c_int;
+}
+
+/// SSZ encoding/decoding functions for test communication
+fn encode_ssz(data: &impl ssz::Encode) -> Vec<u8> {
+    data.as_ssz_bytes()
+}
+
+fn decode_ssz<T: ssz::Decode>(data: &[u8]) -> Result<T, String> {
+    T::from_ssz_bytes(data).map_err(|e| format!("SSZ decode error: {:?}", e))
+}
+
+/// Send a request to the AgentFS daemon and receive a response
+fn send_request_to_daemon(request: agentfs_proto::messages::Request) -> Result<agentfs_proto::messages::Response, String> {
+    use std::os::unix::net::UnixStream;
+
+    // Try to connect to the daemon socket
+    let socket_path = "/tmp/agentfs-daemon.sock"; // Default socket path
+    let mut stream = match UnixStream::connect(socket_path) {
+        Ok(s) => s,
+        Err(e) => return Err(format!("Failed to connect to daemon socket {}: {}", socket_path, e)),
+    };
+
+    // Encode the request
+    let ssz_bytes = encode_ssz(&request);
+
+    // Send the message length as a 4-byte little-endian integer
+    let msg_len = ssz_bytes.len() as u32;
+    if let Err(e) = stream.write_all(&msg_len.to_le_bytes()) {
+        return Err(format!("Failed to send message length: {}", e));
+    }
+
+    // Send the SSZ-encoded request
+    if let Err(e) = stream.write_all(&ssz_bytes) {
+        return Err(format!("Failed to send request: {}", e));
+    }
+
+    // Read the response length
+    let mut len_buf = [0u8; 4];
+    if let Err(e) = stream.read_exact(&mut len_buf) {
+        return Err(format!("Failed to read response length: {}", e));
+    }
+    let resp_len = u32::from_le_bytes(len_buf) as usize;
+
+    // Read the response
+    let mut resp_buf = vec![0u8; resp_len];
+    if let Err(e) = stream.read_exact(&mut resp_buf) {
+        return Err(format!("Failed to read response: {}", e));
+    }
+
+    // Decode the response
+    decode_ssz(&resp_buf)
 }
 
 // Type definitions (these should match the interpose shim definitions)

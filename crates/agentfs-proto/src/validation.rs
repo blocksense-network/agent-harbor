@@ -99,6 +99,8 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         | Request::WatchRegisterFSEvents((version, _))
         | Request::WatchUnregister((version, _))
         | Request::WatchDoorbell((version, _))
+        | Request::UpdateDoorbellIdent((version, _))
+        | Request::QueryDoorbellIdent((version, _))
         | Request::FsEventBroadcast((version, _)) => {
             if version != b"1" {
                 return Err(ValidationError::Schema("version must be '1'".to_string()));
@@ -204,6 +206,8 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
         | Response::WatchRegisterFSEvents(_)
         | Response::WatchUnregister(_)
         | Response::WatchDoorbell(_)
+        | Response::UpdateDoorbellIdent(_)
+        | Response::QueryDoorbellIdent(_)
         | Response::FsEventBroadcast(_)
         | Response::Error(_) => Ok(()),
     }

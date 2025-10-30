@@ -143,26 +143,68 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
   - [x] Thread-safe concurrent access to watch tables
   - [x] No hits for unregistered targets (proper isolation)
 
-# Milestone 3 — Kqueue “doorbell” channel (Option 4)
+# Milestone 3 — Kqueue "doorbell" channel (Option 4) COMPLETED
 
-**Goal:** The shim owns each app’s real kqueue, but the **daemon can notify it** by posting EVFILT_USER “doorbells” on that same kqueue (daemon receives the **kqueue fd via `SCM_RIGHTS`**), avoiding polling/timeouts.
+**Goal:** The shim owns each app's real kqueue, but the **daemon can notify it** by posting EVFILT_USER "doorbells" on that same kqueue (daemon receives the **kqueue fd via `SCM_RIGHTS`**), avoiding polling/timeouts.
 
 - **Shim (on first `kqueue()` call)**
   1. Call real `kqueue()`; store `kq_fd`.
-  2. Allocate a **reserved EVFILT_USER ident** for this kq: `ident = 0xAFFE00000000 | (shim_random_32())`. Keep this disjoint from app’s space.
+  2. Allocate a **reserved EVFILT_USER ident** for this kq: `ident = 0xAFFE00000000 | (shim_random_32())`. Keep this disjoint from app's space.
   3. `EV_SET(&kev, ident, EVFILT_USER, EV_ADD|EV_ENABLE, 0, 0, udata=shim_marker)`
   4. Send **`WatchDoorbell{kq_fd, ident, proc_pid}`** to daemon, passing `kq_fd` via `SCM_RIGHTS` over the existing UNIX control socket. (FD passing infra already used elsewhere.)
 
+- **Shim (collision hygiene - during `kevent()` calls)**
+  - Intercept `kevent()` calls and scan the changelist for `EV_ADD` operations on `EVFILT_USER` with our reserved ident range.
+  - If collision detected: immediately `EV_DELETE` the current doorbell ident, allocate a new ident, re-register it, and send **`UpdateDoorbellIdent{old_ident, new_ident, proc_pid}`** to daemon.
+  - Reason: kqueue events are unique by `(ident, filter)` on a given kqueue - collisions would cause undefined behavior.
+
 - **Daemon**
   - Accepts the `kq_fd` and caches `{proc_pid → kq_fd, ident}`.
-  - To wake the app’s `kevent()` immediately, post:
+  - Handles `UpdateDoorbellIdent` messages by updating the cached ident for the process.
+  - To wake the app's `kevent()` immediately, post:
     - `EV_SET(&kev, ident, EVFILT_USER, 0, NOTE_TRIGGER, data=payload_id, udata=NULL); kevent(kq_fd, &kev, 1, NULL, 0, NULL);`
 
   - `payload_id` indexes a **per-kqueue lock-free ring buffer** (next milestone) holding synthesized `struct kevent` entries to be merged by the shim.
 
 - **Acceptance (end-to-end test)**
   - Tiny test app calls `kqueue()` and then `kevent()` with a long timeout; daemon posts a doorbell → app wakes with **one** EVFILT_USER event (correct `ident`), **no polling**.
-  - Also prove **no collision**: the app registers its own EVFILT_USER `ident = 123`; daemon doorbell uses reserved range; both events can be delivered independently. (Hook ensures we don’t tamper with non-vnode filters.)
+  - Also prove **no collision**: the app registers its own EVFILT_USER `ident = 123`; daemon doorbell uses reserved range; both events can be delivered independently. (Hook ensures we don't tamper with non-vnode filters.)
+  - **Collision hygiene**: test app registers EVFILT_USER with shim's doorbell ident → shim detects collision, deletes old doorbell, registers new ident, notifies daemon → daemon updates its cached ident → subsequent doorbells work with new ident.
+
+**Milestone 3 — Kqueue "doorbell" channel (Option 4)** COMPLETED
+
+- **Deliverables:**
+  - Implemented kqueue interception in shim with doorbell ident allocation using reserved range `0xAFFE00000000 | random_32bit`
+  - Added collision hygiene to detect and resolve EVFILT_USER ident conflicts during kevent() calls
+  - Implemented SCM_RIGHTS file descriptor passing from shim to daemon for doorbell registration
+  - Added UpdateDoorbellIdent and QueryDoorbellIdent message types to protocol
+  - Created efficient doorbell ident lookup in daemon with dedicated HashMap for O(1) access
+  - Implemented doorbell posting mechanism using NOTE_TRIGGER for immediate wakeup
+  - Added comprehensive end-to-end test for collision hygiene verification
+
+- **Implementation Details:**
+  - **Shim Interception**: Modified `my_kqueue()` to allocate reserved doorbell ident and register EVFILT_USER event, then send WatchDoorbell message with FD via SCM_RIGHTS
+  - **Collision Detection**: Added `my_kevent()` interception to scan changelist for EV_ADD operations on EVFILT_USER in reserved range, triggering collision resolution
+  - **Atomic Doorbell Storage**: Replaced HashMap with single `AtomicU64` for current doorbell ident to simplify state management
+  - **Protocol Extensions**: Added `UpdateDoorbellIdentRequest/Response` and `QueryDoorbellIdentRequest/Response` to `agentfs-proto` with proper SSZ serialization
+  - **Daemon Handling**: Extended WatchService with doorbell ident tracking and update mechanisms, implemented efficient lookup methods
+  - **Thread Safety**: Used atomic operations for doorbell ident access and Mutex for watch table modifications
+  - **FD Passing**: Leveraged existing UNIX domain socket infrastructure for secure kqueue FD transfer between processes
+
+- **Key Source Files:**
+  - `crates/agentfs-interpose-shim/src/lib.rs`: Kqueue interception, doorbell registration, and collision hygiene logic
+  - `crates/agentfs-daemon/src/watch_service.rs`: Doorbell ident tracking and posting mechanisms
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC message handling for doorbell operations
+  - `crates/agentfs-proto/src/messages.rs`: New message types for doorbell communication
+  - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs`: End-to-end collision hygiene test
+
+- **Verification Results:**
+  - [x] Tiny test app calls kqueue() and kevent() with long timeout; daemon posts doorbell → app wakes with one EVFILT_USER event (correct ident), no polling
+  - [x] App registers EVFILT_USER ident=123; daemon doorbell uses reserved range; both events delivered independently
+  - [x] Collision hygiene: test app registers EVFILT_USER with shim's doorbell ident → shim detects collision, deletes old doorbell, registers new ident, notifies daemon → daemon updates cached ident → subsequent doorbells work with new ident
+  - [x] SCM_RIGHTS FD passing works correctly between shim and daemon processes
+  - [x] Thread-safe atomic operations for doorbell ident management
+  - [x] Efficient O(1) doorbell ident lookup in daemon
 
 # Milestone 4 — Shim kevent() hook + injectable queue
 

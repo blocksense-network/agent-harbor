@@ -93,7 +93,9 @@ pub enum Request {
     WatchRegisterKqueue((Vec<u8>, WatchRegisterKqueueRequest)), // (version, request) - register kqueue watch
     WatchRegisterFSEvents((Vec<u8>, WatchRegisterFSEventsRequest)), // (version, request) - register FSEvents watch
     WatchUnregister((Vec<u8>, WatchUnregisterRequest)), // (version, request) - unregister watch
-    WatchDoorbell((Vec<u8>, WatchDoorbellRequest)), // (version, request) - doorbell setup for kqueue
+    WatchDoorbell((Vec<u8>, WatchDoorbellRequest)),        // (version, request) - doorbell setup for kqueue
+    UpdateDoorbellIdent((Vec<u8>, UpdateDoorbellIdentRequest)),    // (version, request) - doorbell ident collision update
+    QueryDoorbellIdent((Vec<u8>, QueryDoorbellIdentRequest)),     // (version, request) - query current doorbell ident
     FsEventBroadcast((Vec<u8>, FsEventBroadcastRequest)), // (version, request) - FsCore event broadcast
     DaemonStateProcesses(DaemonStateProcessesRequest),    // version - for testing
     DaemonStateStats(DaemonStateStatsRequest),            // version - for testing
@@ -184,6 +186,8 @@ pub enum Response {
     WatchRegisterFSEvents(WatchRegisterFSEventsResponse),
     WatchUnregister(WatchUnregisterResponse),
     WatchDoorbell(WatchDoorbellResponse),
+    UpdateDoorbellIdent(UpdateDoorbellIdentResponse),
+    QueryDoorbellIdent(QueryDoorbellIdentResponse),
     FsEventBroadcast(FsEventBroadcastResponse),
     DaemonState(DaemonStateResponseWrapper),
     Error(ErrorResponse),
@@ -1784,6 +1788,24 @@ impl Request {
         ))
     }
 
+    pub fn update_doorbell_ident(pid: u32, old_ident: u64, new_ident: u64) -> Self {
+        Self::UpdateDoorbellIdent((
+            b"1".to_vec(),
+            UpdateDoorbellIdentRequest {
+                pid,
+                old_ident,
+                new_ident,
+            },
+        ))
+    }
+
+    pub fn query_doorbell_ident(pid: u32) -> Self {
+        Self::QueryDoorbellIdent((
+            b"1".to_vec(),
+            QueryDoorbellIdentRequest { pid },
+        ))
+    }
+
     pub fn fs_event_broadcast(
         seqno: u64,
         event_kind: u32,
@@ -2117,6 +2139,14 @@ impl Response {
         Self::WatchDoorbell(WatchDoorbellResponse {})
     }
 
+    pub fn update_doorbell_ident() -> Self {
+        Self::UpdateDoorbellIdent(UpdateDoorbellIdentResponse {})
+    }
+
+    pub fn query_doorbell_ident(doorbell_ident: u64) -> Self {
+        Self::QueryDoorbellIdent(QueryDoorbellIdentResponse { doorbell_ident })
+    }
+
     pub fn fs_event_broadcast() -> Self {
         Self::FsEventBroadcast(FsEventBroadcastResponse {})
     }
@@ -2396,6 +2426,35 @@ pub struct WatchDoorbellRequest {
 /// Kqueue doorbell setup response
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct WatchDoorbellResponse {}
+
+/// Kqueue doorbell ident update request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UpdateDoorbellIdentRequest {
+    /// Process ID
+    pub pid: u32,
+    /// Old doorbell identifier that had collision
+    pub old_ident: u64,
+    /// New doorbell identifier to use
+    pub new_ident: u64,
+}
+
+/// Kqueue doorbell ident update response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct UpdateDoorbellIdentResponse {}
+
+/// Kqueue doorbell ident query request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct QueryDoorbellIdentRequest {
+    /// Process ID
+    pub pid: u32,
+}
+
+/// Kqueue doorbell ident query response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct QueryDoorbellIdentResponse {
+    /// Current doorbell identifier (0 if none)
+    pub doorbell_ident: u64,
+}
 
 /// FsCore event broadcast request
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]

@@ -11,7 +11,7 @@ use std::io::{BufRead, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 // SSZ imports
@@ -72,21 +72,23 @@ type CFStringRef = *mut libc::c_void;
 #[cfg(target_os = "macos")]
 type dev_t = u32;
 
-// kqueue/kevent types
+// kqueue/kevent types and constants
 #[cfg(target_os = "macos")]
-type kqueue_t = c_int;
-#[cfg(target_os = "macos")]
-#[repr(C)]
-struct KeventStruct {
-    pub ident: usize,       // identifier for this event
-    pub filter: i16,        // filter for event
-    pub flags: u16,         // action flags for kqueue
-    pub fflags: u32,        // filter flag value
-    pub data: isize,        // filter data value
-    pub udata: *mut c_void, // opaque user data identifier
-}
+type KeventStruct = libc::kevent;
 #[cfg(target_os = "macos")]
 const EVFILT_VNODE: i16 = -4; // vnode events
+#[cfg(target_os = "macos")]
+const EVFILT_USER: i16 = -5; // user events
+#[cfg(target_os = "macos")]
+const EV_ADD: u16 = 0x0001; // add event to kq (implies enable)
+#[cfg(target_os = "macos")]
+const EV_DELETE: u16 = 0x0002; // delete event from kq
+#[cfg(target_os = "macos")]
+const EV_ENABLE: u16 = 0x0004; // enable event
+#[cfg(target_os = "macos")]
+const EV_CLEAR: u16 = 0x0020; // disable event after reporting
+#[cfg(target_os = "macos")]
+const NOTE_TRIGGER: u32 = 0x01000000; // trigger the event
 
 /// Wrapper for storing original FSEvents callback information
 #[cfg(target_os = "macos")]
@@ -99,6 +101,10 @@ struct FSEventsCallbackInfo {
 #[cfg(target_os = "macos")]
 static FSEVENTS_CALLBACKS: Lazy<Mutex<HashMap<usize, FSEventsCallbackInfo>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Current doorbell ident for collision detection
+#[cfg(target_os = "macos")]
+static CURRENT_DOORBELL_IDENT: AtomicU64 = AtomicU64::new(0);
 
 const LOG_PREFIX: &str = "[agentfs-interpose]";
 const ENV_ENABLED: &str = "AGENTFS_INTERPOSE_ENABLED";
@@ -151,6 +157,19 @@ impl DirfdMapping {
             self.fd_paths.insert(new_fd, path);
         }
     }
+}
+
+/// Generate a random doorbell ident for kqueue
+#[cfg(target_os = "macos")]
+fn generate_doorbell_ident() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Use current time as randomness source (good enough for this use case)
+    // Reserve high bits to avoid collision with app's ident space
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u32;
+    0xAFFE00000000u64 | (timestamp as u64)
 }
 
 /// Translate FSEvents paths from overlay to backstore paths
@@ -675,13 +694,13 @@ mod tests {
 mod interpose {
     use super::*;
     use libc::{
-        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, c_uint, c_void, cmsghdr,
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SOL_SOCKET, SCM_RIGHTS,
+        c_char, c_int, c_uint, c_void,
         gid_t, iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
     };
 
     // Re-export kqueue types from parent scope for use in this module
     use super::EVFILT_VNODE;
-    use super::KeventStruct;
 
     // ACL types - these may need to be defined manually for macOS
     type acl_type_t = u32;
@@ -4391,6 +4410,66 @@ mod interpose {
             log_message(&format!("interposing kevent(kq={}, nchanges={}, nevents={})",
                 kq, nchanges, nevents));
 
+            // Collision hygiene: Check changelist for EVFILT_USER events that might collide with our doorbell
+            if nchanges > 0 && !changelist.is_null() {
+                let current_doorbell_ident = CURRENT_DOORBELL_IDENT.load(std::sync::atomic::Ordering::Relaxed);
+                if current_doorbell_ident != 0 {
+                    for i in 0..nchanges {
+                        let change = &*changelist.offset(i as isize);
+                        if change.filter == EVFILT_USER && (change.flags & EV_ADD) != 0 {
+                            let requested_ident = change.ident;
+                            if requested_ident >= 0xAFFE00000000usize && requested_ident as u64 == current_doorbell_ident {
+                                log_message(&format!("Detected doorbell collision: app trying to register ident {:#x} which conflicts with our doorbell", requested_ident));
+
+                                // Delete the current doorbell
+                                let mut delete_kev = libc::kevent {
+                                    ident: current_doorbell_ident as usize,
+                                    filter: EVFILT_USER,
+                                    flags: EV_DELETE,
+                                    fflags: 0,
+                                    data: 0,
+                                    udata: std::ptr::null_mut(),
+                                };
+                                let delete_result = redhook::real!(kevent)(kq, &delete_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                                if delete_result == -1 {
+                                    log_message(&format!("Failed to delete old doorbell ident {:#x}: {}", current_doorbell_ident, std::io::Error::last_os_error()));
+                                }
+
+                                // Allocate new doorbell ident
+                                let new_doorbell_ident = generate_doorbell_ident();
+
+                                // Register new doorbell
+                                let mut add_kev = libc::kevent {
+                                    ident: new_doorbell_ident as usize,
+                                    filter: EVFILT_USER,
+                                    flags: EV_ADD | EV_ENABLE | EV_CLEAR,
+                                    fflags: 0,
+                                    data: 0,
+                                    udata: std::ptr::null_mut(),
+                                };
+                                let add_result = redhook::real!(kevent)(kq, &add_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                                if add_result == -1 {
+                                    log_message(&format!("Failed to register new doorbell ident {:#x}: {}", new_doorbell_ident, std::io::Error::last_os_error()));
+                                } else {
+                                    // Update the current doorbell ident
+                                    CURRENT_DOORBELL_IDENT.store(new_doorbell_ident, std::sync::atomic::Ordering::Relaxed);
+
+                                    // Notify daemon about the ident change
+                                    let pid = std::process::id() as u32;
+                                    let update_request = Request::update_doorbell_ident(pid, current_doorbell_ident, new_doorbell_ident);
+                                    if let Err(e) = send_request(update_request, |_| Some(())) {
+                                        log_message(&format!("Failed to notify daemon about doorbell ident change: {}", e));
+                                    } else {
+                                        log_message(&format!("Notified daemon: doorbell ident changed from {:#x} to {:#x}", current_doorbell_ident, new_doorbell_ident));
+                                    }
+                                }
+                                break; // Only handle one collision per call
+                            }
+                        }
+                    }
+                }
+            }
+
             // Call the real kevent system call to get pending events
             let result = redhook::real!(kevent)(kq, changelist, nchanges, eventlist, nevents, timeout);
 
@@ -4421,6 +4500,131 @@ mod interpose {
 
             result
         }
+    }
+
+    /// Interposed kqueue function - setup doorbell channel to daemon
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn kqueue() -> c_int => my_kqueue {
+            log_message("interposing kqueue() - setting up doorbell channel");
+
+            // Call the real kqueue system call first
+            let kq_fd = redhook::real!(kqueue)();
+
+            if kq_fd == -1 {
+                log_message("kqueue() failed");
+                return kq_fd;
+            }
+
+            // Generate a unique doorbell ident for this kqueue
+            let doorbell_ident = generate_doorbell_ident();
+            log_message(&format!("kqueue doorbell: fd={}, ident={:#x}", kq_fd, doorbell_ident));
+
+            // Register the doorbell EVFILT_USER event on this kqueue
+            let mut kev = libc::kevent {
+                ident: doorbell_ident as usize,
+                filter: EVFILT_USER,
+                flags: EV_ADD | EV_ENABLE | EV_CLEAR,
+                fflags: 0,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            };
+
+            let result = redhook::real!(kevent)(kq_fd, &mut kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+            if result == -1 {
+                log_message(&format!("failed to register doorbell on kqueue fd {}", kq_fd));
+                // Continue anyway - the kqueue is still valid
+            } else {
+                // Store the current doorbell ident
+                CURRENT_DOORBELL_IDENT.store(doorbell_ident, std::sync::atomic::Ordering::Relaxed);
+                log_message(&format!("registered doorbell ident {:#x} for kqueue fd {}", doorbell_ident, kq_fd));
+            }
+
+            // Send WatchDoorbell message to daemon with kqueue FD via SCM_RIGHTS
+            let pid = std::process::id() as u32;
+            let request = Request::watch_doorbell(pid, kq_fd as u32, doorbell_ident);
+
+            // Send the request with FD passing
+            if let Err(e) = send_request_with_fd(request, kq_fd) {
+                log_message(&format!("failed to send WatchDoorbell to daemon: {}", e));
+                // Continue anyway - the app can still use kqueue normally
+            } else {
+                log_message(&format!("sent WatchDoorbell to daemon: pid={}, kq_fd={}, doorbell_ident={:#x}",
+                    pid, kq_fd, doorbell_ident));
+            }
+
+            kq_fd
+        }
+    }
+
+    /// Send a request to daemon with FD passing via SCM_RIGHTS
+    #[cfg(target_os = "macos")]
+    fn send_request_with_fd(request: Request, fd_to_send: c_int) -> Result<(), String> {
+        use std::os::unix::io::AsRawFd;
+
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            match stream_guard.as_ref() {
+                Some(arc) => Arc::clone(arc),
+                None => return Err("not connected to AgentFS control socket".to_string()),
+            }
+        };
+
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        // Prepare message with ancillary data for FD passing
+        let mut iov = iovec {
+            iov_base: ssz_len.to_le_bytes().as_ptr() as *mut c_void,
+            iov_len: 4,
+        };
+
+        let mut msg = msghdr {
+            msg_name: std::ptr::null_mut(),
+            msg_namelen: 0,
+            msg_iov: &mut iov,
+            msg_iovlen: 1,
+            msg_control: std::ptr::null_mut(),
+            msg_controllen: 0,
+            msg_flags: 0,
+        };
+
+        unsafe {
+            // Allocate space for ancillary data
+            let cmsg_space = CMSG_SPACE(std::mem::size_of::<c_int>() as c_uint) as usize;
+            let mut cmsg_buf = vec![0u8; cmsg_space];
+            msg.msg_control = cmsg_buf.as_mut_ptr() as *mut c_void;
+            msg.msg_controllen = cmsg_buf.len() as u32;
+
+            let cmsg = CMSG_FIRSTHDR(&msg);
+            if !cmsg.is_null() {
+                (*cmsg).cmsg_level = SOL_SOCKET;
+                (*cmsg).cmsg_type = SCM_RIGHTS;
+                (*cmsg).cmsg_len = CMSG_LEN(std::mem::size_of::<c_int>() as c_uint);
+                *(CMSG_DATA(cmsg) as *mut c_int) = fd_to_send;
+                msg.msg_controllen = (*cmsg).cmsg_len;
+            }
+
+            // Send the message with ancillary data
+            let send_result = {
+                let stream_guard = stream_arc.lock().unwrap();
+                let stream_fd = stream_guard.as_raw_fd();
+                libc::sendmsg(stream_fd, &msg as *const _, 0)
+            };
+
+            if send_result == -1 {
+                return Err(format!("sendmsg failed: {}", std::io::Error::last_os_error()));
+            }
+        }
+
+        // Now send the SSZ payload
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard.write_all(&ssz_bytes)
+                .map_err(|e| format!("write SSZ payload: {}", e))?;
+        }
+
+        Ok(())
     }
 
     /// Interposed kevent64 function (64-bit variant)

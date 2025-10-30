@@ -372,6 +372,104 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
+                Request::WatchRegisterKqueue((version, watch_reg_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    // TODO: Get path from FD mapping - for now use placeholder
+                    let path = format!("/fd/{}", watch_reg_req.fd);
+                    let registration_id = daemon.register_kqueue_watch(
+                        watch_reg_req.pid,
+                        watch_reg_req.kq_fd,
+                        watch_reg_req.watch_id,
+                        watch_reg_req.fd,
+                        path,
+                        watch_reg_req.fflags,
+                    );
+                    let response = Response::watch_register_kqueue(registration_id);
+                    send_response(&mut stream, &response);
+                }
+                Request::WatchRegisterFSEvents((version, watch_reg_req)) => {
+                    let root_paths: Vec<String> = watch_reg_req.root_paths
+                        .iter()
+                        .map(|p| String::from_utf8_lossy(p).to_string())
+                        .collect();
+                    let mut daemon = daemon.lock().unwrap();
+                    let registration_id = daemon.register_fsevents_watch(
+                        watch_reg_req.pid,
+                        watch_reg_req.stream_id,
+                        root_paths,
+                        watch_reg_req.flags,
+                        watch_reg_req.latency,
+                    );
+                    let response = Response::watch_register_fsevents(registration_id);
+                    send_response(&mut stream, &response);
+                }
+                Request::WatchUnregister((version, watch_unreg_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    daemon.unregister_watch(watch_unreg_req.pid, watch_unreg_req.registration_id);
+                    let response = Response::watch_unregister();
+                    send_response(&mut stream, &response);
+                }
+                Request::WatchDoorbell((version, doorbell_req)) => {
+                    // Handle WatchDoorbell - the kqueue FD should be received via SCM_RIGHTS
+                    // TODO: Implement proper SCM_RIGHTS reception to get the actual kqueue FD
+                    // For now, just acknowledge and set the doorbell ident in watch service
+                    let mut daemon = daemon.lock().unwrap();
+                    daemon.watch_service().set_doorbell(
+                        doorbell_req.pid,
+                        doorbell_req.kq_fd,
+                        doorbell_req.doorbell_ident,
+                    );
+
+                    // TODO: Receive the actual kqueue FD via SCM_RIGHTS and store it
+                    // daemon.watch_service().store_kqueue_fd(doorbell_req.pid, doorbell_req.kq_fd, received_fd);
+
+                    println!(
+                        "AgentFS Daemon: registered doorbell ident {:#x} for kqueue fd {} from pid {}",
+                        doorbell_req.doorbell_ident, doorbell_req.kq_fd, doorbell_req.pid
+                    );
+                    let response = Response::watch_doorbell();
+                    send_response(&mut stream, &response);
+                }
+                Request::UpdateDoorbellIdent((version, update_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    // Find the kqueue fd for this pid
+                    if let Some(kq_fd) = daemon.watch_service().find_kqueue_fd_for_pid(update_req.pid) {
+                        daemon.watch_service().set_doorbell(
+                            update_req.pid,
+                            kq_fd,
+                            update_req.new_ident,
+                        );
+                        println!(
+                            "AgentFS Daemon: updated doorbell ident from {:#x} to {:#x} for pid {} kq_fd {}",
+                            update_req.old_ident, update_req.new_ident, update_req.pid, kq_fd
+                        );
+                    } else {
+                        println!(
+                            "AgentFS Daemon: warning - no kqueue found for pid {} when updating doorbell ident",
+                            update_req.pid
+                        );
+                    }
+                    let response = Response::update_doorbell_ident();
+                    send_response(&mut stream, &response);
+                }
+                Request::QueryDoorbellIdent((version, query_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    // Look up the current doorbell ident for this pid (legacy method for compatibility)
+                    let current_ident = daemon.watch_service().get_doorbell_ident_legacy(query_req.pid);
+                    println!(
+                        "AgentFS Daemon: queried doorbell ident for pid {}: {:#x}",
+                        query_req.pid, current_ident
+                    );
+                    let response = Response::query_doorbell_ident(current_ident);
+                    send_response(&mut stream, &response);
+                }
+                Request::FsEventBroadcast((version, event_broadcast_req)) => {
+                    // Handle FsCore event broadcast to shim
+                    // This would trigger the watch service to route events
+                    // For now, just acknowledge
+                    let response = Response::fs_event_broadcast();
+                    send_response(&mut stream, &response);
+                }
                 // All other request types would be handled here...
                 _ => {
                     let response = Response::error("unsupported request".to_string(), Some(3));
