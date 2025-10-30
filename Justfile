@@ -760,6 +760,14 @@ crates/ah-cli/src/agent/mod.rs
 tests/tools/e2e_macos_fskit/**
 """, "\n", ",")
 
+# AgentFS interpose-specific include patterns as a multiline string
+REPOMIX_AGENTFS_INTERPOSE_PATTERNS := replace("""
+crates/agentfs-core/**
+crates/agentfs-proto/**
+crates/agentfs-interpose-shim/**
+crates/agentfs-interpose-e2e-tests/**
+""", "\n", ",")
+
 # AgentFS specs-only include patterns as a multiline string
 REPOMIX_AGENTFS_SPECS_PATTERNS := replace("""
 specs/Public/AgentFS/**
@@ -791,6 +799,17 @@ repomix-agentfs *args:
         --header-text "AgentFS Complete Implementation and Specification" \
         --include "{{REPOMIX_AGENTFS_PATTERNS}}" \
         {{args}}
+
+# Create repomix bundle of AgentFS interpose-specific files (core, proto, shim, server)
+repomix-agentfs-interpose:
+    @echo "📦 Creating AgentFS interpose repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/AgentFS-Interpose.md \
+        --style markdown \
+        --header-text "AgentFS Interpose Implementation (Core, Proto, Shim, Server)" \
+        --include "{{REPOMIX_AGENTFS_INTERPOSE_PATTERNS}}"
 
 # Create a repomix snapshot of the LLM API Proxy crate
 repomix-llm-api-proxy *args:
