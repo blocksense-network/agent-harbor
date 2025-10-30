@@ -1,6 +1,8 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+//! AgentFS Daemon implementation with interpose support
+
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
@@ -31,12 +33,12 @@ use agentfs_proto::messages::{
     StatfsData, TimespecData,
 };
 
-// Use handshake types and functions from the main crate
-use agentfs_interpose_e2e_tests::handshake::*;
-use agentfs_interpose_e2e_tests::{decode_ssz_message, encode_ssz_message};
+// Use handshake types and functions from this crate
+use crate::handshake::*;
+use crate::{decode_ssz_message, encode_ssz_message};
 
 /// Real AgentFS daemon using the core filesystem
-struct AgentFsDaemon {
+pub struct AgentFsDaemon {
     core: FsCore,
     processes: HashMap<u32, PID>,       // pid -> registered PID
     opened_files: HashMap<String, u32>, // path -> open count (for testing)
@@ -44,11 +46,13 @@ struct AgentFsDaemon {
 }
 
 impl AgentFsDaemon {
-    fn new() -> FsResult<Self> {
+    /// Create a new daemon instance
+    pub fn new() -> FsResult<Self> {
         Self::new_with_overlay(None, None, None)
     }
 
-    fn new_with_overlay(
+    /// Create a new daemon instance with overlay configuration
+    pub fn new_with_overlay(
         lower_dir: Option<PathBuf>,
         upper_dir: Option<PathBuf>,
         _work_dir: Option<PathBuf>,
@@ -97,7 +101,8 @@ impl AgentFsDaemon {
         })
     }
 
-    fn register_process(&mut self, pid: u32, ppid: u32, uid: u32, gid: u32) -> FsResult<PID> {
+    /// Register a process with the daemon
+    pub fn register_process(&mut self, pid: u32, ppid: u32, uid: u32, gid: u32) -> FsResult<PID> {
         let registered_pid = self.core.register_process(pid, ppid, uid, gid);
         self.processes.insert(pid, registered_pid.clone());
         Ok(registered_pid)
@@ -107,7 +112,8 @@ impl AgentFsDaemon {
         self.processes.get(&os_pid)
     }
 
-    fn handle_fd_open(
+    /// Handle an fd_open request
+    pub fn handle_fd_open(
         &mut self,
         path: String,
         flags: u32,
@@ -134,7 +140,8 @@ impl AgentFsDaemon {
         }
     }
 
-    fn handle_dir_open(&mut self, path: String, client_pid: u32) -> Result<u64, String> {
+    /// Handle a dir_open request
+    pub fn handle_dir_open(&mut self, path: String, client_pid: u32) -> Result<u64, String> {
         println!("AgentFsDaemon: dir_open({}, pid={})", path, client_pid);
 
         // Use FsCore to handle the directory open
@@ -158,7 +165,8 @@ impl AgentFsDaemon {
         }
     }
 
-    fn handle_readlink(&mut self, path: String, client_pid: u32) -> Result<String, String> {
+    /// Handle a readlink request
+    pub fn handle_readlink(&mut self, path: String, client_pid: u32) -> Result<String, String> {
         println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
 
         // Use FsCore to handle the readlink
@@ -183,7 +191,8 @@ impl AgentFsDaemon {
         }
     }
 
-    fn handle_dir_read(&mut self, handle: u64, client_pid: u32) -> Result<Vec<DirEntry>, String> {
+    /// Handle a dir_read request
+    pub fn handle_dir_read(&mut self, handle: u64, client_pid: u32) -> Result<Vec<DirEntry>, String> {
         println!(
             "AgentFsDaemon: dir_read(handle={}, pid={})",
             handle, client_pid
@@ -223,7 +232,8 @@ impl AgentFsDaemon {
         }
     }
 
-    fn handle_dir_close(&mut self, handle: u64, client_pid: u32) -> Result<(), String> {
+    /// Handle a dir_close request
+    pub fn handle_dir_close(&mut self, handle: u64, client_pid: u32) -> Result<(), String> {
         println!(
             "AgentFsDaemon: dir_close(handle={}, pid={})",
             handle, client_pid
@@ -245,7 +255,8 @@ impl AgentFsDaemon {
         }
     }
 
-    fn handle_fd_dup(&mut self, fd: u32, client_pid: u32) -> Result<u32, String> {
+    /// Handle an fd_dup request
+    pub fn handle_fd_dup(&mut self, fd: u32, client_pid: u32) -> Result<u32, String> {
         println!("AgentFsDaemon: fd_dup(fd={}, pid={})", fd, client_pid);
 
         // For testing purposes, just return the same fd (simulated dup)
@@ -254,7 +265,8 @@ impl AgentFsDaemon {
         Ok(fd)
     }
 
-    fn handle_path_op(
+    /// Handle a path_op request
+    pub fn handle_path_op(
         &mut self,
         path: String,
         operation: String,
@@ -293,7 +305,7 @@ impl AgentFsDaemon {
     }
 
     /// Get processes state
-    fn get_daemon_state_processes(&self) -> Result<DaemonStateResponseWrapper, String> {
+    pub fn get_daemon_state_processes(&self) -> Result<DaemonStateResponseWrapper, String> {
         let processes: Vec<agentfs_proto::ProcessInfo> = self
             .processes
             .iter()
@@ -309,7 +321,7 @@ impl AgentFsDaemon {
     }
 
     /// Get stats state
-    fn get_daemon_state_stats(&self) -> Result<DaemonStateResponseWrapper, String> {
+    pub fn get_daemon_state_stats(&self) -> Result<DaemonStateResponseWrapper, String> {
         let stats = self.core.stats();
         let fs_stats = FsStats {
             branches: stats.branches,
@@ -324,7 +336,7 @@ impl AgentFsDaemon {
     }
 
     /// Get filesystem state
-    fn get_daemon_state_filesystem(
+    pub fn get_daemon_state_filesystem(
         &self,
         query: &FilesystemQuery,
     ) -> Result<DaemonStateResponseWrapper, String> {
@@ -1743,96 +1755,4 @@ fn send_response(stream: &mut UnixStream, response: &Response) {
     let _ = stream.write_all(&len_bytes);
     let _ = stream.write_all(&encoded);
     let _ = stream.flush();
-}
-
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!(
-            "Usage: {} <socket_path> [--lower-dir <path>] [--upper-dir <path>] [--work-dir <path>]",
-            args[0]
-        );
-        std::process::exit(1);
-    }
-
-    let socket_path = &args[1];
-
-    // Parse overlay arguments
-    let mut lower_dir = None;
-    let mut upper_dir = None;
-    let mut work_dir = None;
-
-    let mut i = 2;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--lower-dir" => {
-                if i + 1 < args.len() {
-                    lower_dir = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    eprintln!("--lower-dir requires an argument");
-                    std::process::exit(1);
-                }
-            }
-            "--upper-dir" => {
-                if i + 1 < args.len() {
-                    upper_dir = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    eprintln!("--upper-dir requires an argument");
-                    std::process::exit(1);
-                }
-            }
-            "--work-dir" => {
-                if i + 1 < args.len() {
-                    work_dir = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    eprintln!("--work-dir requires an argument");
-                    std::process::exit(1);
-                }
-            }
-            _ => {
-                eprintln!("Unknown argument: {}", args[i]);
-                std::process::exit(1);
-            }
-        }
-    }
-
-    // Clean up any existing socket
-    let _ = std::fs::remove_file(socket_path);
-
-    let listener = UnixListener::bind(socket_path).expect("failed to bind socket");
-    println!("AgentFsDaemon: listening on {}", socket_path);
-
-    let daemon = match AgentFsDaemon::new_with_overlay(lower_dir, upper_dir, work_dir) {
-        Ok(daemon) => Arc::new(Mutex::new(daemon)),
-        Err(e) => {
-            eprintln!("Failed to create AgentFS daemon: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    println!("AgentFsDaemon: initialized successfully");
-
-    // Handle incoming connections
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                // For testing, we'll use a dummy client PID since we don't have a way to get it from the Unix socket
-                // In production, this would need to be passed through the handshake or connection
-                let client_pid = 12345; // Dummy PID for testing
-                let daemon_clone = daemon.clone();
-                thread::spawn(move || {
-                    handle_client(stream, daemon_clone, client_pid);
-                });
-            }
-            Err(e) => {
-                eprintln!("AgentFsDaemon: accept error: {}", e);
-                break;
-            }
-        }
-    }
-
-    println!("AgentFsDaemon: shutting down");
 }

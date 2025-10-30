@@ -6,6 +6,10 @@ name = "agentfs-daemon"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "agentfs-daemon"
+path = "src/bin/agentfs-daemon.rs"
+
 [dependencies]
 agentfs-core = { path = "../agentfs-core" }
 agentfs-proto = { path = "../agentfs-proto" }
@@ -22,3 +26,5 @@ tokio = { version = "1.0", features = [
   "macros",
   "rt-multi-thread",
 ] }
+ssz = { package = "ethereum_ssz", version = "0.8" }
+ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }

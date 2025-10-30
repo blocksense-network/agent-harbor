@@ -6,7 +6,7 @@
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
 
-// Handshake structures copied from the shim crate
+// Handshake structures for interpose communication
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 #[ssz(enum_behaviour = "union")]
 pub enum HandshakeMessage {

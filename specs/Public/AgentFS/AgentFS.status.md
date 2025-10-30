@@ -431,7 +431,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - `crates/agentfs-core/src/config.rs` - Extended configuration structures
 - `crates/agentfs-interpose-shim/src/lib.rs` - Redhook-based interposition implementation with FsCore handle delegation
 - `crates/agentfs-interpose-shim/tests/fixtures/test_helper.rs` - Comprehensive test program for file operations
-- `crates/agentfs-interpose-shim/tests/fixtures/mock_daemon.rs` - Real AgentFS daemon using production core for interpose testing
+- `crates/agentfs-daemon/src/daemon.rs` - Production AgentFS daemon implementation
 - `crates/agentfs-proto/src/messages.rs` - Interpose message types (FdOpen, FdDup, PathOp, InterposeSetGet)
 
 **Technical Highlights:**
@@ -1072,7 +1072,7 @@ Notes:
 - `crates/agentfs-interpose-shim/Cargo.toml` - cdylib configuration and dependencies including redhook for proper hooking
 - `crates/agentfs-interpose-e2e-tests/src/lib.rs` - E2E test harness and integration tests
 - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs` - Test program with direct libc calls
-- `crates/agentfs-interpose-e2e-tests/src/bin/mock_daemon.rs` - Mock daemon with real FsCore integration
+- `crates/agentfs-daemon/src/bin/agentfs-daemon.rs` - Production daemon executable
 - `crates/agentfs-proto/src/messages.rs` - SSZ message types for interpose communication
 - `crates/agentfs-core/src/vfs.rs` - FsCore handle management for both files and directories
 - `Justfile` - Build targets for interpose test binaries

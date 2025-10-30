@@ -19,10 +19,9 @@ path = "../agentfs-proto"
 [dependencies.agentfs-core]
 path = "../agentfs-core"
 
+[dependencies.agentfs-daemon]
+path = "../agentfs-daemon"
+
 [[bin]]
 name = "agentfs-interpose-test-helper"
 path = "src/bin/test_helper.rs"
-
-[[bin]]
-name = "agentfs-interpose-mock-daemon"
-path = "src/bin/mock_daemon.rs"
