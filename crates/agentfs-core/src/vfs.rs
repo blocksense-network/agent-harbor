@@ -14,11 +14,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
 use crate::{
-    Attributes, BranchId, BranchInfo, ContentId, DirEntry, EventKind, EventSink, FileMode,
-    FileTimes, FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode,
-    SnapshotId, StreamSpec, SubscriptionId,
+    Attributes, BranchId, BranchInfo, ContentId, DirEntry, FileMode, FileTimes, FsConfig, FsStats,
+    HandleId, LockKind, LockRange, OpenOptions, ShareMode, SnapshotId, StreamSpec,
 };
+
 use crate::{Backstore, LowerFs};
+#[cfg(feature = "events")]
+use crate::{EventKind, EventSink, SubscriptionId};
 
 // Import proto types for interpose operations
 use agentfs_proto::messages::{StatData, StatfsData, TimespecData};
@@ -195,6 +197,7 @@ pub struct FsCore {
     handles: Mutex<HashMap<HandleId, Handle>>,
     next_node_id: Mutex<u64>,
     next_handle_id: Mutex<u64>,
+    #[cfg(feature = "events")]
     next_subscription_id: Mutex<u64>,
     pub(crate) process_branches: Mutex<HashMap<u32, BranchId>>, // Process ID -> Branch ID mapping
     process_identities: Mutex<HashMap<u32, User>>,              // Process ID -> security identity
@@ -202,6 +205,7 @@ pub struct FsCore {
     process_parents: Mutex<HashMap<u32, u32>>,                  // Child PID -> parent PID
     process_dirfd_mappings: Mutex<HashMap<u32, DirfdMapping>>, // Process ID -> directory fd mappings
     locks: Mutex<LockManager>,                                 // Byte-range lock manager
+    #[cfg(feature = "events")]
     event_subscriptions: Mutex<HashMap<SubscriptionId, Arc<dyn EventSink>>>,
 }
 
@@ -246,6 +250,7 @@ impl FsCore {
             handles: Mutex::new(HashMap::new()),
             next_node_id: Mutex::new(1),
             next_handle_id: Mutex::new(1),
+            #[cfg(feature = "events")]
             next_subscription_id: Mutex::new(1),
             process_branches: Mutex::new(HashMap::new()), // No processes initially bound
             process_identities: Mutex::new(HashMap::new()), // No processes initially registered
@@ -255,6 +260,7 @@ impl FsCore {
             locks: Mutex::new(LockManager {
                 locks: HashMap::new(),
             }),
+            #[cfg(feature = "events")]
             event_subscriptions: Mutex::new(HashMap::new()),
         };
 
@@ -947,6 +953,7 @@ impl FsCore {
         self.snapshots.lock().unwrap().insert(snapshot_id, snapshot);
 
         // Emit event
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::SnapshotCreated {
             id: snapshot_id,
             name: name.map(|s| s.to_string()),
@@ -998,6 +1005,7 @@ impl FsCore {
         self.branches.lock().unwrap().insert(branch_id, branch);
 
         // Emit event
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::BranchCreated {
             id: branch_id,
             name: name.map(|s| s.to_string()),
@@ -1155,6 +1163,7 @@ impl FsCore {
     }
 
     // Event subscription operations
+    #[cfg(feature = "events")]
     pub fn subscribe_events(&self, cb: Arc<dyn EventSink>) -> FsResult<SubscriptionId> {
         let mut subscriptions = self.event_subscriptions.lock().unwrap();
         let mut next_id = self.next_subscription_id.lock().unwrap();
@@ -1164,6 +1173,7 @@ impl FsCore {
         Ok(subscription_id)
     }
 
+    #[cfg(feature = "events")]
     pub fn unsubscribe_events(&self, sub: SubscriptionId) -> FsResult<()> {
         let mut subscriptions = self.event_subscriptions.lock().unwrap();
         if subscriptions.remove(&sub).is_none() {
@@ -1193,6 +1203,7 @@ impl FsCore {
     }
 
     // Helper method to emit events to all subscribers
+    #[cfg(feature = "events")]
     fn emit_event(&self, event: EventKind) {
         if !self.config.track_events {
             return;
@@ -1280,6 +1291,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(handle_id)
@@ -1879,6 +1891,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(())
@@ -1924,6 +1937,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Removed { path: path_str });
 
         Ok(())
@@ -3042,6 +3056,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Removed { path: path_str });
 
         Ok(())
@@ -3547,6 +3562,7 @@ impl FsCore {
 
         // Emit event
         let path_str = linkpath.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(())
@@ -3619,6 +3635,7 @@ impl FsCore {
 
         // Emit event
         let path_str = new_path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(())
