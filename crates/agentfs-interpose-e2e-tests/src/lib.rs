@@ -22,10 +22,10 @@ pub fn find_daemon_path() -> std::path::PathBuf {
         .join("target")
         .join(&profile);
 
-    let direct = root.join("agentfs-interpose-mock-daemon");
+    let direct = root.join("agentfs-daemon");
     assert!(
         direct.exists(),
-        "Mock daemon binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.",
+        "AgentFS daemon binary not found at {}. Make sure to run the appropriate justfile target to build test dependencies.",
         direct.display()
     );
 
@@ -1021,17 +1021,18 @@ mod tests {
         }
     }
 
-    /// Start mock daemon for testing and return daemon process and socket path
-    fn start_mock_daemon() -> (std::process::Child, std::path::PathBuf) {
-        start_overlay_daemon_internal(None, None, None)
+    /// Start agentfs-daemon for testing and return daemon process and socket path
+    fn start_daemon() -> (std::process::Child, std::path::PathBuf, tempfile::TempDir) {
+        let (daemon, socket_path, temp_dir) = start_overlay_daemon_internal(None, None, None);
+        (daemon, socket_path, temp_dir)
     }
 
-    /// Start mock daemon with overlay configuration for testing
+    /// Start agentfs-daemon with overlay configuration for testing
     fn start_overlay_daemon(
         lower_dir: &std::path::Path,
         upper_dir: &std::path::Path,
         work_dir: &std::path::Path,
-    ) -> (std::process::Child, std::path::PathBuf) {
+    ) -> (std::process::Child, std::path::PathBuf, tempfile::TempDir) {
         start_overlay_daemon_internal(Some(lower_dir), Some(upper_dir), Some(work_dir))
     }
 
@@ -1040,7 +1041,7 @@ mod tests {
         lower_dir: Option<&std::path::Path>,
         upper_dir: Option<&std::path::Path>,
         work_dir: Option<&std::path::Path>,
-    ) -> (std::process::Child, std::path::PathBuf) {
+    ) -> (std::process::Child, std::path::PathBuf, tempfile::TempDir) {
         let temp_dir = tempdir().unwrap();
         let socket_path = temp_dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
@@ -1048,18 +1049,13 @@ mod tests {
         let mut daemon_cmd = Command::new(&daemon_path);
         daemon_cmd.arg(&socket_path);
 
-        // Pass overlay configuration if provided
-        if let (Some(lower), Some(upper), Some(work)) = (lower_dir, upper_dir, work_dir) {
-            daemon_cmd
-                .arg("--lower-dir")
-                .arg(lower)
-                .arg("--upper-dir")
-                .arg(upper)
-                .arg("--work-dir")
-                .arg(work);
+        // Note: Overlay configuration not yet supported in the new daemon
+        // TODO: Add overlay support back when needed
+        if (lower_dir, upper_dir, work_dir) != (None, None, None) {
+            panic!("Overlay configuration not yet supported in new daemon");
         }
 
-        let daemon = daemon_cmd.spawn().expect("failed to start mock daemon");
+        let daemon = daemon_cmd.spawn().expect("failed to start agentfs-daemon");
 
         // Give daemon time to start and check if socket is ready
         thread::sleep(Duration::from_millis(500));
@@ -1068,7 +1064,7 @@ mod tests {
             thread::sleep(Duration::from_millis(500));
         }
 
-        (daemon, socket_path)
+        (daemon, socket_path, temp_dir)
     }
 
     // ===== DIRFD RESOLUTION TESTS =====
@@ -1101,7 +1097,7 @@ mod tests {
         fs::write(&file_path, b"test content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1175,7 +1171,7 @@ mod tests {
         fs::write(&file2_path, b"content2").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1246,7 +1242,7 @@ mod tests {
         fs::write(&file_path, b"dup test content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1326,7 +1322,7 @@ mod tests {
         fs::write(&dotdot_file, b"dotdot content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1393,7 +1389,7 @@ mod tests {
         fs::create_dir_all(&test_base).unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1472,7 +1468,7 @@ mod tests {
         fs::write(&src_file, b"rename test content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1549,7 +1545,7 @@ mod tests {
         fs::write(&source_file, b"link test content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1620,7 +1616,7 @@ mod tests {
         fs::write(&file_path, b"test content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1701,7 +1697,7 @@ mod tests {
         }
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1777,7 +1773,7 @@ mod tests {
         }
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -1887,7 +1883,7 @@ mod tests {
         .unwrap();
 
         // Start mock daemon with overlay configuration
-        let (mut daemon, socket_path) = start_overlay_daemon(
+        let (mut daemon, socket_path, _temp_dir) = start_overlay_daemon(
             &lower_dir,
             &std::path::PathBuf::new(),
             &std::path::PathBuf::new(),
@@ -1961,7 +1957,7 @@ mod tests {
         fs::write(test_base.join("dir2").join("file.txt"), b"process2 content").unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -2039,7 +2035,7 @@ mod tests {
         .unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -2115,7 +2111,7 @@ mod tests {
         }
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
@@ -2181,7 +2177,7 @@ mod tests {
         fs::create_dir_all(&test_base).unwrap();
 
         // Start mock daemon
-        let (mut daemon, socket_path) = start_mock_daemon();
+        let (mut daemon, socket_path, _temp_dir) = start_daemon();
 
         // Set environment variables to enable interposition
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());

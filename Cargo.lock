@@ -42,12 +42,15 @@ dependencies = [
  "agentfs-core",
  "agentfs-proto",
  "anyhow",
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
  "libc",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -136,11 +139,13 @@ version = "0.1.0"
 dependencies = [
  "agentfs-core",
  "agentfs-proto",
+ "anyhow",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "libc",
  "once_cell",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]

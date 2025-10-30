@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use agentfs_core::EventSink;
+use anyhow;
 use libc;
 
 // AgentFS core imports
@@ -35,9 +37,308 @@ use agentfs_proto::messages::{
 use agentfs_interpose_e2e_tests::handshake::*;
 use agentfs_interpose_e2e_tests::{decode_ssz_message, encode_ssz_message};
 
+// Import watch response types
+use agentfs_proto::messages::{
+    FsEventBroadcastResponse, WatchDoorbellResponse, WatchRegisterFSEventsResponse,
+    WatchRegisterKqueueResponse, WatchUnregisterResponse,
+};
+
+/// Registration information for a kqueue watch
+#[derive(Clone, Debug)]
+pub struct KqueueWatchRegistration {
+    pub registration_id: u64,
+    pub pid: u32,
+    pub kq_fd: u32,
+    pub watch_id: u64,
+    pub fd: u32,
+    pub fflags: u32,
+    pub path: Option<String>, // Cached path from F_GETPATH, refreshed on rename
+    pub doorbell_ident: Option<u64>,
+}
+
+/// Registration information for an FSEvents watch
+#[derive(Clone, Debug)]
+pub struct FSEventsWatchRegistration {
+    pub registration_id: u64,
+    pub pid: u32,
+    pub stream_id: u32,
+    pub root_paths: Vec<String>,
+    pub flags: u32,
+    pub latency: u32,
+}
+
+/// Watch service for managing file system event watchers
+#[derive(Clone)]
+pub struct WatchService {
+    /// Registered kqueue watches: (pid, kq_fd, watch_id) -> WatchRegistration
+    kqueue_watches: Arc<Mutex<HashMap<(u32, u32, u64), KqueueWatchRegistration>>>,
+    /// Registered FSEvents watches: (pid, stream_id) -> WatchRegistration
+    fsevents_watches: Arc<Mutex<HashMap<(u32, u32), FSEventsWatchRegistration>>>,
+    /// Next registration ID to assign
+    next_registration_id: Arc<Mutex<u64>>,
+}
+
+impl WatchService {
+    pub fn new() -> Self {
+        Self {
+            kqueue_watches: Arc::new(Mutex::new(HashMap::new())),
+            fsevents_watches: Arc::new(Mutex::new(HashMap::new())),
+            next_registration_id: Arc::new(Mutex::new(1)),
+        }
+    }
+
+    /// Register a kqueue watch
+    pub fn register_kqueue_watch(
+        &self,
+        pid: u32,
+        kq_fd: u32,
+        watch_id: u64,
+        fd: u32,
+        fflags: u32,
+    ) -> u64 {
+        let mut next_id = self.next_registration_id.lock().unwrap();
+        let registration_id = *next_id;
+        *next_id += 1;
+
+        let path = Self::derive_path_from_fd(fd);
+
+        let registration = KqueueWatchRegistration {
+            registration_id,
+            pid,
+            kq_fd,
+            watch_id,
+            fd,
+            fflags,
+            path,
+            doorbell_ident: None,
+        };
+
+        self.kqueue_watches.lock().unwrap().insert((pid, kq_fd, watch_id), registration);
+
+        registration_id
+    }
+
+    /// Register an FSEvents watch
+    pub fn register_fsevents_watch(
+        &self,
+        pid: u32,
+        stream_id: u32,
+        root_paths: Vec<String>,
+        flags: u32,
+        latency: u32,
+    ) -> u64 {
+        let mut next_id = self.next_registration_id.lock().unwrap();
+        let registration_id = *next_id;
+        *next_id += 1;
+
+        let registration = FSEventsWatchRegistration {
+            registration_id,
+            pid,
+            stream_id,
+            root_paths,
+            flags,
+            latency,
+        };
+
+        self.fsevents_watches.lock().unwrap().insert((pid, stream_id), registration);
+
+        registration_id
+    }
+
+    /// Unregister a watch by registration ID and PID
+    pub fn unregister_watch(&self, pid: u32, registration_id: u64) {
+        // Remove from kqueue watches
+        self.kqueue_watches
+            .lock()
+            .unwrap()
+            .retain(|_, watch| !(watch.pid == pid && watch.registration_id == registration_id));
+
+        // Remove from FSEvents watches
+        self.fsevents_watches
+            .lock()
+            .unwrap()
+            .retain(|_, watch| !(watch.pid == pid && watch.registration_id == registration_id));
+    }
+
+    /// Set doorbell identifier for a kqueue watch
+    pub fn set_doorbell(&self, pid: u32, kq_fd: u32, doorbell_ident: u64) {
+        let mut watches = self.kqueue_watches.lock().unwrap();
+        for (_, watch) in watches.iter_mut() {
+            if watch.pid == pid && watch.kq_fd == kq_fd {
+                watch.doorbell_ident = Some(doorbell_ident);
+            }
+        }
+    }
+
+    /// Get all kqueue watches for a process
+    pub fn get_kqueue_watches_for_pid(&self, pid: u32) -> Vec<KqueueWatchRegistration> {
+        self.kqueue_watches
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|watch| watch.pid == pid)
+            .cloned()
+            .collect()
+    }
+
+    /// Get all FSEvents watches for a process
+    pub fn get_fsevents_watches_for_pid(&self, pid: u32) -> Vec<FSEventsWatchRegistration> {
+        self.fsevents_watches
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|watch| watch.pid == pid)
+            .cloned()
+            .collect()
+    }
+
+    /// Derive path from file descriptor using F_GETPATH
+    fn derive_path_from_fd(fd: u32) -> Option<String> {
+        use std::fs::File;
+        use std::os::unix::io::FromRawFd;
+
+        // Safety: We need to temporarily wrap the fd to use fcntl
+        // This is safe as long as we don't close the fd
+        let file = unsafe { File::from_raw_fd(fd as i32) };
+
+        let mut buf = vec![0u8; libc::PATH_MAX as usize];
+        let result = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, buf.as_mut_ptr()) };
+
+        // Don't close the file descriptor
+        std::mem::forget(file);
+
+        if result == -1 {
+            None
+        } else {
+            // Find the null terminator
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            String::from_utf8_lossy(&buf[..len]).to_string().into()
+        }
+    }
+}
+
+/// Event sink implementation for the daemon
+pub struct DaemonEventSink {
+    watch_service: Arc<WatchService>,
+}
+
+impl DaemonEventSink {
+    pub fn new(watch_service: Arc<WatchService>) -> Self {
+        Self { watch_service }
+    }
+
+    /// Find kqueue watchers that match the given event
+    fn find_matching_kqueue_watchers(
+        &self,
+        evt: &agentfs_core::EventKind,
+    ) -> Vec<KqueueWatchRegistration> {
+        let mut matches = Vec::new();
+
+        match evt {
+            agentfs_core::EventKind::Created { path }
+            | agentfs_core::EventKind::Removed { path }
+            | agentfs_core::EventKind::Modified { path } => {
+                let watches = self.watch_service.kqueue_watches.lock().unwrap();
+                for (_, watch) in watches.iter() {
+                    if let Some(watch_path) = &watch.path {
+                        if watch_path == path {
+                            matches.push(watch.clone());
+                        }
+                    }
+                }
+            }
+            agentfs_core::EventKind::Renamed { from, to } => {
+                let watches = self.watch_service.kqueue_watches.lock().unwrap();
+                for (_, watch) in watches.iter() {
+                    if let Some(watch_path) = &watch.path {
+                        if watch_path == from || watch_path == to {
+                            matches.push(watch.clone());
+                        }
+                    }
+                }
+            }
+            _ => {} // BranchCreated/SnapshotCreated not relevant for file watching
+        }
+
+        matches
+    }
+
+    /// Find FSEvents watchers that match the given event
+    fn find_matching_fsevents_watchers(
+        &self,
+        evt: &agentfs_core::EventKind,
+    ) -> Vec<FSEventsWatchRegistration> {
+        let mut matches = Vec::new();
+
+        let event_paths = match evt {
+            agentfs_core::EventKind::Created { path }
+            | agentfs_core::EventKind::Removed { path }
+            | agentfs_core::EventKind::Modified { path } => {
+                vec![path.clone()]
+            }
+            agentfs_core::EventKind::Renamed { from, to } => {
+                vec![from.clone(), to.clone()]
+            }
+            _ => return matches,
+        };
+
+        let watches = self.watch_service.fsevents_watches.lock().unwrap();
+        for (_, watch) in watches.iter() {
+            for event_path in &event_paths {
+                for root_path in &watch.root_paths {
+                    if event_path.starts_with(root_path) {
+                        matches.push(watch.clone());
+                        break;
+                    }
+                }
+            }
+        }
+
+        matches
+    }
+}
+
+impl EventSink for DaemonEventSink {
+    fn on_event(&self, evt: &agentfs_core::EventKind) {
+        let kqueue_matches = self.find_matching_kqueue_watchers(evt);
+        let fsevents_matches = self.find_matching_fsevents_watchers(evt);
+
+        if !kqueue_matches.is_empty() {
+            tracing::debug!("Found {} matching kqueue watchers", kqueue_matches.len());
+            for watch in &kqueue_matches {
+                tracing::debug!(
+                    "  Kqueue watch: pid={}, fd={}, path={:?}",
+                    watch.pid,
+                    watch.fd,
+                    watch.path
+                );
+            }
+        }
+
+        if !fsevents_matches.is_empty() {
+            tracing::debug!(
+                "Found {} matching FSEvents watchers",
+                fsevents_matches.len()
+            );
+            for watch in &fsevents_matches {
+                tracing::debug!(
+                    "  FSEvents watch: pid={}, stream_id={}, roots={:?}",
+                    watch.pid,
+                    watch.stream_id,
+                    watch.root_paths
+                );
+            }
+        }
+
+        // TODO: In a complete implementation, events would be sent to shim clients
+        // via their established IPC connections. For now, we just log the matches.
+    }
+}
+
 /// Real AgentFS daemon using the core filesystem
 struct AgentFsDaemon {
     core: FsCore,
+    watch_service: Arc<WatchService>,
     processes: HashMap<u32, PID>,       // pid -> registered PID
     opened_files: HashMap<String, u32>, // path -> open count (for testing)
     opened_dirs: HashMap<String, u32>,  // path -> open count (for testing)
@@ -88,9 +389,15 @@ impl AgentFsDaemon {
         };
 
         let core = FsCore::new(config)?;
+        let watch_service = Arc::new(WatchService::new());
+
+        // Subscribe to FsCore events
+        let event_sink = Arc::new(DaemonEventSink::new(watch_service.clone()));
+        core.subscribe_events(event_sink)?;
 
         Ok(Self {
             core,
+            watch_service,
             processes: HashMap::new(),
             opened_files: HashMap::new(),
             opened_dirs: HashMap::new(),
@@ -897,6 +1204,79 @@ impl AgentFsDaemon {
 
         Ok(resolved_path.to_string_lossy().to_string())
     }
+
+    /// Handle watch registration requests
+    fn handle_watch_request(&self, request: &Request) -> Result<Response, anyhow::Error> {
+        match request {
+            Request::WatchRegisterKqueue((_, req)) => {
+                let registration_id = self.watch_service.register_kqueue_watch(
+                    req.pid,
+                    req.kq_fd,
+                    req.watch_id,
+                    req.fd,
+                    req.fflags,
+                );
+                Ok(Response::WatchRegisterKqueue(WatchRegisterKqueueResponse {
+                    registration_id,
+                }))
+            }
+            Request::WatchRegisterFSEvents((_, req)) => {
+                let registration_id = self.watch_service.register_fsevents_watch(
+                    req.pid,
+                    req.stream_id as u32,
+                    req.root_paths.iter().map(|s| String::from_utf8_lossy(s).to_string()).collect(),
+                    req.flags as u32,
+                    req.latency as u32,
+                );
+                Ok(Response::WatchRegisterFSEvents(
+                    WatchRegisterFSEventsResponse { registration_id },
+                ))
+            }
+            Request::WatchUnregister((_, req)) => {
+                self.watch_service.unregister_watch(req.pid, req.registration_id);
+                Ok(Response::WatchUnregister(WatchUnregisterResponse {}))
+            }
+            Request::WatchDoorbell((_, req)) => {
+                self.watch_service.set_doorbell(req.pid, req.kq_fd, req.doorbell_ident);
+                Ok(Response::WatchDoorbell(WatchDoorbellResponse {}))
+            }
+            Request::FsEventBroadcast((_, req)) => {
+                // For testing: inject synthetic event into the daemon's event sink
+                let event_kind = match req.event_kind {
+                    0 => agentfs_core::EventKind::Created {
+                        path: String::from_utf8_lossy(&req.path).to_string(),
+                    },
+                    1 => agentfs_core::EventKind::Removed {
+                        path: String::from_utf8_lossy(&req.path).to_string(),
+                    },
+                    2 => agentfs_core::EventKind::Modified {
+                        path: String::from_utf8_lossy(&req.path).to_string(),
+                    },
+                    3 => {
+                        let aux_path =
+                            req.aux_path.as_ref().map(|p| String::from_utf8_lossy(p).to_string());
+                        if let Some(to) = aux_path {
+                            agentfs_core::EventKind::Renamed {
+                                from: String::from_utf8_lossy(&req.path).to_string(),
+                                to,
+                            }
+                        } else {
+                            return Err(anyhow::anyhow!("Renamed event missing destination path"));
+                        }
+                    }
+                    _ => return Err(anyhow::anyhow!("Unknown event kind")),
+                };
+
+                // Manually trigger the event sink (normally done by FsCore)
+                // This is for testing purposes only
+                let sink = DaemonEventSink::new(self.watch_service.clone());
+                sink.on_event(&event_kind);
+
+                Ok(Response::FsEventBroadcast(FsEventBroadcastResponse {}))
+            }
+            _ => Err(anyhow::anyhow!("Unsupported request type")),
+        }
+    }
 }
 
 fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, client_pid: u32) {
@@ -1662,6 +2042,22 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 format!("dirfd_resolve_path failed: {}", e),
                                 Some(2),
                             );
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                }
+                // Watch service requests
+                Request::WatchRegisterKqueue(_)
+                | Request::WatchRegisterFSEvents(_)
+                | Request::WatchUnregister(_)
+                | Request::WatchDoorbell(_)
+                | Request::FsEventBroadcast(_) => {
+                    let daemon = daemon.lock().unwrap();
+                    match daemon.handle_watch_request(&request) {
+                        Ok(response) => send_response(&mut stream, &response),
+                        Err(e) => {
+                            let response =
+                                Response::error(format!("watch request failed: {}", e), Some(4));
                             send_response(&mut stream, &response);
                         }
                     }

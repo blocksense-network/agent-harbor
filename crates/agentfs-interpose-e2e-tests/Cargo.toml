@@ -10,6 +10,8 @@ edition = "2021"
 once_cell = "1.19"
 tempfile = "3.8"
 libc = "0.2"
+anyhow = "1.0"
+tracing = { workspace = true }
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
 
@@ -22,7 +24,3 @@ path = "../agentfs-core"
 [[bin]]
 name = "agentfs-interpose-test-helper"
 path = "src/bin/test_helper.rs"
-
-[[bin]]
-name = "agentfs-interpose-mock-daemon"
-path = "src/bin/mock_daemon.rs"

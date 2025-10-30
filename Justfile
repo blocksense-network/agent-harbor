@@ -258,9 +258,9 @@ build-cgroup-test-binaries:
 build-overlay-test-binaries:
     cargo build --bin overlay_test_orchestrator --bin blacklist_tester --bin overlay_writer
 
-# Build interpose shim test binaries (agentfs-interpose-test-helper, agentfs-interpose-mock-daemon)
+# Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-interpose-test-helper --bin agentfs-interpose-mock-daemon
+    cargo build --bin agentfs-interpose-test-helper
     cargo build -p agentfs-interpose-shim
 
 # Build sbx-helper binary
