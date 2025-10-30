@@ -3,7 +3,7 @@
 
 //! Agent start command implementation
 
-use ah_agents::{AgentExecutor, AgentLaunchConfig, credentials};
+use ah_agents::{AgentExecutor, AgentLaunchConfig};
 use ah_core::agent_types::AgentType;
 use anyhow::Context;
 use clap::{Args, ValueEnum};
@@ -209,7 +209,7 @@ impl AgentStartArgs {
         };
 
         // Handle LLM API proxy configuration
-        let mut config = if let Some(proxy_url) = &self.llm_api_proxy_url {
+        let config = if let Some(proxy_url) = &self.llm_api_proxy_url {
             let session_api_key =
                 self.prepare_proxy_session(proxy_url, &agent, agent_type.clone()).await?;
             let mut config = self.build_agent_config(agent_type)?;
@@ -376,6 +376,17 @@ impl AgentStartArgs {
             config = config.web_search(true);
         }
 
+        // Configure output format
+        // Map OutputFormat to json_output flag for agents that support it
+        match self.output {
+            OutputFormat::Json | OutputFormat::JsonNormalized => {
+                config = config.json_output(true);
+            }
+            OutputFormat::Text | OutputFormat::TextNormalized => {
+                config = config.json_output(false);
+            }
+        }
+
         // Set model based on agent type and precedence rules
         let model = match agent_type {
             AgentType::Codex => {
@@ -493,6 +504,17 @@ impl AgentStartArgs {
             }
         }
 
+        // Add output format flags based on the configured output mode
+        // Note: The mock agent implementation should respect these flags
+        match self.output {
+            OutputFormat::Json | OutputFormat::JsonNormalized => {
+                cmd.arg("--json");
+            }
+            OutputFormat::Text | OutputFormat::TextNormalized => {
+                // Text is the default, no flag needed
+            }
+        }
+
         // Note: TUI_TESTING_URI should only be passed when explicitly requested
         // We don't automatically pass it from environment to avoid test interference
 
@@ -521,7 +543,7 @@ impl AgentStartArgs {
     ) -> anyhow::Result<()> {
         #[cfg(target_os = "linux")]
         {
-            use sandbox_core::{ProcessConfig, ProcessManager, Sandbox};
+            use sandbox_core::ProcessConfig;
 
             // Validate sandbox type
             if self.sandbox_type != "local" {
@@ -576,6 +598,17 @@ impl AgentStartArgs {
                 // Add any additional flags (like --tui-testing-uri)
                 for flag in &agent_flags {
                     agent_cmd.push(flag.clone());
+                }
+            }
+
+            // Add output format flags based on the configured output mode
+            // Note: The mock agent implementation should respect these flags
+            match self.output {
+                OutputFormat::Json | OutputFormat::JsonNormalized => {
+                    agent_cmd.push("--json".to_string());
+                }
+                OutputFormat::Text | OutputFormat::TextNormalized => {
+                    // Text is the default, no flag needed
                 }
             }
 

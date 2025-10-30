@@ -406,6 +406,12 @@ impl AgentExecutor for ClaudeAgent {
             cmd.arg(model);
         }
 
+        // Configure output format
+        if config.json_output {
+            cmd.arg("--output-format");
+            cmd.arg("json");
+        }
+
         // Add the prompt as argument
         if !config.prompt.is_empty() {
             cmd.arg(&config.prompt);
