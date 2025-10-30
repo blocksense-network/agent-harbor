@@ -312,6 +312,7 @@ impl ContentId {
 }
 
 /// Event kinds for filesystem change notifications
+#[cfg(feature = "events")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventKind {
     Created {
@@ -338,14 +339,17 @@ pub enum EventKind {
 }
 
 /// Event sink trait for receiving filesystem change notifications
+#[cfg(feature = "events")]
 pub trait EventSink: Send + Sync {
     fn on_event(&self, evt: &EventKind);
 }
 
 /// Opaque event subscription identifier
+#[cfg(feature = "events")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SubscriptionId(pub u64);
 
+#[cfg(feature = "events")]
 impl SubscriptionId {
     pub fn new(id: u64) -> Self {
         Self(id)
