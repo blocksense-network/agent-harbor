@@ -14,14 +14,15 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, trace};
 
+use crate::terminal_state::{ColumnIndex, LineIndex};
+
 /// A snapshot event marking a moment in the PTY stream
 ///
 /// Snapshots are anchored to byte offsets in the PTY output and can be
 /// associated with instructions or checkpoints for later time-travel functionality.
+/// They also track the terminal cursor position where they were taken.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Snapshot {
-    /// Unique snapshot ID (monotonically increasing)
-    pub id: u64,
     /// Timestamp in nanoseconds since UNIX epoch
     pub ts_ns: u64,
     /// Label for this snapshot (optional, for human readability)
@@ -32,17 +33,22 @@ pub struct Snapshot {
     pub kind: Option<String>,
     /// Byte offset anchor in the PTY stream
     pub anchor_byte: u64,
+    /// Line index where this snapshot was taken (0-based)
+    pub line: LineIndex,
+    /// Column index where this snapshot was taken (0-based)
+    pub column: ColumnIndex,
 }
 
 impl Snapshot {
     /// Create a new snapshot with the given parameters
-    pub fn new(id: u64, ts_ns: u64, anchor_byte: u64) -> Self {
+    pub fn new(ts_ns: u64, anchor_byte: u64) -> Self {
         Self {
-            id,
             ts_ns,
             label: None,
             kind: None,
             anchor_byte,
+            line: LineIndex(0),
+            column: ColumnIndex(0),
         }
     }
 
@@ -65,8 +71,6 @@ impl Snapshot {
 pub struct SnapshotsWriter {
     /// Buffered file writer
     writer: BufWriter<File>,
-    /// Next snapshot ID to assign
-    next_id: u64,
 }
 
 impl SnapshotsWriter {
@@ -82,16 +86,13 @@ impl SnapshotsWriter {
 
         Ok(Self {
             writer: BufWriter::new(file),
-            next_id: 0,
         })
     }
 
     /// Append a snapshot to the log
-    ///
-    /// Returns the assigned snapshot ID.
-    pub fn append(&mut self, snapshot: &Snapshot) -> Result<u64> {
+    pub fn append(&mut self, snapshot: Snapshot) -> Result<()> {
         // Serialize to JSON
-        let json = serde_json::to_string(snapshot).context("Failed to serialize snapshot")?;
+        let json = serde_json::to_string(&snapshot).context("Failed to serialize snapshot")?;
 
         // Write with newline
         writeln!(self.writer, "{}", json).context("Failed to write snapshot")?;
@@ -99,16 +100,12 @@ impl SnapshotsWriter {
         // Flush to ensure durability (each snapshot is atomic)
         self.writer.flush().context("Failed to flush snapshots file")?;
 
-        trace!(
-            id = snapshot.id,
-            anchor_byte = snapshot.anchor_byte,
-            "Wrote snapshot"
-        );
+        trace!(anchor_byte = snapshot.anchor_byte, "Wrote snapshot");
 
-        Ok(snapshot.id)
+        Ok(())
     }
 
-    /// Create and append a new snapshot with automatic ID assignment
+    /// Create and append a new snapshot
     pub fn create_snapshot(
         &mut self,
         ts_ns: u64,
@@ -116,10 +113,7 @@ impl SnapshotsWriter {
         label: Option<String>,
         kind: Option<String>,
     ) -> Result<Snapshot> {
-        let id = self.next_id;
-        self.next_id += 1;
-
-        let mut snapshot = Snapshot::new(id, ts_ns, anchor_byte);
+        let mut snapshot = Snapshot::new(ts_ns, anchor_byte);
         if let Some(l) = label {
             snapshot.label = Some(l);
         }
@@ -127,14 +121,9 @@ impl SnapshotsWriter {
             snapshot.kind = Some(k);
         }
 
-        self.append(&snapshot)?;
+        self.append(snapshot.clone())?;
 
         Ok(snapshot)
-    }
-
-    /// Get the next ID that will be assigned
-    pub fn next_id(&self) -> u64 {
-        self.next_id
     }
 
     /// Finalize the writer, flushing any buffered data
@@ -190,11 +179,6 @@ impl SnapshotsReader {
     /// Get all snapshots
     pub fn snapshots(&self) -> &[Snapshot] {
         &self.snapshots
-    }
-
-    /// Find snapshot by ID
-    pub fn find_by_id(&self, id: u64) -> Option<&Snapshot> {
-        self.snapshots.iter().find(|s| s.id == id)
     }
 
     /// Find snapshots near a given byte offset
@@ -284,7 +268,7 @@ mod tests {
         let reader = SnapshotsReader::load(&path)?;
         assert_eq!(reader.snapshots().len(), 2);
 
-        let first = reader.find_by_id(0).unwrap();
+        let first = &reader.snapshots()[0];
         assert_eq!(first.anchor_byte, 100);
         assert_eq!(first.label, Some("first".to_string()));
 

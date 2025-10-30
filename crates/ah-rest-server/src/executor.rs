@@ -122,7 +122,10 @@ impl TaskExecutor {
         )));
 
         // Create agent executor configuration
-        let config = AgentExecutionConfig { config_file };
+        let config = AgentExecutionConfig {
+            config_file,
+            recording_disabled: false, // TODO: Check fs-snapshots setting from request or global config
+        };
 
         let agent_executor = Arc::new(AgentExecutor::new(config));
 
@@ -258,6 +261,7 @@ impl TaskExecutor {
             .spawn_agent_process(
                 session_id,
                 &internal_session.session.agent.agent_type,
+                "sonnet", // Default model for REST server
                 &internal_session.session.task.prompt,
                 ah_core::WorkingCopyMode::Snapshots, // Server uses snapshot mode
                 Some(&std::path::PathBuf::from(

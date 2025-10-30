@@ -6,31 +6,13 @@
 // Reads compressed AHR blocks, decompresses them, and yields individual records
 // for replay or analysis.
 
-use crate::format::{AhrBlockHeader, REC_DATA, REC_RESIZE, REC_SNAPSHOT, Record};
-use byteorder::{LittleEndian, ReadBytesExt};
+use crate::format::{AhrBlockHeader, Record};
+// use byteorder::{LittleEndian, ReadBytesExt}; // Unused
 use std::fs::File;
 use std::io::{self, BufReader, Read};
 use std::path::Path;
 
-/// Events emitted by the AHR reader during replay
-#[derive(Debug, Clone)]
-pub enum AhrReadEvent {
-    /// PTY data record
-    Data {
-        ts_ns: u64,
-        start_byte_off: u64,
-        data: Vec<u8>,
-    },
-    /// Terminal resize record
-    Resize { ts_ns: u64, cols: u16, rows: u16 },
-    /// Filesystem snapshot record
-    Snapshot {
-        ts_ns: u64,
-        snapshot_id: u64,
-        anchor_byte: u64,
-        label: Option<String>,
-    },
-}
+use crate::ahr_events::*;
 
 /// AHR file reader that decompresses blocks and yields records
 pub struct AhrReader {
@@ -46,7 +28,7 @@ impl AhrReader {
     }
 
     /// Read all events from the AHR file in chronological order
-    pub fn read_all_events(&mut self) -> io::Result<Vec<AhrReadEvent>> {
+    pub fn read_all_events(&mut self) -> io::Result<Vec<AhrEvent>> {
         let mut events = Vec::new();
 
         while let Some(block_events) = self.read_next_block()? {
@@ -57,7 +39,7 @@ impl AhrReader {
     }
 
     /// Read the next block and return all events from it
-    pub fn read_next_block(&mut self) -> io::Result<Option<Vec<AhrReadEvent>>> {
+    pub fn read_next_block(&mut self) -> io::Result<Option<Vec<AhrEvent>>> {
         // Try to read the next block header
         match self.read_block_header() {
             Ok(header) => {
@@ -78,7 +60,7 @@ impl AhrReader {
     }
 
     /// Read all events from a block given its header
-    fn read_block_events(&mut self, header: &AhrBlockHeader) -> io::Result<Vec<AhrReadEvent>> {
+    fn read_block_events(&mut self, header: &AhrBlockHeader) -> io::Result<Vec<AhrEvent>> {
         // Read the compressed payload
         let mut compressed_data = vec![0u8; header.compressed_len as usize];
         self.file.read_exact(&mut compressed_data)?;
@@ -93,7 +75,7 @@ impl AhrReader {
 
     /// Decompress a block's data
     fn decompress_block(&self, compressed: &[u8], expected_len: usize) -> io::Result<Vec<u8>> {
-        use std::io::Write;
+        // use std::io::Write; // Unused
         let mut decompressed = Vec::with_capacity(expected_len);
 
         // Create Brotli decoder
@@ -117,7 +99,7 @@ impl AhrReader {
     }
 
     /// Parse records from decompressed block data
-    fn parse_records(&self, data: &[u8]) -> io::Result<Vec<AhrReadEvent>> {
+    fn parse_records(&self, data: &[u8]) -> io::Result<Vec<AhrEvent>> {
         let mut events = Vec::new();
         let mut offset = 0;
 
@@ -126,26 +108,24 @@ impl AhrReader {
             offset += consumed;
 
             let event = match record {
-                Record::Data(rec) => AhrReadEvent::Data {
+                Record::Data(rec) => AhrEvent::Data {
                     ts_ns: rec.header.ts_ns,
                     start_byte_off: rec.start_byte_off,
                     data: rec.bytes,
                 },
-                Record::Resize(rec) => AhrReadEvent::Resize {
+                Record::Resize(rec) => AhrEvent::Resize {
                     ts_ns: rec.header.ts_ns,
                     cols: rec.cols,
                     rows: rec.rows,
                 },
-                Record::Snapshot(rec) => AhrReadEvent::Snapshot {
+                Record::Snapshot(rec) => AhrEvent::Snapshot(AhrSnapshot {
                     ts_ns: rec.header.ts_ns,
-                    snapshot_id: rec.snapshot_id,
-                    anchor_byte: rec.anchor_byte,
                     label: if !rec.label.is_empty() {
                         Some(rec.label)
                     } else {
                         None
                     },
-                },
+                }),
                 Record::Input(_) | Record::Mark(_) => {
                     // Skip input and mark records for now
                     continue;

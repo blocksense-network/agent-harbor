@@ -14,7 +14,7 @@
 
 ## 1. Overview
 
-`ah agent record` launches a target command under a PTY, streams bytes into a `vt100` parser for faithful live display, writes a compact **append-only compressed file** of timestamped output. The TUI viewer (Ratatui) renders **directly from the in-memory vt100 model** and overlays annotations; it does **not** tail storage. A post-run exporter replays the recording to compute the **final set of terminal output lines** and interleaves them with moments snapshots were taken for reporting and downstream Agent Time‑Travel flows.
+`ah agent record` launches a target command under a PTY, streams bytes into a `vt100` parser for faithful live display, and optionally writes a compact **append-only compressed file** of timestamped output. The TUI viewer (Ratatui) renders **directly from the in-memory vt100 model** and overlays annotations; it does **not** tail storage. Always provides real-time IPC communication for snapshot detection and UI interaction, enabling users to start agent tasks from detected snapshots even when no output file is saved. A post-run exporter replays the recording to compute the **final set of terminal output lines** and interleaves them with moments snapshots were taken for reporting and downstream Agent Time‑Travel flows.
 
 **Why this shape**
 
@@ -29,7 +29,6 @@
 - **Byte offset** (`byte_off`): Cumulative count of PTY bytes observed so far (monotonic, 0-based).
 - **Instruction**: A user- or system-authored directive associated with an anchor in the PTY stream (by `anchor_byte`).
 - **vt100 model**: The terminal state used by the viewer; tracks scrollback, cursor, and cell contents.
-- **`last_write_byte`**: For each terminal row in the vt100 model, the largest `byte_off` that wrote to any cell in that row.
 
 ---
 
@@ -45,20 +44,22 @@ Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
 
 - Starts recording and opens the Ratatui viewer immediately.
 - Spawns `<CMD ...>` under a PTY; captures output and delivers input transparently.
-- Opens an IPC socket for external instruction injection.
+- Always opens an IPC socket for external instruction injection and real-time snapshot detection, enabling UI interaction even when no output file is saved.
+- When launched by the TUI or CLI for task monitoring, establishes an unnamed pipe for streaming SSE-like events to the parent process.
 
 **Key options**
 
-- `--out-file <file>`: Optional compressed output file (no records will be stored in the local database).
+- `--out-file <file>`: Optional compressed output file. When not specified, no .ahr file is created but IPC communication remains active for UI interaction and snapshot detection.
 - `--out-branch-points <file>`: Optional JSON file with the session branch points (the output produced by the `branch-points` command).
 - `--brotli-q <0..11>`: Brotli level (default: 4 for fast/compact balance).
-- `--cols <n> --rows <n>`: Initial terminal size; resizes are tracked live. By default, preserve the size of the current terminal.
+- `--cols <n> --rows <n>`: Initial terminal size; resizes are tracked live. When specified, attempts to resize the current terminal window using Window Ops escape sequences. By default, preserve the size of the current terminal.
 - `--ipc <auto|uds|tcp:host:port>`: Instruction injection server transport.
 - `--gutter <left|right|none>`: Position of the snapshot indicator gutter column (default: right).
+- `--events-pipe-fd <FD>`: File descriptor of an unnamed pipe for streaming SSE-like events to parent process (used by TUI/CLI for real-time task monitoring).
 
 ### `replay`
 
-- Replays the `.ahr` file, simulating the passage of time as it originally happened during the recording.
+- Replays the `.ahr` file using the same unified pipeline as recording, but sources events from the stored AHR file instead of live PTY/IPC input. Events are first fed through TerminalState (containing the single vt100 parser instance), then to the viewer for display. This ensures identical behavior between live recording and replay.
 
 #### `--fast`
 
@@ -81,16 +82,33 @@ Don't emit ANSI color codes when replaying or emitting the final state.
 ## 4. Runtime Architecture
 
 ```
-[PTY bytes] ─▶ [Brotli block writer] ─┐       (append-only .ahr)
-                               ┌──────┴───────────────────────┐
-[PTY bytes] ─▶ [vt100 parser] ─┤  Ratatui viewer (live only)  ├─► user clicks/keys
-                               └──────┬───────────────────────┘
-                                      │ overlays
-                    [Snapshot notifications server (UDS/TCP)]
+Live Recording Pipeline:
+[PTY bytes + IPC snapshots] ─▶ [Ordered processing] ─▶ [TerminalState (vt100 parser)] ─▶ [AHR writer] ─▶ .ahr file
+                                                                │
+                                                                ▼
+                                                         [Ratatui viewer] ─► user clicks/keys
+
+Replay Pipeline:
+[AHR file events] ─▶ [TerminalState (vt100 parser)] ─▶ [Ratatui viewer] ─► user clicks/keys
 ```
 
-- **Write to local database.** Storage consists of one compressed recording blob.
-- The viewer renders directly from the **vt100** model; storage is not consulted during the run.
+**Data Pipeline Algorithm:**
+
+1. **Terminal output data and snapshots are received over IPC.** PTY bytes arrive asynchronously from the child process, while snapshot notifications come via IPC from external commands (e.g., `ah agent fs snapshot`).
+
+2. **We order them by time in a best effort way.** When a snapshot IPC notification is received, we drain all pending terminal data buffers to ensure that all recorded app output before the snapshot has been processed. This creates a best-effort chronological ordering of events.
+
+3. **Once they are ordered, they are processed in the same order by the AHR file writer, then by the TerminalState and finally by the viewer.** Events flow through a unified pipeline:
+   - First to the **TerminalState** (which contains the single vt100 parser instance)
+   - Then to the **AHR file writer** for persistent storage
+   - Finally to the **viewer** for real-time display
+
+4. **The viewer uses the information in TerminalState to render the final screen output with the correct colors, snapshot indicators at the correct lines, etc.** The viewer queries the TerminalState for current terminal content and snapshot positions.
+
+- **Single vt100 parser instance:** There is only one vt100 parser, stored in TerminalState, ensuring consistency between recording and display.
+- **Unified state:** TerminalState maintains both the terminal display state and snapshot positioning information.
+- **Live updates:** The viewer renders directly from TerminalState; storage is not consulted during live recording.
+- **Write to local database:** Storage consists of one compressed recording blob.
 - On shutdown (child exit, SIGINT), we flush/finish the last Brotli block and store it in the database and then fsync.
 
 ---
@@ -224,34 +242,192 @@ Static session facts useful for offline tools:
 
 ---
 
-## 6. Viewer (Ratatui) — Live and post-session rendering with support for injecting agent instructions at every snapshot
+## 6. SessionViewer UI — Live and post-session rendering with support for injecting agent instructions at every snapshot
 
-- Reads **directly** from a `vt100::Parser` kept current by the PTY reader.
-- Maintains for each absolute row index a `last_write_byte` value.
-- **Row-change tracking:** After each REC_DATA application, we compute a small **damage band** around the cursor/scroll area and re-hash only those rows; any row hash change updates its `last_write_byte` to `data.start_byte_off + data.len`.
-- **Terminal viewport preservation:** The viewer renders the recorded terminal content within a bordered frame that preserves the original terminal dimensions. If the current terminal is larger than the recorded session, the viewport appears as a bordered rectangle of the original size, centered or positioned appropriately. If the current terminal is smaller, the viewport is truncated with scrolling controls.
-- **Gutter system:** The viewer supports an optional gutter column (`agent.record.gutter: <left|right|none>`) that displays snapshot indicators. Snapshot markers appear in the gutter at positions corresponding to when snapshots were taken during recording. If a snapshot was taken between two lines of output, the marker appears on the same level as the second line.
+The **SessionViewer UI** is the unified interface displayed by `ah agent record` during live agent sessions and when examining AHR recordings after sessions have ended. It supports both **live session tracking mode** (during active recording) and **post-facto session examination** (when reviewing completed recordings).
+
+- Uses **TerminalState** (which contains the single vt100 parser instance) to render terminal content and maintain snapshot positioning information.
+- **TerminalState state machine:** Processes PTY output and snapshot events in chronological order through the unified pipeline, maintaining accurate terminal state at all times.
+- **Snapshot positioning:** When a snapshot is recorded, TerminalState associates the snapshot with the line that was active at that moment in the vt100 parser.
+- **Terminal viewport preservation:** During replay mode, when the current terminal dimensions differ from the recorded session's terminal dimensions, the viewer renders the recorded terminal content within a bordered frame that preserves the original terminal dimensions. If the current terminal is larger than the recorded session, the viewport appears as a bordered rectangle of the original size, centered or positioned appropriately. If the current terminal is smaller, the viewport is truncated with scrolling controls.
+
+During live recording mode, the terminal content is displayed without a frame to provide an immersive, full-screen experience.
+
+- **Gutter system:** The viewer supports an optional gutter column (`agent.record.gutter: <left|right|none>`) that displays snapshot indicators. Snapshot markers appear in the gutter at positions corresponding to when snapshots were taken during recording. The position is determined by the TerminalState's vt100 parser state.
+- **Task Entry UI:** The instruction entry UI (task_entry) behavior differs between live and replay modes:
+  - **Live mode:** The instruction entry UI is **not shown by default** while the recording UI is being displayed. It is activated by pressing `Ctrl+Shift+Up`, which creates the instruction entry UI at the position of the latest snapshot. Subsequent presses of `Ctrl+Shift+Up` (or just `Up`) move the instruction entry dialog to the previous snapshot, while `Ctrl+Shift+Down` (or just `Down`) moves it to the next snapshot.
+  - **Replay mode:** When the SessionViewer UI is launched on a completed session, the task entry UI is shown immediately at the very bottom of the session. When the session ends, this automatically creates a final snapshot, allowing users to immediately add instructions for branching from the session's end state.
+- **Task Entry Movement Rules:**
+  - If the target snapshot was already visible on screen before the move and there is enough room to fit the task entry box (i.e., the snapshot line is visible and there are sufficient lines after it in the viewport to accommodate the task entry height), the screen should not scroll and the snapshot position in the gutter should stay the same.
+  - If the target snapshot was not visible on screen or there is not enough room to fit the task entry box, the screen centers around the snapshot. The task entry is displayed such that the spans of lines above it (before_task_entry) and below it (after_task_entry) are roughly balanced, with the height difference between them at most 1 (the span below may have one more line than the one above).
+  - **Auto-follow suppression:** When the task entry UI is displayed over a snapshot, auto-follow behavior is disabled. New terminal output lines do not cause automatic scrolling, allowing the user to maintain their view of the snapshot and task entry. Manual scrolling (keyboard or mouse) will move the entire display including the task entry widget attached to its snapshot.
 - **Dynamic UI injection:** When snapshots are created during recording, the viewer can dynamically inject instruction UI elements. Clicking on a gutter marker inserts the instruction overlay between the relevant lines of the original program output. The gutter indicator remains visible next to the inserted UI.
 - **Overlay/annotations:**
-  - Click (or key) maps to a vt100 row; we fetch that row's `last_write_byte`.
-  - Nearest snapshot is `argmin |event.anchor_byte - row.last_write_byte|` (tie-break by newest `ts_ns`).
+  - Click (or key) maps to a terminal line; TerminalState provides the snapshot associated with that line (if any).
+  - If a snapshot exists for the clicked line, the instruction UI is inserted at that position.
   - The standard new draft task UI is inserted after the clicked line and before the ones that follow. The following lines are dimmed to signify that they won't be taken into consideration once the session is branched from the snapshot moment. Additional UI elements expand the viewer's layout while preserving the original terminal viewport.
 
 - **No storage tailing:** The viewer never reads `.ahr` during a live session.
+- **Keyboard handling:** The SessionViewer processes keyboard input through the `settings.rs` approach, allowing all shortcuts to be remapped. It handles `KeyboardOperations` defined in the settings system, ensuring consistent and customizable key bindings across both live and replay modes.
 
 **Key interactions**
 
 - Scroll: PgUp/PgDn / Mouse
+- Task Entry UI: `Ctrl+Shift+Up` activates instruction entry at latest snapshot, `Ctrl+Shift+Up`/`Up (when upwards movement within the task entry lines is not possible)` (previous snapshot), `Ctrl+Shift+Down`/`Down (when downwards movement within the task entry lines is not possible)` (next snapshot)
 - Insert instruction: `i` or mouse click → overlay → submit
 - Gutter interaction: Click on gutter snapshot markers to insert instruction UI between program output lines
 - Incremental search with `/`
 - Support all standard short-cuts from `less` and `more`
 - Navigate nearest instruction: `[`/`]` (prev/next by anchor)
-- Quit: `q` (prompts to stop child if still running)
+- Quit: `Esc` (double-press to exit)
 
 ---
 
-## 7. Snapshot IPC
+## 7. TerminalState — Unified State Machine for Recording and Display
+
+**TerminalState** is the central component that maintains accurate terminal state and snapshot positioning. It contains the single vt100 parser instance and processes all events (PTY data and snapshots) through the unified pipeline in chronological order to ensure consistency between recording and display.
+
+### 7.1 Architecture
+
+```rust
+/// A newtype for terminal line indices to prevent accidental assignments
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LineIndex(usize);
+
+pub struct TerminalState {
+    parser: vt100::Parser,           // Single vt100 parser instance
+    snapshots: Vec<LineWithSnapshot>, // Sorted by line index
+}
+
+pub struct LineWithSnapshot {
+    line: LineIndex,    // Line that was active when snapshot was taken (comes first for sorting)
+    snapshot: Snapshot,
+}
+```
+
+### 7.2 Event Processing
+
+TerminalState processes events in chronological order through the unified pipeline:
+
+- **Data events**: PTY output bytes fed to the vt100 parser, updating terminal state
+- **Snapshot events**: Recorded when snapshots occur, associating them with the line that was active at that moment
+
+### 7.3 Key Methods
+
+- **`process_data(bytes)`**: Feeds PTY output through the vt100 parser, updating terminal state
+- **`record_snapshot(snapshot)`**: Associates a snapshot with the current active line (cursor position)
+- **`line_count()`**: Returns current number of lines in terminal
+- **`line_content(line_idx)`**: Returns ANSI-formatted content of a specific line
+- **`has_snapshot_at_line(line_idx)`**: Returns true if the line has an associated snapshot (uses binary search on sorted snapshots)
+- **`get_snapshot_for_line(line_idx)`**: Returns the snapshot associated with a line (if any, uses binary search on sorted snapshots)
+- **`last_snapshot_before_line(line_idx)`**: Returns the last snapshot that occurred before the given line index (uses binary search with partition_point)
+- **`next_snapshot_after_line(line_idx)`**: Returns the first snapshot that occurred after the given line index (uses binary search with partition_point)
+
+### 7.4 Usage in Different Contexts
+
+#### Live Recording
+
+```rust
+// Terminal size is adjusted for UI elements (gutter width subtracted)
+let effective_cols = cols - gutter_width;
+let mut recording_state = TerminalState::new(rows, effective_cols);
+
+// As PTY data arrives through the unified pipeline
+recording_state.process_data(pty_bytes);
+
+// When snapshots are created via IPC (after draining buffers)
+recording_state.record_snapshot(snapshot);
+
+// Viewer queries for rendering
+for line_idx in 0..recording_state.line_count() {
+    if recording_state.has_snapshot_at_line(line_idx) {
+        // Show ▶ indicator
+    }
+    let content = recording_state.line_content(line_idx);
+    // Render line
+}
+```
+
+#### Replay from AHR File
+
+Replay uses the same unified pipeline as live recording, but sources events from the stored AHR file instead of live PTY/IPC input:
+
+```rust
+// Terminal size is adjusted for UI elements (gutter width subtracted from recorded size)
+let effective_cols = recorded_cols - gutter_width;
+let mut recording_state = TerminalState::new(recorded_rows, effective_cols);
+
+// Replay all events from AHR file through the same pipeline as recording
+// Events are processed in chronological order: TerminalState first, then viewer
+for event in ahr_events {
+    match event {
+        Data { bytes, .. } => recording_state.process_data(bytes),
+        Snapshot { snapshot, .. } => recording_state.record_snapshot(snapshot),
+        Resize { cols, rows, .. } => recording_state.resize(cols, rows),
+    }
+}
+
+// Viewer queries the TerminalState for display and snapshot information
+// This ensures identical behavior between live recording and replay
+```
+
+#### Branch-Points Generation
+
+```rust
+// Same replay process as above, then:
+let mut result = Vec::new();
+for line_idx in 0..recording_state.line_count() {
+    result.push(InterleavedItem::Line(recording_state.line_content(line_idx)));
+    if let Some(snapshot) = recording_state.get_snapshot_for_line(line_idx) {
+        result.push(InterleavedItem::Snapshot(snapshot));
+    }
+}
+```
+
+### 7.5 Algorithm Deep Dive
+
+The core algorithm ensures that terminal output data and snapshots are received over IPC, ordered by time in a best-effort way (with buffer draining for snapshots), and processed in the same order by the AHR file writer, then by TerminalState, and finally by the viewer.
+
+**Key insight**: Terminal lines are not immutable - they can be overwritten by subsequent output (especially with carriage returns `\r`). A snapshot taken at byte position X may end up associated with different content after more output arrives.
+
+**Solution**: Process all events (PTY data and snapshots) in the exact chronological order they occurred through a single vt100 parser instance. When a snapshot is recorded, capture which line was currently active (cursor position) in the vt100 model. This association remains valid even if the line content changes later, because we're tracking the line index that was active at snapshot time.
+
+**Unified pipeline flow**:
+
+1. PTY bytes and IPC snapshots arrive → ordered with buffer draining for snapshots
+2. Events processed chronologically through TerminalState (vt100 parser)
+3. Same events also processed by AHR writer for persistent storage
+4. Viewer renders from TerminalState for real-time display
+
+**Live recording flow**:
+
+1. PTY bytes arrive asynchronously from child process
+2. Snapshot notifications arrive via IPC from external commands
+3. When snapshot received: drain all pending PTY data buffers first
+4. Process events in chronological order: TerminalState → AHR writer → viewer
+5. Viewer renders from TerminalState with correct colors and snapshot indicators
+
+**Replay flow**:
+
+1. Start with fresh TerminalState at recorded dimensions
+2. Source events from AHR file instead of live PTY/IPC input
+3. Process events through the same unified pipeline as live recording: TerminalState (vt100 parser) → viewer
+4. Final state contains accurate line-to-snapshot associations identical to live recording
+5. Viewer renders using TerminalState, ensuring identical display behavior
+
+This approach ensures that snapshot positioning reflects the actual terminal state at capture time, with consistency between recording and display through the single vt100 parser instance.
+
+### 7.6 Correctness Guarantees
+
+- **Single vt100 parser**: Only one parser instance ensures consistency between recording and display
+- **Chronological processing**: Events processed in exact order they occurred
+- **vt100 accuracy**: Terminal state reflects actual program output interpretation
+- **Snapshot timing**: Snapshots associated with the line active at capture time
+- **Unified pipeline**: Same events processed by recording, storage, and display components
+
+---
+
+## 8. Snapshot IPC
 
 The recorder provides an IPC interface for receiving snapshot notifications from external commands, primarily `ah agent fs snapshot`. When a filesystem snapshot is taken during recording, the snapshot command notifies the recorder, which writes a `REC_SNAPSHOT` record to the `.ahr` file.
 
@@ -266,15 +442,18 @@ The recorder provides an IPC interface for receiving snapshot notifications from
 When `ah agent fs snapshot` creates a filesystem snapshot during a recorded session, it:
 
 1. Detects the active recording session (via environment variable or session metadata)
-2. Connects to the recorder's IPC socket
-3. Sends a `Snapshot` notification with the snapshot ID and optional label
-4. Receives confirmation with the anchor byte offset
+2. **Notifies the recorder via IPC and waits for confirmation** that the `REC_SNAPSHOT` record has been written to the AHR file
+3. **Only after receiving confirmation**, creates the actual filesystem snapshot through the selected provider
+4. Returns the snapshot information
 
-The recorder then:
+The recorder's confirmation process:
 
-1. Records the current PTY byte offset
-2. Writes a `REC_SNAPSHOT` record to the `.ahr` file
-3. Returns the anchor information to the caller
+1. Records the current PTY byte offset at the time of the notification
+2. Writes a `REC_SNAPSHOT` record to the `.ahr` file (snapshot_id may be 0 as placeholder)
+3. **Ensures the write is durable** (fsync if necessary)
+4. Returns confirmation to unblock the snapshot creation
+
+**Synchronization guarantee:** The `REC_SNAPSHOT` record exists in the AHR file before the filesystem snapshot is taken, ensuring perfect temporal alignment between recording and filesystem state.
 
 **Request**
 
@@ -294,35 +473,82 @@ This is a tagged union, with the `success` field acting as a discriminator. In c
 
 ---
 
-## 8. Export — Final Interleaving Report
+## 9. SSE Event Streaming IPC
 
-### 8.1 Replay
+The recorder provides an optional IPC mechanism for streaming SSE-like events to parent processes, enabling real-time task monitoring in both local and remote modes. This provides a unified event streaming interface that mirrors the REST API's SSE endpoint.
 
-- Instantiate a fresh `vt100::Parser` with **large scrollback** (configurable; default 1e6 rows) and initial size from `session.meta.json`.
-- Stream through all blocks and all records in order (apply resizes); after each REC_DATA, update row hashes and `last_write_byte` as in live mode.
+- **Transport:** Unnamed pipe (inherited file descriptor passed via `--events-pipe-fd`)
+- **Protocol:** Length-prefixed SSZ-encoded events, sharing the same type/schema as the JSON events sent through the REST API SSE mechanism
 
-### 8.2 Collect final lines
+**Usage Pattern:**
 
-- Read the final scrollback + screen rows top→bottom.
-- For each row, emit `{ idx, text, last_write_byte }`, omitting fully blank tail rows.
+When launched by the TUI or CLI for task monitoring:
 
-### 8.3 Merge with snapshot moments
+1. Parent process creates an unnamed pipe using `interprocess::unnamed_pipe::tokio::pipe()`
+2. Parent passes the sender file descriptor to child via `--events-pipe-fd <FD>`
+3. Child establishes `Sender` from the inherited file descriptor
+4. Child streams SSZ-encoded events to parent as agent activity occurs
+5. Parent receives events via `Receiver`, decodes them, and forwards them to TUI for display
 
-- Load all JSONL records.
-- Stable-merge on `position` where `position(line) = last_write_byte`, `position(event) = anchor_byte`.
-- Output formats:
-  - **md**: human-friendly table with badges for snapshot rows.
-  - **json**: structured array with `{kind:"line"|"snapshot", …}`.
-  - **csv**: minimal columns (kind, index/id, position, ts_ns, text/message/label).
+**Event Types:**
 
-### 8.4 Determinism & edge cases
+The recorder emits events matching the REST API SSE taxonomy (see REST-Service/API.md), but encoded in SSZ format for efficient binary transport:
 
-- If multiple events share the same `anchor_byte`, keep input order.
-- Lines with identical `last_write_byte` (rare due to scroll) retain visual order.
+```rust
+// SSZ-encoded equivalent of JSON events
+{ type: "status", status: "running", ts: "2024-01-01T12:00:00.000Z" }
+{ type: "log", level: "info", message: "Agent started", ts: "2024-01-01T12:00:01.000Z" }
+{ type: "thought", content: "Analyzing codebase structure", ts: "2024-01-01T12:00:02.000Z" }
+{ type: "tool_start", name: "search_codebase", args: ["pattern"], ts: "2024-01-01T12:00:03.000Z" }
+{ type: "tool_output", name: "search_codebase", output: "Found 42 matches", ts: "2024-01-01T12:00:04.000Z" }
+{ type: "file_edit", path: "src/main.rs", lines_added: 5, lines_removed: 2, ts: "2024-01-01T12:00:05.000Z" }
+```
+
+**Integration with TUI:**
+
+- **Local Mode**: TUI launches `ah agent record` with `--events-pipe-fd`, receives SSZ-encoded events via pipe, decodes them, and displays in task cards
+- **Remote Mode**: TUI connects to REST API SSE endpoint, receives JSON-encoded events, and displays in task cards
+- **Unified Display**: Same activity display logic processes events from either source after decoding to internal format
+
+**Implementation Notes:**
+
+- Events are SSZ-encoded for efficient binary transport over the pipe (not JSON-encoded like SSE)
+- Parent must drain the pipe continuously to prevent blocking the child process
+- Pipe is unidirectional (child → parent only)
+- Events are sent immediately as agent activity occurs, providing real-time updates
+- SSZ decoding in parent process converts binary events to the same internal format as JSON SSE events
 
 ---
 
-## 9. Performance & Resource Targets
+## 10. Export — Final Interleaving Report
+
+### 10.1 Replay
+
+- Instantiate a `TerminalState` with **large scrollback** (configurable; default 1e6 rows) and initial size from `session.meta.json`.
+- Stream through all blocks and all records in chronological order (apply resizes and process data through the vt100 parser).
+
+### 10.2 Collect final lines
+
+- Read the final scrollback + screen rows top→bottom.
+- For each row, emit `{ idx, text }`, omitting fully blank tail rows.
+
+### 10.3 Interleave lines with snapshots
+
+- After replaying all events through `TerminalState`, iterate through lines in order.
+- For each line, check if it has associated snapshots using `TerminalState::has_snapshot_at_line()`.
+- Output formats:
+  - **md**: human-friendly table with badges for snapshot rows.
+  - **json**: structured array with `{kind:"line"|"snapshot", …}`.
+  - **csv**: minimal columns (kind, index/id, ts_ns, text/message/label).
+
+### 10.4 Determinism & edge cases
+
+- Events are processed in chronological order during replay, ensuring deterministic output.
+- Multiple snapshots on the same line are preserved in the order they were recorded.
+
+---
+
+## 11. Performance & Resource Targets
 
 - **Write path:** sub-1 ms per REC_DATA on typical 4–16 KiB buffers; Brotli q=4 keeps CPU under 5–10% on modern cores.
 - **Viewer latency:** <30 ms frame-to-frame at 60–120 Hz terminal update rates; damage-band hashing limits per-update work to O(screen rows), typically a few dozen.
@@ -330,15 +556,18 @@ This is a tagged union, with the `success` field acting as a discriminator. In c
 
 ---
 
-## 10. Testing Plan
+## 12. Testing Plan
 
 - **Mock agent** that emits deterministic progress lines with heavy `\r` usage and synthetic moments; drives instruction injections programmatically.
 - Unit tests for: block header parse/scan, truncated tail recovery, replay idempotence, anchor mapping, export merge.
 - Snapshot tests on exporter outputs (md/json/csv) for stable diffs.
+- **inspect_ahr** tool (`tests/tools/inspect_ahr.rs`) for manually inspecting .ahr file contents and debugging recording issues. Build with: `cargo build --bin inspect_ahr`, run with: `just inspect-ahr <ahr_file>`.
+- **Synchronous snapshot write verification test:** Integration test that verifies the `ah agent fs snapshot` command blocks until the `REC_SNAPSHOT` record is written to the AHR file. The test spawns `ah agent record` with a mock agent, triggers snapshot creation via IPC, and immediately after `ah agent fs snapshot` returns, parses the AHR file to verify the snapshot record exists with correct metadata. Test must handle race conditions by ensuring the AHR file is fully flushed before verification.
+- **SSE event streaming test:** Integration test that verifies the unnamed pipe IPC mechanism works correctly. Test creates a pipe, launches `ah agent record` with `--events-pipe-fd`, and verifies that SSE-like events are received in real-time as the mock agent produces activity.
 
 ---
 
-## 11. Future Extensions
+## 14. Future Extensions
 
 - Lightweight **frame index** footer for faster mid-session random access.
 - Streaming **SSE bridge** to external dashboards.
@@ -346,7 +575,7 @@ This is a tagged union, with the `success` field acting as a discriminator. In c
 
 ---
 
-## 13. Implementation Notes (Rust crates)
+## 15. Implementation Notes (Rust crates)
 
 - PTY: `portable-pty`
 - Terminal model: `vt100`
@@ -355,17 +584,19 @@ This is a tagged union, with the `success` field acting as a discriminator. In c
 - JSON: `serde`, `serde_json`
 - Binary codec: manual LE writes/reads (`byteorder`), or `bincode` for scaffolding during prototyping
 - Time: `time` or `quanta` for ns timestamps
+- IPC: `interprocess` crate for unnamed pipes and cross-platform handle transfer
 
 ---
 
-## 14. Compatibility & Portability
+## 16. Compatibility & Portability
 
 - Linux, macOS, Windows (PTY availability and UDS vs TCP vary by OS).
 - Recording is platform-neutral; replay behaves identically across hosts.
+- **Terminal resizing**: When `--cols` and `--rows` are specified, the command attempts to resize the terminal window using xterm-compatible Window Ops escape sequences (`\e[8;<rows>;<cols>t`). This works in xterm, iTerm2, GNOME Terminal, and other VTE-based terminals, but may be disabled in some configurations or unsupported in terminals like tmux, screen, or macOS Terminal. The command will log a warning if the resize attempt doesn't succeed.
 
 ---
 
-## 15. Minimal File Format Validator (pseudo-code)
+## 17. Minimal File Format Validator (pseudo-code)
 
 ```
 loop read header H:
@@ -378,9 +609,10 @@ end
 
 ---
 
-## 16. Deliverables (MVP)
+## 18. Deliverables (MVP)
 
 - `ah agent record` with live viewer, IPC for instructions, `.ahr` writer, `.instructions.jsonl` appends
+- `ah agent record` with SSE event streaming IPC for real-time task monitoring
 - `ah agent replay` producing md/json/csv interleaved report
 - `ah agent replay --print-meta` showing meta and quick stats
 - `ah agent branch-points` exports the session interleaved outputlines with possible branch points (snapshots)

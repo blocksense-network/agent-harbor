@@ -151,9 +151,9 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
 - **Auto-completion support** with popup menu:
   - `@filename` - Auto-completes file names within the repository
   - `/workflow` - Auto-completes available workflow commands from `.agents/workflows/`
-  - **Immediate menu opening**: Menu opens immediately when trigger characters (`/` or `@`) are typed, showing placeholder messages while data loads
-  - **Placeholder states**: Shows "Loading files..." for `@` trigger and "Loading workflows..." for `/` trigger until data is available
-  - **Background preloading**: Files and workflows are preloaded asynchronously on application startup for immediate availability
+  - **Immediate menu opening**: Menu opens immediately when trigger characters (`/` or `@`) are typed, showing cached results while background refresh occurs
+  - **Caching and refresh**: File and workflow lists are cached for instant display. When trigger characters are typed, cached results are shown immediately, and a background refresh is triggered. When refresh completes, results are updated automatically, preserving the currently selected item if it exists in the refreshed results (matched by name)
+  - **Fuzzy matching**: All autocomplete suggestions use fuzzy matching for efficient filtering as the user types
   - **Popup menu navigation**: Tab or arrow keys to navigate suggestions, mouse wheel to scroll, Mouse click or Enter to select
   - **Quick selection**: Right arrow key selects the currently active suggestion
   - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area
@@ -312,7 +312,7 @@ When running in local mode with SQLite database:
 2. **Local Command Execution**: Issues the equivalent of the `ah task` command locally with collected parameters by directly leveraging the `ah-core` crate.
 3. **Multiplexer Integration**: Upon successful task creation, TUI creates new multiplexer window with split panes:
    - **Left Pane**: Terminal/editor attached to workspace (may run shell or configured editor)
-   - **Right Pane**: Executes `ah agent start <task_id>` to launch the agent
+   - **Right Pane**: Executes `ah agent record` wrapping `ah agent start <task_id>` to launch and record the agent (see [ah-agent-record.md](ah-agent-record.md) for recording details)
 4. **Session Monitoring**: Task card in dashboard shows real-time updates via local state and SSE streams
 5. **Window Management**: Multiplexer provides windowing environment; TUI coordinates task creation and monitoring across windows
 
@@ -381,6 +381,12 @@ Right click is left for the native terminal UI to handle in order to preserve it
 - `Shift+Enter`: Insert new line
 - `Tab`: Move to next button
 - `Esc`: Remove current focus. If none was focused, exit the application
+- `↑` inside textarea:
+  - If the caret is not already at column 0 of the first line, the first press moves it to the start of that line
+  - When the caret is already at the first column of the first line, the operation bubbles to dashboard navigation (focus shifts to the previous UI element)
+- `↓` inside textarea:
+  - If the caret is not at the end of the last line, the first press moves it to the end of that line
+  - When the caret is already at the end of the last line, the operation bubbles to dashboard navigation (focus shifts to the next UI element)
 
 #### Draft Task Editing
 
@@ -558,7 +564,7 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Underline                                     | `underline`                      | Ctrl+U (CUA/PC), Cmd+U (macOS)                                                  |
 |                                 | Insert hyperlink                              | `insert-hyperlink`               | Ctrl+K (CUA/PC), Cmd+K (macOS)                                                  |
 | **Code Editing**                | Toggle comment                                | `toggle-comment`                 | M-; (Emacs), Ctrl+/ (CUA/PC), Cmd+/ (macOS)                                     |
-|                                 | Duplicate line/selection                      | `duplicate-line-selection`       | Ctrl+D (CUA/PC in some), Cmd+Shift+D (macOS in some)                            |
+|                                 | Duplicate line/selection                      | `duplicate-line-selection`       | Ctrl+Shift+D (CUA/PC), Cmd+Shift+D (macOS)                                      |
 |                                 | Move line up                                  | `move-line-up`                   | Alt+Up (CUA/PC), Opt+Up (macOS)                                                 |
 |                                 | Move line down                                | `move-line-down`                 | Alt+Down (CUA/PC), Opt+Down (macOS)                                             |
 |                                 | Indent region                                 | `indent-region`                  | C-M-\ (Emacs), Ctrl+] (CUA/PC), Cmd+] (macOS)                                   |

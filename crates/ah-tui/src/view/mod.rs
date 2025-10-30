@@ -45,7 +45,24 @@
 //! - **Testable**: Rendering logic can be tested independently
 
 use ratatui::{prelude::*, widgets::*};
+use tracing;
 
+use crate::settings::Settings;
+use ah_core::{TaskManager, WorkspaceFilesEnumerator};
+use ah_workflows::WorkspaceWorkflowsEnumerator;
+use std::sync::Arc;
+
+/// TUI dependencies that are injected
+pub struct TuiDependencies {
+    pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
+    pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+    pub task_manager: Arc<dyn TaskManager>,
+    pub repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator>,
+    pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,
+    pub settings: Settings,
+    /// Currently detected repository (if any) to be selected by default
+    pub current_repository: Option<String>,
+}
 pub mod autocomplete; // Autocomplete rendering components
 pub mod dashboard_view; // Dashboard rendering components
 pub mod dialogs;
@@ -54,6 +71,7 @@ pub mod filter_bar; // Filter bar rendering components
 pub mod header; // Header rendering components
 pub mod hit_test;
 pub mod modals; // Modal rendering components
+pub mod session_viewer; // Session viewer rendering components
 
 pub use dashboard_view::render;
 pub use hit_test::{HitMatch, HitTestRegistry, HitZone};
@@ -67,6 +85,10 @@ pub struct ViewCache {
     // Cached computed strings - only recompute if inputs changed
     last_separator_width: Option<u16>,
     cached_separator: Option<String>,
+
+    // Cursor management state - track focused textarea and current cursor style
+    focused_textarea_rect: Option<ratatui::layout::Rect>,
+    current_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
 }
 
 impl ViewCache {
@@ -76,16 +98,47 @@ impl ViewCache {
             logo_protocol: None,
             last_separator_width: None,
             cached_separator: None,
+            focused_textarea_rect: None,
+            current_cursor_style: None,
         }
     }
 
-    /// Get a cached separator string - only recomputes if width changed
+    /// Get a cached separator string - only recompute if width changed
     pub fn get_separator(&mut self, width: u16) -> &str {
         if self.last_separator_width != Some(width) {
             self.cached_separator = Some("─".repeat(width as usize));
             self.last_separator_width = Some(width);
         }
         self.cached_separator.as_ref().unwrap()
+    }
+
+    /// Update the focused textarea rect for cursor positioning
+    pub fn update_focused_textarea_rect(&mut self, rect: ratatui::layout::Rect) {
+        self.focused_textarea_rect = Some(rect);
+    }
+
+    /// Clear the focused textarea rect when no textarea is focused
+    pub fn clear_focused_textarea_rect(&mut self) {
+        self.focused_textarea_rect = None;
+    }
+
+    /// Sync cursor style - apply it to terminal if it changed
+    pub fn sync_cursor_style(
+        &mut self,
+        new_style: crossterm::cursor::SetCursorStyle,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Use discriminant for comparison since SetCursorStyle doesn't implement PartialEq
+        let new_discriminant = unsafe { std::mem::transmute::<_, u8>(new_style) };
+        let current_discriminant =
+            self.current_cursor_style.map(|s| unsafe { std::mem::transmute::<_, u8>(s) });
+
+        if current_discriminant != Some(new_discriminant) {
+            use crossterm::execute;
+            use std::io::stdout;
+            execute!(stdout(), new_style)?;
+            self.current_cursor_style = Some(new_style);
+        }
+        Ok(())
     }
 }
 

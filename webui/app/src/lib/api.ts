@@ -48,7 +48,7 @@ export interface CreateTaskRequest {
 }
 
 export interface CreateTaskResponse {
-  id: string;
+  session_ids: string[];
   status: string;
   links: {
     self: string;

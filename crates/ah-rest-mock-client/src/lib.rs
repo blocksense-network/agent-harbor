@@ -9,12 +9,10 @@
 //! behavior and configurable delays.
 
 use ah_core::{
-    SplitMode, TaskEvent, TaskExecutionStatus, TaskLaunchParams, TaskLaunchResult, TaskManager,
-    task_manager::SaveDraftResult,
+    SplitMode, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager, TaskState,
+    agent_types::AgentType, task_manager::SaveDraftResult,
 };
-use ah_domain_types::{
-    Branch, DeliveryStatus, Repository, SelectedModel, TaskExecution, TaskInfo, TaskState,
-};
+use ah_domain_types::{Branch, DeliveryStatus, Repository, SelectedModel, TaskExecution, TaskInfo};
 use ah_domain_types::{LogLevel, ToolStatus};
 use ah_rest_api_contract::*;
 use async_trait::async_trait;
@@ -24,6 +22,7 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::sync::broadcast;
 
 /// Mock REST client implementing the TaskManager trait
 #[derive(Debug, Clone)]
@@ -85,9 +84,9 @@ impl MockRestClient {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        params.repository.hash(&mut hasher);
-        params.branch.hash(&mut hasher);
-        params.description.hash(&mut hasher);
+        params.repository().hash(&mut hasher);
+        params.branch().hash(&mut hasher);
+        params.description().hash(&mut hasher);
         format!("task_{:x}", hasher.finish())
     }
 
@@ -111,10 +110,10 @@ impl MockRestClient {
                 .map(|name| SelectedModel { name, count: 1 })
                 .collect(),
             state: match task_info.status.as_str() {
-                "running" => TaskState::Active,
+                "running" => TaskState::Running,
                 "completed" => TaskState::Completed,
                 "merged" => TaskState::Merged,
-                _ => TaskState::Active,
+                _ => TaskState::Running,
             },
             timestamp: task_info.created_at,
             activity: vec![],        // Would be populated from events
@@ -138,16 +137,16 @@ impl MockRestClient {
 
     /// Validate task launch parameters
     fn validate_params(&self, params: &TaskLaunchParams) -> Result<(), String> {
-        if params.description.trim().is_empty() {
+        if params.description().trim().is_empty() {
             return Err("Task description cannot be empty".to_string());
         }
-        if params.models.is_empty() {
+        if params.models().is_empty() {
             return Err("At least one model must be selected".to_string());
         }
-        if params.repository.trim().is_empty() {
+        if params.repository().trim().is_empty() {
             return Err("Repository cannot be empty".to_string());
         }
-        if params.branch.trim().is_empty() {
+        if params.branch().trim().is_empty() {
             return Err("Branch cannot be empty".to_string());
         }
         Ok(())
@@ -168,7 +167,7 @@ impl TaskManager for MockRestClient {
         }
 
         // Simulate failures if enabled
-        if self.simulate_failures && params.description.contains("fail") {
+        if self.simulate_failures && params.description().contains("fail") {
             return TaskLaunchResult::Failure {
                 error: "Simulated task launch failure".to_string(),
             };
@@ -178,21 +177,34 @@ impl TaskManager for MockRestClient {
         let task_id = self.generate_task_id(&params);
         let task_info = TaskInfo {
             id: task_id.clone(),
-            title: params.description.clone(),
+            title: params.description().to_string(),
             status: "running".to_string(),
-            repository: params.repository.clone(),
-            branch: params.branch.clone(),
+            repository: params.repository().to_string(),
+            branch: params.branch().to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
-            models: params.models.iter().map(|m| m.name.clone()).collect(),
+            models: params.models().iter().map(|m| m.name.clone()).collect(),
         };
 
         self.tasks.write().await.insert(task_id.clone(), task_info);
 
-        TaskLaunchResult::Success { task_id }
+        TaskLaunchResult::Success {
+            session_ids: vec![task_id],
+        }
     }
 
-    fn task_events_stream(&self, task_id: &str) -> Pin<Box<dyn Stream<Item = TaskEvent> + Send>> {
-        self.create_event_stream(task_id)
+    fn task_events_receiver(&self, task_id: &str) -> broadcast::Receiver<TaskEvent> {
+        // For the mock client, we'll create a broadcast channel and spawn a task to forward events
+        let (tx, rx) = broadcast::channel(100);
+        let stream = self.create_event_stream(task_id);
+
+        tokio::spawn(async move {
+            let mut stream = stream;
+            while let Some(event) = stream.next().await {
+                let _ = tx.send(event);
+            }
+        });
+
+        rx
     }
 
     async fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
@@ -221,7 +233,7 @@ impl TaskManager for MockRestClient {
                     name: "Claude 3.5 Sonnet".to_string(),
                     count: 1,
                 }],
-                state: TaskState::Active,
+                state: TaskState::Running,
                 timestamp: chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::hours(1))
                     .unwrap()
@@ -241,7 +253,7 @@ impl TaskManager for MockRestClient {
                     name: "GPT-4".to_string(),
                     count: 1,
                 }],
-                state: TaskState::Active,
+                state: TaskState::Running,
                 timestamp: chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::hours(2))
                     .unwrap()
@@ -314,31 +326,6 @@ impl TaskManager for MockRestClient {
         (drafts, tasks)
     }
 
-    async fn launch_task_from_starting_point(
-        &self,
-        starting_point: ah_core::task_manager::StartingPoint,
-        description: &str,
-        models: &[ah_domain_types::SelectedModel],
-    ) -> ah_core::task_manager::TaskLaunchResult {
-        // For now, only support RepositoryBranch starting point
-        match starting_point {
-            ah_core::task_manager::StartingPoint::RepositoryBranch { repository, branch } => {
-                let params = ah_core::task_manager::TaskLaunchParams::new(
-                    repository,
-                    branch,
-                    description.to_string(),
-                    models.to_vec(),
-                )
-                .unwrap_or_else(|e| panic!("Invalid parameters: {}", e));
-
-                self.launch_task(params).await
-            }
-            _ => ah_core::task_manager::TaskLaunchResult::Failure {
-                error: "Starting point not supported in mock client".to_string(),
-            },
-        }
-    }
-
     async fn save_draft_task(
         &self,
         draft_id: &str,
@@ -388,32 +375,48 @@ impl ah_core::RestApiClient for MockRestClient {
     ) -> Result<ah_rest_api_contract::CreateTaskResponse, Box<dyn std::error::Error + Send + Sync>>
     {
         // Simulate creating a task by converting the request to a task launch
-        let params = ah_core::TaskLaunchParams {
-            repository: request
-                .repo
-                .url
-                .as_ref()
-                .map(|u| u.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            branch: request.repo.branch.clone().unwrap_or_else(|| "main".to_string()),
-            description: request.prompt.clone(),
-            models: vec![ah_domain_types::SelectedModel {
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let params = ah_core::TaskLaunchParams::builder()
+            .repository(
+                request
+                    .repo
+                    .url
+                    .as_ref()
+                    .map(|u| u.to_string())
+                    .unwrap_or_else(|| "unknown".to_string()),
+            )
+            .branch(request.repo.branch.clone().unwrap_or_else(|| "main".to_string()))
+            .description(request.prompt.clone())
+            .models(vec![ah_domain_types::SelectedModel {
                 name: request.agent.agent_type.clone(),
                 count: 1,
-            }],
-            split_mode: SplitMode::None, // Mock client doesn't support split view
-            focus: false,                // Mock client doesn't support focus
-        };
+            }])
+            .agent_type(ah_core::agent_types::AgentType::Codex)
+            .split_mode(SplitMode::None) // Mock client doesn't support split view
+            .focus(false) // Mock client doesn't support focus
+            .record(true) // Mock client enables recording by default
+            .task_id(task_id)
+            .build()
+            .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 
         match self.launch_task(params).await {
-            ah_core::TaskLaunchResult::Success { task_id } => {
+            ah_core::TaskLaunchResult::Success { session_ids } => {
                 Ok(ah_rest_api_contract::CreateTaskResponse {
-                    id: task_id.clone(),
+                    session_ids: session_ids.clone(),
                     status: ah_rest_api_contract::SessionStatus::Queued,
                     links: ah_rest_api_contract::TaskLinks {
-                        self_link: format!("/api/v1/tasks/{}", task_id),
-                        events: format!("/api/v1/tasks/{}/events", task_id),
-                        logs: format!("/api/v1/tasks/{}/logs", task_id),
+                        self_link: format!(
+                            "/api/v1/tasks/{}",
+                            session_ids.first().unwrap_or(&"unknown".to_string())
+                        ),
+                        events: format!(
+                            "/api/v1/tasks/{}/events",
+                            session_ids.first().unwrap_or(&"unknown".to_string())
+                        ),
+                        logs: format!(
+                            "/api/v1/tasks/{}/logs",
+                            session_ids.first().unwrap_or(&"unknown".to_string())
+                        ),
                     },
                 })
             }
@@ -440,142 +443,166 @@ impl ah_core::RestApiClient for MockRestClient {
         >,
         Box<dyn std::error::Error + Send + Sync>,
     > {
-        // Convert our TaskEvent stream to SessionEvent stream
-        let task_stream = self.task_events_stream(session_id);
+        // Get the TaskEvent receiver and convert to SessionEvent stream
+        let task_receiver = self.task_events_receiver(session_id);
 
-        let converted_stream = task_stream.map(|task_event| {
-            // Convert TaskEvent to SessionEvent - this is a simplified conversion
-            // In a real implementation, this would need more comprehensive mapping
-            let session_event = ah_rest_api_contract::SessionEvent {
-                event_type: match task_event {
-                    ah_core::TaskEvent::Status { .. } => ah_rest_api_contract::EventType::Status,
-                    ah_core::TaskEvent::Log { .. } => ah_rest_api_contract::EventType::Log,
-                    ah_core::TaskEvent::Thought { .. } => ah_rest_api_contract::EventType::Thought,
-                    ah_core::TaskEvent::ToolUse { .. } => ah_rest_api_contract::EventType::ToolUse,
-                    ah_core::TaskEvent::ToolResult { .. } => {
-                        ah_rest_api_contract::EventType::ToolResult
-                    }
-                    ah_core::TaskEvent::FileEdit { .. } => {
-                        ah_rest_api_contract::EventType::FileEdit
-                    }
-                },
-                status: match &task_event {
-                    ah_core::TaskEvent::Status { status, .. } => Some(match status {
-                        ah_core::TaskExecutionStatus::Queued => {
-                            ah_rest_api_contract::SessionStatus::Queued
+        let converted_stream = futures::stream::unfold(task_receiver, |mut receiver| async move {
+            match receiver.recv().await {
+                Ok(task_event) => {
+                    // Convert TaskEvent to SessionEvent
+                    let timestamp = match &task_event {
+                        ah_core::TaskEvent::Status { ts, .. } => ts.timestamp() as u64,
+                        ah_core::TaskEvent::Log { ts, .. } => ts.timestamp() as u64,
+                        ah_core::TaskEvent::Thought { ts, .. } => ts.timestamp() as u64,
+                        ah_core::TaskEvent::ToolUse { ts, .. } => ts.timestamp() as u64,
+                        ah_core::TaskEvent::ToolResult { ts, .. } => ts.timestamp() as u64,
+                        ah_core::TaskEvent::FileEdit { ts, .. } => ts.timestamp() as u64,
+                    };
+
+                    let session_event = match task_event {
+                        ah_core::TaskEvent::Status { status, .. } => {
+                            let session_status = match status {
+                                TaskState::Queued => ah_rest_api_contract::SessionStatus::Queued,
+                                TaskState::Provisioning => {
+                                    ah_rest_api_contract::SessionStatus::Provisioning
+                                }
+                                TaskState::Running => ah_rest_api_contract::SessionStatus::Running,
+                                TaskState::Pausing => ah_rest_api_contract::SessionStatus::Pausing,
+                                TaskState::Paused => ah_rest_api_contract::SessionStatus::Paused,
+                                TaskState::Resuming => {
+                                    ah_rest_api_contract::SessionStatus::Resuming
+                                }
+                                TaskState::Stopping => {
+                                    ah_rest_api_contract::SessionStatus::Stopping
+                                }
+                                TaskState::Stopped => ah_rest_api_contract::SessionStatus::Stopped,
+                                TaskState::Completed => {
+                                    ah_rest_api_contract::SessionStatus::Completed
+                                }
+                                TaskState::Failed => ah_rest_api_contract::SessionStatus::Failed,
+                                TaskState::Cancelled => {
+                                    ah_rest_api_contract::SessionStatus::Cancelled
+                                }
+                                TaskState::Draft => ah_rest_api_contract::SessionStatus::Queued,
+                                TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed,
+                            };
+                            ah_rest_api_contract::SessionEvent::Status(
+                                ah_rest_api_contract::SessionStatusEvent {
+                                    status: session_status,
+                                    timestamp,
+                                },
+                            )
                         }
-                        ah_core::TaskExecutionStatus::Provisioning => {
-                            ah_rest_api_contract::SessionStatus::Provisioning
+                        ah_core::TaskEvent::Log {
+                            message,
+                            level,
+                            tool_execution_id,
+                            ..
+                        } => {
+                            let log_level = match level {
+                                LogLevel::Debug => ah_rest_api_contract::SessionLogLevel::Debug,
+                                LogLevel::Info => ah_rest_api_contract::SessionLogLevel::Info,
+                                LogLevel::Warn => ah_rest_api_contract::SessionLogLevel::Warn,
+                                LogLevel::Error => ah_rest_api_contract::SessionLogLevel::Error,
+                            };
+                            ah_rest_api_contract::SessionEvent::Log(
+                                ah_rest_api_contract::SessionLogEvent {
+                                    message: message.into_bytes(),
+                                    level: log_level,
+                                    tool_execution_id: tool_execution_id.map(|s| s.into_bytes()),
+                                    timestamp,
+                                },
+                            )
                         }
-                        ah_core::TaskExecutionStatus::Running => {
-                            ah_rest_api_contract::SessionStatus::Running
+                        ah_core::TaskEvent::Thought { thought, .. } => {
+                            ah_rest_api_contract::SessionEvent::Log(
+                                ah_rest_api_contract::SessionLogEvent {
+                                    message: thought.into_bytes(),
+                                    level: ah_rest_api_contract::SessionLogLevel::Info,
+                                    tool_execution_id: None,
+                                    timestamp,
+                                },
+                            )
                         }
-                        ah_core::TaskExecutionStatus::Pausing => {
-                            ah_rest_api_contract::SessionStatus::Pausing
+                        ah_core::TaskEvent::ToolUse {
+                            tool_name,
+                            tool_args,
+                            tool_execution_id,
+                            status,
+                            ..
+                        } => {
+                            let session_status = match status {
+                                ah_domain_types::ToolStatus::Started => {
+                                    ah_rest_api_contract::SessionToolStatus::Started
+                                }
+                                ah_domain_types::ToolStatus::Completed => {
+                                    ah_rest_api_contract::SessionToolStatus::Completed
+                                }
+                                ah_domain_types::ToolStatus::Failed => {
+                                    ah_rest_api_contract::SessionToolStatus::Failed
+                                }
+                            };
+                            ah_rest_api_contract::SessionEvent::ToolUse(
+                                ah_rest_api_contract::SessionToolUseEvent {
+                                    tool_name: tool_name.into_bytes(),
+                                    tool_args: serde_json::to_string(&tool_args)
+                                        .unwrap_or_default()
+                                        .into_bytes(),
+                                    tool_execution_id: tool_execution_id.into_bytes(),
+                                    status: session_status,
+                                    timestamp,
+                                },
+                            )
                         }
-                        ah_core::TaskExecutionStatus::Paused => {
-                            ah_rest_api_contract::SessionStatus::Paused
+                        ah_core::TaskEvent::ToolResult {
+                            tool_name,
+                            tool_output,
+                            tool_execution_id,
+                            status,
+                            ..
+                        } => {
+                            let session_status = match status {
+                                ah_domain_types::ToolStatus::Started => {
+                                    ah_rest_api_contract::SessionToolStatus::Started
+                                }
+                                ah_domain_types::ToolStatus::Completed => {
+                                    ah_rest_api_contract::SessionToolStatus::Completed
+                                }
+                                ah_domain_types::ToolStatus::Failed => {
+                                    ah_rest_api_contract::SessionToolStatus::Failed
+                                }
+                            };
+                            ah_rest_api_contract::SessionEvent::ToolResult(
+                                ah_rest_api_contract::SessionToolResultEvent {
+                                    tool_name: tool_name.into_bytes(),
+                                    tool_output: tool_output.into_bytes(),
+                                    tool_execution_id: tool_execution_id.into_bytes(),
+                                    status: session_status,
+                                    timestamp,
+                                },
+                            )
                         }
-                        ah_core::TaskExecutionStatus::Resuming => {
-                            ah_rest_api_contract::SessionStatus::Resuming
-                        }
-                        ah_core::TaskExecutionStatus::Stopping => {
-                            ah_rest_api_contract::SessionStatus::Stopping
-                        }
-                        ah_core::TaskExecutionStatus::Stopped => {
-                            ah_rest_api_contract::SessionStatus::Stopped
-                        }
-                        ah_core::TaskExecutionStatus::Completed => {
-                            ah_rest_api_contract::SessionStatus::Completed
-                        }
-                        ah_core::TaskExecutionStatus::Failed => {
-                            ah_rest_api_contract::SessionStatus::Failed
-                        }
-                        ah_core::TaskExecutionStatus::Cancelled => {
-                            ah_rest_api_contract::SessionStatus::Cancelled
-                        }
-                    }),
-                    _ => None,
-                },
-                level: match &task_event {
-                    ah_core::TaskEvent::Log { level, .. } => Some(level.clone()),
-                    _ => None,
-                },
-                message: match &task_event {
-                    ah_core::TaskEvent::Log { message, .. } => Some(message.clone()),
-                    _ => None,
-                },
-                thought: match &task_event {
-                    ah_core::TaskEvent::Thought { thought, .. } => Some(thought.clone()),
-                    _ => None,
-                },
-                reasoning: match &task_event {
-                    ah_core::TaskEvent::Thought { reasoning, .. } => reasoning.clone(),
-                    _ => None,
-                },
-                tool_name: match &task_event {
-                    ah_core::TaskEvent::ToolUse { tool_name, .. }
-                    | ah_core::TaskEvent::ToolResult { tool_name, .. } => Some(tool_name.clone()),
-                    _ => None,
-                },
-                tool_args: match &task_event {
-                    ah_core::TaskEvent::ToolUse { tool_args, .. } => {
-                        Some(serde_json::Value::String(tool_args.to_string()))
-                    }
-                    _ => None,
-                },
-                tool_output: match &task_event {
-                    ah_core::TaskEvent::ToolResult { tool_output, .. } => Some(tool_output.clone()),
-                    _ => None,
-                },
-                tool_execution_id: match &task_event {
-                    ah_core::TaskEvent::ToolUse {
-                        tool_execution_id, ..
-                    }
-                    | ah_core::TaskEvent::ToolResult {
-                        tool_execution_id, ..
-                    } => Some(tool_execution_id.clone()),
-                    ah_core::TaskEvent::Log {
-                        tool_execution_id, ..
-                    } => tool_execution_id.clone(),
-                    _ => None,
-                },
-                file_path: match &task_event {
-                    ah_core::TaskEvent::FileEdit { file_path, .. } => Some(file_path.clone()),
-                    _ => None,
-                },
-                lines_added: match &task_event {
-                    ah_core::TaskEvent::FileEdit { lines_added, .. } => Some(*lines_added as u32),
-                    _ => None,
-                },
-                lines_removed: match &task_event {
-                    ah_core::TaskEvent::FileEdit { lines_removed, .. } => {
-                        Some(*lines_removed as u32)
-                    }
-                    _ => None,
-                },
-                description: match &task_event {
-                    ah_core::TaskEvent::FileEdit { description, .. } => description.clone(),
-                    _ => None,
-                },
-                ts: match task_event {
-                    ah_core::TaskEvent::Status { ts, .. } => ts,
-                    ah_core::TaskEvent::Log { ts, .. } => ts,
-                    ah_core::TaskEvent::Thought { ts, .. } => ts,
-                    ah_core::TaskEvent::ToolUse { ts, .. } => ts,
-                    ah_core::TaskEvent::ToolResult { ts, .. } => ts,
-                    ah_core::TaskEvent::FileEdit { ts, .. } => ts,
-                },
-                snapshot_id: None,
-                note: None,
-                hosts: None,
-                host: None,
-                stream: None,
-                passed: None,
-                failed: None,
-                delivery: None,
-            };
-            Ok(session_event)
+                        ah_core::TaskEvent::FileEdit {
+                            file_path,
+                            lines_added,
+                            lines_removed,
+                            description,
+                            ..
+                        } => ah_rest_api_contract::SessionEvent::FileEdit(
+                            ah_rest_api_contract::SessionFileEditEvent {
+                                file_path: file_path.into_bytes(),
+                                lines_added,
+                                lines_removed,
+                                description: description.map(|s| s.into_bytes()),
+                                timestamp,
+                            },
+                        ),
+                    };
+
+                    Some((Ok(session_event), receiver))
+                }
+                Err(_) => None, // Stream ends when receiver is closed
+            }
         });
 
         Ok(Box::pin(converted_stream))
@@ -626,8 +653,17 @@ impl ah_core::RestApiClient for MockRestClient {
                     commit: None,
                 },
                 status: match task.state {
-                    TaskState::Active => ah_rest_api_contract::SessionStatus::Running,
+                    TaskState::Queued => ah_rest_api_contract::SessionStatus::Queued,
+                    TaskState::Provisioning => ah_rest_api_contract::SessionStatus::Provisioning,
+                    TaskState::Running => ah_rest_api_contract::SessionStatus::Running,
+                    TaskState::Pausing => ah_rest_api_contract::SessionStatus::Pausing,
+                    TaskState::Paused => ah_rest_api_contract::SessionStatus::Paused,
+                    TaskState::Resuming => ah_rest_api_contract::SessionStatus::Resuming,
+                    TaskState::Stopping => ah_rest_api_contract::SessionStatus::Stopping,
+                    TaskState::Stopped => ah_rest_api_contract::SessionStatus::Stopped,
                     TaskState::Completed => ah_rest_api_contract::SessionStatus::Completed,
+                    TaskState::Failed => ah_rest_api_contract::SessionStatus::Failed,
+                    TaskState::Cancelled => ah_rest_api_contract::SessionStatus::Cancelled,
                     TaskState::Merged => ah_rest_api_contract::SessionStatus::Completed,
                     TaskState::Draft => ah_rest_api_contract::SessionStatus::Queued,
                 },
@@ -870,7 +906,7 @@ impl MockEventState {
 
         let event = match self.event_index {
             0 => TaskEvent::Status {
-                status: TaskExecutionStatus::Queued,
+                status: TaskState::Queued,
                 ts,
             },
             1 => TaskEvent::Log {
@@ -880,7 +916,7 @@ impl MockEventState {
                 ts,
             },
             2 => TaskEvent::Status {
-                status: TaskExecutionStatus::Provisioning,
+                status: TaskState::Provisioning,
                 ts,
             },
             3 => TaskEvent::Log {
@@ -902,7 +938,7 @@ impl MockEventState {
                 ts,
             },
             6 => TaskEvent::Status {
-                status: TaskExecutionStatus::Running,
+                status: TaskState::Running,
                 ts,
             },
             7 => TaskEvent::Log {
@@ -1215,7 +1251,7 @@ impl MockEventState {
                 ts,
             },
             53 => TaskEvent::Status {
-                status: TaskExecutionStatus::Completed,
+                status: TaskState::Completed,
                 ts,
             },
             54 => TaskEvent::Log {
@@ -1252,80 +1288,85 @@ mod tests {
     #[tokio::test]
     async fn mock_client_launches_successful_task() {
         let client = MockRestClient::new();
-        let params = TaskLaunchParams {
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            description: "Test task".to_string(),
-            models: vec![SelectedModel {
+        let params = TaskLaunchParams::builder()
+            .repository("https://github.com/test/repo".to_string())
+            .branch("main".to_string())
+            .description("Test task".to_string())
+            .models(vec![SelectedModel {
                 name: "Claude".to_string(),
                 count: 1,
-            }],
-            split_mode: SplitMode::None,
-            focus: false,
-        };
+            }])
+            .split_mode(SplitMode::None)
+            .focus(false)
+            .agent_type(AgentType::Claude)
+            .record(true)
+            .task_id("test-task-id".to_string())
+            .build()
+            .unwrap();
 
         let result = client.launch_task(params).await;
 
         assert!(result.is_success());
-        assert!(result.task_id().unwrap().starts_with("task_"));
+        assert!(result.session_ids().unwrap()[0].starts_with("task_"));
     }
 
     #[tokio::test]
     async fn mock_client_validates_empty_description() {
-        let client = MockRestClient::new();
-        let params = TaskLaunchParams {
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            description: "".to_string(),
-            models: vec![SelectedModel {
+        let result = TaskLaunchParams::builder()
+            .repository("test/repo".to_string())
+            .branch("main".to_string())
+            .description("".to_string())
+            .models(vec![SelectedModel {
                 name: "Claude".to_string(),
                 count: 1,
-            }],
-            split_mode: SplitMode::None,
-            focus: false,
-        };
+            }])
+            .split_mode(SplitMode::None)
+            .focus(false)
+            .agent_type(AgentType::Claude)
+            .record(true)
+            .task_id("test-task-id".to_string())
+            .build();
 
-        let result = client.launch_task(params).await;
-
-        assert!(!result.is_success());
-        assert_eq!(result.error().unwrap(), "Task description cannot be empty");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Task description cannot be empty");
     }
 
     #[tokio::test]
     async fn mock_client_validates_empty_models() {
-        let client = MockRestClient::new();
-        let params = TaskLaunchParams {
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            description: "Test task".to_string(),
-            models: vec![],
-            split_mode: SplitMode::None,
-            focus: false,
-        };
+        let result = TaskLaunchParams::builder()
+            .repository("test/repo".to_string())
+            .branch("main".to_string())
+            .description("Test task".to_string())
+            .models(vec![])
+            .split_mode(SplitMode::None)
+            .focus(false)
+            .agent_type(AgentType::Claude)
+            .record(true)
+            .task_id("test-task-id".to_string())
+            .build();
 
-        let result = client.launch_task(params).await;
-
-        assert!(!result.is_success());
-        assert_eq!(
-            result.error().unwrap(),
-            "At least one model must be selected"
-        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "At least one model must be selected");
     }
 
     #[tokio::test]
     async fn mock_client_handles_simulated_failures() {
         let client = MockRestClient::with_failures(true);
-        let params = TaskLaunchParams {
-            repository: "test/repo".to_string(),
-            branch: "main".to_string(),
-            description: "This task will fail".to_string(),
-            models: vec![SelectedModel {
+        let params = TaskLaunchParams::builder()
+            .repository("https://github.com/test/repo".to_string())
+            .branch("main".to_string())
+            .description("This task will fail".to_string())
+            .models(vec![SelectedModel {
                 name: "Claude".to_string(),
                 count: 1,
-            }],
-            split_mode: SplitMode::None,
-            focus: false,
-        };
+            }])
+            .split_mode(SplitMode::None)
+            .focus(false)
+            .agent_type(AgentType::Claude)
+            .record(true)
+            .task_id("test-task-id".to_string())
+            .build()
+            .unwrap();
 
         let result = client.launch_task(params).await;
 

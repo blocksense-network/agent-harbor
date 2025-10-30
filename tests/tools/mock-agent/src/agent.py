@@ -8,6 +8,7 @@ import uuid
 import subprocess
 import shutil
 import time
+import threading
 from typing import Dict, Any, List, Optional
 
 try:
@@ -24,6 +25,272 @@ except ImportError:
 
 from .session_io import RolloutRecorder, SessionLogger, ClaudeSessionRecorder, _now_iso_ms
 from .tools import call_tool, ToolError
+
+# ANSI color codes matching Agent Harbor TUI theme (Catppuccin Mocha)
+class Theme:
+    # Base colors
+    BG = "\033[48;2;17;17;27m"         # Base background
+    SURFACE = "\033[48;2;24;24;37m"    # Card/surface background
+    TEXT = "\033[38;2;205;214;244m"    # Main text
+    MUTED = "\033[38;2;127;132;156m"   # Secondary text
+    PRIMARY = "\033[38;2;137;180;250m" # Blue for primary actions
+    ACCENT = "\033[38;2;166;218;149m"  # Green for success/accent
+    SUCCESS = "\033[38;2;166;218;149m" # Green
+    WARNING = "\033[38;2;250;179;135m" # Orange/yellow
+    ERROR = "\033[38;2;243;139;168m"   # Red/pink
+    BORDER = "\033[38;2;69;71;90m"     # Border color
+    MAGENTA = "\033[38;2;245;194;231m" # Magenta for agent branding
+
+    # Control codes
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    REVERSE = "\033[7m"
+    UNDERLINE = "\033[4m"
+
+    # Cursor control
+    HIDE_CURSOR = "\033[?25l"
+    SHOW_CURSOR = "\033[?25h"
+    CLEAR_LINE = "\033[2K"
+    MOVE_TO_START = "\033[G"
+
+    # Spinner frames
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+class RichOutput:
+    """Rich terminal output formatting for mock-agent"""
+
+    def __init__(self, no_colors: bool = False):
+        self.no_colors = no_colors
+        self.spinner_active = False
+        self.spinner_thread = None
+        self.current_spinner_text = ""
+
+    def _print_raw(self, text: str) -> None:
+        """Print text without newline"""
+        sys.stdout.write(text)
+        sys.stdout.flush()
+
+    def _println(self, text: str = "") -> None:
+        """Print text with newline"""
+        print(text)
+
+    def _colorize(self, text: str, color: str) -> str:
+        """Apply color to text if colors are enabled"""
+        if self.no_colors:
+            return text
+        return f"{color}{text}{Theme.RESET}"
+
+    def _format_box(self, title: str, content: str, color: str = Theme.BORDER) -> str:
+        """Create a framed box with rounded borders"""
+        lines = content.split('\n')
+        max_len = max(len(line) for line in lines) if lines else 0
+        title_len = len(title)
+
+        # Calculate total width (content + padding + borders)
+        width = max(max_len + 4, title_len + 6)  # At least title + brackets + borders
+
+        # Top border with title
+        top = f"╭─ {title} " + "─" * (width - title_len - 5) + "╮"
+
+        # Content lines with padding
+        formatted_lines = []
+        for line in lines:
+            padded = f"│ {line:<{max_len}} │"
+            formatted_lines.append(padded)
+
+        # Bottom border
+        bottom = "╰" + "─" * (width - 2) + "╯"
+
+        if self.no_colors:
+            return f"{top}\n" + "\n".join(formatted_lines) + f"\n{bottom}"
+        else:
+            return f"{color}{top}{Theme.RESET}\n" + \
+                   f"{color}" + f"{color}\n".join(formatted_lines) + f"{Theme.RESET}\n" + \
+                   f"{color}{bottom}{Theme.RESET}"
+
+    def print_header(self, text: str) -> None:
+        """Print a header with Agent Harbor branding"""
+        logo = "🚀 Agent Harbor"
+        header = self._colorize(f"{Theme.BOLD}{logo}", Theme.MAGENTA) + " " + self._colorize(text, Theme.MUTED)
+        self._println(header)
+
+    def print_thinking(self, text: str) -> None:
+        """Print agent thinking with styled output"""
+        icon = "🤔"
+        styled = self._colorize(f"{icon} Thinking:", Theme.PRIMARY) + " " + self._colorize(text, Theme.TEXT)
+        self._println(styled)
+
+    def print_tool_start(self, tool_name: str, args: Dict[str, Any]) -> None:
+        """Print tool execution start"""
+        icon = "🔧"
+        tool_display = f"{Theme.ACCENT}{icon} {tool_name}{Theme.RESET}"
+        args_display = f"{Theme.MUTED}{self._format_args(args)}{Theme.RESET}"
+
+        # Create a framed box for tool execution
+        content = f"Executing: {tool_name}\nArguments: {self._format_args(args)}"
+        box = self._format_box(f"🔧 {tool_name}", content, Theme.ACCENT)
+        self._println(box)
+
+    def print_tool_result(self, tool_name: str, result: Any, status: str = "ok") -> None:
+        """Print tool execution result"""
+        if status == "ok":
+            icon = "✅"
+            color = Theme.SUCCESS
+        else:
+            icon = "❌"
+            color = Theme.ERROR
+
+        # Format result for display
+        if isinstance(result, dict):
+            if "path" in result and "content" in result:
+                # File read result
+                content = result["content"]
+                if len(content) > 200:
+                    content = content[:200] + "..."
+                result_display = f"File content ({len(result['content'])} chars):\n{content}"
+            else:
+                result_display = json.dumps(result, indent=2)
+        elif isinstance(result, str):
+            result_display = result
+        else:
+            result_display = str(result)
+
+        content = f"Result: {result_display}"
+        box = self._format_box(f"{icon} {tool_name}", content, color)
+        self._println(box)
+
+    def print_file_edit(self, path: str, lines_added: int, lines_removed: int) -> None:
+        """Print file edit notification"""
+        icon = "📝"
+        changes = []
+        if lines_added > 0:
+            changes.append(f"{Theme.SUCCESS}+{lines_added}{Theme.RESET}")
+        if lines_removed > 0:
+            changes.append(f"{Theme.ERROR}-{lines_removed}{Theme.RESET}")
+
+        change_display = " ".join(changes) if changes else "no changes"
+
+        content = f"Modified: {path}\nChanges: {change_display}"
+        box = self._format_box(f"{icon} File Edit", content, Theme.WARNING)
+        self._println(box)
+
+    def print_error(self, message: str, error_type: str = "Error") -> None:
+        """Print error message"""
+        icon = "❌"
+        content = f"Type: {error_type}\nMessage: {message}"
+        box = self._format_box(f"{icon} {error_type}", content, Theme.ERROR)
+        self._println(box)
+
+    def print_success(self, message: str) -> None:
+        """Print success message"""
+        icon = "🎉"
+        box = self._format_box(f"{icon} Success", message, Theme.SUCCESS)
+        self._println(box)
+
+    def print_user_input_prompt(self, prompt: str) -> None:
+        """Print user input prompt"""
+        icon = "👤"
+        styled = self._colorize(f"{icon} User Input:", Theme.TEXT) + f" {prompt}"
+        self._println(styled)
+
+    def start_spinner(self, text: str) -> None:
+        """Start a spinner animation"""
+        if self.spinner_active:
+            self.stop_spinner()
+
+        self.current_spinner_text = text
+        self.spinner_active = True
+
+        def spinner_loop():
+            frame_idx = 0
+            while self.spinner_active:
+                frame = Theme.SPINNER_FRAMES[frame_idx % len(Theme.SPINNER_FRAMES)]
+                self._print_raw(f"\r{Theme.PRIMARY}{frame}{Theme.RESET} {self.current_spinner_text}")
+                frame_idx += 1
+                time.sleep(0.1)
+
+        self.spinner_thread = threading.Thread(target=spinner_loop, daemon=True)
+        self.spinner_thread.start()
+
+    def stop_spinner(self) -> None:
+        """Stop the spinner animation"""
+        if self.spinner_active:
+            self.spinner_active = False
+            if self.spinner_thread and self.spinner_thread.is_alive():
+                self.spinner_thread.join(timeout=0.2)
+            self._print_raw(f"\r{Theme.CLEAR_LINE}{Theme.MOVE_TO_START}")
+            self.spinner_thread = None
+
+    def print_progress(self, current: int, total: int, message: str = "") -> None:
+        """Print progress bar"""
+        if total == 0:
+            return
+
+        width = 30
+        filled = int(width * current / total)
+        bar = "█" * filled + "░" * (width - filled)
+        percent = int(100 * current / total)
+
+        progress = f"{Theme.PRIMARY}[{bar}]{Theme.RESET} {percent}% {message}"
+        self._print_raw(f"\r{Theme.CLEAR_LINE}{progress}")
+
+        if current >= total:
+            self._println()  # New line when complete
+
+    def _format_args(self, args: Dict[str, Any]) -> str:
+        """Format tool arguments for display"""
+        formatted = []
+        for key, value in args.items():
+            if isinstance(value, str) and len(value) > 50:
+                value = value[:47] + "..."
+            formatted.append(f"{key}={repr(value)}")
+        return ", ".join(formatted)
+
+# Global rich output instance (will be replaced in run_scenario with proper no_colors setting)
+_rich_output = RichOutput()
+
+def _display_command_output(lines: List[str]) -> None:
+    """Display command output in a framed box showing last 6 lines."""
+    if not lines:
+        return
+
+    # Create content showing the last 6 lines
+    display_lines = lines[-6:] if len(lines) > 6 else lines
+    content = "\n".join(display_lines)
+
+    # Show total lines if truncated
+    if len(lines) > 6:
+        content = f"... ({len(lines) - 6} more lines)\n{content}"
+
+    # Display in a framed box
+    box = _rich_output._format_box("💻 Command Output", content, Theme.TEXT)
+    print(box)
+    sys.stdout.flush()
+
+def _print_trace(kind: str, msg: str) -> None:
+    """Enhanced print function with rich formatting"""
+    if kind == "thinking":
+        _rich_output.print_thinking(msg)
+    elif kind == "tool":
+        # Tool messages are handled separately in the event processing
+        sys.stdout.write(f"[{kind}] {msg}\n")
+        sys.stdout.flush()
+    elif kind == "assistant":
+        # Assistant messages with styled output
+        styled_msg = f"{Theme.ACCENT}💬 Assistant:{Theme.RESET} {Theme.TEXT}{msg}{Theme.RESET}"
+        print(styled_msg)
+    elif kind == "tool_progress":
+        # Progress messages
+        print(f"{Theme.MUTED}⏳ {msg}{Theme.RESET}")
+    elif kind == "user_input":
+        # User input display
+        print(f"{Theme.PRIMARY}👤 User:{Theme.RESET} {Theme.TEXT}{msg}{Theme.RESET}")
+    elif kind == "error":
+        _rich_output.print_error(msg, "Error")
+    else:
+        # Default fallback
+        print(f"[{kind}] {msg}")
 
 class TuiTestClient:
     """ZeroMQ client for TUI testing IPC communication."""
@@ -441,7 +708,11 @@ def _execute_hooks(hooks_config: Dict[str, Any], event_name: str, hook_input: Di
                 except Exception as e:
                     _print_trace("hook", f"Hook execution failed: {command} - {e}")
 
-def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.expanduser("~/.codex"), format: str = "codex", checkpoint_cmd: str = None, fast_mode: bool = False, tui_testing_uri: str = None) -> str:
+def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.expanduser("~/.codex"), format: str = "codex", checkpoint_cmd: str = None, fast_mode: bool = False, tui_testing_uri: str = None, interactive: bool = False, no_colors: bool = False) -> str:
+    # Set up rich output with color settings
+    global _rich_output
+    _rich_output = RichOutput(no_colors=no_colors)
+
     os.makedirs(workspace, exist_ok=True)
     with open(scenario_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -457,6 +728,10 @@ def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.e
         error_type = "YAML" if YAML_AVAILABLE else "JSON"
         _print_trace("error", f"Failed to parse {error_type} file {scenario_path}: {e}")
         raise
+
+    # Print Agent Harbor header
+    scenario_name = scenario.get("name", "Unknown Scenario")
+    _rich_output.print_header(f"Running scenario: {scenario_name}")
 
     # Initialize repository based on scenario.repo section
     _initialize_repository(scenario, workspace, scenario_path)
@@ -482,11 +757,11 @@ def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.e
     # Run the scenario
     result_path = None
     if fast_mode:
-        result_path = _run_scenario_fast_mode(scenario, workspace, codex_home, format, hooks_config, checkpoint_cmd, scenario_path, tui_client)
+        result_path = _run_scenario_fast_mode(scenario, workspace, codex_home, format, hooks_config, checkpoint_cmd, scenario_path, tui_client, interactive)
     elif format == "claude":
-        result_path = _run_scenario_claude(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path, tui_client)
+        result_path = _run_scenario_claude(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path, tui_client, interactive)
     else:
-        result_path = _run_scenario_codex(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path, tui_client)
+        result_path = _run_scenario_codex(scenario, workspace, codex_home, hooks_config, checkpoint_cmd, scenario_path, tui_client, interactive)
 
     # Clean up TUI client
     if tui_client:
@@ -500,7 +775,7 @@ def run_scenario(scenario_path: str, workspace: str, codex_home: str = os.path.e
     return result_path
 
 
-def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home: str, format: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
+def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home: str, format: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None, interactive: bool = False) -> str:
     """Run scenario in fast mode: sort events by time and execute sequentially."""
     if format == "claude":
         recorder = ClaudeSessionRecorder(codex_home=codex_home, cwd=workspace)
@@ -531,8 +806,116 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
     timeline = scenario.get("timeline", [])
 
     for step in timeline:
-        if "think" in step and isinstance(step["think"], list):
-            # New format: think is array of [ms, text] pairs
+        # Handle llmResponse grouped events
+        if "llmResponse" in step:
+            llm_response_elements = step["llmResponse"]
+            for element in llm_response_elements:
+                if "think" in element:
+                    # Think events: array of [ms, text] pairs
+                    for ms, text in element["think"]:
+                        timeline_events.append({
+                            "time": current_time,
+                            "type": "think",
+                            "data": (ms, text),
+                            "step": step
+                        })
+                        current_time += ms
+                elif "assistant" in element:
+                    # Assistant events: array of [ms, text] pairs
+                    for ms, text in element["assistant"]:
+                        timeline_events.append({
+                            "time": current_time,
+                            "type": "assistant",
+                            "data": (ms, text),
+                            "step": step
+                        })
+                        current_time += ms
+                elif "agentToolUse" in element:
+                    # Agent tool use within llmResponse
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "agentToolUse",
+                        "data": element["agentToolUse"],
+                        "step": step
+                    })
+                elif "agentEdits" in element:
+                    # Agent edits within llmResponse
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "agentEdits",
+                        "data": element["agentEdits"],
+                        "step": step
+                    })
+                elif "error" in element:
+                    # Error response
+                    error_data = element["error"]
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "error",
+                        "data": error_data,
+                        "step": step
+                    })
+                elif "toolResult" in element:
+                    # Tool result (for multi-turn conversations)
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "toolResult",
+                        "data": element["toolResult"],
+                        "step": step
+                    })
+
+        # Handle agentActions grouped events
+        elif "agentActions" in step:
+            agent_actions = step["agentActions"]
+            for action in agent_actions:
+                if "agentToolUse" in action:
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "agentToolUse",
+                        "data": action["agentToolUse"],
+                        "step": step
+                    })
+                elif "agentEdits" in action:
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "agentEdits",
+                        "data": action["agentEdits"],
+                        "step": step
+                    })
+
+        # Handle userActions grouped events
+        elif "userActions" in step:
+            user_actions = step["userActions"]
+            for action in user_actions:
+                if "userInputs" in action:
+                    user_inputs = action["userInputs"]
+                    target = action.get("target", "tui")
+                    for ms, input_text in user_inputs:
+                        timeline_events.append({
+                            "time": current_time,
+                            "type": "userInputs",
+                            "data": (ms, input_text, target),
+                            "step": step
+                        })
+                        current_time += ms
+                elif "userEdits" in action:
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "userEdits",
+                        "data": action["userEdits"],
+                        "step": step
+                    })
+                elif "userCommand" in action:
+                    timeline_events.append({
+                        "time": current_time,
+                        "type": "userCommand",
+                        "data": action["userCommand"],
+                        "step": step
+                    })
+
+        # Handle legacy individual events for backward compatibility
+        elif "think" in step and isinstance(step["think"], list):
+            # Legacy format: think is array of [ms, text] pairs
             for ms, text in step["think"]:
                 timeline_events.append({
                     "time": current_time,
@@ -542,6 +925,7 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                 })
                 current_time += ms
         elif "agentToolUse" in step:
+            # Legacy individual agentToolUse
             timeline_events.append({
                 "time": current_time,
                 "type": "agentToolUse",
@@ -549,6 +933,7 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                 "step": step
             })
         elif "agentEdits" in step:
+            # Legacy individual agentEdits
             timeline_events.append({
                 "time": current_time,
                 "type": "agentEdits",
@@ -556,7 +941,7 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                 "step": step
             })
         elif "assistant" in step and isinstance(step["assistant"], list):
-            # New format: assistant is array of [ms, text] pairs
+            # Legacy format: assistant is array of [ms, text] pairs
             for ms, text in step["assistant"]:
                 timeline_events.append({
                     "time": current_time,
@@ -565,6 +950,19 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                     "step": step
                 })
                 current_time += ms
+
+        # Handle tool-specific events (mapped to agentToolUse internally)
+        elif any(tool in step for tool in ["runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand"]):
+            tool_name = next((tool for tool in ["runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand"] if tool in step), None)
+            if tool_name:
+                timeline_events.append({
+                    "time": current_time,
+                    "type": "agentToolUse",
+                    "data": {"toolName": tool_name, "args": step[tool_name]},
+                    "step": step
+                })
+
+        # Handle control events
         elif "advanceMs" in step:
             ms = step["advanceMs"]
             current_time += ms
@@ -582,6 +980,22 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                 "data": step["assert"],
                 "step": step
             })
+        elif "complete" in step:
+            timeline_events.append({
+                "time": current_time,
+                "type": "complete",
+                "data": step.get("complete", {}),
+                "step": step
+            })
+        elif "merge" in step:
+            timeline_events.append({
+                "time": current_time,
+                "type": "merge",
+                "data": step.get("merge", {}),
+                "step": step
+            })
+
+        # Handle legacy user input events
         elif "userInputs" in step:
             user_inputs = step["userInputs"]
             target = step.get("target", "tui")
@@ -615,7 +1029,7 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
     for event in timeline_events:
         if event["type"] == "think":
             ms, text = event["data"]
-            _print_trace("thinking", f"[FAST] {text}")
+            _rich_output.print_thinking(text)
             if format == "claude":
                 recorder.record_assistant_message(f"I need to think about this: {text}")
             else:
@@ -632,16 +1046,30 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
             else:
                 recorder.record_function_call(name=tool_name, arguments=_as_json(tool_args), call_id=call_id)
 
-            _print_trace("tool", f"[FAST] {tool_name}({tool_args}) -> executing")
+            # Use rich output for tool execution
+            _rich_output.print_tool_start(tool_name, tool_args)
 
             # Simulate progress if provided
             progress_events = tool_use.get("progress", [])
             for progress_ms, progress_msg in progress_events:
-                _print_trace("tool_progress", f"[FAST] {progress_msg}")
+                _print_trace("tool_progress", progress_msg)
 
             try:
+                # Start spinner for tool execution
+                _rich_output.start_spinner(f"Executing {tool_name}...")
+
+                # Pass display callback for runCmd to enable real-time output
+                if tool_name == "runCmd":
+                    tool_args = tool_args.copy()
+                    tool_args["display_callback"] = _display_command_output
                 result = call_tool(tool_name, workspace, **tool_args)
                 status = tool_use.get("status", "ok")
+
+                # Stop spinner
+                _rich_output.stop_spinner()
+
+                # Show result with rich formatting
+                _rich_output.print_tool_result(tool_name, result, status)
 
                 if format == "claude":
                     # Create tool result data based on the tool type
@@ -662,7 +1090,12 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                 _execute_checkpoint_cmd(checkpoint_cmd, workspace)
 
             except ToolError as e:
-                _print_trace("tool", f"[FAST] {tool_name} -> error {e}")
+                # Stop spinner on error
+                _rich_output.stop_spinner()
+
+                # Show error with rich formatting
+                _rich_output.print_error(str(e), f"{tool_name} Error")
+
                 if format == "claude":
                     recorder.record_tool_result(tool_call_id, str(e), is_error=True, tool_result_data=f"Error: {e}")
                 else:
@@ -683,13 +1116,13 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
             path = edits["path"]
             lines_added = edits.get("linesAdded", 0)
             lines_removed = edits.get("linesRemoved", 0)
-            _print_trace("agent_edits", f"[FAST] {path}: +{lines_added} -{lines_removed} lines")
+            _rich_output.print_file_edit(path, lines_added, lines_removed)
 
             # Execute checkpoint command for file edits
             _execute_checkpoint_cmd(checkpoint_cmd, workspace)
         elif event["type"] == "assistant":
             ms, text = event["data"]
-            _print_trace("assistant", f"[FAST] {text}")
+            _print_trace("assistant", text)  # This uses the enhanced _print_trace
             if format == "claude":
                 recorder.record_assistant_message(text)
             else:
@@ -707,9 +1140,44 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
             assertion = event["data"]
             if not _run_assertions(assertion, workspace):
                 _print_trace("assert", "[FAST] Some assertions failed")
+        elif event["type"] == "error":
+            error_data = event["data"]
+            error_type = error_data.get("errorType", "unknown_error")
+            message = error_data.get("message", "An error occurred")
+            status_code = error_data.get("statusCode", 400)
+            _print_trace("error", f"Error ({error_type}, {status_code}): {message}")
+            if format == "claude":
+                recorder.record_assistant_message(f"Error: {message}")
+            else:
+                recorder.record_message("assistant", f"Error: {message}")
+        elif event["type"] == "toolResult":
+            tool_result_data = event["data"]
+            tool_call_id = tool_result_data.get("toolCallId", "")
+            content = tool_result_data.get("content", "")
+            is_error = tool_result_data.get("is_error", False)
+            _print_trace("tool_result", f"Tool result for {tool_call_id}: {content} (error: {is_error})")
+            # Tool results are typically handled by the recorder in the tool execution above
+        elif event["type"] == "complete":
+            complete_data = event["data"]
+            _rich_output.print_success(f"Scenario completed successfully")
+        elif event["type"] == "merge":
+            merge_data = event["data"]
+            _print_trace("merge", f"Scenario merged: {merge_data}")
         elif event["type"] == "userInputs":
             ms, input_text, target = event["data"]
-            _print_trace("user_input", f"[FAST] [{target}] {repr(input_text)}")
+            if interactive:
+                # Interactive mode: prompt for actual user input
+                _rich_output.print_user_input_prompt(input_text)
+                try:
+                    user_response = input().strip()
+                    _print_trace("user_input", f"[{target}] User provided: {repr(user_response)}")
+                    _rich_output.print_success(f"Received input: {user_response}")
+                except (EOFError, KeyboardInterrupt):
+                    _print_trace("user_input", f"[{target}] Input cancelled")
+                    user_response = ""
+            else:
+                # Non-interactive mode: just log the expected input
+                _print_trace("user_input", f"[{target}] {repr(input_text)} (non-interactive)")
         elif event["type"] == "userEdits":
             user_edit = event["data"]
             patch_path = user_edit["patch"]
@@ -760,7 +1228,7 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
         logger.close()
         return recorder.rollout_path
 
-def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
+def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None, interactive: bool = False) -> str:
     """Run scenario using Codex format."""
     recorder = RolloutRecorder(codex_home=codex_home, cwd=workspace, instructions=scenario.get("meta",{}).get("instructions"))
     logger = SessionLogger(codex_home=codex_home)
@@ -778,13 +1246,123 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
 
     timeline = scenario["timeline"]
     for step in timeline:
-        if "think" in step and isinstance(step["think"], list):
-            # New format: think is array of [ms, text] pairs
+        # Handle llmResponse grouped events
+        if "llmResponse" in step:
+            llm_response_elements = step["llmResponse"]
+            for element in llm_response_elements:
+                if "think" in element:
+                    # Think events: array of [ms, text] pairs
+                    for ms, text in element["think"]:
+                        _rich_output.print_thinking(text)
+                        _rich_output.start_spinner("Thinking...")
+                        time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
+                        _rich_output.stop_spinner()
+                        recorder.record_reasoning(summary_text=text)
+                        recorder.record_event("agent_message", {"message": text, "id": f"msg_{uuid.uuid4().hex[:6]}"})
+                elif "assistant" in element:
+                    # Assistant events: array of [ms, text] pairs
+                    for ms, text in element["assistant"]:
+                        _print_trace("assistant", text)  # Uses enhanced _print_trace
+                        time.sleep(ms / 1000.0)
+                        recorder.record_message("assistant", text)
+                elif "agentToolUse" in element:
+                    # Agent tool use within llmResponse
+                    tool_use = element["agentToolUse"]
+                    tool_name = tool_use["toolName"]
+                    tool_args = tool_use.get("args", {})
+                    call_id = f"call_{uuid.uuid4().hex[:8]}"
+
+                    recorder.record_function_call(name=tool_name, arguments=_as_json(tool_args), call_id=call_id)
+                    _rich_output.print_tool_start(tool_name, tool_args)
+
+                    # Simulate progress if provided
+                    progress_events = tool_use.get("progress", [])
+                    for progress_ms, progress_msg in progress_events:
+                        _print_trace("tool_progress", progress_msg)
+                        time.sleep(progress_ms / 1000.0)
+
+                    try:
+                        _rich_output.start_spinner(f"Executing {tool_name}...")
+
+                        # Pass display callback for runCmd to enable real-time output
+                        if tool_name == "runCmd":
+                            tool_args = tool_args.copy()
+                            tool_args["display_callback"] = _display_command_output
+                        result = call_tool(tool_name, workspace, **tool_args)
+                        status = tool_use.get("status", "ok")
+                        expected_result = tool_use.get("result")
+
+                        _rich_output.stop_spinner()
+                        _rich_output.print_tool_result(tool_name, result, status)
+
+                        # Validate result if expected result is provided
+                        if expected_result is not None and str(result) != str(expected_result):
+                            _print_trace("tool", f"{tool_name} -> result mismatch. Expected: {expected_result}, Got: {result}")
+
+                        recorder.record_event("agent_message", {"message": f"tool {tool_name} {status}", "id": call_id})
+
+                        # Execute PostToolUse hooks
+                        hook_input = {
+                            "tool_name": tool_name,
+                            "tool_input": tool_args,
+                            "tool_response": {"success": True, "result": result}
+                        }
+                        _execute_hooks(hooks_config, "PostToolUse", hook_input, workspace)
+
+                        # Execute checkpoint command
+                        _execute_checkpoint_cmd(checkpoint_cmd, workspace)
+
+                    except ToolError as e:
+                        _rich_output.stop_spinner()
+                        _rich_output.print_error(str(e), f"{tool_name} Error")
+                        recorder.record_event("agent_message", {"message": f"tool {tool_name} error: {e}", "id": call_id})
+
+                        # Execute PostToolUse hooks for failed tools too
+                        hook_input = {
+                            "tool_name": tool_name,
+                            "tool_input": tool_args,
+                            "tool_response": {"success": False, "error": str(e)}
+                        }
+                        _execute_hooks(hooks_config, "PostToolUse", hook_input, workspace)
+
+                        # Execute checkpoint command for failed tools too
+                        _execute_checkpoint_cmd(checkpoint_cmd, workspace)
+                elif "agentEdits" in element:
+                    # Agent edits within llmResponse
+                    edits = element["agentEdits"]
+                    path = edits["path"]
+                    lines_added = edits.get("linesAdded", 0)
+                    lines_removed = edits.get("linesRemoved", 0)
+                    _rich_output.print_file_edit(path, lines_added, lines_removed)
+
+                    # Execute checkpoint command for file edits
+                    _execute_checkpoint_cmd(checkpoint_cmd, workspace)
+                elif "error" in element:
+                    # Error response
+                    error_data = element["error"]
+                    error_type = error_data.get("errorType", "unknown_error")
+                    message = error_data.get("message", "An error occurred")
+                    status_code = error_data.get("statusCode", 400)
+                    _print_trace("error", f"Error ({error_type}, {status_code}): {message}")
+                    recorder.record_message("assistant", f"Error: {message}")
+                elif "toolResult" in element:
+                    # Tool result (for multi-turn conversations)
+                    tool_result_data = element["toolResult"]
+                    tool_call_id = tool_result_data.get("toolCallId", "")
+                    content = tool_result_data.get("content", "")
+                    is_error = tool_result_data.get("is_error", False)
+                    _print_trace("tool_result", f"Tool result for {tool_call_id}: {content} (error: {is_error})")
+
+        # Handle legacy individual events for backward compatibility
+        elif "think" in step and isinstance(step["think"], list):
+            # Legacy format: think is array of [ms, text] pairs
             for ms, text in step["think"]:
-                _print_trace("thinking", f"[{ms}ms] {text}")
+                _rich_output.print_thinking(text)
+                _rich_output.start_spinner("Thinking...")
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
-            recorder.record_reasoning(summary_text=text)
-            recorder.record_event("agent_message", {"message": text, "id": f"msg_{uuid.uuid4().hex[:6]}"})
+                _rich_output.stop_spinner()
+                recorder.record_reasoning(summary_text=text)
+                recorder.record_event("agent_message", {"message": text, "id": f"msg_{uuid.uuid4().hex[:6]}"})
         elif "agentToolUse" in step:
             tool_use = step["agentToolUse"]
             tool_name = tool_use["toolName"]
@@ -793,23 +1371,26 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
 
             # Record the tool call
             recorder.record_function_call(name=tool_name, arguments=_as_json(tool_args), call_id=call_id)
-            _print_trace("tool", f"{tool_name}({tool_args}) -> executing")
+            _rich_output.print_tool_start(tool_name, tool_args)
 
             # Simulate progress if provided
             progress_events = tool_use.get("progress", [])
             for progress_ms, progress_msg in progress_events:
-                _print_trace("tool_progress", f"[{progress_ms}ms] {progress_msg}")
+                _print_trace("tool_progress", progress_msg)
+                time.sleep(progress_ms / 1000.0)
 
             try:
+                _rich_output.start_spinner(f"Executing {tool_name}...")
                 result = call_tool(tool_name, workspace, **tool_args)
                 status = tool_use.get("status", "ok")
                 expected_result = tool_use.get("result")
 
+                _rich_output.stop_spinner()
+                _rich_output.print_tool_result(tool_name, result, status)
+
                 # Validate result if expected result is provided
                 if expected_result is not None and str(result) != str(expected_result):
                     _print_trace("tool", f"{tool_name} -> result mismatch. Expected: {expected_result}, Got: {result}")
-                else:
-                    _print_trace("tool", f"{tool_name} -> {status} {result}")
 
                 recorder.record_event("agent_message", {"message": f"tool {tool_name} {status}", "id": call_id})
 
@@ -825,7 +1406,8 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
                 _execute_checkpoint_cmd(checkpoint_cmd, workspace)
 
             except ToolError as e:
-                _print_trace("tool", f"{tool_name} -> error {e}")
+                _rich_output.stop_spinner()
+                _rich_output.print_error(str(e), f"{tool_name} Error")
                 recorder.record_event("agent_message", {"message": f"tool {tool_name} error: {e}", "id": call_id})
 
                 # Execute PostToolUse hooks for failed tools too
@@ -843,14 +1425,14 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
             path = edits["path"]
             lines_added = edits.get("linesAdded", 0)
             lines_removed = edits.get("linesRemoved", 0)
-            _print_trace("agent_edits", f"{path}: +{lines_added} -{lines_removed} lines")
+            _rich_output.print_file_edit(path, lines_added, lines_removed)
 
             # Execute checkpoint command for file edits
             _execute_checkpoint_cmd(checkpoint_cmd, workspace)
         elif "assistant" in step and isinstance(step["assistant"], list):
-            # New format: assistant is array of [ms, text] pairs
+            # Legacy format: assistant is array of [ms, text] pairs
             for ms, text in step["assistant"]:
-                _print_trace("assistant", f"[{ms}ms] {text}")
+                _print_trace("assistant", text)  # Uses enhanced _print_trace
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
             recorder.record_message("assistant", text)
         elif "advanceMs" in step:
@@ -875,9 +1457,20 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
             user_inputs = step["userInputs"]
             target = step.get("target", "tui")  # target is at the step level
             for ms, input_text in user_inputs:
-                _print_trace("user_input", f"[{target}] [{ms}ms] {repr(input_text)}")
+                if interactive:
+                    # Interactive mode: prompt for actual user input
+                    _rich_output.print_user_input_prompt(input_text)
+                    try:
+                        user_response = input().strip()
+                        _print_trace("user_input", f"[{target}] User provided: {repr(user_response)}")
+                        _rich_output.print_success(f"Received input: {user_response}")
+                    except (EOFError, KeyboardInterrupt):
+                        _print_trace("user_input", f"[{target}] Input cancelled")
+                        user_response = ""
+                else:
+                    # Non-interactive mode: just log the expected input
+                    _print_trace("user_input", f"[{target}] [{ms}ms] {repr(input_text)} (non-interactive)")
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
-                # In a real implementation, this would simulate user input to the specified target
         elif "userEdits" in step:
             user_edit = step["userEdits"]
             patch_path = user_edit["patch"]
@@ -930,7 +1523,7 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
     return recorder.rollout_path
 
 
-def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None) -> str:
+def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: str, hooks_config: Dict[str, Any], checkpoint_cmd: str = None, scenario_path: str = None, tui_client: TuiTestClient = None, interactive: bool = False) -> str:
     """Run scenario using Claude format."""
     recorder = ClaudeSessionRecorder(codex_home=codex_home, cwd=workspace)
 
@@ -941,12 +1534,123 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
 
     timeline = scenario["timeline"]
     for step in timeline:
-        if "think" in step and isinstance(step["think"], list):
-            # New format: think is array of [ms, text] pairs
+        # Handle llmResponse grouped events
+        if "llmResponse" in step:
+            llm_response_elements = step["llmResponse"]
+            for element in llm_response_elements:
+                if "think" in element:
+                    # Think events: array of [ms, text] pairs
+                    for ms, text in element["think"]:
+                        _rich_output.print_thinking(text)
+                        _rich_output.start_spinner("Thinking...")
+                        time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
+                        _rich_output.stop_spinner()
+                        recorder.record_assistant_message(f"I need to think about this: {text}")
+                elif "assistant" in element:
+                    # Assistant events: array of [ms, text] pairs
+                    for ms, text in element["assistant"]:
+                        _print_trace("assistant", text)  # Uses enhanced _print_trace
+                        time.sleep(ms / 1000.0)
+                        recorder.record_assistant_message(text)
+                elif "agentToolUse" in element:
+                    # Agent tool use within llmResponse
+                    tool_use = element["agentToolUse"]
+                    tool_name = tool_use["toolName"]
+                    tool_args = tool_use.get("args", {})
+
+                    # Record tool use
+                    tool_call_id = recorder.record_assistant_tool_use(tool_name, tool_args)
+                    _rich_output.print_tool_start(tool_name, tool_args)
+
+                    # Simulate progress if provided
+                    progress_events = tool_use.get("progress", [])
+                    for progress_ms, progress_msg in progress_events:
+                        _print_trace("tool_progress", progress_msg)
+                        time.sleep(progress_ms / 1000.0)
+
+                    try:
+                        _rich_output.start_spinner(f"Executing {tool_name}...")
+
+                        # Pass display callback for runCmd to enable real-time output
+                        if tool_name == "runCmd":
+                            tool_args = tool_args.copy()
+                            tool_args["display_callback"] = _display_command_output
+                        result = call_tool(tool_name, workspace, **tool_args)
+                        status = tool_use.get("status", "ok")
+                        expected_result = tool_use.get("result")
+
+                        _rich_output.stop_spinner()
+                        _rich_output.print_tool_result(tool_name, result, status)
+
+                        # Validate result if expected result is provided
+                        if expected_result is not None and str(result) != str(expected_result):
+                            _print_trace("tool", f"{tool_name} -> result mismatch. Expected: {expected_result}, Got: {result}")
+
+                        # Create tool result data based on the tool type
+                        tool_result_data = _create_tool_result_data(tool_name, result, tool_args)
+                        recorder.record_tool_result(tool_call_id, str(result), is_error=False, tool_result_data=tool_result_data)
+
+                        # Execute PostToolUse hooks
+                        hook_input = {
+                            "tool_name": tool_name,
+                            "tool_input": tool_args,
+                            "tool_response": {"success": True, "result": result}
+                        }
+                        _execute_hooks(hooks_config, "PostToolUse", hook_input, workspace)
+
+                        # Execute checkpoint command
+                        _execute_checkpoint_cmd(checkpoint_cmd, workspace)
+
+                    except ToolError as e:
+                        _rich_output.stop_spinner()
+                        _rich_output.print_error(str(e), f"{tool_name} Error")
+                        recorder.record_tool_result(tool_call_id, str(e), is_error=True, tool_result_data=f"Error: {e}")
+
+                        # Execute PostToolUse hooks for failed tools too
+                        hook_input = {
+                            "tool_name": tool_name,
+                            "tool_input": tool_args,
+                            "tool_response": {"success": False, "error": str(e)}
+                        }
+                        _execute_hooks(hooks_config, "PostToolUse", hook_input, workspace)
+
+                        # Execute checkpoint command for failed tools too
+                        _execute_checkpoint_cmd(checkpoint_cmd, workspace)
+                elif "agentEdits" in element:
+                    # Agent edits within llmResponse
+                    edits = element["agentEdits"]
+                    path = edits["path"]
+                    lines_added = edits.get("linesAdded", 0)
+                    lines_removed = edits.get("linesRemoved", 0)
+                    _rich_output.print_file_edit(path, lines_added, lines_removed)
+
+                    # Execute checkpoint command for file edits
+                    _execute_checkpoint_cmd(checkpoint_cmd, workspace)
+                elif "error" in element:
+                    # Error response
+                    error_data = element["error"]
+                    error_type = error_data.get("errorType", "unknown_error")
+                    message = error_data.get("message", "An error occurred")
+                    status_code = error_data.get("statusCode", 400)
+                    _print_trace("error", f"Error ({error_type}, {status_code}): {message}")
+                    recorder.record_assistant_message(f"Error: {message}")
+                elif "toolResult" in element:
+                    # Tool result (for multi-turn conversations)
+                    tool_result_data = element["toolResult"]
+                    tool_call_id = tool_result_data.get("toolCallId", "")
+                    content = tool_result_data.get("content", "")
+                    is_error = tool_result_data.get("is_error", False)
+                    _print_trace("tool_result", f"Tool result for {tool_call_id}: {content} (error: {is_error})")
+
+        # Handle legacy individual events for backward compatibility
+        elif "think" in step and isinstance(step["think"], list):
+            # Legacy format: think is array of [ms, text] pairs
             for ms, text in step["think"]:
-                _print_trace("thinking", f"[{ms}ms] {text}")
+                _rich_output.print_thinking(text)
+                _rich_output.start_spinner("Thinking...")
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
-            recorder.record_assistant_message(f"I need to think about this: {text}")
+                _rich_output.stop_spinner()
+                recorder.record_assistant_message(f"I need to think about this: {text}")
         elif "agentToolUse" in step:
             tool_use = step["agentToolUse"]
             tool_name = tool_use["toolName"]
@@ -1038,9 +1742,20 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
             user_inputs = step["userInputs"]
             target = step.get("target", "tui")  # target is at the step level
             for ms, input_text in user_inputs:
-                _print_trace("user_input", f"[{target}] [{ms}ms] {repr(input_text)}")
+                if interactive:
+                    # Interactive mode: prompt for actual user input
+                    _rich_output.print_user_input_prompt(input_text)
+                    try:
+                        user_response = input().strip()
+                        _print_trace("user_input", f"[{target}] User provided: {repr(user_response)}")
+                        _rich_output.print_success(f"Received input: {user_response}")
+                    except (EOFError, KeyboardInterrupt):
+                        _print_trace("user_input", f"[{target}] Input cancelled")
+                        user_response = ""
+                else:
+                    # Non-interactive mode: just log the expected input
+                    _print_trace("user_input", f"[{target}] [{ms}ms] {repr(input_text)} (non-interactive)")
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
-                # In a real implementation, this would simulate user input to the specified target
         elif "userEdits" in step:
             user_edit = step["userEdits"]
             patch_path = user_edit["patch"]

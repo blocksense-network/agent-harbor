@@ -316,7 +316,11 @@ impl AgentExecutor for ClaudeAgent {
     ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Claude Code launch with prompt: {:?}",
-            config.prompt.chars().take(50).collect::<String>()
+            config
+                .prompt
+                .as_ref()
+                .map(|p| p.chars().take(50).collect::<String>())
+                .unwrap_or_else(|| "None".to_string())
         );
 
         // Check if we're using a custom HOME directory
@@ -333,6 +337,56 @@ impl AgentExecutor for ClaudeAgent {
                 config.home_dir
             );
             self.setup_onboarding_skip(&config.home_dir, &config.working_dir).await?;
+        }
+
+        // If snapshot hook is requested, install a Claude-style PostToolUse hook
+        // by writing ~/.claude/settings.json in the selected HOME. This mirrors
+        // tests/tools/mock-agent behavior: install a PostToolUse command hook that
+        // executes after file ops. We keep it scoped to the provided HOME to avoid
+        // touching the user's real ~/.claude.
+        if let Some(snapshot_cmd) = &config.snapshot_cmd {
+            let claude_dir = config.home_dir.join(".claude");
+            tokio::fs::create_dir_all(&claude_dir).await.map_err(|e| {
+                AgentError::ConfigCreationFailed(format!(
+                    "Failed to create Claude settings dir {:?}: {}",
+                    claude_dir, e
+                ))
+            })?;
+
+            // Build the snapshot command with recorder socket parameter if available
+            let full_snapshot_cmd = crate::snapshot::build_snapshot_command(snapshot_cmd);
+
+            // Minimal hooks settings structure matching Claude Code hooks format
+            let settings = serde_json::json!({
+                "hooks": {
+                    "PostToolUse": [
+                        {
+                            "matcher": ".*",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": full_snapshot_cmd,
+                                    "timeout": 30
+                                }
+                            ]
+                        }
+                    ]
+                }
+            });
+
+            let settings_path = claude_dir.join("settings.json");
+            let settings_json = serde_json::to_string_pretty(&settings).map_err(|e| {
+                AgentError::ConfigCreationFailed(format!(
+                    "Failed to serialize Claude settings.json: {}",
+                    e
+                ))
+            })?;
+            tokio::fs::write(&settings_path, settings_json).await.map_err(|e| {
+                AgentError::ConfigCreationFailed(format!(
+                    "Failed to write Claude settings.json {:?}: {}",
+                    settings_path, e
+                ))
+            })?;
         }
 
         // Copy credentials if requested and using custom HOME
@@ -412,9 +466,11 @@ impl AgentExecutor for ClaudeAgent {
             cmd.arg("json");
         }
 
-        // Add the prompt as argument
-        if !config.prompt.is_empty() {
-            cmd.arg(&config.prompt);
+        // Add the prompt as argument if provided
+        if let Some(prompt) = &config.prompt {
+            if !prompt.is_empty() {
+                cmd.arg(prompt);
+            }
         }
 
         debug!("Claude Code command prepared successfully");

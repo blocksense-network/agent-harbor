@@ -72,7 +72,7 @@ let handle = recorder.start_capture();
 let mut session = RecordingSession::new(handle, rx, writer, &config);
 
 // Process events
-while let Some(event) = session.process_event().await {
+while let Some(event) = session.next_event().await {
     // Handle PTY events
 }
 

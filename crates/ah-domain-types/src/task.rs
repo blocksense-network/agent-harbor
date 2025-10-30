@@ -9,51 +9,55 @@
 use crate::agent::SelectedModel;
 use serde::{Deserialize, Serialize};
 
-/// Task execution states as defined in PRD
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum TaskState {
-    /// Draft task being edited
-    Draft,
-    /// Active task running
-    Active,
-    /// Completed task
-    Completed,
-    /// Merged task
-    Merged,
-}
-
-/// Task execution status - shared between REST API and local task management
+/// Task state - shared between REST API and local task management
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
-pub enum TaskExecutionStatus {
+pub enum TaskState {
+    /// Draft task being edited
+    Draft,
+    /// Task is queued for execution
     Queued,
+    /// Task is being provisioned
     Provisioning,
+    /// Task is actively running
     Running,
+    /// Task is being paused
     Pausing,
+    /// Task execution is paused
     Paused,
+    /// Task is resuming from pause
     Resuming,
+    /// Task is being stopped
     Stopping,
+    /// Task execution is stopped
     Stopped,
+    /// Task completed successfully
     Completed,
+    /// Task failed during execution
     Failed,
+    /// Task was cancelled
     Cancelled,
+    /// Task results were merged
+    Merged,
 }
 
-impl std::fmt::Display for TaskExecutionStatus {
+impl std::fmt::Display for TaskState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let status_str = match self {
-            TaskExecutionStatus::Queued => "queued",
-            TaskExecutionStatus::Provisioning => "provisioning",
-            TaskExecutionStatus::Running => "running",
-            TaskExecutionStatus::Pausing => "pausing",
-            TaskExecutionStatus::Paused => "paused",
-            TaskExecutionStatus::Resuming => "resuming",
-            TaskExecutionStatus::Stopping => "stopping",
-            TaskExecutionStatus::Stopped => "stopped",
-            TaskExecutionStatus::Completed => "completed",
-            TaskExecutionStatus::Failed => "failed",
-            TaskExecutionStatus::Cancelled => "cancelled",
+            TaskState::Draft => "draft",
+            TaskState::Queued => "queued",
+            TaskState::Provisioning => "provisioning",
+            TaskState::Running => "running",
+            TaskState::Pausing => "pausing",
+            TaskState::Paused => "paused",
+            TaskState::Resuming => "resuming",
+            TaskState::Stopping => "stopping",
+            TaskState::Stopped => "stopped",
+            TaskState::Completed => "completed",
+            TaskState::Failed => "failed",
+            TaskState::Cancelled => "cancelled",
+            TaskState::Merged => "merged",
         };
         write!(f, "{}", status_str)
     }
@@ -126,28 +130,50 @@ pub struct TaskInfo {
 impl TaskExecution {
     /// Add activity to an active task
     pub fn add_activity(&mut self, activity: String) {
-        if self.state == TaskState::Active {
-            self.activity.push(activity);
-            // Keep only last 10 activities for memory efficiency
-            if self.activity.len() > 10 {
-                self.activity.remove(0);
+        // Check if task is in an active/running state
+        match self.state {
+            TaskState::Queued
+            | TaskState::Provisioning
+            | TaskState::Running
+            | TaskState::Pausing
+            | TaskState::Paused
+            | TaskState::Resuming
+            | TaskState::Stopping
+            | TaskState::Stopped => {
+                self.activity.push(activity);
+                // Keep only last 10 activities for memory efficiency
+                if self.activity.len() > 10 {
+                    self.activity.remove(0);
+                }
             }
+            _ => {} // Don't add activity for non-active tasks
         }
     }
 
     /// Get recent activity for display
     pub fn get_recent_activity(&self, count: usize) -> Vec<String> {
-        if self.state == TaskState::Active {
-            let recent: Vec<String> = self.activity.iter().rev().take(count).cloned().collect();
-            let mut result: Vec<String> = recent.into_iter().rev().collect();
+        // Check if task is in an active/running state
+        match self.state {
+            TaskState::Queued
+            | TaskState::Provisioning
+            | TaskState::Running
+            | TaskState::Pausing
+            | TaskState::Paused
+            | TaskState::Resuming
+            | TaskState::Stopping
+            | TaskState::Stopped => {
+                let recent: Vec<String> = self.activity.iter().rev().take(count).cloned().collect();
+                let mut result: Vec<String> = recent.into_iter().rev().collect();
 
-            // Always return exactly count lines, padding with empty strings at the beginning
-            while result.len() < count {
-                result.insert(0, String::new());
+                // Always return exactly count lines, padding with empty strings at the beginning
+                while result.len() < count {
+                    result.insert(0, String::new());
+                }
+                result
             }
-            result
-        } else {
-            vec![String::new(); count]
+            _ => {
+                vec![String::new(); count]
+            }
         }
     }
 }

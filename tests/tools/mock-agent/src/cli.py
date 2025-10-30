@@ -11,25 +11,27 @@ try:
     from .agent import run_scenario, demo_scenario
     from .server import serve
 except ImportError:
-    # Fall back to absolute imports (when run as script)
-    try:
-        import agent
-        import server
-        run_scenario = agent.run_scenario
-        demo_scenario = agent.demo_scenario
-        serve = server.serve
-    except ImportError:
-        # If absolute imports fail, try importing from parent directory
-        import sys
-        import os
-        parent_dir = os.path.dirname(os.path.dirname(__file__))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        import agent
-        import server
-        run_scenario = agent.run_scenario
-        demo_scenario = agent.demo_scenario
-        serve = server.serve
+    # Fall back to script mode imports
+    import sys
+    import os
+
+    # Add the src directory to sys.path so we can import the modules
+    script_dir = os.path.dirname(__file__)
+    src_dir = os.path.dirname(script_dir)  # Go up one level from src/ to mock-agent/
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+
+    # Also try to find the mock-agent directory if we're running from project root
+    mock_agent_dir = os.path.join(os.getcwd(), 'tests', 'tools', 'mock-agent')
+    if os.path.exists(mock_agent_dir) and mock_agent_dir not in sys.path:
+        sys.path.insert(0, mock_agent_dir)
+
+    # Now import as src.agent, src.server, etc.
+    import src.agent as agent
+    import src.server as server
+    run_scenario = agent.run_scenario
+    demo_scenario = agent.demo_scenario
+    serve = server.serve
 
 def main():
     ap = argparse.ArgumentParser(prog="mockagent", description="Mock Coding Agent")
@@ -45,6 +47,8 @@ def main():
     runp.add_argument("--with-snapshots", action="store_true", help="Create filesystem snapshots after each tool use (implies --checkpoint-cmd 'ah agent fs snapshot')")
     runp.add_argument("--fast-mode", action="store_true", help="Fast mode: sort events by time and execute sequentially without timing delays")
     runp.add_argument("--tui-testing-uri", help="ZeroMQ URI for TUI testing IPC (tcp://127.0.0.1:5555)")
+    runp.add_argument("--interactive", action="store_true", help="Enable interactive mode for scenarios with user input steps")
+    runp.add_argument("--no-colors", action="store_true", help="Disable colored output")
 
     demop = sub.add_parser("demo", help="Run built-in demo scenario")
     demop.add_argument("--workspace", required=True)
@@ -55,6 +59,8 @@ def main():
     demop.add_argument("--with-snapshots", action="store_true", help="Create filesystem snapshots after each tool use (implies --checkpoint-cmd 'ah agent fs snapshot')")
     demop.add_argument("--fast-mode", action="store_true", help="Fast mode: sort events by time and execute sequentially without timing delays")
     demop.add_argument("--tui-testing-uri", help="ZeroMQ URI for TUI testing IPC (tcp://127.0.0.1:5555)")
+    demop.add_argument("--interactive", action="store_true", help="Enable interactive mode for scenarios with user input steps")
+    demop.add_argument("--no-colors", action="store_true", help="Disable colored output")
 
     srv = sub.add_parser("server", help="Run mock OpenAI/Anthropic API server")
     srv.add_argument("--host", default="127.0.0.1")
@@ -79,7 +85,7 @@ def main():
         checkpoint_cmd = 'ah agent fs snapshot'
 
     if args.cmd == "run":
-        path = run_scenario(args.scenario, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=checkpoint_cmd, fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
+        path = run_scenario(args.scenario, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=checkpoint_cmd, fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None), interactive=getattr(args, 'interactive', False), no_colors=getattr(args, 'no_colors', False))
         print(f"Session file written to: {path}")
     elif args.cmd == "demo":
         scen = demo_scenario(args.workspace)
@@ -87,7 +93,7 @@ def main():
         os.makedirs(args.workspace, exist_ok=True)
         with open(scen_path, "w", encoding="utf-8") as f:
             json.dump(scen, f, indent=2)
-        path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=checkpoint_cmd, fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None))
+        path = run_scenario(scen_path, args.workspace, codex_home=args.codex_home, format=args.format, checkpoint_cmd=checkpoint_cmd, fast_mode=getattr(args, 'fast_mode', False), tui_testing_uri=getattr(args, 'tui_testing_uri', None), interactive=getattr(args, 'interactive', False), no_colors=getattr(args, 'no_colors', False))
         print(f"Session file written to: {path}")
     elif args.cmd == "server":
         serve(args.host, args.port, playbook=args.playbook, scenario=getattr(args, 'scenario', None), codex_home=args.codex_home, format=args.format, tools_profile=getattr(args, 'tools_profile', None), strict_tools_validation=getattr(args, 'strict_tools_validation', False), agent_version=getattr(args, 'agent_version', 'unknown'))

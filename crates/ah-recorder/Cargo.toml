@@ -12,7 +12,7 @@ license = "MIT OR Apache-2.0"
 # Workspace dependencies
 anyhow = { workspace = true }
 thiserror = { workspace = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -21,11 +21,10 @@ chrono = { workspace = true }
 # Agent Harbor workspace crates
 ah-core = { path = "../ah-core" }
 ah-domain-types = { path = "../ah-domain-types" }
-ah-tui = { path = "../ah-tui" }
 
 # Recording-specific dependencies
 portable-pty = "0.8"
-vt100 = "0.15"
+vt100 = { path = "../../vendor/vt100" }
 brotli = "7.0"
 byteorder = "1.5"
 ratatui = { workspace = true }
@@ -39,6 +38,10 @@ ethereum_ssz_derive = { workspace = true }
 # Aliases for SSZ crates (matching daemon pattern)
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
+
+[[bin]]
+name = "inspect_ahr"
+path = "../../tests/tools/inspect_ahr.rs"
 
 [dev-dependencies]
 tempfile = { workspace = true }

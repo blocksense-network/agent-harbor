@@ -113,9 +113,9 @@ pub fn render_settings_dialog(frame: &mut Frame, modal_area: Rect, theme: &Theme
 
     // Main modal
     let title_line = Line::from(vec![
-        Span::raw("").fg(theme.primary),
+        Span::raw("┤").fg(theme.primary),
         Span::raw(" Settings ").style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-        Span::raw("").fg(theme.primary),
+        Span::raw("├").fg(theme.primary),
     ]);
 
     let dialog_block = Block::default()
@@ -160,9 +160,9 @@ pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rec
 
     // Main modal with Charm styling
     let title_line = Line::from(vec![
-        Span::raw("").fg(theme.primary),
+        Span::raw("┤").fg(theme.primary),
         Span::raw(" Select ").style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-        Span::raw("").fg(theme.primary),
+        Span::raw("├").fg(theme.primary),
     ]);
 
     let modal_block = Block::default()
@@ -263,10 +263,10 @@ pub fn render_model_selection_modal(
 
     // Main modal
     let title_line = Line::from(vec![
-        Span::raw("").fg(theme.primary),
+        Span::raw("┤").fg(theme.primary),
         Span::raw(" Model Selection ")
             .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-        Span::raw("").fg(theme.primary),
+        Span::raw("├").fg(theme.primary),
     ]);
 
     let modal_block = Block::default()
@@ -316,10 +316,10 @@ pub fn render_go_to_line_modal(
 
     // Main modal
     let title_line = Line::from(vec![
-        Span::raw("").fg(theme.primary),
+        Span::raw("┤").fg(theme.primary),
         Span::raw(" Go to Line ")
             .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-        Span::raw("").fg(theme.primary),
+        Span::raw("├").fg(theme.primary),
     ]);
 
     let modal_block = Block::default()
@@ -385,12 +385,12 @@ pub fn render_find_replace_modal(
     };
 
     let title_line = Line::from(vec![
-        Span::raw("").fg(theme.primary),
+        Span::raw("┤").fg(theme.primary),
         Span::styled(
             format!(" {} ", title_text),
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         ),
-        Span::raw("").fg(theme.primary),
+        Span::raw("├").fg(theme.primary),
     ]);
 
     let modal_block = Block::default()
@@ -467,10 +467,10 @@ pub fn render_shortcut_help_modal(
 
     // Main modal
     let title_line = Line::from(vec![
-        Span::raw("").fg(theme.primary),
+        Span::raw("┤").fg(theme.primary),
         Span::raw(" Keyboard Shortcuts ")
             .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-        Span::raw("").fg(theme.primary),
+        Span::raw("├").fg(theme.primary),
     ]);
 
     let modal_block = Block::default()

@@ -1,14 +1,15 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use crate::agent::start::WorkingCopyMode;
 use crate::sandbox::{parse_bool_flag, prepare_workspace_with_fallback};
 use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, devshell_names,
     edit_content_interactive, parse_push_to_remote_flag,
 };
 use ah_fs_snapshots::PreparedWorkspace;
-use ah_local_db::{FsSnapshotRecord, SessionRecord, TaskRecord};
+#[allow(unused_imports)]
+use ah_fs_snapshots::WorkingCopyMode;
+use ah_local_db::{SessionRecord, TaskRecord};
 use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
@@ -336,7 +337,7 @@ impl TaskCreateArgs {
         };
 
         let mut cleanup_branch = start_new_branch;
-        let mut task_committed = false;
+        let mut _task_committed = false;
 
         // Get task content (editor or provided)
         let task_content = if let Some(content) = prompt_content {
@@ -406,7 +407,7 @@ impl TaskCreateArgs {
         }
 
         // Success - mark as committed and don't cleanup branch
-        task_committed = true;
+        _task_committed = true;
         cleanup_branch = false;
 
         // Create session record
@@ -2385,7 +2386,7 @@ exit {}
     fn run_ah_agent_start_integration(
         repo_path: &std::path::Path,
         agent: &str,
-        working_copy: crate::agent::start::WorkingCopyMode,
+        working_copy: WorkingCopyMode,
         cwd: Option<&std::path::Path>,
         sandbox: bool,
         sandbox_type: Option<&str>,
@@ -2461,13 +2462,20 @@ exit {}
             cmd.env("PATH", new_path);
         }
 
+        cmd.arg("--working-copy");
         // Add working copy mode
         match working_copy {
-            crate::agent::start::WorkingCopyMode::InPlace => {
-                cmd.arg("--working-copy").arg("in-place");
+            WorkingCopyMode::Auto => {
+                cmd.arg("auto");
             }
-            crate::agent::start::WorkingCopyMode::Snapshots => {
-                cmd.arg("--working-copy").arg("snapshots");
+            WorkingCopyMode::CowOverlay => {
+                cmd.arg("cow-overlay");
+            }
+            WorkingCopyMode::Worktree => {
+                cmd.arg("worktree");
+            }
+            WorkingCopyMode::InPlace => {
+                cmd.arg("in-place");
             }
         }
 
@@ -2626,7 +2634,7 @@ exit {}
         let (status, stdout, stderr) = run_ah_agent_start_integration(
             &repo_dir,
             "mock", // agent type
-            WorkingCopyMode::Snapshots,
+            WorkingCopyMode::CowOverlay,
             None,          // cwd
             true,          // sandbox enabled
             Some("local"), // sandbox_type

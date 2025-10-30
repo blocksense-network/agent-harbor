@@ -100,6 +100,41 @@
       "name": "Release AgentHarbor (apps/macos/AgentHarbor)",
       "program": "${workspaceFolder:webui}/apps/macos/AgentHarbor/.build/release/AgentHarbor",
       "preLaunchTask": "swift: Build Release AgentHarbor (apps/macos/AgentHarbor)"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug ah agent branch-points",
+      "program": "${workspaceFolder}/target/debug/ah",
+      "args": ["agent", "branch-points", "/Volumes/AH_test_zfs/test_dataset/test-default/user-home/session.ahr"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "rust: cargo build"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug ah agent record mock interactive",
+      "program": "${workspaceFolder}/target/debug/ah",
+      "args": [
+        "agent",
+        "record",
+        "--out-file",
+        "/Volumes/AH_test_zfs/test_dataset/test-default/user-home/session.ahr",
+        "--",
+        "/nix/store/5gr1xdb41cm1vqbkzhqb1j7vns541b0z-python3-3.13.7-env/bin/python3.13",
+        "${workspaceFolder}/tests/tools/mock-agent/src/cli.py",
+        "run",
+        "--scenario",
+        "${workspaceFolder}/tests/tools/mock-agent/scenarios/interactive_development_scenario.yaml",
+        "--workspace",
+        "/Volumes/AH_test_zfs/test_dataset/test-default/repo",
+        "--format",
+        "codex",
+        "--interactive",
+        "--with-snapshots"
+      ],
+      "cwd": "${workspaceFolder}/tests/tools/mock-agent",
+      "preLaunchTask": "rust: cargo build"
     }
   ]
 }

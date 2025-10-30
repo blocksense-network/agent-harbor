@@ -9,7 +9,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use serde_json::json;
 
-use ah_domain_types::TaskExecutionStatus;
+use ah_domain_types::TaskState;
 use ah_domain_types::task::ToolStatus;
 use ah_rest_mock_client::MockRestClient;
 use tui_exploration::{SelectedModel, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
@@ -118,14 +118,17 @@ async fn test_mock_task_manager_generates_deterministic_task_ids() {
     let result1 = manager.launch_task(params1).await;
     let result2 = manager.launch_task(params2).await;
 
-    // Same parameters should generate same task ID
-    assert_eq!(result1.task_id(), result2.task_id());
+    // Same parameters should generate same session ID
+    assert_eq!(
+        result1.session_ids().unwrap()[0],
+        result2.session_ids().unwrap()[0]
+    );
 }
 
 #[tokio::test]
 async fn test_task_launch_result_display_formats_correctly() {
     let success = TaskLaunchResult::Success {
-        task_id: "task_123".to_string(),
+        session_ids: vec!["task_123".to_string()],
     };
     let failure = TaskLaunchResult::Failure {
         error: "Something went wrong".to_string(),
@@ -158,13 +161,13 @@ async fn test_mock_task_manager_event_stream() {
 
     // Check that the first event is status change to queued
     match &events[0] {
-        TaskEvent::Status { status, .. } => assert_eq!(*status, TaskExecutionStatus::Queued),
+        TaskEvent::Status { status, .. } => assert_eq!(*status, TaskState::Queued),
         _ => panic!("First event should be status change to queued"),
     }
 
     // Check that we eventually get to completed status
     let has_completed = events.iter().any(|event| {
-        matches!(event, TaskEvent::Status { status, .. } if *status == TaskExecutionStatus::Completed)
+        matches!(event, TaskEvent::Status { status, .. } if *status == TaskState::Completed)
     });
     assert!(
         has_completed,
@@ -189,7 +192,7 @@ async fn test_task_event_serialization() {
 
     // Test status event
     let status_event = TaskEvent::Status {
-        status: TaskExecutionStatus::Running,
+        status: TaskState::Running,
         ts,
     };
     let json = serde_json::to_string(&status_event).unwrap();

@@ -54,18 +54,19 @@
 //!   (selection, focus)                                     (drafts, executions)
 //! ```
 
-use crate::HandledKeyboardOperations;
 use crate::Settings;
 use crate::WorkspaceFilesEnumerator;
 use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
-use crate::view_model::FilterBarViewModel;
-use crate::view_model::autocomplete::{AutocompleteKeyResult, InlineAutocomplete};
-use crate::view_model::task_entry::{AutocompleteManager, CardFocusElement};
+use crate::view_model::autocomplete::InlineAutocomplete;
+use crate::view_model::input::{InputResult, InputState, InputStateStack};
+use crate::view_model::task_entry::{
+    CardFocusElement, KeyboardOperationResult, TEXTAREA_INPUT_OPERATIONS,
+};
 use crate::view_model::{
     AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
-    DraftSaveState, FilterControl, FilterOptions, FocusElement, ModalState, SearchMode,
-    TaskCardType, TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionViewModel,
-    TaskMetadataViewModel,
+    DraftSaveState, FilterControl, FilterOptions, ModalState, SearchMode, TaskCardType,
+    TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionFocusState,
+    TaskExecutionViewModel, TaskMetadataViewModel,
 };
 use ah_core::branches_enumerator::BranchesEnumerator;
 use ah_core::repositories_enumerator::RepositoriesEnumerator;
@@ -80,12 +81,62 @@ use chrono;
 use futures::stream::StreamExt;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tracing::{debug, error};
 use uuid;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
+
+const DASHBOARD_INPUT_OPERATIONS: &[KeyboardOperation] = &[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::MoveToNextField,
+    KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::MoveForwardOneCharacter,
+    KeyboardOperation::MoveBackwardOneCharacter,
+    KeyboardOperation::DismissOverlay,
+    KeyboardOperation::NewDraft,
+    KeyboardOperation::IndentOrComplete,
+];
+
+const MODAL_INPUT_OPERATIONS: &[KeyboardOperation] = &[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::MoveToNextField,
+    KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::IndentOrComplete,
+    KeyboardOperation::DismissOverlay,
+];
+
+/// Information about an AI model available for selection
+#[derive(Debug, Clone)]
+pub struct ModelInfo {
+    /// The display name shown to users in the UI
+    pub display_name: String,
+    /// The model name/alias that agents expect (e.g., "sonnet", "gpt-5")
+    pub agent_model_name: String,
+}
+
+/// Focus states specific to the dashboard interface
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DashboardFocusState {
+    SettingsButton,
+    FilterBarSeparator,
+    FilterBarLine,
+    DraftTask(usize),
+    ExistingTask(usize),
+    TaskCard(usize),
+    ModalElement,
+    // Legacy variants for compatibility
+    RepositoryButton,
+    BranchButton,
+    ModelButton,
+    Filter(FilterControl),
+}
 
 /// Focus control navigation (similar to main.rs)
 impl ViewModel {
@@ -106,6 +157,27 @@ impl ViewModel {
             ) {
                 self.status_bar.status_message = None;
             }
+        }
+    }
+
+    /// Gets the agent model name (alias) for a display model name
+    pub fn get_agent_model_name(&self, display_model_name: &str) -> String {
+        self.available_models
+            .iter()
+            .find(|model| model.display_name == display_model_name)
+            .map(|model| model.agent_model_name.clone())
+            .unwrap_or_else(|| display_model_name.to_string()) // Fallback to original name
+    }
+
+    /// Map a model name to its corresponding agent type
+    fn get_agent_type_for_model(model_name: &str) -> ah_core::agent_types::AgentType {
+        if model_name.starts_with("Claude") {
+            ah_core::agent_types::AgentType::Claude
+        } else if model_name.starts_with("GPT-5") {
+            ah_core::agent_types::AgentType::Codex
+        } else {
+            // Default fallback - this shouldn't happen with our current models
+            ah_core::agent_types::AgentType::Codex
         }
     }
 
@@ -232,7 +304,7 @@ impl ViewModel {
         }
 
         let textarea_active = match self.focus_element {
-            FocusElement::DraftTask(idx) => self
+            DashboardFocusState::DraftTask(idx) => self
                 .draft_cards
                 .get(idx)
                 .map(|card| card.focus_element == CardFocusElement::TaskDescription)
@@ -260,11 +332,18 @@ impl ViewModel {
         match &modal.modal_type {
             ModalType::Search { .. } => {
                 // Get all available options based on modal state
-                let all_options = match self.modal_state {
+                let all_options: &[String] = match self.modal_state {
                     ModalState::RepositorySearch => &self.available_repositories,
                     ModalState::BranchSearch => &self.available_branches,
-                    ModalState::ModelSearch => &self.available_models,
-                    _ => &Vec::new(),
+                    ModalState::ModelSearch => {
+                        // For model search, we need to convert ModelInfo to display names
+                        // This is a temporary allocation - in the future we might want to cache this
+                        self.model_display_names_cache.get_or_insert_with(|| {
+                            self.available_models.iter().map(|m| m.display_name.clone()).collect()
+                        });
+                        self.model_display_names_cache.as_ref().unwrap()
+                    }
+                    _ => &[],
                 };
 
                 // Filter options based on input value (case-insensitive fuzzy match)
@@ -331,7 +410,7 @@ impl ViewModel {
     pub fn focus_next_control(&mut self) -> bool {
         // Implement PRD-compliant tab navigation for draft cards
         match self.focus_element {
-            FocusElement::DraftTask(idx) => {
+            DashboardFocusState::DraftTask(idx) => {
                 // Handle tab navigation within the draft card
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     match card.focus_element {
@@ -357,19 +436,19 @@ impl ViewModel {
                 }
             }
             // For other global focus elements, handle normally
-            FocusElement::SettingsButton => {
+            DashboardFocusState::SettingsButton => {
                 if !self.draft_cards.is_empty() {
-                    self.focus_element = FocusElement::DraftTask(0);
+                    self.focus_element = DashboardFocusState::DraftTask(0);
                     true
                 } else if !self.task_cards.is_empty() {
-                    self.focus_element = FocusElement::FilterBarSeparator;
+                    self.focus_element = DashboardFocusState::FilterBarSeparator;
                     true
                 } else {
                     false // Stay on settings if nothing else
                 }
             }
             _ => {
-                self.focus_element = FocusElement::SettingsButton;
+                self.focus_element = DashboardFocusState::SettingsButton;
                 true
             }
         }
@@ -379,7 +458,7 @@ impl ViewModel {
     pub fn focus_previous_control(&mut self) -> bool {
         // Implement PRD-compliant shift+tab navigation for draft cards (reverse order)
         match self.focus_element {
-            FocusElement::DraftTask(idx) => {
+            DashboardFocusState::DraftTask(idx) => {
                 // Handle shift+tab navigation within the draft card (reverse order)
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     match card.focus_element {
@@ -405,19 +484,20 @@ impl ViewModel {
                 }
             }
             // For other global focus elements, handle normally
-            FocusElement::SettingsButton => {
+            DashboardFocusState::SettingsButton => {
                 if !self.task_cards.is_empty() {
-                    self.focus_element = FocusElement::ExistingTask(self.task_cards.len() - 1);
+                    self.focus_element =
+                        DashboardFocusState::ExistingTask(self.task_cards.len() - 1);
                     true
                 } else if !self.draft_cards.is_empty() {
-                    self.focus_element = FocusElement::DraftTask(self.draft_cards.len() - 1);
+                    self.focus_element = DashboardFocusState::DraftTask(self.draft_cards.len() - 1);
                     true
                 } else {
                     false // Stay on settings if nothing else
                 }
             }
             _ => {
-                self.focus_element = FocusElement::SettingsButton;
+                self.focus_element = DashboardFocusState::SettingsButton;
                 true
             }
         }
@@ -433,11 +513,20 @@ impl ViewModel {
                     modal.input_value.push(ch);
 
                     // Inline filtering logic to avoid double borrow
-                    let all_options = match self.modal_state {
+                    let all_options: &[String] = match self.modal_state {
                         ModalState::RepositorySearch => &self.available_repositories,
                         ModalState::BranchSearch => &self.available_branches,
-                        ModalState::ModelSearch => &self.available_models,
-                        _ => &Vec::new(),
+                        ModalState::ModelSearch => {
+                            // For model search, we need to convert ModelInfo to display names
+                            self.model_display_names_cache.get_or_insert_with(|| {
+                                self.available_models
+                                    .iter()
+                                    .map(|m| m.display_name.clone())
+                                    .collect()
+                            });
+                            self.model_display_names_cache.as_ref().unwrap()
+                        }
+                        _ => &[],
                     };
 
                     let query = modal.input_value.to_lowercase();
@@ -515,9 +604,9 @@ impl ViewModel {
 
         // Allow text input when focused on draft-related elements
         match self.focus_element {
-            FocusElement::DraftTask(_) => {
+            DashboardFocusState::DraftTask(_) => {
                 // Support editing the description when focused on any DraftTask
-                if let FocusElement::DraftTask(0) = self.focus_element {
+                if let DashboardFocusState::DraftTask(0) = self.focus_element {
                     // Get the first (and currently only) draft card
                     if let Some(card) = self.draft_cards.get_mut(0) {
                         // Feed the character to the textarea widget
@@ -535,7 +624,7 @@ impl ViewModel {
                         card.auto_save_timer = Some(std::time::Instant::now());
                         return true;
                     }
-                } else if let FocusElement::DraftTask(idx) = self.focus_element {
+                } else if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     // When a draft task is focused, edit its description only if internal focus is on text area
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
@@ -575,11 +664,20 @@ impl ViewModel {
                         modal.input_value.pop();
 
                         // Inline filtering logic to avoid double borrow
-                        let all_options = match self.modal_state {
+                        let all_options: &[String] = match self.modal_state {
                             ModalState::RepositorySearch => &self.available_repositories,
                             ModalState::BranchSearch => &self.available_branches,
-                            ModalState::ModelSearch => &self.available_models,
-                            _ => &Vec::new(),
+                            ModalState::ModelSearch => {
+                                // For model search, we need to convert ModelInfo to display names
+                                self.model_display_names_cache.get_or_insert_with(|| {
+                                    self.available_models
+                                        .iter()
+                                        .map(|m| m.display_name.clone())
+                                        .collect()
+                                });
+                                self.model_display_names_cache.as_ref().unwrap()
+                            }
+                            _ => &[],
                         };
 
                         let query = modal.input_value.to_lowercase();
@@ -658,47 +756,17 @@ impl ViewModel {
         }
 
         // Handle backspace on draft cards
-        if let FocusElement::DraftTask(idx) = self.focus_element {
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(card) = self.draft_cards.get_mut(idx) {
                 if card.focus_element == CardFocusElement::TaskDescription {
-                    // Delegate directly to task entry for backspace
-                    struct AutocompleteManagerImpl<'a> {
-                        autocomplete: &'a mut InlineAutocomplete,
-                        needs_redraw: &'a mut bool,
-                    }
-
-                    impl<'a> AutocompleteManager for AutocompleteManagerImpl<'a> {
-                        fn show(&mut self, _prefix: &str) {
-                            // The autocomplete shows itself automatically
-                        }
-
-                        fn hide(&mut self) {
-                            self.autocomplete.close(&mut false); // We don't use this
-                        }
-
-                        fn after_textarea_change(&mut self, textarea: &tui_textarea::TextArea) {
-                            self.autocomplete.after_textarea_change(textarea, self.needs_redraw);
-                        }
-
-                        fn set_needs_redraw(&mut self) {
-                            *self.needs_redraw = true;
-                        }
-                    }
-
-                    let mut autocomplete_manager = AutocompleteManagerImpl {
-                        autocomplete: &mut self.autocomplete,
-                        needs_redraw: &mut self.needs_redraw,
-                    };
-
                     let key_event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty());
                     return matches!(
-                        card.handle_keyboard_operation(
+                        self.handle_task_entry_operation(
+                            idx,
                             KeyboardOperation::DeleteCharacterBackward,
-                            &key_event,
-                            &mut autocomplete_manager
+                            &key_event
                         ),
-                        crate::view_model::task_entry::KeyboardOperationResult::Handled
-                            | crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched { .. }
+                        InputResult::Handled
                     );
                 }
             }
@@ -717,11 +785,20 @@ impl ViewModel {
                         modal.input_value.pop();
 
                         // Inline filtering logic to avoid double borrow
-                        let all_options = match self.modal_state {
+                        let all_options: &[String] = match self.modal_state {
                             ModalState::RepositorySearch => &self.available_repositories,
                             ModalState::BranchSearch => &self.available_branches,
-                            ModalState::ModelSearch => &self.available_models,
-                            _ => &Vec::new(),
+                            ModalState::ModelSearch => {
+                                // For model search, we need to convert ModelInfo to display names
+                                self.model_display_names_cache.get_or_insert_with(|| {
+                                    self.available_models
+                                        .iter()
+                                        .map(|m| m.display_name.clone())
+                                        .collect()
+                                });
+                                self.model_display_names_cache.as_ref().unwrap()
+                            }
+                            _ => &[],
                         };
 
                         let query = modal.input_value.to_lowercase();
@@ -804,7 +881,7 @@ impl ViewModel {
     /// Handle enter key (including shift+enter for newlines)
     pub fn handle_enter(&mut self, shift: bool) -> bool {
         // Handle Enter on draft cards based on internal focus
-        if let FocusElement::DraftTask(idx) = self.focus_element {
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(card) = self.draft_cards.get(idx) {
                 match card.focus_element {
                     CardFocusElement::TaskDescription => {
@@ -844,14 +921,14 @@ impl ViewModel {
                         return true;
                     }
                     CardFocusElement::GoButton => {
-                        return self.handle_go_button();
+                        return self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
                     }
                 }
             }
         }
 
         match self.focus_element {
-            FocusElement::SettingsButton => {
+            DashboardFocusState::SettingsButton => {
                 self.open_modal(ModalState::Settings);
                 return true;
             }
@@ -859,12 +936,20 @@ impl ViewModel {
         }
     }
 
-    /// Handle Go button activation (task launch)
-    pub fn handle_go_button(&mut self) -> bool {
-        // Get the first (and currently only) draft card
-        if let Some(card) = self.draft_cards.get(0) {
+    /// Launch task from the specified draft card
+    pub fn launch_task(
+        &mut self,
+        draft_card_index: usize,
+        split_mode: ah_core::SplitMode,
+        focus: bool,
+        starting_point: Option<ah_core::task_manager::StartingPoint>,
+        working_copy_mode: Option<ah_core::WorkingCopyMode>,
+    ) -> bool {
+        // Get the specified draft card
+        if let Some(card) = self.draft_cards.get(draft_card_index) {
             // Validate that description and models are provided
-            if card.description.lines().join("\n").trim().is_empty() {
+            let description = card.description.lines().join("\n");
+            if description.trim().is_empty() {
                 self.status_bar.error_message = Some("Task description is required".to_string());
                 return false; // Validation failed
             }
@@ -874,13 +959,259 @@ impl ViewModel {
                 return false; // Validation failed
             }
 
-            // TODO: Launch the task via task_manager
-            // For now, just clear the error and show success
+            // Determine agent type and model name
+            let selected_model = card.models.first().unwrap(); // We validated it's not empty
+            let agent_type = Self::get_agent_type_for_model(&selected_model.name);
+            let model_name = self.get_agent_model_name(&selected_model.name);
+
+            // Extract card data before removing it
+            let card_repository = card.repository.clone();
+            let card_branch = card.branch.clone();
+            let card_models = card.models.clone();
+
+            // Launch the task via task_manager
+            let task_manager = self.task_manager.clone();
+            let starting_point = starting_point.unwrap_or_else(|| {
+                ah_core::task_manager::StartingPoint::RepositoryBranch {
+                    repository: card_repository.clone(),
+                    branch: card_branch.clone(),
+                }
+            });
+            let working_copy_mode = working_copy_mode.unwrap_or(ah_core::WorkingCopyMode::InPlace);
+            let params = match ah_core::task_manager::TaskLaunchParams::builder()
+                .starting_point(starting_point)
+                .working_copy_mode(working_copy_mode)
+                .description(description.clone())
+                .models(card_models.clone())
+                .agent_type(agent_type)
+                .split_mode(split_mode)
+                .focus(focus)
+                .record(true) // Enable recording by default
+                .task_id(card.id.clone()) // Use the draft card's stable ID
+                .build()
+            {
+                Ok(params) => params,
+                Err(e) => {
+                    self.status_bar.error_message = Some(format!("Invalid task parameters: {}", e));
+                    return false;
+                }
+            };
+
+            // Create TaskExecution for the launched task (assume success for now)
+            let task_execution = TaskExecution {
+                id: format!("task_{}", chrono::Utc::now().timestamp()), // Temporary ID, will be updated when launch completes
+                repository: card_repository.clone(),
+                branch: card_branch.clone(),
+                agents: card_models.clone(),
+                state: TaskState::Queued,
+                timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                activity: vec![],
+                delivery_status: vec![],
+            };
+
+            // Add the task to the UI
+            let task_card = create_task_card_from_execution(task_execution.clone(), &self.settings);
+            let task_card_arc = Arc::new(Mutex::new(task_card));
+            self.task_cards.push(task_card_arc.clone());
+
+            // Launch the task asynchronously (only if runtime is available)
+            if tokio::runtime::Handle::try_current().is_ok() {
+                let task_manager_for_events = Arc::clone(&self.task_manager);
+                let task_card_for_events: Arc<Mutex<TaskExecutionViewModel>> =
+                    Arc::clone(&task_card_arc);
+                let settings_for_events = self.settings.clone();
+
+                tokio::spawn(async move {
+                    match task_manager_for_events.launch_task(params).await {
+                        ah_core::task_manager::TaskLaunchResult::Success { session_ids } => {
+                            debug!("Task launched successfully: {:?}", session_ids);
+                            // Handle events for all launched sessions
+                            for session_id in session_ids {
+                                let task_manager_for_session = Arc::clone(&task_manager_for_events);
+                                let task_card_for_session = Arc::clone(&task_card_for_events);
+                                let settings_for_session = settings_for_events.clone();
+
+                                tokio::spawn(async move {
+                                    tracing::info!(
+                                        "Setting up event handling for session: {}",
+                                        session_id
+                                    );
+
+                                    // Get the receiver for this session and start consuming events
+                                    let mut receiver =
+                                        task_manager_for_session.task_events_receiver(&session_id);
+
+                                    // Start a loop to consume events and directly update the task card
+                                    loop {
+                                        match receiver.recv().await {
+                                            Ok(event) => {
+                                                debug!(
+                                                    "Received event for session {}: {:?}",
+                                                    session_id, event
+                                                );
+                                                // Directly update the task card
+                                                if let Ok(mut task_card) =
+                                                    task_card_for_session.lock()
+                                                {
+                                                    task_card.process_task_event(
+                                                        event,
+                                                        &settings_for_session,
+                                                    );
+                                                }
+                                            }
+                                            Err(
+                                                tokio::sync::broadcast::error::RecvError::Closed,
+                                            ) => {
+                                                debug!(
+                                                    "Event receiver closed for session {}",
+                                                    session_id
+                                                );
+                                                break;
+                                            }
+                                            Err(
+                                                tokio::sync::broadcast::error::RecvError::Lagged(_),
+                                            ) => {
+                                                debug!(
+                                                    "Event receiver lagged for session {}, continuing",
+                                                    session_id
+                                                );
+                                                continue;
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "Error receiving event for session {}: {:?}",
+                                                    session_id, e
+                                                );
+                                                break;
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        ah_core::task_manager::TaskLaunchResult::Failure { error } => {
+                            tracing::error!("Task launch failed: {}", error);
+                            // Update the task card to show failure state
+                            if let Ok(mut task_card) = task_card_for_events.lock() {
+                                use ah_domain_types::task::TaskState;
+                                // Update the domain task state to completed (since it failed)
+                                task_card.task.state = TaskState::Completed;
+                                // Change card type to completed to show it as finished
+                                task_card.card_type = TaskCardType::Completed {
+                                    delivery_indicators: "Failed".to_string(),
+                                };
+                                // Update metadata to reflect failure
+                                task_card.metadata.state = TaskState::Completed;
+                                // Add failure message as activity entry
+                                if let TaskCardType::Completed {
+                                    ref mut delivery_indicators,
+                                } = task_card.card_type
+                                {
+                                    *delivery_indicators = format!("Failed: {}", error);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Clear any previous error and show success
             self.status_bar.error_message = None;
-            self.status_bar.status_message = Some("Task launched successfully".to_string());
+            let message = match (split_mode, focus) {
+                (ah_core::SplitMode::None, false) => "Task launched successfully",
+                (_, false) => "Task launched in split view successfully",
+                (ah_core::SplitMode::None, true) => "Task launched and focused successfully",
+                (_, true) => "Task launched in split view and focused successfully",
+            };
+            self.status_bar.status_message = Some(message.to_string());
+
+            // Remove the draft card that was just dispatched
+            self.draft_cards.remove(draft_card_index);
+
+            // If there are no draft cards left, create a new empty one
+            if self.draft_cards.is_empty() {
+                let empty_draft_task = DraftTask {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    description: String::new(),
+                    repository: card_repository, // Keep the same repo/branch for convenience
+                    branch: card_branch,
+                    models: card_models, // Keep the same models
+                    created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                };
+                let new_card = create_draft_card_from_task(
+                    empty_draft_task,
+                    CardFocusElement::TaskDescription,
+                    Some(self.repositories_enumerator.clone()),
+                    Some(self.branches_enumerator.clone()),
+                    Arc::clone(&self.workspace_files),
+                    Arc::clone(&self.workspace_workflows),
+                );
+                self.draft_cards.push(new_card);
+            }
+
+            // Adjust focus - since we removed index 0 and potentially added a new one at index 0,
+            // the focus should remain on index 0
+            self.focus_element = DashboardFocusState::DraftTask(0);
+
             return true; // Success
         }
         false
+    }
+
+    /// Apply the selected option from a modal and close it
+    fn apply_modal_selection(&mut self, modal_type: ModalType, selected_option: String) {
+        match modal_type {
+            ModalType::Search { .. } => match self.modal_state {
+                ModalState::RepositorySearch => {
+                    // Apply selected repository to the current draft card
+                    if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            card.repository = selected_option;
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+                    }
+                }
+                ModalState::BranchSearch => {
+                    // Apply selected branch to the current draft card
+                    if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            card.branch = selected_option;
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+                    }
+                }
+                ModalState::ModelSearch => {
+                    // Apply selected model to the current draft card
+                    if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            // Find the ModelInfo that matches this display name
+                            if let Some(model_info) = self
+                                .available_models
+                                .iter()
+                                .find(|model| model.display_name == selected_option)
+                            {
+                                // Add the model to the card's model list
+                                let selected_model = SelectedModel {
+                                    name: model_info.display_name.clone(),
+                                    count: 1,
+                                };
+                                card.models = vec![selected_model];
+                                card.focus_element = CardFocusElement::TaskDescription;
+                            }
+                        }
+                    }
+                }
+                _ => {} // Other modal types don't need selection handling
+            },
+            _ => {} // Non-search modals don't need selection handling
+        }
+
+        // Close the modal and return focus to task description
+        self.close_modal();
+        self.focus_element = DashboardFocusState::DraftTask(0);
+        if let Some(card) = self.draft_cards.get_mut(0) {
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
     }
 
     /// Handle escape key
@@ -900,9 +1231,10 @@ impl ViewModel {
                     current_card.models.clone(),
                     CardFocusElement::TaskDescription,
                 );
+                // Note: create_draft_task uses the ViewModel's workspace_files/workspace_workflows
                 self.draft_cards.push(new_card);
                 let new_index = self.draft_cards.len() - 1;
-                self.focus_element = FocusElement::DraftTask(new_index); // Focus on the new draft task
+                self.focus_element = DashboardFocusState::DraftTask(new_index); // Focus on the new draft task
                 return true;
             }
         }
@@ -919,6 +1251,8 @@ impl ViewModel {
         focus_element: CardFocusElement,
     ) -> TaskEntryViewModel {
         Self::create_draft_task_internal(
+            self.workspace_files.clone(),
+            self.workspace_workflows.clone(),
             description,
             repository,
             branch,
@@ -929,8 +1263,10 @@ impl ViewModel {
         )
     }
 
-    /// Internal helper to create a draft task (static version for initialization)
+    /// Internal helper to create a draft task
     fn create_draft_task_internal(
+        workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
+        workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
         description: String,
         repository: String,
         branch: String,
@@ -953,6 +1289,8 @@ impl ViewModel {
             focus_element,
             repositories_enumerator,
             branches_enumerator,
+            workspace_files,
+            workspace_workflows,
         )
     }
 
@@ -1134,7 +1472,7 @@ pub struct StatusBarViewModel {
 
 /// Main ViewModel containing all presentation state
 pub struct ViewModel {
-    pub focus_element: FocusElement, // Current UI focus state
+    pub focus_element: DashboardFocusState, // Current UI focus state
 
     // Modals
     pub active_modal: Option<ModalViewModel>,
@@ -1162,6 +1500,9 @@ pub struct ViewModel {
     pub status_message: Option<String>,
     pub error_message: Option<String>,
 
+    // Cursor style state
+    pub cursor_style: crossterm::cursor::SetCursorStyle,
+
     // Escape handling state
     pub exit_confirmation_armed: bool,
     pub exit_requested: bool,
@@ -1185,7 +1526,10 @@ pub struct ViewModel {
     // Domain state - available options
     pub available_repositories: Vec<String>,
     pub available_branches: Vec<String>,
-    pub available_models: Vec<String>,
+    pub available_models: Vec<ModelInfo>,
+
+    // Cache for model display names (to avoid repeated allocations)
+    model_display_names_cache: Option<Vec<String>>,
 
     // Preloaded autocomplete data
     pub preloaded_files: Vec<String>,
@@ -1209,18 +1553,15 @@ pub struct ViewModel {
 
     // Task collections - cards contain the domain objects
     pub draft_cards: Vec<TaskEntryViewModel>, // Draft tasks (editable)
-    pub task_cards: Vec<TaskExecutionViewModel>, // Regular tasks (active/completed/merged)
+    pub task_cards: Vec<Arc<Mutex<TaskExecutionViewModel>>>, // Regular tasks (active/completed/merged)
 
     // UI interaction state
     pub selected_card: usize,
     pub last_textarea_area: Option<ratatui::layout::Rect>, // Last rendered textarea area for caret positioning
 
-    // Task event streaming
-    pub task_event_sender: Option<mpsc::Sender<(String, TaskEvent)>>, // Shared sender for all task events
-    pub task_event_receiver: Option<mpsc::Receiver<(String, TaskEvent)>>, // Shared receiver for all task events
-    pub active_task_streams: HashMap<String, tokio::task::JoinHandle<()>>, // Active task event consumers
-    pub task_id_to_card_info: HashMap<String, TaskCardInfo>, // Maps task_id to card type and index for fast lookups
     pub needs_redraw: bool, // Flag to indicate when UI needs to be redrawn
+
+    pub input_stack: InputStateStack,
 }
 
 impl ViewModel {
@@ -1282,9 +1623,30 @@ impl ViewModel {
         let available_repositories = vec![];
         let available_branches = vec![];
         let available_models = vec![
-            "Claude 3.5 Sonnet".to_string(),
-            "GPT-4".to_string(),
-            "Claude 3 Opus".to_string(),
+            ModelInfo {
+                display_name: "Claude Sonnet 4.5".to_string(),
+                agent_model_name: "sonnet".to_string(),
+            },
+            ModelInfo {
+                display_name: "Claude Opus 4.1".to_string(),
+                agent_model_name: "opus".to_string(),
+            },
+            ModelInfo {
+                display_name: "GPT-5-Codex".to_string(),
+                agent_model_name: "gpt-5-codex".to_string(),
+            },
+            ModelInfo {
+                display_name: "GPT-5 pro".to_string(),
+                agent_model_name: "gpt-5-pro".to_string(),
+            },
+            ModelInfo {
+                display_name: "GPT-5".to_string(),
+                agent_model_name: "gpt-5".to_string(),
+            },
+            ModelInfo {
+                display_name: "GPT-5 mini".to_string(),
+                agent_model_name: "gpt-5-mini".to_string(),
+            },
         ];
 
         // Initialize preloaded data and loading state
@@ -1325,16 +1687,18 @@ impl ViewModel {
         };
 
         // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
-        let initial_global_focus = FocusElement::DraftTask(0); // Focus on the single draft task
+        let initial_global_focus = DashboardFocusState::DraftTask(0); // Focus on the single draft task
         let initial_card_focus = CardFocusElement::TaskDescription; // Initially focus the text area within the card
 
         // Create initial draft card
         let draft_cards = vec![Self::create_draft_task_internal(
+            Arc::clone(&workspace_files),
+            Arc::clone(&workspace_workflows),
             String::new(), // empty description
             current_repository.unwrap_or_else(|| "blocksense/agent-harbor".to_string()),
             "main".to_string(),
             vec![SelectedModel {
-                name: "Claude 3.5 Sonnet".to_string(),
+                name: "Claude Sonnet 4.5".to_string(),
                 count: 1,
             }],
             initial_card_focus,
@@ -1375,17 +1739,19 @@ impl ViewModel {
         // Calculate layout metrics
         let total_content_height: u16 = task_cards
             .iter()
-            .map(|card: &TaskExecutionViewModel| card.height + 1) // +1 for spacer
+            .filter_map(|card: &Arc<Mutex<TaskExecutionViewModel>>| card.lock().ok())
+            .map(|card| card.height + 1) // +1 for spacer
             .sum::<u16>()
             + 1; // Filter bar height
 
-        ViewModel {
+        let mut viewmodel = ViewModel {
             focus_element: initial_global_focus,
 
             // Domain state
             available_repositories: available_repositories.clone(),
             available_branches: available_branches.clone(),
             available_models: available_models.clone(),
+            model_display_names_cache: None,
 
             // Preloaded autocomplete data
             preloaded_files: preloaded_files.clone(),
@@ -1429,6 +1795,7 @@ impl ViewModel {
             show_autocomplete_border: false,
             status_message: None,
             error_message: None,
+            cursor_style: crossterm::cursor::SetCursorStyle::SteadyBar,
             exit_confirmation_armed: false,
             exit_requested: false,
 
@@ -1438,8 +1805,6 @@ impl ViewModel {
             loading_branches: false,
             loading_models: false,
 
-            // Initialize quit flag
-
             // Service dependencies
             workspace_files: workspace_files.clone(),
             workspace_workflows: workspace_workflows.clone(),
@@ -1447,16 +1812,24 @@ impl ViewModel {
             repositories_enumerator: repositories_enumerator.clone(),
             branches_enumerator: branches_enumerator.clone(),
 
-            // Autocomplete system - initialize with empty providers for now
-            autocomplete: InlineAutocomplete::new(),
+            // Autocomplete system
+            autocomplete: {
+                let deps = Arc::new(crate::view_model::autocomplete::AutocompleteDependencies {
+                    workspace_files: workspace_files.clone(),
+                    workspace_workflows: workspace_workflows.clone(),
+                    settings: settings.clone(),
+                });
+                InlineAutocomplete::with_dependencies(deps)
+            },
 
-            // Task event streaming
-            task_event_sender: None,
-            task_event_receiver: None,
-            active_task_streams: HashMap::new(),
-            task_id_to_card_info: HashMap::new(),
             needs_redraw: true,
-        }
+            input_stack: InputStateStack::new(),
+        };
+
+        // Sync cursor style for initial focus on textarea
+        viewmodel.sync_cursor_style_for_focused_textarea();
+
+        viewmodel
     }
 }
 
@@ -1501,9 +1874,7 @@ impl ViewModel {
                 // Handle periodic updates (activity simulation, etc.)
                 let had_activity_changes = self.update_active_task_activities();
 
-                // Handle autocomplete periodic updates
-                self.autocomplete.on_tick();
-                self.autocomplete.poll_results();
+                // Autocomplete updates are handled synchronously now
 
                 if had_activity_changes {
                     self.needs_redraw = true;
@@ -1516,6 +1887,155 @@ impl ViewModel {
         Ok(())
     }
 
+    fn focused_textarea_index(&self) -> Option<usize> {
+        match self.focus_element {
+            DashboardFocusState::DraftTask(idx) => self.draft_cards.get(idx).and_then(|card| {
+                if card.focus_element == CardFocusElement::TaskDescription {
+                    Some(idx)
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        }
+    }
+
+    fn rebuild_input_stack(&mut self) {
+        self.input_stack.clear();
+
+        let base_ptr = self as *mut ViewModel;
+        self.input_stack.push(InputState::with_prominent_operations(
+            DASHBOARD_INPUT_OPERATIONS,
+            crate::view_model::input::operations::prominent::NAVIGATION,
+            move |operation, key_event| unsafe {
+                let vm = &mut *base_ptr;
+                vm.handle_dashboard_operation(operation, key_event)
+            },
+        ));
+
+        if let Some(idx) = self.focused_textarea_index() {
+            let text_ptr = self as *mut ViewModel;
+            self.input_stack.push(InputState::with_prominent_operations(
+                TEXTAREA_INPUT_OPERATIONS,
+                crate::view_model::input::operations::prominent::NAVIGATION,
+                move |operation, key_event| unsafe {
+                    let vm = &mut *text_ptr;
+                    vm.handle_task_entry_operation(idx, operation, key_event)
+                },
+            ));
+        }
+
+        if self.modal_state != ModalState::None {
+            let modal_ptr = self as *mut ViewModel;
+            self.input_stack.push(InputState::with_prominent_operations(
+                MODAL_INPUT_OPERATIONS,
+                crate::view_model::input::operations::prominent::ACTIONS,
+                move |operation, key_event| unsafe {
+                    let vm = &mut *modal_ptr;
+                    vm.handle_modal_operation(operation, key_event)
+                },
+            ));
+        }
+    }
+
+    fn handle_task_entry_operation(
+        &mut self,
+        draft_index: usize,
+        operation: KeyboardOperation,
+        key_event: &KeyEvent,
+    ) -> InputResult {
+        if let Some(card) = self.draft_cards.get_mut(draft_index) {
+            match card.handle_keyboard_operation(operation, key_event, &mut self.needs_redraw) {
+                KeyboardOperationResult::Handled => InputResult::Handled,
+                KeyboardOperationResult::NotHandled => InputResult::NotHandled,
+                KeyboardOperationResult::Bubble { operation } => InputResult::Bubble(operation),
+                KeyboardOperationResult::TaskLaunched {
+                    split_mode,
+                    focus,
+                    starting_point,
+                    working_copy_mode,
+                } => {
+                    if self.launch_task(
+                        draft_index,
+                        split_mode,
+                        focus,
+                        starting_point,
+                        working_copy_mode,
+                    ) {
+                        InputResult::Handled
+                    } else {
+                        InputResult::NotHandled
+                    }
+                }
+            }
+        } else {
+            InputResult::NotHandled
+        }
+    }
+
+    fn handle_modal_operation(
+        &mut self,
+        operation: KeyboardOperation,
+        key_event: &KeyEvent,
+    ) -> InputResult {
+        if self.modal_state == ModalState::None {
+            return InputResult::NotHandled;
+        }
+
+        match operation {
+            KeyboardOperation::MoveToNextLine | KeyboardOperation::MoveToNextField => {
+                if self.handle_modal_navigation(NavigationDirection::Next) {
+                    InputResult::Handled
+                } else {
+                    InputResult::NotHandled
+                }
+            }
+            KeyboardOperation::MoveToPreviousLine | KeyboardOperation::MoveToPreviousField => {
+                if self.handle_modal_navigation(NavigationDirection::Previous) {
+                    InputResult::Handled
+                } else {
+                    InputResult::NotHandled
+                }
+            }
+            KeyboardOperation::IndentOrComplete => {
+                let selection = self.active_modal.as_ref().and_then(|modal| {
+                    modal
+                        .filtered_options
+                        .iter()
+                        .find(|(_, selected)| *selected)
+                        .map(|(option, _)| (modal.modal_type.clone(), option.clone()))
+                });
+
+                if let Some((modal_type, selected_option)) = selection {
+                    self.apply_modal_selection(modal_type, selected_option);
+                    InputResult::Handled
+                } else {
+                    InputResult::NotHandled
+                }
+            }
+            KeyboardOperation::DismissOverlay => {
+                if self.handle_dismiss_overlay() {
+                    InputResult::Handled
+                } else {
+                    InputResult::NotHandled
+                }
+            }
+            _ => InputResult::NotHandled,
+        }
+    }
+
+    fn handle_dashboard_operation(
+        &mut self,
+        operation: KeyboardOperation,
+        key_event: &KeyEvent,
+    ) -> InputResult {
+        if self.process_dashboard_operation(operation, key_event) {
+            InputResult::Handled
+        } else {
+            InputResult::NotHandled
+        }
+    }
+
     /// Handle keyboard events by translating to KeyboardOperation and dispatching
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         use ratatui::crossterm::event::{KeyCode, KeyModifiers};
@@ -1524,14 +2044,11 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
-        // First try to translate the key event to a keyboard operation
-        if let Some(operation) =
-            crate::view_model::input::key_event_to_operation(&key, &self.settings)
-        {
-            tracing::trace!("key_event_to_operation: {:?} -> {:?}", key, operation);
-            return self.handle_keyboard_operation(operation, &key);
-        } else {
-            tracing::trace!("key_event_to_operation: {:?} -> None", key);
+        self.rebuild_input_stack();
+        let handled = self.input_stack.handle_key_event(&key, &self.settings);
+
+        if handled {
+            return true;
         }
 
         // Handle special key codes directly
@@ -1553,6 +2070,22 @@ impl ViewModel {
         false
     }
 
+    /// Handle a KeyboardOperation with the original KeyEvent context
+    pub fn handle_keyboard_operation(
+        &mut self,
+        operation: KeyboardOperation,
+        key: &KeyEvent,
+    ) -> bool {
+        if operation != KeyboardOperation::DismissOverlay {
+            self.clear_exit_confirmation();
+        }
+
+        self.rebuild_input_stack();
+        let handled = self.input_stack.dispatch_operation(operation, key);
+
+        handled
+    }
+
     pub fn take_exit_request(&mut self) -> bool {
         if self.exit_requested {
             self.exit_requested = false;
@@ -1561,8 +2094,8 @@ impl ViewModel {
         false
     }
 
-    /// Handle a KeyboardOperation with the original KeyEvent context
-    pub fn handle_keyboard_operation(
+    /// Handle a dashboard-level KeyboardOperation with the original KeyEvent context
+    fn process_dashboard_operation(
         &mut self,
         operation: KeyboardOperation,
         key: &KeyEvent,
@@ -1572,155 +2105,40 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
-        // Early delegation: if task description is being edited and operation is handled by task entry, delegate it
-        // But skip delegation if there's an active modal (modal should handle operations first)
-        // Note: Navigation operations like MoveToNextLine/MoveToPreviousLine are handled separately for navigation
-        let draft_idx = if self.active_modal.is_some() {
-            None
-        } else {
-            match self.focus_element {
-                FocusElement::DraftTask(0) => {
-                    // For DraftTask(0), delegate operations unless they are application actions
-                    match operation {
-                        KeyboardOperation::NewDraft => None,
-                        _ => Some(0),
+        // Check if autocomplete is open and should handle navigation operations
+        if self.autocomplete.is_open() {
+            match operation {
+                KeyboardOperation::MoveToNextLine | KeyboardOperation::MoveToNextField => {
+                    if self.autocomplete.select_next() {
+                        self.needs_redraw = true;
+                        return true;
                     }
                 }
-                FocusElement::DraftTask(idx) => {
-                    // For draft tasks, delegate operations based on the card's internal focus state
-                    if let Some(card) = self.draft_cards.get(idx) {
-                        if card.focus_element == CardFocusElement::TaskDescription {
-                            // When actively editing text in the task description, delegate text editing operations
-                            // including navigation operations (they become cursor movement operations)
-                            Some(idx)
-                        } else {
-                            // When the card is selected but not in text editing mode,
-                            // only delegate operations that make sense for the card as a whole
-                            // Navigation operations should be handled by the dashboard for moving between cards
-                            None
-                        }
-                    } else {
-                        None
+                KeyboardOperation::MoveToPreviousLine => {
+                    if self.autocomplete.select_previous() {
+                        self.needs_redraw = true;
+                        return true;
                     }
                 }
-                _ => None,
+                _ => {}
             }
-        };
+        }
 
-        if let Some(idx) = draft_idx {
-            if let Some(card) = self.draft_cards.get_mut(idx) {
-                // Delegate all handled operations to task entry
-                if matches!(operation, HandledKeyboardOperations!()) {
-                    struct AutocompleteManagerImpl<'a> {
-                        autocomplete: &'a mut InlineAutocomplete,
-                        needs_redraw: &'a mut bool,
-                    }
+        // Handle modal selection with Enter when a modal is active
+        if let Some(modal) = self.active_modal.as_ref() {
+            if operation == KeyboardOperation::IndentOrComplete {
+                // Select the currently highlighted option in the modal
+                // Get the selected option first to avoid borrowing issues
+                let selected_option = modal
+                    .filtered_options
+                    .iter()
+                    .find(|(_, selected)| *selected)
+                    .map(|(option, _)| option.clone());
 
-                    impl<'a> AutocompleteManager for AutocompleteManagerImpl<'a> {
-                        fn show(&mut self, _prefix: &str) {
-                            // The autocomplete shows itself automatically
-                        }
-
-                        fn hide(&mut self) {
-                            self.autocomplete.close(&mut false); // We don't use this
-                        }
-
-                        fn after_textarea_change(&mut self, textarea: &tui_textarea::TextArea) {
-                            self.autocomplete.after_textarea_change(textarea, self.needs_redraw);
-                        }
-
-                        fn set_needs_redraw(&mut self) {
-                            *self.needs_redraw = true;
-                        }
-                    }
-
-                    let mut manager = AutocompleteManagerImpl {
-                        autocomplete: &mut self.autocomplete,
-                        needs_redraw: &mut self.needs_redraw,
-                    };
-
-                    let result = card.handle_keyboard_operation(operation, key, &mut manager);
-
-                    match result {
-                        crate::view_model::task_entry::KeyboardOperationResult::TaskLaunched {
-                            split_mode,
-                            focus,
-                        } => {
-                            // Task launching requested - validate and launch
-                            let description = card.description.lines().join("\n");
-                            if description.trim().is_empty() {
-                                self.status_bar.error_message =
-                                    Some("Task description is required".to_string());
-                                return false; // Validation failed
-                            }
-                            if card.models.is_empty() {
-                                self.status_bar.error_message =
-                                    Some("At least one AI model must be selected".to_string());
-                                return false; // Validation failed
-                            }
-
-                            // We need to spawn the async task launch
-                            let task_manager = self.task_manager.clone();
-                            let params = ah_core::task_manager::TaskLaunchParams::new_with_split_mode_and_focus(
-                                card.repository.clone(),
-                                card.branch.clone(),
-                                description,
-                                card.models.clone(),
-                                split_mode,
-                                focus,
-                            )
-                            .unwrap_or_else(|e| {
-                                panic!("Invalid task parameters after validation: {}", e)
-                            });
-
-                            tokio::spawn(async move {
-                                let _ = task_manager.launch_task(params).await;
-                            });
-
-                            // Clear any previous error and show success
-                            self.status_bar.error_message = None;
-                            let message = match (split_mode, focus) {
-                                (ah_core::SplitMode::None, false) => "Task launched successfully",
-                                (_, false) => "Task launched in split view successfully",
-                                (ah_core::SplitMode::None, true) => {
-                                    "Task launched and focused successfully"
-                                }
-                                (_, true) => "Task launched in split view and focused successfully",
-                            };
-                            self.status_bar.status_message = Some(message.to_string());
-
-                            // Clean up the draft card - replace it with a new empty one
-                            // This simulates what the user described: "the draft card will be superceded by an active card; If it was the last draft card, a new one will be created"
-                            let new_draft_task = DraftTask {
-                                id: format!("draft_{}", chrono::Utc::now().timestamp()),
-                                description: String::new(),
-                                repository: card.repository.clone(), // Keep the same repo/branch for convenience
-                                branch: card.branch.clone(),
-                                models: card.models.clone(), // Keep the same models
-                                created_at: chrono::Utc::now()
-                                    .format("%Y-%m-%d %H:%M:%S")
-                                    .to_string(),
-                            };
-                            self.draft_cards[idx] = create_draft_card_from_task(
-                                new_draft_task,
-                                CardFocusElement::TaskDescription,
-                                Some(self.repositories_enumerator.clone()),
-                                Some(self.branches_enumerator.clone()),
-                            );
-                            // Keep focus on the new draft card
-                            self.focus_element = FocusElement::DraftTask(idx);
-
-                            return true;
-                        }
-                        crate::view_model::task_entry::KeyboardOperationResult::Handled => {
-                            return true;
-                        }
-                        crate::view_model::task_entry::KeyboardOperationResult::NotHandled => {
-                            // Continue to other logic below
-                        }
-                    }
-                    // If not handled, continue to ViewModel's own logic below
+                if let Some(selected_option) = selected_option {
+                    self.apply_modal_selection(modal.modal_type.clone(), selected_option);
                 }
+                return true;
             }
         }
 
@@ -1744,19 +2162,19 @@ impl ViewModel {
 
                 // Handle filter navigation
                 match self.focus_element {
-                    FocusElement::FilterBarLine => {
+                    DashboardFocusState::FilterBarLine => {
                         // Move from separator line to first filter control
-                        self.focus_element = FocusElement::Filter(FilterControl::Repository);
+                        self.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
                         return true;
                     }
-                    FocusElement::Filter(control) => {
+                    DashboardFocusState::Filter(control) => {
                         // Navigate between filter controls
                         let next = match control {
                             FilterControl::Repository => FilterControl::Status,
                             FilterControl::Status => FilterControl::Creator,
                             FilterControl::Creator => FilterControl::Repository, // Wrap around
                         };
-                        self.focus_element = FocusElement::Filter(next);
+                        self.focus_element = DashboardFocusState::Filter(next);
                         return true;
                     }
                     _ => {}
@@ -1769,19 +2187,19 @@ impl ViewModel {
 
                 // Handle filter navigation
                 match self.focus_element {
-                    FocusElement::FilterBarLine => {
+                    DashboardFocusState::FilterBarLine => {
                         // Move from separator line to first filter control
-                        self.focus_element = FocusElement::Filter(FilterControl::Repository);
+                        self.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
                         return true;
                     }
-                    FocusElement::Filter(control) => {
+                    DashboardFocusState::Filter(control) => {
                         // Navigate backwards through filter controls
                         let next = match control {
                             FilterControl::Repository => FilterControl::Creator, // Wrap backwards
                             FilterControl::Status => FilterControl::Repository,
                             FilterControl::Creator => FilterControl::Status,
                         };
-                        self.focus_element = FocusElement::Filter(next);
+                        self.focus_element = DashboardFocusState::Filter(next);
                         return true;
                     }
                     _ => {}
@@ -1823,7 +2241,7 @@ impl ViewModel {
             KeyboardOperation::DeleteToEndOfLine => {
                 // Delete from cursor to end of line
                 match self.focus_element {
-                    FocusElement::DraftTask(idx) => {
+                    DashboardFocusState::DraftTask(idx) => {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             if card.focus_element == CardFocusElement::TaskDescription {
                                 let before_text = card.description.lines().join("\\n");
@@ -1846,7 +2264,7 @@ impl ViewModel {
             KeyboardOperation::DeleteToBeginningOfLine => {
                 // Delete from cursor to beginning of line
                 match self.focus_element {
-                    FocusElement::DraftTask(idx) => {
+                    DashboardFocusState::DraftTask(idx) => {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             if card.focus_element == CardFocusElement::TaskDescription {
                                 let before_text = card.description.lines().join("\\n");
@@ -1869,7 +2287,7 @@ impl ViewModel {
             KeyboardOperation::SelectAll => {
                 // Select all text
                 match self.focus_element {
-                    FocusElement::DraftTask(idx) => {
+                    DashboardFocusState::DraftTask(idx) => {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             if card.focus_element == CardFocusElement::TaskDescription {
                                 card.description.select_all();
@@ -1887,7 +2305,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveToBeginningOfSentence => {
                 // Move to beginning of sentence (approximated as beginning of line)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
@@ -1924,7 +2342,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveToEndOfSentence => {
                 // Move to end of sentence (approximated as end of line)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
@@ -1961,7 +2379,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveToBeginningOfDocument => {
                 // Move to beginning of document (first line, first character)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
@@ -2009,7 +2427,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveToEndOfDocument => {
                 // Move to end of document (last line, last character)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
@@ -2057,7 +2475,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveToBeginningOfParagraph => {
                 // Move to beginning of paragraph (approximated as beginning of current line)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
@@ -2094,7 +2512,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveToEndOfParagraph => {
                 // Move to end of paragraph (approximated as end of current line)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::CursorMove;
@@ -2131,7 +2549,7 @@ impl ViewModel {
             }
             KeyboardOperation::SelectWordUnderCursor => {
                 // Select word under cursor
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // For now, just select all as a simple approximation
@@ -2147,7 +2565,7 @@ impl ViewModel {
             }
             KeyboardOperation::SetMark => {
                 // Set mark for selection (CUA style selection start)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Start selection at current cursor position
@@ -2160,7 +2578,7 @@ impl ViewModel {
             }
             KeyboardOperation::ScrollDownOneScreen => {
                 // Scroll viewport down one screen (PageDown)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::Scrolling;
@@ -2173,7 +2591,7 @@ impl ViewModel {
             }
             KeyboardOperation::ScrollUpOneScreen => {
                 // Scroll viewport up one screen (PageUp)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             use tui_textarea::Scrolling;
@@ -2186,7 +2604,7 @@ impl ViewModel {
             }
             KeyboardOperation::RecenterScreenOnCursor => {
                 // Recenter cursor in middle of screen (Ctrl+L)
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current cursor line and viewport height
@@ -2207,7 +2625,7 @@ impl ViewModel {
             }
             KeyboardOperation::ToggleComment => {
                 // Toggle comment (Ctrl+/) - add/remove comment markers from lines
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             let lines = card.description.lines();
@@ -2260,8 +2678,8 @@ impl ViewModel {
                 false
             }
             KeyboardOperation::DuplicateLineSelection => {
-                // Duplicate line/selection (Ctrl+D) - copy and paste below
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                // Duplicate line/selection (Ctrl+Shift+D / Cmd+Shift+D) - copy and paste below
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             let (cursor_row, _) = card.description.cursor();
@@ -2286,7 +2704,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveLineUp => {
                 // Move line up (Alt+↑) - cut and reinsert above previous line
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             let cursor_row = card.description.cursor().0 as usize;
@@ -2323,7 +2741,7 @@ impl ViewModel {
             }
             KeyboardOperation::MoveLineDown => {
                 // Move line down (Alt+↓) - cut and reinsert below next line
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             let cursor_row = card.description.cursor().0 as usize;
@@ -2360,7 +2778,7 @@ impl ViewModel {
             }
             KeyboardOperation::IndentRegion => {
                 // Indent region (Ctrl+]) - insert spaces at start of selected lines
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Get selection range or current line
@@ -2382,7 +2800,7 @@ impl ViewModel {
             }
             KeyboardOperation::DedentRegion => {
                 // Dedent region (Ctrl+[) - remove spaces from start of selected lines
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Get selection range or current line
@@ -2404,7 +2822,7 @@ impl ViewModel {
             }
             KeyboardOperation::UppercaseWord => {
                 // Uppercase word (Alt+U) - transform word at/after cursor to uppercase
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current line and cursor position
@@ -2474,7 +2892,7 @@ impl ViewModel {
             }
             KeyboardOperation::LowercaseWord => {
                 // Lowercase word (Alt+L) - transform word at/after cursor to lowercase
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current line and cursor position
@@ -2544,7 +2962,7 @@ impl ViewModel {
             }
             KeyboardOperation::CapitalizeWord => {
                 // Capitalize word (Alt+C) - capitalize word at/after cursor
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Select word at/after cursor
@@ -2584,7 +3002,7 @@ impl ViewModel {
             }
             KeyboardOperation::JoinLines => {
                 // Join lines (Alt+^) - delete newline between lines
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Move cursor to end of line and delete newline
@@ -2601,7 +3019,7 @@ impl ViewModel {
             }
             KeyboardOperation::Bold => {
                 // Bold (Ctrl+B) - wrap selection or next word with **
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             if card.description.selection_range().is_some() {
@@ -2632,7 +3050,7 @@ impl ViewModel {
             }
             KeyboardOperation::Italic => {
                 // Italic (Ctrl+I) - wrap selection or next word with *
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             if card.description.selection_range().is_some() {
@@ -2659,7 +3077,7 @@ impl ViewModel {
             }
             KeyboardOperation::Underline => {
                 // Underline (Ctrl+U) - wrap selection with <u> tags
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             if card.description.selection_range().is_some() {
@@ -2691,7 +3109,7 @@ impl ViewModel {
             KeyboardOperation::CycleThroughClipboard => {
                 // Cycle through clipboard (Alt+Y) - cycle through yank ring
                 // This would require implementing a yank ring - simplified for now
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Placeholder - would need yank ring implementation
@@ -2703,7 +3121,7 @@ impl ViewModel {
             }
             KeyboardOperation::TransposeCharacters => {
                 // Transpose characters (Ctrl+T) - swap character before cursor with character after
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Simplified implementation
@@ -2719,7 +3137,7 @@ impl ViewModel {
             }
             KeyboardOperation::TransposeWords => {
                 // Transpose words (Alt+T) - swap word before cursor with word after
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Simplified implementation - would need complex word boundary detection
@@ -2731,7 +3149,7 @@ impl ViewModel {
             }
             KeyboardOperation::IncrementalSearchForward => {
                 // Incremental search forward (Ctrl+S) - start search mode
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Set search pattern (would need search dialog/input in real implementation)
@@ -2745,7 +3163,7 @@ impl ViewModel {
             }
             KeyboardOperation::IncrementalSearchBackward => {
                 // Incremental search backward (Ctrl+R) - start reverse search mode
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Set search pattern and search backward
@@ -2759,7 +3177,7 @@ impl ViewModel {
             }
             KeyboardOperation::FindNext => {
                 // Find next (F3) - jump to next search match
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             card.description.search_forward(false);
@@ -2771,7 +3189,7 @@ impl ViewModel {
             }
             KeyboardOperation::FindPrevious => {
                 // Find previous (Shift+F3) - jump to previous search match
-                if let FocusElement::DraftTask(idx) = self.focus_element {
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             card.description.search_back(false);
@@ -2953,17 +3371,17 @@ impl ViewModel {
     }
 
     /// Close autocomplete if focus is moving away from textarea elements
-    pub fn close_autocomplete_if_leaving_textarea(&mut self, new_focus: FocusElement) {
-        let was_on_textarea = matches!(self.focus_element, FocusElement::DraftTask(0))
-            || matches!(self.focus_element, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
+    pub fn close_autocomplete_if_leaving_textarea(&mut self, new_focus: DashboardFocusState) {
+        let was_on_textarea = matches!(self.focus_element, DashboardFocusState::DraftTask(0))
+            || matches!(self.focus_element, DashboardFocusState::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
 
-        let moving_to_textarea = matches!(new_focus, FocusElement::DraftTask(0))
-            || matches!(new_focus, FocusElement::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
+        let moving_to_textarea = matches!(new_focus, DashboardFocusState::DraftTask(0))
+            || matches!(new_focus, DashboardFocusState::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
 
         if was_on_textarea && !moving_to_textarea {
             self.autocomplete.close(&mut self.needs_redraw);
             // Cancel any active text selection when leaving textarea
-            if let FocusElement::DraftTask(idx) = self.focus_element {
+            if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     if card.focus_element == CardFocusElement::TaskDescription
                         && card.description.selection_range().is_some()
@@ -2971,6 +3389,47 @@ impl ViewModel {
                         card.description.cancel_selection();
                     }
                 }
+            }
+        }
+
+        // Sync cursor style when moving to a textarea
+        if moving_to_textarea && new_focus != self.focus_element {
+            self.sync_cursor_style_for_focused_textarea();
+        }
+    }
+
+    /// Sync cursor style for the currently focused textarea
+    fn sync_cursor_style_for_focused_textarea(&mut self) {
+        // First, check if we have a focused textarea and get the overwrite state
+        let overwrite_state = self
+            .get_focused_draft_card()
+            .map(|card| {
+                card.focus_element == CardFocusElement::TaskDescription
+                    && card.description.is_overwrite()
+            })
+            .unwrap_or(false);
+
+        // Update ViewModel's cursor style based on overwrite mode
+        self.cursor_style = if overwrite_state {
+            crossterm::cursor::SetCursorStyle::SteadyBlock
+        } else {
+            crossterm::cursor::SetCursorStyle::SteadyBar
+        };
+
+        // Update visual cursor style within the TUI (for consistency, though disabled)
+        if let Some(card) = self.get_focused_draft_card_mut() {
+            if card.focus_element == CardFocusElement::TaskDescription {
+                let visual_style = if card.description.is_overwrite() {
+                    // Block cursor appearance for overwrite mode
+                    ratatui::style::Style::default()
+                        .add_modifier(ratatui::style::Modifier::REVERSED)
+                        .add_modifier(ratatui::style::Modifier::BOLD)
+                } else {
+                    // Bar cursor appearance for insert mode
+                    ratatui::style::Style::default()
+                        .add_modifier(ratatui::style::Modifier::UNDERLINED)
+                };
+                card.description.set_cursor_style(visual_style);
             }
         }
     }
@@ -2985,8 +3444,8 @@ impl ViewModel {
         self.last_textarea_area = Some(*textarea_area);
 
         // Focus on the draft task description if not already focused
-        if !matches!(self.focus_element, FocusElement::DraftTask(0)) {
-            self.focus_element = FocusElement::DraftTask(0);
+        if !matches!(self.focus_element, DashboardFocusState::DraftTask(0)) {
+            self.focus_element = DashboardFocusState::DraftTask(0);
         }
 
         // Calculate relative position within textarea
@@ -3019,8 +3478,8 @@ impl ViewModel {
     pub fn perform_mouse_action(&mut self, action: MouseAction) {
         match action {
             MouseAction::OpenSettings => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::SettingsButton);
-                self.focus_element = FocusElement::SettingsButton;
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::SettingsButton);
+                self.focus_element = DashboardFocusState::SettingsButton;
                 self.open_modal(ModalState::Settings);
                 // TODO: Initialize settings form
             }
@@ -3028,41 +3487,41 @@ impl ViewModel {
                 self.selected_card = idx;
                 let new_focus = if idx == 0 {
                     // Draft card - focus on description
-                    FocusElement::DraftTask(0)
+                    DashboardFocusState::DraftTask(0)
                 } else {
                     // Regular task card - idx is offset by 1, so array index is idx - 1
-                    FocusElement::ExistingTask(idx - 1)
+                    DashboardFocusState::ExistingTask(idx - 1)
                 };
                 self.close_autocomplete_if_leaving_textarea(new_focus);
                 self.focus_element = new_focus;
             }
             MouseAction::SelectFilterBarLine => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::FilterBarLine);
-                self.focus_element = FocusElement::FilterBarLine;
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::FilterBarLine);
+                self.focus_element = DashboardFocusState::FilterBarLine;
             }
             MouseAction::ActivateRepositoryModal => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::RepositoryButton);
-                self.focus_element = FocusElement::RepositoryButton;
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::RepositoryButton);
+                self.focus_element = DashboardFocusState::RepositoryButton;
                 self.open_modal(ModalState::RepositorySearch);
             }
             MouseAction::ActivateBranchModal => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::BranchButton);
-                self.focus_element = FocusElement::BranchButton;
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::BranchButton);
+                self.focus_element = DashboardFocusState::BranchButton;
                 self.open_modal(ModalState::BranchSearch);
             }
             MouseAction::ActivateModelModal => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::ModelButton);
-                self.focus_element = FocusElement::ModelButton;
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::ModelButton);
+                self.focus_element = DashboardFocusState::ModelButton;
                 self.open_modal(ModalState::ModelSearch);
             }
             MouseAction::LaunchTask => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::DraftTask(0));
-                self.focus_element = FocusElement::DraftTask(0);
-                self.handle_go_button();
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
+                self.focus_element = DashboardFocusState::DraftTask(0);
+                self.launch_task(0, ah_core::SplitMode::None, false, None, None);
             }
             MouseAction::FocusDraftTextarea(_idx) => {
-                self.close_autocomplete_if_leaving_textarea(FocusElement::DraftTask(0));
-                self.focus_element = FocusElement::DraftTask(0);
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
+                self.focus_element = DashboardFocusState::DraftTask(0);
             }
             _ => {
                 // TODO: Handle other mouse actions like ActivateGoButton, StopTask, EditFilter, Footer
@@ -3127,7 +3586,7 @@ impl ViewModel {
 
     /// Select a repository from modal
     pub fn select_repository(&mut self, repo: String) {
-        if let FocusElement::DraftTask(idx) = self.focus_element {
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
                 draft_card.repository = repo;
             }
@@ -3137,7 +3596,7 @@ impl ViewModel {
 
     /// Select a branch from modal
     pub fn select_branch(&mut self, branch: String) {
-        if let FocusElement::DraftTask(idx) = self.focus_element {
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
                 draft_card.branch = branch;
             }
@@ -3147,7 +3606,7 @@ impl ViewModel {
 
     /// Select model names from modal
     pub fn select_model_names(&mut self, model_names: Vec<String>) {
-        if let FocusElement::DraftTask(idx) = self.focus_element {
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
                 draft_card.models =
                     model_names.into_iter().map(|name| SelectedModel { name, count: 1 }).collect();
@@ -3176,111 +3635,49 @@ impl ViewModel {
         self.error_message = None;
     }
 
+    /// Find TaskCardInfo for a given task_id by iterating over the cards
+    pub fn find_task_card_info(&self, task_id: &str) -> Option<TaskCardInfo> {
+        // Check draft cards first
+        for (index, card) in self.draft_cards.iter().enumerate() {
+            if card.id == task_id {
+                return Some(TaskCardInfo {
+                    card_type: TaskCardTypeEnum::Draft,
+                    index,
+                });
+            }
+        }
+
+        // Check task cards
+        for (index, card) in self.task_cards.iter().enumerate() {
+            if let Ok(card_guard) = card.lock() {
+                if card_guard.task.id == task_id {
+                    return Some(TaskCardInfo {
+                        card_type: TaskCardTypeEnum::Task,
+                        index,
+                    });
+                }
+            }
+        }
+
+        None
+    }
+
     /// Handle launch task operation and return domain messages
+
     /// Process a TaskEvent and update the corresponding task card's activity entries
     pub fn process_task_event(&mut self, task_id: &str, event: TaskEvent) {
+        debug!("Processing task event for task {}: {:?}", task_id, event);
         // Find the card info for this task_id
-        if let Some(card_info) = self.task_id_to_card_info.get(task_id) {
+        if let Some(card_info) = self.find_task_card_info(task_id) {
             match card_info.card_type {
                 TaskCardTypeEnum::Draft => {
                     // Draft cards don't have activity events - they're just text inputs
                     // Task events for draft cards don't make sense in this context
                 }
                 TaskCardTypeEnum::Task => {
-                    if let Some(card) = self.task_cards.get_mut(card_info.index) {
-                        if let TaskCardType::Active {
-                            ref mut activity_entries,
-                            ..
-                        } = card.card_type
-                        {
-                            match event {
-                                TaskEvent::Thought { thought, .. } => {
-                                    // Add new thought entry
-                                    let activity_entry = AgentActivityRow::AgentThought {
-                                        thought: thought.clone(),
-                                    };
-                                    activity_entries.push(activity_entry);
-                                }
-                                TaskEvent::FileEdit {
-                                    file_path,
-                                    lines_added,
-                                    lines_removed,
-                                    description,
-                                    ..
-                                } => {
-                                    // Add new file edit entry
-                                    let activity_entry = AgentActivityRow::AgentEdit {
-                                        file_path: file_path.clone(),
-                                        lines_added,
-                                        lines_removed,
-                                        description: description.clone(),
-                                    };
-                                    activity_entries.push(activity_entry);
-                                }
-                                TaskEvent::ToolUse {
-                                    tool_name,
-                                    tool_execution_id,
-                                    status,
-                                    ..
-                                } => {
-                                    // Add new tool use entry
-                                    let activity_entry = AgentActivityRow::ToolUse {
-                                        tool_name: tool_name.clone(),
-                                        tool_execution_id: tool_execution_id.clone(),
-                                        last_line: None,
-                                        completed: false,
-                                        status,
-                                    };
-                                    activity_entries.push(activity_entry);
-                                }
-                                TaskEvent::Log {
-                                    message,
-                                    tool_execution_id: Some(tool_exec_id),
-                                    ..
-                                } => {
-                                    // Update existing tool use entry with log message as last_line
-                                    if let Some(AgentActivityRow::ToolUse { tool_execution_id: _, ref mut last_line, .. }) =
-                                        activity_entries.iter_mut().rev().find(|entry| {
-                                            matches!(entry, AgentActivityRow::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_exec_id)
-                                        }) {
-                                        *last_line = Some(message.clone());
-                                    } else {
-                                    }
-                                }
-                                TaskEvent::ToolResult {
-                                    tool_name: _,
-                                    tool_output,
-                                    tool_execution_id,
-                                    status: result_status,
-                                    ..
-                                } => {
-                                    // Update existing tool use entry to mark as completed
-                                    if let Some(AgentActivityRow::ToolUse { ref mut completed, ref mut last_line, ref mut status, .. }) =
-                                        activity_entries.iter_mut().rev().find(|entry| {
-                                            matches!(entry, AgentActivityRow::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_execution_id)
-                                        }) {
-                                        *completed = true;
-                                        *status = result_status.clone();
-                                        // Set last_line to first line of final output if not already set
-                                        if last_line.is_none() {
-                                            *last_line = Some(tool_output.lines().next().unwrap_or("Completed").to_string());
-                                        }
-                                    } else {
-                                    }
-                                }
-                                // Other events (Status, Log without tool_execution_id) are not converted to activity entries
-                                // They might be used for other purposes like status updates
-                                _ => return, // Skip events that don't affect activity entries
-                            };
-
-                            // Keep only the most recent N events
-                            let before_trim = activity_entries.len();
-                            while activity_entries.len() > self.settings.activity_rows() {
-                                activity_entries.remove(0);
-                            }
-                            if before_trim > activity_entries.len() {}
-
-                            // Height remains fixed at 5 for active cards (title + separator + max 3 activity lines)
+                    if card_info.index < self.task_cards.len() {
+                        if let Ok(mut card) = self.task_cards[card_info.index].lock() {
+                            card.process_task_event(event, &self.settings);
                         }
                     }
                 }
@@ -3288,84 +3685,31 @@ impl ViewModel {
         }
     }
 
-    /// Initialize the shared task event channel
-    fn initialize_task_event_channel(&mut self) {
-        if self.task_event_sender.is_none() {
-            let (tx, rx) = mpsc::channel(100);
-            self.task_event_sender = Some(tx);
-            self.task_event_receiver = Some(rx);
-        }
-    }
-
-    /// Rebuild the task_id to card info mapping for fast lookups
-    pub fn rebuild_task_id_mapping(&mut self) {
-        self.task_id_to_card_info.clear();
-
-        // Add draft cards
-        for (index, card) in self.draft_cards.iter().enumerate() {
-            self.task_id_to_card_info.insert(
-                card.id.clone(),
-                TaskCardInfo {
-                    card_type: TaskCardTypeEnum::Draft,
-                    index,
-                },
-            );
-        }
-
-        // Add task cards
-        for (index, card) in self.task_cards.iter().enumerate() {
-            self.task_id_to_card_info.insert(
-                card.task.id.clone(),
-                TaskCardInfo {
-                    card_type: TaskCardTypeEnum::Task,
-                    index,
-                },
-            );
-        }
-    }
-
-    /// Start consuming events for a launched task
-    fn start_task_event_consumption(&mut self, task_id: &str) {
-        // Initialize shared channel if not already done
-        self.initialize_task_event_channel();
-
-        let stream = self.task_manager.task_events_stream(task_id);
-        let task_id_owned = task_id.to_string();
-        let task_id_for_hashmap = task_id.to_string();
-
-        // Clone the shared sender for this task
-        let tx = self.task_event_sender.as_ref().unwrap().clone();
-
-        // Spawn a task to consume the event stream and send events with task_id to the shared channel
-        let handle = tokio::spawn(async move {
-            let mut stream = stream;
-            while let Some(event) = stream.next().await {
-                let _ = tx.send((task_id_owned.clone(), event)).await;
-            }
-        });
-
-        self.active_task_streams.insert(task_id_for_hashmap, handle);
-    }
-
-    /// Process any pending task events from the shared receiver (non-blocking)
+    /// Process any pending task events (non-blocking)
+    /// Check if any task cards need redrawing due to recent event processing
     pub fn process_pending_task_events(&mut self) {
-        // Collect all available events first to avoid borrow conflicts
-        let mut pending_events = Vec::new();
-        if let Some(ref mut receiver) = self.task_event_receiver {
-            while let Ok(event) = receiver.try_recv() {
-                pending_events.push(event);
+        // Check if any task cards need redrawing
+        let mut needs_redraw = false;
+        for task_card in &self.task_cards {
+            if let Ok(card) = task_card.lock() {
+                if card.needs_redraw() {
+                    needs_redraw = true;
+                    // Clear the flag after checking (lazy redrawing)
+                    // We can't modify the card here since we have a read lock
+                    break;
+                }
             }
         }
 
-        // Now process the collected events
-        let mut events_processed = false;
-        for (task_id, event) in pending_events {
-            self.process_task_event(&task_id, event);
-            events_processed = true;
-        }
-
-        // If we processed events, we need to redraw the UI
-        if events_processed {
+        if needs_redraw {
+            // Clear redraw flags on all task cards that need it
+            for task_card in &self.task_cards {
+                if let Ok(mut card) = task_card.lock() {
+                    if card.needs_redraw() {
+                        card.clear_needs_redraw();
+                    }
+                }
+            }
             self.needs_redraw = true;
         }
     }
@@ -3384,7 +3728,7 @@ impl ViewModel {
                     repository: draft_info.repository,
                     branch: draft_info.branch,
                     models: vec![SelectedModel {
-                        name: "Claude".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
                         count: 1,
                     }], // Default model
                     created_at: draft_info.created_at,
@@ -3394,6 +3738,8 @@ impl ViewModel {
                     CardFocusElement::TaskDescription,
                     Some(self.repositories_enumerator.clone()),
                     Some(self.branches_enumerator.clone()),
+                    Arc::clone(&self.workspace_files),
+                    Arc::clone(&self.workspace_workflows),
                 );
                 self.draft_cards.push(draft_card);
             }
@@ -3402,27 +3748,21 @@ impl ViewModel {
         // Convert task TaskExecution to task cards
         for task_execution in &task_executions {
             let task_card = create_task_card_from_execution(task_execution.clone(), &self.settings);
-            self.task_cards.push(task_card);
+            let task_card_arc = Arc::new(Mutex::new(task_card));
+            self.task_cards.push(task_card_arc);
         }
 
         // UI is already updated since we pushed the cards directly
 
-        // Build the task ID mapping for fast lookups
-        self.rebuild_task_id_mapping();
-
-        // Start event consumption for active tasks so they show live activity
-        for task_execution in &task_executions {
-            if matches!(task_execution.state, TaskState::Active) {
-                self.start_task_event_consumption(&task_execution.id);
-            }
-        }
+        // Note: Active tasks loaded from the task manager should already have their own
+        // spawned event consumers. The main thread doesn't need to get receivers for them.
 
         Ok(())
     }
 
     /// Get the currently focused draft card (mutable reference)
     pub fn get_focused_draft_card_mut(&mut self) -> Option<&mut TaskEntryViewModel> {
-        if let FocusElement::DraftTask(index) = self.focus_element {
+        if let DashboardFocusState::DraftTask(index) = self.focus_element {
             self.draft_cards.get_mut(index)
         } else {
             None
@@ -3431,7 +3771,7 @@ impl ViewModel {
 
     /// Get the currently focused draft card (immutable reference)
     pub fn get_focused_draft_card(&self) -> Option<&TaskEntryViewModel> {
-        if let FocusElement::DraftTask(index) = self.focus_element {
+        if let DashboardFocusState::DraftTask(index) = self.focus_element {
             self.draft_cards.get(index)
         } else {
             None
@@ -3517,6 +3857,7 @@ impl ViewModel {
                 text.lines().map(|s| s.to_string()).collect::<Vec<String>>(),
             );
             card.description.set_cursor_line_style(ratatui::style::Style::default());
+            card.description.disable_cursor_rendering();
         }
     }
 
@@ -3547,12 +3888,25 @@ impl ViewModel {
     pub fn update_active_task_activities(&mut self) -> bool {
         // Simulate activity updates for active tasks
         let mut had_changes = false;
-        for card in self.task_cards.iter_mut() {
-            if card.task.state == TaskState::Active {
-                // In real implementation, would receive via SSE
-                // For testing, simulate random activities
-                // For now, just return false since we don't actually change anything
-                had_changes = false;
+        for card in &self.task_cards {
+            if let Ok(card_guard) = card.lock() {
+                let is_active = matches!(
+                    card_guard.task.state,
+                    TaskState::Queued
+                        | TaskState::Provisioning
+                        | TaskState::Running
+                        | TaskState::Pausing
+                        | TaskState::Paused
+                        | TaskState::Resuming
+                        | TaskState::Stopping
+                        | TaskState::Stopped
+                );
+                if is_active {
+                    // In real implementation, would receive via SSE
+                    // For testing, simulate random activities
+                    // For now, just return false since we don't actually change anything
+                    had_changes = false;
+                }
             }
         }
         had_changes
@@ -3570,8 +3924,34 @@ impl ViewModel {
     }
 
     pub fn handle_models_loaded(&mut self, models: Vec<String>) {
-        self.available_models = models;
+        // Convert string models to ModelInfo structs
+        // For now, assume all models are Claude models - this may need refinement
+        self.available_models = models
+            .into_iter()
+            .map(|display_name| {
+                // Extract agent type from display name pattern
+                let agent_model_name = if display_name.starts_with("Claude") {
+                    if display_name.contains("Sonnet") {
+                        "sonnet".to_string()
+                    } else if display_name.contains("Opus") {
+                        "opus".to_string()
+                    } else {
+                        display_name.to_lowercase().replace(" ", "")
+                    }
+                } else if display_name.starts_with("GPT-5") {
+                    display_name.to_lowercase().replace(" ", "").replace("gpt-5", "gpt-5")
+                } else {
+                    display_name.to_string()
+                };
+                ModelInfo {
+                    display_name,
+                    agent_model_name,
+                }
+            })
+            .collect();
         self.loading_models = false;
+        // Clear cache since models changed
+        self.model_display_names_cache = None;
     }
 
     pub fn handle_task_created(&mut self, _task_id: String) {
@@ -3589,40 +3969,40 @@ impl ViewModel {
     /// Navigate up through the UI hierarchy
     pub fn navigate_up_hierarchy(&mut self) -> bool {
         let new_focus = match self.focus_element {
-            FocusElement::SettingsButton => {
+            DashboardFocusState::SettingsButton => {
                 // At top, wrap to bottom (last existing task or filter separator or last draft)
                 if !self.task_cards.is_empty() {
-                    FocusElement::ExistingTask(self.task_cards.len() - 1)
+                    DashboardFocusState::ExistingTask(self.task_cards.len() - 1)
                 } else if self.draft_cards.is_empty() {
-                    FocusElement::FilterBarSeparator
+                    DashboardFocusState::FilterBarSeparator
                 } else {
-                    FocusElement::DraftTask(self.draft_cards.len() - 1)
+                    DashboardFocusState::DraftTask(self.draft_cards.len() - 1)
                 }
             }
-            FocusElement::DraftTask(idx) => {
+            DashboardFocusState::DraftTask(idx) => {
                 if idx == 0 {
                     // First draft, go to settings
-                    FocusElement::SettingsButton
+                    DashboardFocusState::SettingsButton
                 } else {
                     // Previous draft
-                    FocusElement::DraftTask(idx - 1)
+                    DashboardFocusState::DraftTask(idx - 1)
                 }
             }
-            FocusElement::FilterBarSeparator => {
+            DashboardFocusState::FilterBarSeparator => {
                 // From filter separator, go to last draft or settings
                 if !self.draft_cards.is_empty() {
-                    FocusElement::DraftTask(self.draft_cards.len() - 1)
+                    DashboardFocusState::DraftTask(self.draft_cards.len() - 1)
                 } else {
-                    FocusElement::SettingsButton
+                    DashboardFocusState::SettingsButton
                 }
             }
-            FocusElement::ExistingTask(idx) => {
+            DashboardFocusState::ExistingTask(idx) => {
                 if idx == 0 {
                     // First existing task, go to filter separator
-                    FocusElement::FilterBarSeparator
+                    DashboardFocusState::FilterBarSeparator
                 } else {
                     // Previous existing task
-                    FocusElement::ExistingTask(idx - 1)
+                    DashboardFocusState::ExistingTask(idx - 1)
                 }
             }
             // Other focus elements stay the same
@@ -3631,8 +4011,8 @@ impl ViewModel {
 
         if new_focus != self.focus_element {
             // Reset internal focus of draft cards when they lose global focus
-            if let FocusElement::DraftTask(idx) = self.focus_element {
-                if !matches!(new_focus, FocusElement::DraftTask(_)) {
+            if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                if !matches!(new_focus, DashboardFocusState::DraftTask(_)) {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         card.focus_element = CardFocusElement::TaskDescription;
                     }
@@ -3650,45 +4030,45 @@ impl ViewModel {
     /// Navigate down through the UI hierarchy
     pub fn navigate_down_hierarchy(&mut self) -> bool {
         let new_focus = match self.focus_element {
-            FocusElement::SettingsButton => {
+            DashboardFocusState::SettingsButton => {
                 // From settings, go to first draft or filter separator or first existing
                 if !self.draft_cards.is_empty() {
-                    FocusElement::DraftTask(0)
+                    DashboardFocusState::DraftTask(0)
                 } else if !self.task_cards.is_empty() {
-                    FocusElement::FilterBarSeparator
+                    DashboardFocusState::FilterBarSeparator
                 } else {
-                    FocusElement::ExistingTask(0)
+                    DashboardFocusState::ExistingTask(0)
                 }
             }
-            FocusElement::DraftTask(idx) => {
+            DashboardFocusState::DraftTask(idx) => {
                 if idx >= self.draft_cards.len() - 1 {
                     // Last draft, go to filter separator if we have existing tasks
                     if !self.task_cards.is_empty() {
-                        FocusElement::FilterBarSeparator
+                        DashboardFocusState::FilterBarSeparator
                     } else {
                         // No existing tasks, wrap to settings
-                        FocusElement::SettingsButton
+                        DashboardFocusState::SettingsButton
                     }
                 } else {
                     // Next draft
-                    FocusElement::DraftTask(idx + 1)
+                    DashboardFocusState::DraftTask(idx + 1)
                 }
             }
-            FocusElement::FilterBarSeparator => {
+            DashboardFocusState::FilterBarSeparator => {
                 // From filter separator, go to first existing task or wrap to settings
                 if !self.task_cards.is_empty() {
-                    FocusElement::ExistingTask(0)
+                    DashboardFocusState::ExistingTask(0)
                 } else {
-                    FocusElement::SettingsButton
+                    DashboardFocusState::SettingsButton
                 }
             }
-            FocusElement::ExistingTask(idx) => {
+            DashboardFocusState::ExistingTask(idx) => {
                 if idx >= self.task_cards.len() - 1 {
                     // Last existing task, wrap to settings
-                    FocusElement::SettingsButton
+                    DashboardFocusState::SettingsButton
                 } else {
                     // Next existing task
-                    FocusElement::ExistingTask(idx + 1)
+                    DashboardFocusState::ExistingTask(idx + 1)
                 }
             }
             // Other focus elements stay the same
@@ -3697,8 +4077,8 @@ impl ViewModel {
 
         if new_focus != self.focus_element {
             // Reset internal focus of draft cards when they lose global focus
-            if let FocusElement::DraftTask(idx) = self.focus_element {
-                if !matches!(new_focus, FocusElement::DraftTask(_)) {
+            if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                if !matches!(new_focus, DashboardFocusState::DraftTask(_)) {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         card.focus_element = CardFocusElement::TaskDescription;
                     }
@@ -3734,6 +4114,8 @@ fn create_draft_card_textarea(text: &str) -> tui_textarea::TextArea<'static> {
     // Remove underline styling from textarea
     textarea.set_style(Style::default().remove_modifier(Modifier::UNDERLINED));
     textarea.set_cursor_line_style(Style::default());
+    // Disable cursor rendering since we use real terminal cursor
+    textarea.disable_cursor_rendering();
     if text.is_empty() {
         textarea.set_placeholder_text("Describe what you want the agent to do...");
     }
@@ -3746,6 +4128,8 @@ pub fn create_draft_card_from_task(
     focus_element: CardFocusElement,
     repositories_enumerator: Option<Arc<dyn RepositoriesEnumerator>>,
     branches_enumerator: Option<Arc<dyn BranchesEnumerator>>,
+    workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
+    workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
 ) -> TaskEntryViewModel {
     let description = create_draft_card_textarea(&task.description);
 
@@ -3781,6 +4165,15 @@ pub fn create_draft_card_from_task(
     let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
     let height = inner_height as u16 + 2; // account for rounded border
 
+    let deps = Arc::new(crate::view_model::autocomplete::AutocompleteDependencies {
+        workspace_files: workspace_files,
+        workspace_workflows: workspace_workflows,
+        settings: crate::settings::Settings::default(),
+    });
+
+    // Create autocomplete dependencies if enumerators are available
+    let autocomplete = crate::view_model::autocomplete::InlineAutocomplete::with_dependencies(deps);
+
     TaskEntryViewModel {
         id: task.id,
         repository: task.repository,
@@ -3795,6 +4188,7 @@ pub fn create_draft_card_from_task(
         auto_save_timer: None,
         repositories_enumerator,
         branches_enumerator,
+        autocomplete,
     }
 }
 
@@ -3824,7 +4218,15 @@ fn create_task_card_from_execution(
     };
 
     let card_type = match task.state {
-        TaskState::Active => {
+        // Map running/intermediate states to Active card type
+        TaskState::Queued
+        | TaskState::Provisioning
+        | TaskState::Running
+        | TaskState::Pausing
+        | TaskState::Paused
+        | TaskState::Resuming
+        | TaskState::Stopping
+        | TaskState::Stopped => {
             let activity_entries = task
                 .activity
                 .iter()
@@ -3837,9 +4239,16 @@ fn create_task_card_from_execution(
                 pause_delete_buttons: "Pause | Delete".to_string(),
             }
         }
-        TaskState::Completed => TaskCardType::Completed {
-            delivery_indicators: String::new(),
-        },
+        // Map final states to Completed card type
+        TaskState::Completed | TaskState::Failed | TaskState::Cancelled => {
+            TaskCardType::Completed {
+                delivery_indicators: match task.state {
+                    TaskState::Failed => "Failed".to_string(),
+                    TaskState::Cancelled => "Cancelled".to_string(),
+                    _ => String::new(),
+                },
+            }
+        }
         TaskState::Merged => TaskCardType::Merged {
             delivery_indicators: String::new(),
         },
@@ -3853,7 +4262,8 @@ fn create_task_card_from_execution(
         metadata,
         height: 1, // Will be calculated in the view layer
         card_type,
-        focus_element: FocusElement::SettingsButton, // Default focus for task cards (not used)
+        focus_element: TaskExecutionFocusState::None, // Default focus for task cards (not used)
+        needs_redraw: false,
     }
 }
 
@@ -3861,7 +4271,7 @@ fn create_task_card_from_execution(
 fn create_draft_card_view_models(
     draft_tasks: &[DraftTask],
     _task_executions: &[TaskExecution],
-    focus_element: FocusElement,
+    focus_element: DashboardFocusState,
 ) -> Vec<TaskEntryViewModel> {
     draft_tasks
         .iter()
@@ -3914,6 +4324,7 @@ fn create_draft_card_view_models(
                 auto_save_timer: None,
                 repositories_enumerator: None,
                 branches_enumerator: None,
+                autocomplete: panic!("This function should not be used"),
             }
         })
         .collect()
@@ -3954,7 +4365,15 @@ fn create_task_card_view_models(
                     };
 
                     let card_type = match task_execution.state {
-                        TaskState::Active => TaskCardType::Active {
+                        // Map running/intermediate states to Active card type
+                        TaskState::Queued
+                        | TaskState::Provisioning
+                        | TaskState::Running
+                        | TaskState::Pausing
+                        | TaskState::Paused
+                        | TaskState::Resuming
+                        | TaskState::Stopping
+                        | TaskState::Stopped => TaskCardType::Active {
                             activity_entries: task_execution
                                 .activity
                                 .iter()
@@ -3964,9 +4383,16 @@ fn create_task_card_view_models(
                                 .collect(),
                             pause_delete_buttons: "Pause | Delete".to_string(),
                         },
-                        TaskState::Completed => TaskCardType::Completed {
-                            delivery_indicators: String::new(),
-                        },
+                        // Map final states to Completed card type
+                        TaskState::Completed | TaskState::Failed | TaskState::Cancelled => {
+                            TaskCardType::Completed {
+                                delivery_indicators: match task_execution.state {
+                                    TaskState::Failed => "Failed".to_string(),
+                                    TaskState::Cancelled => "Cancelled".to_string(),
+                                    _ => String::new(),
+                                },
+                            }
+                        }
                         TaskState::Merged => TaskCardType::Merged {
                             delivery_indicators: String::new(),
                         },
@@ -3980,7 +4406,8 @@ fn create_task_card_view_models(
                         metadata,
                         height: calculate_card_height(&task_execution, settings),
                         card_type,
-                        focus_element: FocusElement::SettingsButton,
+                        focus_element: TaskExecutionFocusState::None,
+                        needs_redraw: false,
                     }
                 }
                 TaskItem::Draft(_) => {
@@ -4008,7 +4435,7 @@ fn create_modal_view_model(
     modal_state: ModalState,
     available_repositories: &[String],
     available_branches: &[String],
-    available_models: &[String],
+    available_models: &[ModelInfo],
     current_draft: &Option<DraftTask>,
     activity_lines_count: usize,
     word_wrap_enabled: bool,
@@ -4049,7 +4476,10 @@ fn create_modal_view_model(
                 .as_ref()
                 .and_then(|draft| draft.models.first())
                 .map(|model| model.name.as_str());
-            let (options, selected_index) = build_modal_options(available_models, selected_model);
+            let model_display_names: Vec<String> =
+                available_models.iter().map(|model| model.display_name.clone()).collect();
+            let (options, selected_index) =
+                build_modal_options(&model_display_names, selected_model);
             Some(ModalViewModel {
                 title: "Select model".to_string(),
                 input_value: String::new(),
@@ -4143,7 +4573,7 @@ fn build_modal_options(
 
 fn create_footer_view_model(
     focused_draft: Option<&DraftTask>,
-    focus_element: FocusElement,
+    focus_element: DashboardFocusState,
     modal_state: ModalState,
     _settings: &Settings,
     _word_wrap_enabled: bool,
@@ -4220,7 +4650,7 @@ fn create_footer_view_model(
                 )],
             ));
         }
-        (FocusElement::DraftTask(_), ModalState::None) if focused_draft.is_some() => {
+        (DashboardFocusState::DraftTask(_), ModalState::None) if focused_draft.is_some() => {
             // Draft textarea focused: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::IndentOrComplete,
@@ -4250,7 +4680,7 @@ fn create_footer_view_model(
                 )],
             ));
         }
-        (FocusElement::ExistingTask(_), ModalState::None) => {
+        (DashboardFocusState::ExistingTask(_), ModalState::None) => {
             // Completed/merged task focused: "↑↓ Navigate • Enter Show Task Details • Ctrl+C x2 Quit"
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::MoveToNextLine,

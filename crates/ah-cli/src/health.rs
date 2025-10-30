@@ -4,7 +4,7 @@
 //! Health check commands
 
 use ah_mux::TmuxMultiplexer;
-use ah_mux::detection::{TerminalEnvironment, detect_terminal_environments};
+use ah_mux::detection::detect_terminal_environments;
 use ah_mux_core::Multiplexer;
 use clap::Args;
 use std::collections::HashMap;

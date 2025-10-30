@@ -25,11 +25,11 @@
 
 ### Core Concepts
 
-- **Task**: A request to run an agent with a prompt and runtime parameters.
-- **Session**: The running instance of a task with lifecycle and logs; owns a per‑task workspace.
+- **Task**: A user-entered prompt/request to perform some coding work.
+- **Session**: The running instance of a particular agent-software/model pair working on a particular task; owns a per‑session workspace and has its own lifecycle and logs.
 - **Workspace**: Isolated filesystem mount realized by snapshot provider or copy, optionally inside a devcontainer.
 - **Runtime**: The execution environment for the agent (devcontainer/local), plus resource limits.
-- **Agent**: The tool performing the coding task.
+- **Agent**: The tool performing the coding task (e.g., Claude Code, OpenHands).
 
 ### Lifecycle States
 
@@ -120,7 +120,7 @@ Response `201 Created`:
 
 ```json
 {
-  "id": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+  "session_ids": ["01HVZ6K9T1N8S6M3V3Q3F0X5B7"],
   "status": "queued",
   "links": {
     "self": "/api/v1/sessions/01HVZ6K9T1...",
@@ -129,6 +129,8 @@ Response `201 Created`:
   }
 }
 ```
+
+Note: When multiple models are specified, multiple sessions are created and `session_ids` will contain multiple IDs.
 
 Notes:
 
@@ -170,7 +172,7 @@ The server implements a sophisticated task execution workflow designed for perfo
 
 - `GET /api/v1/sessions?status=running&projectId=storefront&page=1&perPage=20`
 
-Response `200 OK` includes array of sessions and pagination metadata.
+Response `200 OK` includes array of sessions and pagination metadata. Each session represents one agent-software/model pair working on a task.
 
 **Session Object Structure:**
 

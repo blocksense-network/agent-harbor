@@ -143,7 +143,7 @@ pub fn render_header(
         let theme = crate::view::Theme::default();
         let button_style = if matches!(
             view_model.focus_element,
-            crate::view_model::FocusElement::SettingsButton
+            crate::view_model::DashboardFocusState::SettingsButton
         ) {
             Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
         } else {

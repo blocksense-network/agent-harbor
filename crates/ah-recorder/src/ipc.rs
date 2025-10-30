@@ -30,11 +30,13 @@ use tracing::{debug, error, info};
 #[ssz(enum_behaviour = "union")]
 pub enum Request {
     /// Snapshot notification: (snapshot_id, label as UTF-8 bytes)
+    /// snapshot_id may be 0 for pending snapshots (will be updated later)
     Snapshot((u64, Vec<u8>)),
 }
 
 impl Request {
     /// Create a snapshot notification request
+    /// snapshot_id may be 0 if the actual ID will be determined later
     pub fn snapshot(snapshot_id: u64, label: String) -> Self {
         Self::Snapshot((snapshot_id, label.into_bytes()))
     }
@@ -163,7 +165,7 @@ impl IpcServer {
 
         // Spawn accept loop
         tokio::spawn(async move {
-            eprintln!("DEBUG: IPC server accept loop started");
+            debug!("IPC server accept loop started");
             loop {
                 if shutdown.load(Ordering::Relaxed) {
                     break;
@@ -171,7 +173,7 @@ impl IpcServer {
 
                 match listener.accept().await {
                     Ok((stream, _addr)) => {
-                        eprintln!("DEBUG: IPC server accepted connection");
+                        debug!("IPC server accepted connection");
                         let tx = command_tx.clone();
                         tokio::spawn(async move {
                             if let Err(e) = handle_connection(stream, tx).await {
@@ -237,10 +239,6 @@ async fn handle_connection(
                 "Received snapshot notification: id={}, label={:?}",
                 snapshot_id, label
             );
-            eprintln!(
-                "DEBUG: IPC server received snapshot notification: id={}, label={:?}",
-                snapshot_id, label
-            );
 
             // Send command to recorder and wait for response
             let (response_tx, response_rx) = tokio::sync::oneshot::channel();
@@ -287,7 +285,7 @@ impl IpcClient {
         Self { socket_path }
     }
 
-    /// Send a snapshot notification
+    /// Send a snapshot notification (legacy)
     pub async fn notify_snapshot(&self, snapshot_id: u64, label: String) -> io::Result<Response> {
         let stream = UnixStream::connect(&self.socket_path).await?;
         let mut reader = BufReader::new(stream);

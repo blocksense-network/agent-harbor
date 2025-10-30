@@ -184,7 +184,11 @@ impl AgentExecutor for CursorAgent {
     ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Cursor CLI launch with prompt: {:?}",
-            config.prompt.chars().take(50).collect::<String>()
+            config
+                .prompt
+                .as_ref()
+                .map(|p| p.chars().take(50).collect::<String>())
+                .unwrap_or_default()
         );
 
         // Check if we're using a custom HOME directory
@@ -234,8 +238,10 @@ impl AgentExecutor for CursorAgent {
         // This works better with exec() and doesn't seem to be needed for cursor-agent
 
         // Add the prompt as argument
-        if !config.prompt.is_empty() {
-            cmd.arg(&config.prompt);
+        if let Some(prompt) = &config.prompt {
+            if !prompt.is_empty() {
+                cmd.arg(prompt);
+            }
         }
 
         debug!("Cursor CLI command prepared successfully");

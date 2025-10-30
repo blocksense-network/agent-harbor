@@ -52,18 +52,22 @@ impl Stream for SessionEventStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ah_rest_api_contract::{EventType, SessionStatus};
+    use ah_rest_api_contract::SessionStatus;
 
     #[test]
     fn test_session_event_parsing() {
         let event_json = r#"{
             "type": "status",
             "status": "running",
-            "ts": "2025-01-01T12:00:00Z"
+            "timestamp": 1733030400
         }"#;
 
         let event: ah_rest_api_contract::SessionEvent = serde_json::from_str(event_json).unwrap();
-        assert_eq!(event.event_type, EventType::Status);
-        assert_eq!(event.status, Some(SessionStatus::Running));
+        match event {
+            ah_rest_api_contract::SessionEvent::Status(event) => {
+                assert_eq!(event.status, ah_rest_api_contract::SessionStatus::Running);
+            }
+            _ => panic!("Expected Status event"),
+        }
     }
 }

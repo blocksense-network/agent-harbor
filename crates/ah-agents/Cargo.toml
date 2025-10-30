@@ -26,7 +26,8 @@ regex = "1.10"
 chrono = "0.4"
 rusqlite = { version = "0.37", features = ["bundled"] }
 ureq = "2.9"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { workspace = true, features = ["json"] }
+tempfile = "3.8"
 
 # Platform-specific credential management
 [target.'cfg(target_os = "macos")'.dependencies]

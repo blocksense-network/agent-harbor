@@ -263,7 +263,7 @@ impl DatabaseSessionStore {
             pane_left: None,
             pane_right: None,
             pid_agent: None, // Will be set when process starts
-            status: Self::session_status_to_string(session.session.status),
+            status: Self::session_status_to_string(session.session.status.clone()),
             log_path: None,       // Will be set when recording starts
             workspace_path: None, // Will be set when workspace is provisioned
             started_at: session.session.started_at.unwrap_or_else(|| Utc::now()).to_rfc3339(),

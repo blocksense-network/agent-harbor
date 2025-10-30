@@ -153,7 +153,7 @@ pub async fn get_session_info(
         let session = &internal_session.session;
         let response = SessionInfoResponse {
             id: session.id.clone(),
-            status: session.status,
+            status: session.status.clone(),
             fleet: FleetInfo {
                 leader: "localhost".to_string(), // placeholder
                 followers: vec![],               // placeholder

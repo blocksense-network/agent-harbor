@@ -43,8 +43,10 @@ use crate::view::draft_card;
 use crate::view::{HitTestRegistry, Theme, ViewCache};
 use crate::view_model::AgentActivityRow;
 use crate::view_model::task_entry::CardFocusElement;
-use crate::view_model::{DraftSaveState, TaskEntryViewModel, TaskExecutionViewModel};
-use crate::view_model::{FocusElement, TaskCardType};
+use crate::view_model::{DashboardFocusState, TaskCardType};
+use crate::view_model::{
+    DraftSaveState, TaskEntryViewModel, TaskExecutionFocusState, TaskExecutionViewModel,
+};
 use crate::view_model::{MouseAction, TaskCardTypeEnum, ViewModel};
 use ah_core::TaskStatus;
 use ah_core::task_manager::TaskEvent;
@@ -52,6 +54,7 @@ use ah_domain_types::TaskState;
 use ah_domain_types::task::ToolStatus;
 use ratatui::{prelude::*, widgets::*};
 use ratatui_image::StatefulImage;
+use tracing::{debug, warn};
 
 /// Display item types (exact same as main.rs)
 #[derive(Debug, Clone)]
@@ -66,7 +69,7 @@ fn render_header(
     area: Rect,
     theme: &Theme,
     view_model: &mut ViewModel,
-    view_cache: &mut ViewCache,
+    cache: &mut ViewCache,
     hit_registry: &mut HitTestRegistry<MouseAction>,
 ) {
     // Create padded content area within the header
@@ -110,7 +113,10 @@ fn render_header(
             height: 1,
         };
 
-        let button_style = if matches!(view_model.focus_element, FocusElement::SettingsButton) {
+        let button_style = if matches!(
+            view_model.focus_element,
+            DashboardFocusState::SettingsButton
+        ) {
             Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
         } else {
             Style::default()
@@ -132,7 +138,7 @@ fn render_header(
     }
 
     // Try to render the logo as an image first using persisted protocol
-    if let Some(protocol) = view_cache.logo_protocol.as_mut() {
+    if let Some(protocol) = cache.logo_protocol.as_mut() {
         // Render the logo image using StatefulImage widget in the padded area
         let image_widget = StatefulImage::default();
         frame.render_stateful_widget(image_widget, content_area, protocol);
@@ -163,20 +169,25 @@ fn render_ascii_logo(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(header, area);
 }
 
-/// Main rendering function - transforms ViewModel to Ratatui widgets (exact same as main.rs)
+/// Main rendering function - transforms ViewModel to Ratatui widgets
 pub fn render(
     frame: &mut Frame<'_>,
     view_model: &mut ViewModel,
-    view_cache: &mut ViewCache,
+    cache: &mut ViewCache,
     hit_registry: &mut HitTestRegistry<MouseAction>,
 ) {
     let theme = Theme::default();
     let size = frame.area();
 
-    // Clear interactive areas before rendering (exact same as main.rs)
+    // Clear interactive areas before rendering
     hit_registry.clear();
 
-    // Background fill with theme color (exact same as main.rs)
+    // Sync cursor style from ViewModel to terminal
+    cache.sync_cursor_style(view_model.cursor_style).unwrap_or_else(|e| {
+        warn!("Failed to sync cursor style: {}", e);
+    });
+
+    // Background fill with theme color
     let bg = Paragraph::new("").style(Style::default().bg(theme.bg));
     frame.render_widget(bg, size);
 
@@ -245,7 +256,7 @@ pub fn render(
         main_layout[0],
         &theme,
         view_model,
-        view_cache,
+        cache,
         hit_registry,
     );
 
@@ -279,8 +290,10 @@ pub fn render(
 
     // Add task cards
     for card in &view_model.task_cards {
-        display_items.push(DisplayItem::Task(card.task.id.clone()));
-        display_items.push(DisplayItem::Spacer);
+        if let Ok(card_guard) = card.lock() {
+            display_items.push(DisplayItem::Task(card_guard.task.id.clone()));
+            display_items.push(DisplayItem::Spacer);
+        }
     }
 
     // Remove trailing spacer if present
@@ -298,11 +311,15 @@ pub fn render(
             DisplayItem::FilterBar => 1,
             DisplayItem::Task(id) => {
                 // Calculate height based on card content and presentation needs
-                if let Some(card_info) = view_model.task_id_to_card_info.get(id.as_str()) {
+                if let Some(card_info) = view_model.find_task_card_info(id.as_str()) {
                     match card_info.card_type {
                         TaskCardTypeEnum::Draft => view_model.draft_cards[card_info.index].height,
                         TaskCardTypeEnum::Task => {
-                            calculate_task_card_height(&view_model.task_cards[card_info.index])
+                            if let Ok(card_guard) = view_model.task_cards[card_info.index].lock() {
+                                calculate_task_card_height(&card_guard)
+                            } else {
+                                1
+                            }
                         }
                     }
                 } else {
@@ -335,15 +352,15 @@ pub fn render(
                 );
             }
             DisplayItem::FilterBar => {
-                render_filter_bar(frame, rect, view_model, &theme, view_cache, hit_registry);
+                render_filter_bar(frame, rect, view_model, &theme, cache, hit_registry);
             }
             DisplayItem::Task(id) => {
                 // Find and render the card using fast lookup
-                if let Some(card_info) = view_model.task_id_to_card_info.get(id.as_str()) {
+                if let Some(card_info) = view_model.find_task_card_info(id.as_str()) {
                     let card_index = match card_info.card_type {
                         TaskCardTypeEnum::Draft => {
                             let card = &view_model.draft_cards[card_info.index];
-                            let is_selected = matches!(view_model.focus_element, FocusElement::DraftTask(idx) if idx == card_info.index);
+                            let is_selected = matches!(view_model.focus_element, DashboardFocusState::DraftTask(idx) if idx == card_info.index);
                             let layout = draft_card::render_draft_card(
                                 frame,
                                 rect,
@@ -351,6 +368,12 @@ pub fn render(
                                 &theme,
                                 is_selected,
                             );
+
+                            // Update focused textarea rect for cursor positioning
+                            if is_selected && card.focus_element == crate::view_model::task_entry::CardFocusElement::TaskDescription {
+                                cache.update_focused_textarea_rect(layout.textarea);
+                            }
+
                             hit_registry.register(
                                 layout.textarea,
                                 MouseAction::FocusDraftTextarea(card_info.index),
@@ -369,10 +392,13 @@ pub fn render(
                             0 // Draft card is always at index 0
                         }
                         TaskCardTypeEnum::Task => {
-                            let card = &view_model.task_cards[card_info.index];
-                            let is_selected = matches!(view_model.focus_element, FocusElement::ExistingTask(idx) if idx == card_info.index);
-                            render_task_card(frame, rect, card, &theme, is_selected);
-                            card_info.index + 1 // Task cards start at index 1 (after draft)
+                            if let Ok(card_guard) = view_model.task_cards[card_info.index].lock() {
+                                let is_selected = matches!(view_model.focus_element, DashboardFocusState::ExistingTask(idx) if idx == card_info.index);
+                                render_task_card(frame, rect, &card_guard, &theme, is_selected);
+                                card_info.index + 1 // Task cards start at index 1 (after draft)
+                            } else {
+                                card_info.index + 1
+                            }
                         }
                     };
 
@@ -420,6 +446,43 @@ pub fn render(
             theme.surface,
         );
     }
+
+    // Set cursor position for focused textarea (Ratatui hides cursor by default each frame)
+    use crate::view_model::DashboardFocusState;
+    use crate::view_model::task_entry::CardFocusElement;
+
+    // Check if a textarea is currently focused
+    let textarea_focused = if let DashboardFocusState::DraftTask(idx) = view_model.focus_element {
+        view_model.draft_cards.get(idx).map_or(false, |card| {
+            card.focus_element == CardFocusElement::TaskDescription
+        })
+    } else {
+        false
+    };
+
+    if textarea_focused {
+        if let (Some(textarea_rect), Some(card)) = (
+            cache.focused_textarea_rect,
+            view_model.get_focused_draft_card(),
+        ) {
+            let (cursor_row, cursor_col) = card.description.cursor();
+
+            // Calculate absolute screen position within the textarea
+            // Account for any block borders/padding
+            let inner_rect = card
+                .description
+                .block()
+                .map(|block| block.inner(textarea_rect))
+                .unwrap_or(textarea_rect);
+
+            let cursor_x = inner_rect.x + cursor_col as u16;
+            let cursor_y = inner_rect.y + cursor_row as u16;
+
+            // Tell Ratatui to show the cursor at this position
+            frame.set_cursor_position((cursor_x, cursor_y));
+        }
+    }
+    // If no textarea is focused, Ratatui will hide the cursor by default
 }
 
 // Helper function to find the textarea area for a given card (needed for cursor positioning)
@@ -482,8 +545,19 @@ fn render_task_card(
 
     // Use the same logic as main.rs for different task states
     match card.task.state {
-        TaskState::Active => render_active_task_card(frame, inner_area, card, theme),
-        TaskState::Completed => render_completed_task_card(frame, inner_area, card, theme),
+        // Map running/intermediate states to active card rendering
+        TaskState::Queued
+        | TaskState::Provisioning
+        | TaskState::Running
+        | TaskState::Pausing
+        | TaskState::Paused
+        | TaskState::Resuming
+        | TaskState::Stopping
+        | TaskState::Stopped => render_active_task_card(frame, inner_area, card, theme),
+        // Map final states to completed card rendering
+        TaskState::Completed | TaskState::Failed | TaskState::Cancelled => {
+            render_completed_task_card(frame, inner_area, card, theme)
+        }
         TaskState::Merged => render_completed_task_card(frame, inner_area, card, theme), // Same rendering as completed
         TaskState::Draft => {} // Should not happen for task cards
     }
@@ -547,7 +621,7 @@ fn render_active_task_card(
     }
 
     // Add the Stop button with focus styling
-    let stop_style = if matches!(card.focus_element, FocusElement::StopButton(_)) {
+    let stop_style = if matches!(card.focus_element, TaskExecutionFocusState::StopButton) {
         Style::default().fg(theme.bg).bg(theme.error).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.error).bg(theme.surface).add_modifier(Modifier::BOLD)
@@ -805,14 +879,17 @@ fn render_filter_bar(
     area: Rect,
     view_model: &ViewModel,
     theme: &Theme,
-    view_cache: &mut ViewCache,
+    cache: &mut ViewCache,
     hit_registry: &mut HitTestRegistry<MouseAction>,
 ) {
     let repo_label = "All".to_string(); // TODO: Get from view_model
     let status_label = "All".to_string(); // TODO: Get from view_model
     let creator_label = "All".to_string(); // TODO: Get from view_model
 
-    let is_separator_focused = matches!(view_model.focus_element, FocusElement::FilterBarSeparator);
+    let is_separator_focused = matches!(
+        view_model.focus_element,
+        DashboardFocusState::FilterBarSeparator
+    );
     let border_style = if is_separator_focused {
         Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
     } else {
@@ -838,7 +915,7 @@ fn render_filter_bar(
     );
     push_span(&mut spans, &mut consumed, "  ", Style::default());
 
-    let repo_style = if matches!(view_model.focus_element, FocusElement::Filter(_)) {
+    let repo_style = if matches!(view_model.focus_element, DashboardFocusState::Filter(_)) {
         theme.focused_style()
     } else {
         Style::default().fg(theme.text)
@@ -879,7 +956,7 @@ fn render_filter_bar(
         push_span(
             &mut spans,
             &mut consumed,
-            view_cache.get_separator(remaining as u16),
+            cache.get_separator(remaining as u16),
             border_style,
         );
     }

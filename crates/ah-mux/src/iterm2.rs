@@ -83,7 +83,7 @@ impl ITerm2Multiplexer {
     /// Get the number of windows in iTerm2
     fn get_window_count(&self) -> Result<usize, MuxError> {
         let script = r#"
-            tell application "iTerm"
+            tell application "iTerm2"
                 count of windows
             end tell
         "#;
@@ -96,7 +96,7 @@ impl ITerm2Multiplexer {
     fn find_window_by_title(&self, title_substr: &str) -> Result<Option<WindowId>, MuxError> {
         let script = format!(
             r#"
-            tell application "iTerm"
+            tell application "iTerm2"
                 set windowList to windows
                 repeat with w in windowList
                     tell current session of current tab of w
@@ -135,48 +135,46 @@ impl Multiplexer for ITerm2Multiplexer {
             .unwrap_or(false)
         &&
         // Check if iTerm2 is installed (try to get its version)
-        self.run_applescript(r#"tell application "iTerm" to version"#)
+        self.run_applescript(r#"tell application "iTerm2" to version"#)
             .is_ok()
     }
 
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
         let window_id = self.next_window_id();
 
-        let mut script = format!(
-            r#"
-            tell application "iTerm"
+        let script = r#"
+            tell application "iTerm2"
                 activate
-                set newWindow to (create window with default profile)
-        "#
-        );
+                if not (exists current window) then
+                    create window with default profile
+                end if
+                tell current window
+                    create tab with default profile
+                end tell
+            end tell
+        "#;
 
-        if let Some(title) = opts.title {
-            script.push_str(&format!(
+        self.run_applescript(script)?;
+
+        // Give iTerm2 a moment to create the tab
+        std::thread::sleep(Duration::from_millis(200));
+
+        // If a working directory is specified, cd to it
+        if let Some(cwd) = &opts.cwd {
+            let cd_script = format!(
                 r#"
-                tell current session of current tab of newWindow
-                    write text "printf '\\e]1;{}\\a'"
+                tell application "iTerm2"
+                    tell current session of current tab of current window
+                        write text "cd {}"
+                    end tell
                 end tell
             "#,
-                title.replace("\"", "\\\"").replace("'", "\\'")
-            ));
+                cwd.display()
+            );
+
+            self.run_applescript(&cd_script)?;
+            std::thread::sleep(Duration::from_millis(100));
         }
-
-        script.push_str(
-            r#"
-                return "window-1"
-            end tell
-        "#,
-        );
-
-        let result = self.run_applescript(&script)?;
-        if result.is_empty() {
-            return Err(MuxError::CommandFailed(
-                "Failed to create window".to_string(),
-            ));
-        }
-
-        // Give iTerm2 a moment to create the window
-        std::thread::sleep(Duration::from_millis(200));
 
         Ok(window_id)
     }
@@ -187,7 +185,7 @@ impl Multiplexer for ITerm2Multiplexer {
         _target: Option<&PaneId>,
         dir: SplitDirection,
         _percent: Option<u8>,
-        _opts: &CommandOptions,
+        opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
         let pane_id = self.next_pane_id();
@@ -199,27 +197,34 @@ impl Multiplexer for ITerm2Multiplexer {
 
         let mut script = format!(
             r#"
-            tell application "iTerm"
-                tell current tab of window 1
-                    set newPane to (split {} with default profile)
+            tell application "iTerm2"
+                tell current session of current tab of current window
+                    split {} with default profile
+                end tell
         "#,
             direction
         );
 
         if let Some(cmd) = initial_cmd {
+            // Build the command with working directory if specified
+            let full_cmd = if let Some(cwd) = &opts.cwd {
+                format!("cd {} && {}", cwd.display(), cmd)
+            } else {
+                cmd.to_string()
+            };
+
             script.push_str(&format!(
                 r#"
-                    tell newPane
-                        write text "{}"
-                    end tell
+                tell second session of current tab of current window
+                    write text "{}"
+                end tell
             "#,
-                cmd.replace("\"", "\\\"").replace("'", "\\'")
+                full_cmd.replace("\"", "\\\"")
             ));
         }
 
         script.push_str(
             r#"
-                end tell
             end tell
         "#,
         );
@@ -232,40 +237,58 @@ impl Multiplexer for ITerm2Multiplexer {
         Ok(pane_id)
     }
 
-    fn run_command(
-        &self,
-        _pane: &PaneId,
-        cmd: &str,
-        _opts: &CommandOptions,
-    ) -> Result<(), MuxError> {
-        // For simplicity, we'll target the current session in the current tab
-        // A more sophisticated implementation would track pane IDs
+    fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
+        // Determine which session to target based on the pane ID
+        // Pane IDs ending with ".0" are the left pane (current session)
+        // Other pane IDs are the right pane (second session)
+        let session_target = if pane.ends_with(".0") {
+            "current session"
+        } else {
+            "second session"
+        };
+
+        // Build the command with working directory if specified
+        let full_cmd = if let Some(cwd) = &opts.cwd {
+            format!("cd {} && {}", cwd.display(), cmd)
+        } else {
+            cmd.to_string()
+        };
+
         let script = format!(
             r#"
-            tell application "iTerm"
-                tell current session of current tab of window 1
+            tell application "iTerm2"
+                tell {} of current tab of current window
                     write text "{}"
                 end tell
             end tell
         "#,
-            cmd.replace("\"", "\\\"").replace("'", "\\'")
+            session_target,
+            full_cmd.replace("\"", "\\\"")
         );
 
         self.run_applescript(&script)?;
         Ok(())
     }
 
-    fn send_text(&self, _pane: &PaneId, text: &str) -> Result<(), MuxError> {
+    fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
+        // Determine which session to target based on the pane ID
+        let session_target = if pane.ends_with(".0") {
+            "current session"
+        } else {
+            "second session"
+        };
+
         // Similar to run_command but for sending literal text
         let script = format!(
             r#"
-            tell application "iTerm"
-                tell current session of current tab of window 1
+            tell application "iTerm2"
+                tell {} of current tab of current window
                     write text "{}"
                 end tell
             end tell
         "#,
-            text.replace("\"", "\\\"").replace("'", "\\'")
+            session_target,
+            text.replace("\"", "\\\"")
         );
 
         self.run_applescript(&script)?;
@@ -274,7 +297,7 @@ impl Multiplexer for ITerm2Multiplexer {
 
     fn focus_window(&self, _window: &WindowId) -> Result<(), MuxError> {
         let script = r#"
-            tell application "iTerm"
+            tell application "iTerm2"
                 activate
                 -- Focus the specified window (simplified - focuses the first window)
                 -- In a full implementation, you'd parse the window ID and focus the right one
@@ -288,7 +311,7 @@ impl Multiplexer for ITerm2Multiplexer {
     fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // For now, just focus the current session
         let script = r#"
-            tell application "iTerm"
+            tell application "iTerm2"
                 tell current session of current tab of window 1
                     select
                 end tell
@@ -297,6 +320,26 @@ impl Multiplexer for ITerm2Multiplexer {
 
         self.run_applescript(script)?;
         Ok(())
+    }
+
+    fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
+        // For iTerm2, return the frontmost window
+        let script = r#"
+            tell application "iTerm2"
+                if (count of windows) > 0 then
+                    return "window-1"
+                else
+                    return ""
+                end if
+            end tell
+        "#;
+
+        let result = self.run_applescript(script)?;
+        if result.trim().is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(result.trim().to_string()))
+        }
     }
 
     fn list_windows(&self, title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {

@@ -166,6 +166,25 @@ impl AhrWriter {
         Ok(())
     }
 
+    /// Append a record and immediately flush/sync to disk
+    ///
+    /// This ensures the record is durably written before returning.
+    /// Used for critical records like snapshots where synchronous writes are required.
+    pub fn append_record_sync(&mut self, record: Record) -> Result<()> {
+        // Append the record (this may trigger a normal flush, but we want to force it)
+        self.append_record(record)?;
+
+        // Force flush any pending records
+        if !self.current_records.is_empty() {
+            self.flush_block(false)?;
+        }
+
+        // Sync to ensure data is written to disk
+        self.file.sync_all().context("Failed to sync AHR file")?;
+
+        Ok(())
+    }
+
     /// Flush the current block to disk
     ///
     /// If `is_final` is true, marks the block as the last in the stream.

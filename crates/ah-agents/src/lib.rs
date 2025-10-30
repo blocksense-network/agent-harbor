@@ -41,7 +41,7 @@
 //!         println!("Claude version: {}", version.version);
 //!
 //!         // Launch agent
-//!         let config = AgentLaunchConfig::new("Fix the bug in main.rs", "/tmp/agent-home")
+//!         let config = AgentLaunchConfig::new("/tmp/agent-home").prompt("Fix the bug in main.rs")
 //!             .api_server("http://localhost:18080");
 //!
 //!         let mut child = agent.launch(config).await?;
@@ -58,6 +58,9 @@ pub mod credentials;
 pub mod oauth_key_exchange;
 pub mod session;
 pub mod traits;
+
+// Shared utilities
+pub mod snapshot;
 
 // Agent implementations (feature-gated)
 #[cfg(feature = "claude")]

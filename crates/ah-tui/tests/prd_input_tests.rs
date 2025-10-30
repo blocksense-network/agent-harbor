@@ -9,11 +9,11 @@ use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
-use ah_tui::view_model::FocusElement;
+use ah_tui::view_model::DashboardFocusState;
 use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
-    FilterControl, MouseAction, Msg, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
-    ViewModel,
+    FilterControl, MouseAction, Msg, TaskCardType, TaskExecutionFocusState, TaskExecutionViewModel,
+    TaskMetadataViewModel, ViewModel,
 };
 use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
 use async_trait::async_trait;
@@ -86,13 +86,13 @@ mod keyboard {
     #[test]
     fn up_arrow_wraps_navigation_order() {
         let mut vm = new_view_model();
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
         send_key(&mut vm, KeyCode::Up, KeyModifiers::empty());
-        assert_eq!(vm.focus_element, FocusElement::SettingsButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
 
         send_key(&mut vm, KeyCode::Up, KeyModifiers::empty());
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
     }
 
     #[test]
@@ -102,15 +102,22 @@ mod keyboard {
         // Place caret on second line to allow movement
         if let Some(card) = vm.draft_cards.first_mut() {
             card.description.insert_str("First line\nSecond line");
-            card.description.move_cursor(tui_textarea::CursorMove::Bottom);
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+            card.description.move_cursor(tui_textarea::CursorMove::Up);
+            card.description.move_cursor(tui_textarea::CursorMove::Forward);
+            card.description.move_cursor(tui_textarea::CursorMove::Forward);
         }
 
         let up_event = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &up_event);
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+
+        if let Some(card) = vm.draft_cards.first() {
+            assert_eq!(card.description.cursor(), (0, 0));
+        }
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         // After moving up once, pressing Up again should exit to settings
         vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &up_event);
-        assert_eq!(vm.focus_element, FocusElement::SettingsButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
     }
 
     #[test]
@@ -125,13 +132,37 @@ mod keyboard {
         let down_event = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextLine, &down_event);
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextLine, &down_event);
-        assert_eq!(vm.focus_element, FocusElement::FilterBarSeparator);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
+    }
+
+    #[test]
+    fn textarea_down_moves_to_line_end_before_bubbling() {
+        let mut vm = new_view_model();
+
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("Alpha\nOmega");
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+        }
+
+        let down_event = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
+        vm.handle_keyboard_operation(KeyboardOperation::MoveToNextLine, &down_event);
+
+        if let Some(card) = vm.draft_cards.first() {
+            let last_index = card.description.lines().len() - 1;
+            let last_len =
+                card.description.lines().last().map(|line| line.chars().count()).unwrap_or(0);
+            assert_eq!(card.description.cursor(), (last_index, last_len));
+        }
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+
+        vm.handle_keyboard_operation(KeyboardOperation::MoveToNextLine, &down_event);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
     }
 
     #[test]
     fn tab_and_shift_tab_cycle_draft_controls() {
         let mut vm = new_view_model();
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
         let tab_event = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
@@ -157,76 +188,76 @@ mod keyboard {
     #[test]
     fn right_arrow_cycles_filter_controls() {
         let mut vm = new_view_model();
-        vm.focus_element = FocusElement::FilterBarLine;
+        vm.focus_element = DashboardFocusState::FilterBarLine;
 
         let right_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Repository)
+            DashboardFocusState::Filter(FilterControl::Repository)
         );
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Status)
+            DashboardFocusState::Filter(FilterControl::Status)
         );
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Creator)
+            DashboardFocusState::Filter(FilterControl::Creator)
         );
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Repository)
+            DashboardFocusState::Filter(FilterControl::Repository)
         );
     }
 
     #[test]
     fn left_arrow_cycles_filter_controls_backwards() {
         let mut vm = new_view_model();
-        vm.focus_element = FocusElement::Filter(FilterControl::Repository);
+        vm.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
 
         let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveBackwardOneCharacter, &left_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Creator)
+            DashboardFocusState::Filter(FilterControl::Creator)
         );
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveBackwardOneCharacter, &left_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Status)
+            DashboardFocusState::Filter(FilterControl::Status)
         );
     }
 
     #[test]
     fn filter_bar_line_left_key_moves_to_first_filter() {
         let mut vm = new_view_model();
-        vm.focus_element = FocusElement::FilterBarLine;
+        vm.focus_element = DashboardFocusState::FilterBarLine;
 
         let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveBackwardOneCharacter, &left_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Repository)
+            DashboardFocusState::Filter(FilterControl::Repository)
         );
     }
 
     #[test]
     fn filter_bar_line_right_key_moves_to_first_filter() {
         let mut vm = new_view_model();
-        vm.focus_element = FocusElement::FilterBarLine;
+        vm.focus_element = DashboardFocusState::FilterBarLine;
 
         let right_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
         vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
         assert_eq!(
             vm.focus_element,
-            FocusElement::Filter(FilterControl::Repository)
+            DashboardFocusState::Filter(FilterControl::Repository)
         );
     }
 
@@ -254,7 +285,7 @@ mod keyboard {
     #[ignore = "Pending implementation of Enter behavior parity with PRD"]
     fn enter_in_draft_focuses_textarea_then_launches() {
         let mut vm = new_view_model();
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
         vm.draft_cards[0].focus_element = CardFocusElement::RepositorySelector;
 
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -266,7 +297,7 @@ mod keyboard {
         }
 
         vm.handle_enter(false);
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
     }
 
     #[test]
@@ -279,7 +310,7 @@ mod keyboard {
         vm.handle_enter(true);
         let text = vm.draft_cards[0].description.lines().join("\n");
         assert!(text.contains('\n'));
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
     }
 
     #[test]
@@ -300,7 +331,7 @@ mod keyboard {
         let mut vm = new_view_model();
 
         // Initially focused on draft task
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
         // Test that KeyEventKind::Press is processed
         let press_event =
@@ -308,7 +339,7 @@ mod keyboard {
         vm.handle_key_event(press_event);
 
         // Should have moved to next focus element (from DraftTask(0) to SettingsButton)
-        assert_eq!(vm.focus_element, FocusElement::SettingsButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
 
         // Test that KeyEventKind::Repeat is also processed
         let repeat_event =
@@ -316,7 +347,7 @@ mod keyboard {
         vm.handle_key_event(repeat_event);
 
         // Should have moved to the next focus element again (SettingsButton wraps to DraftTask(0))
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
         // Test that KeyEventKind::Release is ignored (filtered at main event loop)
         let release_event =
@@ -324,7 +355,7 @@ mod keyboard {
         vm.handle_key_event(release_event);
 
         // Should have moved to SettingsButton (navigation cycles: DraftTask(0) -> SettingsButton -> DraftTask(0) -> SettingsButton)
-        assert_eq!(vm.focus_element, FocusElement::SettingsButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
     }
 
     #[test]
@@ -572,7 +603,7 @@ mod mouse {
 
         click(&mut vm, MouseAction::OpenSettings, sample_bounds(), 2, 1);
         assert_eq!(vm.modal_state, ah_tui::view_model::ModalState::Settings);
-        assert_eq!(vm.focus_element, FocusElement::SettingsButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
     }
 
     #[test]
@@ -586,23 +617,24 @@ mod mouse {
             2,
             1,
         );
-        assert_eq!(vm.focus_element, FocusElement::RepositoryButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::RepositoryButton);
         assert_eq!(
             vm.modal_state,
             ah_tui::view_model::ModalState::RepositorySearch
         );
     }
 
-    #[test]
-    fn clicking_go_button_launches_task() {
+    #[tokio::test]
+    async fn clicking_go_button_launches_task() {
         let mut vm = new_view_model();
         if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
             card.description.insert_str("Launchable");
         }
 
         click(&mut vm, MouseAction::LaunchTask, sample_bounds(), 2, 1);
 
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         assert_eq!(
             vm.status_bar.status_message.as_deref(),
             Some("Task launched successfully")
@@ -621,20 +653,20 @@ mod mouse {
 
         click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 6);
 
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         assert_eq!(vm.last_textarea_area, Some(bounds));
     }
 
     #[test]
     fn scroll_events_navigate_hierarchy() {
         let mut vm = new_view_model();
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
 
         vm.update(Msg::MouseScrollUp).unwrap();
-        assert_eq!(vm.focus_element, FocusElement::SettingsButton);
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
 
         vm.update(Msg::MouseScrollDown).unwrap();
-        assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
     }
 
     #[test]
@@ -653,29 +685,31 @@ mod mouse {
             activity: vec![],
             delivery_status: vec![DeliveryStatus::BranchCreated],
         };
-        vm.task_cards.push(TaskExecutionViewModel {
-            id: "task-1".to_string(),
-            task: task.clone(),
-            title: "Task".to_string(),
-            metadata: TaskMetadataViewModel {
-                repository: task.repository.clone(),
-                branch: task.branch.clone(),
-                models: task.agents.clone(),
-                state: task.state,
-                timestamp: task.timestamp.clone(),
-                delivery_indicators: String::new(),
+        vm.task_cards.push(std::sync::Arc::new(std::sync::Mutex::new(
+            TaskExecutionViewModel {
+                id: "task-1".to_string(),
+                task: task.clone(),
+                title: "Task".to_string(),
+                metadata: TaskMetadataViewModel {
+                    repository: task.repository.clone(),
+                    branch: task.branch.clone(),
+                    models: task.agents.clone(),
+                    state: task.state,
+                    timestamp: task.timestamp.clone(),
+                    delivery_indicators: String::new(),
+                },
+                height: 2,
+                card_type: TaskCardType::Completed {
+                    delivery_indicators: String::new(),
+                },
+                focus_element: TaskExecutionFocusState::None,
+                needs_redraw: false,
             },
-            height: 2,
-            card_type: TaskCardType::Completed {
-                delivery_indicators: String::new(),
-            },
-            focus_element: FocusElement::ExistingTask(0),
-        });
-        vm.rebuild_task_id_mapping();
+        )));
 
         click(&mut vm, MouseAction::SelectCard(1), sample_bounds(), 1, 1);
 
-        assert_eq!(vm.focus_element, FocusElement::ExistingTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::ExistingTask(0));
         assert_eq!(vm.selected_card, 1);
     }
 
@@ -728,36 +762,38 @@ mod mouse {
             activity: vec![],
             delivery_status: vec![DeliveryStatus::BranchCreated],
         };
-        vm.task_cards.push(TaskExecutionViewModel {
-            id: "task-1".to_string(),
-            task: task.clone(),
-            title: "Task".to_string(),
-            metadata: TaskMetadataViewModel {
-                repository: task.repository.clone(),
-                branch: task.branch.clone(),
-                models: task.agents.clone(),
-                state: task.state,
-                timestamp: task.timestamp.clone(),
-                delivery_indicators: String::new(),
+        vm.task_cards.push(std::sync::Arc::new(std::sync::Mutex::new(
+            TaskExecutionViewModel {
+                id: "task-1".to_string(),
+                task: task.clone(),
+                title: "Task".to_string(),
+                metadata: TaskMetadataViewModel {
+                    repository: task.repository.clone(),
+                    branch: task.branch.clone(),
+                    models: task.agents.clone(),
+                    state: task.state,
+                    timestamp: task.timestamp.clone(),
+                    delivery_indicators: String::new(),
+                },
+                height: 2,
+                card_type: TaskCardType::Completed {
+                    delivery_indicators: String::new(),
+                },
+                focus_element: TaskExecutionFocusState::None,
+                needs_redraw: false,
             },
-            height: 2,
-            card_type: TaskCardType::Completed {
-                delivery_indicators: String::new(),
-            },
-            focus_element: FocusElement::ExistingTask(0),
-        });
-        vm.rebuild_task_id_mapping();
+        )));
 
         // Click on the task card to change focus
         click(&mut vm, MouseAction::SelectCard(1), sample_bounds(), 1, 1);
 
         // Verify focus changed and autocomplete is hidden
-        assert_eq!(vm.focus_element, FocusElement::ExistingTask(0));
+        assert_eq!(vm.focus_element, DashboardFocusState::ExistingTask(0));
         assert!(!vm.autocomplete.is_open());
     }
 
-    #[test]
-    fn mouse_click_caret_movement_updates_autocomplete_same_as_keyboard() {
+    #[tokio::test]
+    async fn mouse_click_caret_movement_updates_autocomplete_same_as_keyboard() {
         let mut vm = new_view_model();
 
         // Set up autocomplete by typing "/test" and positioning cursor
@@ -1045,8 +1081,8 @@ mod mouse {
         }
 
         // Navigate away from textarea (to settings button)
-        vm.close_autocomplete_if_leaving_textarea(FocusElement::SettingsButton);
-        vm.focus_element = FocusElement::SettingsButton;
+        vm.close_autocomplete_if_leaving_textarea(DashboardFocusState::SettingsButton);
+        vm.focus_element = DashboardFocusState::SettingsButton;
 
         // Selection should be cleared
         if let Some(card) = vm.draft_cards.first() {
@@ -1629,11 +1665,11 @@ mod mouse {
     }
 
     #[test]
-    fn ctrl_d_duplicates_line() {
+    fn ctrl_shift_d_duplicates_line() {
         let mut vm = new_view_model();
 
         // Set focus to the draft task
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Ensure the card's internal focus is on TaskDescription
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -1665,8 +1701,22 @@ mod mouse {
 
         // Cursor is already positioned on the first line // Ensure we're at the start of the line
 
-        // Press Ctrl+D to duplicate line
-        send_key(&mut vm, KeyCode::Char('d'), KeyModifiers::CONTROL);
+        // Press Ctrl+Shift+D to duplicate line
+        let duplicate_event = KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        assert!(
+            vm.settings
+                .keymap()
+                .matches(KeyboardOperation::DuplicateLineSelection, &duplicate_event),
+            "Default keymap should recognize Ctrl+Shift+D"
+        );
+        send_key(
+            &mut vm,
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
 
         // Check that duplication happened
         if let Some(card) = vm.draft_cards.first() {
@@ -1685,7 +1735,7 @@ mod mouse {
         let mut vm = new_view_model();
 
         // Set focus to the draft task
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Type some text
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -1714,7 +1764,7 @@ mod mouse {
         let mut vm = new_view_model();
 
         // Set focus to the draft task
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Type some text
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -1743,7 +1793,7 @@ mod mouse {
         let mut vm = new_view_model();
 
         // Set focus to the draft task
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Type some text
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -1784,7 +1834,7 @@ mod mouse {
         let mut vm = new_view_model();
 
         // Set focus to the draft task
-        vm.focus_element = FocusElement::DraftTask(0);
+        vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Type some text
         if let Some(card) = vm.draft_cards.first_mut() {

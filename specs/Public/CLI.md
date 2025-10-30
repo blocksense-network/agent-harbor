@@ -1206,7 +1206,7 @@ DESCRIPTION: Starts an agent by setting up an isolated working copy, configuring
 
 OPTIONS:
   --agent <TYPE>[@VERSION]           Agent type and optional version to use
-  --prompt <TEXT>                    Prompt text to pass to the agent (required)
+  --prompt <TEXT>                    Prompt text to pass to the agent (optional, required when --non-interactive is specified)
   --from-snapshot <SNAPSHOT_ID>      The initial file system snapshot from where the agent execution will start
   --non-interactive                  Enable non-interactive mode (e.g., codex exec)
   --output <text|text-normalized|json|json-normalized>
@@ -1273,7 +1273,8 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
 **Agent Execution:**
 
 6. **Agent Launch**: Executes the specified agent type with the provided prompt:
-   - **Non-Interactive Mode**: When `--non-interactive` is specified, launches agent in non-interactive mode (e.g., `codex exec`)
+   - **Interactive Mode**: When `--non-interactive` is not specified, launches agent in interactive mode. The `--prompt` parameter is optional and allows pre-seeding the agent's initial context.
+   - **Non-Interactive Mode**: When `--non-interactive` is specified, launches agent in non-interactive mode (e.g., `codex exec`). The `--prompt` parameter is required in this mode.
    - **Output Formatting**: Controls output format via `--output`:
      - `text`: Display agent output unmodified (default)
      - `text-normalized`: Display textual output with consistent structure regardless of agent type
@@ -1311,6 +1312,7 @@ When `--llm-api-proxy-url` is specified, the agent uses an LLM API proxy for req
 
 **Error Handling:**
 
+- Validates that `--prompt` is provided when `--non-interactive` is specified
 - Validates snapshot existence when `--from-snapshot` is specified
 - Ensures provider and sandbox compatibility
 - Provides clear error messages for configuration conflicts
@@ -1528,19 +1530,39 @@ Execution model:
 - For remote sessions, prefer: `ssh <leader> -- ah agent ...` so execution remains leader‑local.
 
 ```
-ah agent record [OPTIONS] [--] <AGENT_COMMAND> [ARGS...]
+ah agent record [OPTIONS] [--] <COMMAND> [ARGS...]
 
-DESCRIPTION: Thin wrapper process that records agent execution with ah agent record
-             and monitors completion for both local and cloud agents.
+DESCRIPTION: Records terminal output of any command with byte-perfect fidelity.
+             Captures PTY output, resizes, and timing information for replay and analysis.
+             Always provides real-time snapshot detection for UI interaction, allowing users
+             to start agent tasks from detected snapshots. Used internally by ah agent start
+             for session recording.
 
 OPTIONS:
-  --task-id <ID>             Task ID for recording association
-  --output-dir <PATH>        Directory for ah agent record recordings
+  -o, --out-file <FILE>              Output .ahr file path (no file created if not specified)
+  --rows <N>                         Terminal rows (attempts to resize terminal; default: current size)
+  --cols <N>                         Terminal columns (attempts to resize terminal; default: current size)
+  --brotli-q <0-11>                  Brotli compression quality (default: 4)
+  --gutter <left|right|none>         Position of snapshot indicator gutter (default: left)
+  --headless                         Run without live viewer UI
+  --env <KEY=VALUE>                  Environment variable to set
+  --task-manager-socket <PATH>       Path to the task manager socket for event streaming and coordination
 
 ARGUMENTS:
-  AGENT_COMMAND              Agent command to execute and record
-  ARGS                       Arguments for the agent command
+  COMMAND                    Command to execute and record
+  ARGS                       Arguments for the command
 ```
+
+BEHAVIOR:
+
+- **Terminal Resizing**: When `--rows` and `--cols` are specified, attempts to resize the current terminal window using xterm-compatible Window Ops escape sequences. This works on most modern terminals but may be disabled in some configurations or unsupported on certain terminal multiplexers.
+- **Output File**: When `--out-file` is not specified, no recording file is created. The command still runs and displays output normally, but no .ahr file is saved.
+- **IPC Integration**: Always starts an IPC server for external snapshot notifications from filesystem snapshot commands, enabling real-time UI interaction and task creation from snapshots even when no output file is saved.
+- **Task Manager Socket**: When `--task-manager-socket` is specified, the recorder connects to this socket to stream events back to the task manager for real-time UI updates and coordination. The socket path follows OS-specific conventions:
+  - Linux: `$XDG_RUNTIME_DIR/ah/task-manager.sock` (or `/tmp/ah/task-manager.sock` if `XDG_RUNTIME_DIR` is not set)
+  - macOS: `$TMPDIR/ah/task-manager.sock` (or `/tmp/ah/task-manager.sock` if `TMPDIR` is not set)
+  - Other Unix systems: `/tmp/ah/task-manager.sock`
+- **Recorder IPC Socket**: For communication with `ah agent fs snapshot` commands, a temporary IPC socket is created in a temporary directory with the name `recorder.sock` and exposed via the `AH_RECORDER_IPC_SOCKET` environment variable.
 
 ```
 ah agent follow-cloud-task [OPTIONS] <TASK_ID>
@@ -1575,7 +1597,44 @@ ARGUMENTS:
 
 - Filesystem (AgentFS) snapshot/branch utilities:
   - `ah agent fs status [OPTIONS]` — Run filesystem detection and report capabilities, provider selection, and mount point information.
-  - `ah agent fs snapshot [--name <NAME>] [--repo <PATH|URL>] [--json]` — Create a snapshot of the enclosing repository session.
+  - `ah agent fs snapshot [--recorder-socket <PATH>]` — Create a snapshot of the enclosing repository session.
+
+```
+ah agent fs snapshot [OPTIONS]
+
+DESCRIPTION: Create a filesystem snapshot at the current state using the detected
+             snapshot provider. When used during agent recording sessions, the
+             snapshot creation is coordinated with the recorder via IPC.
+
+OPTIONS:
+  --recorder-socket <PATH>    IPC socket path for recorder notification (optional)
+```
+
+Behavior:
+
+- **Repository Selection**: Uses standard [Repository Selection](CLI-Repository-Selection.md) logic
+- **Provider Selection**: Applies [FS Snapshot Provider Selection](CLI-FS-Snapshot-Provider-Selection.md) algorithm
+- **Snapshot Creation**: Creates filesystem snapshot using the selected provider
+- **Recorder Coordination**: When --recorder-socket is provided, notifies the recorder process via Unix domain socket (TCP on Windows) using length-prefixed SSZ protocol before creating the snapshot
+
+Implementation notes:
+
+- When --recorder-socket is specified, MUST notify the recorder via length-prefixed SSZ protocol over Unix domain socket (TCP on Windows) before creating the snapshot
+- Errors MUST be descriptive and include provider-specific error information
+
+Examples:
+
+```bash
+# Create a snapshot with default settings
+ah agent fs snapshot
+
+# Create snapshot for recorder coordination during agent recording
+ah agent fs snapshot --recorder-socket /tmp/recorder.sock
+```
+
+Exit codes:
+
+- 0 success; non‑zero on snapshot creation errors, provider selection failures, or IPC communication errors.
   - `ah agent fs snapshots <SESSION_ID>` — List snapshots created in a particular agent coding session.
   - `ah agent fs branch create <SNAPSHOT_ID> [--name <NAME>]` — Create a writable branch from a snapshot.
   - `ah agent fs branch bind <BRANCH_ID>` — Bind the current (or specified) process to the branch view.
