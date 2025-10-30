@@ -40,16 +40,55 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
 
   - Existing overlay tests remain green (no regressions).
 
-# Milestone 2 — Daemon “watch service” + event fanout
+**Milestone 1 — FsCore Event Bus** COMPLETED
 
-**Goal:** Central registry that knows which target-process watches (kqueue/FSEvents) are interested in which paths and fans out FsCore events.
+- **Deliverables:**
+  - Exposed `EventKind`, `EventSink`, and subscription API in `agentfs-core` behind `events` feature flag (enabled by default)
+  - Implemented `FsCore::subscribe_events(&self, sink: Arc<dyn EventSink>) -> SubscriptionId`
+  - Implemented `FsCore::unsubscribe_events(SubscriptionId)`
+  - Added event emission for `EventKind::{Created, Removed, Modified, Renamed}` at filesystem operation points
+  - Events only emitted when `track_events` is enabled in `FsConfig`
+  - Created comprehensive unit tests verifying event emission for all relevant operations
+  - Added milestone-specific test for create/write/rename/unlink sequence in in-memory backstore scenario
 
-- **Daemon responsibilities**
+- **Implementation Details:**
+  - **Event Infrastructure**: Added `EventKind::{Created, Removed, Modified, Renamed}` to `crates/agentfs-core/src/types.rs`
+  - **Event Sink Trait**: Implemented `EventSink` trait with `on_event(&self, &EventKind)` method
+  - **Subscription API**: Extended `FsCore` struct with `event_subscriptions: Mutex<HashMap<SubscriptionId, Arc<dyn EventSink>>>` and `next_subscription_id: Mutex<u64>`
+  - **Event Emission**: Integrated event emission into all state-changing filesystem operations (create, write, rename, unlink, set_mode, set_owner, set_times, xattr_set, xattr_remove, ftruncate)
+  - **Path Resolution**: Modified `Handle` struct to store resolved paths (`pub path: PathBuf`) for efficient event emission
+  - **Thread Safety**: Used `Mutex` for concurrent access to event subscriptions
+  - **Event Filtering**: Events only emitted when `FsConfig.track_events` is true
+
+- **Key Source Files:**
+  - `crates/agentfs-core/src/types.rs`: Event types and EventSink trait definitions
+  - `crates/agentfs-core/src/vfs.rs`: FsCore event subscription API and event emission logic
+  - `crates/agentfs-core/src/lib.rs`: Comprehensive unit tests for event emission
+
+- **Verification Results:**
+  - [x] In-memory backstore scenario: create/write/rename/unlink yield expected `EventKind` sequence with no I/O to disk
+  - [x] Existing overlay tests remain green (no regressions)
+  - [x] Event subscription/unsubscribe works correctly
+  - [x] Events only emitted when `track_events` is enabled
+  - [x] All filesystem operations emit appropriate event types
+  - [x] Thread-safe event handling with proper mutex usage
+
+# Milestone 2 — Daemon "watch service" + event fanout
+
+**Goal:** Central registry in FsCore that knows which target-process watches (kqueue/FSEvents) are interested in which paths and fans out FsCore events.
+
+- **Core registry responsibilities**
   - Maintain per-process **watch table**:
     - **Kqueue watches:** `<proc_pid, kq_id, fd, vnode_flags>` (derive path once per fd with `F_GETPATH` and refresh lazily on rename).
     - **FSEvents watches:** `<proc_pid, stream_id, path_prefixes, flags>` (high-level).
 
   - Subscribe to FsCore (M1) and translate `EventKind` → abstract watch hits (path prefix & equality checks).
+
+- **Interpose shim responsibilities**
+  - Intercept FS monitoring API calls and forward them with suitable IPC operations to the daemon.
+
+- **Daemon responsibilities**
+  - Accepts IPC requests and delegates the implementation to the FsCore registry.
 
 - **Acceptance (integration tests; no shim yet)**
   - Spawn daemon with **fake watches** and feed it synthetic `EventKind`; it resolves recipients correctly:

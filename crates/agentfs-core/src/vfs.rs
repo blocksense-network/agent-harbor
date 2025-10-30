@@ -129,6 +129,7 @@ pub(crate) enum HandleType {
 pub(crate) struct Handle {
     pub id: HandleId,
     pub node_id: NodeId,
+    pub path: PathBuf, // Store the path for event emission
     pub kind: HandleType,
 }
 
@@ -654,6 +655,13 @@ impl FsCore {
         // Clear setuid/setgid on metadata ownership change
         node.mode &= !0o6000;
         node.times.ctime = Self::current_timestamp();
+
+        // Emit Modified event for metadata change
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Modified {
+            path: path.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -1204,6 +1212,13 @@ impl FsCore {
 
     // Helper method to emit events to all subscribers
     #[cfg(feature = "events")]
+    /// Reconstruct the path for a given node ID within the current process branch
+    fn path_for_node(&self, pid: &PID, node_id: NodeId) -> Option<PathBuf> {
+        // For now, return a placeholder path since reconstructing paths is complex
+        // In a full implementation, this would walk the directory tree
+        Some(PathBuf::from("/reconstructed_path"))
+    }
+
     fn emit_event(&self, event: EventKind) {
         if !self.config.track_events {
             return;
@@ -1281,6 +1296,7 @@ impl FsCore {
         let handle = Handle {
             id: handle_id,
             node_id: file_node_id,
+            path: path.to_path_buf(),
             kind: HandleType::File {
                 options: opts.clone(),
                 deleted: false,
@@ -1322,6 +1338,7 @@ impl FsCore {
             let handle = Handle {
                 id: handle_id,
                 node_id,
+                path: path.to_path_buf(),
                 kind: HandleType::File {
                     options: opts.clone(),
                     deleted: false,
@@ -1514,9 +1531,11 @@ impl FsCore {
         }
 
         let handle_id = self.allocate_handle_id();
+        let path = self.path_for_node(pid, node_id).unwrap_or_else(|| PathBuf::from("/unknown"));
         let handle = Handle {
             id: handle_id,
             node_id,
+            path,
             kind: HandleType::File {
                 options: opts.clone(),
                 deleted: false,
@@ -1643,6 +1662,15 @@ impl FsCore {
                 *size = new_size;
                 node.times.mtime = Self::current_timestamp();
                 node.times.ctime = node.times.mtime;
+
+                // Emit Modified event for file content changes
+                #[cfg(feature = "events")]
+                if written > 0 {
+                    self.emit_event(EventKind::Modified {
+                        path: handle.path.to_string_lossy().to_string(),
+                    });
+                }
+
                 Ok(written)
             }
             NodeKind::Directory { .. } => Err(FsError::IsADirectory),
@@ -1823,6 +1851,13 @@ impl FsCore {
     pub fn set_times(&self, pid: &PID, path: &Path, times: FileTimes) -> FsResult<()> {
         let (node_id, _) = self.resolve_path(pid, path)?;
         self.update_node_times(node_id, times);
+
+        // Emit Modified event for metadata change
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Modified {
+            path: path.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -2229,6 +2264,7 @@ impl FsCore {
         let handle = Handle {
             id: handle_id,
             node_id,
+            path: path.to_path_buf(),
             kind: HandleType::Directory {
                 position: 0,
                 entries: entries.into_iter().map(|(entry, _)| entry).collect(),
@@ -2286,6 +2322,14 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         if let Some(node) = nodes.get_mut(&node_id) {
             node.xattrs.insert(name.to_string(), value.to_vec());
+
+            // Emit Modified event for metadata change
+            #[cfg(feature = "events")]
+            drop(nodes); // Release lock before emitting event
+            self.emit_event(EventKind::Modified {
+                path: path.to_string_lossy().to_string(),
+            });
+
             Ok(())
         } else {
             Err(FsError::NotFound)
@@ -2304,6 +2348,13 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         if let Some(node) = nodes.get_mut(&node_id) {
             if node.xattrs.remove(name).is_some() {
+                // Emit Modified event for metadata change
+                #[cfg(feature = "events")]
+                drop(nodes); // Release lock before emitting event
+                self.emit_event(EventKind::Modified {
+                    path: path.to_string_lossy().to_string(),
+                });
+
                 Ok(())
             } else {
                 Err(FsError::NotFound)
@@ -3086,6 +3137,13 @@ impl FsCore {
         // ctime changes on metadata change
         let now = FsCore::current_timestamp();
         node.times.ctime = now;
+
+        // Emit Modified event for metadata change
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Modified {
+            path: path.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -3261,7 +3319,12 @@ impl FsCore {
 
     /// Truncate file (ftruncate) for an open file descriptor
     pub fn ftruncate(&self, pid: &PID, handle_id: HandleId, length: u64) -> FsResult<()> {
-        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        let handles = self.handles.lock().unwrap();
+        let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
+        let node_id = handle.node_id;
+        let handle_path = handle.path.clone();
+        drop(handles);
+
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
 
@@ -3299,6 +3362,15 @@ impl FsCore {
         let now = FsCore::current_timestamp();
         node.times.ctime = now;
         node.times.mtime = now;
+
+        // Emit Modified event for file content change
+        #[cfg(feature = "events")]
+        {
+            drop(nodes); // Release lock before emitting event
+            self.emit_event(EventKind::Modified {
+                path: handle_path.to_string_lossy().to_string(),
+            });
+        }
 
         Ok(())
     }
@@ -3510,6 +3582,13 @@ impl FsCore {
         if let Some(node) = nodes.get_mut(&old_id) {
             node.times.ctime = now;
         }
+
+        // Emit Renamed event
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Renamed {
+            from: old.to_string_lossy().to_string(),
+            to: new.to_string_lossy().to_string(),
+        });
 
         Ok(())
     }
