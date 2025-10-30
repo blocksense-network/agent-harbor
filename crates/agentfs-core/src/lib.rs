@@ -1017,6 +1017,271 @@ mod tests {
     }
 
     #[test]
+    fn test_write_and_rename_events() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone)]
+        struct TestEventSink {
+            events: Arc<Mutex<Vec<EventKind>>>,
+        }
+
+        impl TestEventSink {
+            fn new() -> Self {
+                Self {
+                    events: Arc::new(Mutex::new(Vec::new())),
+                }
+            }
+
+            fn get_events(&self) -> Vec<EventKind> {
+                self.events.lock().unwrap().clone()
+            }
+
+            fn clear_events(&self) {
+                self.events.lock().unwrap().clear();
+            }
+        }
+
+        impl EventSink for TestEventSink {
+            fn on_event(&self, evt: &EventKind) {
+                self.events.lock().unwrap().push(evt.clone());
+            }
+        }
+
+        let core = test_core();
+        let pid = core.register_process(1000, 1000, 0, 0);
+        let sink = Arc::new(TestEventSink::new());
+
+        // Subscribe to events
+        let sub_id = core.subscribe_events(sink.clone()).unwrap();
+
+        // Test write events
+        let h = core.create(&pid, "/write_test.txt".as_ref(), &rw_create()).unwrap();
+        sink.clear_events(); // Clear the Created event
+
+        // Write to file - should emit Modified event
+        core.write(&pid, h, 0, b"hello world").unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            EventKind::Modified { path } => {
+                assert_eq!(path, "/write_test.txt");
+            }
+            _ => panic!("Expected Modified event, got {:?}", events[0]),
+        }
+
+        // Close handle
+        core.close(&pid, h).unwrap();
+
+        // Test rename events
+        sink.clear_events();
+        core.rename(
+            &pid,
+            "/write_test.txt".as_ref(),
+            "/renamed_test.txt".as_ref(),
+        )
+        .unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            EventKind::Renamed { from, to } => {
+                assert_eq!(from, "/write_test.txt");
+                assert_eq!(to, "/renamed_test.txt");
+            }
+            _ => panic!("Expected Renamed event, got {:?}", events[0]),
+        }
+
+        // Test metadata events
+        sink.clear_events();
+        core.set_mode(&pid, "/renamed_test.txt".as_ref(), 0o600).unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            EventKind::Modified { path } => {
+                assert_eq!(path, "/renamed_test.txt");
+            }
+            _ => panic!("Expected Modified event, got {:?}", events[0]),
+        }
+
+        // Test truncate events
+        sink.clear_events();
+        let h = core.open(&pid, "/renamed_test.txt".as_ref(), &rw()).unwrap();
+        core.ftruncate(&pid, h, 5).unwrap(); // Truncate to 5 bytes
+        core.close(&pid, h).unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            EventKind::Modified { path } => {
+                assert_eq!(path, "/renamed_test.txt");
+            }
+            _ => panic!("Expected Modified event, got {:?}", events[0]),
+        }
+
+        // Test xattr events
+        sink.clear_events();
+        core.xattr_set(&pid, "/renamed_test.txt".as_ref(), "user.test", b"value")
+            .unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            EventKind::Modified { path } => {
+                assert_eq!(path, "/renamed_test.txt");
+            }
+            _ => panic!("Expected Modified event, got {:?}", events[0]),
+        }
+
+        // Unsubscribe
+        core.unsubscribe_events(sub_id).unwrap();
+    }
+
+    #[test]
+    fn test_milestone1_event_sequence_in_memory_backstore() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone)]
+        struct TestEventSink {
+            events: Arc<Mutex<Vec<EventKind>>>,
+        }
+
+        impl TestEventSink {
+            fn new() -> Self {
+                Self {
+                    events: Arc::new(Mutex::new(Vec::new())),
+                }
+            }
+
+            fn get_events(&self) -> Vec<EventKind> {
+                self.events.lock().unwrap().clone()
+            }
+        }
+
+        impl EventSink for TestEventSink {
+            fn on_event(&self, evt: &EventKind) {
+                self.events.lock().unwrap().push(evt.clone());
+            }
+        }
+
+        // Create core with explicit InMemory backstore configuration
+        let config = FsConfig {
+            case_sensitivity: CaseSensitivity::Sensitive,
+            memory: MemoryPolicy {
+                max_bytes_in_memory: Some(1024 * 1024),
+                spill_directory: None,
+            },
+            limits: FsLimits {
+                max_open_handles: 1000,
+                max_branches: 100,
+                max_snapshots: 1000,
+            },
+            cache: CachePolicy {
+                attr_ttl_ms: 1000,
+                entry_ttl_ms: 1000,
+                negative_ttl_ms: 1000,
+                enable_readdir_plus: true,
+                auto_cache: true,
+                writeback_cache: false,
+            },
+            enable_xattrs: true,
+            enable_ads: false,
+            track_events: true, // Events enabled
+            security: crate::config::SecurityPolicy::default(),
+            backstore: BackstoreMode::InMemory, // Explicitly InMemory
+            overlay: OverlayConfig::default(),
+            interpose: InterposeConfig::default(),
+        };
+
+        let core = FsCore::new(config).unwrap();
+        let pid = core.register_process(1000, 1000, 0, 0);
+        let sink = Arc::new(TestEventSink::new());
+
+        // Subscribe to events
+        let sub_id = core.subscribe_events(sink.clone()).unwrap();
+
+        // Test the complete sequence: create/write/rename/unlink
+        // This should yield the expected EventKind sequence with no I/O to disk
+
+        // 1. Create a file - should emit Created event
+        let h = core.create(&pid, "/test_file.txt".as_ref(), &rw_create()).unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            EventKind::Created { path } => {
+                assert_eq!(path, "/test_file.txt");
+            }
+            _ => panic!("Expected Created event, got {:?}", events[0]),
+        }
+
+        // 2. Write to file - should emit Modified event
+        core.write(&pid, h, 0, b"test content").unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 2);
+        match &events[1] {
+            EventKind::Modified { path } => {
+                assert_eq!(path, "/test_file.txt");
+            }
+            _ => panic!("Expected Modified event, got {:?}", events[1]),
+        }
+
+        // 3. Close handle
+        core.close(&pid, h).unwrap();
+
+        // 4. Rename file - should emit Renamed event
+        core.rename(
+            &pid,
+            "/test_file.txt".as_ref(),
+            "/renamed_file.txt".as_ref(),
+        )
+        .unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 3);
+        match &events[2] {
+            EventKind::Renamed { from, to } => {
+                assert_eq!(from, "/test_file.txt");
+                assert_eq!(to, "/renamed_file.txt");
+            }
+            _ => panic!("Expected Renamed event, got {:?}", events[2]),
+        }
+
+        // 5. Unlink file - should emit Removed event
+        core.unlink(&pid, "/renamed_file.txt".as_ref()).unwrap();
+        let events = sink.get_events();
+        assert_eq!(events.len(), 4);
+        match &events[3] {
+            EventKind::Removed { path } => {
+                assert_eq!(path, "/renamed_file.txt");
+            }
+            _ => panic!("Expected Removed event, got {:?}", events[3]),
+        }
+
+        // Verify the complete sequence
+        let final_events = sink.get_events();
+        assert_eq!(final_events.len(), 4);
+
+        // Check each event in sequence
+        match &final_events[0] {
+            EventKind::Created { path } => assert_eq!(path, "/test_file.txt"),
+            _ => panic!("Event 0 should be Created"),
+        }
+        match &final_events[1] {
+            EventKind::Modified { path } => assert_eq!(path, "/test_file.txt"),
+            _ => panic!("Event 1 should be Modified"),
+        }
+        match &final_events[2] {
+            EventKind::Renamed { from, to } => {
+                assert_eq!(from, "/test_file.txt");
+                assert_eq!(to, "/renamed_file.txt");
+            }
+            _ => panic!("Event 2 should be Renamed"),
+        }
+        match &final_events[3] {
+            EventKind::Removed { path } => assert_eq!(path, "/renamed_file.txt"),
+            _ => panic!("Event 3 should be Removed"),
+        }
+
+        // Unsubscribe
+        core.unsubscribe_events(sub_id).unwrap();
+    }
+
+    #[test]
     fn test_symlink_basic_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
