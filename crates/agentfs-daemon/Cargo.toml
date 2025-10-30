@@ -2,24 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 [package]
-name = "agentfs-core"
+name = "agentfs-daemon"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+agentfs-core = { path = "../agentfs-core" }
+agentfs-proto = { path = "../agentfs-proto" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 libc = { workspace = true }
-hex = { workspace = true }
-agentfs-proto = { path = "../agentfs-proto" }
-
-[dev-dependencies]
-tempfile = { workspace = true }
-mockall = { workspace = true }
-
-[features]
-default = ["events"]
-events = []
+tokio = { version = "1.0", features = [
+  "net",
+  "io-util",
+  "sync",
+  "macros",
+  "rt-multi-thread",
+] }

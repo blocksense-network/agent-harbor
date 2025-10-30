@@ -36,6 +36,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentfs-daemon"
+version = "0.1.0"
+dependencies = [
+ "agentfs-core",
+ "agentfs-proto",
+ "anyhow",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "agentfs-ffi"
 version = "0.1.0"
 dependencies = [

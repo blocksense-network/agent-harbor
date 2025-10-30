@@ -89,6 +89,12 @@ pub enum Request {
     DirfdDupFd((Vec<u8>, DirfdDupFdRequest)),         // (version, request) - duplicate fd mapping
     DirfdSetCwd((Vec<u8>, DirfdSetCwdRequest)), // (version, request) - set current working directory
     DirfdResolvePath((Vec<u8>, DirfdResolvePathRequest)), // (version, request) - resolve dirfd to path
+    FSEventsTranslatePaths((Vec<u8>, FSEventsTranslatePathsRequest)), // (version, request) - translate overlay paths to backstore
+    WatchRegisterKqueue((Vec<u8>, WatchRegisterKqueueRequest)), // (version, request) - register kqueue watch
+    WatchRegisterFSEvents((Vec<u8>, WatchRegisterFSEventsRequest)), // (version, request) - register FSEvents watch
+    WatchUnregister((Vec<u8>, WatchUnregisterRequest)), // (version, request) - unregister watch
+    WatchDoorbell((Vec<u8>, WatchDoorbellRequest)), // (version, request) - doorbell setup for kqueue
+    FsEventBroadcast((Vec<u8>, FsEventBroadcastRequest)), // (version, request) - FsCore event broadcast
     DaemonStateProcesses(DaemonStateProcessesRequest),    // version - for testing
     DaemonStateStats(DaemonStateStatsRequest),            // version - for testing
     DaemonStateFilesystem(DaemonStateFilesystemRequest),  // dummy data - for testing
@@ -173,6 +179,12 @@ pub enum Response {
     DirfdDupFd(DirfdDupFdResponse),
     DirfdSetCwd(DirfdSetCwdResponse),
     DirfdResolvePath(DirfdResolvePathResponse),
+    FSEventsTranslatePaths(FSEventsTranslatePathsResponse),
+    WatchRegisterKqueue(WatchRegisterKqueueResponse),
+    WatchRegisterFSEvents(WatchRegisterFSEventsResponse),
+    WatchUnregister(WatchUnregisterResponse),
+    WatchDoorbell(WatchDoorbellResponse),
+    FsEventBroadcast(FsEventBroadcastResponse),
     DaemonState(DaemonStateResponseWrapper),
     Error(ErrorResponse),
 }
@@ -1713,6 +1725,82 @@ impl Request {
         ))
     }
 
+    pub fn watch_register_kqueue(
+        pid: u32,
+        kq_fd: u32,
+        watch_id: u64,
+        fd: u32,
+        fflags: u32,
+    ) -> Self {
+        Self::WatchRegisterKqueue((
+            b"1".to_vec(),
+            WatchRegisterKqueueRequest {
+                pid,
+                kq_fd,
+                watch_id,
+                fd,
+                fflags,
+            },
+        ))
+    }
+
+    pub fn watch_register_fsevents(
+        pid: u32,
+        stream_id: u64,
+        root_paths: Vec<String>,
+        flags: u32,
+        latency: u64,
+    ) -> Self {
+        Self::WatchRegisterFSEvents((
+            b"1".to_vec(),
+            WatchRegisterFSEventsRequest {
+                pid,
+                stream_id,
+                root_paths: root_paths.into_iter().map(|s| s.into_bytes()).collect(),
+                flags,
+                latency,
+            },
+        ))
+    }
+
+    pub fn watch_unregister(pid: u32, registration_id: u64) -> Self {
+        Self::WatchUnregister((
+            b"1".to_vec(),
+            WatchUnregisterRequest {
+                pid,
+                registration_id,
+            },
+        ))
+    }
+
+    pub fn watch_doorbell(pid: u32, kq_fd: u32, doorbell_ident: u64) -> Self {
+        Self::WatchDoorbell((
+            b"1".to_vec(),
+            WatchDoorbellRequest {
+                pid,
+                kq_fd,
+                doorbell_ident,
+            },
+        ))
+    }
+
+    pub fn fs_event_broadcast(
+        seqno: u64,
+        event_kind: u32,
+        path: String,
+        aux_path: Option<String>,
+    ) -> Self {
+        Self::FsEventBroadcast((
+            b"1".to_vec(),
+            FsEventBroadcastRequest {
+                seqno,
+                event_kind,
+                path: path.into_bytes(),
+                aux_path: aux_path.map(|s| s.into_bytes()),
+            },
+        ))
+    }
+
     pub fn rename(old_path: String, new_path: String) -> Self {
         Self::Rename((
             b"1".to_vec(),
@@ -2013,6 +2101,26 @@ impl Response {
         })
     }
 
+    pub fn watch_register_kqueue(registration_id: u64) -> Self {
+        Self::WatchRegisterKqueue(WatchRegisterKqueueResponse { registration_id })
+    }
+
+    pub fn watch_register_fsevents(registration_id: u64) -> Self {
+        Self::WatchRegisterFSEvents(WatchRegisterFSEventsResponse { registration_id })
+    }
+
+    pub fn watch_unregister() -> Self {
+        Self::WatchUnregister(WatchUnregisterResponse {})
+    }
+
+    pub fn watch_doorbell() -> Self {
+        Self::WatchDoorbell(WatchDoorbellResponse {})
+    }
+
+    pub fn fs_event_broadcast() -> Self {
+        Self::FsEventBroadcast(FsEventBroadcastResponse {})
+    }
+
     pub fn rename() -> Self {
         Self::Rename(RenameResponse {})
     }
@@ -2202,3 +2310,106 @@ impl DirEntry {
         Self::new(name, 2)
     }
 }
+
+/// FSEvents path translation request - translate overlay paths to backstore paths
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FSEventsTranslatePathsRequest {
+    /// List of overlay paths to translate
+    pub paths: Vec<Vec<u8>>,
+}
+
+/// FSEvents path translation response - backstore paths for watching
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FSEventsTranslatePathsResponse {
+    /// Corresponding backstore paths (same order as request)
+    pub backstore_paths: Vec<Vec<u8>>,
+}
+
+/// Kqueue watch registration request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchRegisterKqueueRequest {
+    /// Process ID of the watching process
+    pub pid: u32,
+    /// Kqueue file descriptor number
+    pub kq_fd: u32,
+    /// Watch identifier (unique per kqueue)
+    pub watch_id: u64,
+    /// Watched file descriptor
+    pub fd: u32,
+    /// Requested filter flags (NOTE_*)
+    pub fflags: u32,
+}
+
+/// Kqueue watch registration response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchRegisterKqueueResponse {
+    /// Watch registration ID
+    pub registration_id: u64,
+}
+
+/// FSEvents watch registration request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchRegisterFSEventsRequest {
+    /// Process ID of the watching process
+    pub pid: u32,
+    /// Stream identifier
+    pub stream_id: u64,
+    /// Root paths to watch
+    pub root_paths: Vec<Vec<u8>>,
+    /// Event flags
+    pub flags: u32,
+    /// Latency in nanoseconds
+    pub latency: u64,
+}
+
+/// FSEvents watch registration response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchRegisterFSEventsResponse {
+    /// Registration ID
+    pub registration_id: u64,
+}
+
+/// Watch unregistration request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchUnregisterRequest {
+    /// Process ID
+    pub pid: u32,
+    /// Registration ID to unregister
+    pub registration_id: u64,
+}
+
+/// Watch unregistration response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchUnregisterResponse {}
+
+/// Kqueue doorbell setup request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchDoorbellRequest {
+    /// Process ID
+    pub pid: u32,
+    /// Kqueue file descriptor number
+    pub kq_fd: u32,
+    /// Doorbell identifier for EVFILT_USER
+    pub doorbell_ident: u64,
+}
+
+/// Kqueue doorbell setup response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchDoorbellResponse {}
+
+/// FsCore event broadcast request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FsEventBroadcastRequest {
+    /// Event sequence number
+    pub seqno: u64,
+    /// Event type (0=Created, 1=Removed, 2=Modified, 3=Renamed)
+    pub event_kind: u32,
+    /// Path where event occurred
+    pub path: Vec<u8>,
+    /// For renames: destination path
+    pub aux_path: Option<Vec<u8>>,
+}
+
+/// FsCore event broadcast response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct FsEventBroadcastResponse {}
