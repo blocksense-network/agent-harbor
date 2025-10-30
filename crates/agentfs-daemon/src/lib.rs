@@ -13,7 +13,7 @@ pub mod watch_service;
 
 // Re-export the main daemon types
 pub use daemon::AgentFsDaemon;
-pub use watch_service::{WatchService, WatchServiceDaemon, WatchServiceEventSink};
+pub use watch_service::{WatchService, WatchServiceEventSink};
 
 // Re-export handshake types for clients
 pub use handshake::*;

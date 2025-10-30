@@ -8,11 +8,15 @@ use agentfs_proto::messages::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-/// Daemon for managing AgentFS watch services and event distribution
-pub struct WatchServiceDaemon {
-    core: Arc<FsCore>,
-    watch_service: Arc<WatchService>,
-}
+// kqueue vnode event flags (macOS)
+const NOTE_DELETE: u32 = 0x00000001;
+const NOTE_WRITE: u32 = 0x00000002;
+const NOTE_EXTEND: u32 = 0x00000004;
+const NOTE_ATTRIB: u32 = 0x00000008;
+const NOTE_LINK: u32 = 0x00000010;
+const NOTE_RENAME: u32 = 0x00000020;
+const NOTE_REVOKE: u32 = 0x00000040;
+
 
 /// Watch service for managing file system event watchers
 pub struct WatchService {
@@ -31,6 +35,7 @@ pub struct KqueueWatchRegistration {
     pub kq_fd: u32,
     pub watch_id: u64,
     pub fd: u32,
+    pub path: String,
     pub fflags: u32,
     pub doorbell_ident: Option<u64>,
 }
@@ -61,6 +66,7 @@ impl WatchService {
         kq_fd: u32,
         watch_id: u64,
         fd: u32,
+        path: String,
         fflags: u32,
     ) -> u64 {
         let mut next_id = self.next_registration_id.lock().unwrap();
@@ -73,6 +79,7 @@ impl WatchService {
             kq_fd,
             watch_id,
             fd,
+            path,
             fflags,
             doorbell_ident: None,
         };
@@ -163,6 +170,7 @@ impl Clone for KqueueWatchRegistration {
             kq_fd: self.kq_fd,
             watch_id: self.watch_id,
             fd: self.fd,
+            path: self.path.clone(),
             fflags: self.fflags,
             doorbell_ident: self.doorbell_ident,
         }
@@ -182,42 +190,12 @@ impl Clone for FSEventsWatchRegistration {
     }
 }
 
-impl WatchServiceDaemon {
-    /// Create a new daemon instance
-    pub fn new(core: FsCore) -> Result<Self, Box<dyn std::error::Error>> {
-        let core = Arc::new(core);
-        let watch_service = Arc::new(WatchService::new());
-
-        Ok(Self {
-            core,
-            watch_service,
-        })
-    }
-
-    /// Get reference to the watch service
-    pub fn watch_service(&self) -> &Arc<WatchService> {
-        &self.watch_service
-    }
-
-    /// Subscribe to FsCore events
-    pub fn subscribe_events(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement event subscription when FsCore exposes the API
-        // For now, this is a placeholder
-        Ok(())
-    }
-
-    /// Start the daemon event loop (placeholder)
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement the main daemon event loop
-        // This would handle incoming connections and process watch registrations
-        Ok(())
-    }
-}
 
 /// Event sink implementation for the watch service daemon
 pub struct WatchServiceEventSink {
     watch_service: Arc<WatchService>,
 }
+
 
 impl WatchServiceEventSink {
     pub fn new(watch_service: Arc<WatchService>) -> Self {
@@ -227,12 +205,142 @@ impl WatchServiceEventSink {
 
 impl EventSink for WatchServiceEventSink {
     fn on_event(&self, evt: &EventKind) {
-        // TODO: Implement event broadcasting to registered watchers
-        // This would:
-        // 1. Convert EventKind to appropriate message format
-        // 2. Find relevant watchers based on paths/pids
-        // 3. Send events to shim via control plane
         tracing::debug!("Received FsCore event: {:?}", evt);
+
+        // Find all affected paths for this event
+        let affected_paths = self.get_affected_paths(evt);
+
+        // Route to kqueue watchers
+        self.route_to_kqueue_watchers(evt, &affected_paths);
+
+        // Route to FSEvents watchers
+        self.route_to_fsevents_watchers(evt, &affected_paths);
+    }
+}
+
+impl WatchServiceEventSink {
+    /// Get all paths affected by this event (including parent directories for directory events)
+    fn get_affected_paths(&self, evt: &EventKind) -> Vec<String> {
+        match evt {
+            EventKind::Created { path } | EventKind::Removed { path } | EventKind::Modified { path } => {
+                // For file events, also notify parent directory watchers
+                let mut paths = vec![path.clone()];
+                if let Some(parent) = std::path::Path::new(path).parent() {
+                    if let Some(parent_str) = parent.to_str() {
+                        paths.push(parent_str.to_string());
+                    }
+                }
+                paths
+            }
+            EventKind::Renamed { from, to } => {
+                // For renames, notify both source and destination paths and their parents
+                let mut paths = vec![from.clone(), to.clone()];
+                for path in [from, to] {
+                    if let Some(parent) = std::path::Path::new(path).parent() {
+                        if let Some(parent_str) = parent.to_str() {
+                            paths.push(parent_str.to_string());
+                        }
+                    }
+                }
+                paths
+            }
+            EventKind::BranchCreated { .. } | EventKind::SnapshotCreated { .. } => {
+                // Branch/snapshot events don't affect filesystem paths
+                vec![]
+            }
+        }
+    }
+
+    /// Convert EventKind to kqueue vnode flags for a specific path
+    fn event_to_vnode_flags(&self, evt: &EventKind, path: &str, is_directory: bool) -> u32 {
+        match evt {
+            EventKind::Created { .. } => {
+                if is_directory {
+                    NOTE_WRITE // Directory contents changed
+                } else {
+                    NOTE_WRITE // File created
+                }
+            }
+            EventKind::Removed { .. } => {
+                if is_directory {
+                    NOTE_WRITE // Directory contents changed
+                } else {
+                    NOTE_DELETE // File deleted
+                }
+            }
+            EventKind::Modified { .. } => {
+                if is_directory {
+                    NOTE_ATTRIB // Directory metadata changed
+                } else {
+                    NOTE_WRITE | NOTE_EXTEND // File content/size changed
+                }
+            }
+            EventKind::Renamed { from, to } => {
+                // For renames, determine if this path is the source or destination
+                if path == from {
+                    NOTE_RENAME // File moved away
+                } else if path == to {
+                    NOTE_RENAME // File moved to
+                } else {
+                    // Parent directory of source or destination
+                    NOTE_WRITE // Directory contents changed
+                }
+            }
+            _ => 0,
+        }
+    }
+
+    /// Route event to matching kqueue watchers
+    fn route_to_kqueue_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
+        let watches = self.watch_service.kqueue_watches.lock().unwrap();
+
+        for path in affected_paths {
+            // Find all watches for this path
+            let matching_watches: Vec<&KqueueWatchRegistration> = watches.values()
+                .filter(|reg| &reg.path == path)
+                .collect();
+
+            for watch in matching_watches {
+                let flags = self.event_to_vnode_flags(evt, path, false); // Assume files for now
+
+                // Only send if the watch is interested in these flags
+                if (watch.fflags & flags) != 0 {
+                    tracing::debug!("Routing kqueue event: pid={}, fd={}, flags={:#x}",
+                                  watch.pid, watch.fd, flags);
+                    // TODO: Send FsEventBroadcast message to shim
+                    // This would use the control plane to notify the shim
+                }
+            }
+        }
+    }
+
+    /// Route event to matching FSEvents watchers
+    fn route_to_fsevents_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
+        let watches = self.watch_service.fsevents_watches.lock().unwrap();
+
+        // Check each FSEvents stream to see if any affected path is under its root
+        for watch in watches.values() {
+            let mut should_notify = false;
+            for root_path in &watch.root_paths {
+                for affected_path in affected_paths {
+                    if affected_path.starts_with(root_path) ||
+                       std::path::Path::new(affected_path).starts_with(root_path) {
+                        should_notify = true;
+                        break;
+                    }
+                }
+                if should_notify {
+                    break;
+                }
+            }
+
+            if should_notify {
+                tracing::debug!("Routing FSEvents event: pid={}, stream_id={}",
+                              watch.pid, watch.stream_id);
+                // TODO: Send FsEventBroadcast message to shim
+                // This would use the control plane to notify the shim
+            }
+        }
     }
 }
 
@@ -250,13 +358,14 @@ mod tests {
     #[test]
     fn test_kqueue_watch_registration() {
         let service = WatchService::new();
-        let registration_id = service.register_kqueue_watch(123, 5, 1, 10, 0x123);
+        let registration_id = service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
         assert_eq!(registration_id, 1);
 
         let watches = service.get_kqueue_watches_for_pid(123);
         assert_eq!(watches.len(), 1);
         assert_eq!(watches[0].kq_fd, 5);
         assert_eq!(watches[0].fd, 10);
+        assert_eq!(watches[0].path, "/tmp/test.txt");
         assert_eq!(watches[0].fflags, 0x123);
     }
 
@@ -277,7 +386,7 @@ mod tests {
     #[test]
     fn test_watch_unregistration() {
         let service = WatchService::new();
-        let reg_id = service.register_kqueue_watch(123, 5, 1, 10, 0x123);
+        let reg_id = service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
         assert_eq!(service.get_kqueue_watches_for_pid(123).len(), 1);
 
         service.unregister_watch(123, reg_id);
@@ -287,10 +396,116 @@ mod tests {
     #[test]
     fn test_doorbell_setting() {
         let service = WatchService::new();
-        service.register_kqueue_watch(123, 5, 1, 10, 0x123);
+        service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
         service.set_doorbell(123, 5, 0xABC);
 
         let watches = service.get_kqueue_watches_for_pid(123);
         assert_eq!(watches[0].doorbell_ident, Some(0xABC));
+    }
+
+    #[test]
+    fn test_affected_paths_created() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Created { path: "/tmp/dir/file.txt".to_string() };
+        let paths = sink.get_affected_paths(&event);
+
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&"/tmp/dir/file.txt".to_string()));
+        assert!(paths.contains(&"/tmp/dir".to_string()));
+    }
+
+    #[test]
+    fn test_affected_paths_renamed() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Renamed {
+            from: "/tmp/dir/old.txt".to_string(),
+            to: "/tmp/new.txt".to_string()
+        };
+        let paths = sink.get_affected_paths(&event);
+
+        assert_eq!(paths.len(), 4);
+        assert!(paths.contains(&"/tmp/dir/old.txt".to_string())); // from
+        assert!(paths.contains(&"/tmp/new.txt".to_string())); // to
+        assert!(paths.contains(&"/tmp/dir".to_string())); // from parent
+        assert!(paths.contains(&"/tmp".to_string())); // to parent
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_created_file() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Created { path: "/tmp/test.txt".to_string() };
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
+
+        assert_eq!(flags, NOTE_WRITE);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_removed_file() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Removed { path: "/tmp/test.txt".to_string() };
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
+
+        assert_eq!(flags, NOTE_DELETE);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_modified_file() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Modified { path: "/tmp/test.txt".to_string() };
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
+
+        assert_eq!(flags, NOTE_WRITE | NOTE_EXTEND);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_renamed_source() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Renamed {
+            from: "/tmp/old.txt".to_string(),
+            to: "/tmp/new.txt".to_string()
+        };
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/old.txt", false);
+
+        assert_eq!(flags, NOTE_RENAME);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_renamed_destination() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Renamed {
+            from: "/tmp/old.txt".to_string(),
+            to: "/tmp/new.txt".to_string()
+        };
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/new.txt", false);
+
+        assert_eq!(flags, NOTE_RENAME);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_renamed_parent() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Renamed {
+            from: "/tmp/old.txt".to_string(),
+            to: "/tmp/new.txt".to_string()
+        };
+        let flags = sink.event_to_vnode_flags(&event, "/tmp", false);
+
+        assert_eq!(flags, NOTE_WRITE);
     }
 }
