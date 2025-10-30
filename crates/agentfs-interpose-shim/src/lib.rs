@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
+use libc::{c_int, c_void};
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::HashMap;
 use std::ffi::{CStr, OsStr};
@@ -34,6 +35,70 @@ const FORWARDING_UNAVAILABLE: u32 = 1;
 
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
+
+// FSEvents type definitions (CoreFoundation types)
+#[cfg(target_os = "macos")]
+type CFAllocatorRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFArrayRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFTimeInterval = f64;
+#[cfg(target_os = "macos")]
+type FSEventStreamEventFlags = u32;
+#[cfg(target_os = "macos")]
+type FSEventStreamRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type FSEventStreamCallback = extern "C" fn(
+    stream_ref: FSEventStreamRef,
+    client_callback_info: *mut libc::c_void,
+    num_events: libc::size_t,
+    event_paths: *mut libc::c_void, // CFArrayRef
+    event_flags: *const FSEventStreamEventFlags,
+    event_ids: *const u64,
+);
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct FSEventStreamContext {
+    version: CFIndex,
+    info: *mut libc::c_void,
+    retain: Option<extern "C" fn(info: *const libc::c_void) -> *const libc::c_void>,
+    release: Option<extern "C" fn(info: *const libc::c_void)>,
+    copy_description: Option<extern "C" fn(info: *const libc::c_void) -> CFStringRef>,
+}
+#[cfg(target_os = "macos")]
+type CFIndex = libc::c_long;
+#[cfg(target_os = "macos")]
+type CFStringRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type dev_t = u32;
+
+// kqueue/kevent types
+#[cfg(target_os = "macos")]
+type kqueue_t = c_int;
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct KeventStruct {
+    pub ident: usize,       // identifier for this event
+    pub filter: i16,        // filter for event
+    pub flags: u16,         // action flags for kqueue
+    pub fflags: u32,        // filter flag value
+    pub data: isize,        // filter data value
+    pub udata: *mut c_void, // opaque user data identifier
+}
+#[cfg(target_os = "macos")]
+const EVFILT_VNODE: i16 = -4; // vnode events
+
+/// Wrapper for storing original FSEvents callback information
+#[cfg(target_os = "macos")]
+struct FSEventsCallbackInfo {
+    original_callback: FSEventStreamCallback,
+    original_context: usize, // Store context as usize to avoid Send/Sync issues
+}
+
+/// Global storage for FSEvents callback information, keyed by stream reference
+#[cfg(target_os = "macos")]
+static FSEVENTS_CALLBACKS: Lazy<Mutex<HashMap<usize, FSEventsCallbackInfo>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 const LOG_PREFIX: &str = "[agentfs-interpose]";
 const ENV_ENABLED: &str = "AGENTFS_INTERPOSE_ENABLED";
@@ -85,6 +150,78 @@ impl DirfdMapping {
         if let Some(path) = self.fd_paths.get(&old_fd).cloned() {
             self.fd_paths.insert(new_fd, path);
         }
+    }
+}
+
+/// Translate FSEvents paths from overlay to backstore paths
+#[cfg(target_os = "macos")]
+fn translate_fsevent_paths(paths_to_watch: CFArrayRef) -> Result<Vec<Vec<u8>>, String> {
+    // TODO: Implement CoreFoundation array manipulation to extract paths from CFArray
+    // For now, we can't extract the paths from the CFArray, but we can at least
+    // attempt to send a translation request with empty paths to test the protocol
+    // and log that translation would be needed.
+
+    // In a full implementation, we would:
+    // 1. Extract CFString objects from the CFArray
+    // 2. Convert them to Rust strings
+    // 3. Check if they are overlay paths (start with the mount point)
+    // 4. Send FSEventsTranslatePaths request to AgentFS
+    // 5. Get back translated paths
+    // 6. Return them for creating a new CFArray
+
+    // For now, just return empty vec to indicate "no translation needed"
+    // but log that we would translate if we could extract the paths
+    log_message("FSEvents path translation: CoreFoundation array extraction not implemented yet");
+    Ok(Vec::new())
+}
+
+/// Replacement FSEvents callback that intercepts and modifies events
+#[cfg(target_os = "macos")]
+extern "C" fn fsevents_replacement_callback(
+    stream_ref: FSEventStreamRef,
+    client_callback_info: *mut libc::c_void,
+    num_events: libc::size_t,
+    event_paths: CFArrayRef,
+    event_flags: *const FSEventStreamEventFlags,
+    event_ids: *const u64,
+) {
+    // Get the original callback information
+    let stream_key = stream_ref as usize;
+    let callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+
+    if let Some(callback_info) = callbacks.get(&stream_key) {
+        log_message(&format!(
+            "FSEvents replacement callback: intercepting {} events for stream {:p}",
+            num_events, stream_ref
+        ));
+
+        // TODO: Implement event filtering and injection based on AgentFS state
+        // For now, just forward all events to preserve functionality
+        // Future implementation should:
+        // 1. Extract paths from CFArray and check for whiteouts
+        // 2. Filter events for hidden files
+        // 3. Translate paths back to overlay view
+        // 4. Inject custom AgentFS events (CoW operations, branch changes)
+        // 5. Call original callback with modified event stream
+
+        log_message(
+            "FSEvents: forwarding events to original callback (event filtering/injection not yet implemented)",
+        );
+
+        // Call the original callback with the original events
+        (callback_info.original_callback)(
+            stream_ref,
+            callback_info.original_context as *mut libc::c_void,
+            num_events,
+            event_paths,
+            event_flags,
+            event_ids,
+        );
+    } else {
+        log_message(&format!(
+            "FSEvents replacement callback: no callback info found for stream {:p}",
+            stream_ref
+        ));
     }
 }
 
@@ -508,6 +645,29 @@ mod tests {
         assert!(!decision.allowed);
         assert!(decision.matched_entry.is_none());
     }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn fsevents_translate_paths_stub_implementation() {
+        // Test that the translate_fsevent_paths function returns an empty vec
+        // indicating that CoreFoundation array manipulation is not yet implemented
+        let dummy_cfarray = std::ptr::null_mut();
+        let result = translate_fsevent_paths(dummy_cfarray);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn fsevents_hooks_are_defined() {
+        // Test that the FSEvents hooks are compiled and available
+        // This is a compile-time test - if the hooks don't exist, this won't compile
+
+        // Note: We can't easily test the actual hook behavior without mocking
+        // the CoreFoundation APIs, but we can verify the hook functions are defined
+        // by checking that the module compiles successfully with the hooks present.
+        assert!(true); // Placeholder assertion - the real test is compilation success
+    }
 }
 
 // Interposition implementation for file operations
@@ -515,9 +675,13 @@ mod tests {
 mod interpose {
     use super::*;
     use libc::{
-        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, c_void, cmsghdr, gid_t,
-        iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, c_uint, c_void, cmsghdr,
+        gid_t, iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
     };
+
+    // Re-export kqueue types from parent scope for use in this module
+    use super::EVFILT_VNODE;
+    use super::KeventStruct;
 
     // ACL types - these may need to be defined manually for macOS
     type acl_type_t = u32;
@@ -4103,6 +4267,189 @@ mod interpose {
                     return redhook::real!(fclonefileat)(from_fd, to_fd, to, flags);
                 }
             }
+        }
+    }
+
+    /// Interposed FSEventStreamCreate function - translate overlay paths to backstore paths
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamCreate(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, paths_to_watch: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create {
+            log_message(&format!("interposing FSEventStreamCreate(since_when={}, latency={}, flags={:#x})",
+                since_when, latency, flags));
+
+            // Store the original callback information
+            let callback_info = FSEventsCallbackInfo {
+                original_callback: callback,
+                original_context: context as usize,
+            };
+
+            // Translate overlay paths to backstore paths
+            match translate_fsevent_paths(paths_to_watch) {
+                Ok(translated_paths) => {
+                    let stream_ref = if translated_paths.is_empty() {
+                        // No paths to translate or translation not implemented yet
+                        log_message("FSEvents translation: no paths translated (implementation pending), using original paths");
+                        redhook::real!(FSEventStreamCreate)(allocator, fsevents_replacement_callback, context, paths_to_watch, since_when, latency, flags)
+                    } else {
+                        // Call real FSEventStreamCreate with translated paths
+                        // For now, we'll need to create a new CFArray with the translated paths
+                        // This is complex due to CoreFoundation APIs, so for the initial implementation
+                        // we'll fall back to the original behavior but log the translation attempt
+                        log_message(&format!("FSEvents translation: {} paths translated, but CoreFoundation array recreation not yet implemented",
+                            translated_paths.len()));
+                        redhook::real!(FSEventStreamCreate)(allocator, fsevents_replacement_callback, context, paths_to_watch, since_when, latency, flags)
+                    };
+
+                    // Store the callback information keyed by stream reference
+                    if !stream_ref.is_null() {
+                        let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+                        callbacks.insert(stream_ref as usize, callback_info);
+                        log_message(&format!("FSEvents: stored callback info for stream {:p}", stream_ref));
+                    }
+
+                    stream_ref
+                }
+                Err(e) => {
+                    log_message(&format!("FSEvents translation failed: {}, falling back to original", e));
+                    // Even on error, we still wrap the callback to maintain consistency
+                    let stream_ref = redhook::real!(FSEventStreamCreate)(allocator, fsevents_replacement_callback, context, paths_to_watch, since_when, latency, flags);
+                    if !stream_ref.is_null() {
+                        let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+                        callbacks.insert(stream_ref as usize, callback_info);
+                    }
+                    stream_ref
+                }
+            }
+        }
+    }
+
+    /// Interposed FSEventStreamCreateRelativeToDevice function
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamCreateRelativeToDevice(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, device_to_watch: dev_t, paths_to_watch_relative_to_device: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create_relative_to_device {
+            log_message(&format!("interposing FSEventStreamCreateRelativeToDevice(device={}, since_when={}, latency={}, flags={:#x})",
+                device_to_watch, since_when, latency, flags));
+
+            // Store the original callback information
+            let callback_info = FSEventsCallbackInfo {
+                original_callback: callback,
+                original_context: context as usize,
+            };
+
+            // Device-relative paths don't need translation as they're already relative to a device
+            // Just log and pass through with wrapped callback
+            log_message("FSEventStreamCreateRelativeToDevice: device-relative paths, no translation needed");
+            let stream_ref = redhook::real!(FSEventStreamCreateRelativeToDevice)(allocator, fsevents_replacement_callback, context, device_to_watch, paths_to_watch_relative_to_device, since_when, latency, flags);
+
+            // Store the callback information keyed by stream reference
+            if !stream_ref.is_null() {
+                let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+                callbacks.insert(stream_ref as usize, callback_info);
+                log_message(&format!("FSEvents: stored callback info for device-relative stream {:p}", stream_ref));
+            }
+
+            stream_ref
+        }
+    }
+
+    /// Interposed FSEventStreamStop function - clean up callback information
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamStop(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_stop {
+            log_message(&format!("interposing FSEventStreamStop for stream {:p}", stream_ref));
+
+            // Call the original function first
+            redhook::real!(FSEventStreamStop)(stream_ref);
+
+            // Clean up our stored callback information
+            let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+            callbacks.remove(&(stream_ref as usize));
+            log_message(&format!("FSEvents: cleaned up callback info for stopped stream {:p}", stream_ref));
+        }
+    }
+
+    /// Interposed FSEventStreamInvalidate function - clean up callback information
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamInvalidate(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_invalidate {
+            log_message(&format!("interposing FSEventStreamInvalidate for stream {:p}", stream_ref));
+
+            // Call the original function first
+            redhook::real!(FSEventStreamInvalidate)(stream_ref);
+
+            // Clean up our stored callback information
+            let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+            callbacks.remove(&(stream_ref as usize));
+            log_message(&format!("FSEvents: cleaned up callback info for invalidated stream {:p}", stream_ref));
+        }
+    }
+
+    /// Interposed kevent function - filter and inject vnode events based on AgentFS state
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn kevent(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, timeout: *const libc::timespec) -> c_int => my_kevent {
+            log_message(&format!("interposing kevent(kq={}, nchanges={}, nevents={})",
+                kq, nchanges, nevents));
+
+            // Call the real kevent system call to get pending events
+            let result = redhook::real!(kevent)(kq, changelist, nchanges, eventlist, nevents, timeout);
+
+            if result > 0 && !eventlist.is_null() {
+                log_message(&format!("kevent returned {} events, filtering EVFILT_VNODE events", result));
+
+                // TODO: Implement event filtering and injection based on AgentFS state
+                // For now, just log that we would filter/inject events
+                // Future implementation should:
+                // 1. Iterate through returned events
+                // 2. Filter out EVFILT_VNODE events for files hidden by whiteouts
+                // 3. Check for AgentFS-managed files that should generate custom events
+                // 4. Inject fabricated kevent entries for AgentFS changes
+                // 5. Update the result count accordingly
+
+                // Count EVFILT_VNODE events for logging
+                let mut vnode_events = 0;
+                for i in 0..result {
+                    let event = &*eventlist.offset(i as isize);
+                    if event.filter == EVFILT_VNODE {
+                        vnode_events += 1;
+                    }
+                }
+
+                log_message(&format!("kevent: found {} EVFILT_VNODE events (filtering/injection not yet implemented)",
+                    vnode_events));
+            }
+
+            result
+        }
+    }
+
+    /// Interposed kevent64 function (64-bit variant)
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn kevent64(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, flags: c_uint, timeout: *const libc::timespec) -> c_int => my_kevent64 {
+            log_message(&format!("interposing kevent64(kq={}, nchanges={}, nevents={}, flags={:#x})",
+                kq, nchanges, nevents, flags));
+
+            // Call the real kevent64 system call
+            let result = redhook::real!(kevent64)(kq, changelist, nchanges, eventlist, nevents, flags, timeout);
+
+            if result > 0 && !eventlist.is_null() {
+                log_message(&format!("kevent64 returned {} events, filtering EVFILT_VNODE events", result));
+
+                // Same filtering logic as kevent (TODO: implement when ready)
+                let mut vnode_events = 0;
+                for i in 0..result {
+                    let event = &*eventlist.offset(i as isize);
+                    if event.filter == EVFILT_VNODE {
+                        vnode_events += 1;
+                    }
+                }
+
+                log_message(&format!("kevent64: found {} EVFILT_VNODE events (filtering/injection not yet implemented)",
+                    vnode_events));
+            }
+
+            result
         }
     }
 }

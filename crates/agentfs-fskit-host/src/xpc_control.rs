@@ -85,6 +85,18 @@ impl XpcControlService {
             Request::DaemonStateFilesystem(_) => {
                 todo!("DaemonStateFilesystem not implemented for XPC control")
             }
+            // Watch service operations not implemented for XPC control
+            Request::WatchRegisterKqueue(_) => {
+                todo!("WatchRegisterKqueue not implemented for XPC control")
+            }
+            Request::WatchRegisterFSEvents(_) => {
+                todo!("WatchRegisterFSEvents not implemented for XPC control")
+            }
+            Request::WatchUnregister(_) => todo!("WatchUnregister not implemented for XPC control"),
+            Request::WatchDoorbell(_) => todo!("WatchDoorbell not implemented for XPC control"),
+            Request::FsEventBroadcast(_) => {
+                todo!("FsEventBroadcast not implemented for XPC control")
+            }
             // Metadata operations not implemented for XPC control
             Request::Stat(_) => todo!("Stat not implemented for XPC control"),
             Request::Lstat(_) => todo!("Lstat not implemented for XPC control"),
@@ -154,6 +166,9 @@ impl XpcControlService {
             Request::Fcopyfile(_) => todo!("Fcopyfile not implemented for XPC control"),
             Request::Clonefile(_) => todo!("Clonefile not implemented for XPC control"),
             Request::Fclonefileat(_) => todo!("Fclonefileat not implemented for XPC control"),
+            Request::FSEventsTranslatePaths(_) => {
+                todo!("FSEventsTranslatePaths not implemented for XPC control")
+            }
         }
     }
 
