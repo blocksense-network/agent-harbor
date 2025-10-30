@@ -31,7 +31,7 @@ impl<S: SessionStore> SessionService<S> {
         let session_id = self.store.create_session(request).await?;
 
         Ok(CreateTaskResponse {
-            id: session_id.clone(),
+            session_ids: vec![session_id.clone()],
             status: SessionStatus::Queued,
             links: TaskLinks {
                 self_link: format!("/api/v1/sessions/{}", session_id),

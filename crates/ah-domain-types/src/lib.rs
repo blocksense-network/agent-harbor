@@ -20,4 +20,4 @@ pub use repository::*;
 pub use task::*;
 
 // Re-export shared enums
-pub use task::{LogLevel, TaskExecutionStatus, ToolStatus};
+pub use task::{LogLevel, TaskState, ToolStatus};

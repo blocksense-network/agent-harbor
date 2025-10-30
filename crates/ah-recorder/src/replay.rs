@@ -6,29 +6,15 @@
 // Replays AHR recordings to reconstruct the final terminal state
 // using vt100 terminal emulation.
 
-use crate::reader::{AhrReadEvent, AhrReader};
-use crate::snapshots::{Snapshot, SnapshotsReader};
-use std::collections::HashMap;
+use crate::reader::AhrReader;
+use crate::terminal_state::{InMemoryLineIndex, LineIndex};
 use std::path::Path;
-
-/// Represents a final terminal line after replay
-#[derive(Debug, Clone)]
-pub struct TerminalLine {
-    /// Line index (0-based from top of scrollback)
-    pub index: usize,
-    /// The text content of the line
-    pub text: String,
-    /// The highest byte offset that wrote to any cell in this line
-    pub last_write_byte: u64,
-}
 
 /// Result of replaying an AHR file
 #[derive(Debug)]
 pub struct ReplayResult {
-    /// All terminal lines in final state (top to bottom)
-    pub lines: Vec<TerminalLine>,
-    /// All snapshots from the recording
-    pub snapshots: Vec<Snapshot>,
+    /// All events from the recording (for state reconstruction)
+    pub events: Vec<crate::AhrEvent>,
     /// Initial terminal size from recording
     pub initial_cols: u16,
     pub initial_rows: u16,
@@ -40,15 +26,15 @@ pub struct ReplayResult {
 #[derive(Debug, Clone)]
 pub enum InterleavedItem {
     /// A terminal line
-    Line(TerminalLine),
+    Line(String),
     /// A snapshot event
-    Snapshot(Snapshot),
+    Snapshot(crate::Snapshot),
 }
 
 /// Result of creating interleaved branch points
 #[derive(Debug)]
 pub struct BranchPointsResult {
-    /// Interleaved items sorted by position (anchor_byte/last_write_byte)
+    /// Interleaved items: terminal lines with snapshots inserted at their associated lines
     pub items: Vec<InterleavedItem>,
     /// Total bytes processed
     pub total_bytes: u64,
@@ -61,96 +47,29 @@ pub fn replay_ahr_file<P: AsRef<Path>>(path: P) -> std::io::Result<ReplayResult>
     // Read all events from the recording
     let events = reader.read_all_events()?;
 
-    // Initialize vt100 parser with large scrollback (1M rows as per spec)
-    let mut parser = vt100::Parser::new(200, 50, 1_000_000);
-
-    // Track last_write_byte for each row
-    let mut row_last_write: HashMap<usize, u64> = HashMap::new();
-
-    // Collect snapshots from the recording
-    let mut snapshots = Vec::new();
-
-    // Track previous screen state for change detection
-    let mut prev_screen_hashes: HashMap<usize, u64> = HashMap::new();
-
-    // Process all events in chronological order
+    // Calculate total bytes and initial terminal size from events
     let mut total_bytes = 0u64;
+    let mut initial_cols = 80u16; // Default
+    let mut initial_rows = 24u16; // Default
 
-    for event in events {
+    for event in &events {
         match event {
-            AhrReadEvent::Data {
-                data,
-                start_byte_off,
-                ..
-            } => {
-                // Process the data through vt100 parser
-                parser.process(&data);
-
-                // Calculate hashes for screen state after processing
-                let screen = parser.screen();
-                let (screen_cols, screen_rows) = screen.size();
-
-                let mut current_hashes = HashMap::new();
-                for row_idx in 0..screen_rows as usize {
-                    let mut row_hash = 0u64;
-                    for col in 0..screen_cols as usize {
-                        if let Some(cell) = screen.cell(row_idx as u16, col as u16) {
-                            // Simple hash of cell contents
-                            for byte in cell.contents().as_bytes() {
-                                row_hash = row_hash.wrapping_mul(31).wrapping_add(*byte as u64);
-                            }
-                        }
-                    }
-                    current_hashes.insert(row_idx, row_hash);
-                }
-
-                // Update row tracking based on changes from previous state
-                let current_byte_off = start_byte_off + data.len() as u64;
-                update_row_tracking_changed(
-                    &mut row_last_write,
-                    &prev_screen_hashes,
-                    &current_hashes,
-                    current_byte_off,
-                );
-
-                // Update previous hashes for next iteration
-                prev_screen_hashes = current_hashes;
-
-                total_bytes = current_byte_off;
+            crate::AhrEvent::Data { data, .. } => {
+                total_bytes += data.len() as u64;
             }
-            AhrReadEvent::Resize { cols, rows, .. } => {
-                // Resize the terminal
-                parser.set_size(rows, cols);
+            crate::AhrEvent::Resize { cols, rows, .. } => {
+                // Update size (use first resize or final size)
+                initial_cols = *cols;
+                initial_rows = *rows;
             }
-            AhrReadEvent::Snapshot {
-                ts_ns,
-                snapshot_id,
-                anchor_byte,
-                label,
-            } => {
-                // Collect snapshot metadata
-                snapshots.push(Snapshot {
-                    id: snapshot_id,
-                    ts_ns,
-                    label,
-                    anchor_byte,
-                    kind: Some("ipc".to_string()),
-                });
+            crate::AhrEvent::Snapshot(_) => {
+                // Snapshots don't add to byte count
             }
         }
     }
 
-    // Extract final terminal lines
-    let lines = extract_terminal_lines(&parser, &row_last_write);
-
-    // Get initial terminal size (use final size if no resize events)
-    let (rows, cols) = parser.screen().size();
-    let initial_cols = cols;
-    let initial_rows = rows;
-
     Ok(ReplayResult {
-        lines,
-        snapshots,
+        events,
         initial_cols,
         initial_rows,
         total_bytes,
@@ -162,132 +81,84 @@ pub fn create_branch_points<P: AsRef<Path>>(
     ahr_path: P,
     _snapshots_path: Option<P>,
 ) -> std::io::Result<BranchPointsResult> {
-    // First replay the AHR file to get terminal lines and snapshots
+    // TODO:
+    // The call to the replay_ahr_file function below doesn't need to exist.
+    // Every AHR file must start with a Resize event as its very first record.
+    // We can add a helper function to obtain this first event from the file, so
+    // we can obtain the size of the terminal and set up our replay terminal with
+    // the same dimentions.
+    // We can directly use an iterator that will read the AHR events from the file
+    // in the loop below. This would work better for very large files, since we won't
+    // need to read the entire file into memory.
+
+    // Replay the AHR file through TerminalState to get accurate line-to-snapshot associations
     let replay_result = replay_ahr_file(&ahr_path)?;
 
-    // Interleave lines and snapshots by position
-    let result = interleave_by_position(
-        &replay_result.lines,
-        &replay_result.snapshots,
-        replay_result.total_bytes,
+    // Create a TerminalState with the same dimensions as the PTY that was recorded
+    // During recording, snapshots are taken at cursor positions in the PTY output,
+    // so we need to replay with the exact same PTY dimensions to get identical scrolling behavior
+    let recording_terminal_cols = replay_result.initial_cols;
+    let recording_terminal_rows = replay_result.initial_rows;
+    let mut terminal_state = crate::TerminalState::new_with_scrollback(
+        recording_terminal_rows,
+        recording_terminal_cols, // Use the same height as recording to get identical scrolling
+        1_000_000,               // Large scrollback to capture all content
     );
+
+    for event in &replay_result.events {
+        match event {
+            crate::AhrEvent::Data { data, .. } => {
+                terminal_state.process_data(data);
+            }
+            crate::AhrEvent::Snapshot(ahr_snapshot) => {
+                terminal_state.record_snapshot(ahr_snapshot.clone());
+            }
+            crate::AhrEvent::Resize { cols, rows, .. } => {
+                terminal_state.resize(*cols, *rows);
+            }
+        }
+    }
+
+    // Interleave lines and snapshots using TerminalState-based positioning
+    let result = interleave_with_terminal_state(&terminal_state, replay_result.total_bytes);
 
     Ok(result)
 }
 
-/// Interleave terminal lines and snapshots by their position values
-pub fn interleave_by_position(
-    lines: &[TerminalLine],
-    snapshots: &[Snapshot],
+/// Interleave terminal lines and snapshots using TerminalState-based positioning
+///
+/// This uses position-based interleaving: snapshots at column 0 are placed before
+/// the line, while snapshots at other columns are placed after the line.
+/// This provides accurate positioning that reflects the actual cursor position
+/// at snapshot time, not just the line.
+pub fn interleave_with_terminal_state(
+    terminal_state: &crate::TerminalState,
     total_bytes: u64,
 ) -> BranchPointsResult {
-    // Create a combined list of items with their positions
-    let mut items_with_positions: Vec<(u64, InterleavedItem)> = Vec::new();
+    let mut items = Vec::new();
 
-    // Add all lines
-    for line in lines {
-        let position = line.last_write_byte;
-        items_with_positions.push((position, InterleavedItem::Line(line.clone())));
+    // Get the total number of lines including scrollback
+    let screen = terminal_state.parser().screen();
+    let contents = screen.contents();
+    let all_lines: Vec<&str> = contents.lines().collect();
+    let total_lines = all_lines.len();
+
+    // Iterate through all lines in the terminal (including scrollback)
+    for line_idx in 0..total_lines {
+        // Get snapshots for this line, grouped by column position
+        let snapshots_at_start = terminal_state.get_snapshots_for_line(LineIndex(line_idx));
+
+        // Add snapshots that are at column 0 (before the line)
+        for snapshot in snapshots_at_start {
+            items.push(InterleavedItem::Snapshot(snapshot.clone()));
+        }
+
+        // Add the line content
+        let line_content = terminal_state.line_content(InMemoryLineIndex(line_idx));
+        items.push(InterleavedItem::Line(line_content));
     }
-
-    // Add all snapshots
-    for snapshot in snapshots {
-        let position = snapshot.anchor_byte;
-        items_with_positions.push((position, InterleavedItem::Snapshot(snapshot.clone())));
-    }
-
-    // Sort by position, then by type (lines before snapshots at same position)
-    items_with_positions.sort_by(|a, b| {
-        a.0.cmp(&b.0).then_with(|| match (&a.1, &b.1) {
-            (InterleavedItem::Line(_), InterleavedItem::Snapshot(_)) => std::cmp::Ordering::Less,
-            (InterleavedItem::Snapshot(_), InterleavedItem::Line(_)) => std::cmp::Ordering::Greater,
-            _ => std::cmp::Ordering::Equal,
-        })
-    });
-
-    // Extract just the items
-    let items: Vec<InterleavedItem> =
-        items_with_positions.into_iter().map(|(_, item)| item).collect();
 
     BranchPointsResult { items, total_bytes }
-}
-
-/// Update row tracking after processing data by detecting which rows changed
-fn update_row_tracking_changed(
-    row_last_write: &mut HashMap<usize, u64>,
-    prev_hashes: &HashMap<usize, u64>,
-    current_hashes: &HashMap<usize, u64>,
-    data_end_byte: u64,
-) {
-    // Compare current hashes with previous hashes to detect changes
-    for (row_idx, &current_hash) in current_hashes {
-        let prev_hash = prev_hashes.get(row_idx).unwrap_or(&0);
-        if current_hash != *prev_hash {
-            // Row changed, update its last write byte
-            row_last_write.insert(*row_idx, data_end_byte);
-        }
-    }
-}
-
-/// Legacy function for backward compatibility
-fn update_row_tracking(
-    _parser: &vt100::Parser,
-    row_last_write: &mut HashMap<usize, u64>,
-    data_start_byte: u64,
-    data_end_byte: u64,
-) {
-    // This function is no longer used with the new change-tracking approach
-    // Keep it for any external callers, but it uses the old conservative approach
-    // For now, just update a placeholder - this should not be called
-    row_last_write.insert(0, data_end_byte);
-}
-
-/// Extract terminal lines from the final vt100 state
-fn extract_terminal_lines(
-    parser: &vt100::Parser,
-    row_last_write: &HashMap<usize, u64>,
-) -> Vec<TerminalLine> {
-    let screen = parser.screen();
-    let (_, screen_rows) = screen.size();
-
-    let mut lines = Vec::new();
-
-    // Extract lines from scrollback + screen (top to bottom)
-    let (screen_cols, screen_rows) = screen.size();
-
-    for row_idx in 0..screen_rows as usize {
-        let mut line_content = String::new();
-
-        // Collect all cells in this row
-        for col in 0..screen_cols as usize {
-            if let Some(cell) = screen.cell(row_idx as u16, col as u16) {
-                let contents = cell.contents();
-                if contents.is_empty() {
-                    // Check if we've reached the end of content
-                    if col > 0 {
-                        break; // Stop at first empty cell after content
-                    }
-                } else {
-                    line_content.push_str(&contents);
-                }
-            } else {
-                break; // No more cells in this row
-            }
-        }
-
-        // Only include non-empty lines
-        if !line_content.trim().is_empty() {
-            let last_write_byte = row_last_write.get(&row_idx).copied().unwrap_or(0);
-
-            lines.push(TerminalLine {
-                index: row_idx,
-                text: line_content,
-                last_write_byte,
-            });
-        }
-    }
-
-    lines
 }
 
 #[cfg(test)]
@@ -304,7 +175,7 @@ mod tests {
         // Empty file should not error but have empty results
         assert!(result.is_ok());
         let replay = result.unwrap();
-        assert_eq!(replay.lines.len(), 0);
+        assert_eq!(replay.events.len(), 0);
         assert_eq!(replay.total_bytes, 0);
     }
 

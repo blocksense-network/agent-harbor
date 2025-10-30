@@ -6,7 +6,9 @@ use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
 
@@ -91,7 +93,11 @@ impl AgentExecutor for CodexAgent {
     ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Codex CLI launch with prompt: {:?}",
-            config.prompt.chars().take(50).collect::<String>()
+            config
+                .prompt
+                .as_ref()
+                .map(|p| p.chars().take(50).collect::<String>())
+                .unwrap_or_else(|| "None".to_string())
         );
 
         // Copy credentials if requested and home_dir differs from system HOME
@@ -147,6 +153,11 @@ impl AgentExecutor for CodexAgent {
             cmd.arg("--full-auto");
         }
 
+        if let Some(snapshot_cmd) = &config.snapshot_cmd {
+            cmd.arg("--rollout-hook");
+            cmd.arg(crate::snapshot::build_snapshot_command(snapshot_cmd));
+        }
+
         // Add model specification
         let model = config.model.as_deref().unwrap_or("gpt-5-codex");
         cmd.arg("--model");
@@ -168,8 +179,10 @@ impl AgentExecutor for CodexAgent {
         cmd.stderr(Stdio::piped());
 
         // Add the prompt as argument if provided
-        if !config.prompt.is_empty() {
-            cmd.arg(&config.prompt);
+        if let Some(prompt) = &config.prompt {
+            if !prompt.is_empty() {
+                cmd.arg(prompt);
+            }
         }
 
         debug!("Codex CLI command prepared successfully");

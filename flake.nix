@@ -474,6 +474,7 @@
         buildInputs = allPackages;
 
         shellHook = ''
+          export PATH="$PATH:$PWD/target/debug"
           # Install git pre-commit hook invoking our Nix-defined hooks
           ${self.checks.${system}.pre-commit-check.shellHook}
 

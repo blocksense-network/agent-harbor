@@ -11,9 +11,11 @@ using process-compose for manual testing and integration verification.
 MODES:
 - SCENARIO MODE (default): Uses pre-recorded scenario files for deterministic testing
 - PROXY MODE: Forwards requests to real LLM APIs for live testing
+- MOCK AGENT MODE: Runs mock agent directly without LLM proxy for fast scenario testing
 
 This script provides a convenient way to run integration tests between
 LLM API servers and the Agent Harbor CLI agent start/record commands.
+For mock agents, it supports both direct execution and .ahr file recording.
 """
 
 import atexit
@@ -30,6 +32,13 @@ import time
 from pathlib import Path
 
 # Import shared utilities
+import sys
+from pathlib import Path
+
+# Add scripts directory to path so we can import test_utils
+script_dir = Path(__file__).parent
+sys.path.insert(0, str(script_dir))
+
 from test_utils import (
     setup_script_logging,
     find_project_root,
@@ -145,6 +154,482 @@ def find_project_root():
     # Fallback to parent of script if Cargo.toml not found
     return Path(__file__).resolve().parent
 
+
+def determine_core_command(args, repo_dir, user_home_dir, prompt=None):
+    """Determine the core agent command (before any recording wrapper)."""
+    project_root = find_project_root()
+
+    # Determine binary path based on release flag
+    binary_dir = "release" if getattr(args, 'release', False) else "debug"
+
+    if args.agent_type in ["mock", "mock-simple"]:
+        # For mock agents, the core command is the mock agent itself
+        if args.agent_type == "mock-simple":
+            mock_simple_script = project_root / "tests" / "tools" / "mock-simple.py"
+            if not mock_simple_script.exists():
+                print(f"Error: Mock simple script not found at {mock_simple_script}")
+                sys.exit(1)
+            return [sys.executable, str(mock_simple_script), "--workspace", str(repo_dir)]
+        else:  # mock
+            # Use Python mock agent for both interactive and non-interactive modes
+            # Determine scenario mode
+            use_scenario_mode = args.scenario is not None
+            mock_agent_dir = project_root / "tests" / "tools" / "mock-agent"
+
+            scenario_path = None
+            if use_scenario_mode:
+                scenario_path = mock_agent_dir / "scenarios" / f"{args.scenario}.yaml"
+                if not scenario_path.exists():
+                    print(f"Error: Scenario file {scenario_path} does not exist")
+                    sys.exit(1)
+            else:
+                # Use interactive scenario when --interactive flag is used, otherwise use default
+                if args.interactive:
+                    scenario_path = mock_agent_dir / "scenarios" / "interactive_development_scenario.yaml"
+                else:
+                    scenario_path = mock_agent_dir / "scenarios" / "realistic_development_scenario.yaml"
+
+            # Build mock agent command
+            mock_agent_format = "codex"  # default
+            if hasattr(args, 'output_format') and args.output_format == "json-normalized":
+                mock_agent_format = "claude"
+
+            # Use absolute path to cli.py
+            cli_script_path = mock_agent_dir / "src" / "cli.py"
+            cmd = [
+                sys.executable, str(cli_script_path), "run",
+                "--scenario", str(scenario_path),
+                "--workspace", str(repo_dir),
+                "--format", mock_agent_format
+            ]
+
+            # Enable interactive mode if requested
+            if args.interactive:
+                cmd.append("--interactive")
+
+            # Enable snapshots by default when recording, or if explicitly requested
+            if args.record or args.fs_snapshots != "disable":
+                cmd.extend(["--with-snapshots"])
+
+            return cmd
+    else:
+        # For real agents, the core command is ah agent start
+        cmd = [str(project_root / "target" / binary_dir / "ah"), "agent", "start"]
+        cmd.extend(["--agent", args.agent_type])
+
+        if args.non_interactive:
+            cmd.append("--non-interactive")
+
+        if args.output_format:
+            cmd.extend(["--output", args.output_format])
+
+        # Add prompt if provided
+        if prompt:
+            cmd.extend(["--prompt", prompt])
+
+        # Add working directory
+        cmd.extend([
+            "--working-copy", args.working_copy,
+            "--fs-snapshots", args.fs_snapshots,
+            "--cwd", str(repo_dir),
+        ])
+
+        return cmd
+
+
+def wrap_with_record_if_needed(args, core_cmd, user_home_dir):
+    """Wrap the core command with ah agent record if --record flag is set."""
+    if not args.record:
+        return core_cmd
+
+    project_root = find_project_root()
+    # Determine binary path based on release flag
+    binary_dir = "release" if getattr(args, 'release', False) else "debug"
+    ahr_file_path = user_home_dir / "session.ahr"
+    print(f"Recording will be saved to: {ahr_file_path}")
+
+    # ah agent record accepts COMMAND [ARGS]... so we can always pass the command directly
+    # Use -- to separate ah agent record arguments from the command to record
+    record_cmd = [
+        str(project_root / "target" / binary_dir / "ah"),
+        "agent",
+        "record",
+        "--out-file", str(ahr_file_path),
+        "--"  # Separator between ah arguments and command to record
+    ]
+    record_cmd.extend(core_cmd)
+    return record_cmd
+
+
+def needs_supporting_processes(args):
+    """Determine if supporting processes (llm-api-proxy) are needed."""
+    return not args.interactive and args.agent_type not in ["mock", "mock-simple"]
+
+
+def run_with_process_compose(args, repo_dir, user_home_dir, agent_version):
+    """Run the core command with process-compose and supporting processes."""
+    project_root = find_project_root()
+
+    # Determine the core ah command and wrap with recording if needed
+    core_cmd = determine_core_command(args, repo_dir, user_home_dir, None)  # No prompt needed for process-compose case
+    final_ah_cmd = wrap_with_record_if_needed(args, core_cmd, user_home_dir)
+
+    # Build the command string for process-compose
+    ah_command = " ".join(f"'{arg}'" if "'" not in arg and " " in arg else f'"{arg}"' if " " in arg else arg for arg in final_ah_cmd)
+
+    # Create configuration - simplified version for real agents with recording support
+    mock_agent_dir = project_root / "tests" / "tools" / "mock-agent"
+
+    # Build server command (same as before)
+    if args.scenario:
+        # Use test-server mode for scenario playback
+        server_cmd = [
+            "cargo",
+            "run",
+            "-p",
+            "llm-api-proxy",
+            "--",
+            "test-server",
+            "--port", str(args.server_port),
+            "--scenario-file", str(mock_agent_dir / "scenarios" / f"{args.scenario}.yaml"),
+            "--agent-type", args.agent_type,
+            "--agent-version", str(agent_version),
+        ]
+    else:
+        # Use proxy mode for live API calls
+        server_cmd = [
+            "cargo",
+            "run",
+            "-p",
+            "llm-api-proxy",
+            "--",
+            "proxy",
+            "--port", str(args.server_port),
+        ]
+
+        # Determine provider based on agent type or OpenRouter option
+        if args.use_openrouter:
+            server_cmd.extend(["--provider", "openrouter"])
+            server_cmd.extend(["--api-key", args.use_openrouter])
+        else:
+            # Map agent type to provider
+            provider_map = {
+                "codex": "openai",
+                "claude": "anthropic",
+                "gemini": "google",
+                "opencode": "openrouter",
+                "qwen": "tongyi",
+                "cursor-cli": "openai",
+                "goose": "openai",
+            }
+            provider = provider_map.get(args.agent_type, args.agent_type)
+            server_cmd.extend(["--provider", provider])
+
+            # Add API key if provided
+            if args.llm_api_key:
+                server_cmd.extend(["--api-key", args.llm_api_key])
+
+    # Add logging options if enabled
+    logging_enabled = not args.no_logging
+    if logging_enabled and hasattr(args, 'request_log') and args.request_log:
+        server_cmd.extend(["--request-log", args.request_log])
+    if logging_enabled and args.log_headers:
+        server_cmd.append("--log-headers")
+    if logging_enabled and args.log_body:
+        server_cmd.append("--log-body")
+    if logging_enabled and args.log_responses:
+        server_cmd.append("--log-responses")
+
+    # Build server environment
+    server_environment = []
+    if os.environ.get("FORCE_TOOLS_VALIDATION_FAILURE"):
+        server_environment.append(f"FORCE_TOOLS_VALIDATION_FAILURE={os.environ['FORCE_TOOLS_VALIDATION_FAILURE']}")
+
+    # Build server command as string (process-compose requires this)
+    server_command = " ".join(f"'{arg}'" if "'" not in arg and " " in arg else f'"{arg}"' if " " in arg else arg for arg in server_cmd)
+
+    # Environment variables for ah command
+    env_vars = {
+        "AH_HOME": str(user_home_dir / ".ah"),
+    }
+
+    # Create process-compose configuration
+    config = {
+        "version": "0.5",
+        "processes": {
+            "mock-server": {
+                "command": server_command,
+                "working_dir": str(mock_agent_dir),
+                "environment": server_environment,
+                "readiness_probe": {
+                    "http_get": {
+                        "host": "127.0.0.1",
+                        "port": args.server_port,
+                        "path": "/health"
+                    },
+                    "initial_delay_seconds": 2,
+                    "period_seconds": 1,
+                    "timeout_seconds": 5,
+                    "success_threshold": 1,
+                    "failure_threshold": 3
+                }
+            },
+            "ah-agent": {
+                "command": ah_command,
+                "working_dir": str(repo_dir),
+                "environment": [f"{k}={v}" for k, v in env_vars.items()],
+                "depends_on": {
+                    "mock-server": {
+                        "condition": "process_healthy"
+                    }
+                },
+                "availability": {
+                    "exit_on_end": True
+                }
+            }
+        }
+    }
+
+    # Save config to file (only if not dry-run or if yaml is available)
+    config_path = None
+    if args.config_file:
+        config_path = Path(args.config_file)
+    else:
+        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+        config_path = Path(temp_file.name)
+        temp_file.close()
+
+    yaml_available = False
+    try:
+        import yaml
+        yaml_available = True
+    except (ImportError, ModuleNotFoundError):
+        yaml_available = False
+
+    if yaml_available:
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        print(f"Generated process-compose config: {config_path}")
+    elif not args.dry_run:
+        print("Warning: PyYAML not available. " +
+              "Please run this script in the nix dev shell, provided by the nix flake at the root of the repository.")
+        sys.exit(1)
+
+    if not args.dry_run:
+        print(f"Working directory: {Path('/tmp')}")
+        print(f"Repository: {repo_dir}")
+        print(f"User home: {user_home_dir}")
+
+    # Determine scenario mode early for mock agent logic
+    use_scenario_mode = args.scenario is not None
+
+    if args.config_only:
+        print("Configuration:")
+        print(json.dumps(config, indent=2))
+        return
+
+    if args.dry_run:
+        print_dry_run_header()
+
+        # Print mock server command
+        print_command_info(
+            "Mock Server Command",
+            server_command,
+            working_dir=str(mock_agent_dir),
+            environment=server_environment
+        )
+
+        # Print ah agent command
+        print_command_info(
+            "AH Agent Command" + (" (Recording)" if args.record else ""),
+            ah_command,
+            working_dir=str(repo_dir),
+            environment=[f"{k}={v}" for k, v in env_vars.items()]
+        )
+
+        if args.process_compose:
+            # Print process-compose command
+            if args.foreground:
+                process_compose_cmd = f"process-compose run ah-agent --config {config_path}"
+            else:
+                tui_flag = "" if args.tui else " --tui=false"
+                process_compose_cmd = f"process-compose up --config {config_path}{tui_flag}"
+
+            print_command_info("Process Compose Command", process_compose_cmd)
+        else:
+            # Print manual execution note
+            print_command_info("Execution Method", "Manual process management (server started separately, then agent command executed)")
+
+        print("Working directory setup:")
+        print(f"  Test working directory: {Path('/tmp')}")
+        print(f"  Repository: {repo_dir}")
+        print(f"  User home: {user_home_dir}")
+        return
+
+    if not args.config_only:
+        if args.process_compose:
+            print(f"\nLaunching process-compose with config: {config_path}")
+
+            try:
+                # Set XDG_CONFIG_HOME for process-compose to avoid config directory issues
+                env = os.environ.copy()
+                # Create a temp directory for process-compose config
+                xdg_config_dir = tempfile.mkdtemp(prefix="process_compose_config_")
+                env["XDG_CONFIG_HOME"] = xdg_config_dir
+
+                if args.foreground:
+                    # Use process-compose run for foreground mode - attaches ah-agent to current TTY
+                    cmd = [
+                        "process-compose", "run", "ah-agent",
+                        "--config", str(config_path)
+                    ]
+                    print(f"Running: {' '.join(cmd)}")
+                    subprocess.run(cmd, check=True, env=env)
+                else:
+                    # Use process-compose up for background/TUI mode
+                    cmd = [
+                        "process-compose", "up",
+                        "--config", str(config_path)
+                    ]
+                    if not args.tui:
+                        cmd.append("--tui=false")  # Disable TUI for headless operation when not in TUI mode
+                print(f"Running: {' '.join(cmd)}")
+                result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                if result.returncode != 0:
+                    print(f"Process-compose stdout: {result.stdout}")
+                    print(f"Process-compose stderr: {result.stderr}")
+                    print(f"Process-compose failed with exit code {result.returncode}")
+                    raise subprocess.CalledProcessError(result.returncode, cmd)
+            except KeyboardInterrupt:
+                print("\nProcess interrupted by user")
+            except subprocess.CalledProcessError as e:
+                print(f"Process-compose failed with exit code {e.returncode}")
+                sys.exit(e.returncode)
+        else:
+            logging.info("Running commands directly without process-compose...")
+
+            # Set environment variables for the processes
+            env = os.environ.copy()
+            env.update(env_vars)  # Add the AH agent environment variables
+
+            # Set up log file for mock server output
+            log_file = user_home_dir / "mock-server.log"
+
+            try:
+                # Set up mock server environment
+                mock_env = os.environ.copy()
+                for env_var in server_environment:
+                    if '=' in env_var:
+                        key, value = env_var.split('=', 1)
+                        mock_env[key] = value
+
+                # Create mock server manager with auto-restart capability
+                server_manager = MockServerManager(
+                    cmd=server_cmd,
+                    env=mock_env,
+                    cwd=str(mock_agent_dir),
+                    log_file=log_file,
+                    server_environment=server_environment
+                )
+
+                # Start the mock server with monitoring
+                if not server_manager.start_server():
+                    logging.error("Failed to start mock server initially")
+                    print("ERROR: Failed to start mock server initially")
+                    sys.exit(1)
+
+                print(f"Mock server started. Monitoring for crashes with auto-restart.")
+                print(f"Mock server logs: {log_file}")
+
+                # Start monitoring thread for auto-restart
+                server_manager.start_monitoring()
+
+                # Register cleanup function to terminate mock server when script exits
+                def cleanup_mock_server():
+                    logging.info("Cleaning up mock server...")
+                    server_manager.stop_monitoring()
+                    server_manager.stop_server()
+
+                atexit.register(cleanup_mock_server)
+
+                # Wait a bit for server to start and stabilize
+                logging.info("Waiting for mock server to start...")
+                print("Waiting for mock server to start...")
+                time.sleep(3)
+
+                # Check if server is still running after initial wait
+                if not server_manager.check_server_health():
+                    logging.error("Mock server failed to start properly")
+                    print("ERROR: Mock server failed to start properly")
+                    sys.exit(1)
+
+                logging.info("Starting AH agent in foreground...")
+                print("Starting AH agent in foreground...")
+                logging.info(f"AH agent command: {ah_command}")
+
+                # Run AH agent in foreground - inherit stdin/stdout/stderr from parent process
+                ah_process = subprocess.run(ah_command, shell=True, env=env, cwd=str(repo_dir))
+
+                if ah_process.returncode != 0:
+                    logging.error(f"AH agent failed with exit code {ah_process.returncode}")
+                    print(f"AH agent failed with exit code {ah_process.returncode}")
+                    sys.exit(ah_process.returncode)
+
+            except KeyboardInterrupt:
+                logging.info("Process interrupted by user")
+                print("\nProcess interrupted by user")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Command failed with exit code {e.returncode}")
+                print(f"Command failed with exit code {e.returncode}")
+                sys.exit(e.returncode)
+            except Exception as e:
+                logging.error(f"Unexpected error: {e}")
+                print(f"Unexpected error: {e}")
+                sys.exit(1)
+
+
+def run_directly(args, core_cmd, repo_dir, user_home_dir, working_dir):
+    """Run the core command directly without supporting processes."""
+    # Build command as string
+    cmd_str = " ".join(f"'{arg}'" if "'" not in arg and " " in arg else f'"{arg}"' if " " in arg else arg for arg in core_cmd)
+
+    # Environment variables for ah command
+    env_vars = {
+        "AH_HOME": str(user_home_dir / ".ah"),
+    }
+
+    # Determine working directory for the command
+    # For mock agents, run from the mock-agent directory for proper imports
+    if args.agent_type in ["mock", "mock-simple"] and "src.cli" in " ".join(core_cmd):
+        cmd_cwd = str(find_project_root() / "tests" / "tools" / "mock-agent")
+    else:
+        cmd_cwd = str(repo_dir)
+
+    if args.dry_run:
+        print_dry_run_header()
+        print_command_info("AH Agent Command" + (" (Recording)" if args.record else ""), cmd_str)
+        print("Working directory setup:")
+        print(f"  Test working directory: {working_dir}")
+        print(f"  Repository: {repo_dir}")
+        print(f"  User home: {user_home_dir}")
+        print(f"  Command working directory: {cmd_cwd}")
+        return
+
+    # Run the command directly
+    try:
+        print(f"Running: {cmd_str}")
+        env = os.environ.copy()
+        env.update(env_vars)
+        result = subprocess.run(cmd_str, shell=True, env=env, cwd=cmd_cwd)
+        if result.returncode != 0:
+            print(f"Command failed with exit code {result.returncode}")
+            sys.exit(result.returncode)
+    except KeyboardInterrupt:
+        print("\nCommand interrupted by user")
+    except Exception as e:
+        print(f"Error running command: {e}")
+        sys.exit(1)
+
 def get_scenario_files():
     """Get available scenario files."""
     mock_agent_dir = find_project_root() / "tests" / "tools" / "mock-agent"
@@ -213,6 +698,23 @@ def setup_working_directory(scenario_name, working_dir, agent_version):
     # Preserve user-home directory for stable logs
     user_home_dir.mkdir(exist_ok=True)
 
+    # Initialize git repository if not already initialized
+    if not (repo_dir / ".git").exists():
+        logging.info("Initializing git repository")
+        subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo_dir, check=True, capture_output=True)
+        # Create initial commit to have a working git repo
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True, capture_output=True)
+        # Create a basic README and commit it
+        readme_path = repo_dir / "README.md"
+        readme_path.write_text("# Test Repository\n\nThis is a test repository for Agent Harbor testing.\n")
+        subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_dir, check=True, capture_output=True)
+    else:
+        # Ensure gpgsign is disabled even if repo already exists
+        subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo_dir, check=True, capture_output=True)
+
     logging.info(f"Created repo directory: {repo_dir}")
     logging.info(f"Using user-home directory: {user_home_dir} (preserved for stable logs)")
     print(f"Created repo directory: {repo_dir}")
@@ -221,10 +723,12 @@ def setup_working_directory(scenario_name, working_dir, agent_version):
     return repo_dir, user_home_dir
 
 
-def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, foreground=False, tui=False):
+def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, initial_prompt=None, foreground=False, tui=False):
     """Create process-compose YAML configuration."""
 
     project_root = find_project_root()
+    # Determine binary path based on release flag
+    binary_dir = "release" if getattr(args, 'release', False) else "debug"
     mock_agent_dir = project_root / "tests" / "tools" / "mock-agent"
 
     # Determine scenario file and agent type
@@ -239,20 +743,6 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
     else:
         # No scenario specified - use proxy mode
         scenario_file = None
-
-    # Load scenario file to extract initialPrompt (only in scenario mode)
-    initial_prompt = "Please help me with development tasks"
-    if use_scenario_mode:
-        try:
-            import yaml
-        except (ImportError, ModuleNotFoundError):
-            print("Warning: PyYAML not available. " +
-                  "Please run this script in the nix dev shell, provided by the nix flake at the root of the repository.")
-            sys.exit(1)
-
-        with open(scenario_file, 'r') as f:
-            scenario_data = yaml.safe_load(f)
-        initial_prompt = scenario_data.get('initialPrompt', 'Please execute this scenario')
 
     # Configure logging defaults prior to building the server command
     session_log_path = user_home_dir / "session.log"
@@ -343,7 +833,7 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
 
     # Build ah agent command (start or record)
     ah_cmd = [
-        str(project_root / "target" / "debug" / "ah"),
+        str(project_root / "target" / binary_dir / "ah"),
         "agent",
     ]
 
@@ -391,12 +881,14 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
             random_api_key = secrets.token_hex(16)  # 32 character random hex string
             ah_cmd.extend(["--llm-api-key", random_api_key])
 
-    # Use initial prompt from scenario file
-    ah_cmd.extend(["--prompt", initial_prompt])
+    # Use initial prompt from scenario file (if available)
+    if initial_prompt:
+        ah_cmd.extend(["--prompt", initial_prompt])
 
     # Add working directory and environment variables
     ah_cmd.extend([
-        "--working-copy", "in-place",
+        "--working-copy", args.working_copy,
+        "--fs-snapshots", args.fs_snapshots,
         "--cwd", str(repo_dir),
     ])
 
@@ -405,9 +897,6 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
 
     # Environment variables for ah command
     env_vars = {
-        # Don't set HOME here - let AH CLI build config with custom home
-        # and agent will copy credentials from real system HOME
-        "AH_HOME": str(user_home_dir / ".ah"),
     }
 
     # Create process-compose configuration
@@ -453,7 +942,7 @@ def create_process_compose_config(args, working_dir, repo_dir, user_home_dir, ag
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Launch LLM API server (mock or live proxy) and ah agent start/record with process-compose",
+        description="Launch LLM API server (mock or live proxy) and ah agent start/record with process-compose, or run mock agent directly",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -487,8 +976,14 @@ Examples:
   # With custom Gemini API
   %(prog)s --agent-type gemini --llm-api https://generativelanguage.googleapis.com --llm-api-key your-gemini-key
 
-  # Mock agent for testing
+  # Mock agent for testing (runs directly without LLM proxy)
   %(prog)s --agent-type mock --scenario test_scenario
+
+  # Mock agent with filesystem snapshots enabled
+  %(prog)s --agent-type mock --fs-snapshots
+
+  # Record a mock agent session to .ahr file
+  %(prog)s --agent-type mock --record
 
   # Disable all request logging
   %(prog)s --no-logging --agent-type claude
@@ -512,6 +1007,18 @@ Examples:
 
   # Run with TUI for monitoring all processes
   %(prog)s --tui --agent-type claude
+
+  # Run agent in interactive mode (no llm-api-proxy, no prompt)
+  %(prog)s --interactive --agent-type claude
+
+  # Record agent session in interactive mode
+  %(prog)s --interactive --record --agent-type claude
+
+  # Run with custom prompt
+  %(prog)s --interactive --agent-type claude --prompt "Help me refactor this code"
+
+  # Use release build instead of debug
+  %(prog)s --release --agent-type claude
 
   # Generate config only
   %(prog)s --scenario test_scenario --config-only > config.yaml
@@ -597,15 +1104,15 @@ Examples:
     # Scenario selection
     parser.add_argument(
         "--scenario",
-        help="YAML scenario file to use for the mock server (if not specified, runs in live proxy mode)"
+        help="YAML scenario file to use (for mock agents) or mock server (for other agents). If not specified, uses default scenario for mock agents or runs in live proxy mode for others"
     )
 
     # Agent options
     parser.add_argument(
         "--agent-type",
-        choices=["mock", "codex", "claude", "gemini", "opencode", "qwen", "cursor-cli", "goose"],
+        choices=["mock", "mock-simple", "codex", "claude", "gemini", "opencode", "qwen", "cursor-cli", "goose"],
         default="codex",
-        help="Agent type to start: mock (testing), codex (OpenAI), claude (Anthropic), gemini (Google), opencode, qwen, cursor-cli, goose (default: codex)"
+        help="Agent type to start: mock (testing), mock-simple (snapshot debugging), codex (OpenAI), claude (Anthropic), gemini (Google), opencode, qwen, cursor-cli, goose (default: codex)"
     )
 
     parser.add_argument(
@@ -618,6 +1125,20 @@ Examples:
         "--non-interactive",
         action="store_true",
         help="Enable non-interactive mode for the agent"
+    )
+
+    parser.add_argument(
+        "--working-copy",
+        choices=["auto", "cow-overlay", "worktree", "in-place"],
+        default="auto",
+        help="Working copy mode for ah agent start"
+    )
+
+    parser.add_argument(
+        "--fs-snapshots",
+        choices=["auto", "zfs", "btrfs", "agentfs", "git", "disable"],
+        default="auto",
+        help="Filesystem snapshot provider to use"
     )
 
     parser.add_argument(
@@ -679,6 +1200,23 @@ Examples:
         "--process-compose",
         action="store_true",
         help="Use process-compose for orchestration instead of direct execution"
+    )
+
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Launch agent in interactive mode without llm-api-proxy (bypasses mock server setup)"
+    )
+
+    parser.add_argument(
+        "--prompt",
+        help="Custom prompt text to pass to the agent (overrides scenario prompt)"
+    )
+
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help="Use release build of ah binary instead of debug"
     )
 
     args = parser.parse_args()
@@ -746,203 +1284,44 @@ Examples:
     logging.info(f"Scenario: {scenario_name}")
     logging.info(f"Working directory: {working_dir}")
 
+    # Determine initial prompt (used by both mock agents and unified flow)
+    use_scenario_mode = args.scenario is not None
+    mock_agent_dir = find_project_root() / "tests" / "tools" / "mock-agent"
+    initial_prompt = None
+
+    if use_scenario_mode:
+        # Load scenario file to extract initialPrompt
+        scenario_file = mock_agent_dir / "scenarios" / f"{args.scenario}.yaml"
+        if not scenario_file.exists():
+            print(f"Error: Scenario file {scenario_file} does not exist")
+            sys.exit(1)
+
+        try:
+            import yaml
+        except (ImportError, ModuleNotFoundError):
+            print("Warning: PyYAML not available. " +
+                  "Please run this script in the nix dev shell, provided by the nix flake at the root of the repository.")
+            sys.exit(1)
+
+        with open(scenario_file, 'r') as f:
+            scenario_data = yaml.safe_load(f)
+        initial_prompt = args.prompt or scenario_data.get('initialPrompt')
+    else:
+        initial_prompt = args.prompt
+
+    # Setup working directory for all agent types
     repo_dir, user_home_dir = setup_working_directory(scenario_name, working_dir, agent_version)
 
-    # Create configuration
-    mock_agent_dir, config, env_vars, server_environment, server_cmd, ah_command = create_process_compose_config(args, working_dir, repo_dir, user_home_dir, agent_version, args.foreground, args.tui)
-
-    # Save config to file
-    if args.config_file:
-        config_path = Path(args.config_file)
+    if needs_supporting_processes(args):
+        # For real agents, run with supporting processes (llm-api-proxy)
+        # The --process-compose flag controls orchestration method (process-compose vs manual)
+        run_with_process_compose(args, repo_dir, user_home_dir, agent_version)
     else:
-        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
-        config_path = Path(temp_file.name)
-        temp_file.close()
-
-    try:
-        import yaml
-    except (ImportError, ModuleNotFoundError):
-        print("Warning: PyYAML not available. " +
-              "Please run this script in the nix dev shell, provided by the nix flake at the root of the repository.")
-        sys.exit(1)
-
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
-
-    print(f"Generated process-compose config: {config_path}")
-    print(f"Working directory: {working_dir}")
-    print(f"Repository: {repo_dir}")
-    print(f"User home: {user_home_dir}")
-    print(f"Script log: {script_log_file}")
-
-    if args.config_only:
-        print("Configuration:")
-        print(json.dumps(config, indent=2))
-        return
-
-    if args.dry_run:
-        print_dry_run_header()
-
-        # Print mock server command
-        if "mock-server" in config.get("processes", {}):
-            server_proc = config["processes"]["mock-server"]
-            print_command_info(
-                "Mock Server Command",
-                server_proc['command'],
-                working_dir=server_proc.get('working_dir', 'current'),
-                environment=server_proc.get("environment", [])
-            )
-
-        # Print ah agent command
-        if "ah-agent" in config.get("processes", {}):
-            agent_proc = config["processes"]["ah-agent"]
-            print_command_info(
-                "AH Agent Command",
-                agent_proc['command'],
-                working_dir=agent_proc.get('working_dir', 'current'),
-                environment=agent_proc.get("environment", [])
-            )
-
-        # Print process-compose command
-        if args.foreground:
-            process_compose_cmd = f"process-compose run ah-agent --config {config_path}"
-        else:
-            tui_flag = "" if args.tui else " --tui=false"
-            process_compose_cmd = f"process-compose up --config {config_path}{tui_flag}"
-
-        print_command_info("Process Compose Command", process_compose_cmd)
-
-        print("Working directory setup:")
-        print(f"  Test working directory: {working_dir}")
-        print(f"  Repository: {repo_dir}")
-        print(f"  User home: {user_home_dir}")
-        print(f"  Claude project path: {repo_dir}")
-        return
-
-    if not args.config_only:
-        if args.process_compose:
-            print(f"\nLaunching process-compose with config: {config_path}")
-
-            try:
-                # Set XDG_CONFIG_HOME for process-compose to avoid config directory issues
-                env = os.environ.copy()
-                # Create a temp directory for process-compose config
-                xdg_config_dir = tempfile.mkdtemp(prefix="process_compose_config_")
-                env["XDG_CONFIG_HOME"] = xdg_config_dir
-
-                if args.foreground:
-                    # Use process-compose run for foreground mode - attaches ah-agent to current TTY
-                    cmd = [
-                        "process-compose", "run", "ah-agent",
-                        "--config", str(config_path)
-                    ]
-                    print(f"Running: {' '.join(cmd)}")
-                    subprocess.run(cmd, check=True, env=env)
-                else:
-                    # Use process-compose up for background/TUI mode
-                    cmd = [
-                        "process-compose", "up",
-                        "--config", str(config_path)
-                    ]
-                    if not args.tui:
-                        cmd.append("--tui=false")  # Disable TUI for headless operation when not in TUI mode
-                print(f"Running: {' '.join(cmd)}")
-                result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-                if result.returncode != 0:
-                    print(f"Process-compose stdout: {result.stdout}")
-                    print(f"Process-compose stderr: {result.stderr}")
-                    print(f"Process-compose failed with exit code {result.returncode}")
-                    raise subprocess.CalledProcessError(result.returncode, cmd)
-            except KeyboardInterrupt:
-                print("\nProcess interrupted by user")
-            except subprocess.CalledProcessError as e:
-                print(f"Process-compose failed with exit code {e.returncode}")
-                sys.exit(e.returncode)
-            finally:
-                # Clean up temporary config file
-                if not args.config_file:
-                    config_path.unlink(missing_ok=True)
-        else:
-            logging.info("Running commands directly without process-compose...")
-
-            # Set environment variables for the processes
-            env = os.environ.copy()
-            env.update(env_vars)  # Add the AH agent environment variables
-
-            # Set up log file for mock server output
-            log_file = user_home_dir / "mock-server.log"
-
-            try:
-                # Set up mock server environment
-                mock_env = os.environ.copy()
-                for env_var in server_environment:
-                    if '=' in env_var:
-                        key, value = env_var.split('=', 1)
-                        mock_env[key] = value
-
-                # Create mock server manager with auto-restart capability
-                server_manager = MockServerManager(
-                    cmd=server_cmd,
-                    env=mock_env,
-                    cwd=str(mock_agent_dir),
-                    log_file=log_file,
-                    server_environment=server_environment
-                )
-
-                # Start the mock server with monitoring
-                if not server_manager.start_server():
-                    logging.error("Failed to start mock server initially")
-                    print("ERROR: Failed to start mock server initially")
-                    sys.exit(1)
-
-                print(f"Mock server started. Monitoring for crashes with auto-restart.")
-                print(f"Mock server logs: {log_file}")
-
-                # Start monitoring thread for auto-restart
-                server_manager.start_monitoring()
-
-                # Register cleanup function to terminate mock server when script exits
-                def cleanup_mock_server():
-                    logging.info("Cleaning up mock server...")
-                    server_manager.stop_monitoring()
-                    server_manager.stop_server()
-
-                atexit.register(cleanup_mock_server)
-
-                # Wait a bit for server to start and stabilize
-                logging.info("Waiting for mock server to start...")
-                print("Waiting for mock server to start...")
-                time.sleep(3)
-
-                # Check if server is still running after initial wait
-                if not server_manager.check_server_health():
-                    logging.error("Mock server failed to start properly")
-                    print("ERROR: Mock server failed to start properly")
-                    sys.exit(1)
-
-                logging.info("Starting AH agent in foreground...")
-                print("Starting AH agent in foreground...")
-                logging.info(f"AH agent command: {ah_command}")
-
-                # Run AH agent in foreground - inherit stdin/stdout/stderr from parent process
-                ah_process = subprocess.run(ah_command, shell=True, env=env, cwd=str(repo_dir))
-
-                if ah_process.returncode != 0:
-                    logging.error(f"AH agent failed with exit code {ah_process.returncode}")
-                    print(f"AH agent failed with exit code {ah_process.returncode}")
-                    sys.exit(ah_process.returncode)
-
-            except KeyboardInterrupt:
-                logging.info("Process interrupted by user")
-                print("\nProcess interrupted by user")
-            except subprocess.CalledProcessError as e:
-                logging.error(f"Command failed with exit code {e.returncode}")
-                print(f"Command failed with exit code {e.returncode}")
-                sys.exit(e.returncode)
-            except Exception as e:
-                logging.error(f"Unexpected error: {e}")
-                print(f"Unexpected error: {e}")
-                sys.exit(1)
+        # For mock agents or interactive mode, run directly
+        # Determine the core command and wrap with recording if needed
+        core_cmd = determine_core_command(args, repo_dir, user_home_dir, initial_prompt)
+        final_cmd = wrap_with_record_if_needed(args, core_cmd, user_home_dir)
+        run_directly(args, final_cmd, repo_dir, user_home_dir, working_dir)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,11 @@ pub use clap::{Parser, Subcommand};
 
 // Re-export agent types for backward compatibility
 pub use agent::start::CliAgentType as AgentType;
+pub use tui::FsSnapshotsType;
+
+// Re-export TUI types for record/replay functionality
+pub use ah_tui::record;
+pub use ah_tui::replay;
 
 #[derive(Parser)]
 #[command(name = "ah")]
@@ -26,6 +31,25 @@ pub struct Cli {
     /// Additional configuration file to load (sits just below CLI flags in precedence order)
     #[arg(long, help = "Additional configuration file to load")]
     pub config: Option<String>,
+
+    /// Set the log level (debug, info, warn, error)
+    #[arg(long, help = "Set the log level")]
+    #[arg(default_value = if cfg!(debug_assertions) { "debug" } else { "info" })]
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(["debug", "info", "warn", "error"]))]
+    pub log_level: String,
+
+    /// Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AH auto-detects a VCS root by walking parent directories and checking all supported VCS.
+    #[arg(long)]
+    pub repo: Option<String>,
+
+    /// Filesystem snapshot provider to use
+    #[arg(
+        long,
+        value_enum,
+        default_value = "auto",
+        help = "Filesystem snapshot provider (auto, zfs, btrfs, agentfs, git, disable)"
+    )]
+    pub fs_snapshots: FsSnapshotsType,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -66,9 +90,9 @@ pub enum AgentCommands {
     /// Start an agent session
     Start(agent::start::AgentStartArgs),
     /// Record an agent session with PTY capture
-    Record(agent::record::RecordArgs),
+    Record(record::RecordArgs),
     /// Replay a recorded agent session
-    Replay(agent::replay::ReplayArgs),
+    Replay(replay::ReplayArgs),
     /// Extract branch points from a recorded session
-    BranchPoints(agent::record::BranchPointsArgs),
+    BranchPoints(record::BranchPointsArgs),
 }

@@ -106,6 +106,7 @@ pub enum KeyboardOperation {
     MoveToPreviousField,
     DeleteToBeginningOfLine,
     DismissOverlay,
+    ToggleInsertMode,
 
     // Text Transformation
     UppercaseWord,
@@ -113,6 +114,10 @@ pub enum KeyboardOperation {
     CapitalizeWord,
     JustifyParagraph,
     JoinLines,
+
+    // Session Viewer Task Entry
+    NextSnapshot,
+    PreviousSnapshot,
 
     // Formatting (Markdown Style)
     Bold,
@@ -197,11 +202,14 @@ impl KeyboardOperation {
             KeyboardOperation::MoveToPreviousField => "shortcut-move-to-previous-field",
             KeyboardOperation::DeleteToBeginningOfLine => "shortcut-delete-to-beginning-of-line",
             KeyboardOperation::DismissOverlay => "shortcut-dismiss-overlay",
+            KeyboardOperation::ToggleInsertMode => "shortcut-toggle-insert-mode",
             KeyboardOperation::UppercaseWord => "shortcut-uppercase-word",
             KeyboardOperation::LowercaseWord => "shortcut-lowercase-word",
             KeyboardOperation::CapitalizeWord => "shortcut-capitalize-word",
             KeyboardOperation::JustifyParagraph => "shortcut-justify-paragraph",
             KeyboardOperation::JoinLines => "shortcut-join-lines",
+            KeyboardOperation::NextSnapshot => "shortcut-next-snapshot",
+            KeyboardOperation::PreviousSnapshot => "shortcut-previous-snapshot",
             KeyboardOperation::Bold => "shortcut-bold",
             KeyboardOperation::Italic => "shortcut-italic",
             KeyboardOperation::Underline => "shortcut-underline",
@@ -274,11 +282,14 @@ impl KeyboardOperation {
             KeyboardOperation::MoveToPreviousField => "Move to previous field",
             KeyboardOperation::DeleteToBeginningOfLine => "Delete to beginning of line",
             KeyboardOperation::DismissOverlay => "Dismiss modal or quit",
+            KeyboardOperation::ToggleInsertMode => "Toggle insert/overwrite mode",
             KeyboardOperation::UppercaseWord => "Uppercase word",
             KeyboardOperation::LowercaseWord => "Lowercase word",
             KeyboardOperation::CapitalizeWord => "Capitalize word",
             KeyboardOperation::JustifyParagraph => "Justify paragraph",
             KeyboardOperation::JoinLines => "Join lines",
+            KeyboardOperation::NextSnapshot => "Move to next snapshot",
+            KeyboardOperation::PreviousSnapshot => "Move to previous snapshot",
             KeyboardOperation::Bold => "Toggle bold formatting",
             KeyboardOperation::Italic => "Toggle italic formatting",
             KeyboardOperation::Underline => "Toggle underline formatting",
@@ -743,6 +754,10 @@ impl KeymapConfig {
                 vec!["Esc".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::ToggleInsertMode,
+                vec!["Insert".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToPreviousLine,
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
             ),
@@ -879,7 +894,7 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DuplicateLineSelection,
-                vec!["Ctrl+D".to_string(), "Cmd+Shift+D".to_string()],
+                vec!["Ctrl+Shift+D".to_string(), "Cmd+Shift+D".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveLineUp,
@@ -975,10 +990,6 @@ impl KeymapConfig {
                 ],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::DuplicateLineSelection,
-                vec!["Ctrl+D".to_string(), "Cmd+Shift+D".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveLineUp,
                 vec!["Alt+Up".to_string(), "Option+Up".to_string()],
             ),
@@ -1035,6 +1046,15 @@ impl KeymapConfig {
                 KeyboardOperation::CreateInVerticalSplit,
                 vec!["Ctrl+Shift+Alt+Enter".to_string()],
             ),
+            // Session Viewer Task Entry
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::NextSnapshot,
+                vec!["Ctrl+Shift+Down".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::PreviousSnapshot,
+                vec!["Ctrl+Shift+Up".to_string()],
+            ),
         ]
     }
 
@@ -1090,11 +1110,14 @@ impl KeymapConfig {
             KeyboardOperation::OpenNewLine => &self.open_new_line,
             KeyboardOperation::IndentOrComplete => &self.indent_or_complete,
             KeyboardOperation::DeleteToBeginningOfLine => &self.delete_to_beginning_of_line,
+            KeyboardOperation::ToggleInsertMode => &self.toggle_insert_mode,
             KeyboardOperation::UppercaseWord => &self.uppercase_word,
             KeyboardOperation::LowercaseWord => &self.lowercase_word,
             KeyboardOperation::CapitalizeWord => &self.capitalize_word,
             KeyboardOperation::JustifyParagraph => &self.justify_paragraph,
             KeyboardOperation::JoinLines => &self.join_lines,
+            KeyboardOperation::NextSnapshot => &self.next_snapshot,
+            KeyboardOperation::PreviousSnapshot => &self.previous_snapshot,
             KeyboardOperation::Bold => &self.bold,
             KeyboardOperation::Italic => &self.italic,
             KeyboardOperation::Underline => &self.underline,
@@ -1241,6 +1264,9 @@ impl KeymapConfig {
             KeyboardOperation::DeleteToBeginningOfLine => {
                 self.delete_to_beginning_of_line.clone().unwrap_or_default()
             }
+            KeyboardOperation::ToggleInsertMode => {
+                self.toggle_insert_mode.clone().unwrap_or_default()
+            }
             KeyboardOperation::UppercaseWord => self.uppercase_word.clone().unwrap_or_default(),
             KeyboardOperation::LowercaseWord => self.lowercase_word.clone().unwrap_or_default(),
             KeyboardOperation::CapitalizeWord => self.capitalize_word.clone().unwrap_or_default(),
@@ -1248,6 +1274,10 @@ impl KeymapConfig {
                 self.justify_paragraph.clone().unwrap_or_default()
             }
             KeyboardOperation::JoinLines => self.join_lines.clone().unwrap_or_default(),
+            KeyboardOperation::NextSnapshot => self.next_snapshot.clone().unwrap_or_default(),
+            KeyboardOperation::PreviousSnapshot => {
+                self.previous_snapshot.clone().unwrap_or_default()
+            }
             KeyboardOperation::Bold => self.bold.clone().unwrap_or_default(),
             KeyboardOperation::Italic => self.italic.clone().unwrap_or_default(),
             KeyboardOperation::Underline => self.underline.clone().unwrap_or_default(),
@@ -1338,11 +1368,14 @@ impl Default for KeymapConfig {
             open_new_line: None,
             indent_or_complete: None,
             delete_to_beginning_of_line: None,
+            toggle_insert_mode: None,
             uppercase_word: None,
             lowercase_word: None,
             capitalize_word: None,
             justify_paragraph: None,
             join_lines: None,
+            next_snapshot: None,
+            previous_snapshot: None,
             bold: None,
             italic: None,
             underline: None,
@@ -1494,6 +1527,9 @@ impl Default for KeymapConfig {
                     KeyboardOperation::DeleteToBeginningOfLine => {
                         config.delete_to_beginning_of_line = Some(matchers)
                     }
+                    KeyboardOperation::ToggleInsertMode => {
+                        config.toggle_insert_mode = Some(matchers)
+                    }
                     KeyboardOperation::UppercaseWord => config.uppercase_word = Some(matchers),
                     KeyboardOperation::LowercaseWord => config.lowercase_word = Some(matchers),
                     KeyboardOperation::CapitalizeWord => config.capitalize_word = Some(matchers),
@@ -1501,6 +1537,10 @@ impl Default for KeymapConfig {
                         config.justify_paragraph = Some(matchers)
                     }
                     KeyboardOperation::JoinLines => config.join_lines = Some(matchers),
+                    KeyboardOperation::NextSnapshot => config.next_snapshot = Some(matchers),
+                    KeyboardOperation::PreviousSnapshot => {
+                        config.previous_snapshot = Some(matchers)
+                    }
                     KeyboardOperation::Bold => config.bold = Some(matchers),
                     KeyboardOperation::Italic => config.italic = Some(matchers),
                     KeyboardOperation::Underline => config.underline = Some(matchers),
@@ -1581,6 +1621,7 @@ pub struct KeymapConfig {
     pub open_new_line: Option<Vec<KeyMatcher>>,
     pub indent_or_complete: Option<Vec<KeyMatcher>>,
     pub delete_to_beginning_of_line: Option<Vec<KeyMatcher>>,
+    pub toggle_insert_mode: Option<Vec<KeyMatcher>>,
 
     // Text Transformation
     pub uppercase_word: Option<Vec<KeyMatcher>>,
@@ -1588,6 +1629,10 @@ pub struct KeymapConfig {
     pub capitalize_word: Option<Vec<KeyMatcher>>,
     pub justify_paragraph: Option<Vec<KeyMatcher>>,
     pub join_lines: Option<Vec<KeyMatcher>>,
+
+    // Session Viewer Task Entry
+    pub next_snapshot: Option<Vec<KeyMatcher>>,
+    pub previous_snapshot: Option<Vec<KeyMatcher>>,
 
     // Formatting (Markdown Style)
     pub bold: Option<Vec<KeyMatcher>>,
@@ -1635,6 +1680,9 @@ pub struct Settings {
     /// Selection dialog style preference
     pub selection_dialog_style: Option<SelectionDialogStyle>,
 
+    /// Whether to show borders on autocomplete menus (default: true)
+    pub autocomplete_show_border: Option<bool>,
+
     /// Keyboard shortcuts configuration
     pub keymap: Option<KeymapConfig>,
 }
@@ -1645,6 +1693,7 @@ impl Default for Settings {
             active_sessions_activity_rows: Some(3),
             font_style: Some(FontStyle::Unicode),
             selection_dialog_style: Some(SelectionDialogStyle::Default),
+            autocomplete_show_border: Some(true),
             keymap: Some(KeymapConfig::default()),
         }
     }
@@ -1664,6 +1713,11 @@ impl Settings {
     /// Get the selection dialog style, with default fallback
     pub fn selection_dialog_style(&self) -> SelectionDialogStyle {
         self.selection_dialog_style.clone().unwrap_or(SelectionDialogStyle::Default)
+    }
+
+    /// Get whether to show borders on autocomplete menus, with default fallback
+    pub fn autocomplete_show_border(&self) -> bool {
+        self.autocomplete_show_border.unwrap_or(true)
     }
 
     /// Get the keymap configuration, with default fallback

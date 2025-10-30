@@ -3,15 +3,103 @@
 
 //! API contract types for the agent-harbor REST service
 
-use ah_domain_types::{LogLevel, TaskExecutionStatus};
+use ah_domain_types::{LogLevel, TaskState, ToolStatus};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ssz::DecodeError;
 use std::collections::HashMap;
 use url::Url;
 use validator::Validate;
 
-/// Session lifecycle states - alias for TaskExecutionStatus
-pub type SessionStatus = TaskExecutionStatus;
+/// Session status - SSZ-compatible version of TaskExecutionStatus for IPC communication
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+#[ssz(enum_behaviour = "tag")]
+pub enum SessionStatus {
+    Queued,
+    Provisioning,
+    Running,
+    Pausing,
+    Paused,
+    Resuming,
+    Stopping,
+    Stopped,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl std::fmt::Display for SessionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let status_str = match self {
+            SessionStatus::Queued => "queued",
+            SessionStatus::Provisioning => "provisioning",
+            SessionStatus::Running => "running",
+            SessionStatus::Pausing => "pausing",
+            SessionStatus::Paused => "paused",
+            SessionStatus::Resuming => "resuming",
+            SessionStatus::Stopping => "stopping",
+            SessionStatus::Stopped => "stopped",
+            SessionStatus::Completed => "completed",
+            SessionStatus::Failed => "failed",
+            SessionStatus::Cancelled => "cancelled",
+        };
+        write!(f, "{}", status_str)
+    }
+}
+
+impl From<ah_domain_types::TaskState> for SessionStatus {
+    fn from(status: ah_domain_types::TaskState) -> Self {
+        match status {
+            ah_domain_types::TaskState::Queued => SessionStatus::Queued,
+            ah_domain_types::TaskState::Provisioning => SessionStatus::Provisioning,
+            ah_domain_types::TaskState::Running => SessionStatus::Running,
+            ah_domain_types::TaskState::Pausing => SessionStatus::Pausing,
+            ah_domain_types::TaskState::Paused => SessionStatus::Paused,
+            ah_domain_types::TaskState::Resuming => SessionStatus::Resuming,
+            ah_domain_types::TaskState::Stopping => SessionStatus::Stopping,
+            ah_domain_types::TaskState::Stopped => SessionStatus::Stopped,
+            ah_domain_types::TaskState::Completed => SessionStatus::Completed,
+            ah_domain_types::TaskState::Failed => SessionStatus::Failed,
+            ah_domain_types::TaskState::Cancelled => SessionStatus::Cancelled,
+            // Note: Draft and Merged states don't have SessionStatus equivalents
+            ah_domain_types::TaskState::Draft | ah_domain_types::TaskState::Merged => {
+                // These shouldn't be converted to SessionStatus, but for completeness
+                SessionStatus::Queued // Default fallback
+            }
+        }
+    }
+}
+
+/// Session log level - SSZ-compatible version of LogLevel for IPC communication
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+#[ssz(enum_behaviour = "tag")]
+pub enum SessionLogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+/// Session tool status - SSZ-compatible version of ToolStatus for IPC communication
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+#[ssz(enum_behaviour = "tag")]
+pub enum SessionToolStatus {
+    Started,
+    Completed,
+    Failed,
+}
 
 /// Repository mode for task creation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,7 +261,8 @@ pub struct WebhookConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct CreateTaskResponse {
-    pub id: String,
+    #[serde(rename = "session_ids")]
+    pub session_ids: Vec<String>,
     pub status: SessionStatus,
     pub links: TaskLinks,
 }
@@ -277,56 +366,243 @@ pub struct SessionListResponse {
     pub total: Option<u32>,
 }
 
-/// Session event for SSE streaming
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// SSZ Union-based session events for IPC communication
+// Using Vec<u8> for strings, u64 for timestamps, and proper enums as SSZ supports these types
+// Each variant contains a single tuple/struct of SSZ-compatible types
+
+/// Status change event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct SessionEvent {
-    #[serde(rename = "type")]
-    pub event_type: EventType,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<SessionStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub level: Option<LogLevel>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub snapshot_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hosts: Option<HashMap<String, HostResult>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stream: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub passed: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failed: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delivery: Option<DeliveryInfo>,
-    // Agent activity event fields
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thought: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_args: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_output: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_execution_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lines_added: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lines_removed: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub ts: DateTime<Utc>,
+pub struct SessionStatusEvent {
+    /// Task execution status
+    pub status: SessionStatus,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+/// Log message event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionLogEvent {
+    /// Log level
+    pub level: SessionLogLevel,
+    /// Log message
+    pub message: Vec<u8>,
+    /// Optional tool execution ID
+    pub tool_execution_id: Option<Vec<u8>>,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+/// Agent error event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionErrorEvent {
+    /// Error message
+    pub message: Vec<u8>,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+/// Agent thought/reasoning event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionThoughtEvent {
+    /// Thought content
+    pub thought: Vec<u8>,
+    /// Optional reasoning
+    pub reasoning: Option<Vec<u8>>,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+/// Tool usage started event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionToolUseEvent {
+    /// Tool name
+    pub tool_name: Vec<u8>,
+    /// Tool arguments as JSON string
+    pub tool_args: Vec<u8>,
+    /// Tool execution ID
+    pub tool_execution_id: Vec<u8>,
+    /// Tool status
+    pub status: SessionToolStatus,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+/// Tool execution completed event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionToolResultEvent {
+    /// Tool name
+    pub tool_name: Vec<u8>,
+    /// Tool output
+    pub tool_output: Vec<u8>,
+    /// Tool execution ID
+    pub tool_execution_id: Vec<u8>,
+    /// Tool status
+    pub status: SessionToolStatus,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+/// File modification event
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionFileEditEvent {
+    /// File path
+    pub file_path: Vec<u8>,
+    /// Lines added
+    pub lines_added: usize,
+    /// Lines removed
+    pub lines_removed: usize,
+    /// Optional description
+    pub description: Option<Vec<u8>>,
+    /// Unix timestamp
+    pub timestamp: u64,
+}
+
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ssz_derive::Encode, ssz_derive::Decode,
+)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[ssz(enum_behaviour = "union")]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SessionEvent {
+    /// Status change event
+    Status(SessionStatusEvent),
+    /// Log message event
+    Log(SessionLogEvent),
+    /// Agent error event
+    Error(SessionErrorEvent),
+    /// Agent thought/reasoning event
+    Thought(SessionThoughtEvent),
+    /// Tool usage started event
+    ToolUse(SessionToolUseEvent),
+    /// Tool execution completed event
+    ToolResult(SessionToolResultEvent),
+    /// File modification event
+    FileEdit(SessionFileEditEvent),
+}
+
+// Constructors for SSZ union variants (convert high-level types to SSZ-compatible Vec<u8>/u64)
+impl SessionEvent {
+    /// Extract the timestamp from any variant
+    pub fn timestamp(&self) -> u64 {
+        match self {
+            SessionEvent::Status(event) => event.timestamp,
+            SessionEvent::Log(event) => event.timestamp,
+            SessionEvent::Error(event) => event.timestamp,
+            SessionEvent::Thought(event) => event.timestamp,
+            SessionEvent::ToolUse(event) => event.timestamp,
+            SessionEvent::ToolResult(event) => event.timestamp,
+            SessionEvent::FileEdit(event) => event.timestamp,
+        }
+    }
+
+    /// Create a status event
+    pub fn status(status: SessionStatus, timestamp: u64) -> Self {
+        Self::Status(SessionStatusEvent { status, timestamp })
+    }
+
+    /// Create a log event
+    pub fn log(
+        level: SessionLogLevel,
+        message: String,
+        tool_execution_id: Option<String>,
+        timestamp: u64,
+    ) -> Self {
+        Self::Log(SessionLogEvent {
+            level,
+            message: message.into_bytes(),
+            tool_execution_id: tool_execution_id.map(|s| s.into_bytes()),
+            timestamp,
+        })
+    }
+
+    /// Create an error event
+    pub fn error(message: String, timestamp: u64) -> Self {
+        Self::Error(SessionErrorEvent {
+            message: message.into_bytes(),
+            timestamp,
+        })
+    }
+
+    /// Create a thought event
+    pub fn thought(thought: String, reasoning: Option<String>, timestamp: u64) -> Self {
+        Self::Thought(SessionThoughtEvent {
+            thought: thought.into_bytes(),
+            reasoning: reasoning.map(|s| s.into_bytes()),
+            timestamp,
+        })
+    }
+
+    /// Create a tool use event
+    pub fn tool_use(
+        tool_name: String,
+        tool_args: String,
+        tool_execution_id: String,
+        status: SessionToolStatus,
+        timestamp: u64,
+    ) -> Self {
+        Self::ToolUse(SessionToolUseEvent {
+            tool_name: tool_name.into_bytes(),
+            tool_args: tool_args.into_bytes(),
+            tool_execution_id: tool_execution_id.into_bytes(),
+            status,
+            timestamp,
+        })
+    }
+
+    /// Create a tool result event
+    pub fn tool_result(
+        tool_name: String,
+        tool_output: String,
+        tool_execution_id: String,
+        status: SessionToolStatus,
+        timestamp: u64,
+    ) -> Self {
+        Self::ToolResult(SessionToolResultEvent {
+            tool_name: tool_name.into_bytes(),
+            tool_output: tool_output.into_bytes(),
+            tool_execution_id: tool_execution_id.into_bytes(),
+            status,
+            timestamp,
+        })
+    }
+
+    /// Create a file edit event
+    pub fn file_edit(
+        file_path: String,
+        lines_added: usize,
+        lines_removed: usize,
+        description: Option<String>,
+        timestamp: u64,
+    ) -> Self {
+        Self::FileEdit(SessionFileEditEvent {
+            file_path: file_path.into_bytes(),
+            lines_added,
+            lines_removed,
+            description: description.map(|s| s.into_bytes()),
+            timestamp,
+        })
+    }
 }
 
 /// Host result for fence operations

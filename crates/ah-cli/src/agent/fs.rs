@@ -13,7 +13,7 @@ use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
+use tracing::debug;
 /// JSON output for filesystem status
 #[derive(Serialize, Deserialize)]
 struct FsStatusJson {
@@ -31,7 +31,7 @@ struct FsCapabilitiesJson {
     supports_cow_overlay: bool,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct StatusOptions {
     /// Path to analyze (default: current working directory)
     #[arg(short, long)]
@@ -50,7 +50,7 @@ pub struct StatusOptions {
     detect_only: bool,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct InitSessionOptions {
     /// Optional name for the initial snapshot
     #[arg(short, long)]
@@ -65,14 +65,21 @@ pub struct InitSessionOptions {
     workspace: Option<String>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct SnapshotsOptions {
     /// Session ID (branch name or repo/branch)
     #[arg(value_name = "SESSION_ID")]
     session_id: String,
 }
 
-#[derive(Subcommand)]
+#[derive(Args, Clone)]
+pub struct SnapshotOptions {
+    /// Recorder IPC socket path for notification (optional)
+    #[arg(long)]
+    recorder_socket: Option<String>,
+}
+
+#[derive(Subcommand, Clone)]
 pub enum BranchCommands {
     /// Create a new branch from a snapshot
     Create {
@@ -102,7 +109,7 @@ pub enum BranchCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum InterposeCommands {
     /// Get current interpose configuration
     Get {
@@ -130,7 +137,7 @@ pub enum InterposeCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum AgentFsCommands {
     /// Run filesystem detection and report capabilities
     Status(StatusOptions),
@@ -139,7 +146,7 @@ pub enum AgentFsCommands {
     InitSession(InitSessionOptions),
 
     /// Create a snapshot at the current state
-    Snapshot,
+    Snapshot(SnapshotOptions),
 
     /// List snapshots for a session
     Snapshots(SnapshotsOptions),
@@ -162,7 +169,7 @@ impl AgentFsCommands {
         match self {
             AgentFsCommands::Status(opts) => Self::status(opts).await,
             AgentFsCommands::InitSession(opts) => Self::init_session(opts).await,
-            AgentFsCommands::Snapshot => Self::snapshot().await,
+            AgentFsCommands::Snapshot(opts) => Self::snapshot(opts).await,
             AgentFsCommands::Snapshots(opts) => Self::list_snapshots(opts).await,
             AgentFsCommands::Branch { subcommand } => match subcommand {
                 BranchCommands::Create { snapshot_id, name } => {
@@ -267,13 +274,13 @@ impl AgentFsCommands {
         Ok(())
     }
 
-    fn detect_filesystem_type(path: &PathBuf) -> String {
+    fn detect_filesystem_type(_path: &PathBuf) -> String {
         // Simple filesystem type detection using /proc/mounts or similar
         // For now, return a placeholder
         "unknown".to_string()
     }
 
-    fn detect_mount_point(path: &PathBuf) -> Option<String> {
+    fn detect_mount_point(_path: &PathBuf) -> Option<String> {
         // Simple mount point detection
         // For now, return None
         None
@@ -305,64 +312,31 @@ impl AgentFsCommands {
         Ok(())
     }
 
-    async fn snapshot() -> Result<()> {
+    async fn snapshot(opts: SnapshotOptions) -> Result<()> {
         let repo_path = std::env::current_dir().unwrap();
 
         // For ZFS testing, create ZFS provider directly (like the integration tests)
-        #[cfg(feature = "zfs")]
-        {
-            use ah_fs_snapshots::{FsSnapshotProvider, WorkingCopyMode};
-            use ah_fs_snapshots_zfs::ZfsProvider;
+        // Fallback to the generic provider detection
+        let provider = ah_fs_snapshots::provider_for(&repo_path)?;
+        let snapshot_label = uuid::Uuid::new_v4().to_string();
 
-            let zfs_provider = ZfsProvider::new();
-
-            // Check if this path is on ZFS
-            let capabilities = zfs_provider.detect_capabilities(&repo_path);
-            if capabilities.score > 0 {
-                // Create a minimal PreparedWorkspace for in-place mode
-                let workspace = ah_fs_snapshots::PreparedWorkspace {
-                    exec_path: repo_path.clone(),
-                    working_copy: WorkingCopyMode::InPlace,
-                    provider: zfs_provider.kind(),
-                    cleanup_token: format!("test:inplace:{}", repo_path.display()),
-                };
-
-                // Create the snapshot
-                let snapshot_ref = zfs_provider.snapshot_now(&workspace, Some("checkpoint"))?;
-
-                // Check if we're running under `ah agent record` and should notify the recorder
-                if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
-                    println!("DEBUG: Notifying recorder at socket: {}", ipc_socket);
-                    match Self::notify_recorder(
-                        &ipc_socket,
-                        snapshot_ref.id.parse::<u64>().unwrap_or(0),
-                        snapshot_ref.label.clone().unwrap_or_default(),
-                    )
-                    .await
-                    {
-                        Ok(_) => println!("DEBUG: Successfully notified recorder"),
-                        Err(e) => println!("DEBUG: Failed to notify recorder: {}", e),
-                    }
-                } else {
-                    println!("DEBUG: AH_RECORDER_IPC_SOCKET not set, not notifying recorder");
-                }
-
-                // Output the snapshot information in a format that the mock agent can parse
-                println!("Snapshot created: {}", snapshot_ref.id);
-                println!("Provider: {:?}", snapshot_ref.provider);
-                if let Some(label) = &snapshot_ref.label {
-                    println!("Label: {}", label);
-                }
-            } else {
-                println!("Not on ZFS filesystem, cannot create snapshots");
+        // Check if we should notify the recorder (via IPC socket parameter)
+        if let Some(recorder_socket) = opts.recorder_socket {
+            // Notify recorder before creating the snapshot (with placeholder ID = 0)
+            match Self::notify_recorder(
+                &recorder_socket,
+                0, // placeholder snapshot ID
+                &snapshot_label.as_str(),
+            )
+            .await
+            {
+                Ok(_) => tracing::debug!("DEBUG: Successfully notified recorder"),
+                Err(e) => tracing::debug!("DEBUG: Failed to notify recorder: {}", e),
             }
         }
 
-        // Fallback to the generic provider detection
-        let provider = ah_fs_snapshots::provider_for(&repo_path)?;
-
         // Create a minimal PreparedWorkspace for in-place mode
-        use ah_fs_snapshots::{PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode};
+        use ah_fs_snapshots::{PreparedWorkspace, WorkingCopyMode};
         let workspace = PreparedWorkspace {
             exec_path: repo_path.clone(),
             working_copy: WorkingCopyMode::InPlace,
@@ -370,37 +344,27 @@ impl AgentFsCommands {
             cleanup_token: format!("test:inplace:{}", repo_path.display()),
         };
 
-        // Create the snapshot
-        let snapshot_ref = provider.snapshot_now(&workspace, Some("checkpoint"))?;
-
-        // Check if we're running under `ah agent record` and should notify the recorder
-        if let Some(ipc_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
-            Self::notify_recorder(
-                &ipc_socket,
-                snapshot_ref.id.parse::<u64>().unwrap_or(0),
-                snapshot_ref.label.clone().unwrap_or_default(),
-            )
-            .await?;
-        }
+        // Create the actual filesystem snapshot
+        let snapshot_ref = provider.snapshot_now(&workspace, Some(&snapshot_label))?;
 
         // Output the snapshot information in a format that the mock agent can parse
-        println!("Snapshot created: {}", snapshot_ref.id);
-        println!("Provider: {:?}", snapshot_ref.provider);
+        debug!("Snapshot created: {}", snapshot_ref.id);
+        debug!("Provider: {:?}", snapshot_ref.provider);
         if let Some(label) = &snapshot_ref.label {
-            println!("Label: {}", label);
+            debug!("Label: {}", label);
         }
 
         Ok(())
     }
 
-    /// Notify the recorder about a new snapshot via IPC
-    async fn notify_recorder(socket_path: &str, snapshot_id: u64, label: String) -> Result<()> {
+    /// Notify the recorder about a new snapshot via IPC (legacy single-phase)
+    async fn notify_recorder(socket_path: &str, snapshot_id: u64, label: &str) -> Result<()> {
         use ah_recorder::IpcClient;
         use std::path::PathBuf;
 
         let client = IpcClient::new(PathBuf::from(socket_path));
 
-        match client.notify_snapshot(snapshot_id, label.clone()).await {
+        match client.notify_snapshot(snapshot_id, label.to_string()).await {
             Ok(response) => {
                 if response.is_success() {
                     tracing::debug!(

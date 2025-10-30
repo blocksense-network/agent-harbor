@@ -4,6 +4,7 @@
 //! Agent start command implementation
 
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
+use ah_core::agent_executor::ah_full_path;
 use ah_core::agent_types::AgentType;
 use anyhow::Context;
 use clap::{Args, ValueEnum};
@@ -12,6 +13,10 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::process::Stdio;
 use uuid;
+
+// Import snapshot types from parent and traits
+use crate::tui::FsSnapshotsType;
+use ah_fs_snapshots::WorkingCopyMode;
 
 /// CLI-specific agent type enum that derives clap::ValueEnum
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
@@ -49,13 +54,30 @@ impl From<CliAgentType> for AgentType {
     }
 }
 
-/// Working copy mode for agent execution
+/// CLI-specific working copy mode enum that derives clap::ValueEnum
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
-pub enum WorkingCopyMode {
+pub enum CliWorkingCopyMode {
+    /// Select working copy mode automatically based on provider capabilities
+    Auto,
+    /// Copy-on-write overlay preserving original repo paths
+    #[clap(name = "cow-overlay")]
+    CowOverlay,
+    /// Isolated directory with bind mounts for path preservation
+    Worktree,
     /// Execute agent directly in the current working directory
+    #[clap(name = "in-place")]
     InPlace,
-    /// Use filesystem snapshots for workspace isolation
-    Snapshots,
+}
+
+impl From<CliWorkingCopyMode> for WorkingCopyMode {
+    fn from(cli: CliWorkingCopyMode) -> Self {
+        match cli {
+            CliWorkingCopyMode::Auto => WorkingCopyMode::Auto,
+            CliWorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
+            CliWorkingCopyMode::Worktree => WorkingCopyMode::Worktree,
+            CliWorkingCopyMode::InPlace => WorkingCopyMode::InPlace,
+        }
+    }
 }
 
 /// Output format for agent execution
@@ -74,7 +96,7 @@ pub enum OutputFormat {
 }
 
 /// Agent start command arguments
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct AgentStartArgs {
     /// Agent type to start
     #[arg(long, default_value = "mock")]
@@ -101,8 +123,12 @@ pub struct AgentStartArgs {
     pub llm_api_proxy_url: Option<String>,
 
     /// Working copy mode
-    #[arg(long, default_value = "in-place")]
-    pub working_copy: WorkingCopyMode,
+    #[arg(long, value_enum, default_value = "auto")]
+    pub working_copy: CliWorkingCopyMode,
+
+    /// Filesystem snapshot provider to use
+    #[arg(long, value_enum, default_value = "auto")]
+    pub fs_snapshots: FsSnapshotsType,
 
     /// Working directory for agent execution
     #[arg(long)]
@@ -190,6 +216,9 @@ impl AgentStartArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         // Convert CLI agent type to core agent type
         let agent_type: AgentType = self.agent.clone().into();
+
+        // Validate command-line arguments
+        self.validate_args()?;
 
         // Handle mock agent separately (doesn't use abstraction layer)
         if matches!(agent_type, AgentType::Mock) {
@@ -327,12 +356,28 @@ impl AgentStartArgs {
         Ok(session_api_key)
     }
 
+    /// Validate command-line arguments
+    fn validate_args(&self) -> anyhow::Result<()> {
+        // --non-interactive requires --prompt
+        if self.non_interactive && self.prompt.is_none() {
+            return Err(anyhow::anyhow!(
+                "The --prompt parameter is required when --non-interactive is specified.\n\
+                 In non-interactive mode, the agent needs a prompt to execute.\n\
+                 Use --prompt \"your task description\" or omit --non-interactive for interactive mode."
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Build AgentLaunchConfig from command line arguments
     fn build_agent_config(&self, agent_type: AgentType) -> anyhow::Result<AgentLaunchConfig> {
-        let mut config = AgentLaunchConfig::new(
-            self.prompt.clone().unwrap_or_else(|| "Continue working".to_string()),
-            self.build_home_dir(agent_type.clone())?,
-        );
+        let mut config = AgentLaunchConfig::new(self.build_home_dir(agent_type.clone())?);
+
+        // Set prompt if provided
+        if let Some(prompt) = &self.prompt {
+            config = config.prompt(prompt.clone());
+        }
 
         // Set interactive mode based on flags
         config = config.interactive(!self.non_interactive);
@@ -367,9 +412,10 @@ impl AgentStartArgs {
         config = config.copy_credentials(true);
 
         // Set unrestricted mode when running in sandbox
-        if self.sandbox {
-            config = config.unrestricted(true);
-        }
+        // TODO: Remove this once sandbox is properly integrated
+        //if self.sandbox {
+        config = config.unrestricted(true);
+        //}
 
         // Enable web search if requested
         if self.allow_web_search {
@@ -409,6 +455,11 @@ impl AgentStartArgs {
 
         if !model.is_empty() {
             config = config.model(model);
+        }
+
+        // Set snapshot command to use full path to ah agent fs snapshot
+        if let Ok(ah_path) = ah_full_path() {
+            config = config.snapshot_cmd(format!("{} agent fs snapshot", ah_path));
         }
 
         Ok(config)
@@ -452,17 +503,26 @@ impl AgentStartArgs {
             std::env::current_dir()?
         };
 
-        // Handle workspace preparation for snapshots mode
-        let actual_cwd = if self.working_copy == WorkingCopyMode::Snapshots {
-            // Prepare a snapshot-based workspace
-            match crate::sandbox::prepare_workspace_with_fallback(&cwd).await {
-                Ok(prepared_workspace) => prepared_workspace.exec_path,
-                Err(e) => {
-                    return Err(e.into());
+        // Handle workspace preparation based on working copy mode and snapshot settings
+        let actual_cwd = match self.working_copy.clone().into() {
+            WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay | WorkingCopyMode::Worktree => {
+                // For these modes, we need to prepare a workspace if snapshots are enabled
+                if matches!(self.fs_snapshots, FsSnapshotsType::Disable) {
+                    cwd.clone()
+                } else {
+                    // Prepare a snapshot-based workspace
+                    match crate::sandbox::prepare_workspace_with_fallback(&cwd).await {
+                        Ok(prepared_workspace) => prepared_workspace.exec_path,
+                        Err(e) => {
+                            return Err(e.into());
+                        }
+                    }
                 }
             }
-        } else {
-            cwd.clone()
+            WorkingCopyMode::InPlace => {
+                // In-place mode runs directly in the original directory
+                cwd.clone()
+            }
         };
 
         // Handle sandbox mode

@@ -31,7 +31,9 @@ agent-harbor/
 │  ├─ integration/
 │  │  └─ recording/              # `ah agent record` integration tests with Scenario-Format.md
 │  ├─ acceptance/
-│  └─ fixtures/
+│  ├─ fixtures/
+│  └─ tools/                     # Testing and debugging utilities
+│     └─ inspect_ahr.rs          # Tool for inspecting .ahr recording files
 ├─ examples/                   # Small runnable examples per subsystem
 ├─ electron-app/               # Electron GUI application (cross-platform)
 │  ├─ package.json             # Node.js dependencies and scripts

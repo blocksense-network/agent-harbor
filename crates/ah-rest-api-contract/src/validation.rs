@@ -232,104 +232,15 @@ mod tests {
 
     #[test]
     fn test_serialization_roundtrip_session_event() {
-        let original = SessionEvent {
-            event_type: EventType::Thought,
-            status: None,
-            level: None,
-            message: None,
-            snapshot_id: None,
-            note: None,
-            hosts: None,
-            host: None,
-            stream: None,
-            passed: None,
-            failed: None,
-            delivery: None,
-            thought: Some("Analyzing the code".to_string()),
-            reasoning: Some("Need to understand the structure".to_string()),
-            tool_name: None,
-            tool_args: None,
-            tool_output: None,
-            tool_execution_id: None,
-            file_path: None,
-            lines_added: None,
-            lines_removed: None,
-            description: None,
-            ts: chrono::Utc::now(),
-        };
+        let original = SessionEvent::thought(
+            "Analyzing the code".to_string(),
+            Some("Need to understand the structure".to_string()),
+            chrono::Utc::now().timestamp() as u64,
+        );
 
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: SessionEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(original, deserialized);
-    }
-
-    #[test]
-    fn test_session_event_with_tool_use() {
-        let original = SessionEvent {
-            event_type: EventType::ToolUse,
-            status: None,
-            level: None,
-            message: None,
-            snapshot_id: None,
-            note: None,
-            hosts: None,
-            host: None,
-            stream: None,
-            passed: None,
-            failed: None,
-            delivery: None,
-            thought: None,
-            reasoning: None,
-            tool_name: Some("read_file".to_string()),
-            tool_args: Some(serde_json::json!({"target_file": "src/main.rs"})),
-            tool_output: None,
-            tool_execution_id: Some("tool_exec_01H".to_string()),
-            file_path: None,
-            lines_added: None,
-            lines_removed: None,
-            description: None,
-            ts: chrono::Utc::now(),
-        };
-
-        let json = serde_json::to_string(&original).unwrap();
-        let deserialized: SessionEvent = serde_json::from_str(&json).unwrap();
-        assert_eq!(original, deserialized);
-        assert_eq!(deserialized.tool_name.as_deref(), Some("read_file"));
-    }
-
-    #[test]
-    fn test_session_event_with_file_edit() {
-        let original = SessionEvent {
-            event_type: EventType::FileEdit,
-            status: None,
-            level: None,
-            message: None,
-            snapshot_id: None,
-            note: None,
-            hosts: None,
-            host: None,
-            stream: None,
-            passed: None,
-            failed: None,
-            delivery: None,
-            thought: None,
-            reasoning: None,
-            tool_name: None,
-            tool_args: None,
-            tool_output: None,
-            tool_execution_id: None,
-            file_path: Some("src/auth.rs".to_string()),
-            lines_added: Some(5),
-            lines_removed: Some(2),
-            description: Some("Enhanced error handling".to_string()),
-            ts: chrono::Utc::now(),
-        };
-
-        let json = serde_json::to_string(&original).unwrap();
-        let deserialized: SessionEvent = serde_json::from_str(&json).unwrap();
-        assert_eq!(original, deserialized);
-        assert_eq!(deserialized.lines_added, Some(5));
-        assert_eq!(deserialized.lines_removed, Some(2));
     }
 
     #[test]

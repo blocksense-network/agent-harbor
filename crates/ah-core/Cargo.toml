@@ -33,3 +33,10 @@ async-trait.workspace = true
 futures.workspace = true
 async-stream = "0.3"
 url = "2.5"
+interprocess = { version = "2.0", features = ["tokio"] }
+ethereum_ssz = { workspace = true }
+ethereum_ssz_derive = { workspace = true }
+
+# Aliases for SSZ crates (matching recorder pattern)
+ssz = { package = "ethereum_ssz", version = "0.8" }
+ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }

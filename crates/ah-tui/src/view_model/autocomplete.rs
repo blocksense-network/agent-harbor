@@ -2,24 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{Receiver, Sender};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nucleo::{
-    Config, Matcher, Utf32Str,
-    pattern::{CaseMatching, Normalization, Pattern},
-};
-use once_cell::sync::OnceCell;
+use futures::{StreamExt, executor};
+use nucleo_matcher::{Matcher, pattern::Pattern};
 use tui_textarea::TextArea;
-use unicode_segmentation::UnicodeSegmentation as _;
+
+use ah_core::WorkspaceFilesEnumerator;
+use ah_repo;
+use ah_workflows::WorkspaceWorkflowsEnumerator;
+use anyhow::Result;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -51,6 +45,40 @@ impl Trigger {
     }
 }
 
+/// Dependencies needed for autocomplete functionality
+#[derive(Clone)]
+pub struct AutocompleteDependencies {
+    pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
+    pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+    pub settings: crate::settings::Settings,
+}
+
+impl AutocompleteDependencies {
+    /// Create autocomplete dependencies from a VscRepo instance
+    pub fn from_vcs_repo(
+        vcs_repo: ah_repo::VcsRepo,
+        settings: crate::settings::Settings,
+    ) -> Result<Self> {
+        use ah_workflows::{WorkflowConfig, WorkflowProcessor};
+
+        // Create workspace workflows enumerator first
+        let config = WorkflowConfig::default();
+        let workflow_processor = WorkflowProcessor::for_repo(config, vcs_repo.root())
+            .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default()));
+        let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+            Arc::new(workflow_processor);
+
+        // Create workspace files enumerator from the VcsRepo
+        let workspace_files: Arc<dyn WorkspaceFilesEnumerator> = Arc::new(vcs_repo);
+
+        Ok(Self {
+            workspace_files,
+            workspace_workflows,
+            settings,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Item {
     pub id: String,
@@ -60,186 +88,7 @@ pub struct Item {
     pub replacement: String,
 }
 
-pub trait Provider: Send + Sync {
-    fn trigger(&self) -> Trigger;
-    fn items(&self) -> Arc<Vec<Item>>;
-}
-
-struct StaticProvider {
-    trigger: Trigger,
-    items: Arc<Vec<Item>>,
-}
-
-impl StaticProvider {
-    fn new(trigger: Trigger, items: Vec<Item>) -> Self {
-        Self {
-            trigger,
-            items: Arc::new(items),
-        }
-    }
-}
-
-impl Provider for StaticProvider {
-    fn trigger(&self) -> Trigger {
-        self.trigger
-    }
-
-    fn items(&self) -> Arc<Vec<Item>> {
-        Arc::clone(&self.items)
-    }
-}
-
-struct GitFileProvider {
-    cached: OnceCell<Arc<Vec<Item>>>,
-}
-
-impl GitFileProvider {
-    fn new() -> Self {
-        Self {
-            cached: OnceCell::new(),
-        }
-    }
-
-    fn load_items() -> Vec<Item> {
-        let output = Command::new("git").args(["ls-files"]).output().ok();
-
-        let stdout = match output {
-            Some(out) if out.status.success() => out.stdout,
-            _ => return Vec::new(),
-        };
-
-        let mut items = Vec::new();
-        for line in String::from_utf8_lossy(&stdout).lines() {
-            if line.is_empty() {
-                continue;
-            }
-            items.push(Item {
-                id: line.to_string(),
-                trigger: Trigger::At,
-                label: line.to_string(),
-                detail: Some("Tracked file".to_string()),
-                replacement: format!("@{}", line),
-            });
-        }
-        items
-    }
-}
-
-impl Provider for GitFileProvider {
-    fn trigger(&self) -> Trigger {
-        Trigger::At
-    }
-
-    fn items(&self) -> Arc<Vec<Item>> {
-        Arc::clone(self.cached.get_or_init(|| Arc::new(Self::load_items())))
-    }
-}
-
-struct WorkflowProvider {
-    cached: OnceCell<Arc<Vec<Item>>>,
-}
-
-impl WorkflowProvider {
-    fn new() -> Self {
-        Self {
-            cached: OnceCell::new(),
-        }
-    }
-
-    fn load_items() -> Vec<Item> {
-        let mut seen = HashSet::new();
-        let mut items = Vec::new();
-
-        // Add some basic workflow commands for the PoC
-        // TODO: Replace with real WorkspaceWorkflowsEnumerator integration
-        let poc_commands = vec![
-            ("front-end-task", "Frontend development tasks"),
-            ("back-end-task", "Backend development tasks"),
-            ("test-setup", "Testing environment setup"),
-        ];
-
-        for (name, desc) in poc_commands {
-            if seen.insert(name.to_string()) {
-                items.push(Item {
-                    id: name.to_string(),
-                    trigger: Trigger::Slash,
-                    label: name.to_string(),
-                    detail: Some(desc.to_string()),
-                    replacement: format!("/{}", name),
-                });
-            }
-        }
-
-        // Also include PATH executables
-        let path_var = match env::var_os("PATH") {
-            Some(p) => p,
-            None => return items,
-        };
-
-        for dir in env::split_paths(&path_var) {
-            if let Ok(entries) = fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if !is_executable(&path) {
-                        continue;
-                    }
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if seen.insert(name.to_string()) {
-                            items.push(Item {
-                                id: name.to_string(),
-                                trigger: Trigger::Slash,
-                                label: name.to_string(),
-                                detail: Some(dir.display().to_string()),
-                                replacement: format!("/{}", name),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        items
-    }
-}
-
-impl Provider for WorkflowProvider {
-    fn trigger(&self) -> Trigger {
-        Trigger::Slash
-    }
-
-    fn items(&self) -> Arc<Vec<Item>> {
-        Arc::clone(self.cached.get_or_init(|| Arc::new(Self::load_items())))
-    }
-}
-
-fn is_executable(path: &PathBuf) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-
-    #[cfg(unix)]
-    {
-        if let Ok(metadata) = fs::metadata(path) {
-            return metadata.permissions().mode() & 0o111 != 0;
-        }
-        false
-    }
-
-    #[cfg(not(unix))]
-    {
-        path.extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| {
-                matches!(
-                    ext.to_ascii_lowercase().as_str(),
-                    "exe" | "bat" | "cmd" | "com"
-                )
-            })
-            .unwrap_or(false)
-    }
-}
-
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 struct InlineMenuViewModel {
     open: bool,
     trigger: Option<Trigger>,
@@ -248,6 +97,20 @@ struct InlineMenuViewModel {
     results: Vec<ScoredMatch>,
     token: Option<TokenPosition>,
     last_applied_id: u64,
+}
+
+impl Default for InlineMenuViewModel {
+    fn default() -> Self {
+        Self {
+            open: false,
+            trigger: None,
+            query: String::new(),
+            selected: 0,
+            results: Vec::new(),
+            token: None,
+            last_applied_id: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,15 +127,34 @@ pub struct AutocompleteMenuState<'a> {
     pub show_border: bool,
 }
 
-#[derive(Debug)]
 pub struct InlineAutocomplete {
     vm: InlineMenuViewModel,
-    tx_query: Sender<QueryMessage>,
-    rx_result: Receiver<ResultMessage>,
-    pending: Option<PendingQuery>,
-    next_request_id: u64,
+    dependencies: Arc<AutocompleteDependencies>,
     show_border: bool,
     suspended: bool,
+    // Caching for fast autocomplete - shared for async access
+    // Single Mutex protects entire cache state for thread-safe updates
+    pub cache_state: Arc<std::sync::Mutex<CacheState>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CacheState {
+    pub files: Option<Vec<String>>,
+    pub workflows: Option<Vec<String>>,
+    pub refresh_in_progress: bool,
+    pub last_update: Option<Instant>,
+}
+
+impl Clone for InlineAutocomplete {
+    fn clone(&self) -> Self {
+        Self {
+            vm: self.vm.clone(),
+            dependencies: Arc::clone(&self.dependencies),
+            show_border: self.show_border,
+            suspended: self.suspended,
+            cache_state: Arc::clone(&self.cache_state),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -288,82 +170,86 @@ struct TokenPosition {
     start_col: usize,
 }
 
-#[derive(Debug)]
-struct PendingQuery {
-    id: u64,
-    trigger: Trigger,
-    needle: String,
-    deadline: Instant,
-}
-
-enum QueryMessage {
-    Search {
-        id: u64,
-        trigger: Trigger,
-        needle: String,
-    },
-}
-
-struct ResultMessage {
-    id: u64,
-    matches: Vec<ScoredMatch>,
-}
-
 impl InlineAutocomplete {
-    pub fn new() -> Self {
-        Self::with_providers(vec![
-            Arc::new(WorkflowProvider::new()) as Arc<dyn Provider>,
-            Arc::new(GitFileProvider::new()) as Arc<dyn Provider>,
-            Arc::new(StaticProvider::new(
-                Trigger::At,
-                vec![
-                    Item {
-                        id: "specs/Public/WebUI-PRD.md".to_string(),
-                        trigger: Trigger::At,
-                        label: "specs/Public/WebUI-PRD.md".to_string(),
-                        detail: Some("Product requirements".to_string()),
-                        replacement: "@specs/Public/WebUI-PRD.md".to_string(),
-                    },
-                    Item {
-                        id: "PoC/tui-exploration/src/main.rs".to_string(),
-                        trigger: Trigger::At,
-                        label: "PoC/tui-exploration/src/main.rs".to_string(),
-                        detail: Some("TUI playground".to_string()),
-                        replacement: "@PoC/tui-exploration/src/main.rs".to_string(),
-                    },
-                ],
-            )),
-            Arc::new(StaticProvider::new(
-                Trigger::Slash,
-                vec![Item {
-                    id: "ah".to_string(),
-                    trigger: Trigger::Slash,
-                    label: "ah".to_string(),
-                    detail: Some("Agent Harbor CLI".to_string()),
-                    replacement: "/ah".to_string(),
-                }],
-            )),
-        ])
-    }
-
-    pub fn with_providers(providers: Vec<Arc<dyn Provider>>) -> Self {
-        let (tx_query, rx_query) = crossbeam_channel::unbounded();
-        let (tx_result, rx_result) = crossbeam_channel::unbounded();
-        spawn_worker(providers, rx_query, tx_result);
-
+    pub fn with_dependencies(dependencies: Arc<AutocompleteDependencies>) -> Self {
+        let show_border = dependencies.settings.autocomplete_show_border();
         Self {
             vm: InlineMenuViewModel::default(),
-            tx_query,
-            rx_result,
-            pending: None,
-            next_request_id: 1,
-            show_border: true,
+            dependencies,
+            show_border,
             suspended: false,
+            cache_state: Arc::new(std::sync::Mutex::new(CacheState {
+                files: None,
+                workflows: None,
+                refresh_in_progress: false,
+                last_update: None,
+            })),
         }
     }
 
     pub fn set_show_border(&mut self, value: bool) {
         self.show_border = value;
+    }
+
+    /// Ensure cache is populated (refresh if needed)
+    fn ensure_cache(&mut self) {
+        let cache_state = self.cache_state.lock().unwrap();
+        let files_cached = cache_state.files.is_some();
+        let workflows_cached = cache_state.workflows.is_some();
+        if !files_cached || !workflows_cached {
+            drop(cache_state); // Release lock before calling start_cache_refresh
+            self.start_cache_refresh();
+        }
+    }
+
+    /// Start asynchronous cache refresh
+    fn start_cache_refresh(&mut self) {
+        if self.cache_state.lock().unwrap().refresh_in_progress {
+            return; // Already refreshing
+        }
+
+        // Mark refresh as in progress
+        self.cache_state.lock().unwrap().refresh_in_progress = true;
+
+        let dependencies = Arc::clone(&self.dependencies);
+        let cache_state = Arc::clone(&self.cache_state);
+
+        tokio::spawn(async move {
+            // Refresh files cache
+            let files_result = match dependencies.workspace_files.stream_repository_files().await {
+                Ok(mut stream) => {
+                    let mut files = Vec::new();
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(file) => files.push(file.path),
+                            Err(_) => {} // Skip files that can't be read
+                        }
+                    }
+                    Some(files)
+                }
+                Err(_) => {
+                    // If we can't load files, use empty cache
+                    Some(Vec::new())
+                }
+            };
+
+            // Refresh workflows cache
+            let workflows_result =
+                match dependencies.workspace_workflows.enumerate_workflow_commands().await {
+                    Ok(commands) => Some(commands.into_iter().map(|c| c.name).collect()),
+                    Err(_) => {
+                        // If we can't load workflows, use empty cache
+                        Some(Vec::new())
+                    }
+                };
+
+            // Update cache state using Mutex
+            let mut cache_state_mut = cache_state.lock().unwrap();
+            cache_state_mut.files = files_result;
+            cache_state_mut.workflows = workflows_result;
+            cache_state_mut.refresh_in_progress = false;
+            cache_state_mut.last_update = Some(Instant::now());
+        });
     }
 
     pub fn notify_text_input(&mut self) {
@@ -503,25 +389,33 @@ impl InlineAutocomplete {
             let same_trigger = self.vm.trigger == Some(trigger);
 
             if same_trigger {
-                // Same trigger – keep the menu visible without rescheduling work
-                // This handles cursor movement within the same token (e.g., "/te" vs "/t")
-                // Keep the menu open if it was already open (for loading states), otherwise open if we have results
+                // Same trigger – check if query changed and perform search if needed
                 let was_open = self.vm.open;
-                self.vm.open = self.vm.open || !self.vm.results.is_empty();
                 self.vm.token = Some(token);
                 let query_changed = self.vm.query != query;
                 self.vm.query = query.clone(); // Update query as cursor moves
+
+                if query_changed {
+                    // Query changed - perform search with new query
+                    self.perform_search(trigger, query);
+                } else {
+                    // Same query - just keep menu visible
+                    self.vm.open = self.vm.open || !self.vm.results.is_empty();
+                }
+
                 if was_open != self.vm.open || query_changed {
                     *needs_redraw = true;
                 }
             } else {
-                // New trigger context - reset selection
+                // New trigger context - reset selection and perform search
                 self.vm.selected = 0;
                 self.vm.trigger = Some(trigger);
                 self.vm.token = Some(token);
                 self.vm.query = query.clone();
                 self.vm.open = false;
-                self.schedule_query(trigger, query);
+
+                // Perform search directly using enumerators
+                self.perform_search(trigger, query);
                 *needs_redraw = true;
             }
         } else {
@@ -529,45 +423,76 @@ impl InlineAutocomplete {
         }
     }
 
-    pub fn poll_results(&mut self) {
-        while let Ok(msg) = self.rx_result.try_recv() {
-            if self.suspended {
-                continue;
-            }
-            if msg.id < self.vm.last_applied_id {
-                continue;
-            }
-            self.vm.results = msg.matches;
-            self.vm.last_applied_id = msg.id;
-            if self.vm.selected >= self.vm.results.len() {
-                self.vm.selected = self.vm.results.len().saturating_sub(1);
-            }
-            self.constrain_selected();
-            let query = self.vm.query.trim();
-            let only_exact = self.vm.results.len() == 1
-                && !query.is_empty()
-                && self.vm.results[0].item.label.eq_ignore_ascii_case(query);
-
-            if self.vm.results.is_empty() || only_exact {
-                self.vm.results.clear();
-                self.vm.open = false;
-            } else {
-                self.vm.open = true;
-            }
+    fn perform_search(&mut self, trigger: Trigger, needle: String) {
+        // Hide menu if query is empty
+        if needle.is_empty() {
+            self.close(&mut false);
+            return;
         }
-    }
 
-    pub fn on_tick(&mut self) {
-        if let Some(pending) = self.pending.take() {
-            if Instant::now() >= pending.deadline {
-                let _ = self.tx_query.send(QueryMessage::Search {
-                    id: pending.id,
-                    trigger: pending.trigger,
-                    needle: pending.needle,
-                });
-            } else {
-                self.pending = Some(pending);
+        // Ensure cache is populated
+        self.ensure_cache();
+
+        let candidates = {
+            let cache_state = self.cache_state.lock().unwrap();
+            match trigger {
+                Trigger::At => cache_state.files.as_ref().unwrap_or(&vec![]).clone(),
+                Trigger::Slash => cache_state.workflows.as_ref().unwrap_or(&vec![]).clone(),
             }
+        };
+
+        // Perform fuzzy matching
+        let mut matcher = Matcher::new(nucleo_matcher::Config::DEFAULT);
+        let pattern = Pattern::new(
+            needle.as_str(),
+            nucleo_matcher::pattern::CaseMatching::Ignore,
+            nucleo_matcher::pattern::Normalization::Smart,
+            nucleo_matcher::pattern::AtomKind::Fuzzy,
+        );
+
+        let mut results: Vec<ScoredMatch> = candidates
+            .iter()
+            .filter_map(|candidate| {
+                let haystack = nucleo_matcher::Utf32String::from(candidate.as_str());
+                let score = pattern.score(haystack.slice(..), &mut matcher);
+                if score.is_some() {
+                    Some(ScoredMatch {
+                        item: Item {
+                            id: candidate.clone(),
+                            trigger,
+                            label: candidate.clone(),
+                            detail: None, // Could add more details later
+                            replacement: format!("{}{}", trigger.as_char(), candidate),
+                        },
+                        score: score.unwrap_or(0),
+                        indices: Vec::new(), // Indices not supported in this version
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sort by score (higher is better)
+        results.sort_by(|a, b| b.score.cmp(&a.score));
+
+        // Limit results
+        results.truncate(MAX_RESULTS);
+
+        // Update results
+        self.vm.results = results;
+        self.vm.last_applied_id += 1;
+
+        // Update selection bounds
+        if self.vm.selected >= self.vm.results.len() {
+            self.vm.selected = self.vm.results.len().saturating_sub(1);
+        }
+
+        // Show menu if we have results, hide if empty
+        if self.vm.results.is_empty() {
+            self.close(&mut false);
+        } else {
+            self.vm.open = true;
         }
     }
 
@@ -590,17 +515,6 @@ impl InlineAutocomplete {
             selected_index: selected,
             show_border: self.show_border,
         })
-    }
-
-    fn schedule_query(&mut self, trigger: Trigger, needle: String) {
-        let id = self.next_request_id;
-        self.next_request_id += 1;
-        self.pending = Some(PendingQuery {
-            id,
-            trigger,
-            needle,
-            deadline: Instant::now() + QUERY_DEBOUNCE,
-        });
     }
 
     fn commit_selection(&mut self, textarea: &mut TextArea<'_>, needs_redraw: &mut bool) -> bool {
@@ -648,7 +562,6 @@ impl InlineAutocomplete {
         self.vm.results.clear();
         self.vm.selected = 0;
         self.vm.token = None;
-        self.pending = None;
         if was_open {
             *needs_redraw = true;
         }
@@ -729,227 +642,4 @@ fn is_token_boundary(ch: char) -> bool {
             ch,
             '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | ':' | '\'' | '"' | '`'
         )
-}
-
-fn spawn_worker(
-    providers: Vec<Arc<dyn Provider>>,
-    rx_query: Receiver<QueryMessage>,
-    tx_result: Sender<ResultMessage>,
-) {
-    let mut provider_lookup: HashMap<Trigger, Vec<Arc<dyn Provider>>> = HashMap::new();
-    for provider in providers {
-        provider_lookup.entry(provider.trigger()).or_default().push(provider);
-    }
-
-    thread::Builder::new()
-        .name("autocomplete-matcher".into())
-        .spawn(move || {
-            let mut config = Config::DEFAULT;
-            config.normalize = true;
-            config.ignore_case = true;
-            config.prefer_prefix = false;
-            let mut matcher = Matcher::new(config);
-            let mut scratch = Vec::new();
-            while let Ok(message) = rx_query.recv() {
-                match message {
-                    QueryMessage::Search {
-                        id,
-                        trigger,
-                        needle,
-                    } => {
-                        let mut aggregated = Vec::new();
-                        let mut seen = HashSet::new();
-
-                        if let Some(list) = provider_lookup.get(&trigger) {
-                            for provider in list {
-                                let matches =
-                                    compute_matches(provider, &needle, &mut matcher, &mut scratch);
-                                for m in matches {
-                                    if seen.insert(m.item.id.clone()) {
-                                        aggregated.push(m);
-                                    }
-                                }
-                            }
-                        }
-
-                        aggregated.sort_by(|a, b| b.score.cmp(&a.score));
-                        aggregated.truncate(MAX_RESULTS);
-
-                        let _ = tx_result.send(ResultMessage {
-                            id,
-                            matches: aggregated,
-                        });
-                    }
-                }
-            }
-        })
-        .expect("failed to start autocomplete worker");
-}
-
-fn compute_matches(
-    provider: &Arc<dyn Provider>,
-    needle: &str,
-    matcher: &mut Matcher,
-    scratch: &mut Vec<u32>,
-) -> Vec<ScoredMatch> {
-    let items = provider.items();
-    let mut seen_ids: HashSet<String> = HashSet::new();
-    if needle.is_empty() {
-        return items
-            .iter()
-            .filter(|item| seen_ids.insert(item.id.clone()))
-            .take(MAX_RESULTS)
-            .cloned()
-            .map(|item| ScoredMatch {
-                item,
-                score: 0,
-                indices: Vec::new(),
-            })
-            .collect();
-    }
-
-    let pattern = Pattern::parse(needle, CaseMatching::Ignore, Normalization::Smart);
-    let mut utf32 = Vec::new();
-    let mut matches = Vec::new();
-
-    for item in items.iter() {
-        if !seen_ids.insert(item.id.clone()) {
-            continue;
-        }
-        scratch.clear();
-        utf32.clear();
-        if let Some(score) = pattern.indices(
-            Utf32Str::new(item.label.as_str(), &mut utf32),
-            matcher,
-            scratch,
-        ) {
-            let mut indices: Vec<usize> = scratch.iter().map(|idx| *idx as usize).collect();
-            indices.sort_unstable();
-            indices.dedup();
-            matches.push(ScoredMatch {
-                item: item.clone(),
-                score,
-                indices,
-            });
-        }
-    }
-
-    matches.sort_by(|a, b| b.score.cmp(&a.score));
-    matches.truncate(MAX_RESULTS);
-    matches
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-    use std::time::Duration;
-    use tui_textarea::{CursorMove, TextArea};
-
-    struct TestProvider {
-        trigger: Trigger,
-        items: Arc<Vec<Item>>,
-    }
-
-    impl TestProvider {
-        fn new(trigger: Trigger, items: Vec<Item>) -> Self {
-            Self {
-                trigger,
-                items: Arc::new(items),
-            }
-        }
-    }
-
-    impl Provider for TestProvider {
-        fn trigger(&self) -> Trigger {
-            self.trigger
-        }
-
-        fn items(&self) -> Arc<Vec<Item>> {
-            Arc::clone(&self.items)
-        }
-    }
-
-    #[test]
-    fn detects_at_trigger_token() {
-        let mut textarea = TextArea::from(["@main".to_string()]);
-        textarea.move_cursor(CursorMove::End);
-
-        let (trigger, token, query) = extract_token(&textarea).expect("token should be detected");
-        assert_eq!(trigger, Trigger::At);
-        assert_eq!(token.start_col, 0);
-        assert_eq!(query, "main");
-    }
-
-    #[test]
-    fn matcher_returns_ordered_results() {
-        let provider = Arc::new(TestProvider::new(
-            Trigger::At,
-            vec![
-                Item {
-                    id: "1".to_string(),
-                    trigger: Trigger::At,
-                    label: "main.rs".to_string(),
-                    detail: None,
-                    replacement: "@main.rs".to_string(),
-                },
-                Item {
-                    id: "2".to_string(),
-                    trigger: Trigger::At,
-                    label: "mod.rs".to_string(),
-                    detail: None,
-                    replacement: "@mod.rs".to_string(),
-                },
-            ],
-        )) as Arc<dyn Provider>;
-
-        let mut autocomplete = InlineAutocomplete::with_providers(vec![provider]);
-        let mut textarea = TextArea::from(["@ma".to_string()]);
-        textarea.move_cursor(CursorMove::End);
-        let mut needs_redraw = false;
-        autocomplete.after_textarea_change(&textarea, &mut needs_redraw);
-
-        thread::sleep(QUERY_DEBOUNCE + Duration::from_millis(20));
-        autocomplete.on_tick();
-        thread::sleep(Duration::from_millis(20));
-        autocomplete.poll_results();
-
-        assert!(autocomplete.vm.open);
-        assert!(!autocomplete.vm.results.is_empty());
-        assert_eq!(autocomplete.vm.results[0].item.label, "main.rs");
-    }
-
-    #[test]
-    fn commit_inserts_replacement() {
-        let provider = Arc::new(TestProvider::new(Trigger::At, Vec::new())) as Arc<dyn Provider>;
-        let mut autocomplete = InlineAutocomplete::with_providers(vec![provider]);
-
-        autocomplete.vm.open = true;
-        autocomplete.vm.trigger = Some(Trigger::At);
-        autocomplete.vm.selected = 0;
-        autocomplete.vm.token = Some(TokenPosition {
-            row: 0,
-            start_col: 0,
-        });
-        autocomplete.vm.results = vec![ScoredMatch {
-            item: Item {
-                id: "path".to_string(),
-                trigger: Trigger::At,
-                label: "gamma.rs".to_string(),
-                detail: None,
-                replacement: "@gamma.rs".to_string(),
-            },
-            score: 100,
-            indices: vec![0, 1],
-        }];
-
-        let mut textarea = TextArea::from(["@ga".to_string()]);
-        textarea.move_cursor(CursorMove::End);
-
-        let mut needs_redraw = false;
-        autocomplete.commit_selection(&mut textarea, &mut needs_redraw);
-
-        assert_eq!(textarea.lines()[0], "@gamma.rs");
-        assert!(!autocomplete.vm.open);
-    }
 }

@@ -58,43 +58,32 @@
 pub mod autocomplete;
 pub mod dashboard_model;
 pub mod input;
+pub mod session_viewer_model;
 pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
-pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, Provider, Trigger};
+pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, Trigger};
 pub use dashboard_model::{
-    FooterAction, ModalType, ModalViewModel, ModelOptionViewModel, MouseAction, Msg,
-    SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo, TaskCardTypeEnum,
-    TaskItem, ViewModel, create_draft_card_from_task,
+    DashboardFocusState, FooterAction, ModalType, ModalViewModel, ModelOptionViewModel,
+    MouseAction, Msg, SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo,
+    TaskCardTypeEnum, TaskItem, ViewModel, create_draft_card_from_task,
+};
+pub use session_viewer_model::{
+    DisplayItem, GutterConfig, GutterPosition, SessionViewerFocusState as RecorderFocusState,
+    SessionViewerMode, SessionViewerMouseAction, SessionViewerMsg as RecorderMsg,
+    SessionViewerViewModel as RecorderViewModel, StatusBarViewModel as RecorderStatusBarViewModel,
 };
 pub use task_entry::{TaskEntryControlsViewModel, TaskEntryViewModel};
 pub use task_execution::{
-    AgentActivityRow, TaskCardType, TaskExecutionViewModel, TaskMetadataViewModel,
+    AgentActivityRow, TaskCardType, TaskExecutionFocusState, TaskExecutionViewModel,
+    TaskMetadataViewModel,
 };
 
 // Filter bar types are defined in this module, no need to re-export them
 
 // External dependencies
 use ratatui::style::Color;
-
-// Common UI types used across view models
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FocusElement {
-    SettingsButton,
-    FilterBarSeparator,
-    FilterBarLine,
-    DraftTask(usize),
-    ExistingTask(usize),
-    TaskCard(usize),
-    ModalElement,
-    // Legacy variants for compatibility
-    RepositoryButton,
-    BranchButton,
-    ModelButton,
-    StopButton(usize),
-    Filter(FilterControl),
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ModalState {

@@ -303,7 +303,7 @@ async fn test_codex_with_mock_server() {
         // Get the Codex agent executor and prepare the launch command
         let agent = agent_by_name("codex").expect("Codex agent not available");
 
-        let launch_config = AgentLaunchConfig::new("Create a test file", &home_dir)
+        let launch_config = AgentLaunchConfig::new(&home_dir).prompt("Create a test file")
             .interactive(false)
             .working_dir(workspace.clone())
             .env("HOME", home_dir.to_string_lossy().to_string())

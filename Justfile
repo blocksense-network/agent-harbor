@@ -818,6 +818,26 @@ repomix-agentfs-interpose:
         --header-text "AgentFS Interpose Implementation (Core, Proto, Shim, Server)" \
         --include "{{REPOMIX_AGENTFS_INTERPOSE_PATTERNS}}"
 
+# Record/Replay include patterns as a multiline string
+REPOMIX_RECORD_REPLAY_PATTERNS := replace("""
+specs/Public/ah-agent-record.md
+crates/ah-recorder/**
+crates/ah-cli/src/agent/record.rs
+crates/ah-cli/src/agent/replay.rs
+""", "\n", ",")
+
+# Create repomix bundle of all record/replay functionality (spec + implementation)
+repomix-record-replay:
+    @echo "📦 Creating Record/Replay repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-Record-Replay.md \
+        --style markdown \
+        --header-text "Agent Harbor Record/Replay - Complete Implementation and Specification" \
+        --include "{{REPOMIX_RECORD_REPLAY_PATTERNS}}" \
+        --ignore ".direnv/**"
+
 # Create a repomix snapshot of the LLM API Proxy crate
 repomix-llm-api-proxy *args:
     @echo "📦 Creating LLM API Proxy repomix snapshot..."
@@ -928,3 +948,11 @@ mitm *args:
 outdated:
     cargo outdated
     yarn outdated
+
+# Inspect AHR recording files
+# Usage: just inspect-ahr <path/to/recording.ahr>
+inspect-ahr *args:
+    @cargo build --quiet --bin inspect_ahr --package ah-recorder --message-format=json \
+      | jq -c 'select(.reason=="compiler-message" and .message.level=="error")' \
+      # The above shows only build errors from cargo
+    @./target/debug/inspect_ahr {{args}}

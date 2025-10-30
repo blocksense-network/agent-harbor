@@ -4,3 +4,6 @@
 [submodule "vendor/tui-textarea"]
 	path = vendor/tui-textarea
 	url = git@github.com:blocksense-network/tui-textarea.git
+[submodule "vendor/vt100"]
+	path = vendor/vt100
+	url = git@github.com:blocksense-network/vt100-rust.git

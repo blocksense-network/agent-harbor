@@ -10,12 +10,13 @@ use ah_core::{
     BranchesEnumerator, LogLevel, RepositoriesEnumerator, TaskEvent, TaskManager,
     WorkspaceFilesEnumerator,
 };
-use ah_domain_types::{TaskExecutionStatus, task::ToolStatus};
+use ah_domain_types::{TaskState, task::ToolStatus};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::Settings;
 use ah_tui::view_model::{
-    AgentActivityRow, FocusElement, TaskCardType, TaskExecutionViewModel, ViewModel,
+    AgentActivityRow, DashboardFocusState, TaskCardType, TaskExecutionFocusState,
+    TaskExecutionViewModel, ViewModel,
 };
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use chrono::Utc;
@@ -63,7 +64,7 @@ mod event_processing_tests {
                 name: "Claude".to_string(),
                 count: 1,
             }],
-            state: TaskState::Active,
+            state: TaskState::Running,
             timestamp: "2024-01-01T12:00:00Z".to_string(),
             activity: vec![],
             delivery_status: vec![],
@@ -81,7 +82,7 @@ mod event_processing_tests {
                     name: "Claude".to_string(),
                     count: 1,
                 }],
-                state: ah_domain_types::TaskState::Active,
+                state: ah_domain_types::TaskState::Running,
                 timestamp: "2024-01-01T12:00:00Z".to_string(),
                 delivery_indicators: "".to_string(),
             },
@@ -90,11 +91,11 @@ mod event_processing_tests {
                 activity_entries: vec![],
                 pause_delete_buttons: "Pause | Delete".to_string(),
             },
-            focus_element: FocusElement::ExistingTask(0),
+            focus_element: TaskExecutionFocusState::None,
+            needs_redraw: false,
         };
 
-        vm.task_cards.push(test_card);
-        vm.rebuild_task_id_mapping();
+        vm.task_cards.push(std::sync::Arc::new(std::sync::Mutex::new(test_card)));
         vm
     }
 
@@ -113,9 +114,10 @@ mod event_processing_tests {
 
         // Check that the activity entry was created
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
@@ -146,9 +148,10 @@ mod event_processing_tests {
 
         // Check that the activity entry was created
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
@@ -187,9 +190,10 @@ mod event_processing_tests {
 
         // Check that the activity entry was created
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
@@ -238,9 +242,10 @@ mod event_processing_tests {
 
         // Check that the tool use entry was updated with the log message
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
@@ -298,9 +303,10 @@ mod event_processing_tests {
 
         // Check that the tool use entry was marked as completed
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
@@ -342,9 +348,10 @@ mod event_processing_tests {
 
         // Check that only the most recent 3 activities are kept
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 3);
 
@@ -386,9 +393,10 @@ mod event_processing_tests {
 
         // Check that no activity entries were created
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 0);
         }
@@ -411,16 +419,17 @@ mod event_processing_tests {
 
         // Check that no activity entries were created
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 0);
         }
     }
 
     #[test]
-    fn log_events_without_tool_execution_id_are_ignored() {
+    fn log_events_without_tool_execution_id_create_activity_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
         // Send a log event without tool_execution_id
@@ -433,13 +442,20 @@ mod event_processing_tests {
 
         vm.process_task_event("test_task_1", log_event);
 
-        // Check that no activity entries were created
+        // Check that an activity entry was created
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
-            assert_eq!(activity_entries.len(), 0);
+            assert_eq!(activity_entries.len(), 1);
+            match &activity_entries[0] {
+                AgentActivityRow::AgentThought { thought } => {
+                    assert_eq!(thought, "General log message");
+                }
+                _ => panic!("Expected AgentThought activity entry"),
+            }
         }
     }
 
@@ -458,9 +474,10 @@ mod event_processing_tests {
 
         // Check that no activity entries were created for our known task
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 0);
         }
@@ -550,9 +567,10 @@ mod event_processing_tests {
 
         // Check that both tools have their respective log messages
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 2);
 
@@ -602,9 +620,10 @@ mod event_processing_tests {
 
         // Check that the last_line contains the first line of tool_output
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {
@@ -622,12 +641,12 @@ mod event_processing_tests {
     }
 
     #[test]
-    fn status_and_other_events_are_not_converted_to_activity_entries() {
+    fn status_events_do_not_create_activity_entries_but_log_events_do() {
         let mut vm = create_test_view_model_with_active_task();
 
-        // Send various events that should NOT create activity entries
+        // Send a status event that should NOT create activity entries
         let status_event = TaskEvent::Status {
-            status: TaskExecutionStatus::Running,
+            status: TaskState::Running,
             ts: Utc::now(),
         };
         vm.process_task_event("test_task_1", status_event);
@@ -640,13 +659,20 @@ mod event_processing_tests {
         };
         vm.process_task_event("test_task_1", log_without_tool_id);
 
-        // Check that no activity entries were created
+        // Check that only the log event created an activity entry (status events don't)
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
-            assert_eq!(activity_entries.len(), 0);
+            assert_eq!(activity_entries.len(), 1);
+            match &activity_entries[0] {
+                AgentActivityRow::AgentThought { thought } => {
+                    assert_eq!(thought, "General status message");
+                }
+                _ => panic!("Expected AgentThought activity entry"),
+            }
         }
     }
 
@@ -676,9 +702,10 @@ mod event_processing_tests {
 
         // Check that the tool entry shows failed status
         let task_card = vm.task_cards.first().unwrap();
+        let card_guard = task_card.lock().unwrap();
         if let TaskCardType::Active {
             activity_entries, ..
-        } = &task_card.card_type
+        } = &card_guard.card_type
         {
             assert_eq!(activity_entries.len(), 1);
             match &activity_entries[0] {

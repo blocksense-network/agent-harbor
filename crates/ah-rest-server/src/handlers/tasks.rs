@@ -36,9 +36,14 @@ pub async fn create_task(
     drop(session_service); // Release the service
 
     // Verify the session was created by fetching it
-    let session = state.session_store.get_session(&response.id).await?.ok_or_else(|| {
-        crate::ServerError::BadRequest("Failed to retrieve created session".to_string())
-    })?;
+    let session =
+        state
+            .session_store
+            .get_session(&response.session_ids[0])
+            .await?
+            .ok_or_else(|| {
+                crate::ServerError::BadRequest("Failed to retrieve created session".to_string())
+            })?;
 
     Ok(Json(response))
 }

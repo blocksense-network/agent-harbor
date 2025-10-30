@@ -11,10 +11,14 @@ pub mod error;
 pub mod event;
 pub mod golden;
 pub mod msg;
+pub mod record;
+pub mod replay;
 pub mod settings;
 pub mod task;
+pub mod terminal;
 pub mod view;
 pub mod view_model;
+pub mod viewer;
 
 pub use error::*;
 pub use golden::*;
@@ -33,10 +37,10 @@ pub use view_model::{
     AutoSaveState,
     ButtonStyle,
     ButtonViewModel,
+    DashboardFocusState,
     DeliveryIndicator,
     DraftSaveState,
     FilterOptions,
-    FocusElement,
     FooterAction,
     ModalType,
     ModalViewModel,
@@ -60,6 +64,7 @@ pub use view_model::{
     TimeRangeFilter,
     ViewModel,
 };
+pub use viewer::{ViewerConfig, ViewerEventLoop};
 
 use ratatui::{Terminal, backend::TestBackend};
 

@@ -3,144 +3,20 @@
 
 //! Modal navigation and ESC dismissal behaviour tests for the ViewModel
 
-use std::io::Write;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+mod common;
 
-use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
-use ah_repo::VcsRepo;
-use ah_rest_mock_client::MockRestClient;
-use ah_tui::settings::{KeyboardOperation, Settings};
-use ah_tui::view_model::autocomplete::{InlineAutocomplete, Item, Provider, Trigger};
-use ah_tui::view_model::{FocusElement, ModalState, ViewModel};
-use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
+use ah_tui::settings::KeyboardOperation;
+use ah_tui::view_model::task_entry::CardFocusElement;
+use ah_tui::view_model::{DashboardFocusState, ModalState, ViewModel};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-#[derive(Clone)]
-struct TestProvider {
-    trigger: Trigger,
-    items: Arc<Vec<Item>>,
-}
-
-impl TestProvider {
-    fn new(trigger: Trigger, labels: &[&str]) -> Self {
-        let items = labels
-            .iter()
-            .enumerate()
-            .map(|(idx, label)| Item {
-                id: format!("item-{}", idx),
-                trigger,
-                label: label.to_string(),
-                detail: None,
-                replacement: format!("{}{}", trigger.as_char(), label),
-            })
-            .collect();
-
-        Self {
-            trigger,
-            items: Arc::new(items),
-        }
-    }
-}
-
-impl Provider for TestProvider {
-    fn trigger(&self) -> Trigger {
-        self.trigger
-    }
-
-    fn items(&self) -> Arc<Vec<Item>> {
-        Arc::clone(&self.items)
-    }
-}
-
-fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
-    let mut dir = std::env::temp_dir();
-    dir.push("ah_tui_vm_logs");
-    std::fs::create_dir_all(&dir).expect("create log directory");
-
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("valid time");
-    let file_name = format!(
-        "{}_{}_{}.log",
-        test_name,
-        std::process::id(),
-        timestamp.as_nanos()
-    );
-    dir.push(file_name);
-    let file = std::fs::File::create(&dir).expect("create log file");
-    (file, dir)
-}
-
-fn build_view_model() -> ViewModel {
-    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-        Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
-    let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
-    let task_manager = Arc::new(MockRestClient::new());
-    let mock_client = MockRestClient::new();
-    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
-        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
-    );
-    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
-        ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
-    );
-    let settings = Settings::default();
-
-    let mut vm = ViewModel::new(
-        workspace_files,
-        workspace_workflows,
-        task_manager,
-        repositories_enumerator,
-        branches_enumerator,
-        settings,
-    );
-
-    // For tests, synchronously populate the available repositories and branches
-    // since background loading doesn't run in test environment
-    vm.available_repositories = vec![
-        "myapp/backend".to_string(),
-        "myapp/frontend".to_string(),
-        "myapp/mobile".to_string(),
-    ];
-    vm.available_branches = vec![
-        "main".to_string(),
-        "develop".to_string(),
-        "feature/auth".to_string(),
-    ];
-
-    vm
-}
-
-fn prepare_autocomplete(vm: &mut ViewModel, trigger: Trigger, labels: &[&str]) {
-    vm.autocomplete =
-        InlineAutocomplete::with_providers(vec![
-            Arc::new(TestProvider::new(trigger, labels)) as Arc<dyn Provider>
-        ]);
-
-    let card = vm.draft_cards.get_mut(0).expect("draft card");
-    card.description = tui_textarea::TextArea::default();
-    card.description.input(KeyEvent::new(
-        KeyCode::Char(trigger.as_char()),
-        KeyModifiers::empty(),
-    ));
-    card.description.input(KeyEvent::new(
-        KeyCode::Char(labels[0].chars().next().unwrap()),
-        KeyModifiers::empty(),
-    ));
-
-    vm.autocomplete.notify_text_input();
-    vm.autocomplete.after_textarea_change(&card.description, &mut vm.needs_redraw);
-
-    std::thread::sleep(Duration::from_millis(90));
-    vm.autocomplete.on_tick();
-    std::thread::sleep(Duration::from_millis(10));
-    vm.autocomplete.poll_results();
-}
+use std::io::Write;
 
 #[test]
 fn modal_navigation_wraps_with_keyboard_operations() {
-    let (mut log, log_path) = create_test_log("modal_navigation");
+    let (mut log, log_path) = common::create_test_log("modal_navigation");
     let log_hint = log_path.display().to_string();
 
-    let mut vm = build_view_model();
+    let mut vm = common::build_view_model_with_repos();
     vm.open_modal(ModalState::RepositorySearch);
 
     let next_key = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
@@ -186,13 +62,13 @@ fn modal_navigation_wraps_with_keyboard_operations() {
     );
 }
 
-#[test]
-fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
-    let (mut log, log_path) = create_test_log("dismiss_overlay");
+#[tokio::test]
+async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
+    let (mut log, log_path) = common::create_test_log("dismiss_overlay");
     let log_hint = log_path.display().to_string();
 
-    let mut vm = build_view_model();
-    vm.focus_element = FocusElement::DraftTask(0);
+    let mut vm = common::build_view_model_with_repos();
+    vm.focus_element = DashboardFocusState::DraftTask(0);
     vm.open_modal(ModalState::Settings);
 
     let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());
@@ -217,7 +93,31 @@ fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
         "closing modal should not arm exit (log: {log_hint})"
     );
 
-    prepare_autocomplete(&mut vm, Trigger::Slash, &["alpha"]);
+    // Set up autocomplete
+    vm.draft_cards[0].focus_element = CardFocusElement::TaskDescription;
+    let card = vm.draft_cards.get_mut(0).expect("draft card");
+    card.description = tui_textarea::TextArea::default();
+
+    // For testing, populate the cache synchronously
+    {
+        let mut cache_state = vm.autocomplete.cache_state.lock().unwrap();
+        if cache_state.workflows.is_none() {
+            let workflows = vec!["test-workflow".to_string()];
+            cache_state.workflows = Some(workflows);
+        }
+    }
+
+    // Input trigger character and some text
+    let key_event = KeyEvent::new(KeyCode::Char('/'), KeyModifiers::empty());
+    vm.autocomplete.notify_text_input();
+    card.description.input(key_event);
+    vm.autocomplete.after_textarea_change(&card.description, &mut vm.needs_redraw);
+
+    let key_event = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::empty());
+    vm.autocomplete.notify_text_input();
+    card.description.input(key_event);
+    vm.autocomplete.after_textarea_change(&card.description, &mut vm.needs_redraw);
+
     assert!(
         vm.autocomplete.is_open(),
         "menu should be open before ESC (log: {log_hint})"
