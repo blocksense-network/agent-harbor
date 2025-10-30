@@ -3,22 +3,22 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { Component, For, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { For, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import TomSelect from 'tom-select';
 
-interface ModelSelection {
+export type ModelSelection = {
   model: string;
   instances: number;
-}
+};
 
-interface ModelMultiSelectProps {
+type ModelMultiSelectProps = {
   availableModels: string[];
   selectedModels: ModelSelection[];
   onSelectionChange: (selections: ModelSelection[]) => void;
   placeholder?: string;
   testId?: string;
   class?: string;
-}
+};
 
 const MIN_SELECTED_INSTANCES = 1;
 const MAX_INSTANCES = 10;
@@ -30,11 +30,11 @@ type CountsMap = Record<string, number>;
 type ModelAction = 'increase' | 'decrease';
 type BadgeAction = ModelAction | 'remove';
 
-interface OptionTemplateData {
+type OptionTemplateData = {
   value: string;
   label: string;
   count?: number;
-}
+};
 
 const modelKey = (value: string) => encodeURIComponent(value.toLowerCase());
 
@@ -52,7 +52,7 @@ declare module 'tom-select' {
   }
 }
 
-export const ModelMultiSelect: Component<ModelMultiSelectProps> = props => {
+export const ModelMultiSelect = (props: ModelMultiSelectProps) => {
   let selectRef: HTMLSelectElement | undefined;
   let tomSelect: TomSelect | undefined;
   let dropdownClickHandler: ((event: MouseEvent) => void) | undefined;

@@ -3,20 +3,18 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { Component, createEffect, createSignal } from 'solid-js';
+import { createEffect, createSignal } from 'solid-js';
 
 export type SaveStatusType = 'unsaved' | 'saving' | 'saved' | 'error';
 
-interface SaveStatusProps {
+type SaveStatusProps = {
   status: SaveStatusType;
   class?: string;
-}
+};
 
-export const SaveStatus: Component<SaveStatusProps> = props => {
-  // Use internal signal to ensure reactivity
+export const SaveStatus = (props: SaveStatusProps) => {
   const [currentStatus, setCurrentStatus] = createSignal<SaveStatusType>('saved');
 
-  // Update internal signal when prop changes
   createEffect(() => {
     setCurrentStatus(props.status);
   });
