@@ -62,6 +62,7 @@ pub struct KqueueWatchRegistration {
     pub path: String,
     pub fflags: u32,
     pub doorbell_ident: Option<u64>,
+    pub is_directory: bool,
 }
 
 /// Registration information for an FSEvents watch
@@ -96,6 +97,7 @@ impl WatchService {
         fd: u32,
         path: String,
         fflags: u32,
+        is_directory: bool,
     ) -> u64 {
         let mut next_id = self.next_registration_id.lock().unwrap();
         let registration_id = *next_id;
@@ -110,6 +112,7 @@ impl WatchService {
             path,
             fflags,
             doorbell_ident: None,
+            is_directory,
         };
 
         self.kqueue_watches.lock().unwrap().insert((pid, kq_fd, watch_id), registration);
@@ -180,14 +183,11 @@ impl WatchService {
     /// Post a doorbell to wake up a kqueue
     #[cfg(target_os = "macos")]
     pub fn post_doorbell(&self, pid: u32, kq_fd: u32, payload_id: u64) -> Result<(), String> {
-        let watches = self.kqueue_watches.lock().unwrap();
+        let doorbell_idents = self.doorbell_idents.lock().unwrap();
         let fds = self.kqueue_fds.lock().unwrap();
 
-        // Find the doorbell ident for this kqueue
-        let doorbell_ident = watches
-            .values()
-            .find(|reg| reg.pid == pid && reg.kq_fd == kq_fd)
-            .and_then(|reg| reg.doorbell_ident);
+        // Get the doorbell ident for this kqueue
+        let doorbell_ident = doorbell_idents.get(&(pid, kq_fd)).copied();
 
         // Get the actual kqueue FD
         let actual_kq_fd = fds.get(&(pid, kq_fd));
@@ -303,10 +303,18 @@ impl WatchService {
     }
 
     /// Enqueue a synthesized event for a specific kqueue
+    /// Coalesces flags if an event for the same fd already exists
     pub fn enqueue_event(&self, pid: u32, kq_fd: u32, event: SynthesizedKevent) {
         let mut pending = self.pending_events.lock().unwrap();
         let key = (pid, kq_fd);
-        pending.entry(key).or_insert_with(VecDeque::new).push_back(event);
+        let queue = pending.entry(key).or_insert_with(VecDeque::new);
+
+        // Check if there's already an event for this fd - coalesce flags
+        if let Some(existing) = queue.iter_mut().find(|e| e.ident == event.ident) {
+            existing.fflags |= event.fflags;
+        } else {
+            queue.push_back(event);
+        }
     }
 
     /// Drain pending events for a specific kqueue (up to max_events)
@@ -347,6 +355,7 @@ impl Clone for KqueueWatchRegistration {
             path: self.path.clone(),
             fflags: self.fflags,
             doorbell_ident: self.doorbell_ident,
+            is_directory: self.is_directory,
         }
     }
 }
@@ -425,85 +434,127 @@ impl WatchServiceEventSink {
         }
     }
 
-    /// Convert EventKind to kqueue vnode flags for a specific path
-    fn event_to_vnode_flags(&self, evt: &EventKind, path: &str, is_directory: bool) -> u32 {
-        match evt {
-            EventKind::Created { .. } => {
-                if is_directory {
-                    NOTE_WRITE // Directory contents changed
-                } else {
-                    NOTE_WRITE // File created
-                }
+    /// Convert EventKind to kqueue vnode flags for a specific path and watcher context
+    fn event_to_vnode_flags(
+        &self,
+        evt: &EventKind,
+        watched_path: &str,
+        affected_path: &str,
+        is_directory_watcher: bool,
+    ) -> u32 {
+        if is_directory_watcher {
+            // Directory watcher: check if affected_path is relevant
+            let is_relevant = watched_path == affected_path
+                || affected_path.starts_with(&(watched_path.to_string() + "/"));
+            if !is_relevant {
+                return 0;
             }
-            EventKind::Removed { .. } => {
-                if is_directory {
-                    NOTE_WRITE // Directory contents changed
-                } else {
-                    NOTE_DELETE // File deleted
-                }
+
+            match evt {
+                EventKind::Created { .. }
+                | EventKind::Removed { .. }
+                | EventKind::Renamed { .. } => NOTE_WRITE,
+                EventKind::Modified { .. } => NOTE_ATTRIB, // Directory sees child modifications as attribute changes
+                _ => 0,
             }
-            EventKind::Modified { .. } => {
-                if is_directory {
-                    NOTE_ATTRIB // Directory metadata changed
-                } else {
-                    NOTE_WRITE | NOTE_EXTEND // File content/size changed
-                }
+        } else {
+            // File watcher
+            if watched_path != affected_path {
+                return 0;
             }
-            EventKind::Renamed { from, to } => {
-                // For renames, determine if this path is the source or destination
-                if path == from {
-                    NOTE_RENAME // File moved away
-                } else if path == to {
-                    NOTE_RENAME // File moved to
-                } else {
-                    // Parent directory of source or destination
-                    NOTE_WRITE // Directory contents changed
+
+            match evt {
+                EventKind::Created { .. } => NOTE_WRITE,
+                EventKind::Removed { .. } => NOTE_DELETE,
+                EventKind::Modified { .. } => NOTE_WRITE | NOTE_EXTEND,
+                EventKind::Renamed { from, to } => {
+                    // For renames, the affected_path might be the source or destination
+                    // But since we already checked watched_path == affected_path, it's fine
+                    NOTE_RENAME
                 }
+                _ => 0,
             }
-            _ => 0,
         }
     }
 
-    /// Route event to matching kqueue watchers
+    /// Route event to matching kqueue watchers with coalescing
     fn route_to_kqueue_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
         let watches = self.watch_service.kqueue_watches.lock().unwrap();
 
-        for path in affected_paths {
-            // Find all watches for this path
-            let matching_watches: Vec<&KqueueWatchRegistration> =
-                watches.values().filter(|reg| &reg.path == path).collect();
+        // Collect all events per (pid, kq_fd, fd) to enable coalescing
+        let mut coalesced_events: std::collections::HashMap<(u32, u32, u32), u32> =
+            std::collections::HashMap::new();
 
-            for watch in matching_watches {
-                let flags = self.event_to_vnode_flags(evt, path, false); // Assume files for now
+        for affected_path in affected_paths {
+            // Find all watches that could be interested in this affected path
+            for (_, watch) in watches.iter() {
+                // Check if this watch is relevant to the affected path
+                let is_relevant = if watch.is_directory {
+                    // Directory watchers are interested in:
+                    // - Their own path (directory metadata changes)
+                    // - Child paths (directory contents changes)
+                    watch.path == *affected_path
+                        || affected_path.starts_with(&(watch.path.clone() + "/"))
+                        || (*affected_path == watch.path)
+                } else {
+                    // File watchers are only interested in exact path matches
+                    watch.path == *affected_path
+                };
 
-                // Only send if the watch is interested in these flags
+                if !is_relevant {
+                    continue;
+                }
+
+                // Calculate the flags for this watch and affected path combination
+                let flags =
+                    self.event_to_vnode_flags(evt, &watch.path, affected_path, watch.is_directory);
+
+                // Only proceed if the watch is interested in these flags
                 if (watch.fflags & flags) != 0 {
+                    // Coalesce flags for this (pid, kq_fd, fd) combination
+                    let key = (watch.pid, watch.kq_fd, watch.fd);
+                    let existing_flags = coalesced_events.get(&key).copied().unwrap_or(0);
+                    coalesced_events.insert(key, existing_flags | flags);
+
                     tracing::debug!(
-                        "Routing kqueue event: pid={}, kq_fd={}, fd={}, flags={:#x}",
+                        "Coalescing kqueue event: pid={}, kq_fd={}, fd={}, affected_path={}, flags={:#x} (total now {:#x})",
                         watch.pid,
                         watch.kq_fd,
                         watch.fd,
-                        flags
+                        affected_path,
+                        flags,
+                        existing_flags | flags
                     );
-
-                    // Create synthesized kevent for this watcher
-                    let synthesized_event = SynthesizedKevent {
-                        ident: watch.fd as u64,
-                        filter: EVFILT_VNODE as u16, // Convert to u16 for SSZ
-                        flags: 0,                    // No EV_ADD/EV_DELETE for synthesized events
-                        fflags: flags,
-                        data: 0,  // Usually 0 for vnode events
-                        udata: 0, // Usually NULL for synthesized events
-                    };
-
-                    // Enqueue the event for this kqueue
-                    self.watch_service.enqueue_event(watch.pid, watch.kq_fd, synthesized_event);
-
-                    // Post doorbell to wake up the shim
-                    if let Err(e) = self.watch_service.post_doorbell(watch.pid, watch.kq_fd, 1) {
-                        tracing::error!("Failed to post doorbell for event: {}", e);
-                    }
                 }
+            }
+        }
+
+        // Now create and enqueue the coalesced events
+        for ((pid, kq_fd, fd), flags) in coalesced_events {
+            tracing::debug!(
+                "Creating coalesced kqueue event: pid={}, kq_fd={}, fd={}, flags={:#x}",
+                pid,
+                kq_fd,
+                fd,
+                flags
+            );
+
+            // Create synthesized kevent for this watcher
+            let synthesized_event = SynthesizedKevent {
+                ident: fd as u64,
+                filter: EVFILT_VNODE as u16, // Convert to u16 for SSZ
+                flags: 0,                    // No EV_ADD/EV_DELETE for synthesized events
+                fflags: flags,
+                data: 0,  // Usually 0 for vnode events
+                udata: 0, // Usually NULL for synthesized events
+            };
+
+            // Enqueue the event for this kqueue
+            self.watch_service.enqueue_event(pid, kq_fd, synthesized_event);
+
+            // Post doorbell to wake up the shim (only once per kqueue)
+            if let Err(e) = self.watch_service.post_doorbell(pid, kq_fd, 1) {
+                tracing::error!("Failed to post doorbell for event: {}", e);
             }
         }
     }
@@ -557,7 +608,7 @@ mod tests {
     fn test_kqueue_watch_registration() {
         let service = WatchService::new();
         let registration_id =
-            service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
+            service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123, false);
         assert_eq!(registration_id, 1);
 
         let watches = service.get_kqueue_watches_for_pid(123);
@@ -566,6 +617,7 @@ mod tests {
         assert_eq!(watches[0].fd, 10);
         assert_eq!(watches[0].path, "/tmp/test.txt");
         assert_eq!(watches[0].fflags, 0x123);
+        assert_eq!(watches[0].is_directory, false);
     }
 
     #[test]
@@ -586,7 +638,7 @@ mod tests {
     fn test_watch_unregistration() {
         let service = WatchService::new();
         let reg_id =
-            service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
+            service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123, false);
         assert_eq!(service.get_kqueue_watches_for_pid(123).len(), 1);
 
         service.unregister_watch(123, reg_id);
@@ -596,7 +648,7 @@ mod tests {
     #[test]
     fn test_doorbell_setting() {
         let service = WatchService::new();
-        service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
+        service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123, false);
         service.set_doorbell(123, 5, 0xABC);
 
         let watches = service.get_kqueue_watches_for_pid(123);
@@ -644,7 +696,7 @@ mod tests {
         let event = EventKind::Created {
             path: "/tmp/test.txt".to_string(),
         };
-        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", "/tmp/test.txt", false);
 
         assert_eq!(flags, NOTE_WRITE);
     }
@@ -657,7 +709,7 @@ mod tests {
         let event = EventKind::Removed {
             path: "/tmp/test.txt".to_string(),
         };
-        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", "/tmp/test.txt", false);
 
         assert_eq!(flags, NOTE_DELETE);
     }
@@ -670,7 +722,7 @@ mod tests {
         let event = EventKind::Modified {
             path: "/tmp/test.txt".to_string(),
         };
-        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", "/tmp/test.txt", false);
 
         assert_eq!(flags, NOTE_WRITE | NOTE_EXTEND);
     }
@@ -684,7 +736,7 @@ mod tests {
             from: "/tmp/old.txt".to_string(),
             to: "/tmp/new.txt".to_string(),
         };
-        let flags = sink.event_to_vnode_flags(&event, "/tmp/old.txt", false);
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/old.txt", "/tmp/old.txt", false);
 
         assert_eq!(flags, NOTE_RENAME);
     }
@@ -698,7 +750,7 @@ mod tests {
             from: "/tmp/old.txt".to_string(),
             to: "/tmp/new.txt".to_string(),
         };
-        let flags = sink.event_to_vnode_flags(&event, "/tmp/new.txt", false);
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/new.txt", "/tmp/new.txt", false);
 
         assert_eq!(flags, NOTE_RENAME);
     }
@@ -712,8 +764,307 @@ mod tests {
             from: "/tmp/old.txt".to_string(),
             to: "/tmp/new.txt".to_string(),
         };
-        let flags = sink.event_to_vnode_flags(&event, "/tmp", false);
+        let flags = sink.event_to_vnode_flags(&event, "/tmp", "/tmp", true); // directory watcher
 
         assert_eq!(flags, NOTE_WRITE);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_directory_watcher_created() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Created {
+            path: "/tmp/dir/file.txt".to_string(),
+        };
+
+        // Directory watcher on parent directory should get NOTE_WRITE
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/dir", "/tmp/dir/file.txt", true);
+        assert_eq!(flags, NOTE_WRITE);
+
+        // Directory watcher on unrelated directory should get 0
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/other", "/tmp/dir/file.txt", true);
+        assert_eq!(flags, 0);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_file_watcher_created() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Created {
+            path: "/tmp/file.txt".to_string(),
+        };
+
+        // File watcher on the created file should get NOTE_WRITE
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/file.txt", "/tmp/file.txt", false);
+        assert_eq!(flags, NOTE_WRITE);
+
+        // File watcher on different file should get 0
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/other.txt", "/tmp/file.txt", false);
+        assert_eq!(flags, 0);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_directory_watcher_removed() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Removed {
+            path: "/tmp/dir/file.txt".to_string(),
+        };
+
+        // Directory watcher on parent should get NOTE_WRITE
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/dir", "/tmp/dir/file.txt", true);
+        assert_eq!(flags, NOTE_WRITE);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_file_watcher_removed() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Removed {
+            path: "/tmp/file.txt".to_string(),
+        };
+
+        // File watcher on the removed file should get NOTE_DELETE
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/file.txt", "/tmp/file.txt", false);
+        assert_eq!(flags, NOTE_DELETE);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_directory_watcher_modified() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Modified {
+            path: "/tmp/dir/file.txt".to_string(),
+        };
+
+        // Directory watcher should get NOTE_ATTRIB for child modifications
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/dir", "/tmp/dir/file.txt", true);
+        assert_eq!(flags, NOTE_ATTRIB);
+    }
+
+    #[test]
+    fn test_event_to_vnode_flags_file_watcher_modified() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        let event = EventKind::Modified {
+            path: "/tmp/file.txt".to_string(),
+        };
+
+        // File watcher should get NOTE_WRITE | NOTE_EXTEND
+        let flags = sink.event_to_vnode_flags(&event, "/tmp/file.txt", "/tmp/file.txt", false);
+        assert_eq!(flags, NOTE_WRITE | NOTE_EXTEND);
+    }
+
+    #[test]
+    fn test_event_coalescing_created_file() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        // Register a file watch on /tmp/file.txt
+        service.register_kqueue_watch(
+            123,
+            5,
+            1,
+            10,
+            "/tmp/file.txt".to_string(),
+            NOTE_WRITE | NOTE_DELETE,
+            false,
+        );
+
+        // Register a directory watch on /tmp
+        service.register_kqueue_watch(123, 5, 2, 11, "/tmp".to_string(), NOTE_WRITE, true);
+
+        let event = EventKind::Created {
+            path: "/tmp/file.txt".to_string(),
+        };
+
+        sink.on_event(&event);
+
+        // Should have 2 events: one for file watcher, one for directory watcher
+        assert_eq!(service.pending_event_count(123, 5), 2);
+
+        let events = service.drain_events(123, 5, 10);
+        assert_eq!(events.len(), 2);
+
+        // Find events by fd
+        let file_event = events.iter().find(|e| e.ident == 10).unwrap();
+        let dir_event = events.iter().find(|e| e.ident == 11).unwrap();
+
+        // File watcher gets NOTE_WRITE
+        assert_eq!(file_event.fflags, NOTE_WRITE);
+        // Directory watcher gets NOTE_WRITE
+        assert_eq!(dir_event.fflags, NOTE_WRITE);
+    }
+
+    #[test]
+    fn test_event_coalescing_multiple_operations() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        // Register a file watch that wants all events
+        service.register_kqueue_watch(
+            123,
+            5,
+            1,
+            10,
+            "/tmp/file.txt".to_string(),
+            NOTE_WRITE | NOTE_DELETE | NOTE_EXTEND | NOTE_ATTRIB | NOTE_LINK | NOTE_RENAME,
+            false,
+        );
+
+        // Simulate multiple operations on the same file
+        let create_event = EventKind::Created {
+            path: "/tmp/file.txt".to_string(),
+        };
+        let modify_event = EventKind::Modified {
+            path: "/tmp/file.txt".to_string(),
+        };
+
+        sink.on_event(&create_event);
+        sink.on_event(&modify_event);
+
+        // Should coalesce into one event with combined flags
+        assert_eq!(service.pending_event_count(123, 5), 1);
+
+        let events = service.drain_events(123, 5, 10);
+        assert_eq!(events.len(), 1);
+
+        let event = &events[0];
+        assert_eq!(event.ident, 10);
+        // Should have NOTE_WRITE from create + NOTE_WRITE|NOTE_EXTEND from modify
+        assert_eq!(event.fflags, NOTE_WRITE | NOTE_EXTEND);
+    }
+
+    #[test]
+    fn test_event_coalescing_renamed() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        // Register watches on both source and destination files
+        service.register_kqueue_watch(
+            123,
+            5,
+            1,
+            10,
+            "/tmp/old.txt".to_string(),
+            NOTE_RENAME,
+            false,
+        );
+        service.register_kqueue_watch(
+            123,
+            5,
+            2,
+            11,
+            "/tmp/new.txt".to_string(),
+            NOTE_RENAME,
+            false,
+        );
+        // Register directory watch on parent
+        service.register_kqueue_watch(123, 5, 3, 12, "/tmp".to_string(), NOTE_WRITE, true);
+
+        let event = EventKind::Renamed {
+            from: "/tmp/old.txt".to_string(),
+            to: "/tmp/new.txt".to_string(),
+        };
+
+        sink.on_event(&event);
+
+        // Should have 3 events: source file, dest file, and parent directory
+        assert_eq!(service.pending_event_count(123, 5), 3);
+
+        let events = service.drain_events(123, 5, 10);
+        assert_eq!(events.len(), 3);
+
+        // Check each event
+        let old_file_event = events.iter().find(|e| e.ident == 10).unwrap();
+        let new_file_event = events.iter().find(|e| e.ident == 11).unwrap();
+        let dir_event = events.iter().find(|e| e.ident == 12).unwrap();
+
+        assert_eq!(old_file_event.fflags, NOTE_RENAME);
+        assert_eq!(new_file_event.fflags, NOTE_RENAME);
+        assert_eq!(dir_event.fflags, NOTE_WRITE);
+    }
+
+    #[test]
+    fn test_directory_watcher_child_events() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        // Register directory watch on /tmp
+        service.register_kqueue_watch(123, 5, 1, 10, "/tmp".to_string(), NOTE_WRITE, true);
+
+        let event = EventKind::Created {
+            path: "/tmp/subdir/file.txt".to_string(),
+        };
+
+        sink.on_event(&event);
+
+        // Directory watcher should get NOTE_WRITE for child creation
+        assert_eq!(service.pending_event_count(123, 5), 1);
+
+        let events = service.drain_events(123, 5, 10);
+        assert_eq!(events.len(), 1);
+
+        let event = &events[0];
+        assert_eq!(event.ident, 10);
+        assert_eq!(event.fflags, NOTE_WRITE);
+    }
+
+    #[test]
+    fn test_no_events_for_uninterested_watchers() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        // Register a file watch that only wants NOTE_DELETE
+        service.register_kqueue_watch(
+            123,
+            5,
+            1,
+            10,
+            "/tmp/file.txt".to_string(),
+            NOTE_DELETE,
+            false,
+        );
+
+        let event = EventKind::Created {
+            path: "/tmp/file.txt".to_string(),
+        };
+
+        sink.on_event(&event);
+
+        // Watcher is not interested in NOTE_WRITE, so no event should be generated
+        assert_eq!(service.pending_event_count(123, 5), 0);
+    }
+
+    #[test]
+    fn test_no_events_for_unrelated_paths() {
+        let service = Arc::new(WatchService::new());
+        let sink = WatchServiceEventSink::new(service.clone());
+
+        // Register a file watch on /tmp/file.txt
+        service.register_kqueue_watch(
+            123,
+            5,
+            1,
+            10,
+            "/tmp/file.txt".to_string(),
+            NOTE_WRITE,
+            false,
+        );
+
+        let event = EventKind::Created {
+            path: "/tmp/other.txt".to_string(),
+        };
+
+        sink.on_event(&event);
+
+        // No events should be generated for unrelated paths
+        assert_eq!(service.pending_event_count(123, 5), 0);
     }
 }

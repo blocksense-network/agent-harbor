@@ -263,7 +263,7 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
   - [x] Thread-safe event queuing and draining works correctly
   - [x] End-to-end test framework compiles and runs without errors
 
-# Milestone 5 — Daemon synthesizer (FsCore → vnode flags)
+# Milestone 5 — Daemon synthesizer (FsCore → vnode flags) COMPLETED
 
 **Goal:** Deterministic mapping of FsCore `EventKind` to per-watch **EVFILT_VNODE** tuples with coalescing.
 
@@ -280,6 +280,37 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
 - **Acceptance (daemon unit tests)**
   - Table-driven tests for each `EventKind` produce the expected `(fd, flags)` set.
   - Coalescing reduces bursts (e.g., write loop) to a minimal flag set.
+
+**Milestone 5 — Daemon synthesizer (FsCore → vnode flags)** COMPLETED
+
+- **Deliverables:**
+  - Enhanced `event_to_vnode_flags()` method with proper file vs directory watcher handling
+  - Added `is_directory` field to `KqueueWatchRegistration` for distinguishing watcher types
+  - Implemented event coalescing per file descriptor in `enqueue_event()` method
+  - Fixed deadlock in `post_doorbell()` by avoiding lock contention during routing
+  - Added comprehensive unit tests covering all EventKind mappings and coalescing scenarios
+  - Proper directory watcher support for parent path notifications
+
+- **Implementation Details:**
+  - **Event Mapping Logic**: Enhanced `event_to_vnode_flags()` to handle file vs directory watchers with correct NOTE\_\* flag assignment:
+    - File watchers: Created → `NOTE_WRITE`, Removed → `NOTE_DELETE`, Modified → `NOTE_WRITE|NOTE_EXTEND`, Renamed → `NOTE_RENAME`
+    - Directory watchers: Created/Removed/Renamed → `NOTE_WRITE`, Modified → `NOTE_ATTRIB`
+  - **Directory Watcher Support**: Added `is_directory` boolean field to watch registrations and routing logic to handle parent directory notifications
+  - **Event Coalescing**: Modified `enqueue_event()` to coalesce flags for the same (pid, kq_fd, fd) combination, preventing duplicate events
+  - **Thread Safety**: Fixed deadlock issue in `post_doorbell()` by using separate doorbell_idents map instead of accessing watches during routing
+  - **Path Relevance Checking**: Enhanced routing logic to properly determine when directory watchers are interested in child path events
+
+- **Key Source Files:**
+  - `crates/agentfs-daemon/src/watch_service.rs`: Enhanced event mapping, coalescing, and routing logic
+  - `crates/agentfs-daemon/src/watch_service.rs` (tests): Comprehensive unit tests for all mapping scenarios
+
+- **Verification Results:**
+  - [x] All EventKind mappings produce correct vnode flags for file and directory watchers
+  - [x] Event coalescing works correctly for multiple operations on same file descriptor
+  - [x] Directory watchers receive appropriate events for child file changes
+  - [x] Parent directory notifications work for file creation/deletion/renames
+  - [x] Thread safety issues resolved (deadlock fix)
+  - [x] All 25 unit tests passing including new comprehensive event mapping tests
 
 # Milestone 6 — FSEvents interpose path (parallel path)
 

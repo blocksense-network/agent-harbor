@@ -229,7 +229,8 @@ impl AgentFsDaemon {
         path: String,
         fflags: u32,
     ) -> u64 {
-        self.watch_service.register_kqueue_watch(pid, kq_fd, watch_id, fd, path, fflags)
+        self.watch_service
+            .register_kqueue_watch(pid, kq_fd, watch_id, fd, path, fflags, false)
     }
 
     /// Register an FSEvents watch
