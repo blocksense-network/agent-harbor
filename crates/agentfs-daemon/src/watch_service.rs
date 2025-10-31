@@ -5,7 +5,7 @@
 
 use agentfs_core::{EventKind, EventSink, FsCore};
 use agentfs_proto::messages::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "macos")]
@@ -25,6 +25,8 @@ const EV_CLEAR: u16 = 0x0020; // disable event after reporting
 const NOTE_TRIGGER: u32 = 0x01000000; // trigger the event
 
 // kqueue vnode event flags (macOS)
+#[cfg(target_os = "macos")]
+const EVFILT_VNODE: i16 = -4; // vnode events
 const NOTE_DELETE: u32 = 0x00000001;
 const NOTE_WRITE: u32 = 0x00000002;
 const NOTE_EXTEND: u32 = 0x00000004;
@@ -32,7 +34,6 @@ const NOTE_ATTRIB: u32 = 0x00000008;
 const NOTE_LINK: u32 = 0x00000010;
 const NOTE_RENAME: u32 = 0x00000020;
 const NOTE_REVOKE: u32 = 0x00000040;
-
 
 /// Watch service for managing file system event watchers
 pub struct WatchService {
@@ -47,6 +48,8 @@ pub struct WatchService {
     /// Received kqueue file descriptors: (pid, kq_fd) -> actual_fd
     #[cfg(target_os = "macos")]
     kqueue_fds: Mutex<HashMap<(u32, u32), c_int>>,
+    /// Pending synthesized events for each kqueue: (pid, kq_fd) -> Vec<SynthesizedKevent>
+    pending_events: Mutex<HashMap<(u32, u32), VecDeque<SynthesizedKevent>>>,
 }
 
 /// Registration information for a kqueue watch
@@ -80,6 +83,7 @@ impl WatchService {
             next_registration_id: Mutex::new(1),
             #[cfg(target_os = "macos")]
             kqueue_fds: Mutex::new(HashMap::new()),
+            pending_events: Mutex::new(HashMap::new()),
         }
     }
 
@@ -180,7 +184,8 @@ impl WatchService {
         let fds = self.kqueue_fds.lock().unwrap();
 
         // Find the doorbell ident for this kqueue
-        let doorbell_ident = watches.values()
+        let doorbell_ident = watches
+            .values()
             .find(|reg| reg.pid == pid && reg.kq_fd == kq_fd)
             .and_then(|reg| reg.doorbell_ident);
 
@@ -199,21 +204,37 @@ impl WatchService {
                     udata: std::ptr::null_mut(),
                 };
 
-                let timeout = timespec { tv_sec: 0, tv_nsec: 0 };
+                let timeout = timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                };
 
                 unsafe {
-                    let result = libc_kevent(kq_fd_actual, &mut kev, 1, std::ptr::null_mut(), 0, &timeout);
+                    let result =
+                        libc_kevent(kq_fd_actual, &mut kev, 1, std::ptr::null_mut(), 0, &timeout);
                     if result == -1 {
-                        Err(format!("kevent doorbell failed: {}", std::io::Error::last_os_error()))
+                        Err(format!(
+                            "kevent doorbell failed: {}",
+                            std::io::Error::last_os_error()
+                        ))
                     } else {
-                        tracing::debug!("Posted doorbell ident={:#x}, payload_id={} to kqueue fd={} for pid={}",
-                                      ident, payload_id, kq_fd, pid);
+                        tracing::debug!(
+                            "Posted doorbell ident={:#x}, payload_id={} to kqueue fd={} for pid={}",
+                            ident,
+                            payload_id,
+                            kq_fd,
+                            pid
+                        );
                         Ok(())
                     }
                 }
             }
             _ => {
-                tracing::debug!("Cannot post doorbell: missing ident or FD for pid={}, kq_fd={}", pid, kq_fd);
+                tracing::debug!(
+                    "Cannot post doorbell: missing ident or FD for pid={}, kq_fd={}",
+                    pid,
+                    kq_fd
+                );
                 Ok(()) // Don't fail, just log
             }
         }
@@ -223,8 +244,12 @@ impl WatchService {
     #[cfg(not(target_os = "macos"))]
     pub fn post_doorbell(&self, pid: u32, kq_fd: u32, payload_id: u64) -> Result<(), String> {
         // No-op on non-macOS platforms
-        tracing::debug!("Doorbell posting not implemented on this platform (pid={}, kq_fd={}, payload={})",
-                      pid, kq_fd, payload_id);
+        tracing::debug!(
+            "Doorbell posting not implemented on this platform (pid={}, kq_fd={}, payload={})",
+            pid,
+            kq_fd,
+            payload_id
+        );
         Ok(())
     }
 
@@ -276,6 +301,39 @@ impl WatchService {
         }
         None
     }
+
+    /// Enqueue a synthesized event for a specific kqueue
+    pub fn enqueue_event(&self, pid: u32, kq_fd: u32, event: SynthesizedKevent) {
+        let mut pending = self.pending_events.lock().unwrap();
+        let key = (pid, kq_fd);
+        pending.entry(key).or_insert_with(VecDeque::new).push_back(event);
+    }
+
+    /// Drain pending events for a specific kqueue (up to max_events)
+    pub fn drain_events(&self, pid: u32, kq_fd: u32, max_events: usize) -> Vec<SynthesizedKevent> {
+        let mut pending = self.pending_events.lock().unwrap();
+        let key = (pid, kq_fd);
+        if let Some(queue) = pending.get_mut(&key) {
+            let mut events = Vec::new();
+            while events.len() < max_events {
+                if let Some(event) = queue.pop_front() {
+                    events.push(event);
+                } else {
+                    break;
+                }
+            }
+            events
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Get the count of pending events for a specific kqueue
+    pub fn pending_event_count(&self, pid: u32, kq_fd: u32) -> usize {
+        let pending = self.pending_events.lock().unwrap();
+        let key = (pid, kq_fd);
+        pending.get(&key).map(|q| q.len()).unwrap_or(0)
+    }
 }
 
 impl Clone for KqueueWatchRegistration {
@@ -306,12 +364,10 @@ impl Clone for FSEventsWatchRegistration {
     }
 }
 
-
 /// Event sink implementation for the watch service daemon
 pub struct WatchServiceEventSink {
     watch_service: Arc<WatchService>,
 }
-
 
 impl WatchServiceEventSink {
     pub fn new(watch_service: Arc<WatchService>) -> Self {
@@ -338,7 +394,9 @@ impl WatchServiceEventSink {
     /// Get all paths affected by this event (including parent directories for directory events)
     fn get_affected_paths(&self, evt: &EventKind) -> Vec<String> {
         match evt {
-            EventKind::Created { path } | EventKind::Removed { path } | EventKind::Modified { path } => {
+            EventKind::Created { path }
+            | EventKind::Removed { path }
+            | EventKind::Modified { path } => {
                 // For file events, also notify parent directory watchers
                 let mut paths = vec![path.clone()];
                 if let Some(parent) = std::path::Path::new(path).parent() {
@@ -412,19 +470,39 @@ impl WatchServiceEventSink {
 
         for path in affected_paths {
             // Find all watches for this path
-            let matching_watches: Vec<&KqueueWatchRegistration> = watches.values()
-                .filter(|reg| &reg.path == path)
-                .collect();
+            let matching_watches: Vec<&KqueueWatchRegistration> =
+                watches.values().filter(|reg| &reg.path == path).collect();
 
             for watch in matching_watches {
                 let flags = self.event_to_vnode_flags(evt, path, false); // Assume files for now
 
                 // Only send if the watch is interested in these flags
                 if (watch.fflags & flags) != 0 {
-                    tracing::debug!("Routing kqueue event: pid={}, fd={}, flags={:#x}",
-                                  watch.pid, watch.fd, flags);
-                    // TODO: Send FsEventBroadcast message to shim
-                    // This would use the control plane to notify the shim
+                    tracing::debug!(
+                        "Routing kqueue event: pid={}, kq_fd={}, fd={}, flags={:#x}",
+                        watch.pid,
+                        watch.kq_fd,
+                        watch.fd,
+                        flags
+                    );
+
+                    // Create synthesized kevent for this watcher
+                    let synthesized_event = SynthesizedKevent {
+                        ident: watch.fd as u64,
+                        filter: EVFILT_VNODE as u16, // Convert to u16 for SSZ
+                        flags: 0,                    // No EV_ADD/EV_DELETE for synthesized events
+                        fflags: flags,
+                        data: 0,  // Usually 0 for vnode events
+                        udata: 0, // Usually NULL for synthesized events
+                    };
+
+                    // Enqueue the event for this kqueue
+                    self.watch_service.enqueue_event(watch.pid, watch.kq_fd, synthesized_event);
+
+                    // Post doorbell to wake up the shim
+                    if let Err(e) = self.watch_service.post_doorbell(watch.pid, watch.kq_fd, 1) {
+                        tracing::error!("Failed to post doorbell for event: {}", e);
+                    }
                 }
             }
         }
@@ -439,8 +517,9 @@ impl WatchServiceEventSink {
             let mut should_notify = false;
             for root_path in &watch.root_paths {
                 for affected_path in affected_paths {
-                    if affected_path.starts_with(root_path) ||
-                       std::path::Path::new(affected_path).starts_with(root_path) {
+                    if affected_path.starts_with(root_path)
+                        || std::path::Path::new(affected_path).starts_with(root_path)
+                    {
                         should_notify = true;
                         break;
                     }
@@ -451,8 +530,11 @@ impl WatchServiceEventSink {
             }
 
             if should_notify {
-                tracing::debug!("Routing FSEvents event: pid={}, stream_id={}",
-                              watch.pid, watch.stream_id);
+                tracing::debug!(
+                    "Routing FSEvents event: pid={}, stream_id={}",
+                    watch.pid,
+                    watch.stream_id
+                );
                 // TODO: Send FsEventBroadcast message to shim
                 // This would use the control plane to notify the shim
             }
@@ -474,7 +556,8 @@ mod tests {
     #[test]
     fn test_kqueue_watch_registration() {
         let service = WatchService::new();
-        let registration_id = service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
+        let registration_id =
+            service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
         assert_eq!(registration_id, 1);
 
         let watches = service.get_kqueue_watches_for_pid(123);
@@ -502,7 +585,8 @@ mod tests {
     #[test]
     fn test_watch_unregistration() {
         let service = WatchService::new();
-        let reg_id = service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
+        let reg_id =
+            service.register_kqueue_watch(123, 5, 1, 10, "/tmp/test.txt".to_string(), 0x123);
         assert_eq!(service.get_kqueue_watches_for_pid(123).len(), 1);
 
         service.unregister_watch(123, reg_id);
@@ -524,7 +608,9 @@ mod tests {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new(service.clone());
 
-        let event = EventKind::Created { path: "/tmp/dir/file.txt".to_string() };
+        let event = EventKind::Created {
+            path: "/tmp/dir/file.txt".to_string(),
+        };
         let paths = sink.get_affected_paths(&event);
 
         assert_eq!(paths.len(), 2);
@@ -539,7 +625,7 @@ mod tests {
 
         let event = EventKind::Renamed {
             from: "/tmp/dir/old.txt".to_string(),
-            to: "/tmp/new.txt".to_string()
+            to: "/tmp/new.txt".to_string(),
         };
         let paths = sink.get_affected_paths(&event);
 
@@ -555,7 +641,9 @@ mod tests {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new(service.clone());
 
-        let event = EventKind::Created { path: "/tmp/test.txt".to_string() };
+        let event = EventKind::Created {
+            path: "/tmp/test.txt".to_string(),
+        };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
 
         assert_eq!(flags, NOTE_WRITE);
@@ -566,7 +654,9 @@ mod tests {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new(service.clone());
 
-        let event = EventKind::Removed { path: "/tmp/test.txt".to_string() };
+        let event = EventKind::Removed {
+            path: "/tmp/test.txt".to_string(),
+        };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
 
         assert_eq!(flags, NOTE_DELETE);
@@ -577,7 +667,9 @@ mod tests {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new(service.clone());
 
-        let event = EventKind::Modified { path: "/tmp/test.txt".to_string() };
+        let event = EventKind::Modified {
+            path: "/tmp/test.txt".to_string(),
+        };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", false);
 
         assert_eq!(flags, NOTE_WRITE | NOTE_EXTEND);
@@ -590,7 +682,7 @@ mod tests {
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
-            to: "/tmp/new.txt".to_string()
+            to: "/tmp/new.txt".to_string(),
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/old.txt", false);
 
@@ -604,7 +696,7 @@ mod tests {
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
-            to: "/tmp/new.txt".to_string()
+            to: "/tmp/new.txt".to_string(),
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/new.txt", false);
 
@@ -618,7 +710,7 @@ mod tests {
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
-            to: "/tmp/new.txt".to_string()
+            to: "/tmp/new.txt".to_string(),
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp", false);
 

@@ -93,10 +93,11 @@ pub enum Request {
     WatchRegisterKqueue((Vec<u8>, WatchRegisterKqueueRequest)), // (version, request) - register kqueue watch
     WatchRegisterFSEvents((Vec<u8>, WatchRegisterFSEventsRequest)), // (version, request) - register FSEvents watch
     WatchUnregister((Vec<u8>, WatchUnregisterRequest)), // (version, request) - unregister watch
-    WatchDoorbell((Vec<u8>, WatchDoorbellRequest)),        // (version, request) - doorbell setup for kqueue
-    UpdateDoorbellIdent((Vec<u8>, UpdateDoorbellIdentRequest)),    // (version, request) - doorbell ident collision update
-    QueryDoorbellIdent((Vec<u8>, QueryDoorbellIdentRequest)),     // (version, request) - query current doorbell ident
+    WatchDoorbell((Vec<u8>, WatchDoorbellRequest)), // (version, request) - doorbell setup for kqueue
+    UpdateDoorbellIdent((Vec<u8>, UpdateDoorbellIdentRequest)), // (version, request) - doorbell ident collision update
+    QueryDoorbellIdent((Vec<u8>, QueryDoorbellIdentRequest)), // (version, request) - query current doorbell ident
     FsEventBroadcast((Vec<u8>, FsEventBroadcastRequest)), // (version, request) - FsCore event broadcast
+    WatchDrainEvents((Vec<u8>, WatchDrainEventsRequest)), // (version, request) - drain pending events for kqueue
     DaemonStateProcesses(DaemonStateProcessesRequest),    // version - for testing
     DaemonStateStats(DaemonStateStatsRequest),            // version - for testing
     DaemonStateFilesystem(DaemonStateFilesystemRequest),  // dummy data - for testing
@@ -189,6 +190,7 @@ pub enum Response {
     UpdateDoorbellIdent(UpdateDoorbellIdentResponse),
     QueryDoorbellIdent(QueryDoorbellIdentResponse),
     FsEventBroadcast(FsEventBroadcastResponse),
+    WatchDrainEvents(WatchDrainEventsResponse),
     DaemonState(DaemonStateResponseWrapper),
     Error(ErrorResponse),
 }
@@ -1800,10 +1802,7 @@ impl Request {
     }
 
     pub fn query_doorbell_ident(pid: u32) -> Self {
-        Self::QueryDoorbellIdent((
-            b"1".to_vec(),
-            QueryDoorbellIdentRequest { pid },
-        ))
+        Self::QueryDoorbellIdent((b"1".to_vec(), QueryDoorbellIdentRequest { pid }))
     }
 
     pub fn fs_event_broadcast(
@@ -1947,6 +1946,17 @@ impl Request {
             MkdiratRequest {
                 path: path.into_bytes(),
                 mode,
+            },
+        ))
+    }
+
+    pub fn watch_drain_events(pid: u32, kq_fd: u32, max_events: u32) -> Self {
+        Self::WatchDrainEvents((
+            b"1".to_vec(),
+            WatchDrainEventsRequest {
+                pid,
+                kq_fd,
+                max_events,
             },
         ))
     }
@@ -2149,6 +2159,10 @@ impl Response {
 
     pub fn fs_event_broadcast() -> Self {
         Self::FsEventBroadcast(FsEventBroadcastResponse {})
+    }
+
+    pub fn watch_drain_events_response(events: Vec<SynthesizedKevent>) -> Self {
+        Self::WatchDrainEvents(WatchDrainEventsResponse { events })
     }
 
     pub fn rename() -> Self {
@@ -2472,3 +2486,38 @@ pub struct FsEventBroadcastRequest {
 /// FsCore event broadcast response
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct FsEventBroadcastResponse {}
+
+/// Drain pending events request (shim requests pending synthesized events for a kqueue)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchDrainEventsRequest {
+    /// Process ID of the requesting shim
+    pub pid: u32,
+    /// Kqueue file descriptor number
+    pub kq_fd: u32,
+    /// Maximum number of events to return
+    pub max_events: u32,
+}
+
+/// Drain pending events response (daemon returns synthesized events)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchDrainEventsResponse {
+    /// List of synthesized kevent structures to inject
+    pub events: Vec<SynthesizedKevent>,
+}
+
+/// A synthesized kevent structure for injection into shim results
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SynthesizedKevent {
+    /// File descriptor being watched
+    pub ident: u64,
+    /// Filter type (should be EVFILT_VNODE)
+    pub filter: u16, // Changed from i16 to u16 for SSZ compatibility
+    /// Event flags (usually 0 for synthesized events)
+    pub flags: u16,
+    /// Filter-specific flags (NOTE_* constants)
+    pub fflags: u32,
+    /// Filter-specific data
+    pub data: u64, // Changed from i64 to u64 for SSZ compatibility
+    /// User data (usually NULL for synthesized events)
+    pub udata: u64, // Changed from i64 to u64 for SSZ compatibility
+}

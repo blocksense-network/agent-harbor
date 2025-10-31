@@ -11,7 +11,7 @@ use std::io::{BufRead, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
-use std::sync::{atomic::AtomicU64, Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use std::time::{Duration, SystemTime};
 
 // SSZ imports
@@ -26,7 +26,7 @@ use agentfs_proto::messages::{
     FremovexattrRequest, FsetxattrRequest, GetattrlistRequest, GetattrlistbulkRequest,
     GetxattrRequest, LchflagsRequest, LgetxattrRequest, ListxattrRequest, LlistxattrRequest,
     LremovexattrRequest, LsetxattrRequest, RemovexattrRequest, SetattrlistRequest, SetxattrRequest,
-    StatData, StatfsData, TimespecData,
+    StatData, StatfsData, SynthesizedKevent, TimespecData,
 };
 use agentfs_proto::*;
 
@@ -165,10 +165,8 @@ fn generate_doorbell_ident() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     // Use current time as randomness source (good enough for this use case)
     // Reserve high bits to avoid collision with app's ident space
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u32;
+    let timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u32;
     0xAFFE00000000u64 | (timestamp as u64)
 }
 
@@ -308,6 +306,11 @@ static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
 
 // Global directory file descriptor mapping keyed by process ID
 static DIRFD_MAPPING: std::sync::LazyLock<Mutex<HashMap<u32, DirfdMapping>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Watcher table for EVFILT_VNODE registrations: (kq_fd, fd) -> requested_fflags
+#[cfg(target_os = "macos")]
+static WATCHER_TABLE: std::sync::LazyLock<Mutex<HashMap<(c_int, u32), u32>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // Directory handles are now managed by FsCore directly
@@ -694,9 +697,8 @@ mod tests {
 mod interpose {
     use super::*;
     use libc::{
-        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SOL_SOCKET, SCM_RIGHTS,
-        c_char, c_int, c_uint, c_void,
-        gid_t, iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET, c_char, c_int,
+        c_uint, c_void, gid_t, iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
     };
 
     // Re-export kqueue types from parent scope for use in this module
@@ -4470,32 +4472,82 @@ mod interpose {
                 }
             }
 
+            // Update watcher table based on changelist (track EVFILT_VNODE registrations)
+            if nchanges > 0 && !changelist.is_null() {
+                let mut watcher_table = WATCHER_TABLE.lock().unwrap();
+                for i in 0..nchanges {
+                    let change = &*changelist.offset(i as isize);
+                    if change.filter == EVFILT_VNODE && (change.flags & (EV_ADD | EV_DELETE)) != 0 {
+                        let key = (kq, change.ident as u32);
+                        let ident = change.ident;
+                        let flags = change.flags;
+                        let fflags = change.fflags;
+                        if (flags & EV_DELETE) != 0 {
+                            watcher_table.remove(&key);
+                            log_message(&format!("Removed vnode watcher: kq={}, fd={}", kq, ident));
+                        } else if (flags & EV_ADD) != 0 {
+                            watcher_table.insert(key, fflags);
+                            log_message(&format!("Added vnode watcher: kq={}, fd={}, fflags={:#x}", kq, ident, fflags));
+                        }
+                    }
+                }
+            }
+
             // Call the real kevent system call to get pending events
             let result = redhook::real!(kevent)(kq, changelist, nchanges, eventlist, nevents, timeout);
 
             if result > 0 && !eventlist.is_null() {
-                log_message(&format!("kevent returned {} events, filtering EVFILT_VNODE events", result));
+                log_message(&format!("kevent returned {} events, checking for doorbell", result));
 
-                // TODO: Implement event filtering and injection based on AgentFS state
-                // For now, just log that we would filter/inject events
-                // Future implementation should:
-                // 1. Iterate through returned events
-                // 2. Filter out EVFILT_VNODE events for files hidden by whiteouts
-                // 3. Check for AgentFS-managed files that should generate custom events
-                // 4. Inject fabricated kevent entries for AgentFS changes
-                // 5. Update the result count accordingly
+                // Check if we received our doorbell event
+                let mut has_doorbell = false;
+                let current_doorbell_ident = CURRENT_DOORBELL_IDENT.load(std::sync::atomic::Ordering::Relaxed);
 
-                // Count EVFILT_VNODE events for logging
-                let mut vnode_events = 0;
                 for i in 0..result {
                     let event = &*eventlist.offset(i as isize);
-                    if event.filter == EVFILT_VNODE {
-                        vnode_events += 1;
+                    if event.filter == EVFILT_USER && event.ident == current_doorbell_ident as usize {
+                        has_doorbell = true;
+                        log_message(&format!("Received doorbell event, requesting pending events"));
+                        break;
                     }
                 }
 
-                log_message(&format!("kevent: found {} EVFILT_VNODE events (filtering/injection not yet implemented)",
-                    vnode_events));
+                // If we got a doorbell, request pending events from daemon
+                let mut synthesized_events = Vec::new();
+                if has_doorbell {
+                    synthesized_events = request_pending_events(kq);
+                }
+
+                // Inject synthesized events into the result
+                if !synthesized_events.is_empty() {
+                    log_message(&format!("Injecting {} synthesized events", synthesized_events.len()));
+
+                    // For now, append to the end if there's space
+                    // In a full implementation, we'd need to merge properly
+                    let available_space = nevents as usize - result as usize;
+                    let events_to_inject = synthesized_events.len().min(available_space);
+
+                    for i in 0..events_to_inject {
+                        let target_idx = (result as usize + i) as isize;
+                        let synthesized = &synthesized_events[i];
+
+                        // Convert SynthesizedKevent to libc::kevent
+                        let injected_event = libc::kevent {
+                            ident: synthesized.ident as usize, // Convert u64 to usize for libc
+                            filter: synthesized.filter as i16, // Convert u16 back to i16 for libc
+                            flags: synthesized.flags,
+                            fflags: synthesized.fflags,
+                            data: synthesized.data as isize, // Convert u64 to isize for libc
+                            udata: synthesized.udata as *mut libc::c_void, // Convert u64 to pointer
+                        };
+
+                        // Copy to eventlist
+                        *eventlist.offset(target_idx) = injected_event;
+                    }
+
+                    log_message(&format!("Injected {} events, new total: {}", events_to_inject, result as usize + events_to_inject));
+                    return (result as usize + events_to_inject) as c_int;
+                }
             }
 
             result
@@ -4613,18 +4665,49 @@ mod interpose {
             };
 
             if send_result == -1 {
-                return Err(format!("sendmsg failed: {}", std::io::Error::last_os_error()));
+                return Err(format!(
+                    "sendmsg failed: {}",
+                    std::io::Error::last_os_error()
+                ));
             }
         }
 
         // Now send the SSZ payload
         {
             let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard.write_all(&ssz_bytes)
+            stream_guard
+                .write_all(&ssz_bytes)
                 .map_err(|e| format!("write SSZ payload: {}", e))?;
         }
 
         Ok(())
+    }
+
+    /// Request pending synthesized events from the daemon for a specific kqueue
+    #[cfg(target_os = "macos")]
+    fn request_pending_events(kq_fd: c_int) -> Vec<SynthesizedKevent> {
+        let pid = std::process::id() as u32;
+
+        // Create the request
+        let request = Request::watch_drain_events(pid, kq_fd as u32, 64); // Request up to 64 events
+
+        // Send request and get response
+        match send_request(request, |response| match response {
+            Response::WatchDrainEvents(resp) => Some(resp.events),
+            _ => None,
+        }) {
+            Ok(events) => {
+                log_message(&format!(
+                    "Received {} pending events from daemon",
+                    events.len()
+                ));
+                events
+            }
+            Err(e) => {
+                log_message(&format!("Failed to request pending events: {}", e));
+                Vec::new()
+            }
+        }
     }
 
     /// Interposed kevent64 function (64-bit variant)

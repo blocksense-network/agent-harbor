@@ -124,7 +124,7 @@ use agentfs_proto::messages::{
 
 // Use handshake types and functions from this crate
 use crate::handshake::*;
-use crate::{decode_ssz_message, encode_ssz_message, WatchService, WatchServiceEventSink};
+use crate::{WatchService, WatchServiceEventSink, decode_ssz_message, encode_ssz_message};
 
 /// Helper function to get PID for client operations (avoids nested locking issues)
 fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) -> PID {
@@ -198,7 +198,9 @@ impl AgentFsDaemon {
 
             // Lock the core temporarily to subscribe to events
             let mut core_guard = core_clone.lock().unwrap();
-            core_guard.subscribe_events(sink).expect("Failed to subscribe watch service to events");
+            core_guard
+                .subscribe_events(sink)
+                .expect("Failed to subscribe watch service to events");
         }
 
         Ok(Self {
@@ -218,13 +220,29 @@ impl AgentFsDaemon {
     }
 
     /// Register a kqueue watch
-    pub fn register_kqueue_watch(&self, pid: u32, kq_fd: u32, watch_id: u64, fd: u32, path: String, fflags: u32) -> u64 {
+    pub fn register_kqueue_watch(
+        &self,
+        pid: u32,
+        kq_fd: u32,
+        watch_id: u64,
+        fd: u32,
+        path: String,
+        fflags: u32,
+    ) -> u64 {
         self.watch_service.register_kqueue_watch(pid, kq_fd, watch_id, fd, path, fflags)
     }
 
     /// Register an FSEvents watch
-    pub fn register_fsevents_watch(&self, pid: u32, stream_id: u64, root_paths: Vec<String>, flags: u32, latency: u64) -> u64 {
-        self.watch_service.register_fsevents_watch(pid, stream_id, root_paths, flags, latency)
+    pub fn register_fsevents_watch(
+        &self,
+        pid: u32,
+        stream_id: u64,
+        root_paths: Vec<String>,
+        flags: u32,
+        latency: u64,
+    ) -> u64 {
+        self.watch_service
+            .register_fsevents_watch(pid, stream_id, root_paths, flags, latency)
     }
 
     /// Unregister a watch
@@ -260,7 +278,12 @@ impl AgentFsDaemon {
         );
 
         // Use the real FsCore fd_open implementation
-        match self.core.lock().unwrap().fd_open(os_pid, std::path::Path::new(&path), flags, mode) {
+        match self
+            .core
+            .lock()
+            .unwrap()
+            .fd_open(os_pid, std::path::Path::new(&path), flags, mode)
+        {
             Ok(fd) => {
                 println!("AgentFsDaemon: fd_open succeeded '{}' -> fd {}", path, fd);
                 // Record the file open for testing state tracking
@@ -326,7 +349,11 @@ impl AgentFsDaemon {
     }
 
     /// Handle a dir_read request
-    pub fn handle_dir_read(&mut self, handle: u64, client_pid: u32) -> Result<Vec<DirEntry>, String> {
+    pub fn handle_dir_read(
+        &mut self,
+        handle: u64,
+        client_pid: u32,
+    ) -> Result<Vec<DirEntry>, String> {
         println!(
             "AgentFsDaemon: dir_read(handle={}, pid={})",
             handle, client_pid
@@ -608,9 +635,10 @@ impl AgentFsDaemon {
                     }
 
                     let entry = if dir_entry.is_symlink {
-                        let target = self.core.lock().unwrap().readlink(pid, &full_path).map_err(|e| {
-                            format!("Failed to read symlink {}: {:?}", full_path.display(), e)
-                        })?;
+                        let target =
+                            self.core.lock().unwrap().readlink(pid, &full_path).map_err(|e| {
+                                format!("Failed to read symlink {}: {:?}", full_path.display(), e)
+                            })?;
 
                         FilesystemEntry {
                             path: full_path.to_string_lossy().as_bytes().to_vec(),
@@ -657,7 +685,9 @@ impl AgentFsDaemon {
                                 stream: None,
                             };
 
-                            if let Ok(handle_id) = self.core.lock().unwrap().open(pid, &full_path, &open_opts) {
+                            if let Ok(handle_id) =
+                                self.core.lock().unwrap().open(pid, &full_path, &open_opts)
+                            {
                                 let mut buffer = vec![0u8; attrs.len as usize];
                                 if let Ok(bytes_read) =
                                     self.core.lock().unwrap().read(pid, handle_id, 0, &mut buffer)
@@ -985,11 +1015,15 @@ impl AgentFsDaemon {
         );
 
         // Register the dirfd mapping with FsCore
-        self.core.lock().unwrap()
+        self.core
+            .lock()
+            .unwrap()
             .register_process_dirfd_mapping(pid)
             .map_err(|e| format!("Failed to register process mapping: {}", e))?;
 
-        self.core.lock().unwrap()
+        self.core
+            .lock()
+            .unwrap()
             .open_dir_fd(pid, PathBuf::from(path), fd as std::os::fd::RawFd)
             .map_err(|e| format!("Failed to register dirfd: {}", e))
     }
@@ -997,7 +1031,9 @@ impl AgentFsDaemon {
     fn handle_dirfd_close_fd(&mut self, pid: u32, fd: i32) -> Result<(), String> {
         println!("AgentFsDaemon: dirfd_close_fd(pid={}, fd={})", pid, fd);
 
-        self.core.lock().unwrap()
+        self.core
+            .lock()
+            .unwrap()
             .close_fd(pid, fd as std::os::fd::RawFd)
             .map_err(|e| format!("Failed to close dirfd: {}", e))
     }
@@ -1008,7 +1044,9 @@ impl AgentFsDaemon {
             pid, old_fd, new_fd
         );
 
-        self.core.lock().unwrap()
+        self.core
+            .lock()
+            .unwrap()
             .dup_fd(
                 pid,
                 old_fd as std::os::fd::RawFd,
@@ -1020,7 +1058,9 @@ impl AgentFsDaemon {
     fn handle_dirfd_set_cwd(&mut self, pid: u32, cwd: String) -> Result<(), String> {
         println!("AgentFsDaemon: dirfd_set_cwd(pid={}, cwd={})", pid, cwd);
 
-        self.core.lock().unwrap()
+        self.core
+            .lock()
+            .unwrap()
             .set_process_cwd(pid, PathBuf::from(cwd))
             .map_err(|e| format!("Failed to set cwd: {}", e))
     }
@@ -1036,8 +1076,10 @@ impl AgentFsDaemon {
             pid, dirfd, relative_path
         );
 
-            let resolved_path = self
-            .core.lock().unwrap()
+        let resolved_path = self
+            .core
+            .lock()
+            .unwrap()
             .resolve_path_with_dirfd(pid, dirfd, Path::new(&relative_path))
             .map_err(|e| format!("Failed to resolve path: {}", e))?;
 
@@ -1337,7 +1379,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fstatat((version, fstatat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
-                        match daemon.lock().unwrap().core.lock().unwrap().fstatat(
+                    match daemon.lock().unwrap().core.lock().unwrap().fstatat(
                         &pid,
                         path.as_ref(),
                         fstatat_req.flags,
@@ -1356,7 +1398,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Chmod((version, chmod_req)) => {
                     let path = String::from_utf8_lossy(&chmod_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
-                        match daemon.lock().unwrap().core.lock().unwrap().set_mode(
+                    match daemon.lock().unwrap().core.lock().unwrap().set_mode(
                         &pid,
                         path.as_ref(),
                         chmod_req.mode,
@@ -1374,7 +1416,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fchmod((version, fchmod_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(fchmod_req.fd as u64);
-                        match daemon.lock().unwrap().core.lock().unwrap().fchmod(
+                    match daemon.lock().unwrap().core.lock().unwrap().fchmod(
                         &pid,
                         handle_id,
                         fchmod_req.mode,
@@ -1393,7 +1435,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fchmodat((version, fchmodat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
-                        match daemon.lock().unwrap().core.lock().unwrap().fchmodat(
+                    match daemon.lock().unwrap().core.lock().unwrap().fchmodat(
                         &pid,
                         path.as_ref(),
                         fchmodat_req.mode,
@@ -1453,7 +1495,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fchown((version, fchown_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(fchown_req.fd as u64);
-                        match daemon.lock().unwrap().core.lock().unwrap().fchown(
+                    match daemon.lock().unwrap().core.lock().unwrap().fchown(
                         &pid,
                         handle_id,
                         fchown_req.uid,
@@ -1473,7 +1515,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::Fchownat((version, fchownat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
-                        match daemon.lock().unwrap().core.lock().unwrap().fchownat(
+                    match daemon.lock().unwrap().core.lock().unwrap().fchownat(
                         &pid,
                         path.as_ref(),
                         fchownat_req.uid,
@@ -1495,7 +1537,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     let path = String::from_utf8_lossy(&utimes_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     // For path-based utimes, we need to open the file first
-                        match daemon.lock().unwrap().core.lock().unwrap().create(
+                    match daemon.lock().unwrap().core.lock().unwrap().create(
                         &pid,
                         path.as_ref(),
                         &OpenOptions {
@@ -1510,15 +1552,35 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     ) {
                         Ok(handle) => {
                             let times = utimes_req.times.map(|t| (t.0, t.1));
-                            match daemon.lock().unwrap().core.lock().unwrap().futimes(&pid, handle, times)
+                            match daemon
+                                .lock()
+                                .unwrap()
+                                .core
+                                .lock()
+                                .unwrap()
+                                .futimes(&pid, handle, times)
                             {
                                 Ok(()) => {
-                                    daemon.lock().unwrap().core.lock().unwrap().close(&pid, handle).ok();
+                                    daemon
+                                        .lock()
+                                        .unwrap()
+                                        .core
+                                        .lock()
+                                        .unwrap()
+                                        .close(&pid, handle)
+                                        .ok();
                                     let response = Response::utimes();
                                     send_response(&mut stream, &response);
                                 }
                                 Err(e) => {
-                                    daemon.lock().unwrap().core.lock().unwrap().close(&pid, handle).ok();
+                                    daemon
+                                        .lock()
+                                        .unwrap()
+                                        .core
+                                        .lock()
+                                        .unwrap()
+                                        .close(&pid, handle)
+                                        .ok();
                                     let response =
                                         Response::error(format!("utimes failed: {}", e), Some(2));
                                     send_response(&mut stream, &response);
@@ -1538,7 +1600,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(futimes_req.fd as u64);
                     let times = futimes_req.times.map(|t| (t.0, t.1));
-                    match daemon.lock().unwrap().core.lock().unwrap().futimes(&pid, handle_id, times) {
+                    match daemon
+                        .lock()
+                        .unwrap()
+                        .core
+                        .lock()
+                        .unwrap()
+                        .futimes(&pid, handle_id, times)
+                    {
                         Ok(()) => {
                             let response = Response::futimes();
                             send_response(&mut stream, &response);
@@ -1615,7 +1684,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(futimens_req.fd as u64);
                     let times = futimens_req.times.map(|t| (t.0, t.1));
-                    match daemon.lock().unwrap().core.lock().unwrap().futimens(&pid, handle_id, times) {
+                    match daemon
+                        .lock()
+                        .unwrap()
+                        .core
+                        .lock()
+                        .unwrap()
+                        .futimens(&pid, handle_id, times)
+                    {
                         Ok(()) => {
                             let response = Response::futimens();
                             send_response(&mut stream, &response);
@@ -1631,7 +1707,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     let path = String::from_utf8_lossy(&truncate_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     // For path-based truncate, we need to open the file first
-                        match daemon.lock().unwrap().core.lock().unwrap().create(
+                    match daemon.lock().unwrap().core.lock().unwrap().create(
                         &pid,
                         path.as_ref(),
                         &OpenOptions {
@@ -1651,12 +1727,26 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 truncate_req.length,
                             ) {
                                 Ok(()) => {
-                                    daemon.lock().unwrap().core.lock().unwrap().close(&pid, handle).ok();
+                                    daemon
+                                        .lock()
+                                        .unwrap()
+                                        .core
+                                        .lock()
+                                        .unwrap()
+                                        .close(&pid, handle)
+                                        .ok();
                                     let response = Response::truncate();
                                     send_response(&mut stream, &response);
                                 }
                                 Err(e) => {
-                                    daemon.lock().unwrap().core.lock().unwrap().close(&pid, handle).ok();
+                                    daemon
+                                        .lock()
+                                        .unwrap()
+                                        .core
+                                        .lock()
+                                        .unwrap()
+                                        .close(&pid, handle)
+                                        .ok();
                                     let response =
                                         Response::error(format!("truncate failed: {}", e), Some(2));
                                     send_response(&mut stream, &response);

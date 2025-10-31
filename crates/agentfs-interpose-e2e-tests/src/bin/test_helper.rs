@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 use std::os::unix::io::RawFd;
 use std::path::Path;
 
-extern crate libc;
 extern crate agentfs_proto;
+extern crate libc;
 extern crate ssz;
 
 fn main() {
@@ -64,6 +64,7 @@ fn main() {
         "test-getattrlist" => test_getattrlist_operations(test_args),
         "kqueue-doorbell-test" => test_kqueue_doorbell(test_args),
         "collision-hygiene-test" => test_collision_hygiene(test_args),
+        "kevent-test" => test_kevent_hook_injectable_queue(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
             println!("Dummy command executed");
@@ -1052,22 +1053,37 @@ fn test_collision_hygiene(args: &[String]) {
         }
 
         // Step 3: Try to register an EVFILT_USER event with the doorbell ident (this should trigger collision)
-        println!("Attempting to register EVFILT_USER event with doorbell ident {:#x} (should trigger collision)", doorbell_ident);
+        println!(
+            "Attempting to register EVFILT_USER event with doorbell ident {:#x} (should trigger collision)",
+            doorbell_ident
+        );
 
         let mut kev = libc::kevent {
             ident: doorbell_ident as usize,
-            filter: -5, // EVFILT_USER
+            filter: -5,    // EVFILT_USER
             flags: 0x0001, // EV_ADD
             fflags: 0,
             data: 0,
             udata: std::ptr::null_mut(),
         };
 
-        let register_result = libc::kevent(kq_fd, &mut kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+        let register_result = libc::kevent(
+            kq_fd,
+            &mut kev as *mut _,
+            1,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+        );
         if register_result == 0 {
-            println!("EVFILT_USER registration succeeded (expected - collision was handled transparently)");
+            println!(
+                "EVFILT_USER registration succeeded (expected - collision was handled transparently)"
+            );
         } else {
-            println!("EVFILT_USER registration failed with errno {} (unexpected - collision should have been handled)", *libc::__error());
+            println!(
+                "EVFILT_USER registration failed with errno {} (unexpected - collision should have been handled)",
+                *libc::__error()
+            );
             libc::close(kq_fd);
             std::process::exit(1);
         }
@@ -1079,7 +1095,10 @@ fn test_collision_hygiene(args: &[String]) {
         let new_query_request = agentfs_proto::messages::Request::query_doorbell_ident(pid);
         let new_doorbell_ident = match send_request_to_daemon(new_query_request) {
             Ok(agentfs_proto::messages::Response::QueryDoorbellIdent(resp)) => {
-                println!("New doorbell ident after collision: {:#x}", resp.doorbell_ident);
+                println!(
+                    "New doorbell ident after collision: {:#x}",
+                    resp.doorbell_ident
+                );
                 resp.doorbell_ident
             }
             _ => {
@@ -1099,16 +1118,26 @@ fn test_collision_hygiene(args: &[String]) {
         println!("Testing custom EVFILT_USER event registration with ident 123");
         let mut custom_kev = libc::kevent {
             ident: 123,
-            filter: -5, // EVFILT_USER
+            filter: -5,    // EVFILT_USER
             flags: 0x0001, // EV_ADD
             fflags: 0,
             data: 0,
             udata: std::ptr::null_mut(),
         };
 
-        let custom_result = libc::kevent(kq_fd, &mut custom_kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+        let custom_result = libc::kevent(
+            kq_fd,
+            &mut custom_kev as *mut _,
+            1,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+        );
         if custom_result != 0 {
-            eprintln!("Failed to register custom EVFILT_USER event: {}", std::io::Error::last_os_error());
+            eprintln!(
+                "Failed to register custom EVFILT_USER event: {}",
+                std::io::Error::last_os_error()
+            );
             libc::close(kq_fd);
             std::process::exit(1);
         }
@@ -1119,9 +1148,16 @@ fn test_collision_hygiene(args: &[String]) {
         let c_test_file = std::ffi::CString::new(test_file_path.clone()).unwrap();
 
         println!("Creating test file: {}", test_file_path);
-        let file_fd = libc::open(c_test_file.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC, 0o644);
+        let file_fd = libc::open(
+            c_test_file.as_ptr(),
+            libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+            0o644,
+        );
         if file_fd < 0 {
-            eprintln!("Failed to create test file: {}", std::io::Error::last_os_error());
+            eprintln!(
+                "Failed to create test file: {}",
+                std::io::Error::last_os_error()
+            );
             libc::close(kq_fd);
             std::process::exit(1);
         }
@@ -1129,16 +1165,26 @@ fn test_collision_hygiene(args: &[String]) {
         // Register for file write events
         let mut file_kev = libc::kevent {
             ident: file_fd as usize,
-            filter: -4, // EVFILT_VNODE
-            flags: 0x0001, // EV_ADD
+            filter: -4,         // EVFILT_VNODE
+            flags: 0x0001,      // EV_ADD
             fflags: 0x00000020, // NOTE_WRITE
             data: 0,
             udata: std::ptr::null_mut(),
         };
 
-        let file_watch_result = libc::kevent(kq_fd, &mut file_kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+        let file_watch_result = libc::kevent(
+            kq_fd,
+            &mut file_kev as *mut _,
+            1,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+        );
         if file_watch_result != 0 {
-            eprintln!("Failed to register file watch: {}", std::io::Error::last_os_error());
+            eprintln!(
+                "Failed to register file watch: {}",
+                std::io::Error::last_os_error()
+            );
             libc::close(file_fd);
             libc::close(kq_fd);
             std::process::exit(1);
@@ -1147,9 +1193,16 @@ fn test_collision_hygiene(args: &[String]) {
 
         // Write to the file to trigger an event
         let test_data = b"Hello, collision test!";
-        let write_result = libc::write(file_fd, test_data.as_ptr() as *const libc::c_void, test_data.len());
+        let write_result = libc::write(
+            file_fd,
+            test_data.as_ptr() as *const libc::c_void,
+            test_data.len(),
+        );
         if write_result < 0 {
-            eprintln!("Failed to write to test file: {}", std::io::Error::last_os_error());
+            eprintln!(
+                "Failed to write to test file: {}",
+                std::io::Error::last_os_error()
+            );
         } else {
             println!("Wrote {} bytes to test file", write_result);
         }
@@ -1169,7 +1222,14 @@ fn test_collision_hygiene(args: &[String]) {
             tv_nsec: 500000000, // 500ms
         };
 
-        let event_count = libc::kevent(kq_fd, std::ptr::null(), 0, events.as_mut_ptr(), events.len() as i32, &mut timeout);
+        let event_count = libc::kevent(
+            kq_fd,
+            std::ptr::null(),
+            0,
+            events.as_mut_ptr(),
+            events.len() as i32,
+            &mut timeout,
+        );
         println!("Received {} events", event_count);
 
         if event_count > 0 {
@@ -1180,8 +1240,10 @@ fn test_collision_hygiene(args: &[String]) {
                 let filter = event.filter;
                 let flags = event.flags;
                 let fflags = event.fflags;
-                println!("Event {}: ident={}, filter={}, flags={:#x}, fflags={:#x}",
-                    i, ident, filter, flags, fflags);
+                println!(
+                    "Event {}: ident={}, filter={}, flags={:#x}, fflags={:#x}",
+                    i, ident, filter, flags, fflags
+                );
             }
         }
 
@@ -1194,7 +1256,10 @@ fn test_collision_hygiene(args: &[String]) {
 
         println!("Collision hygiene test completed successfully!");
         println!("✓ Doorbell ident collision was detected and handled");
-        println!("✓ New doorbell ident was assigned: {:#x} -> {:#x}", doorbell_ident, new_doorbell_ident);
+        println!(
+            "✓ New doorbell ident was assigned: {:#x} -> {:#x}",
+            doorbell_ident, new_doorbell_ident
+        );
         println!("✓ Custom EVFILT_USER events work after collision");
         println!("✓ File system events are still delivered");
     }
@@ -3313,6 +3378,186 @@ extern "C" {
     ) -> libc::c_int;
 }
 
+fn test_kevent_hook_injectable_queue(_args: &[String]) {
+    #[cfg(target_os = "macos")]
+    {
+        println!("Starting kevent hook + injectable queue test...");
+
+        // Define constants for kqueue
+        const EVFILT_VNODE: i16 = -4;
+        const EV_ADD: u16 = 0x0001;
+        const NOTE_WRITE: u32 = 0x00000002;
+        const NOTE_DELETE: u32 = 0x00000001;
+        const EVFILT_USER: i16 = -5;
+        const NOTE_TRIGGER: u32 = 0x01000000;
+
+        unsafe {
+            // Create a test file to watch
+            let test_file = "/tmp/agentfs_kevent_test.txt";
+            let c_test_file = std::ffi::CString::new(test_file).unwrap();
+
+            // Open file with O_EVTONLY for vnode watching
+            let file_fd = libc::open(c_test_file.as_ptr(), libc::O_EVTONLY, 0);
+            if file_fd < 0 {
+                eprintln!(
+                    "Failed to open test file: {}",
+                    std::io::Error::last_os_error()
+                );
+                std::process::exit(1);
+            }
+
+            // Create kqueue
+            let kq_fd = libc::kqueue();
+            if kq_fd < 0 {
+                eprintln!(
+                    "Failed to create kqueue: {}",
+                    std::io::Error::last_os_error()
+                );
+                libc::close(file_fd);
+                std::process::exit(1);
+            }
+
+            // Register EVFILT_VNODE watch on the file for NOTE_WRITE and NOTE_DELETE
+            let mut vnode_event = libc::kevent {
+                ident: file_fd as usize,
+                filter: EVFILT_VNODE,
+                flags: EV_ADD,
+                fflags: NOTE_WRITE | NOTE_DELETE,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            };
+
+            let register_result = libc::kevent(
+                kq_fd,
+                &mut vnode_event as *mut _,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            );
+            if register_result < 0 {
+                eprintln!(
+                    "Failed to register vnode watch: {}",
+                    std::io::Error::last_os_error()
+                );
+                libc::close(kq_fd);
+                libc::close(file_fd);
+                std::process::exit(1);
+            }
+
+            // Register an unrelated filter (EVFILT_USER) to test that it passes through unchanged
+            let mut user_event = libc::kevent {
+                ident: 12345,
+                filter: EVFILT_USER,
+                flags: EV_ADD,
+                fflags: NOTE_TRIGGER,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            };
+
+            let user_result = libc::kevent(
+                kq_fd,
+                &mut user_event as *mut _,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            );
+            if user_result < 0 {
+                eprintln!(
+                    "Failed to register user event: {}",
+                    std::io::Error::last_os_error()
+                );
+                libc::close(kq_fd);
+                libc::close(file_fd);
+                std::process::exit(1);
+            }
+
+            println!("READY_FOR_EVENTS");
+
+            // Wait for events - this is where the shim should inject synthesized events
+            let mut events = [libc::kevent {
+                ident: 0,
+                filter: 0,
+                flags: 0,
+                fflags: 0,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            }; 10];
+
+            let mut timeout = libc::timespec {
+                tv_sec: 5, // 5 second timeout
+                tv_nsec: 0,
+            };
+
+            let event_count = libc::kevent(
+                kq_fd,
+                std::ptr::null(),
+                0,
+                events.as_mut_ptr(),
+                events.len() as i32,
+                &mut timeout,
+            );
+
+            println!("Received {} events", event_count);
+
+            let mut saw_synthesized_event = false;
+            let mut saw_unrelated_event = false;
+
+            for i in 0..event_count as usize {
+                let event = &events[i];
+                let ident = event.ident;
+                let filter = event.filter;
+                let flags = event.flags;
+                let fflags = event.fflags;
+                let data = event.data;
+                println!(
+                    "Event {}: ident={}, filter={}, flags={}, fflags={:#x}, data={}",
+                    i, ident, filter, flags, fflags, data
+                );
+
+                // Check for synthesized EVFILT_VNODE event
+                if filter == EVFILT_VNODE as i16 && ident == file_fd as usize {
+                    println!("EVENT_RECEIVED");
+                    saw_synthesized_event = true;
+                }
+
+                // Check for unrelated EVFILT_USER event passing through
+                if filter == EVFILT_USER as i16 && ident == 12345 {
+                    println!("UNRELATED_FILTER_PASSED");
+                    saw_unrelated_event = true;
+                }
+            }
+
+            if saw_synthesized_event {
+                println!("✅ Synthesized EVFILT_VNODE event received");
+            } else {
+                println!("❌ No synthesized EVFILT_VNODE event received");
+            }
+
+            if saw_unrelated_event {
+                println!("✅ Unrelated EVFILT_USER event passed through");
+            } else {
+                println!("❌ Unrelated EVFILT_USER event not received");
+            }
+
+            // Clean up
+            libc::close(kq_fd);
+            libc::close(file_fd);
+
+            // Clean up test file
+            libc::unlink(c_test_file.as_ptr());
+
+            println!("Kevent hook test completed");
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("Kevent hook test skipped (not on macOS)");
+    }
+}
+
 /// SSZ encoding/decoding functions for test communication
 fn encode_ssz(data: &impl ssz::Encode) -> Vec<u8> {
     data.as_ssz_bytes()
@@ -3323,14 +3568,21 @@ fn decode_ssz<T: ssz::Decode>(data: &[u8]) -> Result<T, String> {
 }
 
 /// Send a request to the AgentFS daemon and receive a response
-fn send_request_to_daemon(request: agentfs_proto::messages::Request) -> Result<agentfs_proto::messages::Response, String> {
+fn send_request_to_daemon(
+    request: agentfs_proto::messages::Request,
+) -> Result<agentfs_proto::messages::Response, String> {
     use std::os::unix::net::UnixStream;
 
     // Try to connect to the daemon socket
     let socket_path = "/tmp/agentfs-daemon.sock"; // Default socket path
     let mut stream = match UnixStream::connect(socket_path) {
         Ok(s) => s,
-        Err(e) => return Err(format!("Failed to connect to daemon socket {}: {}", socket_path, e)),
+        Err(e) => {
+            return Err(format!(
+                "Failed to connect to daemon socket {}: {}",
+                socket_path, e
+            ));
+        }
     };
 
     // Encode the request

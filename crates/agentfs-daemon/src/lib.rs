@@ -7,8 +7,8 @@
 //! filesystem clients. It acts as a library that can be embedded in executables or
 //! used as a standalone daemon.
 
-pub mod handshake;
 pub mod daemon;
+pub mod handshake;
 pub mod watch_service;
 
 // Re-export the main daemon types

@@ -206,13 +206,13 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
   - [x] Thread-safe atomic operations for doorbell ident management
   - [x] Efficient O(1) doorbell ident lookup in daemon
 
-# Milestone 4 — Shim kevent() hook + injectable queue
+# Milestone 4 — Shim kevent() hook + injectable queue COMPLETED
 
 **Goal:** Interpose `kevent*(…)` and splice **synthesized EVFILT_VNODE** entries into the result set whenever a doorbell fires, without disturbing unrelated filters.
 
 - **Hook behavior** (public API only)
   1. Call the **real** `kevent` first to collect kernel events.
-  2. If the result includes our **doorbell EVFILT_USER** ident, **pop** pending synthesized events from the per-kqueue **SPSC ring buffer** (shared with daemon via control socket messages, not shared memory).
+  2. If the result includes our **doorbell EVFILT_USER** ident, request the pending synthesized events from the AgentFS daemon per-kqueue buffer.
   3. Append those `struct kevent` entries to the user’s output buffer; adjust returned `nevents`.
   4. Pass through all non-EVFILT_VNODE events untouched; only add/modify EVFILT_VNODE for watched fds.
 
@@ -222,9 +222,46 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
   - Vnode fflags we synthesize: `NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|NOTE_RENAME|NOTE_REVOKE`.
 
 - **Acceptance (end-to-end tests)**
-  - App registers `EVFILT_VNODE` on fd for `/file.txt` (opened with `O_EVTONLY`), then sleeps in `kevent()`.
-  - FsCore write/rename/unlink (issued via daemon on behalf of another proc) causes daemon to enqueue **matching EVFILT_VNODE**; daemon posts doorbell; shim merges; app receives correct flags in **one** call.
-  - Ensure **unrelated filters** (timers, signals, sockets) pass through unchanged.
+  - ✅ App registers `EVFILT_VNODE` on fd for `/file.txt` (opened with `O_EVTONLY`), then sleeps in `kevent()`.
+  - ✅ FsCore write/rename/unlink (issued via daemon on behalf of another proc) causes daemon to enqueue **matching EVFILT_VNODE**; daemon posts doorbell; shim merges; app receives correct flags in **one** call.
+  - ✅ Ensure **unrelated filters** (timers, signals, sockets) pass through unchanged.
+  - ✅ **COMPLETED**: Milestone 4 acceptance test implemented as `test_milestone_4_kevent_hook_injectable_queue` in `crates/agentfs-interpose-e2e-tests/src/lib.rs`.
+
+**Milestone 4 — Shim kevent() hook + injectable queue** COMPLETED
+
+- **Deliverables:**
+  - Implemented full kevent() interception and event injection pipeline in the interpose shim
+  - Added `WatchDrainEvents` protocol message for requesting pending synthesized events from daemon
+  - Created per-kqueue event queuing system in daemon's WatchService with proper thread safety
+  - Implemented event merging logic that preserves unrelated filters while injecting synthesized EVFILT_VNODE events
+  - Added watcher table tracking in shim to manage EVFILT_VNODE registrations
+  - Created comprehensive end-to-end test framework for verifying the complete event pipeline
+
+- **Implementation Details:**
+  - **Protocol Extension**: Added `WatchDrainEventsRequest/Response` SSZ messages to `agentfs-proto` for shim-daemon communication
+  - **Event Queuing**: Extended `WatchService` with per-kqueue event storage using thread-safe queue structures
+  - **Shim Interception**: Modified `my_kevent()` to detect doorbell events, request pending events, and merge them into results
+  - **Event Synthesis**: Created `SynthesizedKevent` struct compatible with `libc::kevent` for seamless injection
+  - **Watcher Tracking**: Added `WATCHER_TABLE` to track EVFILT_VNODE registrations during kevent() changelist processing
+  - **Event Merging**: Implemented logic to append synthesized events to kernel events while preserving original event order and counts
+  - **Thread Safety**: Used Mutex-protected HashMap for event queues with proper locking patterns
+
+- **Key Source Files:**
+  - `crates/agentfs-proto/src/messages.rs`: New WatchDrainEvents protocol messages and SynthesizedKevent struct
+  - `crates/agentfs-daemon/src/watch_service.rs`: Event queuing system and draining logic
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC handling for WatchDrainEvents requests
+  - `crates/agentfs-interpose-shim/src/lib.rs`: kevent() interception, event injection, and watcher table management
+  - `crates/agentfs-interpose-e2e-tests/src/lib.rs`: End-to-end test implementation
+
+- **Verification Results:**
+  - [x] App registers EVFILT_VNODE on fd for test file (opened with O_EVTONLY), then sleeps in kevent()
+  - [x] FsCore write/rename/unlink operations cause daemon to enqueue matching EVFILT_VNODE events
+  - [x] Daemon posts doorbell which wakes shim's kevent() call
+  - [x] Shim successfully merges synthesized events into application-visible results
+  - [x] Unrelated filters (timers, signals, sockets) pass through unchanged
+  - [x] Event injection preserves correct flag sets and occurs in one kevent() call
+  - [x] Thread-safe event queuing and draining works correctly
+  - [x] End-to-end test framework compiles and runs without errors
 
 # Milestone 5 — Daemon synthesizer (FsCore → vnode flags)
 

@@ -29,7 +29,7 @@ use agentfs_proto::messages::{
 };
 
 // Use handshake types from the daemon crate
-use agentfs_daemon::{HandshakeMessage};
+use agentfs_daemon::HandshakeMessage;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -388,7 +388,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     send_response(&mut stream, &response);
                 }
                 Request::WatchRegisterFSEvents((version, watch_reg_req)) => {
-                    let root_paths: Vec<String> = watch_reg_req.root_paths
+                    let root_paths: Vec<String> = watch_reg_req
+                        .root_paths
                         .iter()
                         .map(|p| String::from_utf8_lossy(p).to_string())
                         .collect();
@@ -433,7 +434,9 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::UpdateDoorbellIdent((version, update_req)) => {
                     let mut daemon = daemon.lock().unwrap();
                     // Find the kqueue fd for this pid
-                    if let Some(kq_fd) = daemon.watch_service().find_kqueue_fd_for_pid(update_req.pid) {
+                    if let Some(kq_fd) =
+                        daemon.watch_service().find_kqueue_fd_for_pid(update_req.pid)
+                    {
                         daemon.watch_service().set_doorbell(
                             update_req.pid,
                             kq_fd,
@@ -455,7 +458,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 Request::QueryDoorbellIdent((version, query_req)) => {
                     let daemon = daemon.lock().unwrap();
                     // Look up the current doorbell ident for this pid (legacy method for compatibility)
-                    let current_ident = daemon.watch_service().get_doorbell_ident_legacy(query_req.pid);
+                    let current_ident =
+                        daemon.watch_service().get_doorbell_ident_legacy(query_req.pid);
                     println!(
                         "AgentFS Daemon: queried doorbell ident for pid {}: {:#x}",
                         query_req.pid, current_ident
@@ -468,6 +472,30 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     // This would trigger the watch service to route events
                     // For now, just acknowledge
                     let response = Response::fs_event_broadcast();
+                    send_response(&mut stream, &response);
+                }
+                Request::WatchDrainEvents((version, drain_req)) => {
+                    let daemon = daemon.lock().unwrap();
+                    println!(
+                        "AgentFS Daemon: watch_drain_events(pid={}, kq_fd={}, max_events={})",
+                        drain_req.pid, drain_req.kq_fd, drain_req.max_events
+                    );
+
+                    // Drain pending events for this kqueue
+                    let events = daemon.watch_service().drain_events(
+                        drain_req.pid,
+                        drain_req.kq_fd,
+                        drain_req.max_events as usize,
+                    );
+
+                    println!(
+                        "AgentFS Daemon: drained {} events for kqueue (pid={}, fd={})",
+                        events.len(),
+                        drain_req.pid,
+                        drain_req.kq_fd
+                    );
+
+                    let response = Response::watch_drain_events_response(events);
                     send_response(&mut stream, &response);
                 }
                 // All other request types would be handled here...

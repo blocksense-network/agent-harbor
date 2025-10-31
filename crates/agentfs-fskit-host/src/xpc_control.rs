@@ -94,8 +94,15 @@ impl XpcControlService {
             }
             Request::WatchUnregister(_) => todo!("WatchUnregister not implemented for XPC control"),
             Request::WatchDoorbell(_) => todo!("WatchDoorbell not implemented for XPC control"),
-            Request::UpdateDoorbellIdent(_) => todo!("UpdateDoorbellIdent not implemented for XPC control"),
-            Request::QueryDoorbellIdent(_) => todo!("QueryDoorbellIdent not implemented for XPC control"),
+            Request::UpdateDoorbellIdent(_) => {
+                todo!("UpdateDoorbellIdent not implemented for XPC control")
+            }
+            Request::WatchDrainEvents(_) => {
+                todo!("WatchDrainEvents not implemented for XPC control")
+            }
+            Request::QueryDoorbellIdent(_) => {
+                todo!("QueryDoorbellIdent not implemented for XPC control")
+            }
             Request::FsEventBroadcast(_) => {
                 todo!("FsEventBroadcast not implemented for XPC control")
             }
