@@ -1,0 +1,28 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-test-utils"
+version = "0.1.0"
+edition = "2021"
+description = "Agent Harbor Test Utilities - Shared testing infrastructure and helpers"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core dependencies
+tempfile = "3.0"
+uuid = { version = "1.0", features = ["v4"] }
+
+# Time and date handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Serialization (for structured logging)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+
+[dev-dependencies]
+# Testing framework (for self-testing)
+insta = "1.34"

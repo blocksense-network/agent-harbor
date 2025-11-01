@@ -223,6 +223,7 @@ dependencies = [
  "ah-repo",
  "ah-rest-client",
  "ah-rest-mock-client",
+ "ah-test-utils",
  "ah-tui",
  "ah-workflows",
  "anyhow",
@@ -670,6 +671,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "ah-test-utils"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "insta",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "uuid",
 ]
 
 [[package]]

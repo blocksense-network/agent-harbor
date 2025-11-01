@@ -97,3 +97,4 @@ winapi = { version = "0.3", features = [
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 tui-testing = { path = "../tui-testing" }
+ah-test-utils = { path = "../ah-test-utils" }

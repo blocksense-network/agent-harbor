@@ -58,6 +58,32 @@ When you are facing issues with a dependency, make sure to study its implementat
 - NEVER cheat with the tested assertions in order to satisfy a specified Verification requirement (e.g. one from a .status.md file)
 - ALWAYS prefer creating automated tests instead of managing multiple client and server processes interactively.
 
+#### Unified Test Logging Implementation
+
+Use the `ah-test-utils` crate for consistent test logging across all crates:
+
+```rust
+use ah_test_utils::{TestLogger, logged_test, logged_assert};
+
+// Recommended: Use the macro for simple tests
+logged_test!(test_my_feature {
+    logger.log("Testing my feature").unwrap();
+    let result = my_function();
+    logged_assert!(logger, result.is_ok(), "Function should succeed");
+    logger.log("Test completed").unwrap();
+});
+
+// Alternative: Manual TestLogger for complex tests
+#[test]
+fn test_complex_feature() {
+    let mut logger = TestLogger::new("test_complex_feature").unwrap();
+    // ... test logic with logger.log() calls ...
+    logger.finish_success().unwrap(); // or finish_failure()
+}
+```
+
+All tests should use this pattern to ensure consistent logging behavior and AI-friendly output.
+
 ## Writing git commit messages
 
 - You MUST use multiline git commit messages using heredoc syntax.

@@ -379,15 +379,17 @@ mod tests {
         let original_nvim = std::env::var("NVIM").ok();
         let original_nvim_listen = std::env::var("NVIM_LISTEN_ADDRESS").ok();
 
+        // Test case 1: VIMRUNTIME with nvim path
         std::env::set_var("VIMRUNTIME", "/usr/share/nvim/runtime");
         std::env::remove_var("NVIM");
         std::env::remove_var("NVIM_LISTEN_ADDRESS");
-        assert!(is_in_neovim());
+        assert!(is_in_neovim(), "Should detect neovim via VIMRUNTIME containing '/nvim/runtime'");
         assert!(is_in_editor());
 
+        // Test case 2: NVIM environment variable
         std::env::remove_var("VIMRUNTIME");
         std::env::set_var("NVIM", "/tmp/nvim.sock");
-        assert!(is_in_neovim());
+        assert!(is_in_neovim(), "Should detect neovim via NVIM environment variable");
         assert!(is_in_editor());
 
         // Restore original values
@@ -453,9 +455,15 @@ mod tests {
     fn test_detect_vim() {
         // Save original values
         let original_vimruntime = std::env::var("VIMRUNTIME").ok();
+        let original_nvim = std::env::var("NVIM").ok();
+        let original_nvim_listen = std::env::var("NVIM_LISTEN_ADDRESS").ok();
 
+        // Clear neovim variables to ensure clean test
+        std::env::remove_var("NVIM");
+        std::env::remove_var("NVIM_LISTEN_ADDRESS");
+        
         std::env::set_var("VIMRUNTIME", "/usr/share/vim/vim82");
-        assert!(is_in_vim());
+        assert!(is_in_vim(), "Should detect vim with VIMRUNTIME=/usr/share/vim/vim82");
         assert!(is_in_editor());
 
         // Should not detect vim if it's actually neovim
@@ -467,6 +475,14 @@ mod tests {
         match original_vimruntime {
             Some(val) => std::env::set_var("VIMRUNTIME", val),
             None => std::env::remove_var("VIMRUNTIME"),
+        }
+        match original_nvim {
+            Some(val) => std::env::set_var("NVIM", val),
+            None => std::env::remove_var("NVIM"),
+        }
+        match original_nvim_listen {
+            Some(val) => std::env::set_var("NVIM_LISTEN_ADDRESS", val),
+            None => std::env::remove_var("NVIM_LISTEN_ADDRESS"),
         }
     }
 

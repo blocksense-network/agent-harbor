@@ -48,6 +48,7 @@ members = [
   "crates/ah-client-api",
   "crates/ah-rest-server",
   "crates/ah-test-scenarios",
+  "crates/ah-test-utils",
   "crates/ah-rest-client-mock",
   "crates/ah-rest-mock-client",
   "crates/ah-mux-core",

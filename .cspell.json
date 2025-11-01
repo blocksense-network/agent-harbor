@@ -894,6 +894,9 @@
     "execv",
     "tlsv",
     "termion",
-    "tuirs"
+    "tuirs",
+    "actix",
+    "println",
+    "writeln"
   ]
 }
