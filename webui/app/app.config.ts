@@ -5,6 +5,7 @@
 
 import { defineConfig } from "@solidjs/start/config";
 import tailwindcss from "@tailwindcss/vite";
+import solidSvg from 'vite-plugin-solid-svg';
 import checker from 'vite-plugin-checker';
 import * as fs from 'fs';
 
@@ -55,6 +56,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss() as any,
+      solidSvg({ defaultAsComponent: false }) as any,
       // Disable checker for CSR builds (faster builds, linting happens separately)
       ...(isStaticBuild ? [] : [
         checker({ typescript: true, eslint: { lintCommand: 'eslint src --ext .ts,.tsx' } }) as any
