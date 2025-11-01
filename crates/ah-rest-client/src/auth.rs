@@ -6,20 +6,15 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 /// Authentication methods supported by the API
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum AuthMethod {
     /// API Key authentication (`Authorization: ApiKey <token>`)
     ApiKey(String),
     /// OIDC/JWT Bearer token (`Authorization: Bearer <jwt>`)
     Bearer(String),
     /// No authentication
+    #[default]
     None,
-}
-
-impl Default for AuthMethod {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl AuthMethod {

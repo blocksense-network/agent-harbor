@@ -1152,7 +1152,7 @@ impl ScenarioSession {
                                             }
                                             _ => {
                                                 let part = self
-                                                    .response_element_to_response_part(&element)?;
+                                                    .response_element_to_response_part(element)?;
                                                 response_parts.push(part);
                                             }
                                         }
@@ -1254,7 +1254,7 @@ impl ScenarioSession {
                                             }
                                             _ => {
                                                 let part = self
-                                                    .response_element_to_response_part(&element)?;
+                                                    .response_element_to_response_part(element)?;
                                                 response_parts.push(part);
                                             }
                                         }
@@ -1495,7 +1495,7 @@ impl ScenarioSession {
                                 return self.generate_error_response(error.clone(), client_format);
                             }
                             _ => {
-                                let part = self.response_element_to_response_part(&element)?;
+                                let part = self.response_element_to_response_part(element)?;
                                 response_parts.push(part);
                             }
                         }
@@ -2468,7 +2468,7 @@ impl ScenarioSession {
             let chunk_size = if chars.len() - i <= min_chunk_size {
                 chars.len() - i // Last chunk gets remaining characters
             } else {
-                let variation = (i % 3) as usize; // Simple pseudo-random variation
+                let variation = i % 3; // Simple pseudo-random variation
                 (min_chunk_size + variation).min(max_chunk_size).min(chars.len() - i)
             };
 

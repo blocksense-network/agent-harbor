@@ -52,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to send request: {}", e))?;
 
     // Receive response with timeout
-    let timeout_duration = Duration::from_secs(args.timeout as u64);
+    let timeout_duration = Duration::from_secs(args.timeout);
     match tokio::time::timeout(timeout_duration, receiver.recv()).await {
         Ok(Ok((response_msg, _))) => {
             let response_bytes = response_msg.iter().next().map(|m| m.as_ref()).unwrap_or(&[][..]);

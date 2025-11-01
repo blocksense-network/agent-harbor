@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
     // Test running a simple busybox container INSIDE the sandbox
     // This requires podman to be available and the sandbox to allow container devices
     let output = Command::new(&sbx_helper_path)
-        .args(&[
+        .args([
             "--allow-containers", // Enable container device access
             "--debug",            // Enable debug logging
             "podman",

@@ -227,7 +227,7 @@ pub fn convert_stream_chunk(
     }
 
     let choice = &chunk.choices[0];
-    let mut warnings = Vec::new();
+    let warnings = Vec::new();
 
     if let Some(text) = &choice.delta.content {
         if !text.is_empty() {

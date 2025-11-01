@@ -134,13 +134,13 @@ mod macos {
         }
 
         pub fn build(self) -> String {
-            let mut lines = Vec::new();
-            lines.push("(version 1)".to_string());
-            lines.push("(deny default)".to_string());
-
-            // Filesystem base rules: explicit write operations denied by default
-            lines.push("(deny file-write*)".to_string());
-            lines.push("(deny process-exec)".to_string());
+            let mut lines = vec![
+                "(version 1)".to_string(),
+                "(deny default)".to_string(),
+                // Filesystem base rules: explicit write operations denied by default
+                "(deny file-write*)".to_string(),
+                "(deny process-exec)".to_string(),
+            ];
 
             // Allowances by subpath
             for p in self.allow_read_subpaths {
