@@ -1,0 +1,8 @@
+---
+source: crates/ah-tui/tests/scenario_render.rs
+assertion_line: 109
+expression: normalized_screen
+---
+[m[H[J
+thread 'main' (1165289) panicked at /Users/georgizlatarev/agent-harbor/crates/ah-cli/src/tui.rs:418:45:
+Failed to create data
