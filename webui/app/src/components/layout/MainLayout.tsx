@@ -10,6 +10,7 @@ import { Footer } from './Footer';
 import { useDrafts } from '../../contexts/DraftContext.js';
 import { useFocus } from '../../contexts/FocusContext.js';
 import { useBreadcrumbs } from '../../contexts/BreadcrumbContext.js';
+import { ModelsDropdown } from '../common/ModelsDropdown';
 
 interface MainLayoutProps {
   children?: JSX.Element;
@@ -157,7 +158,9 @@ export const MainLayout: Component<MainLayoutProps> = props => {
           </nav>
         </div>
       </header>
-
+      <div class="w-[500px]">
+        <ModelsDropdown />
+      </div>
       {/* Main Content */}
       <main id="main" class="flex-1 overflow-hidden">
         {props.children}
