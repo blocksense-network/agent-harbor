@@ -3,6 +3,7 @@
 
 //! Repository-related configuration types
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 // Alias for backward compatibility

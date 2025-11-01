@@ -394,7 +394,7 @@ impl<'a> RuntimeStore<'a> {
             "#,
         )?;
 
-        let mut rows = stmt.query_map(params![], |row| row.get::<_, i64>(0))?;
+        let mut rows = stmt.query_map(params![], |row| Ok(row.get::<_, i64>(0)?))?;
 
         if let Some(Ok(id)) = rows.next() {
             return Ok(id);
@@ -739,8 +739,9 @@ impl<'a> KvStore<'a> {
             "#,
         )?;
 
-        let mut rows =
-            stmt.query_map(params![scope, key], |row| row.get::<_, Option<String>>(0))?;
+        let mut rows = stmt.query_map(params![scope, key], |row| {
+            Ok(row.get::<_, Option<String>>(0)?)
+        })?;
 
         match rows.next() {
             Some(Ok(Some(value))) => Ok(Some(value)),

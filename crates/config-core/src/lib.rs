@@ -107,7 +107,7 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
     }
 
     // Mark enforced keys in provenance
-    prov.enforced.extend(enforcement.keys);
+    prov.enforced.extend(enforcement.keys.into_iter());
 
     Ok(Resolved {
         json,

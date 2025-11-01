@@ -23,7 +23,7 @@ impl TuiTestClient {
         let context = TmqContext::new();
 
         // Create the socket
-        let socket = request(&context)
+        let mut socket = request(&context)
             .connect(uri)
             .with_context(|| format!("Failed to create connection to {}", uri))?;
 

@@ -68,12 +68,6 @@ mod macos {
         deny_mach_lookup: bool,
     }
 
-    impl Default for SbplBuilder {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
     impl SbplBuilder {
         pub fn new() -> Self {
             Self {

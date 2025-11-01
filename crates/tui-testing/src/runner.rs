@@ -277,7 +277,8 @@ impl TuiTestRunner {
             screenshots_map.insert(label.clone(), format!("Screenshot captured: {}", label));
             println!("Screenshot captured successfully");
             TestResponse::Ok
-        } else if let Some(exit_code_str) = request_str.strip_prefix("exit:") {
+        } else if request_str.starts_with("exit:") {
+            let exit_code_str = &request_str[5..];
             match exit_code_str.parse::<i32>() {
                 Ok(exit_code) => {
                     println!("Received exit command with code: {}", exit_code);
@@ -319,7 +320,7 @@ impl TuiTestRunner {
                             {
                                 // Send SIGTERM for graceful termination on Unix systems
                                 let _ = nix::sys::signal::kill(
-                                    nix::unistd::Pid::from_raw(pid.as_raw()),
+                                    nix::unistd::Pid::from_raw(pid.as_raw() as i32),
                                     nix::sys::signal::Signal::SIGTERM
                                 );
                             }

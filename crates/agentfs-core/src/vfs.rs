@@ -32,12 +32,6 @@ pub struct DirfdMapping {
     fd_paths: HashMap<std::os::fd::RawFd, std::path::PathBuf>,
 }
 
-impl Default for DirfdMapping {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl DirfdMapping {
     pub fn new() -> Self {
         Self {
@@ -398,7 +392,7 @@ impl FsCore {
         // Establish parent-child relationship
         {
             let mut children = self.process_children.lock().unwrap();
-            children.entry(parent_pid).or_default().push(pid);
+            children.entry(parent_pid).or_insert_with(Vec::new).push(pid);
         }
 
         {
@@ -454,7 +448,7 @@ impl FsCore {
     }
 
     fn has_group(&self, user: &User, gid: u32) -> bool {
-        user.gid == gid || user.groups.contains(&gid)
+        user.gid == gid || user.groups.iter().any(|g| *g == gid)
     }
 
     fn allowed_for_user(
@@ -641,7 +635,9 @@ impl FsCore {
                 }
                 if gid != node.gid && user.uid != 0 {
                     // Owner may change gid only to a group they belong to
-                    if user.uid != node.uid || (user.gid != gid && !user.groups.contains(&gid)) {
+                    if user.uid != node.uid
+                        || (user.gid != gid && !user.groups.iter().any(|g| *g == gid))
+                    {
                         return Err(FsError::AccessDenied);
                     }
                 }
@@ -659,9 +655,9 @@ impl FsCore {
     fn percent_encode_name(bytes: &[u8]) -> String {
         let mut s = String::with_capacity(bytes.len() * 3);
         for &b in bytes {
-            let is_safe = b.is_ascii_uppercase()
-                || b.is_ascii_lowercase()
-                || b.is_ascii_digit()
+            let is_safe = (b'A'..=b'Z').contains(&b)
+                || (b'a'..=b'z').contains(&b)
+                || (b'0'..=b'9').contains(&b)
                 || matches!(b, b'-' | b'_' | b'.');
             if is_safe {
                 s.push(b as char);
@@ -1073,7 +1069,9 @@ impl FsCore {
     // Directory file descriptor mapping operations for *at functions
     pub fn register_process_dirfd_mapping(&self, pid: u32) -> FsResult<()> {
         let mut mappings = self.process_dirfd_mappings.lock().unwrap();
-        mappings.entry(pid).or_insert_with(|| DirfdMapping::new());
+        if !mappings.contains_key(&pid) {
+            mappings.insert(pid, DirfdMapping::new());
+        }
         Ok(())
     }
 
@@ -1209,7 +1207,7 @@ impl FsCore {
     // File operations
     pub fn create(&self, pid: &PID, path: &Path, opts: &OpenOptions) -> FsResult<HandleId> {
         // Check if the path already exists
-        if self.resolve_path(pid, path).is_ok() {
+        if let Ok(_) = self.resolve_path(pid, path) {
             return Err(FsError::AlreadyExists);
         }
 
@@ -1778,7 +1776,7 @@ impl FsCore {
 
         // Add the lock
         let mut locks = self.locks.lock().unwrap();
-        let node_locks = locks.locks.entry(node_id).or_default();
+        let node_locks = locks.locks.entry(node_id).or_insert_with(Vec::new);
         node_locks.push(ActiveLock { handle_id, range });
 
         Ok(())
@@ -1819,7 +1817,7 @@ impl FsCore {
     // Directory operations
     pub fn mkdir(&self, pid: &PID, path: &Path, mode: u32) -> FsResult<()> {
         // Check if the path already exists
-        if self.resolve_path(pid, path).is_ok() {
+        if let Ok(_) = self.resolve_path(pid, path) {
             return Err(FsError::AlreadyExists);
         }
 
@@ -3004,8 +3002,10 @@ impl FsCore {
                     return Err(FsError::AccessDenied);
                 }
                 let sticky = (parent.mode & 0o1000) != 0;
-                if sticky && user.uid != 0 && user.uid != parent.uid && user.uid != node.uid {
-                    return Err(FsError::AccessDenied);
+                if sticky && user.uid != 0 {
+                    if user.uid != parent.uid && user.uid != node.uid {
+                        return Err(FsError::AccessDenied);
+                    }
                 }
             }
         }
@@ -3091,7 +3091,7 @@ impl FsCore {
                 // For symlinks, return symlink-specific attributes
                 let attrs = Attributes {
                     len: target.len() as u64,
-                    times: node.times,
+                    times: node.times.clone(),
                     uid: node.uid,
                     gid: node.gid,
                     is_dir: false,
@@ -3189,11 +3189,11 @@ impl FsCore {
             .map(|(atime, mtime)| FileTimes {
                 atime: atime.tv_sec as i64,
                 mtime: mtime.tv_sec as i64,
-                ctime: FsCore::current_timestamp(),
-                birthtime: FsCore::current_timestamp(),
+                ctime: FsCore::current_timestamp() as i64,
+                birthtime: FsCore::current_timestamp() as i64,
             })
             .unwrap_or_else(|| {
-                let now = FsCore::current_timestamp();
+                let now = FsCore::current_timestamp() as i64;
                 FileTimes {
                     atime: now,
                     mtime: now,
@@ -3229,11 +3229,11 @@ impl FsCore {
             .map(|(atime, mtime)| FileTimes {
                 atime: atime.tv_sec as i64,
                 mtime: mtime.tv_sec as i64,
-                ctime: FsCore::current_timestamp(),
-                birthtime: FsCore::current_timestamp(),
+                ctime: FsCore::current_timestamp() as i64,
+                birthtime: FsCore::current_timestamp() as i64,
             })
             .unwrap_or_else(|| {
-                let now = FsCore::current_timestamp();
+                let now = FsCore::current_timestamp() as i64;
                 FileTimes {
                     atime: now,
                     mtime: now,
@@ -3417,7 +3417,7 @@ impl FsCore {
             st_rdev: 0, // Not a special file
             st_size: attrs.len,
             st_blksize: 4096,                   // 4KB block size
-            st_blocks: attrs.len.div_ceil(512), // Number of 512-byte blocks
+            st_blocks: (attrs.len + 511) / 512, // Number of 512-byte blocks
             st_atime: attrs.times.atime as u64,
             st_atime_nsec: 0, // Simplified
             st_mtime: attrs.times.mtime as u64,

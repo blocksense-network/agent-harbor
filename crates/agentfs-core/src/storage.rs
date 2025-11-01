@@ -268,7 +268,7 @@ impl StorageBackend for HostFsBackend {
         let new_path = self.content_path(new_id);
 
         // Try reflink first, fall back to copy
-        if self.reflink(&base_path, &new_path).is_err() {
+        if let Err(_) = self.reflink(&base_path, &new_path) {
             std::fs::copy(&base_path, &new_path)?;
         }
 

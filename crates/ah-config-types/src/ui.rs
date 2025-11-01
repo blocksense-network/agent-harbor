@@ -3,6 +3,7 @@
 
 //! UI-related configuration types
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Root-level UI configuration that gets flattened into the main config.
