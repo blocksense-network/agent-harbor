@@ -26,6 +26,12 @@ pub struct GitProvider {
     include_untracked: bool,
 }
 
+impl Default for GitProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GitProvider {
     /// Create a new Git provider with default configuration.
     pub fn new() -> Self {

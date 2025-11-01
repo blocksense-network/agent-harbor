@@ -1,7 +1,6 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use regex::Regex;
 use std::path::{Path, PathBuf};

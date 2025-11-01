@@ -7,7 +7,6 @@
 //! uses to communicate with the Rust AgentFS core.
 
 use libc::{c_char, size_t, ssize_t};
-use std::ffi::{CStr, CString};
 
 /// Opaque handle to an FsCore instance
 #[repr(C)]

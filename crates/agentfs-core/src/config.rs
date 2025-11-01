@@ -106,7 +106,7 @@ impl Default for FsConfig {
 }
 
 /// Security/permissions/ownership policy
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SecurityPolicy {
     /// If true, enforce POSIX permission checks (future)
     pub enforce_posix_permissions: bool,
@@ -120,22 +120,11 @@ pub struct SecurityPolicy {
     pub root_bypass_permissions: bool,
 }
 
-impl Default for SecurityPolicy {
-    fn default() -> Self {
-        Self {
-            enforce_posix_permissions: false,
-            default_uid: 0,
-            default_gid: 0,
-            enable_windows_acl_compat: false,
-            root_bypass_permissions: false,
-        }
-    }
-}
-
 /// Backstore configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub enum BackstoreMode {
     /// Store upper layer data in memory (default)
+    #[default]
     InMemory,
     /// Store upper layer data in a host filesystem directory
     HostFs {
@@ -146,14 +135,8 @@ pub enum BackstoreMode {
     },
 }
 
-impl Default for BackstoreMode {
-    fn default() -> Self {
-        Self::InMemory
-    }
-}
-
 /// Overlay configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct OverlayConfig {
     /// Enable overlay mode (default: false)
     pub enabled: bool,
@@ -163,29 +146,14 @@ pub struct OverlayConfig {
     pub copyup_mode: CopyUpMode,
 }
 
-impl Default for OverlayConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            lower_root: None,
-            copyup_mode: CopyUpMode::default(),
-        }
-    }
-}
-
 /// Copy-up mode for overlay operations
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub enum CopyUpMode {
     /// Copy up on first data write only
+    #[default]
     Lazy,
     /// Copy up immediately on any metadata change
     Eager,
-}
-
-impl Default for CopyUpMode {
-    fn default() -> Self {
-        Self::Lazy
-    }
 }
 
 /// Interpose configuration for FD-forwarding mode

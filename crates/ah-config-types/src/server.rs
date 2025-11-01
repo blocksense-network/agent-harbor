@@ -3,7 +3,6 @@
 
 //! Server, fleet, and sandbox-related configuration types
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
