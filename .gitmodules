@@ -3,4 +3,4 @@
 	url = https://github.com/blocksense-network/codex
 [submodule "vendor/tui-textarea"]
 	path = vendor/tui-textarea
-	url = git@github.com:blocksense-network/tui-textarea.git
+	url = https://github.com/blocksense-network/tui-textarea.git
