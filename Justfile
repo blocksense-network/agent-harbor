@@ -118,7 +118,9 @@ insta-check:
     fi
 
 # Lint Rust code - disabled  
+[no-cd]
 lint-rust:
+    #!/usr/bin/env bash
     echo "Rust clippy check disabled"
 
 # Format Rust code
@@ -126,7 +128,9 @@ fmt-rust:
     pre-commit run rustfmt --all-files || true
 
 # Check Rust code formatting (used by CI) - disabled
+[no-cd]
 fmt-rust-check:
+    #!/usr/bin/env bash
     echo "Rust formatting check disabled"
 
 # Build release binary for sbx-helper
