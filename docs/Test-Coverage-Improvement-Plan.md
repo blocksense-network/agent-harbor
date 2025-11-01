@@ -34,22 +34,24 @@ This document provides a comprehensive analysis of test coverage across the Agen
 
 #### ⚠️ Moderate Coverage (Needs Improvement)
 
-1. **Core** (`ah-core`) - Only 9 test functions for 3,029 LOC (0.3% test ratio)
-2. **REST Server** (`ah-rest-server`) - Only 1 test function for 2,424 LOC
+1. **Core** (`ah-core`) - ~28 unit/async tests for 3,029 LOC (still leaves large modules uncovered)
+2. **REST Server** (`ah-rest-server`) - Only 1 placeholder test for 2,424 LOC
 3. **WebUI** - 25 test files but focused on E2E over unit tests
 
-#### ❌ Critical Gaps (Zero or Minimal Tests)
+#### ❌ Critical Gaps (Limited Behavioral Coverage)
 
-1. **Sandbox crates** - Most have 0 test functions:
-   - `sandbox-cgroups` - 0 tests
-   - `sandbox-devices` - 0 tests
-   - `sandbox-fs` - 0 tests
-   - `sandbox-net` - 0 tests
-   - `sandbox-proto` - 0 tests
-   - `sandbox-seccomp` - 0 tests
-2. **TUI testing infrastructure** (`tui-testing`) - 0 tests (ironic!)
-3. **LLM API Proxy** (`llm-api-proxy`) - 0 tests despite complex conversion logic
-4. **Several ah-\* crates** lack proper test coverage
+1. **Sandbox crates** - Existing tests focus on config defaults; behavioral coverage is missing:
+   - `sandbox-cgroups` - 5 unit tests (`crates/sandbox-cgroups/src/lib.rs:338`)
+   - `sandbox-devices` - 6 unit tests (`crates/sandbox-devices/src/lib.rs:352`)
+   - `sandbox-fs` - 5 unit tests (`crates/sandbox-fs/src/lib.rs:497`)
+   - `sandbox-net` - 3 async tests (`crates/sandbox-net/src/lib.rs:205`)
+   - `sandbox-proto` - 1 serialization test (`crates/sandbox-proto/src/lib.rs:48`)
+   - `sandbox-seccomp` - 14 focused tests across path filtering and BPF generation (`crates/sandbox-seccomp/src/lib.rs`, `src/filter.rs`, `src/path_resolver.rs`, `src/notify.rs`)
+     These suites rarely exercise real cgroup, device, or seccomp interactions.
+     _Counts verified via_ `rg -g '*.rs' '#[test]' -c` _on 2025-11-01._
+2. **TUI testing infrastructure** (`tui-testing`) - Integration and CLI smoke tests exist, but no failure-path or screenshot diff coverage (`crates/tui-testing/src/integration_tests.rs`).
+3. **LLM API Proxy** (`llm-api-proxy`) - Six async tests cover error metrics only; no happy-path conversion assertions (`crates/llm-api-proxy/tests/basic_test.rs`).
+4. **Several ah-\* crates** lack comprehensive coverage beyond narrow scenarios
 
 ## Good First Issues Tracking
 
@@ -174,8 +176,8 @@ fn test_snapshots_command_output() {
 #### 1.4. Add Unit Tests for Sandbox Crates
 
 **Crates**: `sandbox-cgroups`, `sandbox-devices`, `sandbox-fs`, `sandbox-net`, `sandbox-seccomp`
-**Current state**: 0 test functions across all crates
-**Goal**: Basic unit test coverage for core functions
+**Current state**: Each crate already has a small set of configuration-default tests (5–14 total) but they never execute real cgroup, device, filesystem, or seccomp operations.
+**Goal**: Strengthen behavioral coverage for core functions, including success, failure, and permission-denied paths.
 
 **Critical functions to test**:
 
@@ -205,7 +207,7 @@ fn test_snapshots_command_output() {
 - `parse_syscall_filter()` - Test filter parsing
 - `generate_seccomp_profile()` - Test BPF generation
 
-**Where to start**: Pick one crate, add tests for parsing/validation functions
+**Where to start**: Pick one crate, extend the existing `#[cfg(test)]` module with behavior-driven tests that mock kernel interfaces (e.g., temp dirs + fake `/sys/fs/cgroup`) and validate parsing/translation helpers.
 
 **Time estimate**: 6-10 hours per crate
 **Skills**: Rust, Linux system programming basics
@@ -217,8 +219,8 @@ fn test_snapshots_command_output() {
 #### 2.1. Implement ah-core Test Suite
 
 **Crate**: `crates/ah-core`
-**Current state**: Only 9 test functions for 3,029 LOC
-**Goal**: Increase coverage to at least 50 test functions
+**Current state**: ~28 tests concentrated in `push.rs`, `editor.rs`, `devshell.rs`, and the `agent_tasks` integration suite, leaving most orchestrator modules unverified across 3,029 LOC.
+**Goal**: Expand coverage to at least 50 focused tests spanning orchestration, state management, and failure handling.
 
 **Modules needing tests**:
 
@@ -228,12 +230,12 @@ fn test_snapshots_command_output() {
    - Test environment variable injection
    - Test timeout handling
 
-2. **`session.rs`** (2 tests currently)
+2. **`session.rs`** (0 tests currently)
    - Test session state transitions
    - Test session persistence (save/load)
    - Test session cleanup
 
-3. **`task.rs`** (3 tests currently)
+3. **`task.rs`** (0 tests currently)
    - Test task state machine
    - Test task serialization
    - Test task validation
@@ -373,8 +375,8 @@ describe('TaskCard', () => {
 #### 2.4. Implement LLM API Proxy Test Suite
 
 **Crate**: `crates/llm-api-proxy`
-**Current state**: 0 tests despite complex conversion logic
-**Goal**: Full test coverage for API conversions
+**Current state**: Six async regression tests exercise error metrics only; no golden-path assertions despite complex conversion logic.
+**Goal**: Full test coverage for API conversions, including successful Anthropic/OpenAI round-trips.
 
 **Critical functions to test**:
 
@@ -612,7 +614,7 @@ Based on your interests and skill level, here are the **top 5 recommended tasks*
 - **Time**: 6-10 hours per crate
 - **Impact**: **Security-critical** - highest value
 - **Learning**: Linux sandboxing, security testing
-- **Next steps**: Pick `sandbox-cgroups` first, then others
+- **Next steps**: Build on the existing config-focused tests (e.g., `sandbox-cgroups::tests`) by adding behavioral cases that simulate cgroup filesystems and verify enforcement logic. Start with `sandbox-cgroups`, then fan out to devices/fs/net/seccomp.
 
 ### Option 4: REST Server Integration Tests (Intermediate, High Impact)
 
