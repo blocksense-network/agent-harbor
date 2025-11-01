@@ -10,7 +10,8 @@
 
 #[cfg(target_os = "linux")]
 use libc;
-use tracing::info;
+use nix::unistd::Pid;
+use tracing::{error, info};
 
 #[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {

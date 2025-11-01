@@ -72,7 +72,7 @@ impl RestClient {
             url.set_query(Some(&query_params));
         }
 
-        self.get(url.as_ref()).await
+        self.get(&url.to_string()).await
     }
 
     /// Get a specific session

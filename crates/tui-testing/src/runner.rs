@@ -147,7 +147,6 @@ pub struct TuiTestRunner {
     screenshot_dir: PathBuf,
     vt100_parser: vt100::Parser,
     session: expectrl::session::Session,
-    #[allow(dead_code)]
     exit_tx: tokio::sync::mpsc::UnboundedSender<i32>,
     exit_rx: tokio::sync::mpsc::UnboundedReceiver<i32>,
 }
@@ -271,8 +270,8 @@ impl TuiTestRunner {
         let request_str = String::from_utf8_lossy(request_bytes);
         println!("IPC server received request: {}", request_str);
 
-        if let Some(label) = request_str.strip_prefix("screenshot:") {
-            let label = label.to_string();
+        if request_str.starts_with("screenshot:") {
+            let label = request_str[11..].to_string();
             println!("Capturing screenshot for label: {}", label);
             let mut screenshots_map = screenshots.lock().await;
             screenshots_map.insert(label.clone(), format!("Screenshot captured: {}", label));

@@ -162,7 +162,7 @@ impl DynamicRouter {
         for (pattern, provider) in &config.routing.model_routing {
             if pattern.contains('*') {
                 let regex_pattern = pattern.replace('*', ".*");
-                if regex::Regex::new(&regex_pattern).is_ok_and(|re| re.is_match(model)) {
+                if regex::Regex::new(&regex_pattern).map_or(false, |re| re.is_match(model)) {
                     // Prefer longer (more specific) patterns
                     if best_match.is_none() || pattern.len() > best_match.unwrap().len() {
                         best_match = Some(provider);

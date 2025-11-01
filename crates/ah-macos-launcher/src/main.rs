@@ -86,6 +86,7 @@ fn main() -> Result<()> {
 
     // Exec: resolve using PATH if needed, otherwise use provided path
     let prog_str = &args.command[0];
+    let prog_c: CString;
     let resolved = if prog_str.contains('/') {
         Some(PathBuf::from(prog_str))
     } else {
@@ -93,7 +94,7 @@ fn main() -> Result<()> {
     };
     let path = resolved
         .ok_or_else(|| anyhow::anyhow!(format!("program not found in PATH: {}", prog_str)))?;
-    let prog_c = CString::new(path.to_string_lossy().into_owned())?;
+    prog_c = CString::new(path.to_string_lossy().into_owned())?;
 
     let c_args: Vec<CString> =
         args.command.iter().map(|s| CString::new(s.as_str()).unwrap()).collect();

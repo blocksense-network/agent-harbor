@@ -12,9 +12,7 @@ use tokio::time;
 /// Client for communicating with the TUI test runner from child processes
 pub struct TuiTestClient {
     socket: Option<RequestSender>,
-    #[allow(dead_code)]
     context: TmqContext,
-    #[allow(dead_code)]
     endpoint: String,
     timeout: Duration,
 }

@@ -4,6 +4,7 @@
 //! Control plane message types for AgentFS
 
 // Note: Using u32 for serialization instead of c_int to work with SSZ
+use ssz::Encode;
 use ssz_derive::{Decode, Encode};
 
 // SSZ Union-based request/response types for type-safe communication
