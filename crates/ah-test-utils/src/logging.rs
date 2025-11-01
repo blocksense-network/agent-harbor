@@ -15,9 +15,8 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Write, BufWriter};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::env;
-use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -321,7 +320,7 @@ fn validate_test_name(name: &str) -> Result<(), TestLogError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
+    // use tempfile::TempDir; // Unused for now
 
     #[test]
     fn test_sanitize_filename() {

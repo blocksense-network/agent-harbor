@@ -16,8 +16,7 @@ pub mod macros;
 
 pub use logging::{create_unique_test_log, TestLogger, TestLogError};
 
-// Re-export macros for convenience
-pub use macros::{logged_test, logged_assert, logged_assert_eq};
+// Macros are automatically available at the crate root via #[macro_export]
 
 #[cfg(test)]
 mod tests {

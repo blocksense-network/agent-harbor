@@ -164,7 +164,7 @@ fn test_cli_invalid_command() {
 }
 
 // Example of the simplified macro-based approach
-logged_test!(test_cli_parsing_snapshots_with_macro {
+logged_test!(test_cli_parsing_snapshots_with_macro, logger, {
     logger.log("Testing CLI parsing for snapshots command using macro").unwrap();
     
     let args = vec!["ah", "agent", "fs", "snapshots", "my-session-id"];
