@@ -20,6 +20,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentfs-backstore-macos"
+version = "0.1.0"
+
+[[package]]
 name = "agentfs-core"
 version = "0.1.0"
 dependencies = [

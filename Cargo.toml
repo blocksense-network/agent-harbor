@@ -41,6 +41,7 @@ members = [
   "crates/agentfs-fuse-host",
   "crates/agentfs-winfsp-host",
   "crates/agentfs-fskit-host",
+  "crates/agentfs-backstore-macos",
   "crates/agentfs-ffi",
   # REST API and TUI
   "crates/ah-rest-api-contract",

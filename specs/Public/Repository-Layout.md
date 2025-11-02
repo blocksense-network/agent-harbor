@@ -118,6 +118,7 @@ agent-harbor/
 │  ├─ agentfs-fuse-host/       # Bin: libfuse host → `agentfs-core`
 │  ├─ agentfs-winfsp-host/     # Bin: WinFsp host → `agentfs-core`
 │  ├─ agentfs-ffi/             # C ABI (FFI) for FSKit/Swift bridging
+│  ├─ agentfs-backstore-macos/ # Lib: macOS backstore (APFS snapshots, reflink) → `agentfs-core`
 │  ├─ sandbox-core/            # Namespaces/lifecycle/exec
 │  ├─ sandbox-fs/              # Mount planning (RO seal, overlays)
 │  ├─ sandbox-seccomp/         # Dynamic read allow-list (seccomp notify)

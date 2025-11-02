@@ -25,6 +25,7 @@
     "AUTOINCREMENT",
     "automations",
     "Automations",
+    "automatable",
     "autopush",
     "autorun",
     "autosync",
@@ -81,6 +82,7 @@
     "Docson",
     "dumpable",
     "EACCES",
+    "EBUSY",
     "EDQUOT",
     "elif",
     "EISDIR",
@@ -92,6 +94,7 @@
     "ENOSPC",
     "ENOSYS",
     "ENOTTY",
+    "ENOTSUP",
     "envgen",
     "envrc",
     "envsubst",
@@ -120,6 +123,7 @@
     "FSCTL",
     "FSCTLs",
     "fskit",
+    "fstypename",
     "fslckout",
     "compinit",
     "fstatat",
@@ -249,6 +253,7 @@
     "overlayfs",
     "parseable",
     "pasteable",
+    "passwordless",
     "pico",
     "pids",
     "pijul",
@@ -278,6 +283,7 @@
     "quickcheck",
     "quiescing",
     "Rakefile",
+    "RAII",
     "Ratatui",
     "rdbg",
     "RDONLY",
@@ -905,6 +911,9 @@
     "udata",
     "uintptr",
     "wakeup",
-    "wakeups"
+    "wakeups",
+    "automatable",
+    "nextest",
+    "Miri"
   ]
 }

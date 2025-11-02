@@ -362,6 +362,13 @@ pub fn create_backstore(config: &BackstoreMode) -> FsResult<Box<dyn Backstore>> 
             root.clone(),
             *prefer_native_snapshots,
         )?)),
+        BackstoreMode::RamDisk { size_mb } => {
+            // Ramdisk creation is platform-specific and will be implemented
+            // in the platform-specific backstore crates (e.g., agentfs-backstore-macos)
+            // For now, this is a placeholder that will be replaced with actual
+            // ramdisk provisioning and APFS backstore initialization
+            Err(FsError::Unsupported)
+        }
     }
 }
 

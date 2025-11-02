@@ -220,6 +220,10 @@ impl FsCore {
             crate::config::BackstoreMode::HostFs { root, .. } => {
                 Arc::new(crate::storage::HostFsBackend::new(root.clone())?)
             }
+            crate::config::BackstoreMode::RamDisk { .. } => {
+                // RamDisk creates an APFS volume for backstore, but uses in-memory for core storage
+                Arc::new(crate::storage::InMemoryBackend::new())
+            }
         };
 
         // Initialize backstore for overlay operations
