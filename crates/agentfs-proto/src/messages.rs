@@ -92,6 +92,7 @@ pub enum Request {
     FSEventsTranslatePaths((Vec<u8>, FSEventsTranslatePathsRequest)), // (version, request) - translate overlay paths to backstore
     WatchRegisterKqueue((Vec<u8>, WatchRegisterKqueueRequest)), // (version, request) - register kqueue watch
     WatchRegisterFSEvents((Vec<u8>, WatchRegisterFSEventsRequest)), // (version, request) - register FSEvents watch
+    WatchRegisterFSEventsPort((Vec<u8>, WatchRegisterFSEventsPortRequest)), // (version, request) - register FSEvents CFMessagePort
     WatchUnregister((Vec<u8>, WatchUnregisterRequest)), // (version, request) - unregister watch
     WatchDoorbell((Vec<u8>, WatchDoorbellRequest)), // (version, request) - doorbell setup for kqueue
     UpdateDoorbellIdent((Vec<u8>, UpdateDoorbellIdentRequest)), // (version, request) - doorbell ident collision update
@@ -185,6 +186,7 @@ pub enum Response {
     FSEventsTranslatePaths(FSEventsTranslatePathsResponse),
     WatchRegisterKqueue(WatchRegisterKqueueResponse),
     WatchRegisterFSEvents(WatchRegisterFSEventsResponse),
+    WatchRegisterFSEventsPort(WatchRegisterFSEventsPortResponse),
     WatchUnregister(WatchUnregisterResponse),
     WatchDoorbell(WatchDoorbellResponse),
     UpdateDoorbellIdent(UpdateDoorbellIdentResponse),
@@ -2141,6 +2143,10 @@ impl Response {
         Self::WatchRegisterFSEvents(WatchRegisterFSEventsResponse { registration_id })
     }
 
+    pub fn watch_register_fsevents_port() -> Self {
+        Self::WatchRegisterFSEventsPort(WatchRegisterFSEventsPortResponse {})
+    }
+
     pub fn watch_unregister() -> Self {
         Self::WatchUnregister(WatchUnregisterResponse {})
     }
@@ -2412,6 +2418,19 @@ pub struct WatchRegisterFSEventsResponse {
     /// Registration ID
     pub registration_id: u64,
 }
+
+/// FSEvents CFMessagePort registration request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchRegisterFSEventsPortRequest {
+    /// Process ID of the process registering the port
+    pub pid: u32,
+    /// CFMessagePort name for FSEvents delivery
+    pub port_name: Vec<u8>,
+}
+
+/// FSEvents CFMessagePort registration response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchRegisterFSEventsPortResponse {}
 
 /// Watch unregistration request
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]

@@ -45,6 +45,7 @@ dependencies = [
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "libc",
+ "log",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -139,11 +140,15 @@ dependencies = [
  "agentfs-core",
  "agentfs-daemon",
  "agentfs-proto",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
  "ethereum_ssz",
  "ethereum_ssz_derive",
+ "fsevent-sys",
  "libc",
  "once_cell",
  "tempfile",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -3219,6 +3224,16 @@ name = "fragile"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dd6caf6059519a65843af8fe2a3ae298b14b80179855aeb4adc2c1934ee619"
+
+[[package]]
+name = "fsevent-sys"
+version = "5.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a80557ce41b685c9907554a820edde324f9883662b1bb26a015615f4f3f5f37"
+dependencies = [
+ "core-foundation 0.10.1",
+ "dispatch2",
+]
 
 [[package]]
 name = "funty"

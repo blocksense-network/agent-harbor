@@ -20,6 +20,28 @@ use agentfs_daemon::{AgentFsDaemon, decode_ssz_message, encode_ssz_message};
 // AgentFS proto imports
 use agentfs_proto::*;
 
+// CoreFoundation extern declarations for macOS
+#[cfg(target_os = "macos")]
+type CFAllocatorRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFStringRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFMessagePortRef = *mut std::ffi::c_void;
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    static kCFAllocatorDefault: CFAllocatorRef;
+
+    fn CFMessagePortCreateRemote(allocator: CFAllocatorRef, name: CFStringRef) -> CFMessagePortRef;
+    fn CFRelease(cf: *mut std::ffi::c_void);
+
+    fn CFStringCreateWithCString(
+        alloc: CFAllocatorRef,
+        c_str: *const std::ffi::c_char,
+        encoding: u32,
+    ) -> CFStringRef;
+}
+
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
     DaemonStateFilesystemRequest, DaemonStateProcessesRequest, DaemonStateResponse,
@@ -133,7 +155,18 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         if let Err(e) = daemon.register_process(client_pid, 0, 0, 0) {
             return;
         }
+        // Register the connection for sending unsolicited messages
+        daemon.register_connection(
+            client_pid,
+            stream.try_clone().expect("Failed to clone stream"),
+        );
     }
+
+    // Ensure cleanup happens when function exits
+    let cleanup = || {
+        let mut daemon = daemon.lock().unwrap();
+        daemon.unregister_connection(client_pid);
+    };
 
     // Handle handshake
     let mut len_buf = [0u8; 4];
@@ -404,6 +437,50 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     let response = Response::watch_register_fsevents(registration_id);
                     send_response(&mut stream, &response);
                 }
+                Request::WatchRegisterFSEventsPort((version, port_reg_req)) => {
+                    let port_name = String::from_utf8_lossy(&port_reg_req.port_name).to_string();
+                    let mut daemon = daemon.lock().unwrap();
+
+                    // Create CFMessagePort remote connection
+                    #[cfg(target_os = "macos")]
+                    {
+                        use agentfs_daemon::watch_service::*;
+                        let cf_port_name = unsafe {
+                            CFStringCreateWithCString(
+                                kCFAllocatorDefault,
+                                port_name.as_ptr() as *const _,
+                                0x08000100,
+                            )
+                        };
+
+                        if !cf_port_name.is_null() {
+                            let cf_port = unsafe {
+                                CFMessagePortCreateRemote(kCFAllocatorDefault, cf_port_name)
+                            };
+
+                            if !cf_port.is_null() {
+                                daemon.register_fsevents_port(port_reg_req.pid, cf_port);
+                                log::info!(
+                                    "Registered FSEvents CFMessagePort for pid {}: {}",
+                                    port_reg_req.pid,
+                                    port_name
+                                );
+                            } else {
+                                log::error!(
+                                    "Failed to create CFMessagePort remote for pid {}",
+                                    port_reg_req.pid
+                                );
+                            }
+
+                        // Don't release cf_port_name here - daemon owns it now
+                        } else {
+                            log::error!("Failed to create CFString for port name: {}", port_name);
+                        }
+                    }
+
+                    let response = Response::watch_register_fsevents_port();
+                    send_response(&mut stream, &response);
+                }
                 Request::WatchUnregister((version, watch_unreg_req)) => {
                     let mut daemon = daemon.lock().unwrap();
                     daemon.unregister_watch(watch_unreg_req.pid, watch_unreg_req.registration_id);
@@ -509,6 +586,9 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
             eprintln!("Failed to decode request: {:?}", e);
         }
     }
+
+    // Cleanup: unregister the connection
+    cleanup();
 }
 
 fn send_response(stream: &mut UnixStream, response: &Response) {

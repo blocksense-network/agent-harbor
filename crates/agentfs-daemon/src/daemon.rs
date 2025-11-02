@@ -132,6 +132,59 @@ fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) ->
     daemon_guard.processes[&client_pid].clone()
 }
 
+// CoreFoundation types for CFMessagePort
+#[cfg(target_os = "macos")]
+type CFAllocatorRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFStringRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFMessagePortRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFDataRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFIndex = isize;
+#[cfg(target_os = "macos")]
+type CFTimeInterval = f64;
+#[cfg(target_os = "macos")]
+type SInt32 = i32;
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    static kCFAllocatorDefault: CFAllocatorRef;
+
+    fn CFMessagePortCreateRemote(allocator: CFAllocatorRef, name: CFStringRef) -> CFMessagePortRef;
+    fn CFMessagePortSendRequest(
+        remote: CFMessagePortRef,
+        msgid: SInt32,
+        data: CFDataRef,
+        send_timeout: CFTimeInterval,
+        rcv_timeout: CFTimeInterval,
+        reply_mode: CFStringRef,
+        return_data: *mut CFDataRef,
+    ) -> i32; // SInt32, 0 on success
+    fn CFMessagePortInvalidate(port: CFMessagePortRef);
+    fn CFRelease(cf: *mut std::ffi::c_void);
+
+    fn CFStringCreateWithCString(
+        alloc: CFAllocatorRef,
+        c_str: *const std::ffi::c_char,
+        encoding: u32,
+    ) -> CFStringRef;
+
+    fn CFDataCreate(allocator: CFAllocatorRef, bytes: *const u8, length: CFIndex) -> CFDataRef;
+}
+
+// Wrapper for CFMessagePortRef to make it Send + Sync
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+struct CFMessagePortWrapper(CFMessagePortRef);
+
+// CFMessagePort is thread-safe according to Apple's documentation
+#[cfg(target_os = "macos")]
+unsafe impl Send for CFMessagePortWrapper {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for CFMessagePortWrapper {}
+
 /// Real AgentFS daemon using the core filesystem
 pub struct AgentFsDaemon {
     core: Arc<Mutex<FsCore>>,
@@ -139,6 +192,9 @@ pub struct AgentFsDaemon {
     processes: HashMap<u32, PID>,       // pid -> registered PID
     opened_files: HashMap<String, u32>, // path -> open count (for testing)
     opened_dirs: HashMap<String, u32>,  // path -> open count (for testing)
+    connections: HashMap<u32, std::sync::Mutex<std::os::unix::net::UnixStream>>, // pid -> connection stream
+    #[cfg(target_os = "macos")]
+    fsevents_ports: HashMap<u32, CFMessagePortWrapper>, // pid -> CFMessagePort for FSEvents
 }
 
 impl AgentFsDaemon {
@@ -190,26 +246,43 @@ impl AgentFsDaemon {
         let core = Arc::new(Mutex::new(FsCore::new(config)?));
         let watch_service = Arc::new(WatchService::new());
 
+        // Create the daemon instance
+        let mut daemon_instance = Self {
+            core: Arc::clone(&core),
+            watch_service: Arc::clone(&watch_service),
+            processes: HashMap::new(),
+            opened_files: HashMap::new(),
+            opened_dirs: HashMap::new(),
+            connections: HashMap::new(),
+            #[cfg(target_os = "macos")]
+            fsevents_ports: HashMap::new(),
+        };
+
         // Subscribe the watch service to FsCore events
         {
             let core_clone = Arc::clone(&core);
             let watch_service_clone = Arc::clone(&watch_service);
-            let sink = Arc::new(WatchServiceEventSink::new(watch_service_clone));
+            let daemon_arc = Arc::new(Mutex::new(daemon_instance));
+            let daemon_clone = Arc::clone(&daemon_arc);
+            let sink = Arc::new(WatchServiceEventSink::new(
+                watch_service_clone,
+                daemon_clone,
+            ));
 
             // Lock the core temporarily to subscribe to events
             let mut core_guard = core_clone.lock().unwrap();
             core_guard
                 .subscribe_events(sink)
                 .expect("Failed to subscribe watch service to events");
+
+            // Extract the daemon instance back
+            daemon_instance = Arc::try_unwrap(daemon_arc)
+                .unwrap_or_else(|_| panic!("Failed to unwrap daemon - still has references"))
+                .into_inner()
+                .unwrap_or_else(|_| panic!("Failed to get daemon from mutex - poisoned"));
         }
 
-        Ok(Self {
-            core,
-            watch_service,
-            processes: HashMap::new(),
-            opened_files: HashMap::new(),
-            opened_dirs: HashMap::new(),
-        })
+        Ok(daemon_instance)
     }
 
     /// Register a process with the daemon
@@ -217,6 +290,70 @@ impl AgentFsDaemon {
         let registered_pid = self.core.lock().unwrap().register_process(pid, ppid, uid, gid);
         self.processes.insert(pid, registered_pid.clone());
         Ok(registered_pid)
+    }
+
+    /// Register a connection for sending unsolicited messages to a process
+    pub fn register_connection(&mut self, pid: u32, stream: std::os::unix::net::UnixStream) {
+        self.connections.insert(pid, std::sync::Mutex::new(stream));
+    }
+
+    /// Unregister a connection
+    pub fn unregister_connection(&mut self, pid: u32) {
+        self.connections.remove(&pid);
+    }
+
+    /// Send an unsolicited message to a specific process
+    pub fn send_to_process(&self, pid: u32, response: Response) -> Result<(), String> {
+        if let Some(stream_mutex) = self.connections.get(&pid) {
+            let mut stream = stream_mutex
+                .lock()
+                .map_err(|e| format!("Failed to lock stream for pid {}: {}", pid, e))?;
+            send_response(&mut *stream, &response);
+            Ok(())
+        } else {
+            Err(format!("No connection registered for pid {}", pid))
+        }
+    }
+
+    /// Register a CFMessagePort for FSEvents delivery to a process
+    #[cfg(target_os = "macos")]
+    pub fn register_fsevents_port(&mut self, pid: u32, port: CFMessagePortRef) {
+        self.fsevents_ports.insert(pid, CFMessagePortWrapper(port));
+    }
+
+    /// Send an FSEvents batch to a process via CFMessagePort
+    #[cfg(target_os = "macos")]
+    pub fn send_fsevents_batch(
+        &self,
+        pid: u32,
+        msgid: SInt32,
+        data: CFDataRef,
+    ) -> Result<(), String> {
+        if let Some(port_wrapper) = self.fsevents_ports.get(&pid) {
+            // Send one-way message (no response expected)
+            let result = unsafe {
+                CFMessagePortSendRequest(
+                    port_wrapper.0,
+                    msgid,
+                    data,
+                    1.0,
+                    0.0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(format!(
+                    "CFMessagePortSendRequest failed with code {}",
+                    result
+                ))
+            }
+        } else {
+            Err(format!("No FSEvents port registered for pid {}", pid))
+        }
     }
 
     /// Register a kqueue watch
@@ -1903,6 +2040,61 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
+                Request::WatchRegisterFSEventsPort((version, port_req)) => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let port_name_str =
+                            String::from_utf8_lossy(&port_req.port_name).to_string();
+                        let port_name_cstr = match std::ffi::CString::new(port_name_str) {
+                            Ok(cstr) => cstr,
+                            Err(_) => {
+                                let response = Response::error(
+                                    "Invalid port name encoding".to_string(),
+                                    Some(22),
+                                );
+                                send_response(&mut stream, &response);
+                                return;
+                            }
+                        };
+                        let cf_name = unsafe {
+                            CFStringCreateWithCString(
+                                kCFAllocatorDefault,
+                                port_name_cstr.as_ptr(),
+                                kCFStringEncodingUTF8,
+                            )
+                        };
+                        if cf_name.is_null() {
+                            let response = Response::error(
+                                "Failed to create CFString for port name".to_string(),
+                                Some(22),
+                            );
+                            send_response(&mut stream, &response);
+                            return;
+                        }
+                        let port =
+                            unsafe { CFMessagePortCreateRemote(kCFAllocatorDefault, cf_name) };
+                        unsafe {
+                            CFRelease(cf_name as *mut std::ffi::c_void);
+                        }
+                        if port.is_null() {
+                            let response = Response::error(
+                                "Failed to create CFMessagePort".to_string(),
+                                Some(22),
+                            );
+                            send_response(&mut stream, &response);
+                            return;
+                        }
+                        let mut daemon_guard = daemon.lock().unwrap();
+                        daemon_guard.register_fsevents_port(port_req.pid, port);
+                        let response = Response::watch_register_fsevents_port();
+                        send_response(&mut stream, &response);
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let response = Response::watch_register_fsevents_port();
+                        send_response(&mut stream, &response);
+                    }
+                }
                 _ => {
                     let response = Response::error("unsupported request".to_string(), Some(3));
                     send_response(&mut stream, &response);
@@ -1981,3 +2173,6 @@ fn send_response(stream: &mut UnixStream, response: &Response) {
     let _ = stream.write_all(&encoded);
     let _ = stream.flush();
 }
+
+#[cfg(target_os = "macos")]
+const kCFStringEncodingUTF8: u32 = 0x08000100;

@@ -19,6 +19,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 libc = { workspace = true }
+log = { workspace = true }
 tokio = { version = "1.0", features = [
   "net",
   "io-util",

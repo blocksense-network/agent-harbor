@@ -3,8 +3,94 @@
 
 //! AgentFS Daemon - Watch service and event distribution
 
-use agentfs_core::{EventKind, EventSink, FsCore};
-use agentfs_proto::messages::*;
+use crate::AgentFsDaemon;
+use agentfs_core::{EventKind, EventSink};
+use agentfs_proto::messages::SynthesizedKevent;
+
+// CoreFoundation types for CFMessagePort
+#[cfg(target_os = "macos")]
+type CFAllocatorRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFStringRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFDataRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFIndex = isize;
+#[cfg(target_os = "macos")]
+type SInt32 = i32;
+
+#[cfg(target_os = "macos")]
+type CFMutableDictionaryRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFMutableArrayRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFNumberRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFPropertyListRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFErrorRef = *mut std::ffi::c_void;
+#[cfg(target_os = "macos")]
+type CFPropertyListFormat = u32;
+#[cfg(target_os = "macos")]
+type CFNumberType = u64;
+
+#[cfg(target_os = "macos")]
+const K_CFPROPERTY_LIST_BINARY_FORMAT_V1_0: CFPropertyListFormat = 200;
+#[cfg(target_os = "macos")]
+const K_CFNUMBER_SINT32_TYPE: CFNumberType = 3;
+#[cfg(target_os = "macos")]
+const K_CFNUMBER_SINT64_TYPE: CFNumberType = 4;
+#[cfg(target_os = "macos")]
+const K_CFNUMBER_INT_TYPE: CFNumberType = 9;
+#[cfg(target_os = "macos")]
+const K_CFSTRING_ENCODING_UTF8: u32 = 0x08000100;
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    static kCFAllocatorDefault: CFAllocatorRef;
+    static kCFTypeArrayCallBacks: *const std::ffi::c_void;
+    static kCFTypeDictionaryKeyCallBacks: *const std::ffi::c_void;
+    static kCFTypeDictionaryValueCallBacks: *const std::ffi::c_void;
+
+    fn CFRelease(cf: *mut std::ffi::c_void);
+
+    fn CFStringCreateWithCString(
+        alloc: CFAllocatorRef,
+        c_str: *const std::ffi::c_char,
+        encoding: u32,
+    ) -> CFStringRef;
+
+    // Property list functions
+    fn CFDictionaryCreateMutable(
+        allocator: CFAllocatorRef,
+        capacity: CFIndex,
+        key_call_backs: *const std::ffi::c_void,
+        value_call_backs: *const std::ffi::c_void,
+    ) -> CFMutableDictionaryRef;
+    fn CFDictionarySetValue(
+        the_dict: CFMutableDictionaryRef,
+        key: *const std::ffi::c_void,
+        value: *const std::ffi::c_void,
+    );
+    fn CFArrayCreateMutable(
+        allocator: CFAllocatorRef,
+        capacity: CFIndex,
+        call_backs: *const std::ffi::c_void,
+    ) -> CFMutableArrayRef;
+    fn CFArrayAppendValue(the_array: CFMutableArrayRef, value: *const std::ffi::c_void);
+    fn CFNumberCreate(
+        allocator: CFAllocatorRef,
+        the_type: CFNumberType,
+        value_ptr: *const std::ffi::c_void,
+    ) -> CFNumberRef;
+    fn CFPropertyListCreateData(
+        allocator: CFAllocatorRef,
+        property_list: CFPropertyListRef,
+        format: CFPropertyListFormat,
+        options: u32,
+        error: *mut CFErrorRef,
+    ) -> CFDataRef;
+}
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
@@ -16,11 +102,6 @@ use libc::{c_int, kevent as libc_kevent, timespec};
 #[cfg(target_os = "macos")]
 const EVFILT_USER: i16 = -5; // user events
 #[cfg(target_os = "macos")]
-const EV_ADD: u16 = 0x0001; // add event to kq (implies enable)
-#[cfg(target_os = "macos")]
-const EV_ENABLE: u16 = 0x0004; // enable event
-#[cfg(target_os = "macos")]
-const EV_CLEAR: u16 = 0x0020; // disable event after reporting
 #[cfg(target_os = "macos")]
 const NOTE_TRIGGER: u32 = 0x01000000; // trigger the event
 
@@ -31,9 +112,22 @@ const NOTE_DELETE: u32 = 0x00000001;
 const NOTE_WRITE: u32 = 0x00000002;
 const NOTE_EXTEND: u32 = 0x00000004;
 const NOTE_ATTRIB: u32 = 0x00000008;
+#[cfg_attr(not(test), allow(dead_code))]
 const NOTE_LINK: u32 = 0x00000010;
 const NOTE_RENAME: u32 = 0x00000020;
-const NOTE_REVOKE: u32 = 0x00000040;
+
+#[cfg(target_os = "macos")]
+const K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED: u32 = 0x00000100;
+#[cfg(target_os = "macos")]
+const K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED: u32 = 0x00000200;
+#[cfg(target_os = "macos")]
+const K_FSEVENT_STREAM_EVENT_FLAG_ITEM_MODIFIED: u32 = 0x00001000;
+#[cfg(target_os = "macos")]
+const K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED: u32 = 0x00000800;
+#[cfg(target_os = "macos")]
+const K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE: u32 = 0x00010000;
+#[cfg(target_os = "macos")]
+const K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR: u32 = 0x00020000;
 
 /// Watch service for managing file system event watchers
 pub struct WatchService {
@@ -73,6 +167,20 @@ pub struct FSEventsWatchRegistration {
     pub root_paths: Vec<String>,
     pub flags: u32,
     pub latency: u64,
+    pub next_event_id: u64,
+    pub last_sent_event_id: u64,
+}
+
+#[cfg(target_os = "macos")]
+struct FseventsSendJob {
+    pid: u32,
+    registration_id: u64,
+    stream_id: u64,
+    root: String,
+    paths: Vec<String>,
+    flags: Vec<u32>,
+    start_event_id: u64,
+    reserved_next_event_id: u64,
 }
 
 impl WatchService {
@@ -140,6 +248,8 @@ impl WatchService {
             root_paths,
             flags,
             latency,
+            next_event_id: 1,
+            last_sent_event_id: 0,
         };
 
         self.fsevents_watches
@@ -369,6 +479,8 @@ impl Clone for FSEventsWatchRegistration {
             root_paths: self.root_paths.clone(),
             flags: self.flags,
             latency: self.latency,
+            next_event_id: self.next_event_id,
+            last_sent_event_id: self.last_sent_event_id,
         }
     }
 }
@@ -376,11 +488,23 @@ impl Clone for FSEventsWatchRegistration {
 /// Event sink implementation for the watch service daemon
 pub struct WatchServiceEventSink {
     watch_service: Arc<WatchService>,
+    daemon: std::sync::Weak<Mutex<AgentFsDaemon>>,
 }
 
 impl WatchServiceEventSink {
-    pub fn new(watch_service: Arc<WatchService>) -> Self {
-        Self { watch_service }
+    pub fn new(watch_service: Arc<WatchService>, daemon: Arc<Mutex<AgentFsDaemon>>) -> Self {
+        Self {
+            watch_service,
+            daemon: Arc::downgrade(&daemon),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_without_daemon(watch_service: Arc<WatchService>) -> Self {
+        Self {
+            watch_service,
+            daemon: std::sync::Weak::new(),
+        }
     }
 }
 
@@ -467,7 +591,7 @@ impl WatchServiceEventSink {
                 EventKind::Created { .. } => NOTE_WRITE,
                 EventKind::Removed { .. } => NOTE_DELETE,
                 EventKind::Modified { .. } => NOTE_WRITE | NOTE_EXTEND,
-                EventKind::Renamed { from, to } => {
+                EventKind::Renamed { .. } => {
                     // For renames, the affected_path might be the source or destination
                     // But since we already checked watched_path == affected_path, it's fine
                     NOTE_RENAME
@@ -561,35 +685,569 @@ impl WatchServiceEventSink {
 
     /// Route event to matching FSEvents watchers
     fn route_to_fsevents_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
-        let watches = self.watch_service.fsevents_watches.lock().unwrap();
+        // Try to upgrade the weak reference to the daemon
+        let Some(daemon) = self.daemon.upgrade() else {
+            return; // Daemon has been dropped
+        };
 
-        // Check each FSEvents stream to see if any affected path is under its root
-        for watch in watches.values() {
-            let mut should_notify = false;
-            for root_path in &watch.root_paths {
-                for affected_path in affected_paths {
-                    if affected_path.starts_with(root_path)
-                        || std::path::Path::new(affected_path).starts_with(root_path)
-                    {
-                        should_notify = true;
-                        break;
+        #[cfg(target_os = "macos")]
+        {
+            let jobs = self.prepare_fsevents_jobs(evt, affected_paths);
+            if jobs.is_empty() {
+                return;
+            }
+
+            for job in jobs {
+                tracing::debug!(
+                    "Routing FSEvents event: pid={}, stream_id={}, root={}, events={}",
+                    job.pid,
+                    job.stream_id,
+                    job.root,
+                    job.paths.len()
+                );
+
+                let send_result = {
+                    let daemon_guard = daemon.lock().unwrap();
+                    let result = self.send_fsevents_batch_via_port(&daemon_guard, &job);
+                    drop(daemon_guard);
+                    result
+                };
+
+                match send_result {
+                    Ok(()) => {
+                        if job.reserved_next_event_id > job.start_event_id {
+                            let latest_event_id = job.reserved_next_event_id - 1;
+                            let mut watches = self.watch_service.fsevents_watches.lock().unwrap();
+                            if let Some(watch) = watches.get_mut(&(job.pid, job.registration_id)) {
+                                watch.last_sent_event_id = latest_event_id;
+                                watch.next_event_id = job.reserved_next_event_id;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to send FSEvents batch to pid {} (stream {}): {}",
+                            job.pid,
+                            job.stream_id,
+                            e
+                        );
+
+                        let mut watches = self.watch_service.fsevents_watches.lock().unwrap();
+                        if let Some(watch) = watches.get_mut(&(job.pid, job.registration_id)) {
+                            watch.next_event_id = job.start_event_id;
+                        }
                     }
                 }
-                if should_notify {
-                    break;
-                }
-            }
-
-            if should_notify {
-                tracing::debug!(
-                    "Routing FSEvents event: pid={}, stream_id={}",
-                    watch.pid,
-                    watch.stream_id
-                );
-                // TODO: Send FsEventBroadcast message to shim
-                // This would use the control plane to notify the shim
             }
         }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = evt;
+            let _ = affected_paths;
+            let _ = daemon;
+        }
+    }
+
+    /// Send an FSEvents batch via CFMessagePort using binary property list format
+    #[cfg(target_os = "macos")]
+    fn send_fsevents_batch_via_port(
+        &self,
+        daemon: &AgentFsDaemon,
+        job: &FseventsSendJob,
+    ) -> Result<(), String> {
+        const AGENTFS_MSG_FSEVENTS_BATCH: SInt32 = 0x1001;
+
+        let num_events = job.paths.len();
+        if num_events == 0 {
+            return Ok(());
+        }
+        if num_events != job.flags.len() {
+            return Err(format!(
+                "FSEvents batch requires parallel arrays but got {} paths and {} flags",
+                num_events,
+                job.flags.len()
+            ));
+        }
+        if job.reserved_next_event_id <= job.start_event_id {
+            return Err(format!(
+                "Invalid event id reservation for pid {} stream {} (start={}, reserved_next={})",
+                job.pid, job.stream_id, job.start_event_id, job.reserved_next_event_id
+            ));
+        }
+
+        let latest_event_id = job.reserved_next_event_id - 1;
+        let mut event_ids: Vec<u64> = Vec::with_capacity(num_events);
+        for offset in 0..num_events {
+            let event_id = job.start_event_id.checked_add(offset as u64).ok_or_else(|| {
+                format!(
+                    "FSEvents event id overflow for pid {} stream {} (start={}, offset={})",
+                    job.pid, job.stream_id, job.start_event_id, offset
+                )
+            })?;
+            event_ids.push(event_id);
+        }
+
+        if let Some(&computed_latest) = event_ids.last() {
+            if computed_latest != latest_event_id {
+                return Err(format!(
+                    "Latest event id mismatch for pid {} stream {} (expected {}, computed {})",
+                    job.pid, job.stream_id, latest_event_id, computed_latest
+                ));
+            }
+        }
+
+        // Create CFArrays for paths, flags, and eventIds
+        unsafe {
+            // Create CFArray for paths (CFString)
+            let paths_array = CFArrayCreateMutable(
+                kCFAllocatorDefault,
+                num_events as CFIndex,
+                kCFTypeArrayCallBacks,
+            );
+            if paths_array.is_null() {
+                return Err("Failed to create paths CFArray".to_string());
+            }
+
+            for path in &job.paths {
+                let path_cstr = std::ffi::CString::new(path.as_str())
+                    .map_err(|e| format!("Failed to convert path to CString: {}", e))?;
+                let cf_string = CFStringCreateWithCString(
+                    kCFAllocatorDefault,
+                    path_cstr.as_ptr(),
+                    K_CFSTRING_ENCODING_UTF8,
+                );
+                if cf_string.is_null() {
+                    CFRelease(paths_array as *mut std::ffi::c_void);
+                    return Err("Failed to create CFString for path".to_string());
+                }
+                CFArrayAppendValue(paths_array, cf_string as *const std::ffi::c_void);
+                CFRelease(cf_string as *mut std::ffi::c_void);
+            }
+
+            // Create CFArray for flags (CFNumber)
+            let flags_array = CFArrayCreateMutable(
+                kCFAllocatorDefault,
+                num_events as CFIndex,
+                kCFTypeArrayCallBacks,
+            );
+            if flags_array.is_null() {
+                CFRelease(paths_array as *mut std::ffi::c_void);
+                return Err("Failed to create flags CFArray".to_string());
+            }
+
+            for &flag in &job.flags {
+                let flag_number = CFNumberCreate(
+                    kCFAllocatorDefault,
+                    K_CFNUMBER_SINT32_TYPE,
+                    &flag as *const u32 as *const std::ffi::c_void,
+                );
+                if flag_number.is_null() {
+                    CFRelease(flags_array as *mut std::ffi::c_void);
+                    CFRelease(paths_array as *mut std::ffi::c_void);
+                    return Err("Failed to create CFNumber for flag".to_string());
+                }
+                CFArrayAppendValue(flags_array, flag_number as *const std::ffi::c_void);
+                CFRelease(flag_number as *mut std::ffi::c_void);
+            }
+
+            // Create CFArray for eventIds (CFNumber)
+            let event_ids_array = CFArrayCreateMutable(
+                kCFAllocatorDefault,
+                num_events as CFIndex,
+                kCFTypeArrayCallBacks,
+            );
+            if event_ids_array.is_null() {
+                CFRelease(flags_array as *mut std::ffi::c_void);
+                CFRelease(paths_array as *mut std::ffi::c_void);
+                return Err("Failed to create eventIds CFArray".to_string());
+            }
+
+            for event_id in &event_ids {
+                let id_number = CFNumberCreate(
+                    kCFAllocatorDefault,
+                    K_CFNUMBER_SINT64_TYPE,
+                    event_id as *const u64 as *const std::ffi::c_void,
+                );
+                if id_number.is_null() {
+                    CFRelease(event_ids_array as *mut std::ffi::c_void);
+                    CFRelease(flags_array as *mut std::ffi::c_void);
+                    CFRelease(paths_array as *mut std::ffi::c_void);
+                    return Err("Failed to create CFNumber for eventId".to_string());
+                }
+                CFArrayAppendValue(event_ids_array, id_number as *const std::ffi::c_void);
+                CFRelease(id_number as *mut std::ffi::c_void);
+            }
+
+            // Create top-level dictionary
+            let dict = CFDictionaryCreateMutable(
+                kCFAllocatorDefault,
+                0,
+                kCFTypeDictionaryKeyCallBacks,
+                kCFTypeDictionaryValueCallBacks,
+            );
+            if dict.is_null() {
+                CFRelease(event_ids_array as *mut std::ffi::c_void);
+                CFRelease(flags_array as *mut std::ffi::c_void);
+                CFRelease(paths_array as *mut std::ffi::c_void);
+                return Err("Failed to create CFDictionary".to_string());
+            }
+
+            // Set dictionary values - create CFString keys and values
+            let type_key_cstr = std::ffi::CString::new("type").unwrap();
+            let type_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                type_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            let fsevents_batch_cstr = std::ffi::CString::new("fsevents_batch").unwrap();
+            let fsevents_batch_str = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                fsevents_batch_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            CFDictionarySetValue(
+                dict,
+                type_key as *const std::ffi::c_void,
+                fsevents_batch_str as *const std::ffi::c_void,
+            );
+            CFRelease(fsevents_batch_str as *mut std::ffi::c_void);
+
+            let version_key_cstr = std::ffi::CString::new("version").unwrap();
+            let version_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                version_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            let version_value: i32 = 1;
+            let version_number = CFNumberCreate(
+                kCFAllocatorDefault,
+                K_CFNUMBER_INT_TYPE,
+                &version_value as *const i32 as *const std::ffi::c_void,
+            );
+            CFDictionarySetValue(
+                dict,
+                version_key as *const std::ffi::c_void,
+                version_number as *const std::ffi::c_void,
+            );
+            CFRelease(version_number as *mut std::ffi::c_void);
+            CFRelease(version_key as *mut std::ffi::c_void);
+
+            let stream_id_key_cstr = std::ffi::CString::new("stream_id").unwrap();
+            let stream_id_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                stream_id_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            let stream_id_number = CFNumberCreate(
+                kCFAllocatorDefault,
+                K_CFNUMBER_SINT64_TYPE,
+                &job.stream_id as *const u64 as *const std::ffi::c_void,
+            );
+            CFDictionarySetValue(
+                dict,
+                stream_id_key as *const std::ffi::c_void,
+                stream_id_number as *const std::ffi::c_void,
+            );
+            CFRelease(stream_id_number as *mut std::ffi::c_void);
+            CFRelease(stream_id_key as *mut std::ffi::c_void);
+
+            let num_events_key_cstr = std::ffi::CString::new("num_events").unwrap();
+            let num_events_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                num_events_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            let num_events_value = num_events as i64;
+            let num_events_number = CFNumberCreate(
+                kCFAllocatorDefault,
+                K_CFNUMBER_SINT64_TYPE,
+                &num_events_value as *const i64 as *const std::ffi::c_void,
+            );
+            CFDictionarySetValue(
+                dict,
+                num_events_key as *const std::ffi::c_void,
+                num_events_number as *const std::ffi::c_void,
+            );
+            CFRelease(num_events_number as *mut std::ffi::c_void);
+            CFRelease(num_events_key as *mut std::ffi::c_void);
+
+            let paths_key_cstr = std::ffi::CString::new("paths").unwrap();
+            let paths_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                paths_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            CFDictionarySetValue(
+                dict,
+                paths_key as *const std::ffi::c_void,
+                paths_array as *const std::ffi::c_void,
+            );
+            CFRelease(paths_key as *mut std::ffi::c_void);
+
+            let flags_key_cstr = std::ffi::CString::new("flags").unwrap();
+            let flags_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                flags_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            CFDictionarySetValue(
+                dict,
+                flags_key as *const std::ffi::c_void,
+                flags_array as *const std::ffi::c_void,
+            );
+            CFRelease(flags_key as *mut std::ffi::c_void);
+
+            let event_ids_key_cstr = std::ffi::CString::new("event_ids").unwrap();
+            let event_ids_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                event_ids_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            CFDictionarySetValue(
+                dict,
+                event_ids_key as *const std::ffi::c_void,
+                event_ids_array as *const std::ffi::c_void,
+            );
+            CFRelease(event_ids_key as *mut std::ffi::c_void);
+
+            let latest_event_id_key_cstr = std::ffi::CString::new("latest_event_id").unwrap();
+            let latest_event_id_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                latest_event_id_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            let latest_event_id_number = CFNumberCreate(
+                kCFAllocatorDefault,
+                K_CFNUMBER_SINT64_TYPE,
+                &latest_event_id as *const u64 as *const std::ffi::c_void,
+            );
+            CFDictionarySetValue(
+                dict,
+                latest_event_id_key as *const std::ffi::c_void,
+                latest_event_id_number as *const std::ffi::c_void,
+            );
+            CFRelease(latest_event_id_number as *mut std::ffi::c_void);
+            CFRelease(latest_event_id_key as *mut std::ffi::c_void);
+
+            // Add root field
+            let root_key_cstr = std::ffi::CString::new("root").unwrap();
+            let root_key = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                root_key_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            let root_cstr = match std::ffi::CString::new(job.root.as_str()) {
+                Ok(value) => value,
+                Err(e) => {
+                    CFRelease(dict as *mut std::ffi::c_void);
+                    CFRelease(event_ids_array as *mut std::ffi::c_void);
+                    CFRelease(flags_array as *mut std::ffi::c_void);
+                    CFRelease(paths_array as *mut std::ffi::c_void);
+                    CFRelease(root_key as *mut std::ffi::c_void);
+                    CFRelease(type_key as *mut std::ffi::c_void);
+                    return Err(format!("Failed to convert root to CString: {}", e));
+                }
+            };
+            let root_str = CFStringCreateWithCString(
+                kCFAllocatorDefault,
+                root_cstr.as_ptr(),
+                K_CFSTRING_ENCODING_UTF8,
+            );
+            if root_str.is_null() {
+                CFRelease(dict as *mut std::ffi::c_void);
+                CFRelease(event_ids_array as *mut std::ffi::c_void);
+                CFRelease(flags_array as *mut std::ffi::c_void);
+                CFRelease(paths_array as *mut std::ffi::c_void);
+                CFRelease(root_key as *mut std::ffi::c_void);
+                CFRelease(type_key as *mut std::ffi::c_void);
+                return Err("Failed to create CFString for root".to_string());
+            }
+            CFDictionarySetValue(
+                dict,
+                root_key as *const std::ffi::c_void,
+                root_str as *const std::ffi::c_void,
+            );
+            CFRelease(root_str as *mut std::ffi::c_void);
+            CFRelease(root_key as *mut std::ffi::c_void);
+
+            CFRelease(type_key as *mut std::ffi::c_void);
+
+            // Serialize to binary property list
+            let mut error: CFErrorRef = std::ptr::null_mut();
+            let cf_data = CFPropertyListCreateData(
+                kCFAllocatorDefault,
+                dict as CFPropertyListRef,
+                K_CFPROPERTY_LIST_BINARY_FORMAT_V1_0,
+                0,
+                &mut error,
+            );
+
+            // Clean up dictionary and arrays
+            CFRelease(dict as *mut std::ffi::c_void);
+            CFRelease(event_ids_array as *mut std::ffi::c_void);
+            CFRelease(flags_array as *mut std::ffi::c_void);
+            CFRelease(paths_array as *mut std::ffi::c_void);
+
+            if !error.is_null() {
+                CFRelease(error as *mut std::ffi::c_void);
+                return Err("Failed to serialize property list".to_string());
+            }
+
+            if cf_data.is_null() {
+                return Err("Failed to create CFData from property list".to_string());
+            }
+
+            // Send via CFMessagePort
+            let result = daemon.send_fsevents_batch(job.pid, AGENTFS_MSG_FSEVENTS_BATCH, cf_data);
+
+            // Clean up CFData
+            CFRelease(cf_data as *mut std::ffi::c_void);
+
+            result
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn prepare_fsevents_jobs(
+        &self,
+        evt: &EventKind,
+        affected_paths: &[String],
+    ) -> Vec<FseventsSendJob> {
+        let entries = self.build_fsevents_entries(evt);
+        if entries.is_empty() {
+            return Vec::new();
+        }
+
+        let mut jobs = Vec::new();
+        let mut watches = self.watch_service.fsevents_watches.lock().unwrap();
+
+        for ((pid_key, registration_key), watch) in watches.iter_mut() {
+            let pid = *pid_key;
+            let registration_id = *registration_key;
+            let Some(root_ref) = watch.root_paths.iter().find(|root_path| {
+                affected_paths
+                    .iter()
+                    .any(|path| self.path_within_root(path, root_path.as_str()))
+            }) else {
+                continue;
+            };
+
+            let root = root_ref.clone();
+
+            let relevant_entries: Vec<(String, u32)> = entries
+                .iter()
+                .filter(|(path, _)| self.path_within_root(path, root.as_str()))
+                .cloned()
+                .collect();
+
+            if relevant_entries.is_empty() {
+                continue;
+            }
+
+            let event_count = relevant_entries.len();
+            let start_event_id = if watch.next_event_id == 0 {
+                watch.last_sent_event_id.saturating_add(1).max(1)
+            } else {
+                watch.next_event_id
+            };
+
+            let Some(reserved_next_event_id) = start_event_id.checked_add(event_count as u64)
+            else {
+                tracing::error!(
+                    "FSEvents event id overflow for pid {} stream {} (start={}, count={})",
+                    watch.pid,
+                    watch.stream_id,
+                    start_event_id,
+                    event_count
+                );
+                continue;
+            };
+
+            let (paths, flags): (Vec<String>, Vec<u32>) = relevant_entries.into_iter().unzip();
+
+            watch.next_event_id = reserved_next_event_id;
+
+            jobs.push(FseventsSendJob {
+                pid,
+                registration_id,
+                stream_id: watch.stream_id,
+                root,
+                paths,
+                flags,
+                start_event_id,
+                reserved_next_event_id,
+            });
+        }
+
+        jobs
+    }
+
+    #[cfg(target_os = "macos")]
+    fn build_fsevents_entries(&self, evt: &EventKind) -> Vec<(String, u32)> {
+        match evt {
+            EventKind::Created { path } => {
+                let is_dir = std::path::Path::new(path).is_dir();
+                let flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED
+                    | if is_dir {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                    } else {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                    };
+                vec![(path.clone(), flag)]
+            }
+            EventKind::Removed { path } => {
+                // Removal loses type information; default to file semantics.
+                let flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED
+                    | K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE;
+                vec![(path.clone(), flag)]
+            }
+            EventKind::Modified { path } => {
+                let is_dir = std::path::Path::new(path).is_dir();
+                let flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_MODIFIED
+                    | if is_dir {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                    } else {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                    };
+                vec![(path.clone(), flag)]
+            }
+            EventKind::Renamed { from, to } => {
+                let from_is_dir = std::path::Path::new(from).is_dir();
+                let to_is_dir = std::path::Path::new(to).is_dir();
+
+                let from_flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED
+                    | K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED
+                    | if from_is_dir {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                    } else {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                    };
+
+                let to_flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED
+                    | K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED
+                    | if to_is_dir {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                    } else {
+                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                    };
+
+                vec![(from.clone(), from_flag), (to.clone(), to_flag)]
+            }
+            EventKind::BranchCreated { .. } | EventKind::SnapshotCreated { .. } => Vec::new(),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn path_within_root(&self, path: &str, root: &str) -> bool {
+        if root.is_empty() {
+            return true;
+        }
+
+        let path_obj = std::path::Path::new(path);
+        let root_obj = std::path::Path::new(root);
+
+        path_obj == root_obj || path_obj.starts_with(root_obj)
     }
 }
 
@@ -632,6 +1290,8 @@ mod tests {
         assert_eq!(watches.len(), 1);
         assert_eq!(watches[0].stream_id, 2);
         assert_eq!(watches[0].root_paths, root_paths);
+        assert_eq!(watches[0].next_event_id, 1);
+        assert_eq!(watches[0].last_sent_event_id, 0);
     }
 
     #[test]
@@ -658,7 +1318,7 @@ mod tests {
     #[test]
     fn test_affected_paths_created() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Created {
             path: "/tmp/dir/file.txt".to_string(),
@@ -673,7 +1333,7 @@ mod tests {
     #[test]
     fn test_affected_paths_renamed() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Renamed {
             from: "/tmp/dir/old.txt".to_string(),
@@ -691,7 +1351,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_created_file() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Created {
             path: "/tmp/test.txt".to_string(),
@@ -704,7 +1364,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_removed_file() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Removed {
             path: "/tmp/test.txt".to_string(),
@@ -717,7 +1377,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_modified_file() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Modified {
             path: "/tmp/test.txt".to_string(),
@@ -730,7 +1390,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_renamed_source() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
@@ -744,7 +1404,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_renamed_destination() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
@@ -758,7 +1418,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_renamed_parent() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
@@ -772,7 +1432,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_directory_watcher_created() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Created {
             path: "/tmp/dir/file.txt".to_string(),
@@ -790,7 +1450,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_file_watcher_created() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Created {
             path: "/tmp/file.txt".to_string(),
@@ -808,7 +1468,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_directory_watcher_removed() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Removed {
             path: "/tmp/dir/file.txt".to_string(),
@@ -822,7 +1482,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_file_watcher_removed() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Removed {
             path: "/tmp/file.txt".to_string(),
@@ -836,7 +1496,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_directory_watcher_modified() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Modified {
             path: "/tmp/dir/file.txt".to_string(),
@@ -850,7 +1510,7 @@ mod tests {
     #[test]
     fn test_event_to_vnode_flags_file_watcher_modified() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         let event = EventKind::Modified {
             path: "/tmp/file.txt".to_string(),
@@ -864,7 +1524,7 @@ mod tests {
     #[test]
     fn test_event_coalescing_created_file() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register a file watch on /tmp/file.txt
         service.register_kqueue_watch(
@@ -905,7 +1565,7 @@ mod tests {
     #[test]
     fn test_event_coalescing_multiple_operations() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register a file watch that wants all events
         service.register_kqueue_watch(
@@ -944,7 +1604,7 @@ mod tests {
     #[test]
     fn test_event_coalescing_renamed() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register watches on both source and destination files
         service.register_kqueue_watch(
@@ -994,7 +1654,7 @@ mod tests {
     #[test]
     fn test_directory_watcher_child_events() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register directory watch on /tmp
         service.register_kqueue_watch(123, 5, 1, 10, "/tmp".to_string(), NOTE_WRITE, true);
@@ -1019,7 +1679,7 @@ mod tests {
     #[test]
     fn test_no_events_for_uninterested_watchers() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register a file watch that only wants NOTE_DELETE
         service.register_kqueue_watch(
@@ -1045,7 +1705,7 @@ mod tests {
     #[test]
     fn test_no_events_for_unrelated_paths() {
         let service = Arc::new(WatchService::new());
-        let sink = WatchServiceEventSink::new(service.clone());
+        let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register a file watch on /tmp/file.txt
         service.register_kqueue_watch(
