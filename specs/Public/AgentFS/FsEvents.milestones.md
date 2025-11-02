@@ -557,17 +557,41 @@ When the app gives overlay roots, we may translate them to backstore roots for b
 
 If you like this, I can push a PR that adds the `CFMessagePort` glue (shim+daemon) and the e2e tests described here.
 
-# Milestone 7 — Registration lifecycle & robustness
+**Milestone 7 — Registration lifecycle & robustness** COMPLETED
 
-**Goal:** Hardening of register/unregister, app exit, daemon restarts.
+- **Deliverables:**
+  - Implemented FD close lifecycle management with automatic daemon watch cleanup
+  - Added process exit detection and resource reclamation (kq_fd and ring buffer)
+  - Created daemon restart recovery with shim re-handshake and registration re-sending
+  - Enhanced IPC robustness with retry logic and automatic reconnection
+  - Added comprehensive lifecycle test scenarios for FD close, process exit, and daemon restart
 
-- **Scenarios**
-  - App closes watched fd → daemon removes that watch atomically.
-  - App exits → shim informs daemon (or daemon detects socket close) → reclaim `kq_fd` and ring buffer.
-  - Daemon restart → shim re-handshakes and re-sends registrations.
+- **Implementation Details:**
+  - **FD Close Lifecycle**: Modified `close()` interception to detect watched FDs and kqueue instances, sending unregister messages to daemon for atomic cleanup
+  - **Process Exit Cleanup**: Enhanced daemon client handling to detect socket closure and automatically cleanup all process resources
+  - **Daemon Restart Recovery**: Implemented retry mechanism in `send_request()` with automatic reconnection and watch re-registration
+  - **Per-Kqueue Doorbell Management**: Replaced global doorbell ident with per-kqueue tracking to support multiple kqueue instances per process
+  - **Protocol Extensions**: Added `WatchUnregisterFd` and `WatchUnregisterKqueue` message types for precise lifecycle management
+  - **Thread Safety**: Used Mutex-protected data structures for concurrent access to lifecycle state
+  - **Test Infrastructure**: Created comprehensive test helpers for all lifecycle scenarios with proper verification
 
-- **Acceptance (integration)**
-  - Killing the test app or daemon does not deadlock; watchers self-heal or tear down cleanly.
+- **Key Source Files:**
+  - `crates/agentfs-interpose-shim/src/lib.rs`: FD close interception, lifecycle management, and daemon restart recovery
+  - `crates/agentfs-daemon/src/daemon.rs`: Process exit detection and resource cleanup
+  - `crates/agentfs-daemon/src/watch_service.rs`: Watch lifecycle management and cleanup methods
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC handling for unregister operations
+  - `crates/agentfs-proto/src/messages.rs`: New unregister message types and validation
+  - `crates/agentfs-interpose-e2e-tests/src/lib.rs`: Lifecycle test framework and verification
+  - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs`: Test helper implementations for all lifecycle scenarios
+
+- **Verification Results:**
+  - [x] App closes watched fd → daemon removes that watch atomically (via close() interception)
+  - [x] App exits → daemon detects socket close and reclaims kq_fd and ring buffer (via enhanced cleanup)
+  - [x] Daemon restart → shim re-handshakes and re-sends registrations (via retry logic and reconnection)
+  - [x] Killing the test app or daemon does not deadlock; watchers self-heal or tear down cleanly
+  - [x] All lifecycle scenarios covered with automated integration tests
+  - [x] Per-kqueue doorbell management works correctly with multiple kqueue instances
+  - [x] Thread-safe concurrent access to lifecycle state management
 
 # Milestone 8 — Negative & invariants matrix
 

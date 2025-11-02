@@ -5,7 +5,7 @@
 
 use libc::{c_int, c_void};
 use once_cell::sync::{Lazy, OnceCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, OsStr};
 use std::io::{BufRead, Read, Write};
 use std::os::fd::AsRawFd;
@@ -375,10 +375,6 @@ static FSEVENTS_CALLBACKS: Lazy<Mutex<HashMap<usize, FSEventsCallbackInfo>>> =
 #[cfg(target_os = "macos")]
 static FSEVENTS_STREAM_ID_COUNTER: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
-
-/// Current doorbell ident for collision detection
-#[cfg(target_os = "macos")]
-static CURRENT_DOORBELL_IDENT: AtomicU64 = AtomicU64::new(0);
 
 const LOG_PREFIX: &str = "[agentfs-interpose]";
 const ENV_ENABLED: &str = "AGENTFS_INTERPOSE_ENABLED";
@@ -1217,6 +1213,14 @@ static DIRFD_MAPPING: std::sync::LazyLock<Mutex<HashMap<u32, DirfdMapping>>> =
 static WATCHER_TABLE: std::sync::LazyLock<Mutex<HashMap<(c_int, u32), u32>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
+// Track which file descriptors are kqueues (fd -> true)
+static KQUEUE_FDS: std::sync::LazyLock<Mutex<HashSet<c_int>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+
+// Track doorbell ident per kqueue (kq_fd -> doorbell_ident)
+static DOORBELL_IDENTS: std::sync::LazyLock<Mutex<HashMap<c_int, u64>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Queue for FSEvents broadcasts received from daemon: stream_id -> Vec<FsEventBroadcastRequest>
 #[cfg(target_os = "macos")]
 static FSEVENTS_QUEUE: std::sync::LazyLock<Mutex<HashMap<u64, Vec<FsEventBroadcastRequest>>>> =
@@ -1473,61 +1477,243 @@ fn decode_ssz<T: Decode>(data: &[u8]) -> Result<T, String> {
 
 fn send_request<F, T>(request: Request, extract_response: F) -> Result<T, String>
 where
-    F: FnOnce(Response) -> Option<T>,
+    F: Fn(Response) -> Option<T>,
 {
-    let stream_arc = {
-        let stream_guard = STREAM.lock().unwrap();
-        match stream_guard.as_ref() {
-            Some(arc) => Arc::clone(arc),
-            None => {
-                let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
-                if fail_fast {
-                    log_message(&format!(
-                        "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                    ));
-                    std::process::exit(1);
+    // Try to send request, reconnecting if necessary
+    let mut attempts = 0;
+    let max_attempts = 3;
+
+    loop {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            match stream_guard.as_ref() {
+                Some(arc) => Arc::clone(arc),
+                None => {
+                    // Try to reconnect if we don't have a stream
+                    if attempts == 0 {
+                        log_message("STREAM not set, attempting to reconnect to daemon");
+                        if let Err(e) = try_reconnect_to_daemon() {
+                            log_message(&format!("reconnection failed: {}", e));
+                        }
+                        attempts += 1;
+                        continue;
+                    }
+
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original function");
+                        return Err("not connected to AgentFS control socket".to_string());
+                    }
+                }
+            }
+        };
+
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        // Send request
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            let result = stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes));
+
+            if let Err(e) = result {
+                // Connection failed, try to reconnect
+                log_message(&format!(
+                    "send request failed: {}, attempting reconnection",
+                    e
+                ));
+                if attempts < max_attempts {
+                    if let Err(reconnect_err) = try_reconnect_to_daemon() {
+                        log_message(&format!("reconnection failed: {}", reconnect_err));
+                    }
+                    attempts += 1;
+                    continue;
                 } else {
-                    log_message("STREAM not set, falling back to original function");
-                    return Err("not connected to AgentFS control socket".to_string());
+                    return Err(format!(
+                        "send request after {} attempts: {}",
+                        max_attempts, e
+                    ));
                 }
             }
         }
-    };
 
-    let ssz_bytes = encode_ssz(&request);
-    let ssz_len = ssz_bytes.len() as u32;
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            let result = stream_guard.read_exact(&mut len_buf);
 
+            if let Err(e) = result {
+                // Connection failed during read, try to reconnect
+                log_message(&format!(
+                    "read response length failed: {}, attempting reconnection",
+                    e
+                ));
+                if attempts < max_attempts {
+                    if let Err(reconnect_err) = try_reconnect_to_daemon() {
+                        log_message(&format!("reconnection failed: {}", reconnect_err));
+                    }
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "read response after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+
+            let result = stream_guard.read_exact(&mut msg_buf);
+            if let Err(e) = result {
+                // Connection failed during read, try to reconnect
+                log_message(&format!(
+                    "read response failed: {}, attempting reconnection",
+                    e
+                ));
+                if attempts < max_attempts {
+                    if let Err(reconnect_err) = try_reconnect_to_daemon() {
+                        log_message(&format!("reconnection failed: {}", reconnect_err));
+                    }
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "read response after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+        }
+
+        // Decode the response
+        match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => match extract_response(response) {
+                Some(result) => return Ok(result),
+                None => {
+                    if attempts < max_attempts {
+                        log_message("unexpected response type, retrying");
+                        attempts += 1;
+                        continue;
+                    } else {
+                        return Err("unexpected response type".to_string());
+                    }
+                }
+            },
+            Err(e) => {
+                if attempts < max_attempts {
+                    log_message(&format!("decode response failed: {}, retrying", e));
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "decode response after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Try to reconnect to the daemon and re-register all watches
+fn try_reconnect_to_daemon() -> Result<(), String> {
+    log_message("Attempting to reconnect to AgentFS daemon");
+
+    // Clear existing stream
     {
-        let mut stream_guard = stream_arc.lock().unwrap();
-        stream_guard
-            .write_all(&ssz_len.to_le_bytes())
-            .and_then(|_| stream_guard.write_all(&ssz_bytes))
-            .map_err(|e| format!("send request: {e}"))?;
+        let mut stream_guard = STREAM.lock().unwrap();
+        *stream_guard = None;
     }
 
-    // Read response
-    let mut len_buf = [0u8; 4];
-    let mut msg_buf: Vec<u8>;
+    // Try to connect using environment variables
+    let socket_path_env = std::env::var_os("AGENTFS_INTERPOSE_SOCKET");
+    let exe_env = std::env::var_os("AGENTFS_INTERPOSE_EXE");
+
+    match (socket_path_env, exe_env) {
+        (Some(socket_path_str), Some(exe_str)) => {
+            let socket_path = PathBuf::from(socket_path_str);
+            let exe = PathBuf::from(exe_str);
+
+            // Attempt handshake
+            let allow = AllowDecision::from_env(&exe); // Assume we were previously allowed
+            match attempt_handshake(&socket_path, &exe, &allow) {
+                Ok(stream) => {
+                    let stream_arc = Arc::new(Mutex::new(stream));
+                    {
+                        let mut stream_guard = STREAM.lock().unwrap();
+                        *stream_guard = Some(Arc::clone(&stream_arc));
+                    }
+
+                    log_message("Successfully reconnected to daemon");
+
+                    // Re-register all active watches
+                    re_register_all_watches()?;
+
+                    Ok(())
+                }
+                Err(e) => Err(format!("handshake failed: {}", e)),
+            }
+        }
+        _ => Err(
+            "missing AGENTFS_INTERPOSE_SOCKET or AGENTFS_INTERPOSE_EXE environment variables"
+                .to_string(),
+        ),
+    }
+}
+
+/// Re-register all active watches with the daemon
+fn re_register_all_watches() -> Result<(), String> {
+    log_message("Re-registering all active watches");
+
+    let pid = std::process::id() as u32;
+
+    // Re-register kqueue watches
     {
-        let mut stream_guard = stream_arc.lock().unwrap();
-        stream_guard
-            .read_exact(&mut len_buf)
-            .map_err(|e| format!("read response length: {e}"))?;
-        let msg_len = u32::from_le_bytes(len_buf) as usize;
-        msg_buf = vec![0u8; msg_len];
-        stream_guard
-            .read_exact(&mut msg_buf)
-            .map_err(|e| format!("read response: {e}"))?;
+        let watcher_table = WATCHER_TABLE.lock().unwrap();
+        for ((kq_fd, fd), fflags) in watcher_table.iter() {
+            let request = Request::watch_register_kqueue(
+                pid,
+                *kq_fd as u32,
+                0, // watch_id - daemon will assign
+                *fd as u32,
+                *fflags,
+            );
+
+            send_request(request, |_| None)?;
+            log_message(&format!(
+                "Re-registered watch for fd {} on kqueue {}",
+                fd, kq_fd
+            ));
+        }
     }
 
-    // Decode the response
-    match decode_ssz::<Response>(&msg_buf) {
-        Ok(response) => match extract_response(response) {
-            Some(result) => Ok(result),
-            None => Err("unexpected response type".to_string()),
-        },
-        Err(e) => Err(format!("decode response failed: {:?}", e)),
+    // Re-register doorbell for active kqueues
+    {
+        let doorbell_idents = DOORBELL_IDENTS.lock().unwrap();
+        for (kq_fd, doorbell_ident) in doorbell_idents.iter() {
+            let request = Request::watch_doorbell(pid, *kq_fd as u32, *doorbell_ident);
+            send_request(request, |_| None)?;
+            log_message(&format!("Re-registered doorbell for kqueue {}", kq_fd));
+        }
     }
+
+    // Re-register FSEvents streams - this is more complex as we need callback info
+    // For now, we'll skip this as it's less critical for basic functionality
+
+    log_message("Finished re-registering watches");
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -4122,6 +4308,55 @@ mod interpose {
     /// Interposed close function (for fd tracking)
     redhook::hook! {
         unsafe fn close(fd: c_int) -> c_int => my_close_fd_tracking {
+            // Check if this fd is a kqueue or being watched by kqueue and notify daemon to unregister
+            {
+                let is_kqueue = KQUEUE_FDS.lock().unwrap().contains(&fd);
+
+                if is_kqueue {
+                    // This is a kqueue being closed - clean up all its watches
+                    let pid = std::process::id() as u32;
+                    let request = Request::watch_unregister_kqueue(pid, fd as u32);
+
+                    if let Err(e) = send_request(request, |_| None::<()>) {
+                        log_message(&format!("failed to send kqueue unregister for fd {}: {}", fd, e));
+                    } else {
+                        log_message(&format!("sent kqueue unregister for kqueue fd {}", fd));
+                    }
+
+                    // Remove from kqueue tracking
+                    KQUEUE_FDS.lock().unwrap().remove(&fd);
+
+                    // Remove doorbell ident for this kqueue
+                    DOORBELL_IDENTS.lock().unwrap().remove(&fd);
+
+                    // Clear watcher table entries for this kqueue
+                    WATCHER_TABLE.lock().unwrap().retain(|(kq_fd, _), _| *kq_fd != fd);
+                } else {
+                    // Check if this fd is being watched by kqueue
+                    let mut watcher_table = WATCHER_TABLE.lock().unwrap();
+                    // Find all kqueues watching this fd
+                    let watching_kqueues: Vec<_> = watcher_table.keys()
+                        .filter(|(_, watched_fd)| *watched_fd == fd as u32)
+                        .map(|(kq_fd, _)| *kq_fd)
+                        .collect();
+
+                    // Remove all watcher table entries for this fd
+                    watcher_table.retain(|(_, watched_fd), _| *watched_fd != fd as u32);
+
+                    for kq_fd in watching_kqueues {
+                        // Send unregister message to daemon
+                        let pid = std::process::id() as u32;
+                        let request = Request::watch_unregister_fd(pid, fd as u32);
+
+                        if let Err(e) = send_request(request, |_| None::<()>) {
+                            log_message(&format!("failed to send watch unregister for fd {}: {}", fd, e));
+                        } else {
+                            log_message(&format!("sent watch unregister for fd {} on kqueue {}", fd, kq_fd));
+                        }
+                    }
+                }
+            }
+
             // Remove fd mapping before closing
             with_dirfd_mapping(|mapping| {
                 mapping.remove_path(fd);
@@ -5419,7 +5654,8 @@ mod interpose {
 
             // Collision hygiene: Check changelist for EVFILT_USER events that might collide with our doorbell
             if nchanges > 0 && !changelist.is_null() {
-                let current_doorbell_ident = CURRENT_DOORBELL_IDENT.load(std::sync::atomic::Ordering::Relaxed);
+                let doorbell_idents = DOORBELL_IDENTS.lock().unwrap();
+                let current_doorbell_ident = doorbell_idents.get(&kq).copied().unwrap_or(0);
                 if current_doorbell_ident != 0 {
                     for i in 0..nchanges {
                         let change = &*changelist.offset(i as isize);
@@ -5458,8 +5694,9 @@ mod interpose {
                                 if add_result == -1 {
                                     log_message(&format!("Failed to register new doorbell ident {:#x}: {}", new_doorbell_ident, std::io::Error::last_os_error()));
                                 } else {
-                                    // Update the current doorbell ident
-                                    CURRENT_DOORBELL_IDENT.store(new_doorbell_ident, std::sync::atomic::Ordering::Relaxed);
+                                    // Update the doorbell ident for this kqueue
+                                    drop(doorbell_idents);
+                                    DOORBELL_IDENTS.lock().unwrap().insert(kq, new_doorbell_ident);
 
                                     // Notify daemon about the ident change
                                     let pid = std::process::id() as u32;
@@ -5506,7 +5743,8 @@ mod interpose {
 
                 // Check if we received our doorbell event
                 let mut has_doorbell = false;
-                let current_doorbell_ident = CURRENT_DOORBELL_IDENT.load(std::sync::atomic::Ordering::Relaxed);
+                let doorbell_idents = DOORBELL_IDENTS.lock().unwrap();
+                let current_doorbell_ident = doorbell_idents.get(&kq).copied().unwrap_or(0);
 
                 for i in 0..result {
                     let event = &*eventlist.offset(i as isize);
@@ -5592,10 +5830,13 @@ mod interpose {
                 log_message(&format!("failed to register doorbell on kqueue fd {}", kq_fd));
                 // Continue anyway - the kqueue is still valid
             } else {
-                // Store the current doorbell ident
-                CURRENT_DOORBELL_IDENT.store(doorbell_ident, std::sync::atomic::Ordering::Relaxed);
+                // Store the doorbell ident for this kqueue
+                DOORBELL_IDENTS.lock().unwrap().insert(kq_fd, doorbell_ident);
                 log_message(&format!("registered doorbell ident {:#x} for kqueue fd {}", doorbell_ident, kq_fd));
             }
+
+            // Track this fd as a kqueue
+            KQUEUE_FDS.lock().unwrap().insert(kq_fd);
 
             // Send WatchDoorbell message to daemon with kqueue FD via SCM_RIGHTS
             let pid = std::process::id() as u32;

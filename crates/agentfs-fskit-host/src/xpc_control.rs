@@ -79,6 +79,12 @@ impl XpcControlService {
             Request::WatchRegisterFSEventsPort(_) => {
                 todo!("WatchRegisterFSEventsPort not implemented for XPC control")
             }
+            Request::WatchUnregisterFd(_) => {
+                todo!("WatchUnregisterFd not implemented for XPC control")
+            }
+            Request::WatchUnregisterKqueue(_) => {
+                todo!("WatchUnregisterKqueue not implemented for XPC control")
+            }
             Request::DaemonStateProcesses(_) => {
                 todo!("DaemonStateProcesses not implemented for XPC control")
             }

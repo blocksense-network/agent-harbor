@@ -166,6 +166,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     let cleanup = || {
         let mut daemon = daemon.lock().unwrap();
         daemon.unregister_connection(client_pid);
+        // Clean up all watch registrations for this process
+        daemon.cleanup_process_watches(client_pid);
     };
 
     // Handle handshake
@@ -573,6 +575,37 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     );
 
                     let response = Response::watch_drain_events_response(events);
+                    send_response(&mut stream, &response);
+                }
+                Request::WatchUnregisterFd((version, unregister_fd_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    println!(
+                        "AgentFS Daemon: watch_unregister_fd(pid={}, fd={})",
+                        unregister_fd_req.pid, unregister_fd_req.fd
+                    );
+
+                    // Remove all watches for this fd from all kqueues for this pid
+                    daemon
+                        .watch_service()
+                        .unregister_watches_by_fd(unregister_fd_req.pid, unregister_fd_req.fd);
+
+                    let response = Response::watch_unregister_fd();
+                    send_response(&mut stream, &response);
+                }
+                Request::WatchUnregisterKqueue((version, unregister_kq_req)) => {
+                    let mut daemon = daemon.lock().unwrap();
+                    println!(
+                        "AgentFS Daemon: watch_unregister_kqueue(pid={}, kq_fd={})",
+                        unregister_kq_req.pid, unregister_kq_req.kq_fd
+                    );
+
+                    // Remove all watches for this kqueue and clean up kqueue state
+                    daemon.watch_service().unregister_watches_for_kqueue(
+                        unregister_kq_req.pid,
+                        unregister_kq_req.kq_fd,
+                    );
+
+                    let response = Response::watch_unregister_kqueue();
                     send_response(&mut stream, &response);
                 }
                 // All other request types would be handled here...

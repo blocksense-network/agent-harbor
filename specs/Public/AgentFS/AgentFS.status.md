@@ -1285,12 +1285,13 @@ Notes:
   - [x] Comprehensive unit tests cover all operations and edge cases
   - [x] End-to-end integration tests validate full functionality
 
-- **M24.h - Watcher translation (FSEvents lane)**
+- **M24.h - Watcher translation (FSEvents lane)** ✅ **COMPLETED**
   - Goal: Ensure path-based watchers still receive events when I/O bypasses the adapter.
   - Implementation: Translate FSEvents registrations from overlay paths to backstore paths; fd-based watchers (kqueue/kevent) require no changes.
   - Automated tests:
     - Register FSEvents on an overlay path, write via forwarded file descriptors, and assert event delivery.
   - Spec refs: watcher translation rules and FSEvents guidance.
+  - See [FsEvents.milestones.md](FsEvents.milestones.md) for detailed implementation tracking.
 
 - **M24.i - Negative matrix and no-leak invariants**
   - Goal: Hard-fail with the expected errors and never leak backstore paths.

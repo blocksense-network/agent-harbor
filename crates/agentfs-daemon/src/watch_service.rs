@@ -348,6 +348,61 @@ impl WatchService {
         self.fsevents_watches.lock().unwrap().remove(&(pid, registration_id));
     }
 
+    /// Unregister all watches for a specific file descriptor
+    pub fn unregister_watches_by_fd(&self, pid: u32, fd: u32) {
+        // Remove from kqueue watches table
+        self.kqueue_watches
+            .lock()
+            .unwrap()
+            .retain(|_, reg| !(reg.pid == pid && reg.fd == fd));
+    }
+
+    /// Unregister all watches for a specific kqueue and clean up kqueue state
+    pub fn unregister_watches_for_kqueue(&self, pid: u32, kq_fd: u32) {
+        // Remove all kqueue watches for this kqueue
+        self.kqueue_watches
+            .lock()
+            .unwrap()
+            .retain(|_, reg| !(reg.pid == pid && reg.kq_fd == kq_fd));
+
+        // Remove doorbell ident for this kqueue
+        self.doorbell_idents.lock().unwrap().remove(&(pid, kq_fd));
+
+        // Remove kqueue FD
+        #[cfg(target_os = "macos")]
+        {
+            self.kqueue_fds.lock().unwrap().remove(&(pid, kq_fd));
+        }
+
+        // Clear any pending events for this kqueue
+        self.pending_events.lock().unwrap().remove(&(pid, kq_fd));
+    }
+
+    /// Unregister all watches for a specific process
+    pub fn unregister_watches_by_pid(&self, pid: u32) {
+        // Remove all kqueue watches for this process
+        self.kqueue_watches.lock().unwrap().retain(|_, reg| reg.pid != pid);
+
+        // Remove all FSEvents watches for this process
+        self.fsevents_watches.lock().unwrap().retain(|_, reg| reg.pid != pid);
+    }
+
+    /// Clear doorbell idents for a specific process
+    pub fn clear_doorbell_idents_for_pid(&self, pid: u32) {
+        self.doorbell_idents.lock().unwrap().retain(|(p, _), _| *p != pid);
+    }
+
+    /// Clear kqueue FDs for a specific process
+    #[cfg(target_os = "macos")]
+    pub fn clear_kqueue_fds_for_pid(&self, pid: u32) {
+        self.kqueue_fds.lock().unwrap().retain(|(p, _), _| *p != pid);
+    }
+
+    /// Clear pending events for a specific process
+    pub fn clear_pending_events_for_pid(&self, pid: u32) {
+        self.pending_events.lock().unwrap().retain(|(p, _), _| *p != pid);
+    }
+
     /// Store a received kqueue file descriptor
     #[cfg(target_os = "macos")]
     pub fn store_kqueue_fd(&self, pid: u32, kq_fd: u32, actual_fd: c_int) {

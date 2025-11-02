@@ -94,6 +94,8 @@ pub enum Request {
     WatchRegisterFSEvents((Vec<u8>, WatchRegisterFSEventsRequest)), // (version, request) - register FSEvents watch
     WatchRegisterFSEventsPort((Vec<u8>, WatchRegisterFSEventsPortRequest)), // (version, request) - register FSEvents CFMessagePort
     WatchUnregister((Vec<u8>, WatchUnregisterRequest)), // (version, request) - unregister watch
+    WatchUnregisterFd((Vec<u8>, WatchUnregisterFdRequest)), // (version, request) - unregister watch by fd
+    WatchUnregisterKqueue((Vec<u8>, WatchUnregisterKqueueRequest)), // (version, request) - unregister kqueue and all its watches
     WatchDoorbell((Vec<u8>, WatchDoorbellRequest)), // (version, request) - doorbell setup for kqueue
     UpdateDoorbellIdent((Vec<u8>, UpdateDoorbellIdentRequest)), // (version, request) - doorbell ident collision update
     QueryDoorbellIdent((Vec<u8>, QueryDoorbellIdentRequest)), // (version, request) - query current doorbell ident
@@ -188,6 +190,8 @@ pub enum Response {
     WatchRegisterFSEvents(WatchRegisterFSEventsResponse),
     WatchRegisterFSEventsPort(WatchRegisterFSEventsPortResponse),
     WatchUnregister(WatchUnregisterResponse),
+    WatchUnregisterFd(WatchUnregisterFdResponse),
+    WatchUnregisterKqueue(WatchUnregisterKqueueResponse),
     WatchDoorbell(WatchDoorbellResponse),
     UpdateDoorbellIdent(UpdateDoorbellIdentResponse),
     QueryDoorbellIdent(QueryDoorbellIdentResponse),
@@ -1781,6 +1785,14 @@ impl Request {
         ))
     }
 
+    pub fn watch_unregister_fd(pid: u32, fd: u32) -> Self {
+        Self::WatchUnregisterFd((b"1".to_vec(), WatchUnregisterFdRequest { pid, fd }))
+    }
+
+    pub fn watch_unregister_kqueue(pid: u32, kq_fd: u32) -> Self {
+        Self::WatchUnregisterKqueue((b"1".to_vec(), WatchUnregisterKqueueRequest { pid, kq_fd }))
+    }
+
     pub fn watch_doorbell(pid: u32, kq_fd: u32, doorbell_ident: u64) -> Self {
         Self::WatchDoorbell((
             b"1".to_vec(),
@@ -2151,6 +2163,14 @@ impl Response {
         Self::WatchUnregister(WatchUnregisterResponse {})
     }
 
+    pub fn watch_unregister_fd() -> Self {
+        Self::WatchUnregisterFd(WatchUnregisterFdResponse {})
+    }
+
+    pub fn watch_unregister_kqueue() -> Self {
+        Self::WatchUnregisterKqueue(WatchUnregisterKqueueResponse {})
+    }
+
     pub fn watch_doorbell() -> Self {
         Self::WatchDoorbell(WatchDoorbellResponse {})
     }
@@ -2444,6 +2464,32 @@ pub struct WatchUnregisterRequest {
 /// Watch unregistration response
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct WatchUnregisterResponse {}
+
+/// Watch unregistration by fd request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchUnregisterFdRequest {
+    /// Process ID
+    pub pid: u32,
+    /// File descriptor to unregister watches for
+    pub fd: u32,
+}
+
+/// Watch unregistration by fd response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchUnregisterFdResponse {}
+
+/// Watch unregistration by kqueue request
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchUnregisterKqueueRequest {
+    /// Process ID
+    pub pid: u32,
+    /// Kqueue file descriptor to unregister
+    pub kq_fd: u32,
+}
+
+/// Watch unregistration by kqueue response
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct WatchUnregisterKqueueResponse {}
 
 /// Kqueue doorbell setup request
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]

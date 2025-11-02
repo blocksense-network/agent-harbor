@@ -305,6 +305,34 @@ impl AgentFsDaemon {
         self.connections.remove(&pid);
     }
 
+    /// Clean up all watch registrations for a process (called when process exits)
+    pub fn cleanup_process_watches(&mut self, pid: u32) {
+        println!(
+            "AgentFS Daemon: cleaning up all watches for process {}",
+            pid
+        );
+
+        // Remove all kqueue watches for this process
+        self.watch_service.unregister_watches_by_pid(pid);
+
+        // Remove doorbell idents for this process
+        self.watch_service.clear_doorbell_idents_for_pid(pid);
+
+        // Remove kqueue FDs for this process
+        #[cfg(target_os = "macos")]
+        {
+            self.watch_service.clear_kqueue_fds_for_pid(pid);
+        }
+
+        // Clear any pending events for kqueues belonging to this process
+        self.watch_service.clear_pending_events_for_pid(pid);
+
+        println!(
+            "AgentFS Daemon: finished cleaning up watches for process {}",
+            pid
+        );
+    }
+
     /// Send an unsolicited message to a specific process
     pub fn send_to_process(&self, pid: u32, response: Response) -> Result<(), String> {
         if let Some(stream_mutex) = self.connections.get(&pid) {
