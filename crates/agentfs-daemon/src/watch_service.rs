@@ -45,6 +45,40 @@ const K_CFNUMBER_INT_TYPE: CFNumberType = 9;
 #[cfg(target_os = "macos")]
 const K_CFSTRING_ENCODING_UTF8: u32 = 0x08000100;
 
+// RAII wrapper for CFNumber
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFNumber, CFNumberRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(CFNumber, CFNumberRef, CFNumberGetTypeID);
+
+// RAII wrapper for CFMutableArray
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFMutableArray, CFMutableArrayRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(CFMutableArray, CFMutableArrayRef, CFArrayGetTypeID);
+
+// RAII wrapper for CFMutableDictionary
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFMutableDictionary, CFMutableDictionaryRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(
+    CFMutableDictionary,
+    CFMutableDictionaryRef,
+    CFDictionaryGetTypeID
+);
+
+// RAII wrapper for CFData
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFData, CFDataRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(CFData, CFDataRef, CFDataGetTypeID);
+
+// RAII wrapper for CFError
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFError, CFErrorRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(CFError, CFErrorRef, CFErrorGetTypeID);
+
 #[cfg(target_os = "macos")]
 extern "C" {
     static kCFAllocatorDefault: CFAllocatorRef;
@@ -53,6 +87,13 @@ extern "C" {
     static kCFTypeDictionaryValueCallBacks: *const std::ffi::c_void;
 
     fn CFRelease(cf: *mut std::ffi::c_void);
+
+    // Type ID functions
+    fn CFNumberGetTypeID() -> usize;
+    fn CFArrayGetTypeID() -> usize;
+    fn CFDictionaryGetTypeID() -> usize;
+    fn CFDataGetTypeID() -> usize;
+    fn CFErrorGetTypeID() -> usize;
 
     fn CFStringCreateWithCString(
         alloc: CFAllocatorRef,
@@ -93,6 +134,43 @@ extern "C" {
 }
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
+
+#[cfg(target_os = "macos")]
+use core_foundation::{base::TCFType, declare_TCFType, impl_TCFType};
+#[cfg(target_os = "macos")]
+use scopeguard::guard;
+
+// RAII wrapper for CF objects with release capability (like auto_ptr.release())
+#[cfg(target_os = "macos")]
+struct OwnedCFRef {
+    ptr: Option<*mut std::ffi::c_void>,
+}
+
+#[cfg(target_os = "macos")]
+impl OwnedCFRef {
+    fn new(ptr: *mut std::ffi::c_void) -> Self {
+        Self { ptr: Some(ptr) }
+    }
+
+    // Transfer ownership out (like auto_ptr.release())
+    fn release(mut self) -> *mut std::ffi::c_void {
+        self.ptr.take().expect("CF object already released")
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedCFRef {
+    fn drop(&mut self) {
+        if let Some(ptr) = self.ptr {
+            unsafe { CFRelease(ptr) };
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedCFRef {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedCFRef {}
 
 #[cfg(target_os = "macos")]
 use libc::{c_int, kevent as libc_kevent, timespec};
@@ -797,312 +875,177 @@ impl WatchServiceEventSink {
             }
         }
 
-        // Create CFArrays for paths, flags, and eventIds
+        // Create CFArrays for paths, flags, and eventIds using RAII wrappers
         unsafe {
+            use core_foundation::number::CFNumber;
+            use core_foundation::string::CFString;
+
             // Create CFArray for paths (CFString)
-            let paths_array = CFArrayCreateMutable(
+            let paths_array_raw = CFArrayCreateMutable(
                 kCFAllocatorDefault,
                 num_events as CFIndex,
                 kCFTypeArrayCallBacks,
             );
-            if paths_array.is_null() {
+            if paths_array_raw.is_null() {
                 return Err("Failed to create paths CFArray".to_string());
             }
+            let mut paths_array = OwnedCFRef::new(paths_array_raw as *mut std::ffi::c_void);
 
             for path in &job.paths {
-                let path_cstr = std::ffi::CString::new(path.as_str())
-                    .map_err(|e| format!("Failed to convert path to CString: {}", e))?;
-                let cf_string = CFStringCreateWithCString(
-                    kCFAllocatorDefault,
-                    path_cstr.as_ptr(),
-                    K_CFSTRING_ENCODING_UTF8,
+                let cf_string = CFString::new(path);
+                CFArrayAppendValue(
+                    paths_array_raw,
+                    cf_string.as_CFTypeRef() as *const std::ffi::c_void,
                 );
-                if cf_string.is_null() {
-                    CFRelease(paths_array as *mut std::ffi::c_void);
-                    return Err("Failed to create CFString for path".to_string());
-                }
-                CFArrayAppendValue(paths_array, cf_string as *const std::ffi::c_void);
-                CFRelease(cf_string as *mut std::ffi::c_void);
             }
 
             // Create CFArray for flags (CFNumber)
-            let flags_array = CFArrayCreateMutable(
+            let flags_array_raw = CFArrayCreateMutable(
                 kCFAllocatorDefault,
                 num_events as CFIndex,
                 kCFTypeArrayCallBacks,
             );
-            if flags_array.is_null() {
-                CFRelease(paths_array as *mut std::ffi::c_void);
+            if flags_array_raw.is_null() {
                 return Err("Failed to create flags CFArray".to_string());
             }
+            let mut flags_array = OwnedCFRef::new(flags_array_raw as *mut std::ffi::c_void);
 
             for &flag in &job.flags {
-                let flag_number = CFNumberCreate(
-                    kCFAllocatorDefault,
-                    K_CFNUMBER_SINT32_TYPE,
-                    &flag as *const u32 as *const std::ffi::c_void,
+                let flag_number = CFNumber::from(flag as i32);
+                CFArrayAppendValue(
+                    flags_array_raw,
+                    flag_number.as_CFTypeRef() as *const std::ffi::c_void,
                 );
-                if flag_number.is_null() {
-                    CFRelease(flags_array as *mut std::ffi::c_void);
-                    CFRelease(paths_array as *mut std::ffi::c_void);
-                    return Err("Failed to create CFNumber for flag".to_string());
-                }
-                CFArrayAppendValue(flags_array, flag_number as *const std::ffi::c_void);
-                CFRelease(flag_number as *mut std::ffi::c_void);
             }
 
             // Create CFArray for eventIds (CFNumber)
-            let event_ids_array = CFArrayCreateMutable(
+            let event_ids_array_raw = CFArrayCreateMutable(
                 kCFAllocatorDefault,
                 num_events as CFIndex,
                 kCFTypeArrayCallBacks,
             );
-            if event_ids_array.is_null() {
-                CFRelease(flags_array as *mut std::ffi::c_void);
-                CFRelease(paths_array as *mut std::ffi::c_void);
+            if event_ids_array_raw.is_null() {
                 return Err("Failed to create eventIds CFArray".to_string());
             }
+            let mut event_ids_array = OwnedCFRef::new(event_ids_array_raw as *mut std::ffi::c_void);
 
             for event_id in &event_ids {
-                let id_number = CFNumberCreate(
-                    kCFAllocatorDefault,
-                    K_CFNUMBER_SINT64_TYPE,
-                    event_id as *const u64 as *const std::ffi::c_void,
+                let id_number = CFNumber::from(*event_id as i64);
+                CFArrayAppendValue(
+                    event_ids_array_raw,
+                    id_number.as_CFTypeRef() as *const std::ffi::c_void,
                 );
-                if id_number.is_null() {
-                    CFRelease(event_ids_array as *mut std::ffi::c_void);
-                    CFRelease(flags_array as *mut std::ffi::c_void);
-                    CFRelease(paths_array as *mut std::ffi::c_void);
-                    return Err("Failed to create CFNumber for eventId".to_string());
-                }
-                CFArrayAppendValue(event_ids_array, id_number as *const std::ffi::c_void);
-                CFRelease(id_number as *mut std::ffi::c_void);
             }
 
             // Create top-level dictionary
-            let dict = CFDictionaryCreateMutable(
+            let dict_raw = CFDictionaryCreateMutable(
                 kCFAllocatorDefault,
                 0,
                 kCFTypeDictionaryKeyCallBacks,
                 kCFTypeDictionaryValueCallBacks,
             );
-            if dict.is_null() {
-                CFRelease(event_ids_array as *mut std::ffi::c_void);
-                CFRelease(flags_array as *mut std::ffi::c_void);
-                CFRelease(paths_array as *mut std::ffi::c_void);
+            if dict_raw.is_null() {
                 return Err("Failed to create CFDictionary".to_string());
             }
+            let mut dict = OwnedCFRef::new(dict_raw as *mut std::ffi::c_void);
 
-            // Set dictionary values - create CFString keys and values
-            let type_key_cstr = std::ffi::CString::new("type").unwrap();
-            let type_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                type_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            let fsevents_batch_cstr = std::ffi::CString::new("fsevents_batch").unwrap();
-            let fsevents_batch_str = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                fsevents_batch_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
+            // Set dictionary values using RAII CFString keys and values
+            let type_key = CFString::new("type");
+            let fsevents_batch_str = CFString::new("fsevents_batch");
             CFDictionarySetValue(
-                dict,
-                type_key as *const std::ffi::c_void,
-                fsevents_batch_str as *const std::ffi::c_void,
+                dict_raw,
+                type_key.as_CFTypeRef() as *const std::ffi::c_void,
+                fsevents_batch_str.as_CFTypeRef() as *const std::ffi::c_void,
             );
-            CFRelease(fsevents_batch_str as *mut std::ffi::c_void);
 
-            let version_key_cstr = std::ffi::CString::new("version").unwrap();
-            let version_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                version_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            let version_value: i32 = 1;
-            let version_number = CFNumberCreate(
-                kCFAllocatorDefault,
-                K_CFNUMBER_INT_TYPE,
-                &version_value as *const i32 as *const std::ffi::c_void,
-            );
+            let version_key = CFString::new("version");
+            let version_number = CFNumber::from(1i32);
             CFDictionarySetValue(
-                dict,
-                version_key as *const std::ffi::c_void,
-                version_number as *const std::ffi::c_void,
+                dict_raw,
+                version_key.as_CFTypeRef() as *const std::ffi::c_void,
+                version_number.as_CFTypeRef() as *const std::ffi::c_void,
             );
-            CFRelease(version_number as *mut std::ffi::c_void);
-            CFRelease(version_key as *mut std::ffi::c_void);
 
-            let stream_id_key_cstr = std::ffi::CString::new("stream_id").unwrap();
-            let stream_id_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                stream_id_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            let stream_id_number = CFNumberCreate(
-                kCFAllocatorDefault,
-                K_CFNUMBER_SINT64_TYPE,
-                &job.stream_id as *const u64 as *const std::ffi::c_void,
-            );
+            let stream_id_key = CFString::new("stream_id");
+            let stream_id_number = CFNumber::from(job.stream_id as i64);
             CFDictionarySetValue(
-                dict,
-                stream_id_key as *const std::ffi::c_void,
-                stream_id_number as *const std::ffi::c_void,
+                dict_raw,
+                stream_id_key.as_CFTypeRef() as *const std::ffi::c_void,
+                stream_id_number.as_CFTypeRef() as *const std::ffi::c_void,
             );
-            CFRelease(stream_id_number as *mut std::ffi::c_void);
-            CFRelease(stream_id_key as *mut std::ffi::c_void);
 
-            let num_events_key_cstr = std::ffi::CString::new("num_events").unwrap();
-            let num_events_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                num_events_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            let num_events_value = num_events as i64;
-            let num_events_number = CFNumberCreate(
-                kCFAllocatorDefault,
-                K_CFNUMBER_SINT64_TYPE,
-                &num_events_value as *const i64 as *const std::ffi::c_void,
-            );
+            let num_events_key = CFString::new("num_events");
+            let num_events_number = CFNumber::from(num_events as i64);
             CFDictionarySetValue(
-                dict,
-                num_events_key as *const std::ffi::c_void,
-                num_events_number as *const std::ffi::c_void,
+                dict_raw,
+                num_events_key.as_CFTypeRef() as *const std::ffi::c_void,
+                num_events_number.as_CFTypeRef() as *const std::ffi::c_void,
             );
-            CFRelease(num_events_number as *mut std::ffi::c_void);
-            CFRelease(num_events_key as *mut std::ffi::c_void);
 
-            let paths_key_cstr = std::ffi::CString::new("paths").unwrap();
-            let paths_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                paths_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
+            let paths_key = CFString::new("paths");
             CFDictionarySetValue(
-                dict,
-                paths_key as *const std::ffi::c_void,
-                paths_array as *const std::ffi::c_void,
+                dict_raw,
+                paths_key.as_CFTypeRef() as *const std::ffi::c_void,
+                paths_array_raw as *const std::ffi::c_void,
             );
-            CFRelease(paths_key as *mut std::ffi::c_void);
 
-            let flags_key_cstr = std::ffi::CString::new("flags").unwrap();
-            let flags_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                flags_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
+            let flags_key = CFString::new("flags");
             CFDictionarySetValue(
-                dict,
-                flags_key as *const std::ffi::c_void,
-                flags_array as *const std::ffi::c_void,
+                dict_raw,
+                flags_key.as_CFTypeRef() as *const std::ffi::c_void,
+                flags_array_raw as *const std::ffi::c_void,
             );
-            CFRelease(flags_key as *mut std::ffi::c_void);
 
-            let event_ids_key_cstr = std::ffi::CString::new("event_ids").unwrap();
-            let event_ids_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                event_ids_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
+            let event_ids_key = CFString::new("event_ids");
             CFDictionarySetValue(
-                dict,
-                event_ids_key as *const std::ffi::c_void,
-                event_ids_array as *const std::ffi::c_void,
+                dict_raw,
+                event_ids_key.as_CFTypeRef() as *const std::ffi::c_void,
+                event_ids_array_raw as *const std::ffi::c_void,
             );
-            CFRelease(event_ids_key as *mut std::ffi::c_void);
 
-            let latest_event_id_key_cstr = std::ffi::CString::new("latest_event_id").unwrap();
-            let latest_event_id_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                latest_event_id_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            let latest_event_id_number = CFNumberCreate(
-                kCFAllocatorDefault,
-                K_CFNUMBER_SINT64_TYPE,
-                &latest_event_id as *const u64 as *const std::ffi::c_void,
-            );
+            let latest_event_id_key = CFString::new("latest_event_id");
+            let latest_event_id_number = CFNumber::from(latest_event_id as i64);
             CFDictionarySetValue(
-                dict,
-                latest_event_id_key as *const std::ffi::c_void,
-                latest_event_id_number as *const std::ffi::c_void,
+                dict_raw,
+                latest_event_id_key.as_CFTypeRef() as *const std::ffi::c_void,
+                latest_event_id_number.as_CFTypeRef() as *const std::ffi::c_void,
             );
-            CFRelease(latest_event_id_number as *mut std::ffi::c_void);
-            CFRelease(latest_event_id_key as *mut std::ffi::c_void);
 
             // Add root field
-            let root_key_cstr = std::ffi::CString::new("root").unwrap();
-            let root_key = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                root_key_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            let root_cstr = match std::ffi::CString::new(job.root.as_str()) {
-                Ok(value) => value,
-                Err(e) => {
-                    CFRelease(dict as *mut std::ffi::c_void);
-                    CFRelease(event_ids_array as *mut std::ffi::c_void);
-                    CFRelease(flags_array as *mut std::ffi::c_void);
-                    CFRelease(paths_array as *mut std::ffi::c_void);
-                    CFRelease(root_key as *mut std::ffi::c_void);
-                    CFRelease(type_key as *mut std::ffi::c_void);
-                    return Err(format!("Failed to convert root to CString: {}", e));
-                }
-            };
-            let root_str = CFStringCreateWithCString(
-                kCFAllocatorDefault,
-                root_cstr.as_ptr(),
-                K_CFSTRING_ENCODING_UTF8,
-            );
-            if root_str.is_null() {
-                CFRelease(dict as *mut std::ffi::c_void);
-                CFRelease(event_ids_array as *mut std::ffi::c_void);
-                CFRelease(flags_array as *mut std::ffi::c_void);
-                CFRelease(paths_array as *mut std::ffi::c_void);
-                CFRelease(root_key as *mut std::ffi::c_void);
-                CFRelease(type_key as *mut std::ffi::c_void);
-                return Err("Failed to create CFString for root".to_string());
-            }
+            let root_key = CFString::new("root");
+            let root_str = CFString::new(&job.root);
             CFDictionarySetValue(
-                dict,
-                root_key as *const std::ffi::c_void,
-                root_str as *const std::ffi::c_void,
+                dict_raw,
+                root_key.as_CFTypeRef() as *const std::ffi::c_void,
+                root_str.as_CFTypeRef() as *const std::ffi::c_void,
             );
-            CFRelease(root_str as *mut std::ffi::c_void);
-            CFRelease(root_key as *mut std::ffi::c_void);
-
-            CFRelease(type_key as *mut std::ffi::c_void);
 
             // Serialize to binary property list
             let mut error: CFErrorRef = std::ptr::null_mut();
-            let cf_data = CFPropertyListCreateData(
+            let cf_data_raw = CFPropertyListCreateData(
                 kCFAllocatorDefault,
-                dict as CFPropertyListRef,
+                dict_raw as CFPropertyListRef,
                 K_CFPROPERTY_LIST_BINARY_FORMAT_V1_0,
                 0,
                 &mut error,
             );
 
-            // Clean up dictionary and arrays
-            CFRelease(dict as *mut std::ffi::c_void);
-            CFRelease(event_ids_array as *mut std::ffi::c_void);
-            CFRelease(flags_array as *mut std::ffi::c_void);
-            CFRelease(paths_array as *mut std::ffi::c_void);
-
+            // Handle error - arrays and dict will be cleaned up automatically by OwnedCFRef
             if !error.is_null() {
-                CFRelease(error as *mut std::ffi::c_void);
+                let _error = OwnedCFRef::new(error as *mut std::ffi::c_void);
                 return Err("Failed to serialize property list".to_string());
             }
 
-            if cf_data.is_null() {
+            if cf_data_raw.is_null() {
                 return Err("Failed to create CFData from property list".to_string());
             }
 
-            // Send via CFMessagePort
-            let result = daemon.send_fsevents_batch(job.pid, AGENTFS_MSG_FSEVENTS_BATCH, cf_data);
+            // Wrap CFData in RAII wrapper
+            let cf_data = OwnedCFRef::new(cf_data_raw as *mut std::ffi::c_void);
 
-            // Clean up CFData
-            CFRelease(cf_data as *mut std::ffi::c_void);
+            // Send via CFMessagePort
+            let result =
+                daemon.send_fsevents_batch(job.pid, AGENTFS_MSG_FSEVENTS_BATCH, cf_data_raw);
 
             result
         }

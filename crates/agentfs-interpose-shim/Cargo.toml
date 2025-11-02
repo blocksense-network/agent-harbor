@@ -23,6 +23,9 @@ redhook = "2.0"
 agentfs-proto = { path = "../agentfs-proto" }
 tempfile = "3"
 agentfs-core = { path = "../agentfs-core", optional = true }
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+scopeguard = "1.2"
 
 [features]
 mock-daemon = ["agentfs-core"]

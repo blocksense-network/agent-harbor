@@ -126,6 +126,9 @@ use agentfs_proto::messages::{
 use crate::handshake::*;
 use crate::{WatchService, WatchServiceEventSink, decode_ssz_message, encode_ssz_message};
 
+#[cfg(target_os = "macos")]
+use core_foundation::{base::TCFType, string::CFString};
+
 /// Helper function to get PID for client operations (avoids nested locking issues)
 fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) -> PID {
     let daemon_guard = daemon.lock().unwrap();
@@ -2045,7 +2048,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     {
                         let port_name_str =
                             String::from_utf8_lossy(&port_req.port_name).to_string();
-                        let port_name_cstr = match std::ffi::CString::new(port_name_str) {
+                        let port_name_cstr = match std::ffi::CString::new(port_name_str.as_str()) {
                             Ok(cstr) => cstr,
                             Err(_) => {
                                 let response = Response::error(
@@ -2056,26 +2059,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 return;
                             }
                         };
-                        let cf_name = unsafe {
-                            CFStringCreateWithCString(
+                        let cf_name = CFString::new(&port_name_str);
+                        let port = unsafe {
+                            CFMessagePortCreateRemote(
                                 kCFAllocatorDefault,
-                                port_name_cstr.as_ptr(),
-                                kCFStringEncodingUTF8,
+                                cf_name.as_CFTypeRef() as CFStringRef,
                             )
                         };
-                        if cf_name.is_null() {
-                            let response = Response::error(
-                                "Failed to create CFString for port name".to_string(),
-                                Some(22),
-                            );
-                            send_response(&mut stream, &response);
-                            return;
-                        }
-                        let port =
-                            unsafe { CFMessagePortCreateRemote(kCFAllocatorDefault, cf_name) };
-                        unsafe {
-                            CFRelease(cf_name as *mut std::ffi::c_void);
-                        }
+                        // cf_name will be automatically cleaned up by RAII when it goes out of scope
                         if port.is_null() {
                             let response = Response::error(
                                 "Failed to create CFMessagePort".to_string(),

@@ -14,6 +14,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use std::time::{Duration, SystemTime};
 
+#[cfg(target_os = "macos")]
+use core_foundation::{base::TCFType, declare_TCFType, impl_TCFType};
+#[cfg(target_os = "macos")]
+use scopeguard::guard;
+
 // SSZ imports
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
@@ -108,6 +113,108 @@ struct CFRunLoopSourceWrapper(CFRunLoopSourceRef);
 #[derive(Hash, Eq, PartialEq)]
 struct CFRunLoopSourceKey(CFRunLoopRef, CFStringRef);
 
+// RAII wrapper for CFMessagePort with proper invalidation and release
+#[cfg(target_os = "macos")]
+#[inline]
+fn cf_message_port_get_type_id() -> usize {
+    unsafe { CFMessagePortGetTypeID() as usize }
+}
+
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFMessagePort, CFMessagePortRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(CFMessagePort, CFMessagePortRef, cf_message_port_get_type_id);
+
+// RAII wrapper for CF objects with release capability (like auto_ptr.release())
+#[cfg(target_os = "macos")]
+struct OwnedCFRef {
+    ptr: Option<*mut libc::c_void>,
+}
+
+#[cfg(target_os = "macos")]
+impl OwnedCFRef {
+    fn new(ptr: *mut libc::c_void) -> Self {
+        Self { ptr: Some(ptr) }
+    }
+
+    // Transfer ownership out (like auto_ptr.release())
+    fn release(mut self) -> *mut libc::c_void {
+        self.ptr.take().expect("CF object already released")
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedCFRef {
+    fn drop(&mut self) {
+        if let Some(ptr) = self.ptr {
+            unsafe { CFRelease(ptr) };
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedCFRef {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedCFRef {}
+
+// RAII wrapper for CFString
+#[cfg(target_os = "macos")]
+struct OwnedCFString(CFStringRef);
+
+#[cfg(target_os = "macos")]
+impl OwnedCFString {
+    fn new(ptr: CFStringRef) -> Self {
+        Self(ptr)
+    }
+
+    fn as_cf_string_ref(&self) -> CFStringRef {
+        self.0
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedCFString {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { CFRelease(self.0 as *mut libc::c_void) };
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedCFString {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedCFString {}
+
+// Outer wrapper that ensures invalidation happens before CFRelease
+#[cfg(target_os = "macos")]
+struct OwnedMessagePort {
+    inner: CFMessagePort,
+}
+
+#[cfg(target_os = "macos")]
+impl OwnedMessagePort {
+    fn new(port: CFMessagePortRef) -> Self {
+        Self {
+            inner: unsafe { CFMessagePort::wrap_under_create_rule(port) },
+        }
+    }
+}
+
+// CF objects are thread-safe according to Apple's documentation
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedMessagePort {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedMessagePort {}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedMessagePort {
+    fn drop(&mut self) {
+        unsafe { CFMessagePortInvalidate(self.inner.as_concrete_TypeRef()) };
+        // inner drops automatically and calls CFRelease
+    }
+}
+
 // CF objects are thread-safe according to Apple's documentation
 #[cfg(target_os = "macos")]
 unsafe impl Send for CFMessagePortWrapper {}
@@ -144,6 +251,7 @@ extern "C" {
         mode: CFStringRef,
     ) -> bool;
     fn CFMessagePortInvalidate(port: CFMessagePortRef);
+    fn CFMessagePortGetTypeID() -> u64;
     fn CFRelease(cf: *mut std::ffi::c_void);
     fn CFRetain(cf: *const std::ffi::c_void) -> *mut std::ffi::c_void;
     fn CFStringCreateWithCString(
@@ -389,7 +497,7 @@ extern "C" fn fsevents_replacement_callback(
             ));
 
             // Create synthetic FSEvents data from queued broadcasts
-            let mut synthetic_paths = Vec::new();
+            let mut synthetic_paths: Vec<OwnedCFString> = Vec::new();
             let mut synthetic_flags = Vec::new();
             let mut synthetic_event_ids = Vec::new();
 
@@ -403,7 +511,7 @@ extern "C" fn fsevents_replacement_callback(
                         0x08000100,
                     )
                 };
-                synthetic_paths.push(cf_path);
+                synthetic_paths.push(OwnedCFString::new(cf_path));
 
                 // Convert event kind to FSEvents flags
                 let mut flags = match broadcast.event_kind {
@@ -426,7 +534,7 @@ extern "C" fn fsevents_replacement_callback(
                                 0x08000100,
                             )
                         };
-                        synthetic_paths.push(cf_aux_path);
+                        synthetic_paths.push(OwnedCFString::new(cf_aux_path));
                         synthetic_flags.push(flags);
                         synthetic_event_ids.push(broadcast.seqno);
                     }
@@ -437,21 +545,28 @@ extern "C" fn fsevents_replacement_callback(
             }
 
             // Create CFArray from synthetic paths
-            let cf_paths_array = if !synthetic_paths.is_empty() {
-                unsafe {
+            let cf_paths_array_wrapper = if !synthetic_paths.is_empty() {
+                // Extract raw pointers for CFArray creation
+                let path_ptrs: Vec<CFStringRef> =
+                    synthetic_paths.iter().map(|owned| owned.as_cf_string_ref()).collect();
+
+                let array = unsafe {
                     CFArrayCreate(
                         kCFAllocatorDefault,
-                        synthetic_paths.as_ptr() as *const *const libc::c_void,
-                        synthetic_paths.len() as CFIndex,
+                        path_ptrs.as_ptr() as *const *const libc::c_void,
+                        path_ptrs.len() as CFIndex,
                         std::ptr::null(),
                     )
-                }
+                };
+                Some(OwnedCFRef::new(array as *mut libc::c_void))
             } else {
-                std::ptr::null_mut()
+                None
             };
 
             // Call original callback with synthetic events
-            if !synthetic_paths.is_empty() {
+            if !synthetic_paths.is_empty() && cf_paths_array_wrapper.is_some() {
+                let cf_paths_array =
+                    cf_paths_array_wrapper.as_ref().unwrap().ptr.unwrap() as CFArrayRef;
                 (callback_info.original_callback)(
                     stream_ref,
                     callback_info.original_context as *mut libc::c_void,
@@ -462,15 +577,7 @@ extern "C" fn fsevents_replacement_callback(
                 );
             }
 
-            // Clean up CFString objects
-            for cf_path in synthetic_paths {
-                if !cf_path.is_null() {
-                    unsafe { CFRelease(cf_path as *mut libc::c_void) };
-                }
-            }
-            if !cf_paths_array.is_null() {
-                unsafe { CFRelease(cf_paths_array as *mut libc::c_void) };
-            }
+            // CFString objects and CFArray will be cleaned up automatically by RAII
         }
 
         // TODO: Implement event filtering based on AgentFS overlay state
@@ -516,6 +623,26 @@ extern "C" fn fsevents_message_port_callback(
     data: CFDataRef,
     _info: *mut c_void,
 ) -> CFDataRef {
+    // Catch panics to prevent unwinds crossing FFI boundaries
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fsevents_message_port_callback_impl(_local, msgid, data, _info)
+    })) {
+        Ok(result) => result,
+        Err(_) => {
+            log_message("FSEvents port callback panicked, returning null");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Implementation of the message port callback with RAII cleanup
+#[cfg(target_os = "macos")]
+fn fsevents_message_port_callback_impl(
+    _local: CFMessagePortRef,
+    msgid: SInt32,
+    data: CFDataRef,
+    _info: *mut c_void,
+) -> CFDataRef {
     // We only handle our specific message ID
     const AGENTFS_MSG_FSEVENTS_BATCH: SInt32 = 0x1001;
     if msgid != AGENTFS_MSG_FSEVENTS_BATCH {
@@ -533,7 +660,7 @@ extern "C" fn fsevents_message_port_callback(
         let mut format_out: u32 = 0;
         let mut error: *mut std::ffi::c_void = std::ptr::null_mut();
 
-        let plist = CFPropertyListCreateWithData(
+        let plist_raw = CFPropertyListCreateWithData(
             kCFAllocatorDefault,
             data,
             0, // options
@@ -542,81 +669,53 @@ extern "C" fn fsevents_message_port_callback(
         );
 
         if !error.is_null() {
-            CFRelease(error as *mut std::ffi::c_void);
+            // error will be cleaned up by RAII
+            let _error = OwnedCFRef::new(error);
             log_message("FSEvents port: failed to deserialize property list");
             return std::ptr::null_mut();
         }
 
-        if plist.is_null() {
+        if plist_raw.is_null() {
             log_message("FSEvents port: property list deserialization returned null");
             return std::ptr::null_mut();
         }
 
+        // Wrap plist in RAII wrapper
+        let mut plist = OwnedCFRef::new(plist_raw as *mut libc::c_void);
+
         // Validate it's a dictionary
         let dict_type_id = CFDictionaryGetTypeID();
-        let plist_type_id = CFGetTypeID(plist);
+        let plist_type_id = CFGetTypeID(plist_raw);
         if plist_type_id != dict_type_id {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: property list is not a dictionary");
             return std::ptr::null_mut();
         }
 
-        // Extract dictionary values - create CFString keys
-        let type_key_cstr = std::ffi::CString::new("type").unwrap();
-        let type_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            type_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
-        let version_key_cstr = std::ffi::CString::new("version").unwrap();
-        let version_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            version_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
-        let stream_id_key_cstr = std::ffi::CString::new("stream_id").unwrap();
-        let stream_id_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            stream_id_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
-        let num_events_key_cstr = std::ffi::CString::new("num_events").unwrap();
-        let num_events_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            num_events_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
-        let paths_key_cstr = std::ffi::CString::new("paths").unwrap();
-        let paths_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            paths_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
-        let flags_key_cstr = std::ffi::CString::new("flags").unwrap();
-        let flags_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            flags_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
-        let event_ids_key_cstr = std::ffi::CString::new("event_ids").unwrap();
-        let event_ids_key = CFStringCreateWithCString(
-            kCFAllocatorDefault,
-            event_ids_key_cstr.as_ptr(),
-            kCFStringEncodingUTF8,
-        );
+        // Extract dictionary values - create CFString keys with RAII
+        let type_key = core_foundation::string::CFString::new("type");
+        let version_key = core_foundation::string::CFString::new("version");
+        let stream_id_key = core_foundation::string::CFString::new("stream_id");
+        let num_events_key = core_foundation::string::CFString::new("num_events");
+        let paths_key = core_foundation::string::CFString::new("paths");
+        let flags_key = core_foundation::string::CFString::new("flags");
+        let event_ids_key = core_foundation::string::CFString::new("event_ids");
 
         // Validate type
-        let type_value = CFDictionaryGetValue(plist, type_key as *const std::ffi::c_void);
+        let type_value = CFDictionaryGetValue(
+            plist_raw,
+            type_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if type_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: missing 'type' field");
             return std::ptr::null_mut();
         }
 
         // Get version
-        let version_value = CFDictionaryGetValue(plist, version_key as *const std::ffi::c_void);
+        let version_value = CFDictionaryGetValue(
+            plist_raw,
+            version_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if version_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: missing 'version' field");
             return std::ptr::null_mut();
         }
@@ -628,21 +727,21 @@ extern "C" fn fsevents_message_port_callback(
             &mut version as *mut i32 as *mut std::ffi::c_void,
         ) == 0
         {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: 'version' is not a number");
             return std::ptr::null_mut();
         }
 
         if version != 1 {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message(&format!("FSEvents port: unsupported version: {}", version));
             return std::ptr::null_mut();
         }
 
         // Get stream_id
-        let stream_id_value = CFDictionaryGetValue(plist, stream_id_key as *const std::ffi::c_void);
+        let stream_id_value = CFDictionaryGetValue(
+            plist_raw,
+            stream_id_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if stream_id_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: missing 'stream_id' field");
             return std::ptr::null_mut();
         }
@@ -654,16 +753,16 @@ extern "C" fn fsevents_message_port_callback(
             &mut stream_id as *mut u64 as *mut std::ffi::c_void,
         ) == 0
         {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: 'stream_id' is not a number");
             return std::ptr::null_mut();
         }
 
         // Get num_events
-        let num_events_value =
-            CFDictionaryGetValue(plist, num_events_key as *const std::ffi::c_void);
+        let num_events_value = CFDictionaryGetValue(
+            plist_raw,
+            num_events_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if num_events_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: missing 'num_events' field");
             return std::ptr::null_mut();
         }
@@ -675,15 +774,16 @@ extern "C" fn fsevents_message_port_callback(
             &mut num_events as *mut i64 as *mut std::ffi::c_void,
         ) == 0
         {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: 'num_events' is not a number");
             return std::ptr::null_mut();
         }
 
         // Get paths array
-        let paths_value = CFDictionaryGetValue(plist, paths_key as *const std::ffi::c_void);
+        let paths_value = CFDictionaryGetValue(
+            plist_raw,
+            paths_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if paths_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: missing 'paths' field");
             return std::ptr::null_mut();
         }
@@ -691,7 +791,6 @@ extern "C" fn fsevents_message_port_callback(
         let array_type_id = CFArrayGetTypeID();
         let paths_type_id = CFGetTypeID(paths_value);
         if paths_type_id != array_type_id {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message("FSEvents port: 'paths' is not an array");
             return std::ptr::null_mut();
         }
@@ -699,7 +798,6 @@ extern "C" fn fsevents_message_port_callback(
         let paths_array = paths_value as CFArrayRef;
         let paths_count = CFArrayGetCount(paths_array) as usize;
         if paths_count != num_events as usize {
-            CFRelease(plist as *mut std::ffi::c_void);
             log_message(&format!(
                 "FSEvents port: paths count ({}) != num_events ({})",
                 paths_count, num_events
@@ -707,8 +805,8 @@ extern "C" fn fsevents_message_port_callback(
             return std::ptr::null_mut();
         }
 
-        // Extract paths as CFStringRefs (retain them for the callback)
-        let mut paths: Vec<CFStringRef> = Vec::new();
+        // Extract paths as retained CFStringRefs (RAII managed)
+        let mut paths: Vec<OwnedCFRef> = Vec::new();
         let string_type_id = CFStringGetTypeID();
         for i in 0..paths_count {
             let item = CFArrayGetValueAtIndex(paths_array, i as CFIndex);
@@ -716,34 +814,25 @@ extern "C" fn fsevents_message_port_callback(
                 let cf_string = item as CFStringRef;
                 // Retain the string since we'll release it after the callback
                 CFRetain(cf_string as *mut std::ffi::c_void);
-                paths.push(cf_string);
+                paths.push(OwnedCFRef::new(cf_string as *mut std::ffi::c_void));
             } else {
-                CFRelease(plist as *mut std::ffi::c_void);
-                for path in paths {
-                    CFRelease(path as *mut std::ffi::c_void);
-                }
                 log_message(&format!("FSEvents port: paths[{}] is not a string", i));
                 return std::ptr::null_mut();
             }
         }
 
         // Get flags array
-        let flags_value = CFDictionaryGetValue(plist, flags_key as *const std::ffi::c_void);
+        let flags_value = CFDictionaryGetValue(
+            plist_raw,
+            flags_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if flags_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
-            for path in &paths {
-                CFRelease(*path as *mut std::ffi::c_void);
-            }
             log_message("FSEvents port: missing 'flags' field");
             return std::ptr::null_mut();
         }
 
         let flags_type_id = CFGetTypeID(flags_value);
         if flags_type_id != array_type_id {
-            CFRelease(plist as *mut std::ffi::c_void);
-            for path in &paths {
-                CFRelease(*path as *mut std::ffi::c_void);
-            }
             log_message("FSEvents port: 'flags' is not an array");
             return std::ptr::null_mut();
         }
@@ -751,10 +840,6 @@ extern "C" fn fsevents_message_port_callback(
         let flags_array = flags_value as CFArrayRef;
         let flags_count = CFArrayGetCount(flags_array) as usize;
         if flags_count != num_events as usize {
-            CFRelease(plist as *mut std::ffi::c_void);
-            for path in &paths {
-                CFRelease(*path as *mut std::ffi::c_void);
-            }
             log_message(&format!(
                 "FSEvents port: flags count ({}) != num_events ({})",
                 flags_count, num_events
@@ -777,10 +862,6 @@ extern "C" fn fsevents_message_port_callback(
                 {
                     flags.push(flag);
                 } else {
-                    CFRelease(plist as *mut std::ffi::c_void);
-                    for path in &paths {
-                        CFRelease(*path as *mut std::ffi::c_void);
-                    }
                     log_message(&format!(
                         "FSEvents port: flags[{}] is not a valid number",
                         i
@@ -788,32 +869,23 @@ extern "C" fn fsevents_message_port_callback(
                     return std::ptr::null_mut();
                 }
             } else {
-                CFRelease(plist as *mut std::ffi::c_void);
-                for path in &paths {
-                    CFRelease(*path as *mut std::ffi::c_void);
-                }
                 log_message(&format!("FSEvents port: flags[{}] is not a number", i));
                 return std::ptr::null_mut();
             }
         }
 
         // Get event_ids array
-        let event_ids_value = CFDictionaryGetValue(plist, event_ids_key as *const std::ffi::c_void);
+        let event_ids_value = CFDictionaryGetValue(
+            plist_raw,
+            event_ids_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
         if event_ids_value.is_null() {
-            CFRelease(plist as *mut std::ffi::c_void);
-            for path in &paths {
-                CFRelease(*path as *mut std::ffi::c_void);
-            }
             log_message("FSEvents port: missing 'event_ids' field");
             return std::ptr::null_mut();
         }
 
         let event_ids_type_id = CFGetTypeID(event_ids_value);
         if event_ids_type_id != array_type_id {
-            CFRelease(plist as *mut std::ffi::c_void);
-            for path in &paths {
-                CFRelease(*path as *mut std::ffi::c_void);
-            }
             log_message("FSEvents port: 'event_ids' is not an array");
             return std::ptr::null_mut();
         }
@@ -821,10 +893,6 @@ extern "C" fn fsevents_message_port_callback(
         let event_ids_array = event_ids_value as CFArrayRef;
         let event_ids_count = CFArrayGetCount(event_ids_array) as usize;
         if event_ids_count != num_events as usize {
-            CFRelease(plist as *mut std::ffi::c_void);
-            for path in &paths {
-                CFRelease(*path as *mut std::ffi::c_void);
-            }
             log_message(&format!(
                 "FSEvents port: event_ids count ({}) != num_events ({})",
                 event_ids_count, num_events
@@ -846,10 +914,6 @@ extern "C" fn fsevents_message_port_callback(
                 {
                     event_ids.push(event_id);
                 } else {
-                    CFRelease(plist as *mut std::ffi::c_void);
-                    for path in &paths {
-                        CFRelease(*path as *mut std::ffi::c_void);
-                    }
                     log_message(&format!(
                         "FSEvents port: event_ids[{}] is not a valid number",
                         i
@@ -857,41 +921,39 @@ extern "C" fn fsevents_message_port_callback(
                     return std::ptr::null_mut();
                 }
             } else {
-                CFRelease(plist as *mut std::ffi::c_void);
-                for path in &paths {
-                    CFRelease(*path as *mut std::ffi::c_void);
-                }
                 log_message(&format!("FSEvents port: event_ids[{}] is not a number", i));
                 return std::ptr::null_mut();
             }
         }
 
-        // Clean up property list and keys
-        CFRelease(plist as *mut std::ffi::c_void);
-        CFRelease(type_key as *mut std::ffi::c_void);
-        CFRelease(version_key as *mut std::ffi::c_void);
-        CFRelease(stream_id_key as *mut std::ffi::c_void);
-        CFRelease(num_events_key as *mut std::ffi::c_void);
-        CFRelease(paths_key as *mut std::ffi::c_void);
-        CFRelease(flags_key as *mut std::ffi::c_void);
-        CFRelease(event_ids_key as *mut std::ffi::c_void);
+        // plist will be cleaned up automatically by OwnedCFRef
+        // CFString keys are now RAII and clean up automatically
 
         // Create CFArray from paths for the callback
-        let cf_paths_array = if !paths.is_empty() {
-            CFArrayCreate(
+        let cf_paths_array_wrapper = if !paths.is_empty() {
+            // Extract raw pointers for CFArray creation
+            let path_ptrs: Vec<CFStringRef> =
+                paths.iter().map(|owned| owned.ptr.unwrap() as CFStringRef).collect();
+
+            let array = CFArrayCreate(
                 kCFAllocatorDefault,
-                paths.as_ptr() as *const *const libc::c_void,
-                paths.len() as CFIndex,
+                path_ptrs.as_ptr() as *const *const libc::c_void,
+                path_ptrs.len() as CFIndex,
                 std::ptr::null(),
-            )
+            );
+            if array.is_null() {
+                log_message("Failed to create CFArray for paths");
+                return std::ptr::null_mut();
+            }
+            Some(OwnedCFRef::new(array as *mut libc::c_void))
         } else {
-            std::ptr::null_mut()
+            None
         };
 
         // Find the callback for this stream and deliver events
         let callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
         if let Some(callback_info) = callbacks.values().find(|info| info.stream_id == stream_id) {
-            if !paths.is_empty() && !cf_paths_array.is_null() {
+            if !paths.is_empty() && cf_paths_array_wrapper.is_some() {
                 log_message(&format!(
                     "Delivering {} events to stream {}",
                     paths.len(),
@@ -899,6 +961,7 @@ extern "C" fn fsevents_message_port_callback(
                 ));
 
                 // Call the original FSEvents callback
+                let cf_paths_array = cf_paths_array_wrapper.as_ref().unwrap().ptr.unwrap();
                 (callback_info.original_callback)(
                     callback_info.stream_id as FSEventStreamRef,
                     callback_info.original_context as *mut libc::c_void,
@@ -917,18 +980,9 @@ extern "C" fn fsevents_message_port_callback(
             log_message(&format!("No callback found for stream {}", stream_id));
         }
 
-        // Clean up CFString objects (paths were retained, so release them)
-        for cf_path in paths {
-            if !cf_path.is_null() {
-                CFRelease(cf_path as *mut libc::c_void);
-            }
-        }
-        if !cf_paths_array.is_null() {
-            CFRelease(cf_paths_array as *mut libc::c_void);
-        }
+        // paths and cf_paths_array_wrapper will clean up automatically
+        std::ptr::null_mut()
     }
-
-    std::ptr::null_mut()
 }
 
 /// Create the per-process CFMessagePort for FSEvents delivery
@@ -940,17 +994,9 @@ fn create_fsevents_message_port() -> Result<(), String> {
     }
 
     let port_name = &*FSEVENTS_PORT_NAME;
-    let port_name_cstr = std::ffi::CString::new(port_name.clone())
-        .map_err(|e| format!("Failed to create C string for port name: {}", e))?;
 
-    // Create CFString from C string
-    let cf_string = unsafe {
-        CFStringCreateWithCString(kCFAllocatorDefault, port_name_cstr.as_ptr(), 0x08000100) // kCFStringEncodingUTF8
-    };
-
-    if cf_string.is_null() {
-        return Err("Failed to create CFString for port name".to_string());
-    }
+    // Create CFString from Rust string with RAII
+    let cf_string = core_foundation::string::CFString::new(port_name);
 
     // Create message port context
     let mut context = CFMessagePortContext {
@@ -967,7 +1013,7 @@ fn create_fsevents_message_port() -> Result<(), String> {
     let port = unsafe {
         CFMessagePortCreateLocal(
             kCFAllocatorDefault,
-            cf_string,
+            cf_string.as_concrete_TypeRef() as CFStringRef,
             fsevents_message_port_callback,
             &context,
             &mut should_free_info,
@@ -975,17 +1021,13 @@ fn create_fsevents_message_port() -> Result<(), String> {
     };
 
     if port.is_null() {
-        unsafe { CFRelease(cf_string as *mut c_void) };
         return Err("Failed to create CFMessagePort".to_string());
     }
 
     // Send port name to daemon via control socket
     send_port_name_to_daemon(port_name)?;
 
-    *port_guard = Some(CFMessagePortWrapper(port));
-
-    // Clean up CFString
-    unsafe { CFRelease(cf_string as *mut c_void) };
+    *port_guard = Some(OwnedMessagePort::new(port));
 
     log_message(&format!("Created FSEvents message port: {}", port_name));
     Ok(())
@@ -1018,7 +1060,7 @@ fn send_port_name_to_daemon(port_name: &str) -> Result<(), String> {
 fn add_port_to_run_loop(run_loop: CFRunLoopRef, mode: CFStringRef) -> Result<(), String> {
     let port_guard = FSEVENTS_MESSAGE_PORT.lock().unwrap();
     let port = match port_guard.as_ref() {
-        Some(p) => p.0,
+        Some(p) => p.inner.as_concrete_TypeRef(),
         None => return Err("Message port not created".to_string()),
     };
 
@@ -1037,12 +1079,21 @@ fn add_port_to_run_loop(run_loop: CFRunLoopRef, mode: CFStringRef) -> Result<(),
         return Err("Failed to create CFRunLoopSource for message port".to_string());
     }
 
+    // Ensure we remove the source from run loop if we fail later
+    let _cleanup = guard((run_loop, source, mode), |(rl, src, md)| unsafe {
+        CFRunLoopRemoveSource(rl, src, md);
+        CFRelease(src as *mut c_void);
+    });
+
     // Add source to run loop
     unsafe {
         CFRunLoopAddSource(run_loop, source, mode);
     }
 
     sources_guard.insert(key, CFRunLoopSourceWrapper(source));
+
+    // Source is now owned by the sources_guard, disable cleanup
+    std::mem::forget(_cleanup);
 
     log_message("Added FSEvents message port to run loop");
     Ok(())
@@ -1173,7 +1224,7 @@ static FSEVENTS_QUEUE: std::sync::LazyLock<Mutex<HashMap<u64, Vec<FsEventBroadca
 
 /// Per-process CFMessagePort for FSEvents delivery
 #[cfg(target_os = "macos")]
-static FSEVENTS_MESSAGE_PORT: Mutex<Option<CFMessagePortWrapper>> = Mutex::new(None);
+static FSEVENTS_MESSAGE_PORT: Mutex<Option<OwnedMessagePort>> = Mutex::new(None);
 
 /// Run-loop sources for the message port: (run_loop, mode) -> source
 #[cfg(target_os = "macos")]
