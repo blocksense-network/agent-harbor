@@ -762,6 +762,10 @@ tests/tools/e2e_macos_fskit/**
 
 # AgentFS interpose-specific include patterns as a multiline string
 REPOMIX_AGENTFS_INTERPOSE_PATTERNS := replace("""
+specs/Public/AgentFS/AgentFS.md
+specs/Public/AgentFS/AgentFS-Core.md
+specs/Public/AgentFS/AgentFS-Per-process-FS-mounts.md
+specs/Public/AgentFS/macOS-FS-Hooks.md
 crates/agentfs-core/**
 crates/agentfs-proto/**
 crates/agentfs-interpose-shim/**
