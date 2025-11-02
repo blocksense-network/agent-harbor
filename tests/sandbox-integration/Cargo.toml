@@ -17,6 +17,7 @@ tempfile = { workspace = true }
 tokio = { workspace = true }
 sandbox-core = { path = "../../crates/sandbox-core" }
 sandbox-fs = { path = "../../crates/sandbox-fs" }
+ah-test-utils = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ah-sandbox-macos = { path = "../../crates/ah-sandbox-macos" }

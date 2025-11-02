@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[cfg(feature = "claude")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_claude_version_detection() {
     let agent = ah_agents::claude();
 
@@ -28,7 +28,7 @@ async fn test_claude_version_detection() {
 }
 
 #[cfg(feature = "codex")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_codex_version_detection() {
     let agent = ah_agents::codex();
 
@@ -44,7 +44,7 @@ async fn test_codex_version_detection() {
 }
 
 #[cfg(feature = "claude")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_claude_config_dir() {
     let agent = ah_agents::claude();
     let home = PathBuf::from("/tmp/test-home");
@@ -54,7 +54,7 @@ async fn test_claude_config_dir() {
 }
 
 #[cfg(feature = "codex")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_codex_config_dir() {
     let agent = ah_agents::codex();
     let home = PathBuf::from("/tmp/test-home");
@@ -63,7 +63,7 @@ async fn test_codex_config_dir() {
     assert_eq!(config_dir, PathBuf::from("/tmp/test-home/.config/codex"));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_export_import() {
     use ah_agents::session::{export_directory, import_directory};
     use std::fs;
@@ -90,7 +90,7 @@ async fn test_session_export_import() {
     assert_eq!(content, r#"{"key": "value"}"#);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_credential_copying() {
     use ah_agents::credentials::copy_files;
     use std::fs;
@@ -110,7 +110,7 @@ async fn test_credential_copying() {
     assert!(dst_home.join(".claude/config.json").exists());
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_launch_config_builder() {
     let config = AgentLaunchConfig::new("test prompt", "/tmp/home")
         .interactive(true)
@@ -136,7 +136,7 @@ async fn test_launch_config_builder() {
     assert_eq!(config.working_dir, PathBuf::from("/tmp/work"));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_available_agents() {
     let agents = ah_agents::available_agents();
     assert!(!agents.is_empty());
@@ -144,7 +144,7 @@ fn test_available_agents() {
 }
 
 #[cfg(feature = "claude")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_agent_by_name_claude() {
     let agent = ah_agents::agent_by_name("claude");
     assert!(agent.is_some());
@@ -152,14 +152,14 @@ fn test_agent_by_name_claude() {
 }
 
 #[cfg(feature = "codex")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_agent_by_name_codex() {
     let agent = ah_agents::agent_by_name("codex");
     assert!(agent.is_some());
     assert_eq!(agent.unwrap().name(), "codex");
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_agent_by_name_unknown() {
     let agent = ah_agents::agent_by_name("nonexistent");
     assert!(agent.is_none());

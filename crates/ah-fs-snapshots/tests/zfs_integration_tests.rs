@@ -19,7 +19,7 @@ mod filesystem_test_helpers;
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_pool_creation() {
         // Skip if not running as root (required for ZFS operations)
         if !is_root() {
@@ -55,7 +55,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_zfs_provider_integration() {
         // Skip if not running as root or ZFS not available
         if !is_root() {

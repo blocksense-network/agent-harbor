@@ -143,14 +143,14 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_path_resolver_creation() {
         let temp_dir = TempDir::new().unwrap();
         let resolver = PathResolver::new(temp_dir.path().to_path_buf());
         assert_eq!(resolver.root_dir(), temp_dir.path());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_path_resolver_initialization() {
         let temp_dir = TempDir::new().unwrap();
         let mut resolver = PathResolver::new(temp_dir.path().to_path_buf());
@@ -158,7 +158,7 @@ mod tests {
         assert!(resolver.root_fd.is_some());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_path_resolution_basic() {
         let temp_dir = TempDir::new().unwrap();
         let mut resolver = PathResolver::new(temp_dir.path().to_path_buf());
@@ -173,7 +173,7 @@ mod tests {
         assert!(true); // Test passes as long as it doesn't panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_path_resolution_outside_root() {
         let temp_dir = TempDir::new().unwrap();
         let mut resolver = PathResolver::new(temp_dir.path().to_path_buf());
@@ -186,7 +186,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_can_resolve() {
         let temp_dir = TempDir::new().unwrap();
         let mut resolver = PathResolver::new(temp_dir.path().to_path_buf());

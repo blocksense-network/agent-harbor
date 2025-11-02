@@ -98,7 +98,7 @@ mod event_processing_tests {
         vm
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn agent_thought_events_create_activity_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -129,7 +129,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn file_edit_events_create_activity_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -170,7 +170,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn tool_use_events_create_initial_activity_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -213,7 +213,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn log_events_update_existing_tool_use_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -262,7 +262,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn tool_result_events_complete_tool_use_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -326,7 +326,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn activity_lines_respect_max_rows_setting() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -370,7 +370,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn log_events_for_unknown_tool_execution_are_ignored() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -394,7 +394,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn tool_result_events_for_unknown_tool_execution_are_ignored() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -419,7 +419,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn log_events_without_tool_execution_id_are_ignored() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -443,7 +443,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn events_for_unknown_task_ids_are_ignored() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -466,7 +466,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn events_for_draft_tasks_are_ignored() {
         let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
             Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
@@ -508,7 +508,7 @@ mod event_processing_tests {
         // This test just verifies that no panic occurs and processing continues
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn multiple_tool_executions_are_handled_correctly() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -576,7 +576,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn tool_result_overwrites_log_message_when_no_log_received() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -621,7 +621,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn status_and_other_events_are_not_converted_to_activity_entries() {
         let mut vm = create_test_view_model_with_active_task();
 
@@ -650,7 +650,7 @@ mod event_processing_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn failed_tool_result_updates_status_correctly() {
         let mut vm = create_test_view_model_with_active_task();
 

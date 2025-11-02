@@ -33,4 +33,5 @@ base64 = "0.22"
 eventsource-client = "0.13"
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tokio-test = "0.4"

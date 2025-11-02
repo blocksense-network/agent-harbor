@@ -35,4 +35,5 @@ net = ["sandbox-net"]
 devices = ["sandbox-devices"]
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }

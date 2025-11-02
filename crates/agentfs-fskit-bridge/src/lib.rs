@@ -806,7 +806,7 @@ pub unsafe extern "C" fn agentfs_bridge_get_error_message(
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_type_sizes() {
         // Test that our C-compatible types have expected sizes
         assert_eq!(std::mem::size_of::<AgentFsResult>(), 4); // C enum size

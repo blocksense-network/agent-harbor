@@ -251,7 +251,7 @@ pub fn is_in_editor() -> bool {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_empty_environment() {
         // Use a temporary environment to avoid affecting other tests
         // We can't easily clear the global environment in tests, so we'll test
@@ -273,7 +273,7 @@ mod tests {
         assert!(detected.len() >= 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_tmux() {
         // Save original values
         let original_tmux = std::env::var("TMUX").ok();
@@ -300,7 +300,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_zellij() {
         // Save original values
         let original_zellij = std::env::var("ZELLIJ").ok();
@@ -327,7 +327,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_kitty() {
         // Save original values
         let original_kitty_pid = std::env::var("KITTY_PID").ok();
@@ -356,7 +356,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_emacs() {
         // Save original values
         let original_inside_emacs = std::env::var("INSIDE_EMACS").ok();
@@ -372,7 +372,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_neovim() {
         // Save original values
         let original_vimruntime = std::env::var("VIMRUNTIME").ok();
@@ -383,13 +383,19 @@ mod tests {
         std::env::set_var("VIMRUNTIME", "/usr/share/nvim/runtime");
         std::env::remove_var("NVIM");
         std::env::remove_var("NVIM_LISTEN_ADDRESS");
-        assert!(is_in_neovim(), "Should detect neovim via VIMRUNTIME containing '/nvim/runtime'");
+        assert!(
+            is_in_neovim(),
+            "Should detect neovim via VIMRUNTIME containing '/nvim/runtime'"
+        );
         assert!(is_in_editor());
 
         // Test case 2: NVIM environment variable
         std::env::remove_var("VIMRUNTIME");
         std::env::set_var("NVIM", "/tmp/nvim.sock");
-        assert!(is_in_neovim(), "Should detect neovim via NVIM environment variable");
+        assert!(
+            is_in_neovim(),
+            "Should detect neovim via NVIM environment variable"
+        );
         assert!(is_in_editor());
 
         // Restore original values
@@ -407,7 +413,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_iterm2() {
         // Save original values
         let original_term_program = std::env::var("TERM_PROGRAM").ok();
@@ -451,7 +457,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_detect_vim() {
         // Save original values
         let original_vimruntime = std::env::var("VIMRUNTIME").ok();
@@ -461,9 +467,12 @@ mod tests {
         // Clear neovim variables to ensure clean test
         std::env::remove_var("NVIM");
         std::env::remove_var("NVIM_LISTEN_ADDRESS");
-        
+
         std::env::set_var("VIMRUNTIME", "/usr/share/vim/vim82");
-        assert!(is_in_vim(), "Should detect vim with VIMRUNTIME=/usr/share/vim/vim82");
+        assert!(
+            is_in_vim(),
+            "Should detect vim with VIMRUNTIME=/usr/share/vim/vim82"
+        );
         assert!(is_in_editor());
 
         // Should not detect vim if it's actually neovim
@@ -486,7 +495,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_wrapping_order() {
         // Save original values
         let original_kitty_pid = std::env::var("KITTY_PID").ok();

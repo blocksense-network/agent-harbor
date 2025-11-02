@@ -11,3 +11,6 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 serde.workspace = true
 schemars = { version = "0.8", features = ["preserve_order"] }
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

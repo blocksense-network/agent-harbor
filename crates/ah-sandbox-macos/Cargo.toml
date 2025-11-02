@@ -20,3 +20,6 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 nix = { workspace = true }
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

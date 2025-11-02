@@ -49,7 +49,7 @@ pub struct AuditEntry {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_message_serialization() {
         let request = Message::FilesystemRequest(FilesystemRequest {
             path: "/etc/passwd".to_string(),

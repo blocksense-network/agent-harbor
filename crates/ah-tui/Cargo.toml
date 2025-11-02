@@ -46,6 +46,7 @@ ctrlc = "3.4"
 uuid = { version = "1.0", features = ["v4"] }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tokio-test = "0.4"
 ah-test-scenarios = { path = "../ah-test-scenarios" }
 ah-rest-mock-client = { path = "../ah-rest-mock-client" }

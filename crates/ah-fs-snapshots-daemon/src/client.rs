@@ -248,7 +248,7 @@ pub enum DaemonError {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_client_creation() {
         let client = DaemonClient::new();
         assert_eq!(client.socket_path, DEFAULT_SOCKET_PATH);
@@ -258,7 +258,7 @@ mod tests {
         assert_eq!(custom_client.socket_path, custom_path);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_request_construction() {
         let ping_req = Request::ping();
         assert!(matches!(ping_req, Request::Ping(_)));

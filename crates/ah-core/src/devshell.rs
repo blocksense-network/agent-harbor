@@ -156,14 +156,14 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_names_no_flake() {
         let temp_dir = TempDir::new().unwrap();
         let names = devshell_names(temp_dir.path()).await.unwrap();
         assert_eq!(names, Vec::<String>::new());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_names_regex_parsing() {
         let temp_dir = TempDir::new().unwrap();
         let flake_content = r#"
@@ -183,7 +183,7 @@ mod tests {
         assert!(names.contains(&"custom".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_names_empty_flake() {
         let temp_dir = TempDir::new().unwrap();
         let flake_content = r#"
@@ -199,7 +199,7 @@ mod tests {
         assert_eq!(names, Vec::<String>::new());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_validation_success() {
         let temp_dir = TempDir::new().unwrap();
         let flake_content = r#"
@@ -217,7 +217,7 @@ mod tests {
         assert!(names.contains(&"default".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_validation_failure() {
         let temp_dir = TempDir::new().unwrap();
         let flake_content = r#"
@@ -234,7 +234,7 @@ mod tests {
         assert!(names.contains(&"default".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_without_flake() {
         let temp_dir = TempDir::new().unwrap();
         // No flake.nix file

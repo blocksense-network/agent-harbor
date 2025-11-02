@@ -19,3 +19,6 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dependencies.ah-fs-snapshots-traits]
 path = "../ah-fs-snapshots-traits"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

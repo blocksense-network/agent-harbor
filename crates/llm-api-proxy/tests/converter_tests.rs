@@ -7,7 +7,7 @@ use chrono::Utc;
 use llm_api_proxy::converters::{anthropic_to_openai, openai_to_anthropic};
 use serde_json::json;
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_openai_request_to_anthropic() {
     let request = openai::CreateChatCompletionRequest {
         model: "gpt-4o-mini".to_string(),
@@ -71,7 +71,7 @@ fn test_openai_request_to_anthropic() {
     );
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_anthropic_response_to_openai() {
     let response = anthropic::CreateMessageResponse {
         content: vec![
@@ -111,7 +111,7 @@ fn test_anthropic_response_to_openai() {
     assert_eq!(completion.usage.as_ref().unwrap().total_tokens, 15);
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_stream_event_conversions() {
     let chunk = openai::CreateChatCompletionStreamResponse {
         id: "chunk_1".to_string(),

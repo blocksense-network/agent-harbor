@@ -11,3 +11,6 @@ ah-rest-api-contract = { path = "../ah-rest-api-contract" }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

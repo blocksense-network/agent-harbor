@@ -39,6 +39,7 @@ secret-service = { version = "3.0", features = ["rt-tokio-crypto-rust"] }
 windows = { version = "0.52", features = ["Win32_Security_Credentials"] }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = "3.8"
 ah-repo = { path = "../ah-repo" }
 reqwest = { version = "0.12", features = ["json"] }

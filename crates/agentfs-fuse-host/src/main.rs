@@ -111,14 +111,14 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_config_loading_default() {
         let config = load_config(None).unwrap();
         assert!(config.enable_xattrs);
         assert!(!config.enable_ads);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_config_loading_from_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
         let config_json = r#"{
@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[cfg(feature = "fuse")]
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_adapter_creation() {
         let config = FsConfig::default();
         let adapter = adapter::AgentFsFuse::new(config);

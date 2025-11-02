@@ -479,7 +479,7 @@ fn attempt_handshake(
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn allowlist_allows_when_not_set() {
         let _lock = ENV_GUARD.lock().unwrap();
         remove_env_var(ENV_ALLOWLIST);
@@ -489,7 +489,7 @@ mod tests {
         assert!(decision.matched_entry.is_none());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn allowlist_matches_basename() {
         let _lock = ENV_GUARD.lock().unwrap();
         set_env_var(ENV_ALLOWLIST, "MyApp,OtherApp");
@@ -499,7 +499,7 @@ mod tests {
         assert_eq!(decision.matched_entry.as_deref(), Some("MyApp"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn allowlist_rejects_non_match() {
         let _lock = ENV_GUARD.lock().unwrap();
         set_env_var(ENV_ALLOWLIST, "OtherApp");

@@ -328,7 +328,7 @@ mod tests {
     use super::*;
     use ssz::{Decode, Encode};
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_request_roundtrip() {
         let req = Request::snapshot(42, "test-checkpoint".to_string());
         let bytes = req.as_ssz_bytes();
@@ -342,7 +342,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_request_empty_label() {
         let req = Request::snapshot(99, String::new());
         let bytes = req.as_ssz_bytes();
@@ -356,7 +356,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_response_success() {
         let resp = Response::success(42, 1000, 123456789);
         let bytes = resp.as_ssz_bytes();
@@ -368,7 +368,7 @@ mod tests {
         assert_eq!(decoded.ts_ns(), Some(123456789));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_response_error() {
         let resp = Response::error("test error".to_string());
         let bytes = resp.as_ssz_bytes();

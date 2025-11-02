@@ -467,7 +467,7 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_block_header_roundtrip() {
         let mut header = AhrBlockHeader::new(1234567890, 5000);
         header.uncompressed_len = 1024;
@@ -485,7 +485,7 @@ mod tests {
         assert!(decoded.is_last_block());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_rec_data_roundtrip() {
         let data = RecData::new(9876543210, 1000, b"hello world".to_vec());
 
@@ -500,7 +500,7 @@ mod tests {
         assert_eq!(decoded.bytes, b"hello world");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_rec_resize_roundtrip() {
         let resize = RecResize::new(1111111111, 120, 40);
 
@@ -516,7 +516,7 @@ mod tests {
         assert_eq!(decoded.rows, 40);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_rec_snapshot_roundtrip() {
         let snapshot = RecSnapshot::new(1234567890, 42, 1000, "checkpoint-after-build".to_string());
 
@@ -533,7 +533,7 @@ mod tests {
         assert_eq!(decoded.label, "checkpoint-after-build");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_rec_snapshot_empty_label() {
         let snapshot = RecSnapshot::new(1111111111, 99, 5000, String::new());
 
@@ -548,7 +548,7 @@ mod tests {
         assert_eq!(decoded.label, "");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_record_enum_roundtrip() {
         let records = vec![
             Record::Data(RecData::new(100, 0, b"test".to_vec())),

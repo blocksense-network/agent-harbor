@@ -140,7 +140,7 @@ pub fn parse_push_to_remote_flag(value: &str) -> Result<bool> {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_push_to_remote_flag_truthy() {
         assert!(parse_push_to_remote_flag("1").unwrap());
         assert!(parse_push_to_remote_flag("true").unwrap());
@@ -150,7 +150,7 @@ mod tests {
         assert!(parse_push_to_remote_flag("True").unwrap());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_push_to_remote_flag_falsy() {
         assert!(!parse_push_to_remote_flag("0").unwrap());
         assert!(!parse_push_to_remote_flag("false").unwrap());
@@ -160,14 +160,14 @@ mod tests {
         assert!(!parse_push_to_remote_flag("False").unwrap());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_push_to_remote_flag_invalid() {
         assert!(parse_push_to_remote_flag("maybe").is_err());
         assert!(parse_push_to_remote_flag("invalid").is_err());
         assert!(parse_push_to_remote_flag("").is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_push_options_builder() {
         let options = PushOptions::new("feature-branch".to_string())
             .with_push_to_remote(Some(true))

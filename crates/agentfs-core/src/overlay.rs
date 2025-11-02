@@ -142,7 +142,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_host_lower_fs_basic() {
         let temp_dir = TempDir::new().unwrap();
         let test_file = temp_dir.path().join("test.txt");

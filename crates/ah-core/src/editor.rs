@@ -169,7 +169,7 @@ mod tests {
     use std::env;
     use tempfile::NamedTempFile;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_discover_editor_with_env_var() {
         // Test with EDITOR set
         env::set_var("EDITOR", "vim");
@@ -182,7 +182,7 @@ mod tests {
         env::remove_var("EDITOR");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_editor_available() {
         // Should be able to check availability of editors
         // Note: In some environments, no editors may be available, which is fine
@@ -191,7 +191,7 @@ mod tests {
         let _ = editor_available("vim");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_process_template() {
         let hint_with_newline = format!("\n{}", EDITOR_HINT);
         let hint_without_newline = EDITOR_HINT.to_string();
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(process_template(input4), "Task content\nMore content");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_process_template_empty_content() {
         // Empty content should remain empty
         assert_eq!(process_template(String::new()), "");
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(process_template(input), "");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_empty_validation() {
         // Create a temporary file with only the hint
         let mut temp_file = NamedTempFile::new().unwrap();

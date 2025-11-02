@@ -539,7 +539,7 @@ impl AgentExecutor for ClaudeAgent {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_version() {
         let output = "claude version 2.0.15";
         let result = ClaudeAgent::parse_version(output);
@@ -548,7 +548,7 @@ mod tests {
         assert_eq!(version.version, "2.0.15");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_version_simple() {
         let output = "2.0.15";
         let result = ClaudeAgent::parse_version(output);
@@ -557,13 +557,13 @@ mod tests {
         assert_eq!(version.version, "2.0.15");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_agent_name() {
         let agent = ClaudeAgent::new();
         assert_eq!(agent.name(), "claude");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_config_dir() {
         let agent = ClaudeAgent::new();
         let home = PathBuf::from("/home/user");
@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(config, PathBuf::from("/home/user/.claude"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_extract_access_token() {
         let agent = ClaudeAgent::new();
 
@@ -595,7 +595,7 @@ mod tests {
         assert!(result_invalid.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_oauth_credentials() {
         let json_str = r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-test-token","refreshToken":"refresh-token","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
 
@@ -606,7 +606,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_real_claude_credentials() {
         // Test with the real format from the user's example
         let json_str = r#"{"claudeAiOauth":{"accessToken":"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","refreshToken":"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","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;

@@ -399,7 +399,7 @@ impl RecordingSession {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_terminal_state_basic() {
         let mut term = TerminalState::new(24, 80);
 
@@ -414,7 +414,7 @@ mod tests {
         assert!(screen.contents().contains("Hello"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_terminal_state_multiple_writes() {
         let mut term = TerminalState::new(24, 80);
 

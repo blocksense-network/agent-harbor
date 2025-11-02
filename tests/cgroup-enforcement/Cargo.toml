@@ -21,3 +21,6 @@ path = "src/cpu_burner.rs"
 [[bin]]
 name = "test_orchestrator"
 path = "src/test_orchestrator.rs"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

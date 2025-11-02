@@ -33,6 +33,7 @@ neovim = []
 emacs = []
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tokio-test = "0.4"
 expectrl = { version = "0.3", features = ["async"] }
 futures-lite = "1.13"

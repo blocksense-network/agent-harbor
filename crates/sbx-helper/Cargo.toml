@@ -30,4 +30,5 @@ sandbox-net = { path = "../sandbox-net" }
 sandbox-proto = { path = "../sandbox-proto" }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }

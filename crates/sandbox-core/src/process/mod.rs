@@ -241,13 +241,13 @@ impl ProcessManager {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_process_manager_creation() {
         let manager = ProcessManager::new();
         assert!(!manager.config().command.is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_process_config() {
         let config = ProcessConfig {
             command: vec!["echo".to_string(), "hello".to_string()],

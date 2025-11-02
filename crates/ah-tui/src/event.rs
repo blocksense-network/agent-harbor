@@ -143,7 +143,7 @@ impl Default for EventHandler {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_should_quit() {
         // Ctrl+C should quit
         let ctrl_c = CrosstermEvent::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));

@@ -100,6 +100,7 @@ fn remove_env_var(key: &str) {
 ///
 /// The test_helper binary itself contains rich assertions and will exit with
 /// non-zero status if AgentFS behavior doesn't match expectations.
+#[cfg(target_os = "macos")]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     command: &str,
@@ -145,6 +146,7 @@ fn execute_test_scenario(
 ///
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
+#[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: Request,
@@ -298,7 +300,7 @@ mod tests {
     use std::sync::mpsc;
     use tempfile::tempdir;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shim_performs_handshake_when_allowed() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -401,7 +403,7 @@ mod tests {
         remove_env_var("AGENTFS_INTERPOSE_LOG");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_fd_open_request_encoding() {
         // Test that fd_open requests can be properly encoded/decoded
         let request = Request::fd_open("/test/file.txt".to_string(), libc::O_RDONLY as u32, 0o644);
@@ -419,7 +421,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_fd_open_response_encoding() {
         // Test that fd_open responses can be properly encoded/decoded
         let response = Response::fd_open(42);
@@ -434,7 +436,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shim_skips_handshake_when_not_allowed() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -491,7 +493,7 @@ mod tests {
         remove_env_var("AGENTFS_INTERPOSE_LOG");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn interpose_end_to_end_file_operations() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -624,7 +626,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn interpose_end_to_end_directory_operations() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -745,7 +747,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn interpose_end_to_end_readlink_operations() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -849,7 +851,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn interpose_end_to_end_metadata_operations() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -935,7 +937,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn interpose_end_to_end_namespace_operations() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1079,7 +1081,7 @@ mod tests {
     /// Assert: `read(fd2)` returns correct content; mapping table contains `fd1 → "/tmp/test/dir1"`
     /// Action: `close(fd1)`, then `openat(fd1, "file.txt", O_RDONLY)`
     /// Assert: Returns `EBADF` (invalid file descriptor)
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_1_basic_dirfd_mapping() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1151,7 +1153,7 @@ mod tests {
     /// Assert: Opens `/tmp/test/dir1/file.txt` correctly
     /// Action: `chdir("/tmp")`, then same `openat(AT_FDCWD, "dir1/file.txt", O_RDONLY)`
     /// Assert: Now opens `/tmp/dir1/file.txt` (current working directory changed)
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_2_at_fdcwd_special_case() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1225,7 +1227,7 @@ mod tests {
     /// Assert: Both fd1 and fd2 (fd1, fd2=10) map to `/tmp/test/dir1`
     /// Action: `close(fd1)`, `openat(fd2, "file.txt", O_RDONLY)`
     /// Assert: Still works because fd2 maintains the mapping
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_3_file_descriptor_duplication() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1296,7 +1298,7 @@ mod tests {
     /// Setup: Create `/tmp/test/dir1/subdir/..` scenario
     /// Action: `openat(fd1, "subdir/../file.txt", O_RDONLY)`
     /// Assert: Opens `/tmp/test/dir1/file.txt` (`..` resolved correctly)
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_4_path_resolution_edge_cases() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1375,7 +1377,7 @@ mod tests {
     /// Assert: Creates `/tmp/test/newdir`
     /// Action: `openat(fd1, "newdir", O_RDONLY)` → fd2, `openat(fd2, "file.txt", O_CREAT|O_WRONLY, 0644)` → fd3
     /// Assert: Creates `/tmp/test/newdir/file.txt`
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_5_directory_operations_with_dirfd() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1450,7 +1452,7 @@ mod tests {
     /// Setup: Create `/tmp/test/src/file.txt`, `open("/tmp/test/src", O_RDONLY)` → fd_src, `open("/tmp/test/dst", O_RDONLY)` → fd_dst
     /// Action: `renameat(fd_src, "file.txt", fd_dst, "renamed.txt")`
     /// Assert: File moved from `/tmp/test/src/file.txt` to `/tmp/test/dst/renamed.txt`
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_6_rename_operations_with_dirfd() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1528,7 +1530,7 @@ mod tests {
     /// Assert: Creates hard link `/tmp/test/hardlink.txt` pointing to same inode
     /// Action: `symlinkat("target", fd1, "symlink.txt")`
     /// Assert: Creates symlink `/tmp/test/symlink.txt` → "target"
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_7_link_operations_with_dirfd() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1599,7 +1601,7 @@ mod tests {
     /// Setup: `open("/tmp/test/dir1", O_RDONLY)` → fd1, then `close(fd1)`
     /// Action: `openat(fd1, "file.txt", O_RDONLY)`
     /// Assert: Returns `EBADF`
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_9_invalid_dirfd_handling() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1668,7 +1670,7 @@ mod tests {
     /// Action: All threads perform `*at` operations simultaneously
     /// Assert: No race conditions, deadlocks, or corrupted mappings
     /// Assert: All operations complete successfully with correct results
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_8_concurrent_access_thread_safety() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1750,7 +1752,7 @@ mod tests {
     /// Action: Execute 1000 openat operations and measure performance
     /// Assert: Operations complete within reasonable time bounds
     /// Assert: No performance regressions or bottlenecks
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_10_performance_regression_tests() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -1860,7 +1862,7 @@ mod tests {
     /// Assert: Returns lower layer content without copy-up
     /// Action: `openat(fd, "file.txt", O_WRONLY)` (write operation)
     /// Assert: Triggers copy-up, creates upper layer entry
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore]
     fn test_t25_11_overlay_filesystem_semantics() {
         let _lock = match ENV_GUARD.lock() {
@@ -1939,7 +1941,7 @@ mod tests {
     /// Action: Each process opens directories and performs *at operations
     /// Assert: Operations from different processes are isolated
     /// Assert: Each process sees its own branch context
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_12_process_isolation() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -2014,7 +2016,7 @@ mod tests {
     /// Action: Process B receives fd and calls openat(received_fd, "file.txt", O_RDONLY)
     /// Assert: Works correctly if fd is still valid in receiving process context
     /// Note: This tests edge case of fd sharing across processes
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_13_cross_process_fd_sharing() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -2088,7 +2090,7 @@ mod tests {
     /// Action: Open many file descriptors, perform *at operations, then close them
     /// Assert: Mapping table size returns to baseline after cleanup
     /// Assert: No memory leaks in dirfd tracking
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_14_memory_leak_prevention() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
@@ -2163,7 +2165,7 @@ mod tests {
     /// Setup: Various error conditions (non-existent paths, permission denied, etc.)
     /// Action: Call `*at` functions with invalid `dirfd` or paths
     /// Assert: Error codes match POSIX specifications (`ENOENT`, `EACCES`, `EBADF`, etc.)
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_t25_15_error_code_consistency() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,

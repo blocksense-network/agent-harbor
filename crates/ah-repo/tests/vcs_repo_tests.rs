@@ -74,7 +74,7 @@ fn setup_git_repo() -> Result<(TempDir, TempDir), Box<dyn std::error::Error>> {
     Ok((temp_home, repo_dir))
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_repository_detection() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -93,7 +93,7 @@ fn test_repository_detection() {
     assert_eq!(vcs_repo.vcs_type(), VcsType::Git);
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_current_branch() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -107,7 +107,7 @@ fn test_current_branch() {
     assert_eq!(branch, "main");
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_branch_validation() {
     // Valid branch names
     assert!(VcsRepo::valid_branch_name("feature-branch"));
@@ -121,7 +121,7 @@ fn test_branch_validation() {
     assert!(!VcsRepo::valid_branch_name("feature@branch")); // @ symbol
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_protected_branches() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -138,7 +138,7 @@ fn test_protected_branches() {
     assert!(!vcs_repo.is_protected_branch("feature-branch"));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_start_branch() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -160,7 +160,7 @@ fn test_start_branch() {
     assert!(matches!(result, Err(VcsError::ProtectedBranch(_))));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_commit_file() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -184,7 +184,7 @@ fn test_commit_file() {
     assert!(!status.contains("test.txt"));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_branches() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -205,7 +205,7 @@ fn test_branches() {
     assert!(branches.contains(&"branch2".to_string()));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_default_remote_http_url() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -246,14 +246,14 @@ fn test_default_remote_http_url() {
     assert_eq!(url, Some("https://github.com/user/repo.git".to_string()));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_repository_not_found() {
     let temp_dir = TempDir::new().unwrap();
     let result = VcsRepo::new(temp_dir.path());
     assert!(matches!(result, Err(VcsError::RepositoryNotFound(_))));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_invalid_branch_name() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -267,7 +267,7 @@ fn test_invalid_branch_name() {
     assert!(matches!(result, Err(VcsError::InvalidBranchName(_))));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_basic() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -325,7 +325,7 @@ edition = "2021""#,
     assert!(has_cargo, "Cargo.toml should be tracked");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_empty_repo() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -347,7 +347,7 @@ async fn test_stream_tracked_files_empty_repo() {
     assert_eq!(files[0], "README.md");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_partial_collection() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -389,7 +389,7 @@ async fn test_stream_tracked_files_partial_collection() {
     assert!(third.ends_with(".txt") || third == "README.md");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_with_nested_dirs() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -429,7 +429,7 @@ async fn test_stream_tracked_files_with_nested_dirs() {
     assert!(file_names.contains(&"README.md".to_string()));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_non_git_repo() {
     let temp_dir = TempDir::new().unwrap();
     // For non-git repos, VcsRepo::new will fail, so we need to create a mock repo
@@ -454,7 +454,7 @@ async fn test_stream_tracked_files_non_git_repo() {
     assert_eq!(files.len(), 0);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_error_handling() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -483,7 +483,7 @@ async fn test_stream_tracked_files_error_handling() {
     assert_eq!(files.len(), 0);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_large_repo() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");
@@ -526,7 +526,7 @@ async fn test_stream_tracked_files_large_repo() {
     assert!(file_names.contains(&"file_99.txt".to_string()));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_stream_tracked_files_concurrent_access() {
     if !check_git_available() {
         eprintln!("Git not available, skipping test");

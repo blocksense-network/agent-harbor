@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_integration_basic_functionality() -> anyhow::Result<()> {
     // Test that the basic components can be created and work together
     let mut runner = TestedTerminalProgram::new("echo").spawn().await?;
@@ -26,7 +26,7 @@ async fn test_integration_basic_functionality() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_protocol_types() {
     use crate::protocol::*;
 
@@ -56,7 +56,7 @@ fn test_protocol_types() {
     }
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_cli_client_help() {
     use std::process::Command;
 
@@ -89,7 +89,7 @@ fn test_cli_client_help() {
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_test_guest_integration() -> anyhow::Result<()> {
     // Build the path to the test-guest binary
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -165,7 +165,7 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_basic_echo() -> anyhow::Result<()> {
     // Simple test that just verifies we can spawn a process
     let runner = crate::TestedTerminalProgram::new("echo").arg("hello world").spawn().await?;
@@ -177,7 +177,7 @@ async fn test_basic_echo() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_runner_builder() -> anyhow::Result<()> {
     // Test spawning a program
     let mut runner = crate::TestedTerminalProgram::new("echo")

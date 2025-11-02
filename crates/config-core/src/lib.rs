@@ -166,7 +166,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_toml_parsing() {
         let toml = r#"
             ui = "tui"
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(json["repo"]["task-runner"], "just");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_schema_validation() {
         let valid_toml = r#"
             ui = "tui"
@@ -193,7 +193,7 @@ mod tests {
         assert!(loader::validate_against_schema(&json).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_invalid_schema_validation() {
         let invalid_toml = r#"
             ui = "invalid-ui-value"
@@ -203,7 +203,7 @@ mod tests {
         assert!(loader::validate_against_schema(&json).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_merge_deep_objects() {
         let mut base = serde_json::json!({"a": {"b": 1}});
         let layer = serde_json::json!({"a": {"c": 2}});
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(base["a"]["c"], 2);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_merge_arrays_replace() {
         let mut base = serde_json::json!({"arr": [1, 2]});
         let layer = serde_json::json!({"arr": [3, 4]});
@@ -222,14 +222,14 @@ mod tests {
         assert_eq!(base["arr"], serde_json::json!([3, 4]));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_insert_dotted() {
         let mut root = serde_json::json!({});
         merge::insert_dotted(&mut root, "repo.task-runner", serde_json::json!("just"));
         assert_eq!(root["repo"]["task-runner"], "just");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_enforcement_masking() {
         let mut layer = serde_json::json!({"remote-server": "user-value", "ui": "tui"});
         let enforcement = enforcement::Enforcement {
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(layer["ui"], "tui");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_provenance_tracking() {
         let before = serde_json::json!({"key": "old"});
         let after = serde_json::json!({"key": "new"});
@@ -256,7 +256,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_paths_discovery() {
         let temp_dir = TempDir::new().unwrap();
         let repo_root = temp_dir.path().join("repo");
@@ -270,7 +270,7 @@ mod tests {
         assert!(paths.repo_user.unwrap().starts_with(&repo_root));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_env_overlay() {
         // Test that env overlay handles AH_ prefix correctly
         let overlay = env::env_overlay().unwrap();
@@ -278,7 +278,7 @@ mod tests {
         assert!(overlay.as_object().unwrap().is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_flags_overlay() {
         let flags = vec![("repo.task-runner", "just"), ("ui", "tui")];
         let overlay = env::flags_overlay(&flags);
@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(overlay["ui"], "tui");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_typed_extraction() {
         let json = serde_json::json!({
             "ui": "tui",
@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(repo_config.init.task_runner, Some("just".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_load_all_integration() {
         let temp_dir = TempDir::new().unwrap();
         let repo_root = temp_dir.path().join("repo");

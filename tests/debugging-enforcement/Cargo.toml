@@ -32,3 +32,6 @@ path = "src/test_orchestrator.rs"
 [[bin]]
 name = "mount_test"
 path = "src/mount_test.rs"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

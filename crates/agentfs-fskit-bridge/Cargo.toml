@@ -33,3 +33,6 @@ cc = "1.0"
 [features]
 # Feature to enable linking against the sys crate (disabled by default for testing)
 link-sys = []
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

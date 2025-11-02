@@ -12,6 +12,7 @@ license = "MIT OR Apache-2.0"
 # Core dependencies
 tempfile = "3.0"
 uuid = { version = "1.0", features = ["v4"] }
+ah-test-utils-macros = { path = "../ah-test-utils-macros" }
 
 # Time and date handling
 chrono = { version = "0.4", features = ["serde"] }

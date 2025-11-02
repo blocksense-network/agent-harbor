@@ -499,14 +499,14 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_filesystem_manager_creation() {
         let manager = FilesystemManager::new();
         assert!(manager.setup_mounts().await.is_ok());
         assert!(manager.cleanup_mounts().await.is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_filesystem_config_defaults() {
         let config = FilesystemConfig::default();
 
@@ -521,7 +521,7 @@ mod tests {
         assert!(!config.static_mode);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_blacklist_checking() {
         let config = FilesystemConfig {
             static_mode: true,
@@ -550,7 +550,7 @@ mod tests {
         assert!(!dynamic_manager.is_path_blacklisted("/home"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_overlay_path_validation() {
         let temp_dir = TempDir::new().unwrap();
         let overlay_path = temp_dir.path().join("test_overlay");
@@ -574,7 +574,7 @@ mod tests {
         assert!(result.is_err() || result.is_ok()); // Either is acceptable in test env
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_overlay_directory_creation() {
         let temp_dir = TempDir::new().unwrap();
         let overlay_path = "/tmp"; // Use /tmp which should exist
@@ -605,7 +605,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_static_mode_config() {
         let config = FilesystemConfig {
             static_mode: true,

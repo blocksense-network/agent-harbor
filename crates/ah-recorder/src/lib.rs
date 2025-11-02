@@ -44,7 +44,7 @@ mod tests {
     use super::replay::*;
     use crate::snapshots::Snapshot;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_interleave_by_position() {
         // Create some terminal lines
         let lines = vec![

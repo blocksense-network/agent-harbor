@@ -83,7 +83,7 @@ fn click(vm: &mut ViewModel, action: MouseAction, bounds: Rect, column: u16, row
 mod keyboard {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn up_arrow_wraps_navigation_order() {
         let mut vm = new_view_model();
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
@@ -95,7 +95,7 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn textarea_up_moves_caret_before_changing_focus() {
         let mut vm = new_view_model();
 
@@ -113,7 +113,7 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::SettingsButton);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "Pending implementation of caret-to-focus transition per PRD"]
     fn textarea_down_moves_caret_then_leaves_task() {
         let mut vm = new_view_model();
@@ -128,7 +128,7 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::FilterBarSeparator);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn tab_and_shift_tab_cycle_draft_controls() {
         let mut vm = new_view_model();
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
@@ -154,7 +154,7 @@ mod keyboard {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn right_arrow_cycles_filter_controls() {
         let mut vm = new_view_model();
         vm.focus_element = FocusElement::FilterBarLine;
@@ -185,7 +185,7 @@ mod keyboard {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn left_arrow_cycles_filter_controls_backwards() {
         let mut vm = new_view_model();
         vm.focus_element = FocusElement::Filter(FilterControl::Repository);
@@ -204,7 +204,7 @@ mod keyboard {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn filter_bar_line_left_key_moves_to_first_filter() {
         let mut vm = new_view_model();
         vm.focus_element = FocusElement::FilterBarLine;
@@ -217,7 +217,7 @@ mod keyboard {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn filter_bar_line_right_key_moves_to_first_filter() {
         let mut vm = new_view_model();
         vm.focus_element = FocusElement::FilterBarLine;
@@ -230,7 +230,7 @@ mod keyboard {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn filter_control_enum_properties() {
         use ah_tui::view_model::FilterControl;
 
@@ -250,7 +250,7 @@ mod keyboard {
         assert_eq!(FilterControl::Creator.index(), 2);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "Pending implementation of Enter behavior parity with PRD"]
     fn enter_in_draft_focuses_textarea_then_launches() {
         let mut vm = new_view_model();
@@ -269,7 +269,7 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_enter_inserts_newline_without_launching() {
         let mut vm = new_view_model();
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -282,7 +282,7 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn escape_closes_modal() {
         let mut vm = new_view_model();
         vm.open_modal(ah_tui::view_model::ModalState::RepositorySearch);
@@ -295,7 +295,7 @@ mod keyboard {
         assert_eq!(vm.modal_state, ah_tui::view_model::ModalState::None);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn key_event_filtering_processes_press_and_repeat_events() {
         let mut vm = new_view_model();
 
@@ -327,7 +327,7 @@ mod keyboard {
         assert_eq!(vm.focus_element, FocusElement::SettingsButton);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn draft_cards_are_loaded_from_mock_rest_client() {
         // Test that draft cards are loaded correctly from MockRestClient
 
@@ -340,7 +340,7 @@ mod keyboard {
         assert_eq!(vm.draft_cards[0].description.lines().join("\n"), "");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn move_backward_one_character_moves_caret_left_in_draft_card() {
         let mut vm = new_view_model();
 
@@ -363,7 +363,7 @@ mod keyboard {
         assert_eq!(new_cursor.1, initial_cursor.1 - 1); // One column left
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn move_forward_one_character_moves_caret_right_in_draft_card() {
         let mut vm = new_view_model();
 
@@ -387,7 +387,7 @@ mod keyboard {
         assert_eq!(new_cursor.1, initial_cursor.1 + 1); // One column right
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn move_backward_one_character_moves_caret_left_with_autocomplete_open() {
         let mut vm = new_view_model();
 
@@ -419,7 +419,7 @@ mod keyboard {
         assert!(vm.autocomplete.is_open());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn move_forward_one_character_moves_caret_right_with_autocomplete_open() {
         let mut vm = new_view_model();
 
@@ -452,7 +452,7 @@ mod keyboard {
         assert!(vm.autocomplete.is_open());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn home_key_moves_caret_to_beginning_of_line_in_draft_card() {
         let mut vm = new_view_model();
 
@@ -476,7 +476,7 @@ mod keyboard {
         assert_eq!(new_cursor.1, 0); // Beginning of line
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn end_key_moves_caret_to_end_of_line_in_draft_card() {
         let mut vm = new_view_model();
 
@@ -500,7 +500,7 @@ mod keyboard {
         assert_eq!(new_cursor.1, 9); // End of line
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn home_key_moves_caret_to_beginning_of_line_with_autocomplete_open() {
         let mut vm = new_view_model();
 
@@ -524,7 +524,7 @@ mod keyboard {
         assert_eq!(new_cursor.1, 0); // Beginning of line
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn end_key_moves_caret_to_end_of_line_with_autocomplete_open() {
         let mut vm = new_view_model();
 
@@ -566,7 +566,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn clicking_settings_opens_modal() {
         let mut vm = new_view_model();
 
@@ -575,7 +575,7 @@ mod mouse {
         assert_eq!(vm.focus_element, FocusElement::SettingsButton);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn clicking_repository_button_opens_modal() {
         let mut vm = new_view_model();
 
@@ -593,7 +593,7 @@ mod mouse {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn clicking_go_button_launches_task() {
         let mut vm = new_view_model();
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -609,7 +609,7 @@ mod mouse {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn clicking_textarea_focuses_and_positions_caret() {
         let mut vm = new_view_model();
         let bounds = Rect {
@@ -625,7 +625,7 @@ mod mouse {
         assert_eq!(vm.last_textarea_area, Some(bounds));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn scroll_events_navigate_hierarchy() {
         let mut vm = new_view_model();
         vm.focus_element = FocusElement::DraftTask(0);
@@ -637,7 +637,7 @@ mod mouse {
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn clicking_task_card_focuses_existing_task() {
         let mut vm = new_view_model();
         let task = TaskExecution {
@@ -679,7 +679,7 @@ mod mouse {
         assert_eq!(vm.selected_card, 1);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn draft_card_focus_loss_hides_autocomplete() {
         let mut vm = new_view_model();
 
@@ -756,7 +756,7 @@ mod mouse {
         assert!(!vm.autocomplete.is_open());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn mouse_click_caret_movement_updates_autocomplete_same_as_keyboard() {
         let mut vm = new_view_model();
 
@@ -828,7 +828,7 @@ mod mouse {
         assert_eq!(vm.autocomplete.get_query(), "te"); // Should now be "te" since cursor moved to after "/te"
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_left_arrow_starts_selection() {
         let mut vm = new_view_model();
 
@@ -853,7 +853,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_right_arrow_starts_selection() {
         let mut vm = new_view_model();
 
@@ -878,7 +878,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_home_starts_selection() {
         let mut vm = new_view_model();
 
@@ -903,7 +903,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_end_starts_selection() {
         let mut vm = new_view_model();
 
@@ -928,7 +928,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_up_arrow_starts_selection() {
         let mut vm = new_view_model();
 
@@ -953,7 +953,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_down_arrow_starts_selection() {
         let mut vm = new_view_model();
 
@@ -978,7 +978,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn typing_clears_selection() {
         let mut vm = new_view_model();
 
@@ -1003,7 +1003,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn backspace_clears_selection() {
         let mut vm = new_view_model();
 
@@ -1028,7 +1028,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn leaving_textarea_clears_selection() {
         let mut vm = new_view_model();
 
@@ -1054,7 +1054,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn regular_arrow_keys_dont_start_selection() {
         let mut vm = new_view_model();
 
@@ -1078,7 +1078,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn motion_keys_without_shift_discharge_selection() {
         let mut vm = new_view_model();
 
@@ -1106,7 +1106,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn typing_replaces_selected_text() {
         let mut vm = new_view_model();
 
@@ -1138,7 +1138,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn backspace_erases_selected_text() {
         let mut vm = new_view_model();
 
@@ -1170,7 +1170,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn delete_erases_selected_text() {
         let mut vm = new_view_model();
 
@@ -1209,7 +1209,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_right_moves_forward_one_word() {
         let mut vm = new_view_model();
 
@@ -1232,7 +1232,7 @@ mod mouse {
         // assert!(true); // Operation completed without panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_left_moves_backward_one_word() {
         let mut vm = new_view_model();
 
@@ -1258,7 +1258,7 @@ mod mouse {
         // assert!(true); // Operation completed without panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_delete_deletes_word_forward() {
         let mut vm = new_view_model();
 
@@ -1279,7 +1279,7 @@ mod mouse {
         // assert!(true); // Operation completed without panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_backspace_deletes_word_backward() {
         let mut vm = new_view_model();
 
@@ -1300,7 +1300,7 @@ mod mouse {
         // assert!(true); // Operation completed without panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_ctrl_right_creates_word_selection() {
         let mut vm = new_view_model();
 
@@ -1331,7 +1331,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn shift_ctrl_left_creates_word_selection() {
         let mut vm = new_view_model();
 
@@ -1364,7 +1364,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_a_moves_to_beginning_of_sentence() {
         let mut vm = new_view_model();
 
@@ -1384,7 +1384,7 @@ mod mouse {
         assert!(true);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_e_moves_to_end_of_sentence() {
         let mut vm = new_view_model();
 
@@ -1404,7 +1404,7 @@ mod mouse {
         assert!(true);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_home_moves_to_beginning_of_document() {
         let mut vm = new_view_model();
 
@@ -1422,7 +1422,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_end_moves_to_end_of_document() {
         let mut vm = new_view_model();
 
@@ -1445,7 +1445,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_left_brace_moves_to_beginning_of_paragraph() {
         let mut vm = new_view_model();
 
@@ -1465,7 +1465,7 @@ mod mouse {
         assert!(true);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_right_brace_moves_to_end_of_paragraph() {
         let mut vm = new_view_model();
 
@@ -1485,7 +1485,7 @@ mod mouse {
         assert!(true);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_at_selects_word_under_cursor() {
         let mut vm = new_view_model();
 
@@ -1508,7 +1508,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_space_sets_mark() {
         let mut vm = new_view_model();
 
@@ -1529,7 +1529,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn page_down_scrolls_down_one_screen() {
         let mut vm = new_view_model();
 
@@ -1558,7 +1558,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn page_up_scrolls_up_one_screen() {
         let mut vm = new_view_model();
 
@@ -1589,7 +1589,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_l_recenters_cursor() {
         let mut vm = new_view_model();
 
@@ -1628,7 +1628,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_d_duplicates_line() {
         let mut vm = new_view_model();
 
@@ -1680,7 +1680,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_u_uppercases_word() {
         let mut vm = new_view_model();
 
@@ -1709,7 +1709,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn alt_l_lowercases_word() {
         let mut vm = new_view_model();
 
@@ -1738,7 +1738,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_b_inserts_bold_markdown() {
         let mut vm = new_view_model();
 
@@ -1779,7 +1779,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn ctrl_i_inserts_italic_markdown() {
         let mut vm = new_view_model();
 
@@ -1808,7 +1808,7 @@ mod mouse {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn f3_finds_next_match() {
         let mut vm = new_view_model();
 

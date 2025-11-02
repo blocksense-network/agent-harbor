@@ -500,13 +500,13 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_provider_creation() {
         let provider = ZfsProvider::new();
         assert_eq!(provider.kind(), SnapshotProviderKind::Zfs);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_capabilities_on_non_zfs_path() {
         let provider = ZfsProvider::new();
         let capabilities = provider.detect_capabilities(Path::new("/tmp"));
@@ -517,7 +517,7 @@ mod tests {
         assert!(!capabilities.supports_cow_overlay);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_inplace_workspace_creation() {
         let provider = ZfsProvider::new();
         let repo_path = Path::new("/tmp/test_repo");
@@ -532,7 +532,7 @@ mod tests {
         assert!(ws.cleanup_token.starts_with("zfs:inplace:"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_worktree_mode_not_implemented() {
         let provider = ZfsProvider::new();
         let repo_path = Path::new("/tmp/test_repo");
@@ -543,7 +543,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_auto_mode_falls_back_to_worktree() {
         let provider = ZfsProvider::new();
         let repo_path = Path::new("/tmp/test_repo");
@@ -554,7 +554,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cleanup_invalid_token() {
         let provider = ZfsProvider::new();
         let result = provider.cleanup("invalid:token");
@@ -563,7 +563,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Invalid ZFS cleanup token"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cleanup_inplace_token() {
         let provider = ZfsProvider::new();
         let result = provider.cleanup("zfs:inplace:/some/path");
@@ -572,7 +572,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_generate_unique_id() {
         let id1 = ah_fs_snapshots_traits::generate_unique_id();
         let id2 = ah_fs_snapshots_traits::generate_unique_id();

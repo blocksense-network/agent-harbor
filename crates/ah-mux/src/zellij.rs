@@ -258,27 +258,27 @@ impl Multiplexer for ZellijMultiplexer {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zellij_id() {
         let mux = ZellijMultiplexer::new().unwrap();
         assert_eq!(mux.id(), "zellij");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zellij_send_text_not_available() {
         let mux = ZellijMultiplexer::new().unwrap();
         let result = mux.send_text("dummy", "text");
         assert!(matches!(result, Err(MuxError::NotAvailable("zellij"))));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zellij_focus_pane_not_available() {
         let mux = ZellijMultiplexer::new().unwrap();
         let result = mux.focus_pane("dummy");
         assert!(matches!(result, Err(MuxError::NotAvailable("zellij"))));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zellij_list_panes_not_available() {
         let mux = ZellijMultiplexer::new().unwrap();
         let result = mux.list_panes("dummy");

@@ -107,7 +107,7 @@ mod tests {
     use std::fs::{self, write};
     use tempfile::TempDir;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_export_import_roundtrip() {
         let temp = TempDir::new().unwrap();
 

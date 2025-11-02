@@ -578,7 +578,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_process_workflows_basic() {
         let config = WorkflowConfig::default();
         let processor = WorkflowProcessor::new(config);
@@ -594,7 +594,7 @@ mod tests {
         assert!(result.diagnostics.is_empty());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_process_workflows_with_append() {
         let config = WorkflowConfig::default();
         let processor = WorkflowProcessor::new(config);
@@ -608,7 +608,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_process_workflows_conflicting_assignment() {
         let config = WorkflowConfig::default();
         let processor = WorkflowProcessor::new(config);
@@ -619,7 +619,7 @@ mod tests {
         assert!(result.diagnostics.iter().any(|d| d.contains("Conflicting assignment")));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_process_workflows_text_file_fallback() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -648,7 +648,7 @@ mod tests {
         assert_eq!(result.processed_text, "Text file content");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_workflow_expansion_and_env() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -721,7 +721,7 @@ mod tests {
         assert_eq!(result.environment.get("BAZ"), Some(&"1".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_ruby_workflow_command() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(result.environment.get("RUBY_FLAG"), Some(&"1".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_text_workflow_command() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -797,7 +797,7 @@ mod tests {
         assert!(result.processed_text.contains("Some additional details about the task."));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_workflow_with_arguments() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -839,7 +839,7 @@ mod tests {
         assert!(result.processed_text.contains("After commands."));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_setup_script_receives_env_vars() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -880,7 +880,7 @@ mod tests {
         assert_eq!(result.environment.get("FOO"), Some(&"BAR".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_unknown_workflow_command() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -903,7 +903,7 @@ mod tests {
         assert!(result.diagnostics.iter().any(|d| d.contains("not in the workflow whitelist")));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_conflicting_env_assignments() {
         let config = WorkflowConfig::default();
         let processor = WorkflowProcessor::new(config);
@@ -914,7 +914,7 @@ mod tests {
         assert!(result.diagnostics.iter().any(|d| d.contains("Conflicting assignment")));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_assignment_with_appends() {
         let config = WorkflowConfig::default();
         let processor = WorkflowProcessor::new(config);
@@ -929,7 +929,7 @@ mod tests {
         assert!(result.diagnostics.is_empty());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_append_only_combines_values() {
         let config = WorkflowConfig::default();
         let processor = WorkflowProcessor::new(config);
@@ -941,7 +941,7 @@ mod tests {
         assert!(result.diagnostics.is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_shellwords_split() {
         use super::shellwords::split;
 
@@ -964,7 +964,7 @@ mod tests {
         assert!(split("unclosed \"quote").is_err());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_enumerate_workflow_commands_empty_repo() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -999,7 +999,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_enumerate_workflow_commands_with_repo_scripts() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -1059,7 +1059,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_enumerate_workflow_commands_non_whitelisted() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -1105,7 +1105,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_enumerate_workflow_commands_no_repo() {
         let config = WorkflowConfig {
             extra_workflow_executables: vec!["git".to_string(), "cargo".to_string()],
@@ -1128,7 +1128,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_enumerate_workflow_commands_empty_description() {
         let temp_dir = TempDir::new().unwrap();
         let repo_dir = temp_dir.path().join("repo");
@@ -1164,7 +1164,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_mock_workspace_workflows() {
         let mock_commands = vec![
             WorkflowCommand {
@@ -1187,7 +1187,7 @@ mod tests {
         assert_eq!(commands[1].name, "info");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_mock_workspace_workflows_empty() {
         let service = MockWorkspaceWorkflowsEnumerator::empty();
         let commands = service.enumerate_workflow_commands().await.unwrap();

@@ -215,7 +215,7 @@ fn strip_ansi_codes(text: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_strip_ansi_codes() {
         let input = "\x1b[31mRed text\x1b[0m normal";
         let result = strip_ansi_codes(input);

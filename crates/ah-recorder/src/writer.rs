@@ -274,7 +274,7 @@ mod tests {
     use crate::format::{RecData, RecResize};
     use tempfile::NamedTempFile;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_writer_basic() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();
@@ -296,7 +296,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_writer_large_block() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();
@@ -325,7 +325,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_writer_byte_offset_tracking() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();

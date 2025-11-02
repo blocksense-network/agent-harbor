@@ -493,7 +493,7 @@ impl CursorAgent {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_version() {
         let output = "cursor-agent version 2025.09.18-39624ef";
         let result = CursorAgent::parse_version(output);
@@ -502,7 +502,7 @@ mod tests {
         assert_eq!(version.version, "2025.09.18-39624ef");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_version_simple() {
         let output = "2025.09.18-39624ef";
         let result = CursorAgent::parse_version(output);
@@ -511,13 +511,13 @@ mod tests {
         assert_eq!(version.version, "2025.09.18-39624ef");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_agent_name() {
         let agent = CursorAgent::new();
         assert_eq!(agent.name(), "cursor-cli");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_config_dir() {
         let agent = CursorAgent::new();
         let home = PathBuf::from("/home/user");

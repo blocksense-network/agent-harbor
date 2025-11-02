@@ -73,7 +73,7 @@ fn setup_test_repo() -> (TempDir, VcsRepo) {
     (temp_dir, repo)
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_record_initial_task_creates_correct_file_structure() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -132,7 +132,7 @@ async fn test_record_initial_task_creates_correct_file_structure() {
     assert_eq!(content, "Test task content");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_record_initial_task_commit_message() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -181,7 +181,7 @@ async fn test_record_initial_task_commit_message() {
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_on_task_branch_false_when_not_on_task_branch() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -191,7 +191,7 @@ async fn test_on_task_branch_false_when_not_on_task_branch() {
     assert!(!agent_tasks.on_task_branch().expect("Failed to check task branch"));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_on_task_branch_true_after_recording_initial_task() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -217,7 +217,7 @@ async fn test_on_task_branch_true_after_recording_initial_task() {
     assert!(agent_tasks.on_task_branch().expect("Failed to check task branch"));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_agent_task_file_in_current_branch() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -252,7 +252,7 @@ async fn test_agent_task_file_in_current_branch() {
     assert_eq!(content, "Test task content");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_agent_task_file_in_current_branch_error_when_not_on_task_branch() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -269,7 +269,7 @@ async fn test_agent_task_file_in_current_branch_error_when_not_on_task_branch() 
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_append_task() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -303,7 +303,7 @@ async fn test_append_task() {
     assert_eq!(content, expected);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_append_task_commit_message() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -338,7 +338,7 @@ async fn test_append_task_commit_message() {
     assert_eq!(commit_msg, "Follow-up task");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_append_task_error_when_not_on_task_branch() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();
@@ -350,14 +350,14 @@ async fn test_append_task_error_when_not_on_task_branch() {
     assert!(result.unwrap_err().to_string().contains("Could not locate task start commit"));
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_online_connectivity_check() {
     // We need a synchronous test for the online check since it's not async
     // For this test we'll just ensure the method exists and can be called
     // In a real scenario, this would be tested with a mock HTTP client
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_setup_autopush() {
     let _temp_home = setup_git_isolation();
     let (_temp_dir, repo) = setup_test_repo();

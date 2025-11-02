@@ -15,7 +15,7 @@ use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerat
 use ratatui::widgets::ListState;
 use std::sync::Arc;
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_initial_render_from_minimal_scenario() -> anyhow::Result<()> {
     // Minimal scenario JSON (could be moved to a fixture file later)
     let json = r#"{
@@ -50,7 +50,7 @@ fn test_initial_render_from_minimal_scenario() -> anyhow::Result<()> {
 }
 
 /// Golden snapshot tests using tui-testing framework
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tui_initial_screen_golden() -> anyhow::Result<()> {
     use tui_testing::*;
 
@@ -115,7 +115,7 @@ async fn test_tui_initial_screen_golden() -> anyhow::Result<()> {
 }
 
 /// Test TUI interaction scenarios with multiple screenshots
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
     use tui_testing::*;
 

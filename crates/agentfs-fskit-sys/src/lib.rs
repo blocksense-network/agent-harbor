@@ -248,7 +248,7 @@ pub extern "C" fn agentfs_get_error_message(_buffer: *mut c_char, _buffer_size: 
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_abi_sizes() {
         // Verify that our C structures have the expected sizes
         assert_eq!(std::mem::size_of::<AgentFsResult>(), 4);

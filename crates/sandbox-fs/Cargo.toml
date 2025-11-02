@@ -16,4 +16,5 @@ thiserror = { workspace = true }
 nix = { version = "0.27", features = ["mount", "fs"] }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }

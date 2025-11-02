@@ -172,7 +172,7 @@ pub fn available_agents() -> Vec<&'static str> {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_available_agents() {
         let agents = available_agents();
         assert!(!agents.is_empty());
@@ -185,28 +185,28 @@ mod tests {
     }
 
     #[cfg(feature = "claude")]
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_claude_constructor() {
         let agent = claude();
         assert_eq!(agent.name(), "claude");
     }
 
     #[cfg(feature = "codex")]
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_codex_constructor() {
         let agent = codex();
         assert_eq!(agent.name(), "codex");
     }
 
     #[cfg(feature = "cursor-cli")]
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cursor_cli_constructor() {
         let agent = cursor_cli();
         assert_eq!(agent.name(), "cursor-cli");
     }
 
     #[cfg(feature = "claude")]
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_agent_by_name_claude() {
         let agent = agent_by_name("claude");
         assert!(agent.is_some());
@@ -214,14 +214,14 @@ mod tests {
     }
 
     #[cfg(feature = "cursor-cli")]
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_agent_by_name_cursor_cli() {
         let agent = agent_by_name("cursor-cli");
         assert!(agent.is_some());
         assert_eq!(agent.unwrap().name(), "cursor-cli");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_agent_by_name_unknown() {
         let agent = agent_by_name("unknown-agent");
         assert!(agent.is_none());

@@ -191,7 +191,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_test_environment_creation() {
         let env = ZfsTestEnvironment::new();
         assert!(env.is_ok());
@@ -199,7 +199,7 @@ mod tests {
         assert!(env.test_dir.exists());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_pool_creation() {
         // Skip if not running as root (required for ZFS operations)
         if !is_root() {

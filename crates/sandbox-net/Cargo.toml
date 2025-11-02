@@ -17,4 +17,5 @@ nix = { workspace = true, features = ["net"] }
 
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }

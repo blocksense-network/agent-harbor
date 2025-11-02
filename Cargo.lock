@@ -24,6 +24,7 @@ name = "agentfs-core"
 version = "0.1.0"
 dependencies = [
  "agentfs-proto",
+ "ah-test-utils",
  "anyhow",
  "hex",
  "libc",
@@ -41,6 +42,7 @@ version = "0.1.0"
 dependencies = [
  "agentfs-core",
  "agentfs-proto",
+ "ah-test-utils",
  "anyhow",
  "ethereum_ssz",
  "ethereum_ssz_derive",
@@ -58,6 +60,7 @@ dependencies = [
  "agentfs-core",
  "agentfs-ffi",
  "agentfs-fskit-sys",
+ "ah-test-utils",
  "cc",
  "hex",
  "libc",
@@ -72,6 +75,7 @@ dependencies = [
  "agentfs-core",
  "agentfs-ffi",
  "agentfs-proto",
+ "ah-test-utils",
  "block",
  "clap",
  "dispatch",
@@ -91,6 +95,7 @@ dependencies = [
 name = "agentfs-fskit-sys"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "cc",
  "libc",
 ]
@@ -101,6 +106,7 @@ version = "0.1.0"
 dependencies = [
  "agentfs-core",
  "agentfs-proto",
+ "ah-test-utils",
  "anyhow",
  "clap",
  "ethereum_ssz",
@@ -121,6 +127,7 @@ version = "0.1.0"
 dependencies = [
  "agentfs-core",
  "agentfs-proto",
+ "ah-test-utils",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "libc",
@@ -134,6 +141,7 @@ version = "0.1.0"
 dependencies = [
  "agentfs-core",
  "agentfs-proto",
+ "ah-test-utils",
  "ctor",
  "ethereum_ssz",
  "ethereum_ssz_derive",
@@ -151,6 +159,7 @@ dependencies = [
 name = "agentfs-proto"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "lazy_static",
@@ -166,6 +175,7 @@ version = "0.1.0"
 dependencies = [
  "agentfs-core",
  "agentfs-proto",
+ "ah-test-utils",
  "anyhow",
  "clap",
  "serde_json",
@@ -182,6 +192,7 @@ version = "0.1.0"
 dependencies = [
  "ah-core",
  "ah-repo",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "chrono",
@@ -259,6 +270,7 @@ name = "ah-client-api"
 version = "0.1.0"
 dependencies = [
  "ah-rest-api-contract",
+ "ah-test-utils",
  "async-trait",
  "serde",
  "thiserror 1.0.69",
@@ -268,6 +280,7 @@ dependencies = [
 name = "ah-config-types"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "schemars",
  "serde",
 ]
@@ -283,6 +296,7 @@ dependencies = [
  "ah-repo",
  "ah-rest-api-contract",
  "ah-rest-client",
+ "ah-test-utils",
  "ah-tui-multiplexer",
  "ah-workflows",
  "anyhow",
@@ -306,6 +320,7 @@ dependencies = [
 name = "ah-domain-types"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "chrono",
  "serde",
  "utoipa",
@@ -321,6 +336,7 @@ dependencies = [
  "ah-fs-snapshots-traits",
  "ah-fs-snapshots-zfs",
  "ah-repo",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "libc",
@@ -337,6 +353,7 @@ name = "ah-fs-snapshots-btrfs"
 version = "0.1.0"
 dependencies = [
  "ah-fs-snapshots-traits",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "chrono",
@@ -350,6 +367,7 @@ dependencies = [
 name = "ah-fs-snapshots-daemon"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "clap",
  "ethereum_ssz",
@@ -372,6 +390,7 @@ version = "0.1.0"
 dependencies = [
  "ah-fs-snapshots-traits",
  "ah-repo",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "chrono",
@@ -387,6 +406,7 @@ dependencies = [
 name = "ah-fs-snapshots-traits"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "serde",
@@ -401,6 +421,7 @@ version = "0.1.0"
 dependencies = [
  "ah-fs-snapshots-daemon",
  "ah-fs-snapshots-traits",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "chrono",
@@ -414,6 +435,7 @@ dependencies = [
 name = "ah-gui-core"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "napi",
  "napi-build",
  "napi-derive",
@@ -423,6 +445,7 @@ dependencies = [
 name = "ah-local-db"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "chrono",
  "rusqlite",
@@ -438,6 +461,7 @@ name = "ah-macos-launcher"
 version = "0.1.0"
 dependencies = [
  "ah-sandbox-macos",
+ "ah-test-utils",
  "anyhow",
  "clap",
  "libc",
@@ -450,6 +474,7 @@ name = "ah-mux"
 version = "0.1.0"
 dependencies = [
  "ah-mux-core",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "expectrl",
@@ -469,6 +494,7 @@ dependencies = [
 name = "ah-mux-core"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "serde",
  "thiserror 1.0.69",
 ]
@@ -479,6 +505,7 @@ version = "0.1.0"
 dependencies = [
  "ah-core",
  "ah-domain-types",
+ "ah-test-utils",
  "ah-tui",
  "anyhow",
  "brotli",
@@ -503,6 +530,7 @@ dependencies = [
 name = "ah-repo"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "async-trait",
  "chrono",
  "dirs",
@@ -519,6 +547,7 @@ name = "ah-rest-api-contract"
 version = "0.1.0"
 dependencies = [
  "ah-domain-types",
+ "ah-test-utils",
  "chrono",
  "serde",
  "serde_json",
@@ -537,6 +566,7 @@ dependencies = [
  "ah-client-api",
  "ah-domain-types",
  "ah-rest-api-contract",
+ "ah-test-utils",
  "async-stream",
  "async-trait",
  "base64 0.22.1",
@@ -560,6 +590,7 @@ dependencies = [
  "ah-client-api",
  "ah-rest-api-contract",
  "ah-test-scenarios",
+ "ah-test-utils",
  "async-trait",
  "serde",
  "serde_json",
@@ -574,6 +605,7 @@ dependencies = [
  "ah-core",
  "ah-domain-types",
  "ah-rest-api-contract",
+ "ah-test-utils",
  "async-trait",
  "chrono",
  "futures",
@@ -594,6 +626,7 @@ dependencies = [
  "ah-local-db",
  "ah-repo",
  "ah-rest-api-contract",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "axum 0.7.9",
@@ -630,6 +663,7 @@ name = "ah-sandbox"
 version = "0.1.0"
 dependencies = [
  "ah-core",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "serde",
@@ -643,6 +677,7 @@ name = "ah-sandbox-linux"
 version = "0.1.0"
 dependencies = [
  "ah-sandbox",
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "nix 0.27.1",
@@ -656,6 +691,7 @@ dependencies = [
 name = "ah-sandbox-macos"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "nix 0.30.1",
  "thiserror 1.0.69",
@@ -667,6 +703,7 @@ name = "ah-test-scenarios"
 version = "0.1.0"
 dependencies = [
  "ah-rest-api-contract",
+ "ah-test-utils",
  "anyhow",
  "serde",
  "serde_json",
@@ -677,6 +714,7 @@ dependencies = [
 name = "ah-test-utils"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils-macros",
  "chrono",
  "insta",
  "serde",
@@ -684,6 +722,15 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "uuid",
+]
+
+[[package]]
+name = "ah-test-utils-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -698,6 +745,7 @@ dependencies = [
  "ah-rest-client",
  "ah-rest-mock-client",
  "ah-test-scenarios",
+ "ah-test-utils",
  "ah-workflows",
  "anyhow",
  "async-trait",
@@ -741,6 +789,7 @@ version = "0.1.0"
 dependencies = [
  "ah-mux",
  "ah-mux-core",
+ "ah-test-utils",
  "serde",
  "thiserror 1.0.69",
 ]
@@ -750,6 +799,7 @@ name = "ah-workflows"
 version = "0.1.0"
 dependencies = [
  "ah-repo",
+ "ah-test-utils",
  "async-trait",
  "serde",
  "tempfile",
@@ -1876,6 +1926,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 [[package]]
 name = "cgroup-enforcement-tests"
 version = "0.1.0"
+dependencies = [
+ "ah-test-utils",
+]
 
 [[package]]
 name = "chrono"
@@ -2048,6 +2101,7 @@ name = "config-core"
 version = "0.1.0"
 dependencies = [
  "ah-config-types",
+ "ah-test-utils",
  "anyhow",
  "config 0.14.1",
  "jsonschema",
@@ -2143,6 +2197,7 @@ dependencies = [
 name = "container-enforcement"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "clap",
  "sandbox-core",
@@ -2443,6 +2498,7 @@ dependencies = [
 name = "debugging-enforcement"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "clap",
  "libc",
@@ -4424,6 +4480,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 name = "llm-api-proxy"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anthropic-ai-sdk",
  "anyhow",
  "async-openai",
@@ -4738,6 +4795,7 @@ dependencies = [
 name = "network-enforcement-tests"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "serde",
  "serde_json",
@@ -5172,6 +5230,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 name = "overlay-enforcement-tests"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "serde",
  "serde_json",
@@ -6507,6 +6566,7 @@ dependencies = [
 name = "sandbox-cgroups"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "serde",
  "serde_json",
  "tempfile",
@@ -6519,6 +6579,7 @@ dependencies = [
 name = "sandbox-core"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "nix 0.27.1",
  "sandbox-cgroups",
@@ -6539,6 +6600,7 @@ dependencies = [
 name = "sandbox-devices"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "nix 0.27.1",
  "serde",
  "tempfile",
@@ -6551,6 +6613,7 @@ dependencies = [
 name = "sandbox-fs"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "nix 0.27.1",
  "serde",
@@ -6566,6 +6629,7 @@ name = "sandbox-integration"
 version = "0.1.0"
 dependencies = [
  "ah-sandbox-macos",
+ "ah-test-utils",
  "anyhow",
  "sandbox-core",
  "sandbox-fs",
@@ -6580,6 +6644,7 @@ dependencies = [
 name = "sandbox-net"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "nix 0.30.1",
  "serde",
@@ -6594,6 +6659,7 @@ dependencies = [
 name = "sandbox-proto"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "serde",
  "serde_json",
  "tempfile",
@@ -6603,6 +6669,7 @@ dependencies = [
 name = "sandbox-seccomp"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "libc",
@@ -6621,6 +6688,7 @@ dependencies = [
 name = "sbx-helper"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "clap",
  "sandbox-cgroups",
@@ -7830,6 +7898,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "tui-testing"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "async-trait",
  "clap",
@@ -8195,6 +8264,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vm-enforcement"
 version = "0.1.0"
 dependencies = [
+ "ah-test-utils",
  "anyhow",
  "clap",
  "sandbox-core",

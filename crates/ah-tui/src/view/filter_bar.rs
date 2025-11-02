@@ -127,7 +127,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_filter_bar_default_rendering() {
         let mut backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -148,7 +148,7 @@ mod tests {
         assert!(!content.is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_filter_bar_focused_rendering() {
         let mut backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -172,7 +172,7 @@ mod tests {
         assert!(!content.is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_filter_control_focused_rendering() {
         let mut backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();

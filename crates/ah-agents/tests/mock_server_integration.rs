@@ -118,7 +118,7 @@ fn setup_test_env(cmd: &mut std::process::Command) {
 }
 
 #[cfg(feature = "claude")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 #[ignore]
 async fn test_claude_with_mock_server() {
     // Check if claude is available
@@ -249,7 +249,7 @@ async fn test_claude_with_mock_server() {
 }
 
 #[cfg(feature = "codex")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 #[ignore]
 async fn test_codex_with_mock_server() {
     let overall_timeout = time::Duration::from_secs(60);

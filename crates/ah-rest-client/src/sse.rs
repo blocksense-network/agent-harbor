@@ -54,7 +54,7 @@ mod tests {
     use super::*;
     use ah_rest_api_contract::{EventType, SessionStatus};
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_session_event_parsing() {
         let event_json = r#"{
             "type": "status",

@@ -256,7 +256,7 @@ pub fn parse_bool_flag(s: &str) -> Result<bool> {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_bool_flag() {
         assert!(parse_bool_flag("yes").unwrap());
         assert!(parse_bool_flag("true").unwrap());
@@ -267,7 +267,7 @@ mod tests {
         assert!(parse_bool_flag("invalid").is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "requires manual setup and can hang indefinitely"]
     fn test_sandbox_filesystem_isolation_cli_integration() {
         // Integration test for `ah agent sandbox` command CLI functionality

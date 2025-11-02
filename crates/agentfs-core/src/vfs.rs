@@ -3788,7 +3788,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_stat_regular_file() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3811,7 +3811,7 @@ mod tests {
         assert_eq!(stat_data.gid, 1000);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_stat_directory() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3825,7 +3825,7 @@ mod tests {
         assert_eq!(stat_data.gid, 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_lstat_symlink() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3842,7 +3842,7 @@ mod tests {
         assert!(node_id.0 > 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_chmod() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3861,7 +3861,7 @@ mod tests {
         assert_eq!(stat_data.mode() & 0o777, 0o755);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_chown() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3882,7 +3882,7 @@ mod tests {
         assert_eq!(stat_data.gid, 2000);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_truncate() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3915,7 +3915,7 @@ mod tests {
         fs.close(&pid, handle).expect("Failed to close handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_statfs() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3928,7 +3928,7 @@ mod tests {
         assert!(statfs_data.f_blocks > 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_fstatfs() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3948,7 +3948,7 @@ mod tests {
         fs.close(&pid, handle).expect("Failed to close handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_metadata_operations_update_timestamps() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -3973,7 +3973,7 @@ mod tests {
 
     // M24.g - Extended attributes, ACLs, and flags unit tests
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_xattr_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4010,7 +4010,7 @@ mod tests {
         assert!(fs.xattr_get(&pid, "/test_xattr.txt".as_ref(), name).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_xattr_fd_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4037,7 +4037,7 @@ mod tests {
         fs.close(&pid, handle).expect("Failed to close handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_acl_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4065,7 +4065,7 @@ mod tests {
             .expect("acl_delete_def_file should succeed");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_acl_fd_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4088,7 +4088,7 @@ mod tests {
         fs.close(&pid, handle).expect("Failed to close handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_file_flags_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4109,7 +4109,7 @@ mod tests {
             .expect("lchflags should succeed");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_file_flags_fd_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4127,7 +4127,7 @@ mod tests {
         fs.close(&pid, handle).expect("Failed to close handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_getattrlist_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4160,7 +4160,7 @@ mod tests {
         fs.close(&pid, dir_handle).expect("Failed to close directory handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_copyfile_clonefile_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4189,7 +4189,7 @@ mod tests {
         assert!(result.is_ok()); // Should succeed
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_copyfile_fd_operations() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4222,7 +4222,7 @@ mod tests {
         fs.close(&pid, dst_handle).expect("Failed to close dest handle");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_xattr_error_handling() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4246,7 +4246,7 @@ mod tests {
         assert!(fs.xattr_remove(&pid, "/test_errors.txt".as_ref(), "user.nonexistent").is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_acl_error_handling() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4271,7 +4271,7 @@ mod tests {
         let _ = result;
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_flags_error_handling() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -4281,7 +4281,7 @@ mod tests {
         assert!(fs.lchflags(&pid, "/nonexistent.txt".as_ref(), 0x00000001).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_fd_error_handling() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);

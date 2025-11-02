@@ -296,7 +296,7 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_replay_empty_file() {
         let temp_file = NamedTempFile::new().unwrap();
         let result = replay_ahr_file(temp_file.path());
@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(replay.total_bytes, 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_replay_invalid_file() {
         // Try to replay a non-existent file
         let result = replay_ahr_file("/non/existent/file.ahr");

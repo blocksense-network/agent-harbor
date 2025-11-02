@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use tokio::sync::mpsc;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_seccomp_config_creation() {
         let config = SeccompConfig::default();
         assert!(!config.debug_mode);
@@ -123,14 +123,14 @@ mod tests {
         assert_eq!(config.root_dir, std::path::PathBuf::from("/"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_seccomp_manager_creation() {
         let config = SeccompConfig::default();
         let manager = SeccompManager::new(config);
         assert!(manager.filter.is_none());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_seccomp_manager_install_filters() {
         let config = SeccompConfig::default();
         let mut manager = SeccompManager::new(config);

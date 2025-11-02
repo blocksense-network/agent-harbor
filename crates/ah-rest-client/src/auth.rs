@@ -114,7 +114,7 @@ impl AuthConfig {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_api_key_auth_headers() {
         let auth = AuthMethod::api_key("test-token");
         let mut headers = HeaderMap::new();
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(headers.get("authorization").unwrap(), "ApiKey test-token");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_bearer_auth_headers() {
         let auth = AuthMethod::bearer("jwt-token");
         let mut headers = HeaderMap::new();
@@ -132,7 +132,7 @@ mod tests {
         assert_eq!(headers.get("authorization").unwrap(), "Bearer jwt-token");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_auth_config_with_tenant() {
         let config = AuthConfig::with_api_key("token").with_tenant_id("acme");
         let headers = config.headers().unwrap();

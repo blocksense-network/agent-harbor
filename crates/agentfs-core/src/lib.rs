@@ -31,7 +31,7 @@ mod tests {
     use std::cell::RefCell;
     use std::sync::{Arc, Mutex};
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_chown_updates_uid_gid_and_ctime() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -47,7 +47,7 @@ mod tests {
         assert!(after.times.ctime >= before.times.ctime);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_create_with_non_utf8_name_and_readdir_bytes() {
         let (core, pid) = test_core_posix();
         core.mkdir(&pid, "/raw".as_ref(), 0o755).unwrap();
@@ -63,7 +63,7 @@ mod tests {
         assert!(entries.iter().any(|(b, _)| b == &name_bytes));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_register_process_idempotent() {
         let core = test_core();
         let pid_value = 1234;
@@ -87,7 +87,7 @@ mod tests {
         assert_eq!(err.to_string(), "not found");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_config_creation() {
         let config = FsConfig {
             case_sensitivity: CaseSensitivity::Sensitive,
@@ -191,7 +191,7 @@ mod tests {
         (core, pid)
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_permissions_with_actors_owner_group_other() {
         let (core, _) = test_core_posix();
 
@@ -224,7 +224,7 @@ mod tests {
         assert!(core.open(&other_pid, "/p/file.txt".as_ref(), &rw()).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_chown_switches_access_rights() {
         let (core, _) = test_core_posix();
 
@@ -291,7 +291,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_create_read_write_roundtrip() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -307,7 +307,7 @@ mod tests {
         core.close(&pid, h2).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_unlink_delete_on_close_semantics() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -327,7 +327,7 @@ mod tests {
         assert!(core.open(&pid, "/x".as_ref(), &ro()).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_directory_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -365,7 +365,7 @@ mod tests {
         assert!(!names.contains(&"testdir"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_rename_and_sorted_readdir() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(names2, vec!["b.txt", "c.txt"]);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_set_mode_and_times() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -413,7 +413,7 @@ mod tests {
         assert!(after.times.ctime >= new_times.ctime);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_snapshot_immutability() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -460,7 +460,7 @@ mod tests {
         assert!(branches.iter().any(|b| b.id == branch && b.name == Some("test".to_string())));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_branch_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -505,7 +505,7 @@ mod tests {
         // Note: branch deletion not implemented yet, so skip
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_branch_process_isolation() {
         let core = test_core();
 
@@ -596,7 +596,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_handle_stability_across_binding_changes() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -628,7 +628,7 @@ mod tests {
         core.close(&pid, h2).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_posix_byte_range_locks() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -689,7 +689,7 @@ mod tests {
         core.close(&pid, h).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_xattr_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -719,7 +719,7 @@ mod tests {
         assert!(attrs2.contains(&"user.other".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_ads_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -767,7 +767,7 @@ mod tests {
         core.close(&pid, h_main).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_event_subscription_and_emission() {
         use std::sync::{Arc, Mutex};
 
@@ -882,7 +882,7 @@ mod tests {
         assert_eq!(events.len(), 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_stats_reporting() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -915,7 +915,7 @@ mod tests {
         assert_eq!(stats.open_handles, 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_readdir_plus() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -946,7 +946,7 @@ mod tests {
         assert!(core.readdir_plus(&pid, "/nonexistent".as_ref()).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_events_disabled_when_track_events_false() {
         use std::sync::{Arc, Mutex};
 
@@ -1016,7 +1016,7 @@ mod tests {
         core.unsubscribe_events(sub_id).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_basic_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1050,7 +1050,7 @@ mod tests {
         assert!(core.getattr(&pid, "/link.txt".as_ref()).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_to_directory() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1071,7 +1071,7 @@ mod tests {
         assert_eq!(attrs.len, 10); // length of "target_dir"
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_unlink() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1089,7 +1089,7 @@ mod tests {
         assert!(core.getattr(&pid, "/test_link".as_ref()).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_root_bypass_permissions_flag() {
         // Build core with POSIX enforcement and root bypass enabled
         let cfg = FsConfig {
@@ -1141,7 +1141,7 @@ mod tests {
         assert!(core.open(&root_pid, "/d/f".as_ref(), &rw()).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_sticky_directory_restricts_deletion() {
         let (core, _) = test_core_posix();
         let root = core.register_process(1, 1, 0, 0);
@@ -1163,7 +1163,7 @@ mod tests {
         assert!(core.unlink(&alice, "/tmp/b.txt".as_ref()).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_set_owner_clears_setid_bits() {
         let (core, _) = test_core_posix();
         let root = core.register_process(1, 1, 0, 0);
@@ -1182,7 +1182,7 @@ mod tests {
         assert_eq!(attrs.gid, 1000);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_readdir_requires_rx_and_traverse_requires_x() {
         let (core, _) = test_core_posix();
         let root = core.register_process(1, 1, 0, 0);
@@ -1209,7 +1209,7 @@ mod tests {
         assert!(core.open(&bob, "/d/sub/f.txt".as_ref(), &ro()).is_ok());
         assert!(core.readdir_plus(&bob, "/d/sub".as_ref()).is_err());
     }
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_relative_path() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1227,7 +1227,7 @@ mod tests {
         assert_eq!(target, "../target.txt");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_errors() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1254,7 +1254,7 @@ mod tests {
         assert!(core.symlink(&pid, "target", "/regular.txt/link".as_ref()).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_readdir_plus() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1277,7 +1277,7 @@ mod tests {
         assert_eq!(symlink_entry.1.len, 6);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_cannot_read_write_like_file() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1298,7 +1298,7 @@ mod tests {
         core.close(&pid, h2).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_in_directory_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1323,7 +1323,7 @@ mod tests {
         core.rmdir(&pid, "/testdir".as_ref()).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_empty_target() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1339,7 +1339,7 @@ mod tests {
         assert_eq!(attrs.len, 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_symlink_long_target() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1356,7 +1356,7 @@ mod tests {
         assert_eq!(attrs.len, 1000);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_multiple_symlinks_to_same_target() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
@@ -1432,7 +1432,7 @@ mod tests {
     /// Setup: Initialize FsCore with a lower root containing /file.txt with content "LOWER"
     /// Action: Call core.getattr() on path /file.txt
     /// Assert: The getattr returns attributes from lower filesystem. No upper entry is created.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u10_overlay_pass_through_read() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1471,7 +1471,7 @@ mod tests {
     /// Action: Call core.write() on path /file.txt with content "UPPER"
     /// Action: Call core.read() on the same path
     /// Assert: An upper entry for /file.txt now exists. The read returns "UPPER". The original lower file still contains "LOWER".
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u11_copy_up_on_first_write() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1516,7 +1516,7 @@ mod tests {
     /// Setup: Same as U10
     /// Action: Call core.set_mode() on /file.txt
     /// Assert: An upper metadata-only entry is created. core.getattr() returns the new mode.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u12_metadata_only_overlay() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1548,7 +1548,7 @@ mod tests {
     /// Setup: Same as U10
     /// Action: Call core.unlink() on /file.txt
     /// Assert: The physical file in the lower root still exists.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u13_whiteout_on_unlink() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1578,7 +1578,7 @@ mod tests {
     /// Setup: lower root contains /a and /b.
     /// Action: Call core.readdir("/")
     /// Assert: The result contains /a and /b from lower filesystem.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u14_merged_directory_listing() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1604,7 +1604,7 @@ mod tests {
     /// Setup: Initialize FsCore with BackstoreMode::HostFs
     /// Action: create, write, read, and unlink a file /test.txt
     /// Assert: A physical file is created, written to, read from, and deleted within the specified backstore temp directory.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u15_hostfs_backstore_io() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let backstore_dir = temp_dir.path().join("backstore");
@@ -1646,7 +1646,7 @@ mod tests {
     /// Setup: Use a mock Backstore provider that reports supports_native_snapshots = true
     /// Action: Call core.snapshot_create()
     /// Assert: The mock Backstore::snapshot_native() method is called. No file-copying logic within FsCore is triggered.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u16_native_snapshot_delegation() {
         // Test that backstore creation works with HostFs mode
         let temp_dir = tempfile::TempDir::new().unwrap();
@@ -1671,7 +1671,7 @@ mod tests {
     /// Setup: Use a HostFs backstore (which does not support native snapshots). Create files /a (in upper) and /b (lower-only).
     /// Action: Call core.snapshot_create()
     /// Assert: The physical file for /a is copied within the backstore to a snapshot-specific location. The file for /b is not physically copied, as it's not in the active upper set.
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u17_copy_active_snapshot_fallback() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1700,7 +1700,7 @@ mod tests {
 
     /// U18. fd_open Control Plane Logic
     /// Test the interpose fd_open logic with various scenarios
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_u18_fd_open_control_plane_logic() {
         let temp_dir = tempfile::TempDir::new().unwrap();
 
@@ -1981,7 +1981,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_comprehensive_file_permissions() {
         let (core, _) = test_core_posix();
 
@@ -2038,7 +2038,7 @@ mod tests {
         assert!(core.open(&charlie_pid, "/private/secret.txt".as_ref(), &ro()).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_ownership_changes_and_permissions() {
         let (core, _) = test_core_posix();
 
@@ -2088,7 +2088,7 @@ mod tests {
         assert_eq!(attrs.gid, 1001);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_directory_permissions_and_traversal() {
         let (core, _) = test_core_posix();
 
@@ -2132,7 +2132,7 @@ mod tests {
         // cannot traverse to it
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_permission_denied_errors_with_details() {
         let (core, _) = test_core_posix();
 
@@ -2168,7 +2168,7 @@ mod tests {
         core.close(&alice_pid, h).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_setuid_setgid_permission_interaction() {
         let core = test_core();
 
@@ -2214,7 +2214,7 @@ mod tests {
         assert!(core.open(&bob_pid, "/setgid_file.txt".as_ref(), &rw()).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cross_directory_permission_checks() {
         let (core, _) = test_core_posix();
 

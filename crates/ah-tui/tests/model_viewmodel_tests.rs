@@ -77,14 +77,14 @@ fn create_viewmodel_test_log(test_name: &str) -> (std::fs::File, std::path::Path
 mod viewmodel_tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_initial_focus_is_draft_task_description() {
         // Test PRD requirement: "The initially focused element is the top draft task card."
         let vm = create_test_view_model();
         assert_eq!(vm.focus_element, FocusElement::DraftTask(0));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_tab_navigation_cycles_through_draft_card_controls() {
         // Test PRD requirement: "TAB navigation between controls" for draft cards
         let mut vm = create_test_view_model();
@@ -132,7 +132,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_shift_tab_navigation_cycles_backward_through_card_controls() {
         // Test PRD requirement: "TAB navigation between controls" (reverse direction)
         let mut vm = create_test_view_model();
@@ -175,7 +175,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_text_input_updates_draft_description() {
         // Test PRD requirement: text input in draft description
         let mut vm = create_test_view_model();
@@ -203,7 +203,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_backspace_removes_characters() {
         // Test PRD requirement: backspace functionality in text input
         let mut vm = create_test_view_model();
@@ -233,7 +233,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_shift_enter_adds_newline() {
         // Test PRD requirement: "Shift+Enter creates a new line in the text area"
         let mut vm = create_test_view_model();
@@ -261,7 +261,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_enter_opens_modal_for_selectors() {
         // Test PRD requirement: Enter key activates modal dialogs for selectors
         let mut vm = create_test_view_model();
@@ -297,7 +297,7 @@ mod viewmodel_tests {
         assert_eq!(vm.modal_state, ModalState::Settings);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_enter_on_draft_card_activates_based_on_internal_focus() {
         // Test PRD requirement: Enter key on draft card activates based on internal focus
         let mut vm = create_test_view_model();
@@ -354,7 +354,7 @@ mod viewmodel_tests {
         assert!(vm.status_bar.error_message.is_some());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_escape_requires_double_press_to_request_exit() {
         let (mut log, log_path) = create_viewmodel_test_log("escape_double_press");
         let log_hint = log_path.display().to_string();
@@ -419,7 +419,7 @@ mod viewmodel_tests {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_task_launch_validation_requires_description() {
         // Test PRD requirement: Task launch validation
         let mut vm = create_test_view_model();
@@ -433,7 +433,7 @@ mod viewmodel_tests {
         assert!(vm.status_bar.error_message.as_ref().unwrap().contains("required"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_task_launch_validation_requires_models() {
         // Test PRD requirement: Task launch validation
         let mut vm = create_test_view_model();
@@ -458,7 +458,7 @@ mod viewmodel_tests {
         assert!(vm.status_bar.error_message.as_ref().unwrap().contains("model"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_ctrl_n_creates_new_draft_task() {
         // Test PRD requirement: Ctrl+N creates new draft task
         let mut vm = create_test_view_model();
@@ -483,7 +483,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_auto_save_timer_gets_set_on_text_input() {
         // Test PRD requirement: Auto-save functionality
         let mut vm = create_test_view_model();
@@ -506,7 +506,7 @@ mod viewmodel_tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn viewmodel_auto_save_timer_expires_after_delay() {
         // Test PRD requirement: Auto-save timer expiration
         let mut vm = create_test_view_model();

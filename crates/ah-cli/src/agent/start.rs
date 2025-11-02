@@ -613,7 +613,7 @@ impl AgentStartArgs {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_bool() {
         assert_eq!(parse_bool("true").unwrap(), true);
         assert_eq!(parse_bool("false").unwrap(), false);

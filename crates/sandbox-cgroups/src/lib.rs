@@ -339,7 +339,7 @@ impl CgroupManager {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cgroup_config_defaults() {
         let config = CgroupConfig::default();
 
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(config.cpu.max, Some("80000 100000".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cgroup_manager_creation() {
         let config = CgroupConfig::default();
         let manager = CgroupManager::new(config);
@@ -368,7 +368,7 @@ mod tests {
         assert!(metrics.cpu_system.is_none());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_pid_limits_config() {
         let limits = PidLimits::default();
         assert_eq!(limits.max, Some(1024));
@@ -377,7 +377,7 @@ mod tests {
         assert_eq!(custom_limits.max, Some(512));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_memory_limits_config() {
         let limits = MemoryLimits::default();
         assert_eq!(limits.high, Some(1024 * 1024 * 1024)); // 1GB
@@ -391,7 +391,7 @@ mod tests {
         assert_eq!(custom_limits.max, Some(1024 * 1024 * 1024));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cpu_limits_config() {
         let limits = CpuLimits::default();
         assert_eq!(limits.max, Some("80000 100000".to_string()));

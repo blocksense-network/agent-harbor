@@ -117,13 +117,13 @@ pub trait Multiplexer {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_split_direction_debug() {
         assert_eq!(format!("{:?}", SplitDirection::Horizontal), "Horizontal");
         assert_eq!(format!("{:?}", SplitDirection::Vertical), "Vertical");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_mux_error_display() {
         let err = MuxError::NotAvailable("tmux");
         assert_eq!(err.to_string(), "multiplexer not available: tmux");

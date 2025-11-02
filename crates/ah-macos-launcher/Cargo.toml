@@ -19,3 +19,6 @@ tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 ah-sandbox-macos = { path = "../ah-sandbox-macos" }
 libc = "0.2"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

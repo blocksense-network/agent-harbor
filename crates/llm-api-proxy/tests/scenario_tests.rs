@@ -20,7 +20,7 @@ use llm_api_proxy::{
     },
 };
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tool_profiles_claude_mapping() {
     let profiles = ToolProfiles::new();
 
@@ -50,7 +50,7 @@ async fn test_tool_profiles_claude_mapping() {
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tool_profiles_codex_mapping() {
     let profiles = ToolProfiles::new();
 
@@ -79,7 +79,7 @@ async fn test_tool_profiles_codex_mapping() {
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_player_creation() {
     let config = ProxyConfig::default();
     let config = Arc::new(RwLock::new(config));
@@ -88,7 +88,7 @@ async fn test_scenario_player_creation() {
     assert!(player.is_ok());
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_player_no_scenarios() {
     let config = ProxyConfig::default();
     let config = Arc::new(RwLock::new(config));
@@ -116,7 +116,7 @@ async fn test_scenario_player_no_scenarios() {
     assert!(error_msg.contains("No scenarios loaded"));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_loading() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -163,7 +163,7 @@ expect:
     assert!(player.scenarios.contains_key("test_scenario"));
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_playback_simple() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -222,7 +222,7 @@ expect:
     assert_eq!(content, "Hello from scenario");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_playback_with_tool_call() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -295,7 +295,7 @@ expect:
     assert_eq!(args["text"], "Generated content");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_system_message_extraction_and_alternation() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -364,7 +364,7 @@ expect:
     assert_eq!(content, "I'm doing well, thank you for asking!");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_streaming_tool_call_conversion_unit() {
     use anthropic_ai_sdk::types::message::ContentBlock;
     use async_openai::types::{
@@ -433,7 +433,7 @@ async fn test_streaming_tool_call_conversion_unit() {
     }
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_anthropic_thinking_and_agent_edits() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -502,7 +502,7 @@ expect:
     assert_eq!(input["linesRemoved"], 1);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_force_tools_validation_failure() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -598,7 +598,7 @@ expect:
     std::fs::remove_dir_all(&agent_requests_dir).ok(); // Ignore errors if directory doesn't exist
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_request_logging() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -692,7 +692,7 @@ expect:
     std::env::remove_var("LLM_API_PROXY_LOG_RESPONSES");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_session_management() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -757,7 +757,7 @@ expect:
     assert_eq!(content2, "Second response");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_with_named_scenario() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -814,7 +814,7 @@ timeline:
     assert_eq!(content, "Response from scenario 2");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_isolation() -> Result<(), Box<dyn std::error::Error>> {
     // Test session isolation by API key - verify different API keys get different responses
     let config = ProxyConfig {
@@ -867,7 +867,7 @@ async fn test_session_isolation() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tool_validation() -> Result<(), Box<dyn std::error::Error>> {
     // Clean up any leftover environment variables
     std::env::remove_var("FORCE_TOOLS_VALIDATION_FAILURE");
@@ -895,7 +895,7 @@ async fn test_tool_validation() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tool_validation_strict_mode() -> Result<(), Box<dyn std::error::Error>> {
     // Clean up any leftover environment variables
     std::env::remove_var("FORCE_TOOLS_VALIDATION_FAILURE");
@@ -926,7 +926,7 @@ async fn test_tool_validation_strict_mode() -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_response_formats() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     use tempfile::TempDir;
@@ -996,7 +996,7 @@ expect:
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tool_call_validation() -> Result<(), Box<dyn std::error::Error>> {
     // Clean up any leftover environment variables from other tests
     std::env::remove_var("FORCE_TOOLS_VALIDATION_FAILURE");
@@ -1021,7 +1021,7 @@ async fn test_tool_call_validation() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_tool_changes_tracking_with_version() -> Result<(), Box<dyn std::error::Error>> {
     use tempfile::TempDir;
 
@@ -1068,7 +1068,7 @@ async fn test_tool_changes_tracking_with_version() -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_agent_type_detection() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1135,7 +1135,7 @@ expect:
     Ok(())
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_minimize_logs_configuration() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1193,7 +1193,7 @@ expect:
     let log_path_pretty = temp_dir_pretty.path().join("pretty_log.json");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_scenario_validation_thinking_requires_assistant() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1242,7 +1242,7 @@ expect:
     }
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_openai_responses_api_format() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1325,7 +1325,7 @@ expect:
     assert!(usage["total_tokens"].as_i64().unwrap() > 0);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_anthropic_thinking_format() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1439,13 +1439,13 @@ expect:
     assert!(usage["output_tokens"].as_i64().unwrap() > 0);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_manager_creation() {
     let session_manager = SessionManager::new();
     assert_eq!(session_manager.cleanup_expired_sessions().await, 0);
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_preparation_and_retrieval() {
     let session_manager = SessionManager::new();
 
@@ -1485,7 +1485,7 @@ async fn test_session_preparation_and_retrieval() {
     assert_eq!(session_config.model_mappings[0].source_pattern, "claude");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_config_deduplication() {
     let session_manager = SessionManager::new();
 
@@ -1530,7 +1530,7 @@ async fn test_session_config_deduplication() {
     assert!(session_manager.get_session_config("api-key-2").await.is_some());
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_end() {
     let session_manager = SessionManager::new();
 
@@ -1567,7 +1567,7 @@ async fn test_session_end() {
     assert!(session_manager.get_session_config("test-api-key").await.is_none());
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_model_routing_substring_matching() {
     // Create a session config with model mappings
     let providers = vec![
@@ -1678,7 +1678,7 @@ async fn test_session_model_routing_substring_matching() {
     }
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_model_routing_priority() {
     // Test that more specific patterns take priority over general ones
     let providers = vec![
@@ -1773,7 +1773,7 @@ async fn test_session_model_routing_priority() {
     }
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_model_routing_default_fallback() {
     // Test default provider fallback when no mappings match
     let providers = vec![
@@ -1861,7 +1861,7 @@ async fn test_session_model_routing_default_fallback() {
     }
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_session_nonexistent() {
     let session_manager = SessionManager::new();
 
@@ -1871,7 +1871,7 @@ async fn test_session_nonexistent() {
     // Try to end non-existent session (should not error)
     assert!(session_manager.end_session("nonexistent").await.is_ok());
 }
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_anthropic_streaming_response() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -1944,7 +1944,7 @@ expect:
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_openai_streaming_response() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -2012,7 +2012,7 @@ expect:
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_openai_responses_streaming() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -2081,7 +2081,7 @@ expect:
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_extra_queries_dont_break_scenario() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -2200,7 +2200,7 @@ expect:
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_extra_tool_results_dont_break_scenario() {
     use std::io::Write;
     use tempfile::TempDir;
@@ -2297,7 +2297,7 @@ expect:
     assert_eq!(content3, "Test completed successfully");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_out_of_order_user_inputs() {
     use std::io::Write;
     use tempfile::TempDir;

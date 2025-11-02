@@ -17,6 +17,7 @@ thiserror.workspace = true
 async-trait = "0.1"
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = "3.8"
 regex = "1.10"
 libc = "0.2"

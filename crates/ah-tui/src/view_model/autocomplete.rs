@@ -870,7 +870,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn detects_at_trigger_token() {
         let mut textarea = TextArea::from(["@main".to_string()]);
         textarea.move_cursor(CursorMove::End);
@@ -881,7 +881,7 @@ mod tests {
         assert_eq!(query, "main");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn matcher_returns_ordered_results() {
         let provider = Arc::new(TestProvider::new(
             Trigger::At,
@@ -919,7 +919,7 @@ mod tests {
         assert_eq!(autocomplete.vm.results[0].item.label, "main.rs");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn commit_inserts_replacement() {
         let provider = Arc::new(TestProvider::new(Trigger::At, Vec::new())) as Arc<dyn Provider>;
         let mut autocomplete = InlineAutocomplete::with_providers(vec![provider]);

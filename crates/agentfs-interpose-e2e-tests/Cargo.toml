@@ -26,3 +26,6 @@ path = "src/bin/test_helper.rs"
 [[bin]]
 name = "agentfs-interpose-mock-daemon"
 path = "src/bin/mock_daemon.rs"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

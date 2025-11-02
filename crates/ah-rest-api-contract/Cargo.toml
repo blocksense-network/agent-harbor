@@ -24,4 +24,5 @@ default = ["utoipa"]
 utoipa = ["dep:utoipa"]
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tokio = { workspace = true }

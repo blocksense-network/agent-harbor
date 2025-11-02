@@ -23,5 +23,6 @@ chrono.workspace = true
 path = "../ah-fs-snapshots-traits"
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = "3.8"
 ah-repo = { path = "../ah-repo" }

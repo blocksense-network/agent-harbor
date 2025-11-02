@@ -205,7 +205,7 @@ impl Drop for NetworkManager {
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_network_manager_creation() {
         let config = NetworkConfig::default();
         let mut manager = NetworkManager::new(config);
@@ -213,7 +213,7 @@ mod tests {
         assert!(manager.cleanup().is_ok());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_network_manager_with_slirp_disabled() {
         let config = NetworkConfig {
             allow_internet: false,
@@ -224,7 +224,7 @@ mod tests {
         assert!(manager.cleanup().is_ok());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_loopback_setup() {
         let config = NetworkConfig::default();
         let manager = NetworkManager::new(config);

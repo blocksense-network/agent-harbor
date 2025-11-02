@@ -199,7 +199,7 @@ impl NamespaceManager {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_namespace_manager_creation() {
         let config = NamespaceConfig {
             user_ns: true,

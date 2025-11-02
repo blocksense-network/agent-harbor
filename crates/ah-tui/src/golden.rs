@@ -149,7 +149,7 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_golden_save_load() {
         let temp_dir = tempdir().unwrap();
         let mut manager = GoldenManager {
@@ -167,7 +167,7 @@ mod tests {
         assert_eq!(loaded, content);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_golden_comparison() {
         let temp_dir = tempdir().unwrap();
         let mut manager = GoldenManager {
@@ -190,7 +190,7 @@ mod tests {
         assert!(result.unwrap_err().contains("Golden mismatch"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_update_mode() {
         let temp_dir = tempdir().unwrap();
         let mut manager = GoldenManager {
@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(loaded, updated_content);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_normalize_golden() {
         let input = "Line 1  \nLine 2\t\n  \nLine 3\n";
         let expected = "Line 1\nLine 2\nLine 3\n";

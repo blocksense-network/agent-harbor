@@ -72,7 +72,7 @@ mod tests {
         Two,
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn returns_latest_registered_zone_first() {
         let mut registry = HitTestRegistry::new();
         registry.register(
@@ -98,7 +98,7 @@ mod tests {
         assert_eq!(result.action, Action::Two);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn returns_none_when_no_zone_matches() {
         let mut registry = HitTestRegistry::new();
         registry.register(

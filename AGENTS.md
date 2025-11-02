@@ -63,22 +63,30 @@ When you are facing issues with a dependency, make sure to study its implementat
 Use the `ah-test-utils` crate for consistent test logging across all crates:
 
 ```rust
-use ah_test_utils::{TestLogger, logged_test, logged_assert};
+use ah_test_utils::{logged_assert, TestLogger};
 
-// Recommended: Use the macro for simple tests
-logged_test!(test_my_feature {
+// Recommended: attribute macro (works for sync tests)
+#[ah_test_utils::logged_test]
+fn test_my_feature() {
     logger.log("Testing my feature").unwrap();
     let result = my_function();
     logged_assert!(logger, result.is_ok(), "Function should succeed");
-    logger.log("Test completed").unwrap();
-});
+}
 
-// Alternative: Manual TestLogger for complex tests
+// Async tests use the Tokio variant
+#[ah_test_utils::logged_tokio_test]
+async fn test_async_flow() -> anyhow::Result<()> {
+    logger.log("Starting async flow").unwrap();
+    perform_async_work().await?;
+    Ok(())
+}
+
+// Manual guard management remains available for edge cases
 #[test]
 fn test_complex_feature() {
-    let mut logger = TestLogger::new("test_complex_feature").unwrap();
-    // ... test logic with logger.log() calls ...
-    logger.finish_success().unwrap(); // or finish_failure()
+    let mut guard = ah_test_utils::TestLoggerGuard::new("test_complex_feature").unwrap();
+    guard.logger().log("Running complex feature test").unwrap();
+    guard.finish_success().unwrap();
 }
 ```
 

@@ -1,0 +1,17 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-test-utils-macros"
+version = "0.1.0"
+edition = "2021"
+description = "Procedural macros for Agent Harbor unified test logging"
+license = "MIT OR Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }

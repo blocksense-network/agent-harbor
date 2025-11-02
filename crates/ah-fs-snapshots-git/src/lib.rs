@@ -632,13 +632,13 @@ impl FsSnapshotProvider for GitProvider {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_git_provider_creation() {
         let provider = GitProvider::new();
         assert_eq!(provider.kind(), SnapshotProviderKind::Git);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_git_capabilities_on_non_git_path() {
         let provider = GitProvider::new();
         let capabilities = provider.detect_capabilities(Path::new("/tmp"));
@@ -649,7 +649,7 @@ mod tests {
         assert!(!capabilities.supports_cow_overlay);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_git_inplace_workspace_creation() {
         let provider = GitProvider::new();
         let repo_path = Path::new("/tmp/test_repo");
@@ -664,7 +664,7 @@ mod tests {
         assert!(ws.cleanup_token.starts_with("git:inplace:"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_git_worktree_mode_not_implemented() {
         let provider = GitProvider::new();
         let repo_path = Path::new("/tmp/test_repo");
@@ -675,7 +675,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_git_auto_mode_falls_back_to_worktree() {
         let provider = GitProvider::new();
         let repo_path = Path::new("/tmp/test_repo");
@@ -686,7 +686,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cleanup_invalid_token() {
         let provider = GitProvider::new();
         let result = provider.cleanup("invalid:token");
@@ -695,7 +695,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Invalid Git cleanup token"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cleanup_inplace_token() {
         let provider = GitProvider::new();
         let result = provider.cleanup("git:inplace:/some/path");
@@ -704,7 +704,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_generate_unique_id() {
         let id1 = ah_fs_snapshots_traits::generate_unique_id();
         let id2 = ah_fs_snapshots_traits::generate_unique_id();
@@ -717,7 +717,7 @@ mod tests {
         assert!(id1.contains(&pid));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_shadow_repo_path_deterministic() {
         let provider = GitProvider::new();
         let repo_path = Path::new("/tmp/test_repo");

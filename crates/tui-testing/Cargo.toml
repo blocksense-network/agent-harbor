@@ -35,4 +35,5 @@ crossterm = "0.29"
 clap = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tokio-test = "0.4"

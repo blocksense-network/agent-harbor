@@ -22,3 +22,6 @@ path = "../ah-fs-snapshots-traits"
 
 [dependencies.ah-fs-snapshots-daemon]
 path = "../ah-fs-snapshots-daemon"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

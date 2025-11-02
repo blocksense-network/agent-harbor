@@ -291,20 +291,20 @@ impl Multiplexer for ScreenMultiplexer {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_screen_id() {
         let mux = ScreenMultiplexer::new().unwrap();
         assert_eq!(mux.id(), "screen");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_screen_focus_pane_not_available() {
         let mux = ScreenMultiplexer::new().unwrap();
         let result = mux.focus_pane("dummy");
         assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_screen_list_panes_not_available() {
         let mux = ScreenMultiplexer::new().unwrap();
         let result = mux.list_panes("dummy");

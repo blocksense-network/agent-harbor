@@ -101,7 +101,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_path_validation() {
         // Valid paths should pass validation
         assert!(validate_destination_path(Path::new("/tmp/test")).is_ok());
@@ -115,7 +115,7 @@ mod tests {
         assert!(validate_destination_path(Path::new("/run/lock")).is_err());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_provider_selection_git_fallback() {
         #[cfg(feature = "git")]
         {

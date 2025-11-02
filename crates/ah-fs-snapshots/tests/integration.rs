@@ -20,7 +20,7 @@ mod filesystem_test_helpers;
 ///
 /// This test creates ZFS test pools and exercises the provider API
 /// to ensure everything works together correctly.
-#[test]
+#[ah_test_utils::logged_test]
 fn test_zfs_snapshot_integration() {
     // Skip if not running as root (required for ZFS operations)
     if !is_root() {
@@ -139,7 +139,7 @@ fn populate_test_repo(repo_path: &Path) {
 ///
 /// This test creates Git repositories and exercises the Git provider API
 /// to ensure everything works together correctly.
-#[test]
+#[ah_test_utils::logged_test]
 fn test_git_snapshot_integration() {
     // Skip if git is not available
     if !git_available() {

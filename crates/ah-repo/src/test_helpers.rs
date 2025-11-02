@@ -380,7 +380,7 @@ pub async fn push_to_remote(repo_path: &Path) -> Result<(), Box<dyn std::error::
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_simple_git_repo_creation() {
         if !git_available() {
             println!("Skipping Git test: git command not available");
@@ -407,7 +407,7 @@ mod tests {
         assert!(log.contains("Initial commit"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_git_test_repo_creation() {
         if !git_available() {
             println!("Skipping Git test: git command not available");
@@ -437,7 +437,7 @@ mod tests {
         assert!(remotes.contains("origin"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_simple_git_repo_commit_creation() {
         if !git_available() {
             println!("Skipping Git test: git command not available");
@@ -466,7 +466,7 @@ mod tests {
         assert!(show_output.contains("Test commit"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_simple_git_repo_staging() {
         if !git_available() {
             println!("Skipping Git test: git command not available");
@@ -481,7 +481,7 @@ mod tests {
         assert!(status.contains("A  staged.txt"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_simple_git_repo_uncommitted() {
         if !git_available() {
             println!("Skipping Git test: git command not available");
@@ -498,7 +498,7 @@ mod tests {
         assert!(status.contains("?? uncommitted.txt"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_git_repo_config_builder() {
         // Test default config
         let default_config = GitRepoConfig::default();

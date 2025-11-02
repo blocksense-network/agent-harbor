@@ -19,3 +19,6 @@ nix = "0.27"
 
 [dependencies.ah-sandbox]
 path = "../ah-sandbox"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

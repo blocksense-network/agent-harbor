@@ -21,46 +21,60 @@ This crate provides standardized testing utilities that follow the project's tes
 
 ## Quick Start
 
-### Basic Usage with TestLogger
+### Basic Usage with Attribute Macros
 
 ```rust
-use ah_test_utils::TestLogger;
+use ah_test_utils::logged_test;
 
-#[test]
+#[logged_test]
 fn test_my_feature() {
-    let mut logger = TestLogger::new("test_my_feature").unwrap();
-    
     logger.log("Starting my feature test").unwrap();
-    
+
     // Your test logic here
     let result = my_function();
-    
+
     if result.is_ok() {
         logger.log("Feature test completed successfully").unwrap();
-        logger.finish_success().unwrap();
     } else {
-        logger.finish_failure("Feature test failed").unwrap();
+        logger.log("Feature test failed").unwrap();
         panic!("Test failed");
     }
 }
 ```
 
-### Simplified Usage with Macros
+### Manual Control with `TestLoggerGuard`
 
 ```rust
-use ah_test_utils::{logged_test, logged_assert, logged_assert_eq};
+use ah_test_utils::TestLoggerGuard;
 
-logged_test!(test_my_feature_simple {
-    logger.log("Testing my feature with macro").unwrap();
-    
+#[test]
+fn test_with_manual_control() {
+    let mut guard = TestLoggerGuard::new("test_with_manual_control").unwrap();
+    guard.logger().log("Running manual control example").unwrap();
+    // ... perform test logic ...
+    guard.logger().log("Manual control example completed").unwrap();
+
+    guard.finish_success().unwrap();
+}
+```
+
+### Using Assertion Helpers
+
+```rust
+use ah_test_utils::{logged_assert, logged_assert_eq};
+
+#[ah_test_utils::logged_test]
+fn test_my_feature_simple() {
+    logger.log("Testing my feature with helpers").unwrap();
+
     let result = my_function();
     logged_assert!(logger, result.is_ok(), "Function should succeed");
-    
+
     let value = result.unwrap();
     logged_assert_eq!(logger, value, expected_value);
-    
+
     logger.log("Test completed successfully").unwrap();
-});
+}
 ```
 
 ## Log File Structure
@@ -121,10 +135,6 @@ The main logging interface that manages test output according to project guideli
 
 ### Macros
 
-#### `logged_test!(test_name { ... })`
-
-Convenience macro that automatically creates a TestLogger and handles success/failure cases.
-
 #### `logged_assert!(logger, condition, message)`
 
 Logs assertion attempts and results, panics on failure.
@@ -150,12 +160,12 @@ use ah_test_utils::TestLogger;
 #[test]
 fn test_cli_parsing() {
     let mut logger = TestLogger::new("test_cli_parsing").unwrap();
-    
+
     logger.log("Testing CLI argument parsing").unwrap();
-    
+
     let args = vec!["ah", "agent", "start", "--task", "example"];
     logger.log(&format!("Parsing args: {:?}", args)).unwrap();
-    
+
     match Cli::try_parse_from(args) {
         Ok(cli) => {
             logger.log("CLI parsing succeeded").unwrap();
@@ -172,30 +182,36 @@ fn test_cli_parsing() {
 
 ### Integration Tests
 
-```rust
-use ah_test_utils::{logged_test, logged_assert};
+use ah_test_utils::logged_tokio_test;
 
-logged_test!(test_end_to_end_workflow {
-    logger.log("Starting end-to-end workflow test").unwrap();
-    
+# [logged_tokio_test]
+
+async fn test_end_to_end_workflow() {
+logger.log("Starting end-to-end workflow test").unwrap();
+
     // Setup
     let session = create_test_session().await;
     logger.log(&format!("Created test session: {}", session.id)).unwrap();
-    
+
     // Execute
     let task = create_task(&session, "test task").await;
     logger.log(&format!("Created task: {}", task.id)).unwrap();
-    
+
     let result = execute_task(&task).await;
-    logged_assert!(logger, result.is_ok(), "Task execution should succeed");
-    
+    if result.is_err() {
+        logger.log("Task execution reported error").unwrap();
+        panic!("Task execution should succeed");
+    }
+
     // Verify
     let final_state = get_session_state(&session).await;
-    logged_assert_eq!(logger, final_state.status, SessionStatus::Completed);
-    
+    assert_eq!(final_state.status, SessionStatus::Completed);
+
     logger.log("End-to-end workflow test completed successfully").unwrap();
-});
-```
+
+}
+
+````
 
 ## Benefits
 
@@ -258,17 +274,18 @@ fn test_feature() {
     assert!(result.is_ok());
     println!("Test passed");
 }
-```
+````
 
 #### After
 
 ```rust
-logged_test!(test_feature {
+#[ah_test_utils::logged_test]
+fn test_feature() {
     logger.log("Testing feature").unwrap();
     let result = my_function();
     logged_assert!(logger, result.is_ok(), "Function should succeed");
     logger.log("Test passed").unwrap();
-});
+}
 ```
 
 ## Project Integration

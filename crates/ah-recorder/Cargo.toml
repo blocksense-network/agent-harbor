@@ -41,5 +41,6 @@ ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

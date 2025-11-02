@@ -327,7 +327,7 @@ impl Multiplexer for WezTermMultiplexer {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_wezterm_id() {
         let mux = WezTermMultiplexer::new().unwrap();
         assert_eq!(mux.id(), "wezterm");

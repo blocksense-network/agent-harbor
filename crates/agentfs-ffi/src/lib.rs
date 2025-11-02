@@ -21,7 +21,7 @@ mod tests {
         fs
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_chown_and_non_utf8_create() {
         let fs = create_fs();
         // mkdir /raw
@@ -71,7 +71,7 @@ mod tests {
         // Set owner on path (percent-encoded internal path is not public; chown via path of parent not tested here)
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_basic_readdir_and_attrs() {
         let fs = create_fs();
         let path = CString::new("/").unwrap();
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(rc, 0);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_set_mode_times_rename_and_xattr() {
         let fs = create_fs();
         let fname = CString::new("/file").unwrap();

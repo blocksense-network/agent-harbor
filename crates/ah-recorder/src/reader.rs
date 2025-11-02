@@ -165,14 +165,14 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_ahr_reader_creation() {
         let temp_file = NamedTempFile::new().unwrap();
         let reader = AhrReader::new(temp_file.path());
         assert!(reader.is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_empty_file() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut reader = AhrReader::new(temp_file.path()).unwrap();

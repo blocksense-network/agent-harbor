@@ -121,7 +121,7 @@ fn prepare_autocomplete(vm: &mut ViewModel, trigger: Trigger, labels: &[&str]) {
     vm.autocomplete.poll_results();
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn autocomplete_navigation_wraps_for_keyboard_operations() {
     let (mut log, log_path) = create_test_log("autocomplete_wrap");
     let log_hint = log_path.display().to_string();
@@ -202,7 +202,7 @@ fn autocomplete_navigation_wraps_for_keyboard_operations() {
     );
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn caret_movement_closes_autocomplete_menu() {
     let (mut log, log_path) = create_test_log("autocomplete_caret");
     let log_hint = log_path.display().to_string();

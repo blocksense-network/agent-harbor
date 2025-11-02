@@ -414,7 +414,7 @@ mod tests {
     use super::*;
     use ah_rest_api_contract::*;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_client_creation() {
         let base_url = "http://localhost:3001";
         let auth = AuthConfig::default();
@@ -423,7 +423,7 @@ mod tests {
         assert_eq!(client.base_url().to_string(), format!("{}/", base_url));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_query_params_building() {
         let client = RestClient::from_url("http://localhost:3001", AuthConfig::default()).unwrap();
 

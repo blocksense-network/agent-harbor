@@ -22,3 +22,6 @@ linux = []
 
 [dependencies.ah-core]
 path = "../ah-core"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

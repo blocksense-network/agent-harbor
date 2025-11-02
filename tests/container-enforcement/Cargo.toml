@@ -23,6 +23,7 @@ sandbox-fs = { path = "../../crates/sandbox-fs" }
 sandbox-devices = { path = "../../crates/sandbox-devices" }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }
 
 [[bin]]

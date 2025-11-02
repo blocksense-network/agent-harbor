@@ -535,7 +535,7 @@ mod tests {
     use super::*;
     use ah_domain_types::SelectedModel;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn rest_task_manager_validates_parameters() {
         // Test that TaskLaunchParams validation works correctly
 
@@ -614,7 +614,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn rest_task_manager_has_correct_description() {
         // Test that the trait compiles correctly
         // Since we can't instantiate clients in this crate, we just verify compilation

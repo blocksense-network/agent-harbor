@@ -28,3 +28,4 @@ agentfs-core = { path = "../agentfs-core", optional = true }
 mock-daemon = ["agentfs-core"]
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }

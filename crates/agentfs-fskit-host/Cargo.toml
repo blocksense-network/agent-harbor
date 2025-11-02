@@ -35,3 +35,6 @@ dispatch = "0.2"        # For Grand Central Dispatch
 default = []
 # Feature flags for different build configurations
 xpc = [] # Enable XPC control plane
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

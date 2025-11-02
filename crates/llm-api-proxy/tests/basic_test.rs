@@ -6,7 +6,7 @@
 use llm_api_proxy::proxy::{ProxyMode, ProxyRequest};
 use llm_api_proxy::{LlmApiProxy, ProxyConfig, converters::ApiFormat, routing::DynamicRouter};
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_proxy_creation() {
     // Create a basic configuration
     let config = ProxyConfig::default();
@@ -23,7 +23,7 @@ async fn test_proxy_creation() {
     assert!(!proxy.scenario_enabled());
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_config_validation() {
     // Test valid config
     let config = ProxyConfig::default();
@@ -39,7 +39,7 @@ async fn test_config_validation() {
     assert!(invalid_config.validate().is_err());
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_anthropic_to_openrouter_routing() {
     // Create proxy with OpenRouter provider
     let proxy = LlmApiProxy::new(ProxyConfig::default()).await.unwrap();
@@ -97,7 +97,7 @@ async fn test_anthropic_to_openrouter_routing() {
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_full_proxy_workflow() {
     // Test the complete proxy workflow: Anthropic request → OpenRouter → metrics
     let proxy = LlmApiProxy::new(ProxyConfig::default()).await.unwrap();
@@ -161,7 +161,7 @@ async fn test_full_proxy_workflow() {
     );
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_provider_routing_logic() {
     // Test that the routing logic correctly selects providers based on model names
     let proxy = LlmApiProxy::new(ProxyConfig::default()).await.unwrap();
@@ -196,7 +196,7 @@ async fn test_provider_routing_logic() {
     println!("✅ Provider routing logic test passed!");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_model_routing_patterns() {
     // Test the standard routing patterns (non-session based)
     let config = ProxyConfig::default();
@@ -243,7 +243,7 @@ async fn test_model_routing_patterns() {
     println!("✅ Model routing patterns test passed!");
 }
 
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_metrics_collection() {
     let proxy = LlmApiProxy::new(ProxyConfig::default()).await.unwrap();
 

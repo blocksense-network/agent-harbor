@@ -223,13 +223,13 @@ impl FilterBuilder {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_filter_builder_creation() {
         let builder = FilterBuilder::new();
         assert!(builder.build().is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_block_filesystem_operations() {
         let mut builder = FilterBuilder::new();
         assert!(builder.block_filesystem_operations().is_ok());
@@ -238,7 +238,7 @@ mod tests {
         assert!(!filter.ctx.is_null());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_allow_basic_operations() {
         let mut builder = FilterBuilder::new();
         // allow_basic_operations may fail in test environments due to syscall availability
@@ -248,7 +248,7 @@ mod tests {
         assert!(true); // Test passes as long as it doesn't panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_debug_mode_enabled() {
         let mut builder = FilterBuilder::new();
         // Test that debug mode enables ptrace operations
@@ -263,7 +263,7 @@ mod tests {
         let _ = filter_result; // Just ensure it doesn't panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_debug_mode_disabled() {
         let mut builder = FilterBuilder::new();
         // Test that normal mode blocks ptrace operations
@@ -278,7 +278,7 @@ mod tests {
         let _ = filter_result; // Just ensure it doesn't panic
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_debug_mode_filter_rules() {
         // Test that calling set_debug_mode doesn't panic in any mode
         // These operations may fail in test environments due to syscall availability,

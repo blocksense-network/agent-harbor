@@ -120,7 +120,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::time::{self, Duration};
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_mock_service_with_delay() {
         let start_time = time::Instant::now();
 
@@ -144,7 +144,7 @@ mod tests {
         assert!(elapsed >= Duration::from_millis(200));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_mock_service_no_delay() {
         let service = MockWorkspaceFilesEnumerator::with_test_files();
 

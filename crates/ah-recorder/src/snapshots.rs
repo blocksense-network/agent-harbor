@@ -242,7 +242,7 @@ mod tests {
     use crate::writer::now_ns;
     use tempfile::NamedTempFile;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_snapshots_writer_basic() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();
@@ -268,7 +268,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_snapshots_reader_basic() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();
@@ -291,7 +291,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_find_closest() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();
@@ -317,7 +317,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_find_near() -> Result<()> {
         let temp = NamedTempFile::new()?;
         let path = temp.path().to_path_buf();

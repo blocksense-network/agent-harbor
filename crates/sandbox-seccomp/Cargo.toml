@@ -20,4 +20,5 @@ async-trait = { workspace = true }
 sandbox-proto = { path = "../sandbox-proto" }
 
 [dev-dependencies]
+ah-test-utils = { workspace = true }
 tempfile = { workspace = true }

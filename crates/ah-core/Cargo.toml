@@ -33,3 +33,6 @@ async-trait.workspace = true
 futures.workspace = true
 async-stream = "0.3"
 url = "2.5"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

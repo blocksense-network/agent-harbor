@@ -370,7 +370,7 @@ impl DeviceManager {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_device_config_defaults() {
         let config = DeviceConfig::default();
 
@@ -381,7 +381,7 @@ mod tests {
         assert!(!config.container_storage_dirs.is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_container_config() {
         let config = DeviceConfig::for_containers();
 
@@ -393,7 +393,7 @@ mod tests {
         assert!(!config.prohibited_devices.contains(&"/dev/fuse".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_vm_config() {
         let config = DeviceConfig::for_vms();
 
@@ -405,7 +405,7 @@ mod tests {
         assert!(!config.prohibited_devices.contains(&"/dev/kvm".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_combined_config() {
         let config = DeviceConfig::for_containers_and_vms();
 
@@ -415,7 +415,7 @@ mod tests {
         assert!(config.allowed_devices.contains(&"/dev/kvm".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_device_allowance() {
         let container_config = DeviceConfig::for_containers();
         let vm_config = DeviceConfig::for_vms();
@@ -431,7 +431,7 @@ mod tests {
         assert!(!vm_config.is_device_allowed("/var/run/docker.sock"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_get_allowed_devices() {
         let config = DeviceConfig::for_containers();
         let allowed = config.get_allowed_devices();
@@ -442,7 +442,7 @@ mod tests {
         assert!(!allowed.contains(&"/var/run/docker.sock".to_string()));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_device_manager_creation() {
         let config = DeviceConfig::default();
         let manager = DeviceManager::new(config);

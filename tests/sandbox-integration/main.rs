@@ -4,7 +4,7 @@
 //! Integration tests for sandbox functionality
 
 #[cfg(target_os = "linux")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_sandbox_integration() {
     use sandbox_core::{NamespaceConfig, ProcessConfig, Sandbox};
     use sandbox_fs::{FilesystemConfig, FilesystemManager};
@@ -58,7 +58,7 @@ async fn test_sandbox_integration() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_sbpl_builder_snapshot() {
     use ah_sandbox_macos::SbplBuilder;
     let sbpl = SbplBuilder::new()
@@ -79,7 +79,7 @@ fn test_sbpl_builder_snapshot() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_ah_macos_launcher_denies_write_outside_tmp() {
     use std::path::PathBuf;
     use std::process::Command;
@@ -141,7 +141,7 @@ fn test_ah_macos_launcher_denies_write_outside_tmp() {
 }
 
 #[cfg(target_os = "linux")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_cgroups_integration() {
     use sandbox_core::{NamespaceConfig, ProcessConfig, Sandbox};
 
@@ -201,7 +201,7 @@ async fn test_cgroups_integration() {
 }
 
 #[cfg(target_os = "linux")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_cgroups_manager_direct() {
     // Test direct cgroup manager usage
     let config = sandbox_core::CgroupConfig::default();
@@ -225,7 +225,7 @@ fn test_cgroups_manager_direct() {
 }
 
 #[cfg(target_os = "linux")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_cgroups_enforcement_e2e() {
     // This test runs the full E2E cgroup enforcement test suite
     // It requires the test binaries to be built and available
@@ -288,7 +288,7 @@ fn test_cgroups_enforcement_e2e() {
 }
 
 #[cfg(target_os = "linux")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_debugging_enforcement_e2e() {
     // This test runs the full E2E debugging enforcement test suite
     // It requires the test binaries to be built and available
@@ -355,7 +355,7 @@ fn test_debugging_enforcement_e2e() {
 }
 
 #[cfg(target_os = "linux")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_overlay_enforcement_e2e() {
     // This test runs the full E2E overlay enforcement test suite
     // It requires the test binaries to be built and available
@@ -439,7 +439,7 @@ fn test_overlay_enforcement_e2e() {
 }
 
 #[cfg(target_os = "linux")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_filesystem_config_defaults() {
     use sandbox_fs::FilesystemConfig;
 
@@ -458,7 +458,7 @@ fn test_filesystem_config_defaults() {
 }
 
 #[cfg(target_os = "linux")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_filesystem_isolation_overlay() {
     use sandbox_core::{NamespaceConfig, ProcessConfig, Sandbox};
     use sandbox_fs::FilesystemConfig;
@@ -580,7 +580,7 @@ async fn test_filesystem_isolation_overlay() {
 }
 
 #[cfg(target_os = "linux")]
-#[tokio::test]
+#[ah_test_utils::logged_tokio_test]
 async fn test_filesystem_isolation_readonly_mount() {
     use sandbox_core::{NamespaceConfig, ProcessConfig, Sandbox};
     use sandbox_fs::{FilesystemConfig, FilesystemManager};
@@ -679,7 +679,7 @@ async fn test_filesystem_isolation_readonly_mount() {
 }
 
 #[cfg(target_os = "linux")]
-#[test]
+#[ah_test_utils::logged_test]
 fn test_filesystem_config_overlay_setup() {
     use sandbox_fs::FilesystemConfig;
 
@@ -707,7 +707,7 @@ fn test_filesystem_config_overlay_setup() {
     println!("✅ Filesystem overlay configuration test passed");
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_filesystem_isolation_principles() {
     // This test verifies the conceptual principles of filesystem isolation
     // without requiring actual sandbox execution (works on all platforms)

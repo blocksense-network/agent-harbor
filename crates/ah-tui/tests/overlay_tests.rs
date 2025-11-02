@@ -135,7 +135,7 @@ fn prepare_autocomplete(vm: &mut ViewModel, trigger: Trigger, labels: &[&str]) {
     vm.autocomplete.poll_results();
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn modal_navigation_wraps_with_keyboard_operations() {
     let (mut log, log_path) = create_test_log("modal_navigation");
     let log_hint = log_path.display().to_string();
@@ -186,7 +186,7 @@ fn modal_navigation_wraps_with_keyboard_operations() {
     );
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
     let (mut log, log_path) = create_test_log("dismiss_overlay");
     let log_hint = log_path.display().to_string();

@@ -16,7 +16,7 @@ use std::io::Result;
 use std::sync::Arc;
 
 /// Test that the dashboard renders correctly on different terminal sizes
-#[test]
+#[ah_test_utils::logged_test]
 fn test_dashboard_layout_small_terminal() -> Result<()> {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend)?;
@@ -41,7 +41,7 @@ fn test_dashboard_layout_small_terminal() -> Result<()> {
     Ok(())
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_dashboard_layout_large_terminal() -> Result<()> {
     let backend = TestBackend::new(120, 40);
     let mut terminal = Terminal::new(backend)?;
@@ -62,7 +62,7 @@ fn test_dashboard_layout_large_terminal() -> Result<()> {
     Ok(())
 }
 
-#[test]
+#[ah_test_utils::logged_test]
 fn test_focus_indication() -> Result<()> {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend)?;

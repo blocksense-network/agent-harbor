@@ -541,7 +541,7 @@ impl Sandbox {
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_sandbox_creation() {
         let mut sandbox = Sandbox::new();
         assert!(sandbox.start().await.is_ok());

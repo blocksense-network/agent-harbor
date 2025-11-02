@@ -320,7 +320,7 @@ impl AgentExecutor for CodexAgent {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_version() {
         let output = "codex 0.46.0";
         let result = CodexAgent::parse_version(output);
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(version.version, "0.46.0");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_version_simple() {
         let output = "0.46.0";
         let result = CodexAgent::parse_version(output);
@@ -338,13 +338,13 @@ mod tests {
         assert_eq!(version.version, "0.46.0");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_agent_name() {
         let agent = CodexAgent::new();
         assert_eq!(agent.name(), "codex");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_config_dir() {
         let agent = CodexAgent::new();
         let home = PathBuf::from("/home/user");

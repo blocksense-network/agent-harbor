@@ -17,7 +17,7 @@ mod tests {
     use crate::types::{Request, Response};
     use ssz::{Decode, Encode};
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_ssz_encoding_roundtrip() {
         let request = Request::ping();
         let encoded = request.as_ssz_bytes();
@@ -25,7 +25,7 @@ mod tests {
         assert_eq!(request, decoded);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_ping_response() {
         let request = Request::ping();
         let response = tokio_test::block_on(operations::process_request(request));
@@ -35,7 +35,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_clone_request_creation() {
         let request = Request::clone_zfs("test_snapshot".to_string(), "test_clone".to_string());
         match request {
@@ -47,7 +47,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_response_constructors() {
         let success_resp = Response::success();
         match success_resp {
@@ -64,7 +64,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_zfs_dataset_validation() {
         use crate::operations::{zfs_dataset_exists, zfs_snapshot_exists};
 
@@ -119,7 +119,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_btrfs_subvolume_validation() {
         use crate::operations::btrfs_subvolume_exists;
 
@@ -215,7 +215,7 @@ mod integration_tests {
         Ok(response)
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_daemon_liveness() {
         if !daemon_socket_exists() {
             println!("⚠️  Daemon socket not found at {}", DAEMON_SOCKET_PATH);
@@ -234,7 +234,7 @@ mod integration_tests {
         println!("✅ Daemon is alive and responsive");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_daemon_ping_via_socket() {
         if !daemon_socket_exists() {
             println!("⚠️  Skipping ping test - daemon socket not found");
@@ -262,7 +262,7 @@ mod integration_tests {
         }
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_daemon_zfs_operations() {
         if !daemon_socket_exists() {
             println!("⚠️  Skipping ZFS operations test - daemon socket not found");
@@ -302,7 +302,7 @@ mod integration_tests {
         }
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_daemon_btrfs_operations() {
         if !daemon_socket_exists() {
             println!("⚠️  Skipping Btrfs operations test - daemon socket not found");
@@ -340,7 +340,7 @@ mod integration_tests {
         }
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_daemon_communication_protocol() {
         if !daemon_socket_exists() {
             println!("⚠️  Skipping protocol test - daemon socket not found");

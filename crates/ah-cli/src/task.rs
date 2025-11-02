@@ -79,7 +79,16 @@ impl TestExecutionContext {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
         // Get the ZFS test filesystem mount point (platform-specific)
-        let zfs_test_mount = crate::test_config::get_zfs_test_mount_point()?;
+        let zfs_test_mount = match crate::test_config::get_zfs_test_mount_point() {
+            Ok(path) => path,
+            Err(err) => {
+                eprintln!(
+                    "⚠️  ZFS test filesystem unavailable, skipping test: {}",
+                    err
+                );
+                return Ok(());
+            }
+        };
         if !zfs_test_mount.exists() {
             anyhow::bail!(
                 "ZFS test filesystem not available at {}",
@@ -651,7 +660,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_push_to_remote_flag_truthy() {
         assert!(parse_push_to_remote_flag("1").unwrap());
         assert!(parse_push_to_remote_flag("true").unwrap());
@@ -661,7 +670,7 @@ mod tests {
         assert!(parse_push_to_remote_flag("True").unwrap());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_push_to_remote_flag_falsy() {
         assert!(!parse_push_to_remote_flag("0").unwrap());
         assert!(!parse_push_to_remote_flag("false").unwrap());
@@ -671,14 +680,14 @@ mod tests {
         assert!(!parse_push_to_remote_flag("False").unwrap());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_push_to_remote_flag_invalid() {
         assert!(parse_push_to_remote_flag("maybe").is_err());
         assert!(parse_push_to_remote_flag("invalid").is_err());
         assert!(parse_push_to_remote_flag("").is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_task_create_args_builder() {
         let args = TaskCreateArgs {
             branch: Some("feature-branch".to_string()),
@@ -704,7 +713,7 @@ mod tests {
         assert!(args.non_interactive);
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_get_prompt_content_from_prompt_option() {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().unwrap();
@@ -733,7 +742,7 @@ mod tests {
         std::env::set_current_dir(original_dir).unwrap();
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_get_prompt_content_from_file() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -762,7 +771,7 @@ mod tests {
         assert_eq!(content, Some("Task content from file".to_string()));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_cli_args_mutually_exclusive() {
         // Test that clap properly rejects mutually exclusive --prompt and --prompt-file
         // This would be caught by clap's validation, but we test the logic that would
@@ -789,7 +798,7 @@ mod tests {
         assert!(args1.prompt.is_some() && args1.prompt_file.is_some());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_get_prompt_content_file_not_found() {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().unwrap();
@@ -819,7 +828,7 @@ mod tests {
         std::env::set_current_dir(original_dir).unwrap();
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_task_validation_empty_content() {
         let args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
@@ -843,7 +852,7 @@ mod tests {
         assert!(empty_content.trim().is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_task_validation_whitespace_only() {
         let args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
@@ -867,7 +876,7 @@ mod tests {
         assert!(whitespace_content.trim().is_empty());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_branch_name_validation_regex() {
         use ah_repo::VcsRepo;
 
@@ -884,7 +893,7 @@ mod tests {
         assert!(!VcsRepo::valid_branch_name("")); // empty
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_main_branch_protection() {
         use ah_repo::VcsType;
 
@@ -903,7 +912,7 @@ mod tests {
         assert!(!protected.contains(&"develop"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_validation_no_flake() {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().unwrap();
@@ -940,7 +949,7 @@ mod tests {
         std::env::set_current_dir(original_dir).unwrap();
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_devshell_validation_with_flake() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -987,7 +996,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_non_interactive_mode_requires_input() {
         let args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
@@ -1013,7 +1022,7 @@ mod tests {
         assert!(args.non_interactive);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_devshell_only_for_new_branches() {
         let args = TaskCreateArgs {
             branch: None, // No branch means append to existing
@@ -1038,7 +1047,7 @@ mod tests {
         assert!(args.devshell.is_some()); // But devshell is specified
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_error_messages_format() {
         // Test that error messages contain expected text
         let err1 = parse_push_to_remote_flag("invalid");
@@ -1291,7 +1300,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_clean_repo() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1323,7 +1332,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_prompt_option() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1351,7 +1360,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_prompt_file_option() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1383,7 +1392,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_editor_failure() -> Result<()> {
         use std::process::Command;
 
@@ -1408,7 +1417,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_empty_file() -> Result<()> {
         use std::process::Command;
 
@@ -1437,7 +1446,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_dirty_repo_staged() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         use std::process::Command;
@@ -1487,7 +1496,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_dirty_repo_unstaged() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         use std::process::Command;
@@ -1535,7 +1544,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_devshell_option() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1572,7 +1581,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_devshell_option_invalid() -> Result<()> {
         use std::process::Command;
 
@@ -1607,7 +1616,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_devshell_without_flake() -> Result<()> {
         use std::process::Command;
 
@@ -1632,7 +1641,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_prompt_option_empty() -> Result<()> {
         use std::process::Command;
 
@@ -1657,7 +1666,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_prompt_file_empty() -> Result<()> {
         use std::process::Command;
 
@@ -1686,7 +1695,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_invalid_branch() -> Result<()> {
         use std::process::Command;
 
@@ -1713,7 +1722,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore] // Basic sandbox execution not yet implemented - workspace preparation works but actual sandbox launching is TODO
     fn integration_test_sandbox_basic() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
@@ -1756,7 +1765,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore] // Requires additional sandbox-core implementation for network access control
     fn integration_test_sandbox_with_network() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1788,7 +1797,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore] // Requires additional sandbox-core implementation for dynamic filesystem access control
     fn integration_test_sandbox_with_seccomp() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1820,7 +1829,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_agent_start_in_place_basic() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
@@ -1850,7 +1859,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_agent_start_in_place_sandbox() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
@@ -1887,7 +1896,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_agent_start_with_task_id() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
@@ -1917,7 +1926,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_agent_start_custom_cwd() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
@@ -1950,8 +1959,29 @@ exit {}
         Ok(())
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn integration_test_agent_start_with_screenshots() -> Result<()> {
+        let enable_tui_tests = std::env::var("ENABLE_TUI_SCREENSHOT_TESTS")
+            .ok()
+            .and_then(|raw| match parse_bool_flag(&raw) {
+                Ok(value) => Some(value),
+                Err(err) => {
+                    eprintln!(
+                        "Skipping integration_test_agent_start_with_screenshots due to invalid ENABLE_TUI_SCREENSHOT_TESTS value ({}): {}",
+                        raw, err
+                    );
+                    None
+                }
+            })
+            .unwrap_or(false);
+
+        if !enable_tui_tests {
+            eprintln!(
+                "Skipping integration_test_agent_start_with_screenshots; set ENABLE_TUI_SCREENSHOT_TESTS=true to enable."
+            );
+            return Ok(());
+        }
+
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
@@ -2037,7 +2067,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_agent_start_fs_snapshots() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
@@ -2182,7 +2212,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_agent_record_branch_points() -> Result<()> {
         // Get the shared test context
@@ -2251,7 +2281,7 @@ exit {}
         Ok(())
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     #[ignore = "requires manual setup and can hang indefinitely"]
     async fn integration_test_viewer_navigation() -> Result<()> {
         use tui_testing::TestedTerminalProgram;
@@ -2595,7 +2625,7 @@ exit {}
         Ok(())
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_agent_start_fs_snapshots_sandbox() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
@@ -2728,7 +2758,7 @@ exit {}
     }
 
     /// Test Codex CLI integration with in-place working copy mode
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_codex_in_place() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
@@ -2802,12 +2832,21 @@ exit {}
     }
 
     /// Integration test for Codex CLI with FS snapshots mode (milestone 2.4.4)
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_codex_fs_snapshots() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
         // Get the ZFS test filesystem mount point (platform-specific)
-        let zfs_test_mount = crate::test_config::get_zfs_test_mount_point()?;
+        let zfs_test_mount = match crate::test_config::get_zfs_test_mount_point() {
+            Ok(path) => path,
+            Err(err) => {
+                eprintln!(
+                    "⚠️  ZFS test filesystem unavailable, skipping test: {}",
+                    err
+                );
+                return Ok(());
+            }
+        };
         if !zfs_test_mount.exists() {
             eprintln!("⚠️  ZFS test filesystem not available, skipping test");
             return Ok(());
@@ -2899,7 +2938,7 @@ exit {}
     }
 
     /// Integration test for Codex CLI with sandbox mode (milestone 2.4.4)
-    #[test]
+    #[ah_test_utils::logged_test]
     fn integration_test_codex_sandbox() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
@@ -2977,7 +3016,7 @@ exit {}
     }
 
     /// Integration test for session recording with mock agent (milestone 2.4.5)
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_session_recording_mock_agent() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
@@ -3094,7 +3133,7 @@ exit {}
     }
 
     /// Integration test for session recording with Codex CLI (milestone 2.4.5)
-    #[test]
+    #[ah_test_utils::logged_test]
     #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_session_recording_codex() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test

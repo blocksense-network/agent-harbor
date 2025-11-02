@@ -92,7 +92,7 @@ mod tests {
     use crate::types::*;
     use serde_json;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_create_task_request_valid() {
         let request = CreateTaskRequest {
             tenant_id: Some("acme".to_string()),
@@ -123,7 +123,7 @@ mod tests {
         assert!(validate_create_task_request(&request).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_create_task_request_empty_prompt() {
         let request = CreateTaskRequest {
             tenant_id: Some("acme".to_string()),
@@ -154,7 +154,7 @@ mod tests {
         assert!(validate_create_task_request(&request).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_repo_config_git_without_url() {
         let config = RepoConfig {
             mode: RepoMode::Git,
@@ -166,38 +166,38 @@ mod tests {
         assert!(validate_repo_config(&config).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_ulid_valid() {
         let valid_ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
         let result = validate_ulid(valid_ulid);
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_ulid_invalid_length() {
         let invalid_ulid = "01HVZ6K9T1N8S6M3V3Q3F0X5B78"; // 27 chars
         assert!(validate_ulid(invalid_ulid).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_ulid_invalid_chars() {
         let invalid_ulid = "01HVZ6K9T1N8S6M3V3Q3F0X5@"; // Contains @
         assert!(validate_ulid(invalid_ulid).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_idempotency_key_valid() {
         let key = IdempotencyKey("01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string());
         assert!(validate_idempotency_key(&key).is_ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_validate_idempotency_key_invalid() {
         let key = IdempotencyKey("invalid-key".to_string());
         assert!(validate_idempotency_key(&key).is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_serialization_roundtrip_create_task_request() {
         let original = CreateTaskRequest {
             tenant_id: Some("acme".to_string()),
@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(original, deserialized);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_serialization_roundtrip_session_event() {
         let original = SessionEvent {
             event_type: EventType::Thought,
@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(original, deserialized);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_session_event_with_tool_use() {
         let original = SessionEvent {
             event_type: EventType::ToolUse,
@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(deserialized.tool_name.as_deref(), Some("read_file"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_session_event_with_file_edit() {
         let original = SessionEvent {
             event_type: EventType::FileEdit,
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(deserialized.lines_removed, Some(2));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_problem_details_serialization() {
         let problem = ProblemDetails {
             problem_type: "https://docs.example.com/errors/validation".to_string(),
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(problem, deserialized);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_pagination_query_edge_cases() {
         // Test empty pagination (should use defaults)
         let query = PaginationQuery {

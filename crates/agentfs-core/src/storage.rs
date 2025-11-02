@@ -369,7 +369,7 @@ pub fn create_backstore(config: &BackstoreMode) -> FsResult<Box<dyn Backstore>> 
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_in_memory_backend_basic() {
         let backend = InMemoryBackend::new();
 
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(&buf[..5], b"hello");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_clone_cow() {
         let backend = InMemoryBackend::new();
 
@@ -430,7 +430,7 @@ mod tests {
         assert_eq!(&buf2, b"modified");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_seal() {
         let backend = InMemoryBackend::new();
         let id = backend.allocate(b"test").unwrap();
@@ -445,7 +445,7 @@ mod tests {
         assert_eq!(*backend.sealed.lock().unwrap().get(&id).unwrap(), true);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_read_beyond_eof() {
         let backend = InMemoryBackend::new();
         let id = backend.allocate(b"short").unwrap();

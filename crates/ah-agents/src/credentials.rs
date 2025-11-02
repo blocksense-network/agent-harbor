@@ -108,7 +108,7 @@ mod tests {
     use std::fs::write;
     use tempfile::TempDir;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_copy_files() {
         let temp = TempDir::new().unwrap();
         let src = temp.path().join("src");
@@ -124,7 +124,7 @@ mod tests {
         assert!(dst.join(".claude/config.json").exists());
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn test_copy_directory() {
         let temp = TempDir::new().unwrap();
         let src = temp.path().join("src");

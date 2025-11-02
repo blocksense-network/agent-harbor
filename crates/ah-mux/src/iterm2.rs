@@ -330,13 +330,13 @@ impl Multiplexer for ITerm2Multiplexer {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_id() {
         let mux = ITerm2Multiplexer::default();
         assert_eq!(mux.id(), "iterm2");
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_next_window_id() {
         let mux = ITerm2Multiplexer::default();
         let id1 = mux.next_window_id();
@@ -346,7 +346,7 @@ mod tests {
         assert!(id2.starts_with("iterm2-window-"));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_next_pane_id() {
         let mux = ITerm2Multiplexer::default();
         let id1 = mux.next_pane_id();

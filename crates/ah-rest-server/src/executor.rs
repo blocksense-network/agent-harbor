@@ -391,7 +391,7 @@ impl TaskExecutor {
         )?;
         std::fs::write(
             workspace_path.join("tests").join("test.rs"),
-            "#[test] fn test_example() { assert!(true); }",
+            "#[ah_test_utils::logged_test] fn test_example() { assert!(true); }",
         )?;
 
         Ok(())

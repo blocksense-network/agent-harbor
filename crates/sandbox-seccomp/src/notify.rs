@@ -455,7 +455,7 @@ impl Drop for NotificationHandler {
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_channel_supervisor_client_creation() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let client = ChannelSupervisorClient::new(tx);

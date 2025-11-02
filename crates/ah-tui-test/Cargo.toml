@@ -19,3 +19,6 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 [[bin]]
 name = "tui-test"
 path = "src/main.rs"
+
+[dev-dependencies]
+ah-test-utils = { workspace = true }

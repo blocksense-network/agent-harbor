@@ -1249,7 +1249,7 @@ mod tests {
     use super::*;
     use ah_core::RestApiClient;
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_launches_successful_task() {
         let client = MockRestClient::new();
         let params = TaskLaunchParams {
@@ -1270,7 +1270,7 @@ mod tests {
         assert!(result.task_id().unwrap().starts_with("task_"));
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_validates_empty_description() {
         let client = MockRestClient::new();
         let params = TaskLaunchParams {
@@ -1291,7 +1291,7 @@ mod tests {
         assert_eq!(result.error().unwrap(), "Task description cannot be empty");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_validates_empty_models() {
         let client = MockRestClient::new();
         let params = TaskLaunchParams {
@@ -1312,7 +1312,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_handles_simulated_failures() {
         let client = MockRestClient::with_failures(true);
         let params = TaskLaunchParams {
@@ -1333,7 +1333,7 @@ mod tests {
         assert_eq!(result.error().unwrap(), "Simulated task launch failure");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_get_initial_tasks() {
         let client = MockRestClient::new();
         let (drafts, tasks) = client.get_initial_tasks().await;
@@ -1343,7 +1343,7 @@ mod tests {
         assert_eq!(tasks.len(), 0);
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_list_repositories() {
         let client = MockRestClient::new();
         let repos = client.list_repositories(None, None).await.unwrap();
@@ -1354,7 +1354,7 @@ mod tests {
         assert_eq!(repos[2].display_name, "myapp/mobile");
     }
 
-    #[tokio::test]
+    #[ah_test_utils::logged_tokio_test]
     async fn mock_client_get_repository_branches() {
         let client = MockRestClient::new();
 

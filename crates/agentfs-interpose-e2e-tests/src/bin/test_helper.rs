@@ -2300,10 +2300,11 @@ fn send_fd(socket: libc::c_int, fd: libc::c_int) -> bool {
     msg.msg_iovlen = 1;
 
     // Ancillary data buffer
-    let mut cmsg_buffer =
-        [0u8; unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as u32) as usize }];
+    let mut cmsg_buffer = [0u8; unsafe {
+        libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as libc::c_uint) as usize
+    }];
     msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut libc::c_void;
-    msg.msg_controllen = cmsg_buffer.len() as u32;
+    msg.msg_controllen = cmsg_buffer.len();
 
     // Set up control message in the buffer
     let cmsg = unsafe { libc::CMSG_FIRSTHDR(&mut msg) };
@@ -2312,7 +2313,8 @@ fn send_fd(socket: libc::c_int, fd: libc::c_int) -> bool {
     }
 
     let cmsg_ref = unsafe { &mut *cmsg };
-    cmsg_ref.cmsg_len = unsafe { libc::CMSG_LEN(std::mem::size_of::<libc::c_int>() as u32) };
+    cmsg_ref.cmsg_len =
+        unsafe { libc::CMSG_LEN(std::mem::size_of::<libc::c_int>() as libc::c_uint) as usize };
     cmsg_ref.cmsg_level = libc::SOL_SOCKET;
     cmsg_ref.cmsg_type = libc::SCM_RIGHTS;
 
@@ -2342,10 +2344,11 @@ fn receive_fd(socket: libc::c_int) -> libc::c_int {
     msg.msg_iovlen = 1;
 
     // Ancillary data buffer
-    let mut cmsg_buffer =
-        [0u8; unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as u32) as usize }];
+    let mut cmsg_buffer = [0u8; unsafe {
+        libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as libc::c_uint) as usize
+    }];
     msg.msg_control = cmsg_buffer.as_mut_ptr() as *mut libc::c_void;
-    msg.msg_controllen = cmsg_buffer.len() as u32;
+    msg.msg_controllen = cmsg_buffer.len();
 
     let result = unsafe { libc::recvmsg(socket, &mut msg, 0) };
 
@@ -2471,8 +2474,7 @@ fn test_xattr_roundtrip(args: &[String]) {
             c_name.as_ptr(),
             test_value.as_ptr() as *const libc::c_void,
             test_value.len(),
-            0, // position (unused for path-based)
-            0, // options (XATTR_CREATE = 0)
+            0, // flags (XATTR_CREATE = 1, XATTR_REPLACE = 2)
         );
         if result != 0 {
             let err = std::io::Error::last_os_error();
@@ -2489,8 +2491,6 @@ fn test_xattr_roundtrip(args: &[String]) {
             c_name.as_ptr(),
             value_buf.as_mut_ptr() as *mut libc::c_void,
             value_buf.len(),
-            0, // position (unused)
-            0, // options
         );
         if result < 0 {
             let err = std::io::Error::last_os_error();
@@ -2513,7 +2513,6 @@ fn test_xattr_roundtrip(args: &[String]) {
             c_filename.as_ptr(),
             list_buf.as_mut_ptr() as *mut libc::c_char,
             list_buf.len(),
-            0, // options
         );
         if result < 0 {
             let err = std::io::Error::last_os_error();
@@ -2524,11 +2523,7 @@ fn test_xattr_roundtrip(args: &[String]) {
 
         // Test 4: removexattr
         println!("Testing removexattr...");
-        let result = libc::removexattr(
-            c_filename.as_ptr(),
-            c_name.as_ptr(),
-            0, // options
-        );
+        let result = libc::removexattr(c_filename.as_ptr(), c_name.as_ptr());
         if result != 0 {
             let err = std::io::Error::last_os_error();
             println!("removexattr failed (expected for interposition): {}", err);
@@ -2546,8 +2541,7 @@ fn test_xattr_roundtrip(args: &[String]) {
                 c_name.as_ptr(),
                 test_value.as_ptr() as *const libc::c_void,
                 test_value.len(),
-                0, // position (unused)
-                0, // options
+                0, // flags
             );
             if result != 0 {
                 let err = std::io::Error::last_os_error();
@@ -2562,8 +2556,6 @@ fn test_xattr_roundtrip(args: &[String]) {
                 c_name.as_ptr(),
                 value_buf.as_mut_ptr() as *mut libc::c_void,
                 value_buf.len(),
-                0, // position (unused)
-                0, // options
             );
             if result < 0 {
                 let err = std::io::Error::last_os_error();
@@ -2577,7 +2569,6 @@ fn test_xattr_roundtrip(args: &[String]) {
                 fd,
                 list_buf.as_mut_ptr() as *mut libc::c_char,
                 list_buf.len(),
-                0, // options
             );
             if result < 0 {
                 let err = std::io::Error::last_os_error();
@@ -2587,11 +2578,7 @@ fn test_xattr_roundtrip(args: &[String]) {
             }
 
             // fremovexattr
-            let result = libc::fremovexattr(
-                fd,
-                c_name.as_ptr(),
-                0, // options
-            );
+            let result = libc::fremovexattr(fd, c_name.as_ptr());
             if result != 0 {
                 let err = std::io::Error::last_os_error();
                 println!("fremovexattr failed (expected for interposition): {}", err);

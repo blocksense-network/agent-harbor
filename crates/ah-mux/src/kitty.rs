@@ -147,28 +147,28 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_kitty_multiplexer_creation() {
         let kitty = KittyMultiplexer::new().unwrap();
         assert_eq!(kitty.id(), "kitty");
         assert_eq!(kitty.socket_path, std::env::var("KITTY_LISTEN_ON").ok());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_kitty_with_custom_socket() {
         let socket_path = "/tmp/test-kitty.sock".to_string();
         let kitty = KittyMultiplexer::with_socket_path(socket_path.clone());
         assert_eq!(kitty.socket_path, Some(socket_path));
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_kitty_availability() {
         let kitty = KittyMultiplexer::new().unwrap();
         let _available = kitty.is_available();
         // Note: We can't assert availability since kitty might not be installed or configured
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_kitty_remote_control_available() {
         let kitty = KittyMultiplexer::new().unwrap();
         let _available = kitty.is_remote_control_available();
@@ -176,7 +176,7 @@ mod tests {
         // kitty might not be running or configured
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_window_id() {
         let kitty = KittyMultiplexer::new().unwrap();
 
@@ -189,7 +189,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_pane_id() {
         let kitty = KittyMultiplexer::new().unwrap();
 
@@ -202,7 +202,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_open_window_with_title_and_cwd() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -241,7 +241,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_open_window_focus() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -274,7 +274,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_split_pane_horizontal() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -345,7 +345,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_split_pane_vertical() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -410,7 +410,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_split_pane_with_initial_command() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -456,7 +456,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_run_command_and_send_text() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -521,7 +521,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_focus_window_and_pane() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -606,7 +606,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_list_windows_filtering() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -715,7 +715,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_error_handling_invalid_window() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -735,7 +735,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_error_handling_invalid_pane() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -766,7 +766,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_complex_layout_creation() {
         let kitty = KittyMultiplexer::new().unwrap();
         if kitty.is_available() {
@@ -891,7 +891,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_kitty_not_available() {
         // Test behavior when kitty is not available
         let kitty = KittyMultiplexer::with_socket_path("/nonexistent/socket".to_string());

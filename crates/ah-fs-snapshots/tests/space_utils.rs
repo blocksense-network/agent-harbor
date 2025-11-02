@@ -162,7 +162,7 @@ pub fn measure_filesystem_space(path_or_pool: &str, filesystem_type: Option<&str
 mod tests {
     use super::*;
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_size_to_bytes() {
         assert_eq!(parse_size_to_bytes("0"), 0);
         assert_eq!(parse_size_to_bytes("512"), 512);
@@ -173,7 +173,7 @@ mod tests {
         assert_eq!(parse_size_to_bytes("1TB"), 1_099_511_627_776);
     }
 
-    #[test]
+    #[ah_test_utils::logged_test]
     fn test_parse_size_edge_cases() {
         assert_eq!(parse_size_to_bytes(""), 0);
         assert_eq!(parse_size_to_bytes("invalid"), 0);
