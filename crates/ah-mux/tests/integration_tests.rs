@@ -6,6 +6,7 @@
 //! These tests verify that multiplexer implementations work correctly
 //! by creating real windows/panes and measuring terminal dimensions.
 
+use std::env;
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
@@ -62,22 +63,61 @@ impl BorderInfo {
 
 /// Run the terminal size measurement binary and parse output
 fn measure_terminal_size() -> Result<TerminalSize, Box<dyn std::error::Error>> {
-    // Run tput commands separately to ensure proper output format
-    let cols_output = Command::new("tput").arg("cols").output()?;
-
-    let lines_output = Command::new("tput").arg("lines").output()?;
-
-    if !cols_output.status.success() || !lines_output.status.success() {
-        return Err("Failed to run tput commands".into());
+    fn parse_env_var(name: &str) -> Option<u16> {
+        env::var(name).ok()?.trim().parse().ok()
     }
 
-    let cols_str = String::from_utf8(cols_output.stdout)?;
-    let rows_str = String::from_utf8(lines_output.stdout)?;
+    fn run_tput(cap: &str) -> Option<u16> {
+        Command::new("tput")
+            .arg(cap)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .and_then(|value| value.trim().parse().ok())
+    }
 
-    let cols: u16 = cols_str.trim().parse()?;
-    let rows: u16 = rows_str.trim().parse()?;
+    fn run_tput_with_term(term: &str, cap: &str) -> Option<u16> {
+        Command::new("tput")
+            .args(["-T", term, cap])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .and_then(|value| value.trim().parse().ok())
+    }
 
-    Ok(TerminalSize { cols, rows })
+    let mut cols = run_tput("cols");
+    let mut rows = run_tput("lines");
+
+    let fallback_terms = ["xterm-256color", "xterm", "vt100"];
+    if cols.is_none() || rows.is_none() {
+        for term in fallback_terms {
+            if cols.is_none() {
+                cols = run_tput_with_term(term, "cols");
+            }
+            if rows.is_none() {
+                rows = run_tput_with_term(term, "lines");
+            }
+            if cols.is_some() && rows.is_some() {
+                break;
+            }
+        }
+    }
+
+    if cols.is_none() || rows.is_none() {
+        if cols.is_none() {
+            cols = parse_env_var("COLUMNS");
+        }
+        if rows.is_none() {
+            rows = parse_env_var("LINES");
+        }
+    }
+
+    match (cols, rows) {
+        (Some(cols), Some(rows)) => Ok(TerminalSize { cols, rows }),
+        _ => Err("Failed to determine terminal size".into()),
+    }
 }
 
 /// Test that verifies basic multiplexer operations work correctly
