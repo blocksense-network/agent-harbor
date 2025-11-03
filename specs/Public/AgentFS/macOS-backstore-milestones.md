@@ -139,29 +139,45 @@ None - milestone completed successfully.
 
 ---
 
-## M4 – Native snapshot creation (`apfs-snapshot` wrapper)  (≈ 220 Δ)
-**Goal**  
+## M4 – Native snapshot creation (`apfs-snapshot` wrapper)  (≈ 220 Δ) - PARTIALLY COMPLETED
+**Goal**
 Implement `snapshot_native()` by invoking `diskutil apfs createSnapshot`.
 
-**Tasks**  
-1. `fn apfs_create_snapshot(volume: &Path, name: &str) -> Result<String, FsError>`  
-   - Spawn `diskutil apfs createSnapshot <volume> <name> -readonly`.  
-   - Parse stdout for snapshot UUID.  
-   - Map UUID → internal `SnapshotId`.  
-2. Store mapping in `RealBackstore::snapshots: HashMap<SnapshotId, String>` (UUID).  
+**Tasks**
+1. `fn apfs_create_snapshot(volume: &Path, name: &str) -> Result<String, FsError>`
+   - Spawn `diskutil apfs createSnapshot <volume> <name> -readonly`.
+   - Parse stdout for snapshot UUID.
+   - Map UUID → internal `SnapshotId`.
+2. Store mapping in `RealBackstore::snapshots: HashMap<SnapshotId, String>` (UUID).
 3. Rollback helper: `fn apfs_delete_snapshot(uuid: &str)`.
 
-**Automated tests**  
-- [ ] Unit: `create_snapshot_succeeds_on_apfs()` (needs `sudo` in CI → use `passwordless sudo` runner image).  
-- [ ] Unit: `create_snapshot_fails_on_hfs()` → returns `Unsupported`.  
-- [ ] Unit: `snapshot_name_sanitization()` (spaces, unicode, max 255 chars).  
-- [ ] Integration: `snapshot_create_then_mount_ro()` (mount snapshot to temp mount-point, read file, unmount).  
-- [ ] Fault-inject `diskutil` failure → correct SSZ error returned.  
+**Automated tests**
+- [x] Unit: `create_snapshot_fails_on_hfs()` → returns `Unsupported`.
+- [x] Unit: `snapshot_creation_not_supported_on_apfs()` → returns `Unsupported` (macOS limitation).
+- [x] Unit: `real_backstore_new_succeeds()` → creates RealBackstore and verifies APFS detection.
+- [ ] Unit: `create_snapshot_succeeds_on_apfs()` (blocked by macOS limitation - no public API).
+- [ ] Unit: `snapshot_name_sanitization()` (spaces, unicode, max 255 chars).
+- [ ] Integration: `snapshot_create_then_mount_ro()` (marked `#[ignore]` due to macOS limitation).
+- [ ] Fault-inject `diskutil` failure → correct SSZ error returned.
 - [ ] Concurrent test: `100 parallel snapshot_create` all succeed and UUIDs unique.
+
+**Implementation Details**
+The milestone implemented the core infrastructure for APFS snapshot creation using `diskutil apfs createSnapshot`, but discovered a critical macOS limitation: Apple's public APIs do not support creating snapshots on arbitrary user-managed APFS volumes. The `createSnapshot` verb is only available for Time Machine-managed volumes or requires private APIs. The implementation now correctly detects this limitation and returns `FsError::Unsupported` when the command is not available. A file-backed APFS test filesystem was implemented using `hdiutil` to provide isolated testing environments, and the `just check-test-filesystems` target was enhanced to provide detailed APFS filesystem status.
+
+**Key Source Files**
+- `crates/agentfs-backstore-macos/src/lib.rs` - apfs_create_snapshot and apfs_delete_snapshot functions, RealBackstore snapshot mapping, and updated tests
+- `scripts/create-test-filesystems.sh` - Added APFS sparse image creation and attachment for macOS
+- `scripts/cleanup-test-filesystems.sh` - Added APFS volume cleanup
+- `scripts/check-test-filesystems.sh` - Enhanced with detailed APFS filesystem status reporting
+
+**Outstanding Tasks**
+- macOS platform limitation prevents direct snapshot creation on user-managed APFS volumes using public APIs
+- Integration test marked `#[ignore]` until macOS provides public snapshot creation APIs or Time Machine integration is implemented
+- Need to explore alternative approaches like Time Machine integration or third-party tools for snapshot creation
 
 ---
 
-## M5 – Snapshot deletion & reference counting  (≈ 160 Δ)
+## M5 – Snapshot deletion & reference counting  (≈ 160 Δ) - SKIPPED due to the limitations discovered in M4
 **Goal**  
 Allow safe deletion of snapshots when no branch depends on them.
 

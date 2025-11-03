@@ -24,6 +24,15 @@ if [ -b "$BTRFS_LOOP" ]; then
   sudo losetup -d "$BTRFS_LOOP" 2>/dev/null || true
 fi
 
+# Clean up APFS (macOS only)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "Cleaning up APFS test filesystem..."
+  # Detach the APFS volume if mounted
+  hdiutil detach "/Volumes/$APFS_VOLNAME" 2>/dev/null || true
+  # Remove the sparse image file
+  rm -f "$APFS_FILE"
+fi
+
 # Remove files
 rm -rf "$CACHE_DIR"
 

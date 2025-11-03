@@ -128,9 +128,40 @@ else
   echo "Btrfs not available, skipping Btrfs setup."
 fi
 
+# Set up APFS test filesystem (macOS only)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "Setting up APFS test filesystem..."
+
+  # Create sparse APFS image if it doesn't exist
+  if [ ! -f "$APFS_FILE" ]; then
+    echo "Creating 2GB APFS sparse image..."
+    hdiutil create -size 2g -type SPARSE -fs APFS -volname "$APFS_VOLNAME" "$APFS_FILE"
+  else
+    echo "APFS sparse image already exists."
+  fi
+
+  # Attach the image if not already attached
+  if ! hdiutil info | grep -q "$APFS_VOLNAME"; then
+    echo "Attaching APFS image..."
+    hdiutil attach "$APFS_FILE"
+  else
+    echo "APFS image already attached."
+  fi
+
+  # Set ownership on the mounted volume
+  if [ -d "/Volumes/$APFS_VOLNAME" ]; then
+    sudo chown -R "$USER:$GID" "/Volumes/$APFS_VOLNAME"
+    echo "APFS test filesystem created and mounted at /Volumes/$APFS_VOLNAME"
+  else
+    echo "Warning: APFS volume not found at expected mount point /Volumes/$APFS_VOLNAME"
+  fi
+else
+  echo "APFS setup skipped on $(uname -s) (macOS only)."
+fi
+
 echo ""
 echo "Test filesystems setup complete!"
-echo "You can now run tests that use ZFS and Btrfs providers."
+echo "You can now run tests that use ZFS, Btrfs, and APFS providers."
 echo ""
 echo "To clean up later, run:"
 echo "  just cleanup-test-filesystems"
