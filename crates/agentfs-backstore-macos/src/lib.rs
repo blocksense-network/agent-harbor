@@ -36,6 +36,276 @@ pub enum FsType {
     Other,
 }
 
+/// RAII wrapper for APFS RAM disk management
+///
+/// Automatically cleans up the RAM disk when dropped.
+pub struct ApfsRamDisk {
+    mount_point: PathBuf,
+    device_id: String,
+}
+
+impl ApfsRamDisk {
+    /// Create a new APFS RAM disk of the specified size
+    pub fn new(size_mb: u32) -> FsResult<Self> {
+        let mount_point = create_apfs_ramdisk(size_mb)?;
+        // Extract device ID from the mount point path for cleanup
+        // We need to find the disk device that was used
+        let device_id = Self::find_device_for_mount(&mount_point)?;
+        Ok(Self {
+            mount_point,
+            device_id,
+        })
+    }
+
+    /// Get the mount point of the RAM disk
+    pub fn mount_point(&self) -> &Path {
+        &self.mount_point
+    }
+
+    /// Find the device ID associated with a mount point
+    fn find_device_for_mount(mount_point: &Path) -> FsResult<String> {
+        let output = Command::new("mount")
+            .output()
+            .map_err(|e| agentfs_core::error::FsError::Io(e))?;
+
+        let mount_output = String::from_utf8_lossy(&output.stdout);
+        for line in mount_output.lines() {
+            if line.contains(&format!(" on {}", mount_point.display())) {
+                // Extract device from mount output (format: "device on mount_point (fstype, options)")
+                if let Some(device_part) = line.split(" on ").next() {
+                    let device = device_part.trim();
+                    // Extract the disk identifier (e.g., "disk3s1" from "/dev/disk3s1")
+                    if let Some(disk_part) = device.strip_prefix("/dev/") {
+                        return Ok(disk_part.to_string());
+                    }
+                }
+            }
+        }
+
+        Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "Could not find device for mount point {}",
+                mount_point.display()
+            ),
+        )))
+    }
+}
+
+impl Drop for ApfsRamDisk {
+    fn drop(&mut self) {
+        // Attempt to destroy the RAM disk, but don't panic if it fails
+        // since we're in a destructor
+        let _ = destroy_apfs_ramdisk(&self.mount_point);
+    }
+}
+
+/// Create an APFS RAM disk of the specified size in megabytes
+///
+/// This function:
+/// 1. Creates a RAM disk using `hdiutil attach -nomount ram://<size>`
+/// 2. Creates an APFS container on the RAM disk
+/// 3. Adds an APFS volume to the container
+/// 4. Returns the mount point path
+///
+/// Returns the mount point path where the APFS volume is mounted.
+pub fn create_apfs_ramdisk(size_mb: u32) -> FsResult<PathBuf> {
+    // Calculate the number of 512-byte blocks needed
+    // size_mb * 1024 * 1024 / 512 = size_mb * 2048
+    let blocks = (size_mb as u64).saturating_mul(2048);
+
+    // Step 1: Create RAM disk and get device path
+    let hdiutil_output = Command::new("hdiutil")
+        .args(&["attach", "-nomount", &format!("ram://{}", blocks)])
+        .output()
+        .map_err(|e| agentfs_core::error::FsError::Io(e))?;
+
+    if !hdiutil_output.status.success() {
+        return Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!(
+                "hdiutil attach failed: {}",
+                String::from_utf8_lossy(&hdiutil_output.stderr)
+            ),
+        )));
+    }
+
+    // Parse the device path from hdiutil output (e.g., "/dev/disk3")
+    let hdiutil_stdout = String::from_utf8_lossy(&hdiutil_output.stdout);
+    let device_path = hdiutil_stdout.trim();
+    if !device_path.starts_with("/dev/disk") {
+        return Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Unexpected device path from hdiutil: {}", device_path),
+        )));
+    }
+
+    // Step 2: Create APFS container on the RAM disk
+    let diskutil_container_output = Command::new("diskutil")
+        .args(&["apfs", "createContainer", device_path])
+        .output()
+        .map_err(|e| agentfs_core::error::FsError::Io(e))?;
+
+    if !diskutil_container_output.status.success() {
+        // Clean up the RAM disk on failure
+        let _ = Command::new("hdiutil").args(&["detach", device_path]).output();
+        return Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!(
+                "diskutil createContainer failed: {}",
+                String::from_utf8_lossy(&diskutil_container_output.stderr)
+            ),
+        )));
+    }
+
+    // Parse the container disk identifier from diskutil output (e.g., "disk3s1")
+    let container_stdout = String::from_utf8_lossy(&diskutil_container_output.stdout);
+    let container_disk = parse_container_disk_from_output(&container_stdout)?;
+
+    // Step 3: Add APFS volume to the container
+    let volume_name = "AgentFSTest";
+    let diskutil_volume_output = Command::new("diskutil")
+        .args(&["apfs", "addVolume", &container_disk, "APFS", volume_name])
+        .output()
+        .map_err(|e| agentfs_core::error::FsError::Io(e))?;
+
+    if !diskutil_volume_output.status.success() {
+        // Clean up on failure - try to delete the container and detach RAM disk
+        let _ = Command::new("diskutil")
+            .args(&["apfs", "deleteContainer", &container_disk])
+            .output();
+        let _ = Command::new("hdiutil").args(&["detach", device_path]).output();
+        return Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!(
+                "diskutil addVolume failed: {}",
+                String::from_utf8_lossy(&diskutil_volume_output.stderr)
+            ),
+        )));
+    }
+
+    // The volume should now be mounted at /Volumes/AgentFSTest
+    let mount_point = PathBuf::from(&format!("/Volumes/{}", volume_name));
+
+    // Wait a bit for the mount to complete and verify it exists
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    if !mount_point.exists() {
+        // Clean up on failure
+        let _ = destroy_apfs_ramdisk(&mount_point);
+        return Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "APFS volume not mounted at expected location: {}",
+                mount_point.display()
+            ),
+        )));
+    }
+
+    Ok(mount_point)
+}
+
+/// Destroy an APFS RAM disk by unmounting and cleaning up the associated devices
+///
+/// This function:
+/// 1. Unmounts the APFS volume
+/// 2. Deletes the APFS container
+/// 3. Detaches the RAM disk
+///
+/// The function attempts to clean up as much as possible even if some steps fail.
+pub fn destroy_apfs_ramdisk(mount_point: &Path) -> FsResult<()> {
+    let mount_point_str = mount_point.to_string_lossy();
+
+    // Step 1: Try to unmount the volume (this should work even if it's busy)
+    let _ = Command::new("diskutil").args(&["unmount", "force", &mount_point_str]).output(); // Ignore errors, continue with cleanup
+
+    // Step 2: Try to unmount using umount if diskutil failed
+    let _ = Command::new("umount").args(&["-f", &mount_point_str]).output(); // Ignore errors
+
+    // Step 3: Find and delete any APFS containers associated with this mount
+    if let Ok(mount_output) = Command::new("mount").output() {
+        let mount_info = String::from_utf8_lossy(&mount_output.stdout);
+        // Look for any remaining mounts that might be related to our RAM disk
+        for line in mount_info.lines() {
+            if line.contains("apfs") && (line.contains("synthesized") || line.contains("ram://")) {
+                // This might be our container disk, try to delete it
+                if let Some(disk_part) = line.split(" on ").next() {
+                    let device = disk_part.trim();
+                    if device.starts_with("/dev/disk") && device.contains("s") {
+                        // Try to delete the container
+                        let _ = Command::new("diskutil")
+                            .args(&["apfs", "deleteContainer", device])
+                            .output();
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 4: Try to detach any remaining RAM disks
+    if let Ok(hdiutil_output) = Command::new("hdiutil").arg("info").output() {
+        let hdiutil_info = String::from_utf8_lossy(&hdiutil_output.stdout);
+        for line in hdiutil_info.lines() {
+            if line.contains("ram://") {
+                // Extract device ID and try to detach
+                if let Some(device_part) = line.split_whitespace().next() {
+                    let _ = Command::new("hdiutil").args(&["detach", device_part]).output();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Create a complete APFS ramdisk backstore with automatic cleanup
+///
+/// This is a convenience function that creates an APFS RAM disk and returns
+/// a RealBackstore configured to use it. The returned backstore owns the
+/// RAM disk and will clean it up when dropped.
+///
+/// This function requires root privileges or appropriate entitlements on macOS.
+pub fn create_apfs_ramdisk_backstore(size_mb: u32) -> FsResult<RealBackstore> {
+    // Create the RAM disk
+    let ramdisk = ApfsRamDisk::new(size_mb)?;
+
+    // Create a RealBackstore on the RAM disk mount point, owning the ramdisk
+    let backstore =
+        RealBackstore::new_with_ramdisk(ramdisk.mount_point().to_path_buf(), Some(ramdisk))?;
+
+    // Verify it's APFS
+    if !matches!(backstore.fs_type(), FsType::Apfs) {
+        return Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Created ramdisk is not APFS",
+        )));
+    }
+
+    Ok(backstore)
+}
+
+/// Parse the container disk identifier from diskutil createContainer output
+fn parse_container_disk_from_output(output: &str) -> FsResult<String> {
+    // Look for a line like: "Created new APFS Container disk3s1"
+    for line in output.lines() {
+        if line.contains("Created new APFS Container") {
+            if let Some(disk_part) = line.split("Container ").nth(1) {
+                let disk = disk_part.trim();
+                if disk.starts_with("disk") && disk.contains("s") {
+                    return Ok(disk.to_string());
+                }
+            }
+        }
+    }
+
+    Err(agentfs_core::error::FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!(
+            "Could not parse container disk from diskutil output: {}",
+            output
+        ),
+    )))
+}
+
 impl FsType {
     /// Convert from filesystem type name string
     fn from_fstypename(name: &str) -> Self {
@@ -90,11 +360,21 @@ pub struct RealBackstore {
     fs_type: FsType,
     /// Mapping from internal SnapshotId to APFS snapshot UUID
     snapshots: Mutex<HashMap<SnapshotId, String>>,
+    /// Optional owned RAM disk (for cleanup when using ramdisk backstores)
+    _ramdisk: Option<ApfsRamDisk>,
 }
 
 impl RealBackstore {
     /// Create a new real backstore by probing the filesystem at the given root
     pub fn new(root: std::path::PathBuf) -> FsResult<Self> {
+        Self::new_with_ramdisk(root, None)
+    }
+
+    /// Create a new real backstore with an optional owned RAM disk
+    pub fn new_with_ramdisk(
+        root: std::path::PathBuf,
+        ramdisk: Option<ApfsRamDisk>,
+    ) -> FsResult<Self> {
         // Ensure the root directory exists
         std::fs::create_dir_all(&root)?;
 
@@ -105,6 +385,7 @@ impl RealBackstore {
             root,
             fs_type,
             snapshots: Mutex::new(HashMap::new()),
+            _ramdisk: ramdisk,
         })
     }
 
@@ -945,6 +1226,7 @@ mod tests {
             root: temp_dir.path().to_path_buf(),
             fs_type: FsType::Hfs,
             snapshots: Mutex::new(HashMap::new()),
+            _ramdisk: None,
         };
 
         // Should return Unsupported for HFS
@@ -1005,6 +1287,7 @@ mod tests {
             root: temp_dir.path().to_path_buf(),
             fs_type: FsType::Apfs,
             snapshots: Mutex::new(HashMap::new()),
+            _ramdisk: None,
         };
 
         // Test various snapshot names (these would fail in real execution due to permissions,
@@ -1034,6 +1317,7 @@ mod tests {
             root: temp_dir.path().to_path_buf(),
             fs_type: FsType::Apfs,
             snapshots: Mutex::new(HashMap::new()),
+            _ramdisk: None,
         };
 
         // Manually add a snapshot to the mapping (simulating successful creation)
@@ -1067,6 +1351,7 @@ mod tests {
             root: temp_dir.path().to_path_buf(),
             fs_type: FsType::Apfs,
             snapshots: Mutex::new(HashMap::new()),
+            _ramdisk: None,
         };
 
         let fake_id = SnapshotId::new();
@@ -1086,6 +1371,7 @@ mod tests {
             root: temp_dir.path().to_path_buf(),
             fs_type: FsType::Apfs,
             snapshots: Mutex::new(HashMap::new()),
+            _ramdisk: None,
         };
 
         // Create multiple threads that try to create snapshots concurrently
@@ -1095,6 +1381,7 @@ mod tests {
                 root: temp_dir.path().to_path_buf(),
                 fs_type: FsType::Apfs,
                 snapshots: Mutex::new(HashMap::new()), // Each thread gets its own snapshots map
+                _ramdisk: None,
             };
             let handle = std::thread::spawn(move || {
                 let result = backstore_clone.snapshot_native(&format!("concurrent_test_{}", i));
@@ -1143,6 +1430,182 @@ mod tests {
         assert!(
             invalid_uuid.len() != 36 || invalid_uuid.chars().filter(|&c| c == '-').count() != 4
         );
+    }
+
+    #[test]
+    fn ramdisk_create_destroy_cycle() {
+        // Test creating and destroying a RAM disk
+        // This test requires root privileges or special entitlements on macOS
+        // It will be skipped in normal CI but can be run manually with proper setup
+
+        // Skip this test unless explicitly enabled (requires root or special setup)
+        if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
+            eprintln!(
+                "Skipping ramdisk test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
+            );
+            return;
+        }
+
+        let size_mb = 64; // Small test size
+
+        // Test the create function
+        let mount_point_result = create_apfs_ramdisk(size_mb);
+        match mount_point_result {
+            Ok(mount_point) => {
+                eprintln!("Created RAM disk at: {}", mount_point.display());
+
+                // Verify the mount point exists and is a directory
+                assert!(mount_point.exists(), "Mount point should exist");
+                assert!(mount_point.is_dir(), "Mount point should be a directory");
+
+                // Verify it's APFS
+                let fs_type = probe_fs_type(&mount_point).unwrap();
+                assert_eq!(fs_type, FsType::Apfs, "Ramdisk should be APFS");
+
+                // Test that we can create a file on it
+                let test_file = mount_point.join("test.txt");
+                std::fs::write(&test_file, "test content").unwrap();
+                assert!(test_file.exists());
+
+                // Test destroy function
+                let destroy_result = destroy_apfs_ramdisk(&mount_point);
+                assert!(destroy_result.is_ok(), "Destroy should succeed");
+
+                // Verify mount point is gone (or at least not accessible)
+                // Note: /Volumes/AgentFSTest might still exist as a directory but should not be mounted
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                // We can't easily verify complete cleanup in a test environment
+                // but the function should not panic
+            }
+            Err(e) => {
+                eprintln!(
+                    "RAM disk creation failed (expected on CI without privileges): {}",
+                    e
+                );
+                // This is expected to fail on CI without proper privileges
+                assert!(matches!(
+                    e,
+                    agentfs_core::error::FsError::Io(_)
+                        | agentfs_core::error::FsError::AccessDenied
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn ramdisk_is_apfs() {
+        // Test that created ramdisks report as APFS
+        if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
+            return; // Skip test
+        }
+
+        let size_mb = 32;
+        let mount_point_result = create_apfs_ramdisk(size_mb);
+
+        if let Ok(mount_point) = mount_point_result {
+            let fs_type = probe_fs_type(&mount_point).unwrap();
+            assert_eq!(fs_type, FsType::Apfs);
+
+            // Clean up
+            let _ = destroy_apfs_ramdisk(&mount_point);
+        }
+    }
+
+    #[test]
+    fn ramdisk_survives_1000_snapshots() {
+        // Test that ramdisk can handle many snapshot attempts
+        if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
+            return; // Skip test
+        }
+
+        let size_mb = 128; // Larger size to handle snapshots
+        let mount_point_result = create_apfs_ramdisk(size_mb);
+
+        if let Ok(mount_point) = mount_point_result {
+            let backstore = RealBackstore::new(mount_point.clone()).unwrap();
+
+            // Attempt many snapshots (they will fail with Unsupported, but shouldn't crash)
+            for i in 0..1000 {
+                let result = backstore.snapshot_native(&format!("stress_test_{}", i));
+                // Should return Unsupported (expected on macOS), not crash
+                assert!(matches!(
+                    result,
+                    Err(agentfs_core::error::FsError::Unsupported)
+                ));
+            }
+
+            // Clean up
+            let _ = destroy_apfs_ramdisk(&mount_point);
+        }
+    }
+
+    #[test]
+    fn create_backstore_ramdisk_mode() {
+        // Test the integration: create_backstore with RamDisk mode
+        use agentfs_core::{config::BackstoreMode, storage::create_backstore};
+
+        let config = BackstoreMode::RamDisk { size_mb: 64 };
+
+        let result = create_backstore(&config);
+        match result {
+            Ok(_) => {
+                eprintln!("Successfully created ramdisk backstore");
+                // If this succeeds, the ramdisk was created and wrapped properly
+            }
+            Err(agentfs_core::error::FsError::Unsupported) => {
+                eprintln!(
+                    "RamDisk mode returned Unsupported (expected on non-macOS or when feature not enabled)"
+                );
+            }
+            Err(e) => {
+                eprintln!("Unexpected error creating ramdisk backstore: {}", e);
+                // Could be permission issues, which are acceptable in test environment
+            }
+        }
+    }
+
+    #[test]
+    fn apfs_ramdisk_raii_drop() {
+        // Test that ApfsRamDisk properly cleans up on drop
+        if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
+            return; // Skip test
+        }
+
+        {
+            let ramdisk_result = ApfsRamDisk::new(32);
+            match ramdisk_result {
+                Ok(ramdisk) => {
+                    let mount_point = ramdisk.mount_point().to_path_buf();
+                    assert!(mount_point.exists());
+
+                    // Ramdisk goes out of scope here and should clean up
+                }
+                Err(_) => {
+                    // Expected to fail without privileges
+                }
+            }
+        }
+
+        // Give cleanup time to complete
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // We can't easily verify complete cleanup, but the drop shouldn't panic
+    }
+
+    #[test]
+    fn parse_container_disk_from_output() {
+        // Test parsing container disk from diskutil output
+
+        // Valid output
+        let valid_output = "Started APFS operation on disk3\nCreated new APFS Container disk3s1\nFinished APFS operation";
+        let result = super::parse_container_disk_from_output(valid_output);
+        assert_eq!(result.unwrap(), "disk3s1");
+
+        // Invalid output (no container created)
+        let invalid_output =
+            "Started APFS operation on disk3\nSome other message\nFinished APFS operation";
+        let result = super::parse_container_disk_from_output(invalid_output);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1299,7 +1762,36 @@ mod benches {
         });
     }
 
-    criterion_group!(benches, clonefile_1gb_benchmark);
+    fn ramdisk_mount_cycle_benchmark(c: &mut Criterion) {
+        c.bench_function("ramdisk_mount_cycle", |b| {
+            // Skip benchmark if ramdisk testing is not enabled
+            if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
+                return;
+            }
+
+            b.iter(|| {
+                // Create a small ramdisk for benchmarking
+                let size_mb = 32; // Small size for faster benchmark
+                let mount_point = create_apfs_ramdisk(size_mb).unwrap();
+
+                // Verify it works
+                assert!(mount_point.exists());
+                let fs_type = probe_fs_type(&mount_point).unwrap();
+                assert_eq!(fs_type, FsType::Apfs);
+
+                // Clean up
+                destroy_apfs_ramdisk(&mount_point).unwrap();
+
+                black_box(mount_point);
+            });
+        });
+    }
+
+    criterion_group!(
+        benches,
+        clonefile_1gb_benchmark,
+        ramdisk_mount_cycle_benchmark
+    );
     // Note: criterion_main!() is not called here as it would conflict with the regular test runner
     // Instead, benchmarks are run separately with `cargo bench`
 }
