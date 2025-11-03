@@ -72,7 +72,14 @@ Hook **Win32 wide-char** entry points in `kernel32/KernelBase` and **NT Native**
 - **NT:** `NtQueryEaFile`, `NtSetEaFile` (rare)
 - Alternate Data Streams are covered via the existing open path if you preserve `path:stream` syntax.
 
-## J. CRT Belt-and-suspenders (**Recommended** for static/UCRT callers)
+## J. Block Cloning (ReFS) (**Future enhancement for snapshots**)
+
+- **ReFS block cloning**: `FSCTL_DUPLICATE_EXTENTS_TO_FILE` / `FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX` for copy-on-write file cloning
+- **Constraints**: Same ReFS volume, cluster-aligned ranges, ≤4GB per clone operation
+- **Integration**: As of Windows 11 24H2, supported copy operations automatically use block cloning on ReFS volumes
+- **Snapshot materialization**: Similar to APFS clonefile, can be used to create persistent overlay snapshots by cloning upper layer files
+
+## L. CRT Belt-and-suspenders (**Recommended** for static/UCRT callers)
 
 Hook Unicode and narrow forms (wide is primary in modern apps):
 

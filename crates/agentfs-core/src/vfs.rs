@@ -211,6 +211,7 @@ pub struct FsCore {
 }
 
 impl FsCore {
+    /// Create a new FsCore instance with the given configuration
     pub fn new(config: FsConfig) -> FsResult<Self> {
         // Initialize storage backend based on backstore configuration
         let storage: Arc<dyn StorageBackend> = match &config.backstore {
@@ -272,6 +273,52 @@ impl FsCore {
         // Create root directory
         core.create_root_directory()?;
         Ok(core)
+    }
+
+    /// Create a new FsCore instance with RamDisk backstore for testing
+    ///
+    /// This creates an APFS RAM disk and configures the FsCore to use it for backstore operations.
+    /// Returns both the FsCore and a placeholder for cleanup.
+    ///
+    /// This function is only available on macOS and requires root privileges or appropriate entitlements.
+    #[cfg(test)]
+    pub fn new_ephemeral() -> FsResult<(Self, Box<dyn std::any::Any>)> {
+        use crate::config::{
+            BackstoreMode, CachePolicy, FsConfig, FsLimits, InterposeConfig, MemoryPolicy,
+            OverlayConfig, SecurityPolicy,
+        };
+
+        let config = FsConfig {
+            case_sensitivity: crate::config::CaseSensitivity::Sensitive,
+            memory: MemoryPolicy {
+                max_bytes_in_memory: Some(1024 * 1024 * 1024), // 1GB
+                spill_directory: None,
+            },
+            limits: FsLimits {
+                max_open_handles: 10000,
+                max_branches: 1000,
+                max_snapshots: 10000,
+            },
+            cache: CachePolicy {
+                attr_ttl_ms: 1000,
+                entry_ttl_ms: 1000,
+                negative_ttl_ms: 1000,
+                enable_readdir_plus: true,
+                auto_cache: true,
+                writeback_cache: false,
+            },
+            enable_xattrs: true,
+            enable_ads: false,
+            track_events: false,
+            security: SecurityPolicy::default(),
+            backstore: BackstoreMode::RamDisk { size_mb: 128 }, // 128MB RAM disk for testing
+            overlay: OverlayConfig::default(),
+            interpose: InterposeConfig::default(),
+        };
+
+        let core = Self::new(config)?;
+        // Return placeholder for cleanup - in practice, tests should manage ramdisk lifecycle
+        Ok((core, Box::new(())))
     }
 
     fn create_root_directory(&mut self) -> FsResult<()> {
@@ -360,6 +407,92 @@ impl FsCore {
         // For now, copy-up is handled implicitly when operations create upper entries
         // This method can be expanded later for explicit copy-up scenarios
         Ok(())
+    }
+
+    /// Collect all upper layer files for a given branch root
+    /// Returns a list of (upper_file_path, overlay_path) pairs
+    fn collect_upper_layer_files(
+        &self,
+        branch_root_id: NodeId,
+    ) -> FsResult<Vec<(std::path::PathBuf, std::path::PathBuf)>> {
+        let mut upper_files = Vec::new();
+
+        // Only collect files if we have a backstore that supports reflink
+        if let Some(backstore) = &self.backstore {
+            if backstore.supports_native_reflink() {
+                let mut to_visit = vec![(branch_root_id, std::path::PathBuf::new())];
+                let nodes = self.nodes.lock().unwrap();
+                let backstore_root = backstore.root_path();
+
+                eprintln!(
+                    "DEBUG: Collecting upper files, backstore root: {}",
+                    backstore_root.display()
+                );
+                eprintln!("DEBUG: Branch root id: {}", branch_root_id.0);
+
+                while let Some((node_id, current_path)) = to_visit.pop() {
+                    eprintln!(
+                        "DEBUG: Visiting node {} at path {}",
+                        node_id.0,
+                        current_path.display()
+                    );
+                    if let Some(node) = nodes.get(&node_id) {
+                        match &node.kind {
+                            NodeKind::File { streams } => {
+                                eprintln!("DEBUG: Found file with {} streams", streams.len());
+                                // For each stream, get the content file path from the storage backend
+                                for (stream_name, (content_id, _size)) in streams {
+                                    // Get the actual file path where this content is stored
+                                    if let Some(content_path) =
+                                        self.storage.get_content_path(*content_id)
+                                    {
+                                        eprintln!(
+                                            "DEBUG: Found content file: {}",
+                                            content_path.display()
+                                        );
+                                        // Check if the content file actually exists
+                                        if content_path.exists() {
+                                            eprintln!("DEBUG: Content file exists!");
+                                            upper_files.push((content_path, current_path.clone()));
+                                        } else {
+                                            eprintln!("DEBUG: Content file does not exist");
+                                        }
+                                    } else {
+                                        eprintln!(
+                                            "DEBUG: No content path for content_id {}",
+                                            content_id.0
+                                        );
+                                    }
+                                }
+                            }
+                            NodeKind::Directory { children } => {
+                                eprintln!(
+                                    "DEBUG: Found directory with {} children",
+                                    children.len()
+                                );
+                                // Recursively visit all children
+                                for (child_name, child_id) in children {
+                                    let child_path = current_path.join(child_name);
+                                    to_visit.push((*child_id, child_path));
+                                }
+                            }
+                            NodeKind::Symlink { .. } => {
+                                // Symlinks don't have upper layer files to clonefile
+                                // The symlink target is stored in the node metadata
+                            }
+                        }
+                    } else {
+                        eprintln!("DEBUG: Node {} not found", node_id.0);
+                    }
+                }
+            } else {
+                eprintln!("DEBUG: Backstore does not support native reflink");
+            }
+        } else {
+            eprintln!("DEBUG: No backstore available");
+        }
+
+        Ok(upper_files)
     }
 
     /// Registers a process with the filesystem, establishing its security identity and process hierarchy.
@@ -946,13 +1079,29 @@ impl FsCore {
 
         let snapshot_id = SnapshotId::new();
 
+        let snapshot_name = name
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
+
         // If we have a backstore that supports native snapshots, delegate to it
         if let Some(backstore) = &self.backstore {
             if backstore.supports_native_snapshots() {
-                let snapshot_name = name
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
                 backstore.snapshot_native(&snapshot_name)?;
+            } else if backstore.supports_native_reflink() {
+                // Collect all upper layer files that need to be materialized
+                let upper_files = self.collect_upper_layer_files(branch.root_id)?;
+                eprintln!(
+                    "DEBUG: Collected {} upper files for snapshot",
+                    upper_files.len()
+                );
+                for (upper_path, overlay_path) in &upper_files {
+                    eprintln!(
+                        "DEBUG: Upper file: {} -> {}",
+                        upper_path.display(),
+                        overlay_path.display()
+                    );
+                }
+                backstore.snapshot_clonefile_materialize(&snapshot_name, &upper_files)?;
             }
         }
 

@@ -395,7 +395,6 @@ pub trait LowerFs: Send + Sync {
 
 /// Backstore trait for managing upper layer storage
 /// The backstore manages the storage location for copied-up files in overlay mode.
-#[cfg_attr(test, mockall::automock)]
 pub trait Backstore: Send + Sync {
     /// Check if this backstore supports native snapshots (e.g., APFS, ZFS, Btrfs)
     fn supports_native_snapshots(&self) -> bool;
@@ -415,4 +414,15 @@ pub trait Backstore: Send + Sync {
 
     /// Get the root path of this backstore
     fn root_path(&self) -> std::path::PathBuf;
+
+    /// Downcast to concrete type for testing/advanced operations
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Materialize overlay files using clonefile for snapshot persistence
+    /// This creates a persistent copy of upper layer files using filesystem-native CoW
+    fn snapshot_clonefile_materialize(
+        &self,
+        snapshot_name: &str,
+        upper_files: &[(std::path::PathBuf, std::path::PathBuf)],
+    ) -> crate::error::FsResult<()>;
 }

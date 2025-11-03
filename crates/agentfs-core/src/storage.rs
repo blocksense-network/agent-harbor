@@ -7,6 +7,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn clonefile(
+        src: *const libc::c_char,
+        dst: *const libc::c_char,
+        flags: libc::c_int,
+    ) -> libc::c_int;
+}
+
 use crate::config::BackstoreMode;
 use crate::error::FsResult;
 use crate::{Backstore, ContentId, FsError};
@@ -19,6 +28,12 @@ pub trait StorageBackend: Send + Sync {
     fn allocate(&self, initial: &[u8]) -> FsResult<ContentId>;
     fn clone_cow(&self, base: ContentId) -> FsResult<ContentId>;
     fn seal(&self, id: ContentId) -> FsResult<()>; // for snapshot immutability
+
+    /// Get the filesystem path for a content ID (if the backend stores content as files)
+    fn get_content_path(&self, id: ContentId) -> Option<std::path::PathBuf> {
+        // Default implementation returns None (for in-memory backends)
+        None
+    }
 
     /// Seal an entire content tree (recursive sealing for snapshots)
     fn seal_content_tree(&self, _root_content_id: ContentId) -> FsResult<()> {
@@ -181,6 +196,19 @@ impl Backstore for InMemoryBackstore {
     fn root_path(&self) -> std::path::PathBuf {
         std::path::PathBuf::new() // No physical path for in-memory
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn snapshot_clonefile_materialize(
+        &self,
+        _snapshot_name: &str,
+        _upper_files: &[(std::path::PathBuf, std::path::PathBuf)],
+    ) -> FsResult<()> {
+        // In-memory backstore has no filesystem to clonefile on
+        Err(FsError::Unsupported)
+    }
 }
 
 impl Default for InMemoryBackstore {
@@ -221,6 +249,9 @@ impl HostFsBackend {
 }
 
 impl StorageBackend for HostFsBackend {
+    fn get_content_path(&self, id: ContentId) -> Option<std::path::PathBuf> {
+        Some(self.content_path(id))
+    }
     fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize> {
         let path = self.content_path(id);
         let mut file = std::fs::File::open(&path)?;
@@ -331,23 +362,161 @@ impl Backstore for HostFsBackstore {
     }
 
     fn supports_native_reflink(&self) -> bool {
-        // For now, HostFs doesn't support native reflink (only copy fallback)
-        // In a real implementation, this would detect if the underlying filesystem
-        // supports native reflink operations (Btrfs FICLONE, APFS clonefile, etc.)
+        // Detect if the underlying filesystem supports native reflink operations
+        // For now, check if we're on macOS and the path looks like an APFS volume
+        #[cfg(target_os = "macos")]
+        {
+            use std::path::Path;
+            use std::process::Command;
+
+            // Try to find the mount point for this path by walking up the directory tree
+            let mut current_path = self.root.as_path();
+            while let Some(parent) = current_path.parent() {
+                eprintln!(
+                    "DEBUG: Checking potential mount point: {}",
+                    parent.display()
+                );
+                if let Ok(output) =
+                    Command::new("diskutil").args(&["info", &parent.to_string_lossy()]).output()
+                {
+                    let output_str = String::from_utf8_lossy(&output.stdout);
+                    eprintln!(
+                        "DEBUG: diskutil output contains 'apfs': {}",
+                        output_str.contains("apfs")
+                    );
+                    if output_str.contains("File System:") && output_str.contains("apfs") {
+                        eprintln!(
+                            "DEBUG: APFS detected at {}, returning true",
+                            parent.display()
+                        );
+                        return true;
+                    }
+                }
+                current_path = parent;
+                // Stop at root to avoid infinite loop
+                if parent == Path::new("/") {
+                    break;
+                }
+            }
+
+            // Also check the mount command to see if our path is on an APFS volume
+            if let Ok(output) = Command::new("mount").output() {
+                let mount_info = String::from_utf8_lossy(&output.stdout);
+                for line in mount_info.lines() {
+                    if line.contains("apfs") && line.contains(&*self.root.to_string_lossy()) {
+                        eprintln!("DEBUG: Found APFS mount containing our path");
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Default fallback: no native reflink support
+        eprintln!("DEBUG: No APFS detected, returning false");
         false
     }
 
     fn reflink(&self, from_path: &Path, to_path: &Path) -> FsResult<()> {
         // Attempt to create a reflink/copy-on-write copy
-        // On Linux with Btrfs/ZFS: ioctl FICLONE
-        // On macOS with APFS: clonefile()
-        // For now, fall back to copy
-        std::fs::copy(from_path, to_path)?;
-        Ok(())
+        if self.supports_native_reflink() {
+            #[cfg(target_os = "macos")]
+            {
+                // Use clonefile syscall on macOS APFS
+                use std::ffi::CString;
+                use std::os::unix::ffi::OsStrExt;
+
+                // Create parent directories for target if needed
+                if let Some(parent) = to_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                // Convert paths to C strings
+                let from_cstr = CString::new(from_path.as_os_str().as_bytes())
+                    .map_err(|_| FsError::InvalidArgument)?;
+                let to_cstr = CString::new(to_path.as_os_str().as_bytes())
+                    .map_err(|_| FsError::InvalidArgument)?;
+
+                // Call clonefile with flags=0 (normal copy-on-write clone)
+                let result = unsafe { libc::clonefile(from_cstr.as_ptr(), to_cstr.as_ptr(), 0) };
+
+                if result == 0 {
+                    // Success
+                    Ok(())
+                } else {
+                    // Error - check errno
+                    let errno = unsafe { *libc::__error() };
+                    match errno {
+                        libc::ENOTSUP => {
+                            // Filesystem doesn't support clonefile, fall back to copy
+                            std::fs::copy(from_path, to_path)?;
+                            Ok(())
+                        }
+                        libc::ENOSPC => {
+                            // No space left, fall back to copy
+                            std::fs::copy(from_path, to_path)?;
+                            Ok(())
+                        }
+                        libc::ENOENT => Err(FsError::NotFound),
+                        libc::EEXIST => Err(FsError::AlreadyExists),
+                        _ => Err(FsError::Io(std::io::Error::from_raw_os_error(errno))),
+                    }
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                // On other platforms, fall back to copy for now
+                std::fs::copy(from_path, to_path)?;
+                Ok(())
+            }
+        } else {
+            // Fallback to copy
+            std::fs::copy(from_path, to_path)?;
+            Ok(())
+        }
     }
 
     fn root_path(&self) -> std::path::PathBuf {
         self.root.clone()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn snapshot_clonefile_materialize(
+        &self,
+        snapshot_name: &str,
+        upper_files: &[(std::path::PathBuf, std::path::PathBuf)],
+    ) -> FsResult<()> {
+        // Create snapshot directory
+        let snapshot_dir = self.root.join("snapshots").join(snapshot_name);
+        std::fs::create_dir_all(&snapshot_dir)?;
+
+        // For each upper file, create a clonefile copy
+        for (upper_path, _overlay_path) in upper_files {
+            if upper_path.exists() {
+                // Calculate relative path from backstore root
+                let relative_path =
+                    upper_path.strip_prefix(&self.root).map_err(|_| FsError::InvalidArgument)?;
+
+                // Create destination path in snapshot directory
+                let snapshot_path = snapshot_dir.join(relative_path);
+
+                // Ensure parent directories exist
+                if let Some(parent) = snapshot_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                // Use reflink if supported, otherwise copy
+                if self.supports_native_reflink() {
+                    self.reflink(upper_path, &snapshot_path)?;
+                } else {
+                    std::fs::copy(upper_path, &snapshot_path)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -364,10 +533,19 @@ pub fn create_backstore(config: &BackstoreMode) -> FsResult<Box<dyn Backstore>> 
         )?)),
         BackstoreMode::RamDisk { size_mb } => {
             // Ramdisk creation requires platform-specific code
-            // On macOS, use agentfs-backstore-macos::create_apfs_ramdisk_backstore() directly
-            // For now, return Unsupported to indicate this needs to be handled externally
-            let _ = size_mb; // Suppress unused variable warning
-            Err(FsError::Unsupported)
+            #[cfg(target_os = "macos")]
+            {
+                // Use dynamic loading or runtime dispatch to avoid circular dependency
+                // For now, return Unsupported - the actual implementation should be
+                // handled at a higher level where platform-specific crates are available
+                let _ = size_mb;
+                Err(FsError::Unsupported)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = size_mb; // Suppress unused variable warning
+                Err(FsError::Unsupported)
+            }
         }
     }
 }

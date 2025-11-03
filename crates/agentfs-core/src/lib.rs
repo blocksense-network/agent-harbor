@@ -26,7 +26,9 @@ pub use vfs::{DirfdMapping, FsCore, PID};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{BackstoreMode, CopyUpMode, InterposeConfig, OverlayConfig};
+    use crate::config::{
+        BackstoreMode, CopyUpMode, InterposeConfig, OverlayConfig, SecurityPolicy,
+    };
     use mockall::predicate::*;
     use std::cell::RefCell;
     use std::sync::{Arc, Mutex};
