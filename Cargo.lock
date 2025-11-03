@@ -22,6 +22,11 @@ dependencies = [
 [[package]]
 name = "agentfs-backstore-macos"
 version = "0.1.0"
+dependencies = [
+ "agentfs-core",
+ "proptest",
+ "tempfile",
+]
 
 [[package]]
 name = "agentfs-core"
