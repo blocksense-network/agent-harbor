@@ -21,6 +21,8 @@
 body {
   background: rgb(var(--background-rgb));
   color: rgb(var(--foreground-rgb));
+
+  font-family: var(--font-manrope);
 }
 
 /* Custom TOM Select theming */
