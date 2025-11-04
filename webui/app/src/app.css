@@ -4,6 +4,10 @@
 /* TOM Select base styles - imported dynamically */
 @import 'tom-select/dist/css/tom-select.bootstrap5.css';
 
+@theme {
+  --font-manrope: Manrope, sans-serif;
+}
+
 :root {
   --background-rgb: 214, 219, 220;
   --foreground-rgb: 0, 0, 0;
