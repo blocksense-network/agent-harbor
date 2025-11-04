@@ -61,7 +61,7 @@
       ...
     }:
     flake-parts.lib.mkFlake { inherit inputs; } (
-      { config, ... }:
+      { config, lib, ... }:
       rec {
         systems = [
           "x86_64-linux"
@@ -113,6 +113,28 @@
                   overlays = [ rust-overlay.overlays.default ];
                   config.allowUnfree = true; # Allow unfree packages like claude-code
                 };
+                legacyAgentTask = pkgs.stdenv.mkDerivation {
+                  pname = "agent-task-scripts";
+                  version = "0.1.0";
+                  src = null;
+                  dontUnpack = true;
+                  installPhase = ''
+                    runHook preInstall
+
+                    mkdir -p "$out/bin"
+                    cp -r ${./bin}/. "$out/bin/"
+                    chmod -R +x "$out/bin"
+
+                    mkdir -p "$out/legacy"
+                    cp -r ${./legacy}/. "$out/legacy/"
+
+                    runHook postInstall
+                  '';
+                  meta = with pkgs.lib; {
+                    description = "Legacy Ruby agent-task scripts bundled with their relative library files";
+                    license = licenses.mit;
+                  };
+                };
                 ah-script = pkgs.writeShellScriptBin "ah" ''
                   PATH=${
                     pkgs.lib.makeBinPath (
@@ -122,13 +144,13 @@
                       ]
                     )
                   }:$PATH
-                  exec ruby ${./bin/agent-task} "$@"
+                  exec ${pkgs.ruby}/bin/ruby ${legacyAgentTask}/bin/agent-task "$@"
                 '';
                 get-task = pkgs.writeShellScriptBin "get-task" ''
-                  exec ${pkgs.ruby}/bin/ruby ${./bin/get-task} "$@"
+                  exec ${pkgs.ruby}/bin/ruby ${legacyAgentTask}/bin/get-task "$@"
                 '';
                 start-work = pkgs.writeShellScriptBin "start-work" ''
-                  exec ${pkgs.ruby}/bin/ruby ${./bin/start-work} "$@"
+                  exec ${pkgs.ruby}/bin/ruby ${legacyAgentTask}/bin/start-work "$@"
                 '';
                 legacy-cloud-agent-utils = pkgs.symlinkJoin {
                   name = "agent-utils";
@@ -142,7 +164,18 @@
                   pname = "agent-harbor-cli";
                   version = "0.1.0";
                   src = ./.;
-                  cargoLock.lockFile = ./Cargo.lock;
+                  cargoLock = {
+                    lockFile = ./Cargo.lock;
+                    outputHashes = {
+                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                    };
+                  };
+                  nativeBuildInputs = [ pkgs.pkg-config ];
+                  buildInputs = [
+                    pkgs.openssl
+                    pkgs.libseccomp
+                    pkgs.zlib
+                  ];
                   cargoBuildFlags = [
                     "--bin"
                     "ah"
@@ -157,7 +190,18 @@
                   pname = "agent-harbor-daemon";
                   version = "0.1.0";
                   src = ./.;
-                  cargoLock.lockFile = ./Cargo.lock;
+                  cargoLock = {
+                    lockFile = ./Cargo.lock;
+                    outputHashes = {
+                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                    };
+                  };
+                  nativeBuildInputs = [ pkgs.pkg-config ];
+                  buildInputs = [
+                    pkgs.openssl
+                    pkgs.libseccomp
+                    pkgs.zlib
+                  ];
                   cargoBuildFlags = [
                     "--bin"
                     "ah-fs-snapshots-daemon"
@@ -325,6 +369,11 @@
 
                   # Filesystem testing
                   (self.packages.${system}.pjdfstest) # POSIX filesystem test suite for FUSE testing
+
+                  # Native build tooling for Rust crates needing system libs
+                  pkgs.pkg-config
+                  pkgs.openssl.dev
+                  pkgs.zlib.dev
                 ];
 
                 ah-mux-test-tools = [
