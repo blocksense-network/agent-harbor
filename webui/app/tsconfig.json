@@ -16,7 +16,12 @@
     "noPropertyAccessFromIndexSignature": true,
     "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
-    "types": ["vinxi/types/client", "@types/node"],
+    "types": [
+      "vite-plugin-solid-svg/types",
+      "vite/client",
+      "vinxi/types/client",
+      "@types/node"
+    ],
     "isolatedModules": true,
     "paths": {
       "~/*": ["./src/*"]
