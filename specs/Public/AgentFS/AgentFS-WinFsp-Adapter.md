@@ -15,7 +15,7 @@ Implement a thin Windows adapter that maps WinFsp’s `FSP_FILE_SYSTEM_INTERFACE
 - Create `FSP_FILE_SYSTEM_INTERFACE` and fill function pointers.
 - Provide `FSP_FSCTL_VOLUME_PARAMS` (sector size, allocation unit, case sensitivity, features like `SupportsPosixUnlinkRename`).
 - Create `FSP_FILE_SYSTEM` via `FspFileSystemCreate`, then `FspFileSystemStartDispatcher`.
-- Maintain a mapping between WinFsp `FileContext` (void\*) and AgentFS `HandleId`/node context.
+- Maintain a mapping between WinFsp `FileContext` (`void*`) and AgentFS `HandleId`/node context.
 
 ### Operation Mapping (selected highlights)
 

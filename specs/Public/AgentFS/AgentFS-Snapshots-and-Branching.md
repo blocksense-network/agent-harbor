@@ -98,7 +98,7 @@ The core Rust library will implement a comprehensive set of filesystem operation
 
 - Creation with exclusive mode (fail if exists), truncate to zero length, open for append, read-only, write-only, read-write, etc.
 
-- Windows specifics: must handle CreateFile parameters like desired access, share mode, creation disposition, and flags (e.g., open existing, create new, open or create, truncate existing) as part of open logic. The core can expose a single open(path, flags, mode, options) that the Windows glue translates into the right flags. Must also handle **FILE_SHARE\_\* modes and access rights**: track open handles and deny opens that conflict with share modes (e.g., if one process opened file exclusively, another open should fail) – WinFsp will rely on our implementation for this logic[\[4\]](https://winfsp.dev/doc/WinFsp-Design/#:~:text=).
+- Windows specifics: must handle CreateFile parameters like desired access, share mode, creation disposition, and flags (e.g., open existing, create new, open or create, truncate existing) as part of open logic. The core can expose a single open(path, flags, mode, options) that the Windows glue translates into the right flags. Must also handle **`FILE_SHARE_*` modes and access rights**: track open handles and deny opens that conflict with share modes (e.g., if one process opened file exclusively, another open should fail) – WinFsp will rely on our implementation for this logic[\[4\]](https://winfsp.dev/doc/WinFsp-Design/#:~:text=).
 
 - _Result:_ Returns a file handle (internally, perhaps an ID or pointer to an in-memory file structure) to be used for subsequent reads/writes.
 
@@ -172,7 +172,7 @@ The core Rust library will implement a comprehensive set of filesystem operation
 
 - **Extended Attributes (xattr):** Support xattr get/set/list/remove:
 
-- On Linux, extended attributes are name-value pairs associated with files (namespaces like user._, security._, etc.). MacOS also uses xattrs for things like Finder info, where e.g. com.apple.\* attributes might be set. Our core can maintain a dictionary of xattrs per file.
+- On Linux, extended attributes are name-value pairs associated with files (namespaces like user._, security._, etc.). MacOS also uses xattrs for things like Finder info, where e.g. `com.apple.*` attributes might be set. Our core can maintain a dictionary of xattrs per file.
 
 - Ensure that listing xattrs and retrieving specific ones works. If not implementing security.\* fully, we might at least store whatever is set (e.g. OS may set com.apple.quarantine xattr on downloaded files – our FS should store it).
 
@@ -213,7 +213,7 @@ The core Rust library will implement a comprehensive set of filesystem operation
 
 - We must decide how to store and search directory entries: perhaps use a trie or hash that either is case-sensitive or not depending on a flag. In insensitive mode, must also prevent names that only differ by case from coexisting (to mimic Windows behavior).
 
-- Character encoding: Windows expects Unicode (UTF-16) filenames, Linux/mac expects UTF-8 bytes. The core can store Unicode (Rust OsString). The glue will convert as needed (e.g., Windows wide char to UTF-8 for core, Linux just passes through assuming UTF-8). We must also forbid characters not allowed on each platform: e.g., Windows forbids \<\>:"|?\* and names like "CON". The glue can validate and reject such names on Windows mount (or core can have a validation function when running in Windows-compatibility mode).
+- Character encoding: Windows expects Unicode (UTF-16) filenames, Linux/mac expects UTF-8 bytes. The core can store Unicode (Rust OsString). The glue will convert as needed (e.g., Windows wide char to UTF-8 for core, Linux just passes through assuming UTF-8). We must also forbid characters not allowed on each platform: e.g., Windows forbids `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, and `*` and names like "CON". The glue can validate and reject such names on Windows mount (or core can have a validation function when running in Windows-compatibility mode).
 
 - Namespace differences: Windows paths can have drive letters and volume GUIDs, but that is abstracted by WinFsp. We just see relative paths from root of our volume. We should handle special cases like requests for volume information paths or certain reserved paths (e.g. WinFsp might ask for "\\\\" or similar). Likely not an issue, WinFsp abstracts it.
 
