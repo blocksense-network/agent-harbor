@@ -29,12 +29,15 @@ check:
 build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries
 
 # Run Rust tests
-test-rust: build-rust-test-binaries
-    cargo nextest run --workspace --final-status-level skip
+test-rust *args: build-rust-test-binaries
+    cargo nextest run --workspace {{args}}
+
+test-rust-single *args: build-rust-test-binaries
+    cargo nextest run --workspace --profile single {{args}}
 
 # Run Rust tests with verbose output
-test-rust-verbose: build-rust-test-binaries
-    cargo nextest run --workspace --verbose
+test-rust-verbose *args: build-rust-test-binaries
+    cargo nextest run --workspace --verbose {{args}}
 
 # Build TUI exploration binary (legacy implementation)
 build-tui-exploration:

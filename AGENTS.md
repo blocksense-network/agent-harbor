@@ -1,17 +1,17 @@
 # Testing your changes
 
-- You can execute the test suite with `just test`.
-- You can lint the codebase with `just lint`.
+- You can execute the Rust test suite with `just test-rust`.
+- You can lint the codebase with `just lint-rust`.
   Don't disable lints just to make the linter happy. ALWAYS try to fix the code first.
 
 ## 🧪 Testing Tips
 
 When the test suite fails and you want to test potential fixes, try running only the affected
-tests firsts:
+tests firsts, one by one:
 
-`ruby -Itest test/test_file.rb -n test_method_name`
+`just test-rust-single test_name`
 
-ALWAYS run testing commands with a suitable timeout because they might hang.
+ALWAYS use the `just test-*` targets which are configured to run the tests in the correct nix dev shell with proper timeouts.
 
 ## Managing dependencies
 
