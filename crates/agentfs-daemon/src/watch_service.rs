@@ -649,7 +649,6 @@ impl EventSink for WatchServiceEventSink {
         let affected_paths = self.get_affected_paths(evt);
 
         // Route to kqueue watchers
-        #[cfg(target_os = "macos")]
         self.route_to_kqueue_watchers(evt, &affected_paths);
 
         // Route to FSEvents watchers
@@ -736,7 +735,6 @@ impl WatchServiceEventSink {
     }
 
     /// Route event to matching kqueue watchers with coalescing
-    #[cfg(target_os = "macos")]
     fn route_to_kqueue_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
         let watches = self.watch_service.kqueue_watches.lock().unwrap();
 

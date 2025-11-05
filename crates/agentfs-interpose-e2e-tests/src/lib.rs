@@ -3,10 +3,7 @@
 
 // Handshake types are now provided by the agentfs-daemon crate
 
-use agentfs_daemon::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo, handshake};
-use agentfs_proto::{Request, Response};
 use ssz::{Decode, Encode};
-use std::io::{Read, Write};
 
 // Common functions available on all platforms
 pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
@@ -108,7 +105,6 @@ fn remove_env_var(key: &str) {
 ///
 /// The test_helper binary itself contains rich assertions and will exit with
 /// non-zero status if AgentFS behavior doesn't match expectations.
-#[cfg(target_os = "macos")]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     command: &str,
@@ -500,7 +496,6 @@ mod tests {
         remove_env_var("AGENTFS_INTERPOSE_LOG");
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_file_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -626,7 +621,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_directory_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -750,7 +744,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_readlink_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -865,7 +858,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_metadata_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -954,7 +946,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_namespace_operations() {
         let _lock = match ENV_GUARD.lock() {

@@ -1475,7 +1475,6 @@ fn decode_ssz<T: Decode>(data: &[u8]) -> Result<T, String> {
     T::from_ssz_bytes(data).map_err(|e| format!("SSZ decode error: {:?}", e))
 }
 
-#[cfg(target_os = "macos")]
 fn send_request<F, T>(request: Request, extract_response: F) -> Result<T, String>
 where
     F: Fn(Response) -> Option<T>,
@@ -1629,7 +1628,6 @@ where
 }
 
 /// Try to reconnect to the daemon and re-register all watches
-#[cfg(target_os = "macos")]
 fn try_reconnect_to_daemon() -> Result<(), String> {
     log_message("Attempting to reconnect to AgentFS daemon");
 
@@ -1676,7 +1674,6 @@ fn try_reconnect_to_daemon() -> Result<(), String> {
 }
 
 /// Re-register all active watches with the daemon
-#[cfg(target_os = "macos")]
 fn re_register_all_watches() -> Result<(), String> {
     log_message("Re-registering all active watches");
 
