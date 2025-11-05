@@ -14,18 +14,13 @@ use crate::db::DatabaseManager;
 use crate::task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
-use ah_domain_types::{
-    Branch, LogLevel, Repository, SelectedModel, TaskExecution, TaskExecutionStatus, TaskInfo,
-    ToolStatus,
-};
+use ah_domain_types::{SelectedModel, TaskExecution, TaskInfo};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
-use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig, PaneRole};
+use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use futures::stream::Stream;
 use serde_json;
-use std::path::PathBuf;
 use std::pin::Pin;
 
 /// Generic Local task manager implementation that executes tasks through a multiplexer

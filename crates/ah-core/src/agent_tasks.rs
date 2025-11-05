@@ -8,7 +8,7 @@
 //! This is a direct port of the Ruby AgentTasks class functionality.
 
 use ah_repo::{VcsRepo, VcsResult};
-use ah_workflows::{WorkflowConfig, WorkflowError, WorkflowProcessor, WorkflowResult};
+use ah_workflows::{WorkflowConfig, WorkflowError, WorkflowProcessor};
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use std::collections::HashMap;
 use std::fs;

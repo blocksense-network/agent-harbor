@@ -40,7 +40,7 @@ impl DatabaseManager {
         let root_path = repo.root().to_string_lossy().to_string();
         let default_branch = repo.default_branch();
 
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -66,7 +66,7 @@ impl DatabaseManager {
 
     /// List all repositories.
     pub fn list_repositories(&self) -> crate::Result<Vec<RepoRecord>> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -78,7 +78,7 @@ impl DatabaseManager {
 
     /// Get repository by ID.
     pub fn get_repository_by_id(&self, id: i64) -> crate::Result<Option<RepoRecord>> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -90,7 +90,7 @@ impl DatabaseManager {
 
     /// List all draft tasks.
     pub fn list_drafts(&self) -> crate::Result<Vec<DraftRecord>> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -102,7 +102,7 @@ impl DatabaseManager {
 
     /// Get draft by ID.
     pub fn get_draft_by_id(&self, id: &str) -> crate::Result<Option<DraftRecord>> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -114,7 +114,7 @@ impl DatabaseManager {
 
     /// Save a draft task (insert or update).
     pub fn save_draft(&self, record: &DraftRecord) -> crate::Result<()> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -136,7 +136,7 @@ impl DatabaseManager {
 
     /// Delete a draft task.
     pub fn delete_draft(&self, id: &str) -> crate::Result<()> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -148,7 +148,7 @@ impl DatabaseManager {
 
     /// Get or create agent record.
     pub fn get_or_create_agent(&self, name: &str, version: &str) -> crate::Result<i64> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -172,7 +172,7 @@ impl DatabaseManager {
 
     /// Get or create runtime record (defaults to local).
     pub fn get_or_create_local_runtime(&self) -> crate::Result<i64> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -182,7 +182,7 @@ impl DatabaseManager {
 
     /// Create a new session record.
     pub fn create_session(&self, session_record: &SessionRecord) -> crate::Result<()> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -192,7 +192,7 @@ impl DatabaseManager {
 
     /// Create a new task record.
     pub fn create_task_record(&self, task_record: &TaskRecord) -> crate::Result<i64> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -202,7 +202,7 @@ impl DatabaseManager {
 
     /// Create a filesystem snapshot record.
     pub fn create_fs_snapshot(&self, snapshot_record: &FsSnapshotRecord) -> crate::Result<i64> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 
@@ -217,7 +217,7 @@ impl DatabaseManager {
         status: &str,
         ended_at: Option<&str>,
     ) -> crate::Result<()> {
-        let mut conn = self.db.connection().lock().map_err(|e| {
+        let conn = self.db.connection().lock().map_err(|e| {
             crate::Error::generic(format!("Failed to acquire database lock: {}", e))
         })?;
 

@@ -22,7 +22,9 @@ struct TokenExchangeRequest {
 #[derive(Debug, Deserialize)]
 struct TokenExchangeResponse {
     access_token: String,
+    #[allow(unused)]
     token_type: String,
+    #[allow(unused)]
     expires_in: Option<u32>,
 }
 
