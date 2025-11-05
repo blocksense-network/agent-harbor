@@ -29,7 +29,7 @@ brotli = "7.0"
 byteorder = "1.5"
 ratatui = { workspace = true }
 crossterm = { workspace = true }
-tui-textarea = { path = "../../vendor/tui-textarea", features = ["search"] }
+tui-textarea = { workspace = true }
 
 # SSZ serialization for IPC
 ethereum_ssz = { workspace = true }

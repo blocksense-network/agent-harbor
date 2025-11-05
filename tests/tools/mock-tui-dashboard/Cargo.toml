@@ -15,7 +15,7 @@ anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
 image = { version = "0.25", default-features = false, features = ["png"] }
-tui-textarea = { path = "../../../vendor/tui-textarea", features = ["search"] }
+tui-textarea = { workspace = true }
 tui-input = "0.10"
 crossbeam-channel = "0.5"
 ctrlc = "3.4"
