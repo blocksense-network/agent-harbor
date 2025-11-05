@@ -7,6 +7,9 @@ import { For, Show, createMemo } from 'solid-js';
 import { A } from '@solidjs/router';
 
 import { Session } from '../../../lib/api.js';
+import { useSession } from '../../../contexts/SessionContext';
+import { useDrafts } from '../../../contexts/DraftContext';
+import { useFocus } from '../../../contexts/FocusContext';
 import { useSessionLiveActivity } from './useSessionLiveActivity';
 
 const getStatusIcon = (status: Session['status']) => {
@@ -62,31 +65,65 @@ const getRepoName = (url?: string) => {
 
 type SessionCardProps = {
   session: Session;
-  isSelected?: boolean;
-  onClick?: () => void;
-  onStop?: () => void;
-  onCancel?: () => void;
 };
 
 export const SessionCard = (props: SessionCardProps) => {
+  const { filteredSessions, stopSession, cancelSession, selectedSessionId, setSelectedSessionId } =
+    useSession();
+  const { drafts } = useDrafts();
+  const { keyboardSelectedIndex, setKeyboardSelectedIndex, setSessionFocus } = useFocus();
+
   const session = () => props.session;
   const { sessionStatus, liveActivityLines, canStop, canCancel } = useSessionLiveActivity(session);
 
   const statusInfo = createMemo(() => getStatusIcon(sessionStatus()));
 
+  const sessionIndex = createMemo(() => {
+    const sessions = filteredSessions();
+    return sessions.findIndex(item => item.id === session().id);
+  });
+
+  const globalIndex = createMemo(() => {
+    const idx = sessionIndex();
+    if (idx < 0) return idx;
+    return drafts().length + idx;
+  });
+
+  const isSelected = createMemo(() => {
+    const idx = globalIndex();
+    return selectedSessionId() === session().id || (idx >= 0 && keyboardSelectedIndex() === idx);
+  });
+
+  const handleSelect = () => {
+    const idx = globalIndex();
+    if (idx < 0) return;
+    setKeyboardSelectedIndex(idx);
+    setSessionFocus(session().id);
+    setSelectedSessionId(session().id);
+  };
+
+  const handleStop = () => {
+    void stopSession(session().id);
+  };
+
+  const handleCancel = () => {
+    cancelSession(session().id);
+  };
+
   return (
     <article
       data-testid="task-card"
-      id={`session-${session().id}`}
+      id={`task-${session().id}`}
       data-task-id={session().id}
       aria-labelledby={`session-heading-${session().id}`}
-      aria-selected={props.isSelected}
+      aria-selected={isSelected()}
       class="rounded-lg border bg-white p-4 shadow-sm transition-all"
       classList={{
-        'ring-2 ring-blue-500 border-blue-500 bg-blue-50 selected': props.isSelected,
-        'border-gray-200': !props.isSelected,
+        'ring-2 ring-blue-500 border-blue-500 bg-blue-50 selected': isSelected(),
+        'border-gray-200': !isSelected(),
       }}
-      tabindex={props.isSelected ? '0' : '-1'}
+      tabindex={isSelected() ? '0' : '-1'}
+      onClick={handleSelect}
     >
       <div class="mb-2 flex items-center justify-between">
         <div class="flex min-w-0 flex-1 items-center space-x-2">
@@ -102,8 +139,9 @@ export const SessionCard = (props: SessionCardProps) => {
           <h3
             id={`session-heading-${session().id}`}
             class={`
-            min-w-0 flex-1 text-sm font-semibold
-          `}
+              min-w-0 flex-1
+              text-sm font-semibold
+            `}
           >
             <A
               href={`/tasks/${session().id}`}
@@ -131,7 +169,7 @@ export const SessionCard = (props: SessionCardProps) => {
             <button
               onClick={e => {
                 e.stopPropagation();
-                props.onStop?.();
+                handleStop();
               }}
               class={`
                 rounded p-1 text-xs text-gray-400
@@ -149,7 +187,7 @@ export const SessionCard = (props: SessionCardProps) => {
             <button
               onClick={e => {
                 e.stopPropagation();
-                props.onCancel?.();
+                handleCancel();
               }}
               class={`
                 rounded p-1 text-xs text-gray-400
