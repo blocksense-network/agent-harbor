@@ -10,8 +10,6 @@
 #   if [ -n "$IN_NIX_SHELL" ]; then echo "missing <tool>; fix flake.nix" >&2; exit 127; fi
 # This keeps `nix develop` fully reproducible and prevents hidden network variability.
 
-# Run the test suite
-
 set shell := ["./scripts/nix-env.sh", "-c"]
 
 # Define REPOMIX_OUT_DIR with a default value
@@ -20,6 +18,10 @@ REPOMIX_OUT_DIR := env('REPOMIX_OUT_DIR', 'repomix')
 # IMPORTANT: Never use long scripts in Justfile recipes!
 # Long scripts set a custom shell, overriding our nix-env.sh setting.
 # Move complex scripts to the scripts/ folder instead.
+
+# List all available Just tasks
+default:
+  @just --list
 
 # Check Rust code for compilation errors
 check:
