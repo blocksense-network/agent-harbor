@@ -2,4 +2,5 @@
 source: crates/ah-tui/tests/scenario_render.rs
 expression: normalized_screen
 ---
-[m[H[J[TIMESTAMP] [33m WARN[m ah_core::local_branches_enumerator: Invalid repository ID: [CURSOR_POS]
+[m[H[J[48;2;17;17;27m                                                                                
+  ╔════
