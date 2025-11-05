@@ -304,7 +304,7 @@ Ship the crate to **crates.io** and provide ergonomic API for `agentfs-daemon`.
 
 ---
 
-## M10 – AgentFS Daemon backstore integration  (≈ 150 Δ)
+## M10 – AgentFS Daemon backstore integration  (≈ 150 Δ) - COMPLETED
 **Goal**
 Enable `agentfs-daemon` to consume and manage files from different backstore configurations (HostFs, RamDisk).
 
@@ -316,10 +316,27 @@ Enable `agentfs-daemon` to consume and manage files from different backstore con
 5. Handle backstore-specific error conditions (disk full, ramdisk creation failures).
 
 **Automated tests**
-- [ ] Unit: `daemon_backstore_config_parsing()` validates CLI/env backstore options.
-- [ ] Integration: `daemon_with_hostfs_backstore()` creates daemon with HostFs mode.
-- [ ] Integration: `daemon_with_ramdisk_backstore()` creates and cleans up ramdisk.
-- [ ] Unit: `backstore_status_api()` reports backstore type and capacity.
-- [ ] Stress: `daemon_ramdisk_lifecycle()` survives daemon restart cycles.
+- [x] Unit: `daemon_backstore_config_parsing()` validates CLI/env backstore options.
+- [x] Integration: `daemon_with_hostfs_backstore()` creates daemon with HostFs mode.
+- [x] Integration: `daemon_with_ramdisk_backstore()` creates and cleans up ramdisk.
+- [x] Unit: `backstore_status_api()` reports backstore type and capacity.
+- [x] Stress: `daemon_ramdisk_lifecycle()` survives daemon restart cycles.
+- [x] Integration: `test_comprehensive_filesystem_operations_inmemory()` validates end-to-end file operations.
+- [x] Persistence: `test_backstore_persistence_inmemory()` and `test_backstore_persistence_hostfs()` validate data persistence behavior.
+- [x] Error handling: `test_backstore_configuration_validation()` and `test_ramdisk_error_handling()` validate error conditions.
+
+**Implementation Details**
+The milestone successfully implemented comprehensive AgentFS daemon backstore integration. The daemon now supports multiple backstore modes (InMemory, HostFs, RamDisk) through CLI arguments, with automatic ramdisk lifecycle management and proper error handling. A new integration test suite validates daemon startup, backstore persistence behavior, comprehensive filesystem operations, and error conditions. The backstore status API allows clients to query daemon backstore configuration and status.
+
+**Key Source Files**
+- `crates/agentfs-daemon/src/bin/agentfs-daemon.rs` - CLI argument parsing for backstore modes and daemon startup configuration
+- `crates/agentfs-daemon/src/daemon.rs` - AgentFsDaemon backstore integration, ramdisk lifecycle management, and backstore status API
+- `crates/agentfs-proto/src/messages.rs` - DaemonStateBackstoreRequest and BackstoreStatus protocol messages
+- `tests/agentfs-daemon-backstore-integration/src/lib.rs` - Comprehensive integration test suite covering all backstore modes and scenarios
+- `crates/agentfs-interpose-e2e-tests/src/lib.rs` - Updated daemon startup to include backstore mode arguments
+
+**Outstanding Tasks**
+- **Multiple concurrent connections with session support**: The daemon currently accepts multiple concurrent connections (each in its own thread), but each connection can only handle a single request before closing. True concurrent client support requires implementing request loops within connections to allow multiple operations per client session.
+- **Review cleanup paths for RAII patterns**: Review the code for cleanup paths that don't use RAII-like patterns and migrate them to proper use of the Drop trait or the defer! macro to ensure resources are reliably cleaned up even in error conditions.
 
 ---

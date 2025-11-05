@@ -415,6 +415,11 @@ pub trait Backstore: Send + Sync {
     /// Get the root path of this backstore
     fn root_path(&self) -> std::path::PathBuf;
 
+    /// Get the mount point of this backstore (for RAM disk backstores)
+    fn mount_point(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+
     /// Downcast to concrete type for testing/advanced operations
     fn as_any(&self) -> &dyn std::any::Any;
 
@@ -425,4 +430,15 @@ pub trait Backstore: Send + Sync {
         snapshot_name: &str,
         upper_files: &[(std::path::PathBuf, std::path::PathBuf)],
     ) -> crate::error::FsResult<()>;
+}
+
+/// Information about a backstore configuration
+#[derive(Debug, Clone)]
+pub struct BackstoreInfo {
+    /// Root path of the backstore
+    pub root_path: std::path::PathBuf,
+    /// Whether the backstore supports native snapshots
+    pub supports_native_snapshots: bool,
+    /// Mount point (for RamDisk backstores)
+    pub mount_point: Option<std::path::PathBuf>,
 }

@@ -11,11 +11,13 @@ pub mod validation;
 
 // Re-export key types
 pub use messages::{
+    BackstoreStatus,
     BranchBindRequest,
     BranchBindResponse,
     BranchCreateRequest,
     BranchCreateResponse,
     BranchInfo,
+    DaemonStateBackstoreRequest,
     // Daemon state types
     DaemonStateQuery,
     DaemonStateRequest,

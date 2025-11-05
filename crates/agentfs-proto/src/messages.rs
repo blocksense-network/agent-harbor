@@ -104,6 +104,7 @@ pub enum Request {
     DaemonStateProcesses(DaemonStateProcessesRequest),    // version - for testing
     DaemonStateStats(DaemonStateStatsRequest),            // version - for testing
     DaemonStateFilesystem(DaemonStateFilesystemRequest),  // dummy data - for testing
+    DaemonStateBackstore(DaemonStateBackstoreRequest),    // version - for testing
 }
 
 /// Response union - operation-specific success responses or errors
@@ -1109,10 +1110,16 @@ pub struct DaemonStateFilesystemRequest {
     pub query: FilesystemQuery,
 }
 
+/// Daemon state request for backstore status (query backstore configuration and status)
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct DaemonStateBackstoreRequest {
+    pub data: Vec<u8>, // version
+}
+
 /// Daemon state query types - using struct with discriminant
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct DaemonStateQuery {
-    pub discriminant: u32, // 0=Processes, 1=Stats, 2=FilesystemState
+    pub discriminant: u32, // 0=Processes, 1=Stats, 2=FilesystemState, 3=BackstoreStatus
     pub filesystem_params: Option<FilesystemQuery>,
 }
 
@@ -1131,6 +1138,7 @@ pub enum DaemonStateResponse {
     Processes(Vec<ProcessInfo>),
     Stats(FsStats),
     FilesystemState(FilesystemState),
+    BackstoreStatus(BackstoreStatus),
 }
 
 /// Process information for daemon state
@@ -1153,6 +1161,16 @@ pub struct FsStats {
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct FilesystemState {
     pub entries: Vec<FilesystemEntry>, // sorted by path for binary search
+}
+
+/// Backstore status information
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct BackstoreStatus {
+    pub mode: Vec<u8>,                // "InMemory", "HostFs", "RamDisk" as UTF-8 bytes
+    pub root_path: Option<Vec<u8>>,   // Root path for HostFs mode
+    pub size_mb: Option<u32>,         // RAM disk size for RamDisk mode
+    pub mount_point: Option<Vec<u8>>, // Actual mount point (for RamDisk)
+    pub supports_native_snapshots: Option<u32>, // 0=false, 1=true for HostFs
 }
 
 /// Individual filesystem entry in flattened list
