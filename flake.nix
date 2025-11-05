@@ -159,11 +159,29 @@
                     start-work
                   ];
                 };
+                fs = lib.fileset;
+                rustWorkspaceFiles = fs.unions [
+                  ./Cargo.toml
+                  ./Cargo.lock
+                  ./rust-toolchain.toml
+                  ./clippy.toml
+                  ./rustfmt.toml
+                  ./src
+                  ./crates
+                  ./tests
+                  ./assets
+                  ./resources
+                  ./specs
+                ];
+                rustWorkspaceSource = fs.toSource {
+                  root = ./.;
+                  fileset = rustWorkspaceFiles;
+                };
                 # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
                 ah-binary = pkgs.rustPlatform.buildRustPackage rec {
                   pname = "agent-harbor-cli";
                   version = "0.1.0";
-                  src = ./.;
+                  src = rustWorkspaceSource;
                   cargoLock = {
                     lockFile = ./Cargo.lock;
                     outputHashes = {
@@ -184,12 +202,13 @@
                   meta = with pkgs.lib; {
                     description = "Agent Harbor CLI";
                     license = licenses.mit;
+                    mainProgram = "ah";
                   };
                 };
                 ah-fs-snapshot-daemon-binary = pkgs.rustPlatform.buildRustPackage rec {
                   pname = "agent-harbor-daemon";
                   version = "0.1.0";
-                  src = ./.;
+                  src = rustWorkspaceSource;
                   cargoLock = {
                     lockFile = ./Cargo.lock;
                     outputHashes = {
