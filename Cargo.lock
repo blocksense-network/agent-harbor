@@ -71,6 +71,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentfs-daemon-backstore-integration"
+version = "0.1.0"
+dependencies = [
+ "agentfs-core",
+ "agentfs-daemon",
+ "agentfs-interpose-e2e-tests",
+ "agentfs-proto",
+ "anyhow",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "agentfs-ffi"
 version = "0.1.0"
 dependencies = [

@@ -70,11 +70,12 @@ members = [
   "tests/debugging-enforcement",
   "tests/container-enforcement",
   "tests/vm-enforcement",
+  "tests/agentfs-daemon-backstore-integration",
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",
 ]
-exclude = ["vendor", "PoC"]
+exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
 resolver = "2"
 
 [workspace.dependencies]
