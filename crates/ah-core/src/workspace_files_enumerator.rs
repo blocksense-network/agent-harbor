@@ -10,9 +10,7 @@
 use ah_repo::{VcsError, VcsRepo};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use std::path::PathBuf;
 use std::pin::Pin;
-use tokio::sync::mpsc;
 
 /// Repository file item with metadata
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

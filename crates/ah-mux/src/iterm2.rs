@@ -72,7 +72,7 @@ impl ITerm2Multiplexer {
     }
 
     /// Check if iTerm2 application is running
-    fn is_iterm2_running(&self) -> bool {
+    fn _is_iterm2_running(&self) -> bool {
         self.run_applescript(
             r#"tell application "System Events" to (name of processes) contains "iTerm2""#,
         )
@@ -234,7 +234,7 @@ impl Multiplexer for ITerm2Multiplexer {
 
     fn run_command(
         &self,
-        pane: &PaneId,
+        _pane: &PaneId,
         cmd: &str,
         _opts: &CommandOptions,
     ) -> Result<(), MuxError> {
@@ -255,7 +255,7 @@ impl Multiplexer for ITerm2Multiplexer {
         Ok(())
     }
 
-    fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
+    fn send_text(&self, _pane: &PaneId, text: &str) -> Result<(), MuxError> {
         // Similar to run_command but for sending literal text
         let script = format!(
             r#"
@@ -272,7 +272,7 @@ impl Multiplexer for ITerm2Multiplexer {
         Ok(())
     }
 
-    fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
+    fn focus_window(&self, _window: &WindowId) -> Result<(), MuxError> {
         let script = r#"
             tell application "iTerm"
                 activate
@@ -285,7 +285,7 @@ impl Multiplexer for ITerm2Multiplexer {
         Ok(())
     }
 
-    fn focus_pane(&self, pane: &PaneId) -> Result<(), MuxError> {
+    fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // For now, just focus the current session
         let script = r#"
             tell application "iTerm"

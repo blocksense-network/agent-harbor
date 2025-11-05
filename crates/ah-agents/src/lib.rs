@@ -127,45 +127,48 @@ pub fn agent_by_name(name: &str) -> Option<Box<dyn AgentExecutor>> {
 
 /// List all available agents (based on enabled features)
 pub fn available_agents() -> Vec<&'static str> {
-    let mut agents = Vec::new();
+    #[allow(clippy::vec_init_then_push)]
+    {
+        let mut agents = Vec::new();
 
-    #[cfg(feature = "claude")]
-    agents.push("claude");
+        #[cfg(feature = "claude")]
+        agents.push("claude");
 
-    #[cfg(feature = "codex")]
-    agents.push("codex");
+        #[cfg(feature = "codex")]
+        agents.push("codex");
 
-    #[cfg(feature = "cursor-cli")]
-    agents.push("cursor-cli");
+        #[cfg(feature = "cursor-cli")]
+        agents.push("cursor-cli");
 
-    #[cfg(feature = "gemini")]
-    agents.push("gemini");
+        #[cfg(feature = "gemini")]
+        agents.push("gemini");
 
-    #[cfg(feature = "opencode")]
-    agents.push("opencode");
+        #[cfg(feature = "opencode")]
+        agents.push("opencode");
 
-    #[cfg(feature = "qwen")]
-    agents.push("qwen");
+        #[cfg(feature = "qwen")]
+        agents.push("qwen");
 
-    #[cfg(feature = "goose")]
-    agents.push("goose");
+        #[cfg(feature = "goose")]
+        agents.push("goose");
 
-    #[cfg(feature = "copilot-cli")]
-    agents.push("copilot-cli");
+        #[cfg(feature = "copilot-cli")]
+        agents.push("copilot-cli");
 
-    #[cfg(feature = "crush")]
-    agents.push("crush");
+        #[cfg(feature = "crush")]
+        agents.push("crush");
 
-    #[cfg(feature = "groq")]
-    agents.push("groq");
+        #[cfg(feature = "groq")]
+        agents.push("groq");
 
-    #[cfg(feature = "amp")]
-    agents.push("amp");
+        #[cfg(feature = "amp")]
+        agents.push("amp");
 
-    #[cfg(feature = "windsurf")]
-    agents.push("windsurf");
+        #[cfg(feature = "windsurf")]
+        agents.push("windsurf");
 
-    agents
+        agents
+    }
 }
 
 #[cfg(test)]
