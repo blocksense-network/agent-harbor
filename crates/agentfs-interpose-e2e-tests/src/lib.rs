@@ -3,6 +3,9 @@
 
 // Handshake types are now provided by the agentfs-daemon crate
 
+#[cfg(target_os = "macos")]
+pub mod macos;
+
 use ssz::{Decode, Encode};
 
 // Common functions available on all platforms
