@@ -292,7 +292,7 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
   - Proper directory watcher support for parent path notifications
 
 - **Implementation Details:**
-  - **Event Mapping Logic**: Enhanced `event_to_vnode_flags()` to handle file vs directory watchers with correct NOTE\_\* flag assignment:
+  - **Event Mapping Logic**: Enhanced `event_to_vnode_flags()` to handle file vs directory watchers with correct `NOTE_*` flag assignment:
     - File watchers: Created → `NOTE_WRITE`, Removed → `NOTE_DELETE`, Modified → `NOTE_WRITE|NOTE_EXTEND`, Renamed → `NOTE_RENAME`
     - Directory watchers: Created/Removed/Renamed → `NOTE_WRITE`, Modified → `NOTE_ATTRIB`
   - **Directory Watcher Support**: Added `is_directory` boolean field to watch registrations and routing logic to handle parent directory notifications
@@ -326,7 +326,7 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
 - **Implementation Details:**
   - **CFMessagePort Infrastructure**: Created per-process message ports with unique naming scheme `com.agentfs.ipc.fsevents.<pid>.<random64>` to prevent collisions
   - **Event Batching Protocol**: Implemented SSZ-encoded wire format for efficient event batch transmission with stream headers and compressed path data
-  - **Shim Interposition**: Modified FSEventStreamCreate\* to capture callbacks/contexts, FSEventStreamScheduleWithRunLoop to manage port scheduling, and FSEventStreamStart/Stop/Invalidate for lifecycle management
+  - **Shim Interposition**: Modified `FSEventStreamCreate` to capture callbacks/contexts, FSEventStreamScheduleWithRunLoop to manage port scheduling, and FSEventStreamStart/Stop/Invalidate for lifecycle management
   - **Run Loop Integration**: Added CFRunLoopSource management to ensure events are delivered on the correct run loop thread as required by FSEvents semantics
   - **Path Translation**: Implemented overlay-to-backstore path translation with whiteout filtering to maintain filesystem view consistency
   - **Event Synthesis**: Created native-looking FSEvents batches with proper CFArray paths, flags arrays, and event ID sequences
@@ -354,7 +354,7 @@ Here’s a concrete, test-driven development plan to implement the full “shim 
 
 ## Goal
 
-Deliver AgentFS overlay changes to apps that use **FSEventStream\*** by:
+Deliver AgentFS overlay changes to apps that use `FSEventStream` by:
 
 - Interposing FSEvents creation/scheduling to learn the app's callback and target run loop, then
 - Receiving **all** event batches from the daemon through **one CFMessagePort** owned by the shim and scheduled on the app's run loop(s), and
@@ -381,7 +381,7 @@ Deliver AgentFS overlay changes to apps that use **FSEventStream\*** by:
 4. **Path translation & filtering**
    - If we use backstore monitoring, we translate paths in/out of the overlay view and filter whiteouts before invoking the app’s callback (as in our FSEvents hooking rationale).
 
-> We continue to keep everything strictly within public API surfaces (FSEventStream\*, kevent for vnode, CF run-loop primitives); no private kernel interfaces.
+> We continue to keep everything strictly within public API surfaces (`FSEventStream*`, kevent for vnode, CF run-loop primitives); no private kernel interfaces.
 
 ---
 

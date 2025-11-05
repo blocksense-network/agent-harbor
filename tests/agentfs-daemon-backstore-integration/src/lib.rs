@@ -581,7 +581,7 @@ mod tests {
 
     /// Test comprehensive filesystem operations through the daemon with InMemory backstore
     #[tokio::test]
-    async fn test_comprehensive_filesystem_operations_inmemory()
+    async fn test_comprehensive_filesystem_operations_in_memory()
     -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let socket_path = dir.path().join("agentfs.sock");
@@ -625,7 +625,7 @@ mod tests {
 
     /// Test backstore persistence behavior - InMemory should lose data on restart
     #[tokio::test]
-    async fn test_backstore_persistence_inmemory() -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_backstore_persistence_in_memory() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let socket_path = dir.path().join("agentfs.sock");
 

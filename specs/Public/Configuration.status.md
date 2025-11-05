@@ -125,13 +125,13 @@ Once the config-core crate skeleton and schema generation are complete, multiple
 **2.1 Environment & CLI Flag Overlays** COMPLETED
 
 - Deliverables:
-  - Environment variable overlay with AH\_ prefix and kebab-case conversion
+  - Environment variable overlay with `AH_*` prefix and kebab-case conversion
   - CLI flag dynamic overlay with dotted path support (--set key=value)
   - Flag validation against schema before merging
   - Integration with config-rs for environment processing
 
 - Implementation Details:
-  - config-rs handles AH\_\* environment variables with separator and case conversion
+  - config-rs handles `AH_*` environment variables with separator and case conversion
   - Dotted path insertion for CLI flags (repo.task-runner=just)
   - JSON overlays validated against schema before use
   - Generic field-agnostic overlay construction

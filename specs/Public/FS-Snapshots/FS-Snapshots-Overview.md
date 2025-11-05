@@ -100,7 +100,7 @@ Why `cleanup_token`?
 
 - ZFS snapshots/clones
 - Btrfs subvolume snapshots
-- AgentFS (user‑space CoW FS with branches; see specs/Public/AgentFS/\*.md)
+- AgentFS (user‑space CoW FS with branches; see `specs/Public/AgentFS/*.md`)
 - Git‑based snapshots (see Git‑based Snapshots doc)
 
 Providers expose the same operations via the trait; the Workspace Manager and Agent Time‑Travel are provider‑agnostic.
