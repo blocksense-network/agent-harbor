@@ -3,37 +3,29 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Accessor } from 'solid-js';
 import { For, Show } from 'solid-js';
 
-import { useSession } from '../../../contexts/SessionContext';
-import type { DraftTask, Session } from '../../../lib/api.js';
-import type { SessionsResponse } from '../../../lib/server-data.js';
 import { SessionCard } from './SessionCard';
+import { useDrafts } from '../../../contexts/DraftContext';
+import { useFocus } from '../../../contexts/FocusContext';
+import { useSession } from '../../../contexts/SessionContext';
 
-type TaskFeedSessionsSectionProps = {
-  drafts: Accessor<DraftTask[]>;
-  sessions: Accessor<Session[]>;
-  keyboardSelectedIndex: Accessor<number>;
-  onSelectSession: (sessionId: string, globalIndex: number) => void;
-  onStopSession: (sessionId: string) => void;
-  onCancelSession: (sessionId: string) => void;
-  sessionsData: Accessor<SessionsResponse>;
-};
+export const TaskFeedSessionsSection = () => {
+  const { drafts } = useDrafts();
+  const { filteredSessions, sessionsData } = useSession();
+  const { keyboardSelectedIndex } = useFocus();
 
-export const TaskFeedSessionsSection = (props: TaskFeedSessionsSectionProps) => {
-  const { selectedSessionId } = useSession();
-  const draftsCount = () => props.drafts().length;
-  const sessionsData = () => props.sessionsData();
+  const draftsCount = () => drafts().length;
+  const sessionsInfo = () => sessionsData();
 
   const announcementText = () => {
-    const idx = props.keyboardSelectedIndex();
+    const idx = keyboardSelectedIndex();
     const draftTotal = draftsCount();
     if (idx >= 0 && idx < draftTotal) {
-      return `Selected draft: ${props.drafts()[idx]?.prompt || 'New task'}`;
+      return `Selected draft: ${drafts()[idx]?.prompt || 'New task'}`;
     }
     if (idx >= draftTotal) {
-      const session = props.sessions()[idx - draftTotal];
+      const session = filteredSessions()[idx - draftTotal];
       if (session) {
         return `Selected task: ${session.prompt}`;
       }
@@ -43,22 +35,13 @@ export const TaskFeedSessionsSection = (props: TaskFeedSessionsSectionProps) => 
 
   return (
     <>
-      <Show when={props.sessions().length > 0}>
+      <Show when={filteredSessions().length > 0}>
         <div class={draftsCount() > 0 ? 'mt-6' : ''}>
           <ul role="listbox" class="space-y-3">
-            <For each={props.sessions()}>
-              {(session, index) => (
-                <li id={`task-${session.id}`} role="option">
-                  <SessionCard
-                    session={session}
-                    isSelected={
-                      selectedSessionId() === session.id ||
-                      props.keyboardSelectedIndex() === draftsCount() + index()
-                    }
-                    onClick={() => props.onSelectSession(session.id, draftsCount() + index())}
-                    onStop={() => props.onStopSession(session.id)}
-                    onCancel={() => props.onCancelSession(session.id)}
-                  />
+            <For each={filteredSessions()}>
+              {session => (
+                <li role="option">
+                  <SessionCard session={session} />
                 </li>
               )}
             </For>
@@ -68,21 +51,21 @@ export const TaskFeedSessionsSection = (props: TaskFeedSessionsSectionProps) => 
             {announcementText()}
           </div>
 
-          <Show when={sessionsData().pagination.totalPages > 1}>
+          <Show when={sessionsInfo().pagination.totalPages > 1}>
             <div class="mt-4 text-center text-sm text-gray-500" role="status">
-              Showing {props.sessions().length} of {sessionsData().pagination.total} sessions
+              Showing {filteredSessions().length} of {sessionsInfo().pagination.total} sessions
             </div>
           </Show>
         </div>
       </Show>
 
-      <Show when={sessionsData().items.length > 0 && props.sessions().length === 0}>
+      <Show when={sessionsInfo().items.length > 0 && filteredSessions().length === 0}>
         <div class="py-8 text-center text-sm text-gray-500" role="status" aria-live="polite">
           No sessions match the selected filter.
         </div>
       </Show>
 
-      <Show when={sessionsData().items.length === 0 && draftsCount() === 0}>
+      <Show when={sessionsInfo().items.length === 0 && draftsCount() === 0}>
         <div class="py-8 text-center" role="status" aria-live="polite">
           <svg
             class="mx-auto h-12 w-12 text-gray-400"
