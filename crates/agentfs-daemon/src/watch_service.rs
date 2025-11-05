@@ -1522,6 +1522,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_event_coalescing_created_file() {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new_without_daemon(service.clone());
@@ -1563,6 +1564,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_event_coalescing_multiple_operations() {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new_without_daemon(service.clone());
@@ -1602,6 +1604,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_event_coalescing_renamed() {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new_without_daemon(service.clone());
@@ -1652,6 +1655,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_directory_watcher_child_events() {
         let service = Arc::new(WatchService::new());
         let sink = WatchServiceEventSink::new_without_daemon(service.clone());

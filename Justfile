@@ -260,8 +260,14 @@ build-overlay-test-binaries:
 
 # Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-interpose-test-helper --bin agentfs-daemon
+    cargo build --bin agentfs-daemon
     cargo build -p agentfs-interpose-shim
+    # agentfs-interpose-test-helper is macOS-only
+    if [[ "{{os_family()}}" == "macos" ]]; then \
+        cargo build --bin agentfs-interpose-test-helper; \
+    else \
+        echo "Skipping compilation of agentfs-interpose-test-helper: Not on macOS."; \
+    fi
 
 # Build sbx-helper binary
 build-sbx-helper:

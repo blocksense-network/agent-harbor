@@ -13,6 +13,7 @@ extern crate agentfs_proto;
 extern crate libc;
 extern crate ssz;
 
+#[cfg(target_os = "macos")]
 use core_foundation::{
     array::CFArray,
     base::{CFGetTypeID, CFRelease, CFType, CFTypeRef, TCFType, kCFAllocatorDefault},
@@ -20,6 +21,7 @@ use core_foundation::{
     runloop::{CFRunLoop, kCFRunLoopDefaultMode},
     string::CFString,
 };
+#[cfg(target_os = "macos")]
 use core_foundation_sys::{
     array::{CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef},
     base::{CFIndex, CFOptionFlags, SInt32},
@@ -36,9 +38,11 @@ use core_foundation_sys::{
         CFStringGetLength, CFStringGetMaximumSizeForEncoding, CFStringRef, kCFStringEncodingUTF8,
     },
 };
+#[cfg(target_os = "macos")]
 use fsevent_sys::*;
 use unicode_normalization::UnicodeNormalization;
 
+#[cfg(target_os = "macos")]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     println!("Helper main: received {} args", args.len());
@@ -94,7 +98,6 @@ fn main() {
         "kqueue-doorbell-test" => test_kqueue_doorbell(test_args),
         "collision-hygiene-test" => test_collision_hygiene(test_args),
         "kevent-test" => test_kevent_hook_injectable_queue(test_args),
-        #[cfg(target_os = "macos")]
         "fsevents-test" => {
             println!("DEBUG_MAIN: About to call test_fsevents_interposition");
             test_fsevents_interposition(test_args)
@@ -135,7 +138,6 @@ fn main() {
                 "dummy",
             ];
 
-            #[cfg(target_os = "macos")]
             commands.push("fsevents-test");
 
             eprintln!("Available commands: {}", commands.join(", "));
@@ -144,6 +146,7 @@ fn main() {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_basic_open(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: basic-open <filename>");
@@ -260,6 +263,7 @@ fn test_basic_open(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_large_file(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: large-file <filename>");
@@ -309,6 +313,7 @@ fn test_large_file(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_multiple_files(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: multiple-files <directory>");
@@ -373,6 +378,7 @@ fn test_multiple_files(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_inode64(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: inode64-test <filename>");
@@ -401,6 +407,7 @@ fn test_inode64(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_fopen(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: fopen-test <filename>");
@@ -440,6 +447,7 @@ fn test_fopen(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_directory_operations(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: directory-ops <directory>");
@@ -566,6 +574,7 @@ fn test_directory_operations(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_readlink(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: readlink-test <link_path>");
@@ -606,6 +615,7 @@ fn test_readlink(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_metadata_operations(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: metadata-ops <test_directory>");
@@ -881,6 +891,7 @@ fn test_metadata_operations(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_namespace_operations(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: namespace-ops <test_directory>");
@@ -1042,10 +1053,10 @@ fn test_namespace_operations(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn test_kqueue_doorbell(_args: &[String]) {
     println!("Testing kqueue doorbell mechanism");
 
-    #[cfg(target_os = "macos")]
     unsafe {
         // Test kqueue() interception
         let kq_fd = libc::kqueue();
@@ -1064,13 +1075,9 @@ fn test_kqueue_doorbell(_args: &[String]) {
 
         println!("kqueue doorbell test completed successfully");
     }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        println!("kqueue doorbell test skipped (not on macOS)");
-    }
 }
 
+#[cfg(target_os = "macos")]
 fn test_collision_hygiene(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: collision-hygiene-test <test_directory>");
@@ -1080,7 +1087,6 @@ fn test_collision_hygiene(args: &[String]) {
     let test_dir = &args[0];
     println!("Testing collision hygiene in directory: {}", test_dir);
 
-    #[cfg(target_os = "macos")]
     unsafe {
         // Step 1: Create a kqueue (this should get intercepted and get a doorbell ident)
         let kq_fd = libc::kqueue();
@@ -1328,15 +1334,11 @@ fn test_collision_hygiene(args: &[String]) {
         println!("✓ Custom EVFILT_USER events work after collision");
         println!("✓ File system events are still delivered");
     }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        println!("Collision hygiene test skipped (not on macOS)");
-    }
 }
 
 // ===== DIRFD RESOLUTION TEST FUNCTIONS =====
 
+#[cfg(target_os = "macos")]
 fn test_t25_1_basic_dirfd_mapping(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-1 <test_base_dir>");
@@ -1420,6 +1422,7 @@ fn test_t25_1_basic_dirfd_mapping(args: &[String]) {
     println!("T25.1 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_2_at_fdcwd_special_case(args: &[String]) {
     if args.len() < 2 {
         eprintln!("Usage: --test-t25-2 <test_base_dir> <parent_dir>");
@@ -1510,6 +1513,7 @@ fn test_t25_2_at_fdcwd_special_case(args: &[String]) {
     println!("T25.2 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_3_file_descriptor_duplication(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-3 <test_base_dir>");
@@ -1602,6 +1606,7 @@ fn test_t25_3_file_descriptor_duplication(args: &[String]) {
     println!("T25.3 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_4_path_resolution_edge_cases(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-4 <test_base_dir>");
@@ -1680,6 +1685,7 @@ fn test_t25_4_path_resolution_edge_cases(args: &[String]) {
     println!("T25.4 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_5_directory_operations_with_dirfd(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-5 <test_base_dir>");
@@ -1735,6 +1741,7 @@ fn test_t25_5_directory_operations_with_dirfd(args: &[String]) {
     println!("T25.5 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_6_rename_operations_with_dirfd(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-6 <test_base_dir>");
@@ -1772,6 +1779,7 @@ fn test_t25_6_rename_operations_with_dirfd(args: &[String]) {
     println!("T25.6 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_7_link_operations_with_dirfd(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-7 <test_base_dir>");
@@ -1813,6 +1821,7 @@ fn test_t25_7_link_operations_with_dirfd(args: &[String]) {
     println!("T25.7 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_9_invalid_dirfd_handling(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-9 <test_base_dir>");
@@ -1852,6 +1861,7 @@ fn test_t25_9_invalid_dirfd_handling(args: &[String]) {
     println!("T25.9 test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_8_concurrent_access_thread_safety(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-8 <test_base_dir>");
@@ -2001,6 +2011,7 @@ fn test_t25_8_concurrent_access_thread_safety(args: &[String]) {
     println!("T25.8 concurrent access test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_10_performance_regression_tests(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-10 <test_base_dir>");
@@ -2062,6 +2073,7 @@ fn test_t25_10_performance_regression_tests(args: &[String]) {
     println!("T25.10 performance regression test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_11_overlay_filesystem_semantics(_args: &[String]) {
     println!("T25.11: Testing overlay filesystem semantics");
 
@@ -2224,6 +2236,7 @@ fn test_t25_11_overlay_filesystem_semantics(_args: &[String]) {
     println!("T25.11 overlay filesystem semantics test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_12_process_isolation(args: &[String]) {
     println!(
         "DEBUG: test_t25_12_process_isolation called with {} args",
@@ -2395,6 +2408,7 @@ fn test_t25_12_process_isolation(args: &[String]) {
     println!("T25.12 process isolation test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_14_memory_leak_prevention(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-14 <test_base_dir>");
@@ -2480,6 +2494,7 @@ fn test_t25_14_memory_leak_prevention(args: &[String]) {
     println!("T25.14 memory leak prevention test completed successfully!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_13_cross_process_fd_sharing(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-13 <test_base_dir>");
@@ -2649,6 +2664,7 @@ fn test_t25_13_cross_process_fd_sharing(args: &[String]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn send_fd(socket: libc::c_int, fd: libc::c_int) -> bool {
     // Send file descriptor using SCM_RIGHTS ancillary data
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
@@ -2691,6 +2707,7 @@ fn send_fd(socket: libc::c_int, fd: libc::c_int) -> bool {
     result >= 0
 }
 
+#[cfg(target_os = "macos")]
 fn receive_fd(socket: libc::c_int) -> libc::c_int {
     // Receive file descriptor using SCM_RIGHTS ancillary data
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
@@ -2731,6 +2748,7 @@ fn receive_fd(socket: libc::c_int) -> libc::c_int {
     unsafe { *fd_ptr }
 }
 
+#[cfg(target_os = "macos")]
 fn test_t25_15_error_code_consistency(args: &[String]) {
     if args.len() < 1 {
         eprintln!("Usage: --test-t25-15 <test_base_dir>");
@@ -2783,6 +2801,7 @@ fn test_t25_15_error_code_consistency(args: &[String]) {
 
 // M24.g - Extended attributes, ACLs, and flags test functions
 
+#[cfg(target_os = "macos")]
 fn test_xattr_roundtrip(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: test-xattr-roundtrip <filename>");
@@ -2977,6 +2996,7 @@ fn test_xattr_roundtrip(args: &[String]) {
     println!("Xattr roundtrip test completed!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_acl_operations(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: test-acl-operations <filename>");
@@ -3084,6 +3104,7 @@ fn test_acl_operations(args: &[String]) {
     println!("ACL operations test completed!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_file_flags(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: test-file-flags <filename>");
@@ -3160,6 +3181,7 @@ fn test_file_flags(args: &[String]) {
     println!("File flags test completed!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_copyfile_clonefile(args: &[String]) {
     if args.len() < 2 {
         eprintln!("Usage: test-copyfile-clonefile <source_file> <dest_file>");
@@ -3280,6 +3302,7 @@ fn test_copyfile_clonefile(args: &[String]) {
     println!("Copyfile/clonefile test completed!");
 }
 
+#[cfg(target_os = "macos")]
 fn test_getattrlist_operations(args: &[String]) {
     if args.is_empty() {
         eprintln!("Usage: test-getattrlist <filename>");
@@ -3385,6 +3408,7 @@ fn test_getattrlist_operations(args: &[String]) {
 }
 
 // External function declarations for macOS-specific functions
+#[cfg(target_os = "macos")]
 extern "C" {
     fn chflags(path: *const libc::c_char, flags: libc::c_uint) -> libc::c_int;
     fn lchflags(path: *const libc::c_char, flags: libc::c_uint) -> libc::c_int;
@@ -3444,8 +3468,8 @@ extern "C" {
 
 }
 
+#[cfg(target_os = "macos")]
 fn test_kevent_hook_injectable_queue(_args: &[String]) {
-    #[cfg(target_os = "macos")]
     {
         println!("Starting kevent hook + injectable queue test...");
 
@@ -3618,537 +3642,551 @@ fn test_kevent_hook_injectable_queue(_args: &[String]) {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        println!("Kevent hook test skipped (not on macOS)");
-    }
-}
-
-/// SSZ encoding/decoding functions for test communication
-fn encode_ssz(data: &impl ssz::Encode) -> Vec<u8> {
-    data.as_ssz_bytes()
-}
-
-fn decode_ssz<T: ssz::Decode>(data: &[u8]) -> Result<T, String> {
-    T::from_ssz_bytes(data).map_err(|e| format!("SSZ decode error: {:?}", e))
-}
-
-/// Send a request to the AgentFS daemon and receive a response
-fn send_request_to_daemon(
-    request: agentfs_proto::messages::Request,
-) -> Result<agentfs_proto::messages::Response, String> {
-    use std::os::unix::net::UnixStream;
-
-    // Try to connect to the daemon socket
-    let socket_path = "/tmp/agentfs-daemon.sock"; // Default socket path
-    let mut stream = match UnixStream::connect(socket_path) {
-        Ok(s) => s,
-        Err(e) => {
-            return Err(format!(
-                "Failed to connect to daemon socket {}: {}",
-                socket_path, e
-            ));
-        }
-    };
-
-    // Encode the request
-    let ssz_bytes = encode_ssz(&request);
-
-    // Send the message length as a 4-byte little-endian integer
-    let msg_len = ssz_bytes.len() as u32;
-    if let Err(e) = stream.write_all(&msg_len.to_le_bytes()) {
-        return Err(format!("Failed to send message length: {}", e));
+    /// SSZ encoding/decoding functions for test communication
+    #[cfg(target_os = "macos")]
+    fn encode_ssz(data: &impl ssz::Encode) -> Vec<u8> {
+        data.as_ssz_bytes()
     }
 
-    // Send the SSZ-encoded request
-    if let Err(e) = stream.write_all(&ssz_bytes) {
-        return Err(format!("Failed to send request: {}", e));
+    #[cfg(target_os = "macos")]
+    fn decode_ssz<T: ssz::Decode>(data: &[u8]) -> Result<T, String> {
+        T::from_ssz_bytes(data).map_err(|e| format!("SSZ decode error: {:?}", e))
     }
 
-    // Read the response length
-    let mut len_buf = [0u8; 4];
-    if let Err(e) = stream.read_exact(&mut len_buf) {
-        return Err(format!("Failed to read response length: {}", e));
-    }
-    let resp_len = u32::from_le_bytes(len_buf) as usize;
+    /// Send a request to the AgentFS daemon and receive a response
+    #[cfg(target_os = "macos")]
+    fn send_request_to_daemon(
+        request: agentfs_proto::messages::Request,
+    ) -> Result<agentfs_proto::messages::Response, String> {
+        use std::os::unix::net::UnixStream;
 
-    // Read the response
-    let mut resp_buf = vec![0u8; resp_len];
-    if let Err(e) = stream.read_exact(&mut resp_buf) {
-        return Err(format!("Failed to read response: {}", e));
-    }
+        // Try to connect to the daemon socket
+        let socket_path = "/tmp/agentfs-daemon.sock"; // Default socket path
+        let mut stream = match UnixStream::connect(socket_path) {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to connect to daemon socket {}: {}",
+                    socket_path, e
+                ));
+            }
+        };
 
-    // Decode the response
-    decode_ssz(&resp_buf)
-}
+        // Encode the request
+        let ssz_bytes = encode_ssz(&request);
 
-// Type definitions (these should match the interpose shim definitions)
-type acl_type_t = u32;
-type acl_t = *mut libc::c_void;
-type copyfile_state_t = *mut libc::c_void;
-type copyfile_flags_t = u32;
-type u_long = usize;
-type u_int64_t = u64;
-
-// Static reference for FSEvents callback data
-static mut FSEVENTS_CALLBACK_COUNT: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
-// Filesystem operation types for testing
-#[derive(Debug, Clone)]
-enum FsOperation {
-    CreateFile(String),
-    ModifyFile(String, String),
-    DeleteFile(String),
-    CreateDir(String),
-    DeleteDir(String),
-    Rename(String, String),
-    Link(String, String),
-    Unlink(String),
-    Symlink(String, String),
-    Chmod(String, u32),
-}
-
-// Global storage for actual events received
-static mut RECEIVED_EVENTS: std::sync::Mutex<Vec<(String, u32, u64)>> =
-    std::sync::Mutex::new(Vec::new());
-
-// Add after the existing static mut RECEIVED_EVENTS around line 3685
-
-static mut FSEVENTS_STREAM_REF: Option<FSEventStreamRef> = None;
-
-unsafe fn dictionary_get_value(dict: CFDictionaryRef, key: &str) -> Option<CFTypeRef> {
-    let c_key = CString::new(key).ok()?;
-    let cf_key =
-        CFStringCreateWithCString(kCFAllocatorDefault, c_key.as_ptr(), kCFStringEncodingUTF8);
-    if cf_key.is_null() {
-        return None;
-    }
-    let value = CFDictionaryGetValue(dict, cf_key as *const _);
-    CFRelease(cf_key as *mut _);
-    if value.is_null() {
-        None
-    } else {
-        Some(value as CFTypeRef)
-    }
-}
-
-unsafe fn dictionary_get_array(dict: CFDictionaryRef, key: &str) -> Option<CFArrayRef> {
-    let value = dictionary_get_value(dict, key)?;
-    if CFGetTypeID(value) == CFArray::<CFType>::type_id() {
-        Some(value as CFArrayRef)
-    } else {
-        None
-    }
-}
-
-unsafe fn dictionary_get_number(dict: CFDictionaryRef, key: &str) -> Option<CFNumberRef> {
-    let value = dictionary_get_value(dict, key)?;
-    if CFGetTypeID(value) == CFNumber::type_id() {
-        Some(value as CFNumberRef)
-    } else {
-        None
-    }
-}
-
-unsafe fn cf_number_to_u64(number_ref: CFNumberRef) -> Option<u64> {
-    let mut value: u64 = 0;
-    let success = CFNumberGetValue(
-        number_ref,
-        kCFNumberSInt64Type,
-        &mut value as *mut u64 as *mut libc::c_void,
-    );
-    if !success { None } else { Some(value) }
-}
-
-unsafe fn cf_number_to_u32(number_ref: CFNumberRef) -> Option<u32> {
-    let mut value: u32 = 0;
-    let success = CFNumberGetValue(
-        number_ref,
-        kCFNumberSInt32Type,
-        &mut value as *mut u32 as *mut libc::c_void,
-    );
-    if !success { None } else { Some(value) }
-}
-
-extern "C" fn message_port_callback(
-    _port: CFMessagePortRef,
-    msgid: SInt32,
-    data: CFDataRef,
-    _info: *mut libc::c_void,
-) {
-    unsafe {
-        println!("Received CFMessagePort message: msgid={}", msgid);
-        if msgid != 0x1001 {
-            println!("Unexpected message ID: {}", msgid);
-            return;
+        // Send the message length as a 4-byte little-endian integer
+        let msg_len = ssz_bytes.len() as u32;
+        if let Err(e) = stream.write_all(&msg_len.to_le_bytes()) {
+            return Err(format!("Failed to send message length: {}", e));
         }
 
-        let length = CFDataGetLength(data);
-        let bytes = CFDataGetBytePtr(data);
-        if bytes.is_null() || length <= 0 {
-            println!("Invalid data in message");
-            return;
+        // Send the SSZ-encoded request
+        if let Err(e) = stream.write_all(&ssz_bytes) {
+            return Err(format!("Failed to send request: {}", e));
         }
 
-        let mut format: CFPropertyListFormat = kCFPropertyListBinaryFormat_v1_0;
-        let mut error: CFErrorRef = std::ptr::null_mut();
-        let plist = CFPropertyListCreateWithData(
-            kCFAllocatorDefault,
-            data,
-            0 as CFOptionFlags,
-            &mut format,
-            &mut error,
+        // Read the response length
+        let mut len_buf = [0u8; 4];
+        if let Err(e) = stream.read_exact(&mut len_buf) {
+            return Err(format!("Failed to read response length: {}", e));
+        }
+        let resp_len = u32::from_le_bytes(len_buf) as usize;
+
+        // Read the response
+        let mut resp_buf = vec![0u8; resp_len];
+        if let Err(e) = stream.read_exact(&mut resp_buf) {
+            return Err(format!("Failed to read response: {}", e));
+        }
+
+        // Decode the response
+        decode_ssz(&resp_buf)
+    }
+
+    // Type definitions (these should match the interpose shim definitions)
+    #[cfg(target_os = "macos")]
+    type acl_type_t = u32;
+    #[cfg(target_os = "macos")]
+    type acl_t = *mut libc::c_void;
+    #[cfg(target_os = "macos")]
+    type copyfile_state_t = *mut libc::c_void;
+    #[cfg(target_os = "macos")]
+    type copyfile_flags_t = u32;
+    #[cfg(target_os = "macos")]
+    type u_long = usize;
+    #[cfg(target_os = "macos")]
+    type u_int64_t = u64;
+
+    // Static reference for FSEvents callback data
+    #[cfg(target_os = "macos")]
+    static mut FSEVENTS_CALLBACK_COUNT: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+
+    // Filesystem operation types for testing
+    #[derive(Debug, Clone)]
+    enum FsOperation {
+        CreateFile(String),
+        ModifyFile(String, String),
+        DeleteFile(String),
+        CreateDir(String),
+        DeleteDir(String),
+        Rename(String, String),
+        Link(String, String),
+        Unlink(String),
+        Symlink(String, String),
+        Chmod(String, u32),
+    }
+
+    // Global storage for actual events received
+    static mut RECEIVED_EVENTS: std::sync::Mutex<Vec<(String, u32, u64)>> =
+        std::sync::Mutex::new(Vec::new());
+
+    // Add after the existing static mut RECEIVED_EVENTS around line 3685
+    #[cfg(target_os = "macos")]
+    static mut FSEVENTS_STREAM_REF: Option<FSEventStreamRef> = None;
+
+    #[cfg(target_os = "macos")]
+    unsafe fn dictionary_get_value(dict: CFDictionaryRef, key: &str) -> Option<CFTypeRef> {
+        let c_key = CString::new(key).ok()?;
+        let cf_key =
+            CFStringCreateWithCString(kCFAllocatorDefault, c_key.as_ptr(), kCFStringEncodingUTF8);
+        if cf_key.is_null() {
+            return None;
+        }
+        let value = CFDictionaryGetValue(dict, cf_key as *const _);
+        CFRelease(cf_key as *mut _);
+        if value.is_null() {
+            None
+        } else {
+            Some(value as CFTypeRef)
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    unsafe fn dictionary_get_array(dict: CFDictionaryRef, key: &str) -> Option<CFArrayRef> {
+        let value = dictionary_get_value(dict, key)?;
+        if CFGetTypeID(value) == CFArray::<CFType>::type_id() {
+            Some(value as CFArrayRef)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    unsafe fn dictionary_get_number(dict: CFDictionaryRef, key: &str) -> Option<CFNumberRef> {
+        let value = dictionary_get_value(dict, key)?;
+        if CFGetTypeID(value) == CFNumber::type_id() {
+            Some(value as CFNumberRef)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    unsafe fn cf_number_to_u64(number_ref: CFNumberRef) -> Option<u64> {
+        let mut value: u64 = 0;
+        let success = CFNumberGetValue(
+            number_ref,
+            kCFNumberSInt64Type,
+            &mut value as *mut u64 as *mut libc::c_void,
         );
+        if !success { None } else { Some(value) }
+    }
 
-        if !error.is_null() {
-            CFRelease(error as *mut _);
-        }
+    #[cfg(target_os = "macos")]
+    unsafe fn cf_number_to_u32(number_ref: CFNumberRef) -> Option<u32> {
+        let mut value: u32 = 0;
+        let success = CFNumberGetValue(
+            number_ref,
+            kCFNumberSInt32Type,
+            &mut value as *mut u32 as *mut libc::c_void,
+        );
+        if !success { None } else { Some(value) }
+    }
 
-        if plist.is_null() {
-            println!("Failed to decode CFPropertyList payload");
-            return;
-        }
+    #[cfg(target_os = "macos")]
+    extern "C" fn message_port_callback(
+        _port: CFMessagePortRef,
+        msgid: SInt32,
+        data: CFDataRef,
+        _info: *mut libc::c_void,
+    ) {
+        unsafe {
+            println!("Received CFMessagePort message: msgid={}", msgid);
+            if msgid != 0x1001 {
+                println!("Unexpected message ID: {}", msgid);
+                return;
+            }
 
-        if CFGetTypeID(plist as CFTypeRef) != CFDictionaryGetTypeID() {
-            println!("Plist is not a dictionary");
-            CFRelease(plist as *mut _);
-            return;
-        }
+            let length = CFDataGetLength(data);
+            let bytes = CFDataGetBytePtr(data);
+            if bytes.is_null() || length <= 0 {
+                println!("Invalid data in message");
+                return;
+            }
 
-        let dict = plist as CFDictionaryRef;
+            let mut format: CFPropertyListFormat = kCFPropertyListBinaryFormat_v1_0;
+            let mut error: CFErrorRef = std::ptr::null_mut();
+            let plist = CFPropertyListCreateWithData(
+                kCFAllocatorDefault,
+                data,
+                0 as CFOptionFlags,
+                &mut format,
+                &mut error,
+            );
 
-        let num_events = match dictionary_get_number(dict, "num_events") {
-            Some(number_ref) => match cf_number_to_u64(number_ref) {
-                Some(value) => value as usize,
+            if !error.is_null() {
+                CFRelease(error as *mut _);
+            }
+
+            if plist.is_null() {
+                println!("Failed to decode CFPropertyList payload");
+                return;
+            }
+
+            if CFGetTypeID(plist as CFTypeRef) != CFDictionaryGetTypeID() {
+                println!("Plist is not a dictionary");
+                CFRelease(plist as *mut _);
+                return;
+            }
+
+            let dict = plist as CFDictionaryRef;
+
+            let num_events = match dictionary_get_number(dict, "num_events") {
+                Some(number_ref) => match cf_number_to_u64(number_ref) {
+                    Some(value) => value as usize,
+                    None => {
+                        println!("Failed to decode 'num_events' value");
+                        CFRelease(plist as *mut _);
+                        return;
+                    }
+                },
                 None => {
-                    println!("Failed to decode 'num_events' value");
+                    println!("Missing or invalid 'num_events' in payload");
                     CFRelease(plist as *mut _);
                     return;
                 }
-            },
-            None => {
-                println!("Missing or invalid 'num_events' in payload");
-                CFRelease(plist as *mut _);
-                return;
-            }
-        };
-
-        let paths_array = match dictionary_get_array(dict, "paths") {
-            Some(array) => array,
-            None => {
-                println!("Missing or invalid 'paths' array in payload");
-                CFRelease(plist as *mut _);
-                return;
-            }
-        };
-
-        let flags_array = match dictionary_get_array(dict, "flags") {
-            Some(array) => array,
-            None => {
-                println!("Missing or invalid 'flags' array in payload");
-                CFRelease(plist as *mut _);
-                return;
-            }
-        };
-
-        let event_ids_array = match dictionary_get_array(dict, "event_ids") {
-            Some(array) => array,
-            None => {
-                println!("Missing or invalid 'event_ids' array in payload");
-                CFRelease(plist as *mut _);
-                return;
-            }
-        };
-
-        let paths_count = CFArrayGetCount(paths_array);
-        if paths_count < num_events as CFIndex {
-            println!(
-                "Warning: paths array smaller than num_events ({} < {})",
-                paths_count, num_events
-            );
-        }
-
-        let flags_count = CFArrayGetCount(flags_array);
-        if flags_count < num_events as CFIndex {
-            println!(
-                "Warning: flags array smaller than num_events ({} < {})",
-                flags_count, num_events
-            );
-        }
-
-        let ids_count = CFArrayGetCount(event_ids_array);
-        if ids_count < num_events as CFIndex {
-            println!(
-                "Warning: event_ids array smaller than num_events ({} < {})",
-                ids_count, num_events
-            );
-        }
-
-        let mut flags_vec = Vec::with_capacity(num_events);
-        let mut event_ids_vec = Vec::with_capacity(num_events);
-
-        for i in 0..num_events {
-            let idx = i as CFIndex;
-
-            let flag_value = if idx < flags_count {
-                CFArrayGetValueAtIndex(flags_array, idx)
-            } else {
-                std::ptr::null()
             };
-            let flag = if flag_value.is_null() {
-                println!("Missing flag value at index {}", i);
-                0u32
-            } else {
-                let number_ref = flag_value as CFNumberRef;
-                cf_number_to_u32(number_ref).unwrap_or_else(|| {
-                    println!("Failed to decode flag at index {}", i);
+
+            let paths_array = match dictionary_get_array(dict, "paths") {
+                Some(array) => array,
+                None => {
+                    println!("Missing or invalid 'paths' array in payload");
+                    CFRelease(plist as *mut _);
+                    return;
+                }
+            };
+
+            let flags_array = match dictionary_get_array(dict, "flags") {
+                Some(array) => array,
+                None => {
+                    println!("Missing or invalid 'flags' array in payload");
+                    CFRelease(plist as *mut _);
+                    return;
+                }
+            };
+
+            let event_ids_array = match dictionary_get_array(dict, "event_ids") {
+                Some(array) => array,
+                None => {
+                    println!("Missing or invalid 'event_ids' array in payload");
+                    CFRelease(plist as *mut _);
+                    return;
+                }
+            };
+
+            let paths_count = CFArrayGetCount(paths_array);
+            if paths_count < num_events as CFIndex {
+                println!(
+                    "Warning: paths array smaller than num_events ({} < {})",
+                    paths_count, num_events
+                );
+            }
+
+            let flags_count = CFArrayGetCount(flags_array);
+            if flags_count < num_events as CFIndex {
+                println!(
+                    "Warning: flags array smaller than num_events ({} < {})",
+                    flags_count, num_events
+                );
+            }
+
+            let ids_count = CFArrayGetCount(event_ids_array);
+            if ids_count < num_events as CFIndex {
+                println!(
+                    "Warning: event_ids array smaller than num_events ({} < {})",
+                    ids_count, num_events
+                );
+            }
+
+            let mut flags_vec = Vec::with_capacity(num_events);
+            let mut event_ids_vec = Vec::with_capacity(num_events);
+
+            for i in 0..num_events {
+                let idx = i as CFIndex;
+
+                let flag_value = if idx < flags_count {
+                    CFArrayGetValueAtIndex(flags_array, idx)
+                } else {
+                    std::ptr::null()
+                };
+                let flag = if flag_value.is_null() {
+                    println!("Missing flag value at index {}", i);
                     0u32
-                })
-            };
-            flags_vec.push(flag);
+                } else {
+                    let number_ref = flag_value as CFNumberRef;
+                    cf_number_to_u32(number_ref).unwrap_or_else(|| {
+                        println!("Failed to decode flag at index {}", i);
+                        0u32
+                    })
+                };
+                flags_vec.push(flag);
 
-            let id_value = if idx < ids_count {
-                CFArrayGetValueAtIndex(event_ids_array, idx)
-            } else {
-                std::ptr::null()
-            };
-            let event_id = if id_value.is_null() {
-                println!("Missing event ID at index {}", i);
-                0u64
-            } else {
-                let number_ref = id_value as CFNumberRef;
-                cf_number_to_u64(number_ref).unwrap_or_else(|| {
-                    println!("Failed to decode event ID at index {}", i);
+                let id_value = if idx < ids_count {
+                    CFArrayGetValueAtIndex(event_ids_array, idx)
+                } else {
+                    std::ptr::null()
+                };
+                let event_id = if id_value.is_null() {
+                    println!("Missing event ID at index {}", i);
                     0u64
-                })
-            };
-            event_ids_vec.push(event_id);
+                } else {
+                    let number_ref = id_value as CFNumberRef;
+                    cf_number_to_u64(number_ref).unwrap_or_else(|| {
+                        println!("Failed to decode event ID at index {}", i);
+                        0u64
+                    })
+                };
+                event_ids_vec.push(event_id);
+            }
+
+            println!("Received FSEvents batch with {} events", num_events);
+
+            if let Some(stream) = FSEVENTS_STREAM_REF {
+                let paths_ptr = paths_array as *const _ as *mut libc::c_void;
+                let flags_ptr = flags_vec.as_ptr();
+                let ids_ptr = event_ids_vec.as_ptr();
+
+                test_fsevents_callback(
+                    stream,
+                    std::ptr::null_mut(),
+                    num_events as libc::size_t,
+                    paths_ptr,
+                    flags_ptr,
+                    ids_ptr,
+                );
+            } else {
+                println!("No FSEvents stream ref available for callback");
+            }
+
+            CFRelease(plist as *mut _);
         }
-
-        println!("Received FSEvents batch with {} events", num_events);
-
-        if let Some(stream) = FSEVENTS_STREAM_REF {
-            let paths_ptr = paths_array as *const _ as *mut libc::c_void;
-            let flags_ptr = flags_vec.as_ptr();
-            let ids_ptr = event_ids_vec.as_ptr();
-
-            test_fsevents_callback(
-                stream,
-                std::ptr::null_mut(),
-                num_events as libc::size_t,
-                paths_ptr,
-                flags_ptr,
-                ids_ptr,
-            );
-        } else {
-            println!("No FSEvents stream ref available for callback");
-        }
-
-        CFRelease(plist as *mut _);
     }
-}
 
-fn cf_string_to_utf8_path(cf_str: CFStringRef) -> Result<String, String> {
-    unsafe {
-        if cf_str.is_null() {
-            return Err("CFStringRef is null".into());
-        }
+    #[cfg(target_os = "macos")]
+    fn cf_string_to_utf8_path(cf_str: CFStringRef) -> Result<String, String> {
+        unsafe {
+            if cf_str.is_null() {
+                return Err("CFStringRef is null".into());
+            }
 
-        let raw_length = CFStringGetLength(cf_str);
-        if raw_length < 0 {
-            return Err("CFString length is negative".into());
-        }
-        if raw_length == 0 {
-            return Ok(String::new());
-        }
+            let raw_length = CFStringGetLength(cf_str);
+            if raw_length < 0 {
+                return Err("CFString length is negative".into());
+            }
+            if raw_length == 0 {
+                return Ok(String::new());
+            }
 
-        let max_size = CFStringGetMaximumSizeForEncoding(raw_length, kCFStringEncodingUTF8);
-        if max_size < 0 {
-            return Err("Invalid maximum size for encoding".into());
-        }
+            let max_size = CFStringGetMaximumSizeForEncoding(raw_length, kCFStringEncodingUTF8);
+            if max_size < 0 {
+                return Err("Invalid maximum size for encoding".into());
+            }
 
-        let buffer_size = max_size as usize + 1;
-        let mut buffer = vec![0i8; buffer_size];
+            let buffer_size = max_size as usize + 1;
+            let mut buffer = vec![0i8; buffer_size];
 
-        let fs_success = CFStringGetFileSystemRepresentation(
-            cf_str,
-            buffer.as_mut_ptr(),
-            buffer_size as CFIndex,
-        );
+            let fs_success = CFStringGetFileSystemRepresentation(
+                cf_str,
+                buffer.as_mut_ptr(),
+                buffer_size as CFIndex,
+            );
 
-        if fs_success != 0 {
+            if fs_success != 0 {
+                let c_str = CStr::from_ptr(buffer.as_ptr());
+                let normalized = c_str.to_string_lossy().nfd().collect::<String>();
+                return Ok(normalized);
+            }
+
+            let cstring_success = CFStringGetCString(
+                cf_str,
+                buffer.as_mut_ptr(),
+                buffer_size as CFIndex,
+                kCFStringEncodingUTF8,
+            );
+
+            if cstring_success == 0 {
+                return Err("CFStringGetCString failed".into());
+            }
+
             let c_str = CStr::from_ptr(buffer.as_ptr());
             let normalized = c_str.to_string_lossy().nfd().collect::<String>();
-            return Ok(normalized);
+            Ok(normalized)
         }
-
-        let cstring_success = CFStringGetCString(
-            cf_str,
-            buffer.as_mut_ptr(),
-            buffer_size as CFIndex,
-            kCFStringEncodingUTF8,
-        );
-
-        if cstring_success == 0 {
-            return Err("CFStringGetCString failed".into());
-        }
-
-        let c_str = CStr::from_ptr(buffer.as_ptr());
-        let normalized = c_str.to_string_lossy().nfd().collect::<String>();
-        Ok(normalized)
     }
-}
 
-// FSEvents callback function - matching fsevent-sys signature
-extern "C" fn test_fsevents_callback(
-    _stream_ref: FSEventStreamRef,
-    _client_callback_info: *mut libc::c_void,
-    num_events: libc::size_t,
-    event_paths: *mut libc::c_void, // CFArrayRef as void pointer
-    event_flags: *const FSEventStreamEventFlags,
-    event_ids: *const u64,
-) {
-    unsafe {
-        let count =
-            FSEVENTS_CALLBACK_COUNT.fetch_add(num_events, std::sync::atomic::Ordering::Relaxed);
-        println!(
-            "FSEvents callback: received {} events (total so far: {})",
-            num_events,
-            count + num_events
-        );
-
-        // Extract and store detailed event information
-        let paths_array = event_paths as CFArrayRef;
-
-        // Validate that we have a CFArray
-        if paths_array.is_null()
-            || CFGetTypeID(paths_array as CFTypeRef) != CFArray::<CFType>::type_id()
-        {
-            println!("  Error: eventPaths is not a valid CFArray");
-            return;
-        }
-
-        let cf_array: CFArray<CFType> = CFArray::wrap_under_get_rule(paths_array);
-        let count = cf_array.len() as usize;
-        if count != num_events {
+    // FSEvents callback function - matching fsevent-sys signature
+    #[cfg(target_os = "macos")]
+    extern "C" fn test_fsevents_callback(
+        _stream_ref: FSEventStreamRef,
+        _client_callback_info: *mut libc::c_void,
+        num_events: libc::size_t,
+        event_paths: *mut libc::c_void, // CFArrayRef as void pointer
+        event_flags: *const FSEventStreamEventFlags,
+        event_ids: *const u64,
+    ) {
+        unsafe {
+            let count =
+                FSEVENTS_CALLBACK_COUNT.fetch_add(num_events, std::sync::atomic::Ordering::Relaxed);
             println!(
-                "  Warning: CFArray count ({}) != num_events ({})",
-                count, num_events
+                "FSEvents callback: received {} events (total so far: {})",
+                num_events,
+                count + num_events
             );
-        }
 
-        let mut events = RECEIVED_EVENTS.lock().unwrap();
+            // Extract and store detailed event information
+            let paths_array = event_paths as CFArrayRef;
 
-        // Extract paths from CFArray
-        for i in 0..num_events {
-            // Get flags and event ID
-            let flags = *event_flags.wrapping_add(i);
-            let event_id = *event_ids.wrapping_add(i);
+            // Validate that we have a CFArray
+            if paths_array.is_null()
+                || CFGetTypeID(paths_array as CFTypeRef) != CFArray::<CFType>::type_id()
+            {
+                println!("  Error: eventPaths is not a valid CFArray");
+                return;
+            }
 
-            // Extract path from CFArray
-            let path = if i < cf_array.len() as usize {
-                match cf_array.get(i as isize) {
-                    Some(item) => {
-                        let cf_type = item.as_CFTypeRef();
-                        if CFGetTypeID(cf_type) == CFString::type_id() {
-                            let cf_str = CFString::wrap_under_get_rule(cf_type as CFStringRef);
-                            match cf_string_to_utf8_path(cf_str.as_concrete_TypeRef()) {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    println!(
-                                        "  Error converting CFString to path for event {}: {}",
-                                        i, e
-                                    );
-                                    format!("error_event_{}", i)
+            let cf_array: CFArray<CFType> = CFArray::wrap_under_get_rule(paths_array);
+            let count = cf_array.len() as usize;
+            if count != num_events {
+                println!(
+                    "  Warning: CFArray count ({}) != num_events ({})",
+                    count, num_events
+                );
+            }
+
+            let mut events = RECEIVED_EVENTS.lock().unwrap();
+
+            // Extract paths from CFArray
+            for i in 0..num_events {
+                // Get flags and event ID
+                let flags = *event_flags.wrapping_add(i);
+                let event_id = *event_ids.wrapping_add(i);
+
+                // Extract path from CFArray
+                let path = if i < cf_array.len() as usize {
+                    match cf_array.get(i as isize) {
+                        Some(item) => {
+                            let cf_type = item.as_CFTypeRef();
+                            if CFGetTypeID(cf_type) == CFString::type_id() {
+                                let cf_str = CFString::wrap_under_get_rule(cf_type as CFStringRef);
+                                match cf_string_to_utf8_path(cf_str.as_concrete_TypeRef()) {
+                                    Ok(p) => p,
+                                    Err(e) => {
+                                        println!(
+                                            "  Error converting CFString to path for event {}: {}",
+                                            i, e
+                                        );
+                                        format!("error_event_{}", i)
+                                    }
                                 }
+                            } else {
+                                println!(
+                                    "  Warning: event {} has non-CFString element (type ID: {})",
+                                    i,
+                                    CFGetTypeID(cf_type)
+                                );
+                                format!("non_string_event_{}", i)
                             }
-                        } else {
-                            println!(
-                                "  Warning: event {} has non-CFString element (type ID: {})",
-                                i,
-                                CFGetTypeID(cf_type)
-                            );
-                            format!("non_string_event_{}", i)
+                        }
+                        None => {
+                            format!("missing_path_{}", i)
                         }
                     }
-                    None => {
-                        format!("missing_path_{}", i)
-                    }
-                }
-            } else {
-                format!("missing_path_{}", i)
-            };
+                } else {
+                    format!("missing_path_{}", i)
+                };
 
-            println!(
-                "  Event {}: path='{}', flags=0x{:08x}, id={}",
-                i, path, flags, event_id
-            );
-            events.push((path, flags, event_id));
-        }
-    }
-}
-
-// FSEvents stream creation flags
-const kFSEventStreamCreateFlagUseCFTypes: u32 = 0x00000001;
-const kFSEventStreamCreateFlagFileEvents: u32 = 0x00000010;
-
-// FSEvents event flag constants (using proper constant names)
-const kFSEventStreamEventFlagItemCreated: u32 = 0x00000100;
-const kFSEventStreamEventFlagItemRemoved: u32 = 0x00000200;
-const kFSEventStreamEventFlagItemModified: u32 = 0x00001000;
-const kFSEventStreamEventFlagItemRenamed: u32 = 0x00000800;
-const kFSEventStreamEventFlagItemIsFile: u32 = 0x00010000;
-const kFSEventStreamEventFlagItemIsDir: u32 = 0x00020000;
-const kFSEventStreamEventFlagItemIsSymlink: u32 = 0x00040000;
-
-#[cfg(target_os = "macos")]
-fn test_fsevents_interposition(args: &[String]) {
-    println!("Starting FSEvents CFMessagePort interposition test with filesystem operations...");
-
-    // First run the unit test for CFString extraction with Unicode test vectors
-    test_unicode_cfstring_extraction();
-
-    // Use provided directory or create a test directory for our operations
-    println!("DEBUG_TEST_FSEVENTS_ARGS: received {} args", args.len());
-    for (i, arg) in args.iter().enumerate() {
-        println!("DEBUG_TEST_FSEVENTS_ARGS: arg[{}] = '{}'", i, arg);
-    }
-    let test_dir = if !args.is_empty() {
-        let dir = Path::new(&args[0]).to_path_buf();
-        println!(
-            "test_fsevents_interposition: using provided directory: {:?}",
-            dir
-        );
-        // Clean up any existing content in the provided directory
-        if dir.exists() {
-            println!(
-                "test_fsevents_interposition: cleaning up existing directory: {:?}",
-                dir
-            );
-            if let Err(e) = fs::remove_dir_all(&dir) {
-                println!("Warning: failed to clean up directory {:?}: {}", dir, e);
+                println!(
+                    "  Event {}: path='{}', flags=0x{:08x}, id={}",
+                    i, path, flags, event_id
+                );
+                events.push((path, flags, event_id));
             }
         }
-        // Ensure the provided directory exists
-        fs::create_dir_all(&dir).expect("Failed to create provided test directory");
-        dir
-    } else {
-        println!("test_fsevents_interposition: no args provided, creating temp directory");
-        let dir = std::env::temp_dir().join("agentfs_fsevents_test");
-        if dir.exists() {
-            fs::remove_dir_all(&dir).expect("Failed to clean up previous test directory");
+    }
+
+    // FSEvents stream creation flags
+    const kFSEventStreamCreateFlagUseCFTypes: u32 = 0x00000001;
+    const kFSEventStreamCreateFlagFileEvents: u32 = 0x00000010;
+
+    // FSEvents event flag constants (using proper constant names)
+    const kFSEventStreamEventFlagItemCreated: u32 = 0x00000100;
+    const kFSEventStreamEventFlagItemRemoved: u32 = 0x00000200;
+    const kFSEventStreamEventFlagItemModified: u32 = 0x00001000;
+    const kFSEventStreamEventFlagItemRenamed: u32 = 0x00000800;
+    const kFSEventStreamEventFlagItemIsFile: u32 = 0x00010000;
+    const kFSEventStreamEventFlagItemIsDir: u32 = 0x00020000;
+    const kFSEventStreamEventFlagItemIsSymlink: u32 = 0x00040000;
+
+    #[cfg(target_os = "macos")]
+    fn test_fsevents_interposition(args: &[String]) {
+        println!(
+            "Starting FSEvents CFMessagePort interposition test with filesystem operations..."
+        );
+
+        // First run the unit test for CFString extraction with Unicode test vectors
+        test_unicode_cfstring_extraction();
+
+        // Use provided directory or create a test directory for our operations
+        println!("DEBUG_TEST_FSEVENTS_ARGS: received {} args", args.len());
+        for (i, arg) in args.iter().enumerate() {
+            println!("DEBUG_TEST_FSEVENTS_ARGS: arg[{}] = '{}'", i, arg);
         }
-        fs::create_dir_all(&dir).expect("Failed to create test directory");
-        dir
-    };
+        let test_dir = if !args.is_empty() {
+            let dir = Path::new(&args[0]).to_path_buf();
+            println!(
+                "test_fsevents_interposition: using provided directory: {:?}",
+                dir
+            );
+            // Clean up any existing content in the provided directory
+            if dir.exists() {
+                println!(
+                    "test_fsevents_interposition: cleaning up existing directory: {:?}",
+                    dir
+                );
+                if let Err(e) = fs::remove_dir_all(&dir) {
+                    println!("Warning: failed to clean up directory {:?}: {}", dir, e);
+                }
+            }
+            // Ensure the provided directory exists
+            fs::create_dir_all(&dir).expect("Failed to create provided test directory");
+            dir
+        } else {
+            println!("test_fsevents_interposition: no args provided, creating temp directory");
+            let dir = std::env::temp_dir().join("agentfs_fsevents_test");
+            if dir.exists() {
+                fs::remove_dir_all(&dir).expect("Failed to clean up previous test directory");
+            }
+            fs::create_dir_all(&dir).expect("Failed to create test directory");
+            dir
+        };
 
-    println!("✅ Using test directory: {:?}", test_dir);
+        println!("✅ Using test directory: {:?}", test_dir);
 
-    // Define the sequence of filesystem operations to perform
+        // Define the sequence of filesystem operations to perform
 
-    // Comprehensive Unicode test vectors as suggested in the implementation plan
-    let operations = vec![
+        // Comprehensive Unicode test vectors as suggested in the implementation plan
+        let operations = vec![
         FsOperation::CreateFile("ascii.txt".to_string()),
         FsOperation::ModifyFile("ascii.txt".to_string(), "Hello World".to_string()),
         FsOperation::CreateFile("name with spaces.txt".to_string()),
@@ -4165,75 +4203,82 @@ fn test_fsevents_interposition(args: &[String]) {
         FsOperation::Chmod("こんにちは.txt".to_string(), 0o755),
     ];
 
-    println!(
-        "📋 Main thread: created operations vector with {} elements (trimmed)",
-        operations.len()
-    );
-    for (i, op) in operations.iter().enumerate() {
-        println!("📋 Operation {}: {:?}", i, op);
-    }
+        println!(
+            "📋 Main thread: created operations vector with {} elements (trimmed)",
+            operations.len()
+        );
+        for (i, op) in operations.iter().enumerate() {
+            println!("📋 Operation {}: {:?}", i, op);
+        }
 
-    // Channel for communication between threads
-    let (tx, rx) = mpsc::channel();
+        // Channel for communication between threads
+        let (tx, rx) = mpsc::channel();
 
-    // Reset callback count and received events
-    unsafe {
-        FSEVENTS_CALLBACK_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
-        RECEIVED_EVENTS.lock().unwrap().clear();
-    }
+        // Reset callback count and received events
+        unsafe {
+            FSEVENTS_CALLBACK_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
+            RECEIVED_EVENTS.lock().unwrap().clear();
+        }
 
-    let (start_tx, start_rx) = mpsc::channel();
+        let (start_tx, start_rx) = mpsc::channel();
 
-    let mut operations_handle_opt = {
-        let test_dir_clone = test_dir.clone();
-        let operations_clone = operations.clone();
-        let tx_clone = tx.clone();
-        Some(thread::spawn(move || {
-            println!("📝 Filesystem operations thread started");
-            println!(
-                "📝 Operations thread: starting {} operations",
-                operations_clone.len()
-            );
-
-            match start_rx.recv() {
-                Ok(()) => println!("📝 Operations thread: received start signal"),
-                Err(err) => {
-                    println!(
-                        "❌ Operations thread: failed to receive start signal: {}",
-                        err
-                    );
-                    return;
-                }
-            }
-
-            for (i, operation) in operations_clone.iter().enumerate() {
+        let mut operations_handle_opt = {
+            let test_dir_clone = test_dir.clone();
+            let operations_clone = operations.clone();
+            let tx_clone = tx.clone();
+            Some(thread::spawn(move || {
+                println!("📝 Filesystem operations thread started");
                 println!(
-                    "📝 Operations thread: executing operation {}: {:?}",
-                    i, operation
+                    "📝 Operations thread: starting {} operations",
+                    operations_clone.len()
                 );
 
-                let path = test_dir_clone.join(match operation {
-                    FsOperation::CreateFile(p)
-                    | FsOperation::ModifyFile(p, _)
-                    | FsOperation::DeleteFile(p)
-                    | FsOperation::CreateDir(p)
-                    | FsOperation::DeleteDir(p)
-                    | FsOperation::Rename(p, _)
-                    | FsOperation::Link(p, _)
-                    | FsOperation::Unlink(p)
-                    | FsOperation::Symlink(p, _)
-                    | FsOperation::Chmod(p, _) => p,
-                });
+                match start_rx.recv() {
+                    Ok(()) => println!("📝 Operations thread: received start signal"),
+                    Err(err) => {
+                        println!(
+                            "❌ Operations thread: failed to receive start signal: {}",
+                            err
+                        );
+                        return;
+                    }
+                }
 
-                let operation_succeeded = match operation {
-                    FsOperation::CreateFile(_) => {
-                        if let Some(parent) = path.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
-                                println!(
-                                    "❌ Failed to create parent directories for {:?}: {}",
-                                    path, e
-                                );
-                                false
+                for (i, operation) in operations_clone.iter().enumerate() {
+                    println!(
+                        "📝 Operations thread: executing operation {}: {:?}",
+                        i, operation
+                    );
+
+                    let path = test_dir_clone.join(match operation {
+                        FsOperation::CreateFile(p)
+                        | FsOperation::ModifyFile(p, _)
+                        | FsOperation::DeleteFile(p)
+                        | FsOperation::CreateDir(p)
+                        | FsOperation::DeleteDir(p)
+                        | FsOperation::Rename(p, _)
+                        | FsOperation::Link(p, _)
+                        | FsOperation::Unlink(p)
+                        | FsOperation::Symlink(p, _)
+                        | FsOperation::Chmod(p, _) => p,
+                    });
+
+                    let operation_succeeded = match operation {
+                        FsOperation::CreateFile(_) => {
+                            if let Some(parent) = path.parent() {
+                                if let Err(e) = fs::create_dir_all(parent) {
+                                    println!(
+                                        "❌ Failed to create parent directories for {:?}: {}",
+                                        path, e
+                                    );
+                                    false
+                                } else if let Err(e) = fs::write(&path, b"") {
+                                    println!("❌ Failed to create file {:?}: {}", path, e);
+                                    false
+                                } else {
+                                    println!("📄 Created file: {:?}", path);
+                                    true
+                                }
                             } else if let Err(e) = fs::write(&path, b"") {
                                 println!("❌ Failed to create file {:?}: {}", path, e);
                                 false
@@ -4241,22 +4286,22 @@ fn test_fsevents_interposition(args: &[String]) {
                                 println!("📄 Created file: {:?}", path);
                                 true
                             }
-                        } else if let Err(e) = fs::write(&path, b"") {
-                            println!("❌ Failed to create file {:?}: {}", path, e);
-                            false
-                        } else {
-                            println!("📄 Created file: {:?}", path);
-                            true
                         }
-                    }
-                    FsOperation::ModifyFile(_, content) => {
-                        if let Some(parent) = path.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
-                                println!(
-                                    "❌ Failed to ensure parent directories for {:?}: {}",
-                                    path, e
-                                );
-                                false
+                        FsOperation::ModifyFile(_, content) => {
+                            if let Some(parent) = path.parent() {
+                                if let Err(e) = fs::create_dir_all(parent) {
+                                    println!(
+                                        "❌ Failed to ensure parent directories for {:?}: {}",
+                                        path, e
+                                    );
+                                    false
+                                } else if let Err(e) = fs::write(&path, content.as_bytes()) {
+                                    println!("❌ Failed to modify file {:?}: {}", path, e);
+                                    false
+                                } else {
+                                    println!("✏️  Modified file: {:?}", path);
+                                    true
+                                }
                             } else if let Err(e) = fs::write(&path, content.as_bytes()) {
                                 println!("❌ Failed to modify file {:?}: {}", path, e);
                                 false
@@ -4264,51 +4309,54 @@ fn test_fsevents_interposition(args: &[String]) {
                                 println!("✏️  Modified file: {:?}", path);
                                 true
                             }
-                        } else if let Err(e) = fs::write(&path, content.as_bytes()) {
-                            println!("❌ Failed to modify file {:?}: {}", path, e);
-                            false
-                        } else {
-                            println!("✏️  Modified file: {:?}", path);
-                            true
                         }
-                    }
-                    FsOperation::DeleteFile(_) => {
-                        println!("🗑️  About to delete file: {:?}", path);
-                        if let Err(e) = fs::remove_file(&path) {
-                            println!("❌ Failed to delete file {:?}: {}", path, e);
-                            false
-                        } else {
-                            println!("🗑️  Deleted file: {:?}", path);
-                            true
-                        }
-                    }
-                    FsOperation::CreateDir(_) => {
-                        if let Err(e) = fs::create_dir_all(&path) {
-                            println!("❌ Failed to create directory {:?}: {}", path, e);
-                            false
-                        } else {
-                            println!("📁 Created directory: {:?}", path);
-                            true
-                        }
-                    }
-                    FsOperation::DeleteDir(_) => {
-                        if let Err(e) = fs::remove_dir(&path) {
-                            println!("❌ Failed to delete directory {:?}: {}", path, e);
-                            false
-                        } else {
-                            println!("🗂️  Deleted directory: {:?}", path);
-                            true
-                        }
-                    }
-                    FsOperation::Rename(_, new_name) => {
-                        let new_path = test_dir_clone.join(new_name);
-                        if let Some(parent) = new_path.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
-                                println!(
-                                    "❌ Failed to ensure parent directories for {:?}: {}",
-                                    new_path, e
-                                );
+                        FsOperation::DeleteFile(_) => {
+                            println!("🗑️  About to delete file: {:?}", path);
+                            if let Err(e) = fs::remove_file(&path) {
+                                println!("❌ Failed to delete file {:?}: {}", path, e);
                                 false
+                            } else {
+                                println!("🗑️  Deleted file: {:?}", path);
+                                true
+                            }
+                        }
+                        FsOperation::CreateDir(_) => {
+                            if let Err(e) = fs::create_dir_all(&path) {
+                                println!("❌ Failed to create directory {:?}: {}", path, e);
+                                false
+                            } else {
+                                println!("📁 Created directory: {:?}", path);
+                                true
+                            }
+                        }
+                        FsOperation::DeleteDir(_) => {
+                            if let Err(e) = fs::remove_dir(&path) {
+                                println!("❌ Failed to delete directory {:?}: {}", path, e);
+                                false
+                            } else {
+                                println!("🗂️  Deleted directory: {:?}", path);
+                                true
+                            }
+                        }
+                        FsOperation::Rename(_, new_name) => {
+                            let new_path = test_dir_clone.join(new_name);
+                            if let Some(parent) = new_path.parent() {
+                                if let Err(e) = fs::create_dir_all(parent) {
+                                    println!(
+                                        "❌ Failed to ensure parent directories for {:?}: {}",
+                                        new_path, e
+                                    );
+                                    false
+                                } else if let Err(e) = fs::rename(&path, &new_path) {
+                                    println!(
+                                        "❌ Failed to rename {:?} to {:?}: {}",
+                                        path, new_path, e
+                                    );
+                                    false
+                                } else {
+                                    println!("🔄 Renamed {:?} to {:?}", path, new_path);
+                                    true
+                                }
                             } else if let Err(e) = fs::rename(&path, &new_path) {
                                 println!("❌ Failed to rename {:?} to {:?}: {}", path, new_path, e);
                                 false
@@ -4316,72 +4364,78 @@ fn test_fsevents_interposition(args: &[String]) {
                                 println!("🔄 Renamed {:?} to {:?}", path, new_path);
                                 true
                             }
-                        } else if let Err(e) = fs::rename(&path, &new_path) {
-                            println!("❌ Failed to rename {:?} to {:?}: {}", path, new_path, e);
-                            false
-                        } else {
-                            println!("🔄 Renamed {:?} to {:?}", path, new_path);
-                            true
                         }
-                    }
-                    FsOperation::Link(_, link_name) => {
-                        let link_path = test_dir_clone.join(link_name);
-                        if let Some(parent) = link_path.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
-                                println!(
-                                    "❌ Failed to create parent directories for link {:?}: {}",
-                                    link_path, e
-                                );
-                                false
-                            } else {
-                                use libc::link;
-                                use std::ffi::CString;
-                                let old_path_c =
-                                    CString::new(path.to_string_lossy().as_ref()).unwrap();
-                                let new_path_c =
-                                    CString::new(link_path.to_string_lossy().as_ref()).unwrap();
-                                unsafe {
-                                    if link(old_path_c.as_ptr(), new_path_c.as_ptr()) != 0 {
-                                        println!(
-                                            "❌ Failed to create hard link {:?} -> {:?}",
-                                            link_path, path
-                                        );
-                                        false
-                                    } else {
-                                        println!(
-                                            "🔗 Created hard link: {:?} -> {:?}",
-                                            link_path, path
-                                        );
-                                        true
+                        FsOperation::Link(_, link_name) => {
+                            let link_path = test_dir_clone.join(link_name);
+                            if let Some(parent) = link_path.parent() {
+                                if let Err(e) = fs::create_dir_all(parent) {
+                                    println!(
+                                        "❌ Failed to create parent directories for link {:?}: {}",
+                                        link_path, e
+                                    );
+                                    false
+                                } else {
+                                    use libc::link;
+                                    use std::ffi::CString;
+                                    let old_path_c =
+                                        CString::new(path.to_string_lossy().as_ref()).unwrap();
+                                    let new_path_c =
+                                        CString::new(link_path.to_string_lossy().as_ref()).unwrap();
+                                    unsafe {
+                                        if link(old_path_c.as_ptr(), new_path_c.as_ptr()) != 0 {
+                                            println!(
+                                                "❌ Failed to create hard link {:?} -> {:?}",
+                                                link_path, path
+                                            );
+                                            false
+                                        } else {
+                                            println!(
+                                                "🔗 Created hard link: {:?} -> {:?}",
+                                                link_path, path
+                                            );
+                                            true
+                                        }
                                     }
                                 }
-                            }
-                        } else {
-                            println!(
-                                "❌ Failed to determine parent directory for link {:?}",
-                                link_path
-                            );
-                            false
-                        }
-                    }
-                    FsOperation::Unlink(_) => {
-                        if let Err(e) = fs::remove_file(&path) {
-                            println!("❌ Failed to unlink {:?}: {}", path, e);
-                            false
-                        } else {
-                            println!("🚫 Unlinked: {:?}", path);
-                            true
-                        }
-                    }
-                    FsOperation::Symlink(target, link_name) => {
-                        let link_path = test_dir_clone.join(link_name);
-                        if let Some(parent) = link_path.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
+                            } else {
                                 println!(
-                                    "❌ Failed to create parent directories for symlink {:?}: {}",
-                                    link_path, e
+                                    "❌ Failed to determine parent directory for link {:?}",
+                                    link_path
                                 );
                                 false
+                            }
+                        }
+                        FsOperation::Unlink(_) => {
+                            if let Err(e) = fs::remove_file(&path) {
+                                println!("❌ Failed to unlink {:?}: {}", path, e);
+                                false
+                            } else {
+                                println!("🚫 Unlinked: {:?}", path);
+                                true
+                            }
+                        }
+                        FsOperation::Symlink(target, link_name) => {
+                            let link_path = test_dir_clone.join(link_name);
+                            if let Some(parent) = link_path.parent() {
+                                if let Err(e) = fs::create_dir_all(parent) {
+                                    println!(
+                                        "❌ Failed to create parent directories for symlink {:?}: {}",
+                                        link_path, e
+                                    );
+                                    false
+                                } else if let Err(e) = std::os::unix::fs::symlink(
+                                    &test_dir_clone.join(target),
+                                    &link_path,
+                                ) {
+                                    println!(
+                                        "❌ Failed to create symlink {:?} -> {}: {}",
+                                        link_path, target, e
+                                    );
+                                    false
+                                } else {
+                                    println!("🔗 Created symlink: {:?} -> {:?}", link_path, target);
+                                    true
+                                }
                             } else if let Err(e) =
                                 std::os::unix::fs::symlink(&test_dir_clone.join(target), &link_path)
                             {
@@ -4394,808 +4448,817 @@ fn test_fsevents_interposition(args: &[String]) {
                                 println!("🔗 Created symlink: {:?} -> {:?}", link_path, target);
                                 true
                             }
-                        } else if let Err(e) =
-                            std::os::unix::fs::symlink(&test_dir_clone.join(target), &link_path)
-                        {
-                            println!(
-                                "❌ Failed to create symlink {:?} -> {}: {}",
-                                link_path, target, e
-                            );
-                            false
-                        } else {
-                            println!("🔗 Created symlink: {:?} -> {:?}", link_path, target);
-                            true
                         }
-                    }
-                    FsOperation::Chmod(_, mode) => {
-                        use std::os::unix::fs::PermissionsExt;
-                        match fs::metadata(&path) {
-                            Ok(metadata) => {
-                                let mut permissions = metadata.permissions();
-                                permissions.set_mode(*mode);
-                                if let Err(e) = fs::set_permissions(&path, permissions) {
-                                    println!("❌ Failed to chmod {:?} to {:o}: {}", path, mode, e);
+                        FsOperation::Chmod(_, mode) => {
+                            use std::os::unix::fs::PermissionsExt;
+                            match fs::metadata(&path) {
+                                Ok(metadata) => {
+                                    let mut permissions = metadata.permissions();
+                                    permissions.set_mode(*mode);
+                                    if let Err(e) = fs::set_permissions(&path, permissions) {
+                                        println!(
+                                            "❌ Failed to chmod {:?} to {:o}: {}",
+                                            path, mode, e
+                                        );
+                                        false
+                                    } else {
+                                        println!(
+                                            "🔧 Changed permissions: {:?} to {:o}",
+                                            path, mode
+                                        );
+                                        true
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("❌ Failed to get metadata for {:?}: {}", path, e);
                                     false
-                                } else {
-                                    println!("🔧 Changed permissions: {:?} to {:o}", path, mode);
-                                    true
                                 }
                             }
-                            Err(e) => {
-                                println!("❌ Failed to get metadata for {:?}: {}", path, e);
-                                false
-                            }
                         }
+                    };
+
+                    println!("📊 About to send completion signal for operation {}", i);
+                    match tx_clone.send(i) {
+                        Ok(()) => {
+                            println!("📊 Operation {} completion signal sent successfully", i)
+                        }
+                        Err(e) => println!(
+                            "❌ Failed to send completion signal for operation {}: {:?}",
+                            i, e
+                        ),
                     }
-                };
+                    println!(
+                        "📊 Operation {} completed (succeeded: {})",
+                        i, operation_succeeded
+                    );
 
-                println!("📊 About to send completion signal for operation {}", i);
-                match tx_clone.send(i) {
-                    Ok(()) => println!("📊 Operation {} completion signal sent successfully", i),
-                    Err(e) => println!(
-                        "❌ Failed to send completion signal for operation {}: {:?}",
-                        i, e
-                    ),
+                    thread::sleep(Duration::from_millis(200));
                 }
-                println!(
-                    "📊 Operation {} completed (succeeded: {})",
-                    i, operation_succeeded
-                );
 
-                thread::sleep(Duration::from_millis(200));
+                println!(
+                    "📝 Filesystem operations thread: loop completed, executed {} operations",
+                    operations_clone.len()
+                );
+                thread::sleep(Duration::from_millis(500));
+                println!("📝 Filesystem operations thread finished");
+            }))
+        };
+
+        // Main thread: Set up FSEvents and track received events
+        unsafe {
+            // Create path array for the test directory using core-foundation
+            let test_dir_str = test_dir.to_string_lossy().into_owned();
+            let cf_test_path = CFString::new(&test_dir_str);
+            let paths_array = CFArray::from_CFTypes(&[cf_test_path]);
+
+            // Create FSEvents stream context - using fsevent-sys type
+            let context = FSEventStreamContext {
+                version: 0,
+                info: std::ptr::null_mut(),
+                retain: None,
+                release: None,
+                copy_description: None,
+            };
+
+            // Create FSEvents stream using fsevent-sys
+            let stream = FSEventStreamCreate(
+                kCFAllocatorDefault,
+                test_fsevents_callback,
+                &context,
+                paths_array.as_concrete_TypeRef(),
+                0, // since_when: FSEventsGetCurrentEventId() - 1 would be better, but 0 works for testing
+                0.05, // latency: 50ms (faster for testing)
+                kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents, // flags: use CF types for paths
+            );
+
+            if stream.is_null() {
+                println!("❌ Failed to create FSEvents stream");
+                let _ = fs::remove_dir_all(&test_dir);
+                return;
+            }
+
+            println!("✅ Created FSEvents stream for test directory");
+
+            // Get current run loop using core-foundation
+            let run_loop = CFRunLoop::get_current();
+
+            // Schedule stream on run loop using fsevent-sys
+            FSEventStreamScheduleWithRunLoop(
+                stream,
+                run_loop.as_concrete_TypeRef(),
+                kCFRunLoopDefaultMode,
+            );
+            println!("✅ Scheduled FSEvents stream on run loop");
+
+            // Start the stream using fsevent-sys
+            let started = FSEventStreamStart(stream);
+            if started == 0 {
+                // Boolean false
+                println!("❌ Failed to start FSEvents stream");
+                FSEventStreamInvalidate(stream);
+                FSEventStreamRelease(stream);
+                let _ = fs::remove_dir_all(&test_dir);
+                return;
+            }
+
+            println!("✅ Started FSEvents stream");
+
+            if start_tx.send(()).is_err() {
+                println!("❌ Failed to signal operations thread to start");
+            }
+            println!("⏳ Waiting for filesystem operations and FSEvents callbacks...");
+
+            let mut completed_operations = std::collections::HashSet::new();
+            let mut last_callback_count = 0;
+            let mut iteration = 0;
+            let start_time = Instant::now();
+            let max_runtime = Duration::from_secs(30);
+
+            // Run the run loop and process operations
+            while iteration < 200 && start_time.elapsed() < max_runtime {
+                // Check for completed operations
+                let mut received_in_this_iteration = 0;
+                while let Ok(op_index) = rx.try_recv() {
+                    completed_operations.insert(op_index);
+                    println!(
+                        "✅ Operation {} completed: {:?}",
+                        op_index, operations[op_index]
+                    );
+                    received_in_this_iteration += 1;
+                }
+                if received_in_this_iteration > 0 {
+                    println!(
+                        "📊 Iteration {}: received {} completion signals (total completed: {})",
+                        iteration,
+                        received_in_this_iteration,
+                        completed_operations.len()
+                    );
+                }
+
+                // If all operations are complete, we can finish (regardless of callbacks for now)
+                if completed_operations.len() == operations.len() {
+                    println!(
+                        "📊 Main thread: all {} operations completed, exiting early",
+                        operations.len()
+                    );
+                    break;
+                }
+
+                // Run run loop for a short time
+                CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, Duration::from_millis(100), true);
+
+                let callback_count =
+                    FSEVENTS_CALLBACK_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+                if callback_count > last_callback_count {
+                    println!(
+                        "📡 FSEvents callback: received {} new events (total: {})",
+                        callback_count - last_callback_count,
+                        callback_count
+                    );
+                    last_callback_count = callback_count;
+                }
+
+                thread::sleep(Duration::from_millis(50));
+                iteration += 1;
+            }
+
+            if let Some(handle) = operations_handle_opt.take() {
+                println!("📊 Waiting for filesystem operations thread to finish...");
+                if let Err(err) = handle.join() {
+                    println!("❌ Filesystem operations thread panicked: {:?}", err);
+                }
             }
 
             println!(
-                "📝 Filesystem operations thread: loop completed, executed {} operations",
-                operations_clone.len()
+                "📊 Main thread: loop finished, checking for any remaining completion signals..."
             );
-            thread::sleep(Duration::from_millis(500));
-            println!("📝 Filesystem operations thread finished");
-        }))
-    };
-
-    // Main thread: Set up FSEvents and track received events
-    unsafe {
-        // Create path array for the test directory using core-foundation
-        let test_dir_str = test_dir.to_string_lossy().into_owned();
-        let cf_test_path = CFString::new(&test_dir_str);
-        let paths_array = CFArray::from_CFTypes(&[cf_test_path]);
-
-        // Create FSEvents stream context - using fsevent-sys type
-        let context = FSEventStreamContext {
-            version: 0,
-            info: std::ptr::null_mut(),
-            retain: None,
-            release: None,
-            copy_description: None,
-        };
-
-        // Create FSEvents stream using fsevent-sys
-        let stream = FSEventStreamCreate(
-            kCFAllocatorDefault,
-            test_fsevents_callback,
-            &context,
-            paths_array.as_concrete_TypeRef(),
-            0, // since_when: FSEventsGetCurrentEventId() - 1 would be better, but 0 works for testing
-            0.05, // latency: 50ms (faster for testing)
-            kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents, // flags: use CF types for paths
-        );
-
-        if stream.is_null() {
-            println!("❌ Failed to create FSEvents stream");
-            let _ = fs::remove_dir_all(&test_dir);
-            return;
-        }
-
-        println!("✅ Created FSEvents stream for test directory");
-
-        // Get current run loop using core-foundation
-        let run_loop = CFRunLoop::get_current();
-
-        // Schedule stream on run loop using fsevent-sys
-        FSEventStreamScheduleWithRunLoop(
-            stream,
-            run_loop.as_concrete_TypeRef(),
-            kCFRunLoopDefaultMode,
-        );
-        println!("✅ Scheduled FSEvents stream on run loop");
-
-        // Start the stream using fsevent-sys
-        let started = FSEventStreamStart(stream);
-        if started == 0 {
-            // Boolean false
-            println!("❌ Failed to start FSEvents stream");
-            FSEventStreamInvalidate(stream);
-            FSEventStreamRelease(stream);
-            let _ = fs::remove_dir_all(&test_dir);
-            return;
-        }
-
-        println!("✅ Started FSEvents stream");
-
-        if start_tx.send(()).is_err() {
-            println!("❌ Failed to signal operations thread to start");
-        }
-        println!("⏳ Waiting for filesystem operations and FSEvents callbacks...");
-
-        let mut completed_operations = std::collections::HashSet::new();
-        let mut last_callback_count = 0;
-        let mut iteration = 0;
-        let start_time = Instant::now();
-        let max_runtime = Duration::from_secs(30);
-
-        // Run the run loop and process operations
-        while iteration < 200 && start_time.elapsed() < max_runtime {
-            // Check for completed operations
-            let mut received_in_this_iteration = 0;
+            let mut final_received = 0;
             while let Ok(op_index) = rx.try_recv() {
                 completed_operations.insert(op_index);
                 println!(
-                    "✅ Operation {} completed: {:?}",
-                    op_index, operations[op_index]
+                    "✅ Late operation {} completed: {:?}",
+                    op_index,
+                    operations
+                        .get(op_index)
+                        .unwrap_or(&FsOperation::CreateFile("unknown".to_string()))
                 );
-                received_in_this_iteration += 1;
+                final_received += 1;
             }
-            if received_in_this_iteration > 0 {
+            if final_received > 0 {
                 println!(
-                    "📊 Iteration {}: received {} completion signals (total completed: {})",
-                    iteration,
-                    received_in_this_iteration,
+                    "📊 Received {} additional completion signals (total completed: {})",
+                    final_received,
                     completed_operations.len()
                 );
             }
 
-            // If all operations are complete, we can finish (regardless of callbacks for now)
-            if completed_operations.len() == operations.len() {
-                println!(
-                    "📊 Main thread: all {} operations completed, exiting early",
-                    operations.len()
-                );
-                break;
-            }
+            // Stop and clean up using fsevent-sys
+            FSEventStreamStop(stream);
+            FSEventStreamInvalidate(stream);
+            FSEventStreamRelease(stream);
 
-            // Run run loop for a short time
-            CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, Duration::from_millis(100), true);
+            println!("✅ Cleaned up FSEvents stream");
 
-            let callback_count = FSEVENTS_CALLBACK_COUNT.load(std::sync::atomic::Ordering::Relaxed);
-            if callback_count > last_callback_count {
-                println!(
-                    "📡 FSEvents callback: received {} new events (total: {})",
-                    callback_count - last_callback_count,
-                    callback_count
-                );
-                last_callback_count = callback_count;
-            }
-
-            thread::sleep(Duration::from_millis(50));
-            iteration += 1;
-        }
-
-        if let Some(handle) = operations_handle_opt.take() {
-            println!("📊 Waiting for filesystem operations thread to finish...");
-            if let Err(err) = handle.join() {
-                println!("❌ Filesystem operations thread panicked: {:?}", err);
-            }
-        }
-
-        println!("📊 Main thread: loop finished, checking for any remaining completion signals...");
-        let mut final_received = 0;
-        while let Ok(op_index) = rx.try_recv() {
-            completed_operations.insert(op_index);
-            println!(
-                "✅ Late operation {} completed: {:?}",
-                op_index,
-                operations
-                    .get(op_index)
-                    .unwrap_or(&FsOperation::CreateFile("unknown".to_string()))
-            );
-            final_received += 1;
-        }
-        if final_received > 0 {
-            println!(
-                "📊 Received {} additional completion signals (total completed: {})",
-                final_received,
-                completed_operations.len()
-            );
-        }
-
-        // Stop and clean up using fsevent-sys
-        FSEventStreamStop(stream);
-        FSEventStreamInvalidate(stream);
-        FSEventStreamRelease(stream);
-
-        println!("✅ Cleaned up FSEvents stream");
-
-        // Clean up test directory (only if we created it ourselves)
-        if args.is_empty() {
-            let _ = fs::remove_dir_all(&test_dir);
-            println!("🧹 Cleaned up test directory");
-        } else {
-            println!("ℹ️  Test directory was provided externally, not cleaning up");
-        }
-
-        let final_count = FSEVENTS_CALLBACK_COUNT.load(std::sync::atomic::Ordering::Relaxed);
-        let operations_completed = completed_operations.len();
-
-        // Generate expected events for each completed operation
-        let expected_events =
-            generate_expected_events(&operations[..operations_completed], &test_dir);
-
-        // Get actual events received
-        let actual_events = unsafe { RECEIVED_EVENTS.lock().unwrap().clone() };
-
-        println!("📊 Test Results:");
-        println!("   - Total operations defined: {}", operations.len());
-        println!(
-            "   - Operations completed (received signals): {}",
-            operations_completed
-        );
-        println!("   - FSEvents callbacks received: {}", final_count);
-        println!("   - Expected events: {}", expected_events.len());
-        println!("   - Actual events received: {}", actual_events.len());
-        println!(
-            "   - Completed operation indices: {:?}",
-            completed_operations.iter().collect::<Vec<_>>()
-        );
-        println!(
-            "   - Operations covered: {:?}",
-            operations.iter().map(|op| format!("{:?}", op)).collect::<Vec<_>>()
-        );
-
-        // Detailed event verification
-        let events_match = verify_events(&expected_events, &actual_events, &test_dir);
-
-        let total_operations = operations.len();
-        if operations_completed == total_operations {
-            println!(
-                "✅ Test successful: All {} operations performed!",
-                total_operations
-            );
-            println!("SUCCESS_MESSAGE"); // Always print success message when operations complete
-            if events_match {
-                println!(
-                    "🎉 FSEvents interposition is working correctly with precise event delivery!"
-                );
+            // Clean up test directory (only if we created it ourselves)
+            if args.is_empty() {
+                let _ = fs::remove_dir_all(&test_dir);
+                println!("🧹 Cleaned up test directory");
             } else {
-                println!(
-                    "⚠️  Operations completed successfully, but FSEvents events do not match expectations (this is expected when running without daemon/shim)"
-                );
-                print_event_comparison(&expected_events, &actual_events);
+                println!("ℹ️  Test directory was provided externally, not cleaning up");
             }
-        } else {
+
+            let final_count = FSEVENTS_CALLBACK_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+            let operations_completed = completed_operations.len();
+
+            // Generate expected events for each completed operation
+            let expected_events =
+                generate_expected_events(&operations[..operations_completed], &test_dir);
+
+            // Get actual events received
+            let actual_events = unsafe { RECEIVED_EVENTS.lock().unwrap().clone() };
+
+            println!("📊 Test Results:");
+            println!("   - Total operations defined: {}", operations.len());
             println!(
-                "❌ Test failed: Not all operations were completed ({} < {})",
-                operations_completed, total_operations
+                "   - Operations completed (received signals): {}",
+                operations_completed
             );
-        }
-    }
-}
+            println!("   - FSEvents callbacks received: {}", final_count);
+            println!("   - Expected events: {}", expected_events.len());
+            println!("   - Actual events received: {}", actual_events.len());
+            println!(
+                "   - Completed operation indices: {:?}",
+                completed_operations.iter().collect::<Vec<_>>()
+            );
+            println!(
+                "   - Operations covered: {:?}",
+                operations.iter().map(|op| format!("{:?}", op)).collect::<Vec<_>>()
+            );
 
-// Unit test for CFString extraction with Unicode test vectors
-fn test_unicode_cfstring_extraction() {
-    println!("🧪 Testing CFString extraction with Unicode test vectors...");
+            // Detailed event verification
+            let events_match = verify_events(&expected_events, &actual_events, &test_dir);
 
-    // Test vectors as suggested in the implementation plan
-    // Note: We test with filesystem representations (NFD normalized on macOS)
-    let test_cases = vec![
-        ("ascii.txt", "ascii.txt"),
-        ("name with spaces.txt", "name with spaces.txt"),
-        ("café.txt", "cafe\u{0301}.txt"), // NFC input -> NFD filesystem representation
-        ("cafe\u{0301}.txt", "cafe\u{0301}.txt"), // Already NFD
-        ("こんにちは.txt", "こんにちは.txt"), // Japanese
-        ("emoji-📁.txt", "emoji-📁.txt"), // Emoji (non-BMP)
-        (
-            "very/deep/path/that/should/force/the/code/to/allocate/a/large/buffer/for/utf8/conversion/and/test/buffer/sizing/logic/according/to/CFStringGetMaximumSizeForEncoding/deep_file.txt",
-            "very/deep/path/that/should/force/the/code/to/allocate/a/large/buffer/for/utf8/conversion/and/test/buffer/sizing/logic/according/to/CFStringGetMaximumSizeForEncoding/deep_file.txt",
-        ), // Deep path for buffer testing
-    ];
-
-    for (i, (input_string, expected_filesystem)) in test_cases.iter().enumerate() {
-        println!(
-            "  Test {}: input='{}', expected filesystem='{}'",
-            i + 1,
-            input_string,
-            expected_filesystem
-        );
-
-        // Create CFString from the input string
-        let cf_string = CFString::new(input_string);
-
-        // Extract back to UTF-8 using our function (filesystem representation)
-        match cf_string_to_utf8_path(cf_string.as_concrete_TypeRef()) {
-            Ok(extracted) => {
-                if extracted == *expected_filesystem {
+            let total_operations = operations.len();
+            if operations_completed == total_operations {
+                println!(
+                    "✅ Test successful: All {} operations performed!",
+                    total_operations
+                );
+                println!("SUCCESS_MESSAGE"); // Always print success message when operations complete
+                if events_match {
                     println!(
-                        "    ✅ PASS: extracted '{}' matches expected filesystem representation",
-                        extracted
+                        "🎉 FSEvents interposition is working correctly with precise event delivery!"
                     );
                 } else {
                     println!(
-                        "    ❌ FAIL: extracted '{}' != expected '{}'",
-                        extracted, expected_filesystem
+                        "⚠️  Operations completed successfully, but FSEvents events do not match expectations (this is expected when running without daemon/shim)"
                     );
+                    print_event_comparison(&expected_events, &actual_events);
+                }
+            } else {
+                println!(
+                    "❌ Test failed: Not all operations were completed ({} < {})",
+                    operations_completed, total_operations
+                );
+            }
+        }
+    }
+
+    // Unit test for CFString extraction with Unicode test vectors
+    #[cfg(target_os = "macos")]
+    fn test_unicode_cfstring_extraction() {
+        println!("🧪 Testing CFString extraction with Unicode test vectors...");
+
+        // Test vectors as suggested in the implementation plan
+        // Note: We test with filesystem representations (NFD normalized on macOS)
+        let test_cases = vec![
+            ("ascii.txt", "ascii.txt"),
+            ("name with spaces.txt", "name with spaces.txt"),
+            ("café.txt", "cafe\u{0301}.txt"), // NFC input -> NFD filesystem representation
+            ("cafe\u{0301}.txt", "cafe\u{0301}.txt"), // Already NFD
+            ("こんにちは.txt", "こんにちは.txt"), // Japanese
+            ("emoji-📁.txt", "emoji-📁.txt"), // Emoji (non-BMP)
+            (
+                "very/deep/path/that/should/force/the/code/to/allocate/a/large/buffer/for/utf8/conversion/and/test/buffer/sizing/logic/according/to/CFStringGetMaximumSizeForEncoding/deep_file.txt",
+                "very/deep/path/that/should/force/the/code/to/allocate/a/large/buffer/for/utf8/conversion/and/test/buffer/sizing/logic/according/to/CFStringGetMaximumSizeForEncoding/deep_file.txt",
+            ), // Deep path for buffer testing
+        ];
+
+        for (i, (input_string, expected_filesystem)) in test_cases.iter().enumerate() {
+            println!(
+                "  Test {}: input='{}', expected filesystem='{}'",
+                i + 1,
+                input_string,
+                expected_filesystem
+            );
+
+            // Create CFString from the input string
+            let cf_string = CFString::new(input_string);
+
+            // Extract back to UTF-8 using our function (filesystem representation)
+            match cf_string_to_utf8_path(cf_string.as_concrete_TypeRef()) {
+                Ok(extracted) => {
+                    if extracted == *expected_filesystem {
+                        println!(
+                            "    ✅ PASS: extracted '{}' matches expected filesystem representation",
+                            extracted
+                        );
+                    } else {
+                        println!(
+                            "    ❌ FAIL: extracted '{}' != expected '{}'",
+                            extracted, expected_filesystem
+                        );
+                    }
+                }
+                Err(e) => {
+                    println!("    ❌ FAIL: extraction error: {}", e);
                 }
             }
-            Err(e) => {
-                println!("    ❌ FAIL: extraction error: {}", e);
+        }
+
+        println!("🧪 Unicode CFString extraction test completed");
+    }
+
+    #[cfg(target_os = "macos")]
+    fn normalize_path_for_filesystem(path: &Path) -> String {
+        let path_str = path.to_string_lossy();
+        let cf_string = CFString::new(&path_str);
+        cf_string_to_utf8_path(cf_string.as_concrete_TypeRef())
+            .unwrap_or_else(|_| path_str.into_owned())
+    }
+
+    // Generate expected FSEvents for each filesystem operation
+    #[cfg(target_os = "macos")]
+    fn generate_expected_events(operations: &[FsOperation], test_dir: &Path) -> Vec<(String, u32)> {
+        let mut expected = Vec::new();
+
+        for operation in operations {
+            match operation {
+                FsOperation::CreateFile(filename) => {
+                    let path = test_dir.join(filename);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
+                FsOperation::ModifyFile(filename, _) => {
+                    let path = test_dir.join(filename);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
+                FsOperation::DeleteFile(filename) => {
+                    let path = test_dir.join(filename);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
+                FsOperation::CreateDir(dirname) => {
+                    let path = test_dir.join(dirname);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsDir,
+                    ));
+                }
+                FsOperation::DeleteDir(dirname) => {
+                    let path = test_dir.join(dirname);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsDir,
+                    ));
+                }
+                FsOperation::Rename(old_name, new_name) => {
+                    let old_path = test_dir.join(old_name);
+                    let new_path = test_dir.join(new_name);
+                    // Rename typically generates two events: one for the old path (removed) and one for the new path (created)
+                    expected.push((
+                        normalize_path_for_filesystem(&old_path),
+                        kFSEventStreamEventFlagItemRenamed | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                    expected.push((
+                        normalize_path_for_filesystem(&new_path),
+                        kFSEventStreamEventFlagItemRenamed | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
+                FsOperation::Link(_, link_name) => {
+                    let link_path = test_dir.join(link_name);
+                    expected.push((
+                        normalize_path_for_filesystem(&link_path),
+                        kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
+                FsOperation::Unlink(filename) => {
+                    let path = test_dir.join(filename);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
+                FsOperation::Symlink(_, link_name) => {
+                    let link_path = test_dir.join(link_name);
+                    expected.push((
+                        normalize_path_for_filesystem(&link_path),
+                        kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsSymlink,
+                    ));
+                }
+                FsOperation::Chmod(filename, _) => {
+                    let path = test_dir.join(filename);
+                    expected.push((
+                        normalize_path_for_filesystem(&path),
+                        kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemIsFile,
+                    ));
+                }
             }
+        }
+
+        expected
+    }
+
+    // Verify that actual events match expected events (focusing on flags since path extraction is complex)
+    #[cfg(target_os = "macos")]
+    fn verify_events(
+        expected: &[(String, u32)],
+        actual: &[(String, u32, u64)],
+        _test_dir: &Path,
+    ) -> bool {
+        println!("🔍 Event Verification:");
+        println!("   Expected events: {}", expected.len());
+        println!("   Actual events: {}", actual.len());
+
+        // For now, do a simpler verification: check that we have at least as many events as expected
+        // and that the flags contain the expected flag patterns
+        let mut expected_flags_found = 0;
+
+        for (expected_path, expected_flags) in expected {
+            println!(
+                "   Looking for event with flags 0x{:08x} for {}",
+                expected_flags, expected_path
+            );
+
+            // Check if any actual event has the expected flags
+            for (actual_path, actual_flags, _event_id) in actual {
+                if (actual_flags & expected_flags) == *expected_flags {
+                    println!(
+                        "     ✅ Found matching event: {} (flags: 0x{:08x})",
+                        actual_path, actual_flags
+                    );
+                    expected_flags_found += 1;
+                    break;
+                }
+            }
+        }
+
+        let success = expected_flags_found >= expected.len();
+        if success {
+            println!(
+                "   ✅ All expected event types found! ({} out of {})",
+                expected_flags_found,
+                expected.len()
+            );
+        } else {
+            println!(
+                "   ❌ Only found {} out of {} expected event types",
+                expected_flags_found,
+                expected.len()
+            );
+        }
+
+        success
+    }
+
+    // Print detailed comparison of expected vs actual events
+    #[cfg(target_os = "macos")]
+    fn print_event_comparison(expected: &[(String, u32)], actual: &[(String, u32, u64)]) {
+        println!("📋 Event Comparison:");
+        println!("   Expected events:");
+        for (i, (path, flags)) in expected.iter().enumerate() {
+            println!("     {}. {} (flags: 0x{:08x})", i + 1, path, flags);
+        }
+
+        println!("   Actual events:");
+        for (i, (path, flags, event_id)) in actual.iter().enumerate() {
+            println!(
+                "     {}. {} (flags: 0x{:08x}, id: {})",
+                i + 1,
+                path,
+                flags,
+                event_id
+            );
         }
     }
 
-    println!("🧪 Unicode CFString extraction test completed");
-}
+    // Milestone 7: Registration lifecycle & robustness tests
 
-fn normalize_path_for_filesystem(path: &Path) -> String {
-    let path_str = path.to_string_lossy();
-    let cf_string = CFString::new(&path_str);
-    cf_string_to_utf8_path(cf_string.as_concrete_TypeRef())
-        .unwrap_or_else(|_| path_str.into_owned())
-}
+    #[cfg(target_os = "macos")]
+    fn test_lifecycle_fd_close(args: &[String]) {
+        println!("Starting FD close lifecycle test...");
 
-// Generate expected FSEvents for each filesystem operation
-fn generate_expected_events(operations: &[FsOperation], test_dir: &Path) -> Vec<(String, u32)> {
-    let mut expected = Vec::new();
-
-    for operation in operations {
-        match operation {
-            FsOperation::CreateFile(filename) => {
-                let path = test_dir.join(filename);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
-            FsOperation::ModifyFile(filename, _) => {
-                let path = test_dir.join(filename);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
-            FsOperation::DeleteFile(filename) => {
-                let path = test_dir.join(filename);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
-            FsOperation::CreateDir(dirname) => {
-                let path = test_dir.join(dirname);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsDir,
-                ));
-            }
-            FsOperation::DeleteDir(dirname) => {
-                let path = test_dir.join(dirname);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsDir,
-                ));
-            }
-            FsOperation::Rename(old_name, new_name) => {
-                let old_path = test_dir.join(old_name);
-                let new_path = test_dir.join(new_name);
-                // Rename typically generates two events: one for the old path (removed) and one for the new path (created)
-                expected.push((
-                    normalize_path_for_filesystem(&old_path),
-                    kFSEventStreamEventFlagItemRenamed | kFSEventStreamEventFlagItemIsFile,
-                ));
-                expected.push((
-                    normalize_path_for_filesystem(&new_path),
-                    kFSEventStreamEventFlagItemRenamed | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
-            FsOperation::Link(_, link_name) => {
-                let link_path = test_dir.join(link_name);
-                expected.push((
-                    normalize_path_for_filesystem(&link_path),
-                    kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
-            FsOperation::Unlink(filename) => {
-                let path = test_dir.join(filename);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
-            FsOperation::Symlink(_, link_name) => {
-                let link_path = test_dir.join(link_name);
-                expected.push((
-                    normalize_path_for_filesystem(&link_path),
-                    kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsSymlink,
-                ));
-            }
-            FsOperation::Chmod(filename, _) => {
-                let path = test_dir.join(filename);
-                expected.push((
-                    normalize_path_for_filesystem(&path),
-                    kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemIsFile,
-                ));
-            }
+        if args.is_empty() {
+            eprintln!("Usage: lifecycle-fd-close-test <test_file_path>");
+            return;
         }
-    }
 
-    expected
-}
+        let test_file = &args[0];
+        println!("Test file: {}", test_file);
 
-// Verify that actual events match expected events (focusing on flags since path extraction is complex)
-fn verify_events(
-    expected: &[(String, u32)],
-    actual: &[(String, u32, u64)],
-    _test_dir: &Path,
-) -> bool {
-    println!("🔍 Event Verification:");
-    println!("   Expected events: {}", expected.len());
-    println!("   Actual events: {}", actual.len());
+        // Create and open a test file
+        let fd = unsafe {
+            let c_path = CString::new(test_file.clone()).unwrap();
+            libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644)
+        };
 
-    // For now, do a simpler verification: check that we have at least as many events as expected
-    // and that the flags contain the expected flag patterns
-    let mut expected_flags_found = 0;
-
-    for (expected_path, expected_flags) in expected {
-        println!(
-            "   Looking for event with flags 0x{:08x} for {}",
-            expected_flags, expected_path
-        );
-
-        // Check if any actual event has the expected flags
-        for (actual_path, actual_flags, _event_id) in actual {
-            if (actual_flags & expected_flags) == *expected_flags {
-                println!(
-                    "     ✅ Found matching event: {} (flags: 0x{:08x})",
-                    actual_path, actual_flags
-                );
-                expected_flags_found += 1;
-                break;
-            }
+        if fd < 0 {
+            eprintln!(
+                "Failed to open test file: {}",
+                std::io::Error::last_os_error()
+            );
+            return;
         }
-    }
 
-    let success = expected_flags_found >= expected.len();
-    if success {
+        println!("✅ Opened test file with fd {}", fd);
+
+        // Create a kqueue and register the file for watching
+        let kq_fd = unsafe { libc::kqueue() };
+        if kq_fd < 0 {
+            eprintln!(
+                "Failed to create kqueue: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe { libc::close(fd) };
+            return;
+        }
+
+        println!("✅ Created kqueue with fd {}", kq_fd);
+
+        // Register the file for vnode events
+        let mut kev = libc::kevent {
+            ident: fd as usize,
+            filter: libc::EVFILT_VNODE,
+            flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR,
+            fflags: libc::NOTE_WRITE | libc::NOTE_DELETE | libc::NOTE_RENAME,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let result = unsafe {
+            libc::kevent(
+                kq_fd,
+                &mut kev as *mut _,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            )
+        };
+        if result < 0 {
+            eprintln!(
+                "Failed to register vnode watch: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe { libc::close(fd) };
+            unsafe { libc::close(kq_fd) };
+            return;
+        }
+
         println!(
-            "   ✅ All expected event types found! ({} out of {})",
-            expected_flags_found,
-            expected.len()
+            "✅ Registered vnode watch for fd {} on kqueue {}",
+            fd, kq_fd
         );
-    } else {
+
+        // Wait a moment for daemon communication to complete
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Now close the watched file descriptor
+        println!("🧪 Closing watched fd {}...", fd);
+        let close_result = unsafe { libc::close(fd) };
+        if close_result < 0 {
+            eprintln!("Failed to close fd: {}", std::io::Error::last_os_error());
+            unsafe { libc::close(kq_fd) };
+            return;
+        }
+
+        println!("✅ Closed watched fd {}", fd);
+
+        // Wait for daemon to process the unregister
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Try to receive events - this should not hang or crash
+        let mut event = libc::kevent {
+            ident: 0,
+            filter: 0,
+            flags: 0,
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let timeout = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 100_000_000, // 100ms
+        };
+
+        let event_result = unsafe {
+            libc::kevent(
+                kq_fd,
+                std::ptr::null(),
+                0,
+                &mut event as *mut _,
+                1,
+                &timeout,
+            )
+        };
         println!(
-            "   ❌ Only found {} out of {} expected event types",
-            expected_flags_found,
-            expected.len()
+            "kevent after fd close returned: {} (should be 0, no events)",
+            event_result
         );
+
+        // Close the kqueue
+        unsafe { libc::close(kq_fd) };
+
+        // Clean up test file
+        let _ = std::fs::remove_file(test_file);
+
+        println!("✅ FD close lifecycle test completed successfully");
     }
 
-    success
-}
+    #[cfg(target_os = "macos")]
+    fn test_lifecycle_process_exit(args: &[String]) {
+        println!("Starting process exit lifecycle test...");
 
-// Print detailed comparison of expected vs actual events
-fn print_event_comparison(expected: &[(String, u32)], actual: &[(String, u32, u64)]) {
-    println!("📋 Event Comparison:");
-    println!("   Expected events:");
-    for (i, (path, flags)) in expected.iter().enumerate() {
-        println!("     {}. {} (flags: 0x{:08x})", i + 1, path, flags);
-    }
+        if args.is_empty() {
+            eprintln!("Usage: lifecycle-process-exit-test <test_file_path>");
+            return;
+        }
 
-    println!("   Actual events:");
-    for (i, (path, flags, event_id)) in actual.iter().enumerate() {
+        let test_file = &args[0];
+        println!("Test file: {}", test_file);
+
+        // Create and open a test file
+        let fd = unsafe {
+            let c_path = CString::new(test_file.clone()).unwrap();
+            libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644)
+        };
+
+        if fd < 0 {
+            eprintln!(
+                "Failed to open test file: {}",
+                std::io::Error::last_os_error()
+            );
+            return;
+        }
+
+        println!("✅ Opened test file with fd {}", fd);
+
+        // Create a kqueue and register the file for watching
+        let kq_fd = unsafe { libc::kqueue() };
+        if kq_fd < 0 {
+            eprintln!(
+                "Failed to create kqueue: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe { libc::close(fd) };
+            return;
+        }
+
+        println!("✅ Created kqueue with fd {}", kq_fd);
+
+        // Register the file for vnode events
+        let mut kev = libc::kevent {
+            ident: fd as usize,
+            filter: libc::EVFILT_VNODE,
+            flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR,
+            fflags: libc::NOTE_WRITE | libc::NOTE_DELETE | libc::NOTE_RENAME,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let result = unsafe {
+            libc::kevent(
+                kq_fd,
+                &mut kev as *mut _,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            )
+        };
+        if result < 0 {
+            eprintln!(
+                "Failed to register vnode watch: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe { libc::close(fd) };
+            unsafe { libc::close(kq_fd) };
+            return;
+        }
+
         println!(
-            "     {}. {} (flags: 0x{:08x}, id: {})",
-            i + 1,
-            path,
-            flags,
-            event_id
+            "✅ Registered vnode watch for fd {} on kqueue {}",
+            fd, kq_fd
+        );
+
+        // Wait for daemon to set up resources
+        std::thread::sleep(Duration::from_millis(200));
+
+        // The test will exit here, which should trigger daemon cleanup
+        // The test framework will verify that the daemon cleans up properly
+
+        println!("✅ Process exit lifecycle test completed (daemon should clean up resources)");
+    }
+
+    #[cfg(target_os = "macos")]
+    fn test_lifecycle_daemon_restart(args: &[String]) {
+        println!("Starting daemon restart recovery test...");
+
+        if args.is_empty() {
+            eprintln!("Usage: lifecycle-daemon-restart-test <test_file_path>");
+            return;
+        }
+
+        let test_file = &args[0];
+        println!("Test file: {}", test_file);
+
+        // Create and open a test file
+        let fd = unsafe {
+            let c_path = CString::new(test_file.clone()).unwrap();
+            libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644)
+        };
+
+        if fd < 0 {
+            eprintln!(
+                "Failed to open test file: {}",
+                std::io::Error::last_os_error()
+            );
+            return;
+        }
+
+        println!("✅ Opened test file with fd {}", fd);
+
+        // Create a kqueue and register the file for watching
+        let kq_fd = unsafe { libc::kqueue() };
+        if kq_fd < 0 {
+            eprintln!(
+                "Failed to create kqueue: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe { libc::close(fd) };
+            return;
+        }
+
+        println!("✅ Created kqueue with fd {}", kq_fd);
+
+        // Register the file for vnode events
+        let mut kev = libc::kevent {
+            ident: fd as usize,
+            filter: libc::EVFILT_VNODE,
+            flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR,
+            fflags: libc::NOTE_WRITE | libc::NOTE_DELETE | libc::NOTE_RENAME,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
+        let result = unsafe {
+            libc::kevent(
+                kq_fd,
+                &mut kev as *mut _,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            )
+        };
+        if result < 0 {
+            eprintln!(
+                "Failed to register vnode watch: {}",
+                std::io::Error::last_os_error()
+            );
+            unsafe { libc::close(fd) };
+            unsafe { libc::close(kq_fd) };
+            return;
+        }
+
+        println!(
+            "✅ Registered vnode watch for fd {} on kqueue {}",
+            fd, kq_fd
+        );
+
+        // Wait for initial daemon communication
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Simulate daemon restart by triggering reconnection
+        // In a real scenario, the daemon would restart and the shim would detect disconnection
+        // For this test, we just verify that the registrations are in place
+
+        println!(
+            "✅ Daemon restart recovery test completed (registrations should be re-established on reconnect)"
         );
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn test_fsevents_interposition(_args: &[String]) {
-    println!("FSEvents test skipped (not on macOS)");
-}
-
-// Milestone 7: Registration lifecycle & robustness tests
-
-fn test_lifecycle_fd_close(args: &[String]) {
-    println!("Starting FD close lifecycle test...");
-
-    if args.is_empty() {
-        eprintln!("Usage: lifecycle-fd-close-test <test_file_path>");
-        return;
-    }
-
-    let test_file = &args[0];
-    println!("Test file: {}", test_file);
-
-    // Create and open a test file
-    let fd = unsafe {
-        let c_path = CString::new(test_file.clone()).unwrap();
-        libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644)
-    };
-
-    if fd < 0 {
-        eprintln!(
-            "Failed to open test file: {}",
-            std::io::Error::last_os_error()
-        );
-        return;
-    }
-
-    println!("✅ Opened test file with fd {}", fd);
-
-    // Create a kqueue and register the file for watching
-    let kq_fd = unsafe { libc::kqueue() };
-    if kq_fd < 0 {
-        eprintln!(
-            "Failed to create kqueue: {}",
-            std::io::Error::last_os_error()
-        );
-        unsafe { libc::close(fd) };
-        return;
-    }
-
-    println!("✅ Created kqueue with fd {}", kq_fd);
-
-    // Register the file for vnode events
-    let mut kev = libc::kevent {
-        ident: fd as usize,
-        filter: libc::EVFILT_VNODE,
-        flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR,
-        fflags: libc::NOTE_WRITE | libc::NOTE_DELETE | libc::NOTE_RENAME,
-        data: 0,
-        udata: std::ptr::null_mut(),
-    };
-
-    let result = unsafe {
-        libc::kevent(
-            kq_fd,
-            &mut kev as *mut _,
-            1,
-            std::ptr::null_mut(),
-            0,
-            std::ptr::null(),
-        )
-    };
-    if result < 0 {
-        eprintln!(
-            "Failed to register vnode watch: {}",
-            std::io::Error::last_os_error()
-        );
-        unsafe { libc::close(fd) };
-        unsafe { libc::close(kq_fd) };
-        return;
-    }
-
-    println!(
-        "✅ Registered vnode watch for fd {} on kqueue {}",
-        fd, kq_fd
-    );
-
-    // Wait a moment for daemon communication to complete
-    std::thread::sleep(Duration::from_millis(100));
-
-    // Now close the watched file descriptor
-    println!("🧪 Closing watched fd {}...", fd);
-    let close_result = unsafe { libc::close(fd) };
-    if close_result < 0 {
-        eprintln!("Failed to close fd: {}", std::io::Error::last_os_error());
-        unsafe { libc::close(kq_fd) };
-        return;
-    }
-
-    println!("✅ Closed watched fd {}", fd);
-
-    // Wait for daemon to process the unregister
-    std::thread::sleep(Duration::from_millis(200));
-
-    // Try to receive events - this should not hang or crash
-    let mut event = libc::kevent {
-        ident: 0,
-        filter: 0,
-        flags: 0,
-        fflags: 0,
-        data: 0,
-        udata: std::ptr::null_mut(),
-    };
-
-    let timeout = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 100_000_000, // 100ms
-    };
-
-    let event_result = unsafe {
-        libc::kevent(
-            kq_fd,
-            std::ptr::null(),
-            0,
-            &mut event as *mut _,
-            1,
-            &timeout,
-        )
-    };
-    println!(
-        "kevent after fd close returned: {} (should be 0, no events)",
-        event_result
-    );
-
-    // Close the kqueue
-    unsafe { libc::close(kq_fd) };
-
-    // Clean up test file
-    let _ = std::fs::remove_file(test_file);
-
-    println!("✅ FD close lifecycle test completed successfully");
-}
-
-fn test_lifecycle_process_exit(args: &[String]) {
-    println!("Starting process exit lifecycle test...");
-
-    if args.is_empty() {
-        eprintln!("Usage: lifecycle-process-exit-test <test_file_path>");
-        return;
-    }
-
-    let test_file = &args[0];
-    println!("Test file: {}", test_file);
-
-    // Create and open a test file
-    let fd = unsafe {
-        let c_path = CString::new(test_file.clone()).unwrap();
-        libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644)
-    };
-
-    if fd < 0 {
-        eprintln!(
-            "Failed to open test file: {}",
-            std::io::Error::last_os_error()
-        );
-        return;
-    }
-
-    println!("✅ Opened test file with fd {}", fd);
-
-    // Create a kqueue and register the file for watching
-    let kq_fd = unsafe { libc::kqueue() };
-    if kq_fd < 0 {
-        eprintln!(
-            "Failed to create kqueue: {}",
-            std::io::Error::last_os_error()
-        );
-        unsafe { libc::close(fd) };
-        return;
-    }
-
-    println!("✅ Created kqueue with fd {}", kq_fd);
-
-    // Register the file for vnode events
-    let mut kev = libc::kevent {
-        ident: fd as usize,
-        filter: libc::EVFILT_VNODE,
-        flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR,
-        fflags: libc::NOTE_WRITE | libc::NOTE_DELETE | libc::NOTE_RENAME,
-        data: 0,
-        udata: std::ptr::null_mut(),
-    };
-
-    let result = unsafe {
-        libc::kevent(
-            kq_fd,
-            &mut kev as *mut _,
-            1,
-            std::ptr::null_mut(),
-            0,
-            std::ptr::null(),
-        )
-    };
-    if result < 0 {
-        eprintln!(
-            "Failed to register vnode watch: {}",
-            std::io::Error::last_os_error()
-        );
-        unsafe { libc::close(fd) };
-        unsafe { libc::close(kq_fd) };
-        return;
-    }
-
-    println!(
-        "✅ Registered vnode watch for fd {} on kqueue {}",
-        fd, kq_fd
-    );
-
-    // Wait for daemon to set up resources
-    std::thread::sleep(Duration::from_millis(200));
-
-    // The test will exit here, which should trigger daemon cleanup
-    // The test framework will verify that the daemon cleans up properly
-
-    println!("✅ Process exit lifecycle test completed (daemon should clean up resources)");
-}
-
-fn test_lifecycle_daemon_restart(args: &[String]) {
-    println!("Starting daemon restart recovery test...");
-
-    if args.is_empty() {
-        eprintln!("Usage: lifecycle-daemon-restart-test <test_file_path>");
-        return;
-    }
-
-    let test_file = &args[0];
-    println!("Test file: {}", test_file);
-
-    // Create and open a test file
-    let fd = unsafe {
-        let c_path = CString::new(test_file.clone()).unwrap();
-        libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644)
-    };
-
-    if fd < 0 {
-        eprintln!(
-            "Failed to open test file: {}",
-            std::io::Error::last_os_error()
-        );
-        return;
-    }
-
-    println!("✅ Opened test file with fd {}", fd);
-
-    // Create a kqueue and register the file for watching
-    let kq_fd = unsafe { libc::kqueue() };
-    if kq_fd < 0 {
-        eprintln!(
-            "Failed to create kqueue: {}",
-            std::io::Error::last_os_error()
-        );
-        unsafe { libc::close(fd) };
-        return;
-    }
-
-    println!("✅ Created kqueue with fd {}", kq_fd);
-
-    // Register the file for vnode events
-    let mut kev = libc::kevent {
-        ident: fd as usize,
-        filter: libc::EVFILT_VNODE,
-        flags: libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR,
-        fflags: libc::NOTE_WRITE | libc::NOTE_DELETE | libc::NOTE_RENAME,
-        data: 0,
-        udata: std::ptr::null_mut(),
-    };
-
-    let result = unsafe {
-        libc::kevent(
-            kq_fd,
-            &mut kev as *mut _,
-            1,
-            std::ptr::null_mut(),
-            0,
-            std::ptr::null(),
-        )
-    };
-    if result < 0 {
-        eprintln!(
-            "Failed to register vnode watch: {}",
-            std::io::Error::last_os_error()
-        );
-        unsafe { libc::close(fd) };
-        unsafe { libc::close(kq_fd) };
-        return;
-    }
-
-    println!(
-        "✅ Registered vnode watch for fd {} on kqueue {}",
-        fd, kq_fd
-    );
-
-    // Wait for initial daemon communication
-    std::thread::sleep(Duration::from_millis(200));
-
-    // Simulate daemon restart by triggering reconnection
-    // In a real scenario, the daemon would restart and the shim would detect disconnection
-    // For this test, we just verify that the registrations are in place
-
-    println!(
-        "✅ Daemon restart recovery test completed (registrations should be re-established on reconnect)"
-    );
+fn main() {
+    eprintln!("This test helper is only supported on macOS");
+    std::process::exit(1);
 }
