@@ -48,6 +48,7 @@ pub struct AgentLaunchConfig {
     /// Whether to bypass security restrictions (dangerous)
     /// For Codex: enables --dangerously-bypass-approvals-and-sandbox
     /// For Claude: enables --dangerously-skip-permissions
+    /// For Copilot: enables --allow-all-tools
     pub unrestricted: bool,
 
     /// Whether to enable web search capabilities
