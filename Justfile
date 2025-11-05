@@ -10,6 +10,8 @@
 #   if [ -n "$IN_NIX_SHELL" ]; then echo "missing <tool>; fix flake.nix" >&2; exit 127; fi
 # This keeps `nix develop` fully reproducible and prevents hidden network variability.
 
+root-dir := justfile_directory()
+
 set shell := ["./scripts/nix-env.sh", "-c"]
 
 # Define REPOMIX_OUT_DIR with a default value
@@ -22,6 +24,16 @@ REPOMIX_OUT_DIR := env('REPOMIX_OUT_DIR', 'repomix')
 # List all available Just tasks
 default:
   @just --list
+
+[doc('Run a command to clean the repository of untracked files')]
+clean:
+  git clean -fdx \
+    -e .jj \
+    -e .env \
+    -e .direnv \
+    -e .vscode \
+    -e .pre-commit-config.yaml \
+    -- {{root-dir}}
 
 # Check Rust code for compilation errors
 check:
