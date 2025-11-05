@@ -12,13 +12,10 @@ tempfile = "3.8"
 libc = "0.2"
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
-unicode-normalization = "0.1"
-
-# macOS-specific dependencies (conditional compilation)
-[target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 fsevent-sys = "5.1"
+unicode-normalization = "0.1"
 
 [dependencies.agentfs-proto]
 path = "../agentfs-proto"
@@ -29,7 +26,6 @@ path = "../agentfs-core"
 [dependencies.agentfs-daemon]
 path = "../agentfs-daemon"
 
-# macOS-only binary (conditional compilation)
-[target.'cfg(target_os = "macos")'.bin]
-name = "test_helper"
+[[bin]]
+name = "agentfs-interpose-test-helper"
 path = "src/bin/test_helper.rs"
