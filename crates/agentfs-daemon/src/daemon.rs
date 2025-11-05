@@ -288,6 +288,93 @@ impl AgentFsDaemon {
         Ok(daemon_instance)
     }
 
+    /// Create a new daemon instance with backstore configuration
+    pub fn new_with_backstore(
+        lower_dir: Option<PathBuf>,
+        upper_dir: Option<PathBuf>,
+        _work_dir: Option<PathBuf>,
+        backstore_mode: agentfs_core::config::BackstoreMode,
+    ) -> FsResult<Self> {
+        // Configure FsCore based on overlay and backstore settings
+        let config = if let Some(lower) = lower_dir {
+            println!(
+                "AgentFsDaemon: configuring overlay with lower={}",
+                lower.display()
+            );
+            FsConfig {
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+                overlay: agentfs_core::config::OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower),
+                    copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                },
+                backstore: backstore_mode,
+                ..Default::default()
+            }
+        } else {
+            // Use default FsCore configuration with custom backstore
+            FsConfig {
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+                backstore: backstore_mode,
+                ..Default::default()
+            }
+        };
+
+        // Initialize FsCore with the configuration
+        let core = Arc::new(Mutex::new(FsCore::new(config)?));
+
+        // Create watch service
+        let watch_service = Arc::new(WatchService::new());
+
+        // Create the daemon instance
+        let mut daemon_instance = Self {
+            core: Arc::clone(&core),
+            watch_service: Arc::clone(&watch_service),
+            processes: HashMap::new(),
+            opened_files: HashMap::new(),
+            opened_dirs: HashMap::new(),
+            connections: HashMap::new(),
+            #[cfg(target_os = "macos")]
+            fsevents_ports: HashMap::new(),
+        };
+
+        // Subscribe the watch service to FsCore events
+        {
+            let core_clone = Arc::clone(&core);
+            let watch_service_clone = Arc::clone(&watch_service);
+            let daemon_arc = Arc::new(Mutex::new(daemon_instance));
+            let daemon_clone = Arc::clone(&daemon_arc);
+            let sink = Arc::new(WatchServiceEventSink::new(
+                watch_service_clone,
+                daemon_clone,
+            ));
+
+            // Lock the core temporarily to subscribe to events
+            let mut core_guard = core_clone.lock().unwrap();
+            core_guard
+                .subscribe_events(sink)
+                .expect("Failed to subscribe watch service to events");
+
+            // Extract the daemon instance back
+            daemon_instance = Arc::try_unwrap(daemon_arc)
+                .unwrap_or_else(|_| panic!("Failed to unwrap daemon - still has references"))
+                .into_inner()
+                .unwrap_or_else(|_| panic!("Failed to get daemon from mutex - poisoned"));
+        }
+
+        Ok(daemon_instance)
+    }
+
     /// Register a process with the daemon
     pub fn register_process(&mut self, pid: u32, ppid: u32, uid: u32, gid: u32) -> FsResult<PID> {
         let registered_pid = self.core.lock().unwrap().register_process(pid, ppid, uid, gid);
@@ -674,6 +761,44 @@ impl AgentFsDaemon {
         Ok(DaemonStateResponseWrapper {
             response: DaemonStateResponse::FilesystemState(filesystem_state),
         })
+    }
+
+    pub fn get_daemon_state_backstore(&self) -> Result<DaemonStateResponseWrapper, String> {
+        // For now, return a basic backstore status
+        let backstore_status = agentfs_proto::BackstoreStatus {
+            mode: b"InMemory".to_vec(),
+            root_path: None,
+            size_mb: None,
+            mount_point: None,
+            supports_native_snapshots: Some(0), // false = 0
+        };
+
+        Ok(DaemonStateResponseWrapper {
+            response: DaemonStateResponse::BackstoreStatus(backstore_status),
+        })
+    }
+
+    /// Handle a client request
+    pub fn handle_request(
+        &mut self,
+        request: Request,
+        client_pid: u32,
+    ) -> Result<Response, String> {
+        match request {
+            Request::DaemonStateProcesses(_) => {
+                self.get_daemon_state_processes().map(|wrapper| Response::DaemonState(wrapper))
+            }
+            Request::DaemonStateStats(_) => {
+                self.get_daemon_state_stats().map(|wrapper| Response::DaemonState(wrapper))
+            }
+            Request::DaemonStateFilesystem(req) => self
+                .get_daemon_state_filesystem(&req.query)
+                .map(|wrapper| Response::DaemonState(wrapper)),
+            Request::DaemonStateBackstore(_) => {
+                self.get_daemon_state_backstore().map(|wrapper| Response::DaemonState(wrapper))
+            }
+            _ => Err(format!("Request type not implemented: {:?}", request)),
+        }
     }
 
     /// Capture filesystem state from FsCore instead of real filesystem
@@ -1263,11 +1388,25 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         if let Err(e) = daemon.register_process(client_pid, 0, 0, 0) {
             return;
         }
+        // Register the connection for sending unsolicited messages
+        daemon.register_connection(
+            client_pid,
+            stream.try_clone().expect("Failed to clone stream"),
+        );
     }
+
+    // Ensure cleanup happens when function exits
+    let cleanup = || {
+        let mut daemon = daemon.lock().unwrap();
+        daemon.unregister_connection(client_pid);
+        // Clean up all watch registrations for this process
+        daemon.cleanup_process_watches(client_pid);
+    };
 
     // Handle handshake
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -1275,6 +1414,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     let mut msg_buf = vec![0u8; msg_len];
 
     if stream.read_exact(&mut msg_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -1284,12 +1424,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         let _ = stream.write_all(ack);
         let _ = stream.flush();
     } else {
+        cleanup();
         return;
     }
 
     // Handle one request
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -2084,6 +2226,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                     Some(22),
                                 );
                                 send_response(&mut stream, &response);
+                                cleanup();
                                 return;
                             }
                         };
@@ -2101,6 +2244,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 Some(22),
                             );
                             send_response(&mut stream, &response);
+                            cleanup();
                             return;
                         }
                         let mut daemon_guard = daemon.lock().unwrap();
@@ -2122,6 +2266,9 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         }
         Err(e) => {}
     }
+
+    // Cleanup: unregister the connection
+    cleanup();
 }
 
 fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {

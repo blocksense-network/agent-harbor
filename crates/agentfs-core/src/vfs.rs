@@ -14,8 +14,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
 use crate::{
-    Attributes, BranchId, BranchInfo, ContentId, DirEntry, FileMode, FileTimes, FsConfig, FsStats,
-    HandleId, LockKind, LockRange, OpenOptions, ShareMode, SnapshotId, StreamSpec,
+    Attributes, BackstoreInfo, BranchId, BranchInfo, ContentId, DirEntry, FileMode, FileTimes,
+    FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode, SnapshotId,
+    StreamSpec,
 };
 
 use crate::{Backstore, LowerFs};
@@ -227,8 +228,12 @@ impl FsCore {
             }
         };
 
-        // Initialize backstore for overlay operations
-        let backstore = if config.overlay.enabled {
+        // Initialize backstore for overlay operations or standalone backstore modes
+        let backstore = if config.overlay.enabled
+            || matches!(
+                config.backstore,
+                crate::config::BackstoreMode::RamDisk { .. }
+            ) {
             Some(crate::storage::create_backstore(&config.backstore)?)
         } else {
             None
@@ -273,6 +278,15 @@ impl FsCore {
         // Create root directory
         core.create_root_directory()?;
         Ok(core)
+    }
+
+    /// Get information about the current backstore configuration
+    pub fn get_backstore_info(&self) -> Option<BackstoreInfo> {
+        self.backstore.as_ref().map(|backstore| BackstoreInfo {
+            root_path: backstore.root_path(),
+            supports_native_snapshots: backstore.supports_native_snapshots(),
+            mount_point: backstore.mount_point(),
+        })
     }
 
     /// Create a new FsCore instance with RamDisk backstore for testing

@@ -88,6 +88,9 @@ impl XpcControlService {
             Request::DaemonStateProcesses(_) => {
                 todo!("DaemonStateProcesses not implemented for XPC control")
             }
+            Request::DaemonStateBackstore(_) => {
+                todo!("DaemonStateBackstore not implemented for XPC control")
+            }
             Request::DaemonStateStats(_) => {
                 todo!("DaemonStateStats not implemented for XPC control")
             }

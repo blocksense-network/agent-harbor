@@ -13,6 +13,8 @@ path = "src/bin/agentfs-daemon.rs"
 [dependencies]
 agentfs-core = { path = "../agentfs-core" }
 agentfs-proto = { path = "../agentfs-proto" }
+agentfs-backstore-macos = { path = "../agentfs-backstore-macos" }
+clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -32,3 +34,6 @@ ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 scopeguard = "1.2"
+
+[dev-dependencies]
+tempfile = "3.0"

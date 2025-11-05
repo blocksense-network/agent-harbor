@@ -87,6 +87,7 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         | Request::Fclonefileat((version, _))
         | Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: version })
         | Request::DaemonStateStats(DaemonStateStatsRequest { data: version })
+        | Request::DaemonStateBackstore(DaemonStateBackstoreRequest { data: version })
         | Request::PathOp((version, _))
         | Request::InterposeSetGet((version, _))
         | Request::DirfdOpenDir((version, _))

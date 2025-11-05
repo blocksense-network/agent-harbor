@@ -44,3 +44,12 @@ pub struct AllowlistInfo {
     pub matched_entry: Option<Vec<u8>>,
     pub configured_entries: Option<Vec<Vec<u8>>>,
 }
+
+impl Default for AllowlistInfo {
+    fn default() -> Self {
+        Self {
+            matched_entry: None,
+            configured_entries: None,
+        }
+    }
+}

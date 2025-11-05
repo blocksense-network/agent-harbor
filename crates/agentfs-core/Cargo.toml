@@ -16,10 +16,10 @@ libc = { workspace = true }
 hex = { workspace = true }
 agentfs-proto = { path = "../agentfs-proto" }
 
-[dev-dependencies]
-tempfile = { workspace = true }
-mockall = { workspace = true }
-
 [features]
 default = ["events"]
 events = []
+
+[dev-dependencies]
+tempfile = { workspace = true }
+mockall = { workspace = true }

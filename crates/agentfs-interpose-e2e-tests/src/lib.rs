@@ -524,16 +524,14 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
 
-        // Give daemon time to start and check if socket is ready
+        // Give daemon time to start
         thread::sleep(Duration::from_millis(500));
-        let test_connect = UnixStream::connect(&socket_path);
-        if test_connect.is_err() {
-            thread::sleep(Duration::from_millis(500));
-        }
 
         // Execute the test scenario - the helper binary tests file operations
         // File operations may fail due to FsCore/real filesystem disconnect, but interposition works
@@ -652,6 +650,8 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -775,6 +775,8 @@ mod tests {
         let socket_path = std::path::Path::new("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -885,6 +887,8 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -972,6 +976,8 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -1062,7 +1068,7 @@ mod tests {
         let daemon_path = find_daemon_path();
 
         let mut daemon_cmd = Command::new(&daemon_path);
-        daemon_cmd.arg(&socket_path);
+        daemon_cmd.arg("--backstore-mode").arg("InMemory").arg(&socket_path);
 
         // Pass overlay configuration if provided
         if let (Some(lower), Some(upper), Some(work)) = (lower_dir, upper_dir, work_dir) {
@@ -1077,12 +1083,8 @@ mod tests {
 
         let daemon = daemon_cmd.spawn().expect("failed to start mock daemon");
 
-        // Give daemon time to start and check if socket is ready
+        // Give daemon time to start
         thread::sleep(Duration::from_millis(500));
-        let test_connect = UnixStream::connect(&socket_path);
-        if test_connect.is_err() {
-            thread::sleep(Duration::from_millis(500));
-        }
 
         (daemon, socket_path)
     }
