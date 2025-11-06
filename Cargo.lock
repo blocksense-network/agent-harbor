@@ -519,6 +519,7 @@ dependencies = [
  "ah-mux-core",
  "anyhow",
  "async-trait",
+ "crossterm 0.28.1",
  "expectrl",
  "futures-lite 1.13.0",
  "insta",
