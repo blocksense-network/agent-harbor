@@ -29,6 +29,7 @@ ureq = { version = "2.0", features = ["json"] }
 tempfile = "3.0"
 regex = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
+which = "8.0"
 async-trait.workspace = true
 futures.workspace = true
 async-stream = "0.3"
