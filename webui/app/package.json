@@ -21,7 +21,9 @@
     "type-coverage": "type-coverage",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "build:storybook": "storybook build",
+    "storybook": "storybook dev -p 6006"
   },
   "typeCoverage": {
     "atLeast": 95,
@@ -60,14 +62,23 @@
     "vinxi": "^0.5.8"
   },
   "devDependencies": {
+    "@chromatic-com/storybook": "^4.1.2",
     "@eslint/js": "^9.37.0",
     "@solidjs/testing-library": "^0.8.10",
+    "@storybook/addon-a11y": "^10.0.5",
+    "@storybook/addon-docs": "^10.0.5",
+    "@storybook/addon-links": "^10.0.5",
+    "@storybook/addon-onboarding": "^10.0.5",
+    "@storybook/addon-vitest": "^10.0.5",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.0.7",
     "@testing-library/jest-dom": "^6.9.0",
     "@types/node": "^24.6.2",
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
+    "@vitest/browser": "^4.0.7",
+    "@vitest/browser-playwright": "^4.0.7",
+    "@vitest/coverage-v8": "^4.0.7",
     "cheerio": "^1.1.2",
     "eslint": "9.37.0",
     "eslint-config-prettier": "^10.1.8",
@@ -78,7 +89,10 @@
     "eslint-plugin-tailwindcss": "^4.0.0-beta.0",
     "jsdom": "^27.0.0",
     "knip": "^5.64.1",
+    "playwright": "^1.56.1",
     "prettier": "3.6.2",
+    "storybook": "^10.0.5",
+    "storybook-solidjs-vite": "^10.0.5",
     "tailwindcss": "^4.0.7",
     "type-coverage": "^2.29.7",
     "typescript": "5.9.3",
@@ -86,7 +100,7 @@
     "vite-plugin-checker": "^0.11.0",
     "vite-plugin-solid": "^2.11.9",
     "vite-plugin-solid-svg": "^0.8.1",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.7"
   },
   "engines": {
     "node": ">=22"
