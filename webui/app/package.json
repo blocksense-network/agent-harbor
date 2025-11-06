@@ -79,6 +79,7 @@
     "jsdom": "^27.0.0",
     "knip": "^5.64.1",
     "prettier": "3.6.2",
+    "solid-devtools": "^0.34.4",
     "tailwindcss": "^4.0.7",
     "type-coverage": "^2.29.7",
     "typescript": "5.9.3",
