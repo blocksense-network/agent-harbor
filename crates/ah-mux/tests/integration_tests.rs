@@ -6,19 +6,13 @@
 //! These tests verify that multiplexer implementations work correctly
 //! by creating real windows/panes and measuring terminal dimensions.
 
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
 use ah_mux::available_multiplexers;
 use ah_mux_core::{CommandOptions, Multiplexer, SplitDirection, WindowOptions};
 
-/// Terminal dimensions returned by our test binary
-#[derive(Debug, Clone)]
-struct TerminalSize {
-    cols: u16,
-    rows: u16,
-}
+mod common;
 
 /// Border characteristics for different multiplexers
 #[derive(Debug)]
@@ -58,26 +52,6 @@ impl BorderInfo {
             },
         }
     }
-}
-
-/// Run the terminal size measurement binary and parse output
-fn measure_terminal_size() -> Result<TerminalSize, Box<dyn std::error::Error>> {
-    // Run tput commands separately to ensure proper output format
-    let cols_output = Command::new("tput").arg("cols").output()?;
-
-    let lines_output = Command::new("tput").arg("lines").output()?;
-
-    if !cols_output.status.success() || !lines_output.status.success() {
-        return Err("Failed to run tput commands".into());
-    }
-
-    let cols_str = String::from_utf8(cols_output.stdout)?;
-    let rows_str = String::from_utf8(lines_output.stdout)?;
-
-    let cols: u16 = cols_str.trim().parse()?;
-    let rows: u16 = rows_str.trim().parse()?;
-
-    Ok(TerminalSize { cols, rows })
 }
 
 /// Test that verifies basic multiplexer operations work correctly
@@ -284,7 +258,7 @@ mod tests {
     fn test_measure_terminal_size() {
         // This test just verifies the measurement function works
         // It doesn't test the actual multiplexer functionality
-        let size = measure_terminal_size().unwrap();
+        let size = common::measure_terminal_size().unwrap();
         assert!(size.cols > 0);
         assert!(size.rows > 0);
     }
@@ -311,7 +285,7 @@ mod tests {
             println!("Testing pane sizing for {}", name);
 
             // 1. Create window and get baseline size
-            let _baseline = measure_terminal_size().unwrap();
+            let _baseline = common::measure_terminal_size().unwrap();
 
             // 2. Create window
             let _window_id = mux
