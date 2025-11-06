@@ -3,21 +3,28 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { defineConfig } from "vitest/config";
-import solid from "vite-plugin-solid";
-import solidSvg from 'vite-plugin-solid-svg'
-import { resolve } from "path";
+import { defineConfig } from 'vitest/config';
+import solid from 'vite-plugin-solid';
+import devtools from 'solid-devtools/vite';
+import solidSvg from 'vite-plugin-solid-svg';
+import { resolve } from 'path';
 
 export default defineConfig({
-  plugins: [solid(), solidSvg({ defaultAsComponent: false })],
+  plugins: [
+    devtools({
+      autoname: true,
+    }),
+    solid(),
+    solidSvg({ defaultAsComponent: false }),
+  ],
   test: {
-    environment: "jsdom",
+    environment: 'jsdom',
     globals: true,
-    setupFiles: ["./src/test/setup.ts"],
+    setupFiles: ['./src/test/setup.ts'],
   },
   resolve: {
     alias: {
-      "~": resolve(__dirname, "./src"),
+      '~': resolve(__dirname, './src'),
     },
   },
 });
