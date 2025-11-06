@@ -4,6 +4,7 @@
 //! Agent binary representation and utilities
 
 use crate::agent_types::AgentType;
+use which::which;
 
 /// Represents an agent binary that exists on the system PATH
 #[derive(Clone, Debug)]
@@ -33,16 +34,7 @@ impl AgentBinary {
         };
 
         // Check if binary exists in PATH
-        let path = std::process::Command::new("which").arg(binary_name).output().ok().and_then(
-            |output| {
-                if output.status.success() {
-                    let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    Some(std::path::PathBuf::from(path_str))
-                } else {
-                    None
-                }
-            },
-        )?;
+        let path = which(binary_name).ok()?;
 
         // Get version (agent-specific logic)
         let version = match agent_type {
