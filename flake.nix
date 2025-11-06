@@ -448,6 +448,13 @@
         (self.packages.${system}.pjdfstest) # POSIX filesystem test suite for FUSE testing
       ];
 
+      ah-mux-test-tools = [
+        pkgs.ncurses
+        pkgs.tmux
+        pkgs.screen
+        pkgs.zellij
+      ];
+
       # Linux-specific packages
       linuxPackages = pkgs.lib.optionals isLinux [
         # Use Chromium on Linux for mermaid-cli's Puppeteer
@@ -483,7 +490,8 @@
 
       # All packages combined
       allPackages = commonPackages ++ linuxPackages ++ darwinPackages ++
-                    self.checks.${system}.pre-commit-check.enabledPackages;
+                    self.checks.${system}.pre-commit-check.enabledPackages
+                    ++ ah-mux-test-tools;
 
       # Platform-specific shell hook additions
       exportLinuxEnvVars = if isLinux then ''
