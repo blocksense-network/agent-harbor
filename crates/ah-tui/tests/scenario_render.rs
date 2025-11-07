@@ -236,6 +236,11 @@ fn normalize_screen_content(content: &str) -> String {
     for line in normalized.lines() {
         let plain = strip_ansi(line).to_lowercase();
 
+        // Drop lines that are only ANSI/whitespace after stripping
+        if plain.trim().is_empty() {
+            continue;
+        }
+
         // Drop non-deterministic or environment-specific lines
         if plain.contains(" warn ") || plain.contains(" error ") {
             continue;
