@@ -7,6 +7,7 @@
 pub mod macos;
 
 use ssz::{Decode, Encode};
+use std::io::{Read, Write};
 
 // Common functions available on all platforms
 pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {

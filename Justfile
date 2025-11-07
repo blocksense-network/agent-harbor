@@ -29,15 +29,20 @@ check:
 build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-fuse-test-binaries
 
 # Run Rust tests
-test-rust *args: build-rust-test-binaries
-    cargo nextest run --workspace {{args}}
-
-test-rust-single *args: build-rust-test-binaries
-    cargo nextest run --workspace --profile single {{args}}
+test-rust: build-rust-test-binaries
+    if [ "$(uname -s)" = "Darwin" ]; then \
+        cargo nextest run --workspace --final-status-level skip; \
+    else \
+        cargo nextest run --workspace --exclude agentfs-interpose-e2e-tests --final-status-level skip; \
+    fi
 
 # Run Rust tests with verbose output
-test-rust-verbose *args: build-rust-test-binaries
-    cargo nextest run --workspace --verbose {{args}}
+test-rust-verbose: build-rust-test-binaries
+    if [ "$(uname -s)" = "Darwin" ]; then \
+        cargo nextest run --workspace --verbose; \
+    else \
+        cargo nextest run --workspace --exclude agentfs-interpose-e2e-tests --verbose; \
+    fi
 
 # Build TUI exploration binary (legacy implementation)
 build-tui-exploration:
@@ -263,8 +268,12 @@ build-overlay-test-binaries:
 
 # Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-interpose-test-helper --bin agentfs-daemon
-    cargo build -p agentfs-interpose-shim
+    if [ "$(uname -s)" = "Darwin" ]; then \
+        cargo build --bin agentfs-interpose-test-helper --bin agentfs-interpose-mock-daemon; \
+        cargo build -p agentfs-interpose-shim; \
+    else \
+        echo "Skipping interpose test binaries on non-macOS"; \
+    fi
 
 # Build sbx-helper binary
 build-sbx-helper:
