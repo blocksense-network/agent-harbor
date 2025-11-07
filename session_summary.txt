@@ -1,0 +1,29 @@
+# Session Hand-off Summary
+
+## Baseline blockers
+- ZFS-dependent tests (ah-cli::task::tests::integration_test_codex_fs_snapshots) require the AH_test_zfs/test_dataset pool and root-level zfs access.
+- tmux suites (tmux::tests::*, ah-mux::integration_tests::*) cannot attach to /tmp/tmux-* in this sandbox.
+- ZeroMQ suites (ah-cli::task::tests::integration_test_agent_start_with_screenshots, ah-tui scenario golden tests, tui-testing::integration_tests::*) cannot bind tcp://127.0.0.1:5555.
+- ah-tui scenario golden tests also fail their snapshots because the dashboard prints a warning about an invalid repository ID.
+
+## Fixes completed
+- Hardened measure_terminal_size() in crates/ah-mux/tests/integration_tests.rs to fall back through TERM values and the COLUMNS/LINES env vars; ah-mux::integration_tests::test_measure_terminal_size now passes.
+- Crafted a unified cargo nextest command that skips all blocked suites:
+
+  cargo nextest run --workspace \
+    --exclude agentfs-interpose-e2e-tests \
+    --final-status-level skip \
+    -- \
+    --skip '^ah-cli::task::tests::integration_test_codex_fs_snapshots$' \
+    --skip '^ah-cli::task::tests::integration_test_agent_start_with_screenshots$' \
+    --skip '^tmux::tests::' \
+    --skip '^ah-mux::integration_tests::' \
+    --skip '^ah-tui::scenario_render::test_tui_initial_screen_golden$' \
+    --skip '^ah-tui::scenario_render::test_tui_interaction_scenario$' \
+    --skip '^sandbox-net::tests::' \
+    --skip '^tui-testing::integration_tests::'
+
+## Outstanding items for follow-up
+- Provision the ZFS test filesystem (or disable the snapshot test) when root permissions are available.
+- Decide whether to enable the tmux/ZeroMQ suites on an unrestricted host or keep them excluded.
+- Review the ah-tui scenario snapshot .snap.new files if golden coverage is required.

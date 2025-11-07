@@ -4,6 +4,7 @@
 pub mod handshake;
 
 use ssz::{Decode, Encode};
+use std::io::{Read, Write};
 
 // Common functions available on all platforms
 pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
@@ -100,6 +101,7 @@ fn remove_env_var(key: &str) {
 ///
 /// The test_helper binary itself contains rich assertions and will exit with
 /// non-zero status if AgentFS behavior doesn't match expectations.
+#[cfg(target_os = "macos")]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     command: &str,
@@ -145,6 +147,7 @@ fn execute_test_scenario(
 ///
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
+#[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: Request,
