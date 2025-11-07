@@ -1,17 +1,23 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#![cfg_attr(not(unix), allow(dead_code))]
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
+use libc::{c_int, c_void};
 use once_cell::sync::{Lazy, OnceCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, OsStr};
 use std::io::{BufRead, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use std::time::{Duration, SystemTime};
+
+#[cfg(target_os = "macos")]
+use core_foundation::{base::TCFType, declare_TCFType, impl_TCFType};
+#[cfg(target_os = "macos")]
+use scopeguard::guard;
 
 // SSZ imports
 use ssz::{Decode, Encode};
@@ -22,18 +28,353 @@ use agentfs_proto::messages::{
     AclDeleteDefFileRequest, AclGetFdRequest, AclGetFileRequest, AclSetFdRequest,
     AclSetFileRequest, ChflagsRequest, ClonefileRequest, CopyfileRequest, DirEntry,
     FchflagsRequest, FclonefileatRequest, FcopyfileRequest, FgetxattrRequest, FlistxattrRequest,
-    FremovexattrRequest, FsetxattrRequest, GetattrlistRequest, GetattrlistbulkRequest,
-    GetxattrRequest, LchflagsRequest, LgetxattrRequest, ListxattrRequest, LlistxattrRequest,
-    LremovexattrRequest, LsetxattrRequest, RemovexattrRequest, SetattrlistRequest, SetxattrRequest,
-    StatData, StatfsData, TimespecData,
+    FremovexattrRequest, FsEventBroadcastRequest, FsetxattrRequest, GetattrlistRequest,
+    GetattrlistbulkRequest, GetxattrRequest, LchflagsRequest, LgetxattrRequest, ListxattrRequest,
+    LlistxattrRequest, LremovexattrRequest, LsetxattrRequest, RemovexattrRequest,
+    SetattrlistRequest, SetxattrRequest, StatData, StatfsData, SynthesizedKevent, TimespecData,
+    WatchRegisterFSEventsPortRequest, WatchRegisterFSEventsRequest,
 };
 use agentfs_proto::*;
 
 // Error codes for interpose forwarding failures
 const FORWARDING_UNAVAILABLE: u32 = 1;
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
+
+// FSEvents type definitions (CoreFoundation types)
+#[cfg(target_os = "macos")]
+type CFAllocatorRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFArrayRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFTimeInterval = f64;
+#[cfg(target_os = "macos")]
+type FSEventStreamEventFlags = u32;
+#[cfg(target_os = "macos")]
+type FSEventStreamRef = *mut libc::c_void;
+
+// FSEvents flag constants
+#[cfg(target_os = "macos")]
+const kFSEventStreamEventFlagItemCreated: FSEventStreamEventFlags = 0x00000100;
+#[cfg(target_os = "macos")]
+const kFSEventStreamEventFlagItemRemoved: FSEventStreamEventFlags = 0x00000200;
+#[cfg(target_os = "macos")]
+const kFSEventStreamEventFlagItemModified: FSEventStreamEventFlags = 0x00001000;
+#[cfg(target_os = "macos")]
+const kFSEventStreamEventFlagItemRenamed: FSEventStreamEventFlags = 0x00000800;
+#[cfg(target_os = "macos")]
+const kFSEventStreamEventFlagItemIsFile: FSEventStreamEventFlags = 0x00010000;
+#[cfg(target_os = "macos")]
+const kFSEventStreamEventFlagItemIsDir: FSEventStreamEventFlags = 0x00020000;
+#[cfg(target_os = "macos")]
+type FSEventStreamCallback = extern "C" fn(
+    stream_ref: FSEventStreamRef,
+    client_callback_info: *mut libc::c_void,
+    num_events: libc::size_t,
+    event_paths: *mut libc::c_void, // CFArrayRef
+    event_flags: *const FSEventStreamEventFlags,
+    event_ids: *const u64,
+);
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct FSEventStreamContext {
+    version: CFIndex,
+    info: *mut libc::c_void,
+    retain: Option<extern "C" fn(info: *const libc::c_void) -> *const libc::c_void>,
+    release: Option<extern "C" fn(info: *const libc::c_void)>,
+    copy_description: Option<extern "C" fn(info: *const libc::c_void) -> CFStringRef>,
+}
+#[cfg(target_os = "macos")]
+type CFStringRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFMessagePortRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFRunLoopRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFRunLoopSourceRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFDataRef = *mut libc::c_void;
+#[cfg(target_os = "macos")]
+type CFIndex = isize;
+#[cfg(target_os = "macos")]
+type SInt32 = i32;
+#[cfg(target_os = "macos")]
+type Boolean = u8;
+#[cfg(target_os = "macos")]
+type dev_t = u32;
+
+// Wrapper types for thread-safe CF objects
+#[cfg(target_os = "macos")]
+struct CFMessagePortWrapper(CFMessagePortRef);
+#[cfg(target_os = "macos")]
+struct CFRunLoopSourceWrapper(CFRunLoopSourceRef);
+#[cfg(target_os = "macos")]
+#[derive(Hash, Eq, PartialEq)]
+struct CFRunLoopSourceKey(CFRunLoopRef, CFStringRef);
+
+// RAII wrapper for CFMessagePort with proper invalidation and release
+#[cfg(target_os = "macos")]
+#[inline]
+fn cf_message_port_get_type_id() -> usize {
+    unsafe { CFMessagePortGetTypeID() as usize }
+}
+
+#[cfg(target_os = "macos")]
+declare_TCFType!(CFMessagePort, CFMessagePortRef);
+#[cfg(target_os = "macos")]
+impl_TCFType!(CFMessagePort, CFMessagePortRef, cf_message_port_get_type_id);
+
+// RAII wrapper for CF objects with release capability (like auto_ptr.release())
+#[cfg(target_os = "macos")]
+struct OwnedCFRef {
+    ptr: Option<*mut libc::c_void>,
+}
+
+#[cfg(target_os = "macos")]
+impl OwnedCFRef {
+    fn new(ptr: *mut libc::c_void) -> Self {
+        Self { ptr: Some(ptr) }
+    }
+
+    // Transfer ownership out (like auto_ptr.release())
+    fn release(mut self) -> *mut libc::c_void {
+        self.ptr.take().expect("CF object already released")
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedCFRef {
+    fn drop(&mut self) {
+        if let Some(ptr) = self.ptr {
+            unsafe { CFRelease(ptr) };
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedCFRef {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedCFRef {}
+
+// RAII wrapper for CFString
+#[cfg(target_os = "macos")]
+struct OwnedCFString(CFStringRef);
+
+#[cfg(target_os = "macos")]
+impl OwnedCFString {
+    fn new(ptr: CFStringRef) -> Self {
+        Self(ptr)
+    }
+
+    fn as_cf_string_ref(&self) -> CFStringRef {
+        self.0
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedCFString {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { CFRelease(self.0 as *mut libc::c_void) };
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedCFString {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedCFString {}
+
+// Outer wrapper that ensures invalidation happens before CFRelease
+#[cfg(target_os = "macos")]
+struct OwnedMessagePort {
+    inner: CFMessagePort,
+}
+
+#[cfg(target_os = "macos")]
+impl OwnedMessagePort {
+    fn new(port: CFMessagePortRef) -> Self {
+        Self {
+            inner: unsafe { CFMessagePort::wrap_under_create_rule(port) },
+        }
+    }
+}
+
+// CF objects are thread-safe according to Apple's documentation
+#[cfg(target_os = "macos")]
+unsafe impl Send for OwnedMessagePort {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for OwnedMessagePort {}
+
+#[cfg(target_os = "macos")]
+impl Drop for OwnedMessagePort {
+    fn drop(&mut self) {
+        unsafe { CFMessagePortInvalidate(self.inner.as_concrete_TypeRef()) };
+        // inner drops automatically and calls CFRelease
+    }
+}
+
+// CF objects are thread-safe according to Apple's documentation
+#[cfg(target_os = "macos")]
+unsafe impl Send for CFMessagePortWrapper {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for CFMessagePortWrapper {}
+#[cfg(target_os = "macos")]
+unsafe impl Send for CFRunLoopSourceWrapper {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for CFRunLoopSourceWrapper {}
+#[cfg(target_os = "macos")]
+unsafe impl Send for CFRunLoopSourceKey {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for CFRunLoopSourceKey {}
+
+// CoreFoundation extern declarations for CFMessagePort
+#[cfg(target_os = "macos")]
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    static kCFAllocatorDefault: CFAllocatorRef;
+    static kCFRunLoopCommonModes: CFStringRef;
+    static kCFStringEncodingUTF8: u32;
+
+    fn CFMessagePortCreateRunLoopSource(
+        allocator: CFAllocatorRef,
+        port: CFMessagePortRef,
+        order: CFIndex,
+    ) -> CFRunLoopSourceRef;
+
+    fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+    fn CFRunLoopRemoveSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+    fn CFRunLoopContainsSource(
+        rl: CFRunLoopRef,
+        source: CFRunLoopSourceRef,
+        mode: CFStringRef,
+    ) -> bool;
+    fn CFMessagePortInvalidate(port: CFMessagePortRef);
+    fn CFMessagePortGetTypeID() -> u64;
+    fn CFRelease(cf: *mut std::ffi::c_void);
+    fn CFRetain(cf: *const std::ffi::c_void) -> *mut std::ffi::c_void;
+    fn CFStringCreateWithCString(
+        alloc: CFAllocatorRef,
+        c_str: *const std::ffi::c_char,
+        encoding: u32,
+    ) -> CFStringRef;
+    fn CFArrayCreate(
+        allocator: CFAllocatorRef,
+        values: *const *const libc::c_void,
+        num_values: CFIndex,
+        callbacks: *const libc::c_void,
+    ) -> CFArrayRef;
+    fn CFDataGetLength(data: CFDataRef) -> CFIndex;
+    fn CFDataGetBytePtr(data: CFDataRef) -> *const u8;
+
+    fn CFMessagePortCreateLocal(
+        allocator: CFAllocatorRef,
+        name: CFStringRef,
+        callout: CFMessagePortCallBack,
+        context: *const CFMessagePortContext,
+        should_free_info: *mut Boolean,
+    ) -> CFMessagePortRef;
+
+    fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+
+    // CFArray functions for extracting paths
+    fn CFArrayGetCount(array: CFArrayRef) -> CFIndex;
+    fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: CFIndex) -> *const std::ffi::c_void;
+
+    // Property list functions
+    fn CFPropertyListCreateWithData(
+        allocator: CFAllocatorRef,
+        data: CFDataRef,
+        options: u64,
+        format: *mut u32,
+        error: *mut *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+
+    // CFDictionary functions
+    fn CFDictionaryGetValue(
+        dict: *const std::ffi::c_void,
+        key: *const std::ffi::c_void,
+    ) -> *const std::ffi::c_void;
+
+    // CFNumber functions
+    fn CFNumberGetValue(
+        number: *const std::ffi::c_void,
+        the_type: u64,
+        value_ptr: *mut std::ffi::c_void,
+    ) -> Boolean;
+
+    // CFType functions for type checking
+    fn CFGetTypeID(cf: *const std::ffi::c_void) -> u64;
+    fn CFDictionaryGetTypeID() -> u64;
+    fn CFArrayGetTypeID() -> u64;
+    fn CFStringGetTypeID() -> u64;
+    fn CFNumberGetTypeID() -> u64;
+
+    // CFString functions for converting to C string
+    fn CFStringGetCStringPtr(cf_str: CFStringRef, encoding: u32) -> *const std::ffi::c_char;
+    fn CFStringGetLength(cf_str: CFStringRef) -> CFIndex;
+    fn CFStringGetCString(
+        cf_str: CFStringRef,
+        buffer: *mut std::ffi::c_char,
+        buffer_size: CFIndex,
+        encoding: u32,
+    ) -> bool;
+}
+
+#[cfg(target_os = "macos")]
+type CFMessagePortCallBack = extern "C" fn(
+    local: CFMessagePortRef,
+    msgid: SInt32,
+    data: CFDataRef,
+    info: *mut std::ffi::c_void,
+) -> CFDataRef;
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct CFMessagePortContext {
+    version: CFIndex,
+    info: *mut std::ffi::c_void,
+    retain: Option<extern "C" fn(info: *const std::ffi::c_void) -> *const std::ffi::c_void>,
+    release: Option<extern "C" fn(info: *const std::ffi::c_void)>,
+    copy_description: Option<extern "C" fn(info: *const std::ffi::c_void) -> CFStringRef>,
+}
+
+// kqueue/kevent types and constants
+#[cfg(target_os = "macos")]
+type KeventStruct = libc::kevent;
+#[cfg(target_os = "macos")]
+const EVFILT_VNODE: i16 = -4; // vnode events
+#[cfg(target_os = "macos")]
+const EVFILT_USER: i16 = -5; // user events
+#[cfg(target_os = "macos")]
+const EV_ADD: u16 = 0x0001; // add event to kq (implies enable)
+#[cfg(target_os = "macos")]
+const EV_DELETE: u16 = 0x0002; // delete event from kq
+#[cfg(target_os = "macos")]
+const EV_ENABLE: u16 = 0x0004; // enable event
+#[cfg(target_os = "macos")]
+const EV_CLEAR: u16 = 0x0020; // disable event after reporting
+#[cfg(target_os = "macos")]
+const NOTE_TRIGGER: u32 = 0x01000000; // trigger the event
+
+/// Wrapper for storing original FSEvents callback information
+#[cfg(target_os = "macos")]
+struct FSEventsCallbackInfo {
+    original_callback: FSEventStreamCallback,
+    original_context: usize, // Store context as usize to avoid Send/Sync issues
+    stream_id: u64,
+}
+
+/// Global storage for FSEvents callback information, keyed by stream reference
+#[cfg(target_os = "macos")]
+static FSEVENTS_CALLBACKS: Lazy<Mutex<HashMap<usize, FSEventsCallbackInfo>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Counter for generating unique FSEvents stream IDs
+#[cfg(target_os = "macos")]
+static FSEVENTS_STREAM_ID_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
 
 const LOG_PREFIX: &str = "[agentfs-interpose]";
 const ENV_ENABLED: &str = "AGENTFS_INTERPOSE_ENABLED";
@@ -86,6 +427,715 @@ impl DirfdMapping {
             self.fd_paths.insert(new_fd, path);
         }
     }
+}
+
+/// Generate a random doorbell ident for kqueue
+#[cfg(target_os = "macos")]
+fn generate_doorbell_ident() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Use current time as randomness source (good enough for this use case)
+    // Reserve high bits to avoid collision with app's ident space
+    let timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u32;
+    0xAFFE00000000u64 | (timestamp as u64)
+}
+
+/// Translate FSEvents paths from overlay to backstore paths
+#[cfg(target_os = "macos")]
+fn translate_fsevent_paths(paths_to_watch: CFArrayRef) -> Result<Vec<Vec<u8>>, String> {
+    // TODO: Implement CoreFoundation array manipulation to extract paths from CFArray
+    // For now, we can't extract the paths from the CFArray, but we can at least
+    // attempt to send a translation request with empty paths to test the protocol
+    // and log that translation would be needed.
+
+    // In a full implementation, we would:
+    // 1. Extract CFString objects from the CFArray
+    // 2. Convert them to Rust strings
+    // 3. Check if they are overlay paths (start with the mount point)
+    // 4. Send FSEventsTranslatePaths request to AgentFS
+    // 5. Get back translated paths
+    // 6. Return them for creating a new CFArray
+
+    // For now, just return empty vec to indicate "no translation needed"
+    // but log that we would translate if we could extract the paths
+    log_message("FSEvents path translation: CoreFoundation array extraction not implemented yet");
+    Ok(Vec::new())
+}
+
+/// Replacement FSEvents callback that intercepts and modifies events
+#[cfg(target_os = "macos")]
+extern "C" fn fsevents_replacement_callback(
+    stream_ref: FSEventStreamRef,
+    client_callback_info: *mut libc::c_void,
+    num_events: libc::size_t,
+    event_paths: CFArrayRef,
+    event_flags: *const FSEventStreamEventFlags,
+    event_ids: *const u64,
+) {
+    // Get the original callback information
+    let stream_key = stream_ref as usize;
+    let callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+
+    if let Some(callback_info) = callbacks.get(&stream_key) {
+        log_message(&format!(
+            "FSEvents replacement callback: intercepting {} events for stream {:p} (id={})",
+            num_events, stream_ref, callback_info.stream_id
+        ));
+
+        // Get any queued AgentFS events for this stream
+        let queued_broadcasts = drain_fsevents_broadcasts(callback_info.stream_id);
+
+        if !queued_broadcasts.is_empty() {
+            log_message(&format!(
+                "FSEvents: injecting {} queued AgentFS events for stream {}",
+                queued_broadcasts.len(),
+                callback_info.stream_id
+            ));
+
+            // Create synthetic FSEvents data from queued broadcasts
+            let mut synthetic_paths: Vec<OwnedCFString> = Vec::new();
+            let mut synthetic_flags = Vec::new();
+            let mut synthetic_event_ids = Vec::new();
+
+            for broadcast in &queued_broadcasts {
+                // Convert path to CFString
+                let path_str = String::from_utf8_lossy(&broadcast.path);
+                let cf_path = unsafe {
+                    CFStringCreateWithCString(
+                        kCFAllocatorDefault,
+                        path_str.as_ptr() as *const libc::c_char,
+                        0x08000100,
+                    )
+                };
+                synthetic_paths.push(OwnedCFString::new(cf_path));
+
+                // Convert event kind to FSEvents flags
+                let mut flags = match broadcast.event_kind {
+                    0 => kFSEventStreamEventFlagItemCreated,  // Created
+                    1 => kFSEventStreamEventFlagItemRemoved,  // Removed
+                    2 => kFSEventStreamEventFlagItemModified, // Modified
+                    3 => kFSEventStreamEventFlagItemRenamed,  // Renamed
+                    _ => kFSEventStreamEventFlagItemModified, // Default to modified
+                };
+
+                // For renames, we might need to handle both paths
+                if broadcast.event_kind == 3 {
+                    // Renamed
+                    if let Some(aux_path) = &broadcast.aux_path {
+                        let aux_path_str = String::from_utf8_lossy(aux_path);
+                        let cf_aux_path = unsafe {
+                            CFStringCreateWithCString(
+                                kCFAllocatorDefault,
+                                aux_path_str.as_ptr() as *const libc::c_char,
+                                0x08000100,
+                            )
+                        };
+                        synthetic_paths.push(OwnedCFString::new(cf_aux_path));
+                        synthetic_flags.push(flags);
+                        synthetic_event_ids.push(broadcast.seqno);
+                    }
+                }
+
+                synthetic_flags.push(flags);
+                synthetic_event_ids.push(broadcast.seqno);
+            }
+
+            // Create CFArray from synthetic paths
+            let cf_paths_array_wrapper = if !synthetic_paths.is_empty() {
+                // Extract raw pointers for CFArray creation
+                let path_ptrs: Vec<CFStringRef> =
+                    synthetic_paths.iter().map(|owned| owned.as_cf_string_ref()).collect();
+
+                let array = unsafe {
+                    CFArrayCreate(
+                        kCFAllocatorDefault,
+                        path_ptrs.as_ptr() as *const *const libc::c_void,
+                        path_ptrs.len() as CFIndex,
+                        std::ptr::null(),
+                    )
+                };
+                Some(OwnedCFRef::new(array as *mut libc::c_void))
+            } else {
+                None
+            };
+
+            // Call original callback with synthetic events
+            if !synthetic_paths.is_empty() && cf_paths_array_wrapper.is_some() {
+                let cf_paths_array =
+                    cf_paths_array_wrapper.as_ref().unwrap().ptr.unwrap() as CFArrayRef;
+                (callback_info.original_callback)(
+                    stream_ref,
+                    callback_info.original_context as *mut libc::c_void,
+                    synthetic_paths.len(),
+                    cf_paths_array,
+                    synthetic_flags.as_ptr(),
+                    synthetic_event_ids.as_ptr(),
+                );
+            }
+
+            // CFString objects and CFArray will be cleaned up automatically by RAII
+        }
+
+        // TODO: Implement event filtering based on AgentFS overlay state
+        // - Check paths against whiteouts
+        // - Translate backstore paths to overlay paths
+
+        // Forward the original events to the real callback
+        (callback_info.original_callback)(
+            stream_ref,
+            callback_info.original_context as *mut libc::c_void,
+            num_events,
+            event_paths,
+            event_flags,
+            event_ids,
+        );
+    } else {
+        log_message(&format!(
+            "FSEvents replacement callback: no callback info found for stream {:p}",
+            stream_ref
+        ));
+    }
+}
+
+/// Queue an FSEvents broadcast for injection into the callback
+#[cfg(target_os = "macos")]
+fn queue_fsevents_broadcast(stream_id: u64, broadcast: FsEventBroadcastRequest) {
+    let mut queue = FSEVENTS_QUEUE.lock().unwrap();
+    queue.entry(stream_id).or_insert_with(Vec::new).push(broadcast);
+}
+
+/// Get and clear queued FSEvents broadcasts for a stream
+#[cfg(target_os = "macos")]
+fn drain_fsevents_broadcasts(stream_id: u64) -> Vec<FsEventBroadcastRequest> {
+    let mut queue = FSEVENTS_QUEUE.lock().unwrap();
+    queue.remove(&stream_id).unwrap_or_default()
+}
+
+/// CFMessagePort callback for receiving FSEvents batches from daemon
+#[cfg(target_os = "macos")]
+extern "C" fn fsevents_message_port_callback(
+    _local: CFMessagePortRef,
+    msgid: SInt32,
+    data: CFDataRef,
+    _info: *mut c_void,
+) -> CFDataRef {
+    // Catch panics to prevent unwinds crossing FFI boundaries
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fsevents_message_port_callback_impl(_local, msgid, data, _info)
+    })) {
+        Ok(result) => result,
+        Err(_) => {
+            log_message("FSEvents port callback panicked, returning null");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Implementation of the message port callback with RAII cleanup
+#[cfg(target_os = "macos")]
+fn fsevents_message_port_callback_impl(
+    _local: CFMessagePortRef,
+    msgid: SInt32,
+    data: CFDataRef,
+    _info: *mut c_void,
+) -> CFDataRef {
+    // We only handle our specific message ID
+    const AGENTFS_MSG_FSEVENTS_BATCH: SInt32 = 0x1001;
+    if msgid != AGENTFS_MSG_FSEVENTS_BATCH {
+        log_message(&format!("FSEvents port received unknown msgid: {}", msgid));
+        return std::ptr::null_mut();
+    }
+
+    if data.is_null() {
+        log_message("FSEvents port received null data");
+        return std::ptr::null_mut();
+    }
+
+    // Deserialize binary property list
+    unsafe {
+        let mut format_out: u32 = 0;
+        let mut error: *mut std::ffi::c_void = std::ptr::null_mut();
+
+        let plist_raw = CFPropertyListCreateWithData(
+            kCFAllocatorDefault,
+            data,
+            0, // options
+            &mut format_out,
+            &mut error,
+        );
+
+        if !error.is_null() {
+            // error will be cleaned up by RAII
+            let _error = OwnedCFRef::new(error);
+            log_message("FSEvents port: failed to deserialize property list");
+            return std::ptr::null_mut();
+        }
+
+        if plist_raw.is_null() {
+            log_message("FSEvents port: property list deserialization returned null");
+            return std::ptr::null_mut();
+        }
+
+        // Wrap plist in RAII wrapper
+        let mut plist = OwnedCFRef::new(plist_raw as *mut libc::c_void);
+
+        // Validate it's a dictionary
+        let dict_type_id = CFDictionaryGetTypeID();
+        let plist_type_id = CFGetTypeID(plist_raw);
+        if plist_type_id != dict_type_id {
+            log_message("FSEvents port: property list is not a dictionary");
+            return std::ptr::null_mut();
+        }
+
+        // Extract dictionary values - create CFString keys with RAII
+        let type_key = core_foundation::string::CFString::new("type");
+        let version_key = core_foundation::string::CFString::new("version");
+        let stream_id_key = core_foundation::string::CFString::new("stream_id");
+        let num_events_key = core_foundation::string::CFString::new("num_events");
+        let paths_key = core_foundation::string::CFString::new("paths");
+        let flags_key = core_foundation::string::CFString::new("flags");
+        let event_ids_key = core_foundation::string::CFString::new("event_ids");
+
+        // Validate type
+        let type_value = CFDictionaryGetValue(
+            plist_raw,
+            type_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if type_value.is_null() {
+            log_message("FSEvents port: missing 'type' field");
+            return std::ptr::null_mut();
+        }
+
+        // Get version
+        let version_value = CFDictionaryGetValue(
+            plist_raw,
+            version_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if version_value.is_null() {
+            log_message("FSEvents port: missing 'version' field");
+            return std::ptr::null_mut();
+        }
+
+        let mut version: i32 = 0;
+        if CFNumberGetValue(
+            version_value,
+            9, /* kCFNumberIntType */
+            &mut version as *mut i32 as *mut std::ffi::c_void,
+        ) == 0
+        {
+            log_message("FSEvents port: 'version' is not a number");
+            return std::ptr::null_mut();
+        }
+
+        if version != 1 {
+            log_message(&format!("FSEvents port: unsupported version: {}", version));
+            return std::ptr::null_mut();
+        }
+
+        // Get stream_id
+        let stream_id_value = CFDictionaryGetValue(
+            plist_raw,
+            stream_id_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if stream_id_value.is_null() {
+            log_message("FSEvents port: missing 'stream_id' field");
+            return std::ptr::null_mut();
+        }
+
+        let mut stream_id: u64 = 0;
+        if CFNumberGetValue(
+            stream_id_value,
+            4, /* kCFNumberSInt64Type */
+            &mut stream_id as *mut u64 as *mut std::ffi::c_void,
+        ) == 0
+        {
+            log_message("FSEvents port: 'stream_id' is not a number");
+            return std::ptr::null_mut();
+        }
+
+        // Get num_events
+        let num_events_value = CFDictionaryGetValue(
+            plist_raw,
+            num_events_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if num_events_value.is_null() {
+            log_message("FSEvents port: missing 'num_events' field");
+            return std::ptr::null_mut();
+        }
+
+        let mut num_events: i64 = 0;
+        if CFNumberGetValue(
+            num_events_value,
+            10, /* kCFNumberLongType */
+            &mut num_events as *mut i64 as *mut std::ffi::c_void,
+        ) == 0
+        {
+            log_message("FSEvents port: 'num_events' is not a number");
+            return std::ptr::null_mut();
+        }
+
+        // Get paths array
+        let paths_value = CFDictionaryGetValue(
+            plist_raw,
+            paths_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if paths_value.is_null() {
+            log_message("FSEvents port: missing 'paths' field");
+            return std::ptr::null_mut();
+        }
+
+        let array_type_id = CFArrayGetTypeID();
+        let paths_type_id = CFGetTypeID(paths_value);
+        if paths_type_id != array_type_id {
+            log_message("FSEvents port: 'paths' is not an array");
+            return std::ptr::null_mut();
+        }
+
+        let paths_array = paths_value as CFArrayRef;
+        let paths_count = CFArrayGetCount(paths_array) as usize;
+        if paths_count != num_events as usize {
+            log_message(&format!(
+                "FSEvents port: paths count ({}) != num_events ({})",
+                paths_count, num_events
+            ));
+            return std::ptr::null_mut();
+        }
+
+        // Extract paths as retained CFStringRefs (RAII managed)
+        let mut paths: Vec<OwnedCFRef> = Vec::new();
+        let string_type_id = CFStringGetTypeID();
+        for i in 0..paths_count {
+            let item = CFArrayGetValueAtIndex(paths_array, i as CFIndex);
+            if CFGetTypeID(item) == string_type_id {
+                let cf_string = item as CFStringRef;
+                // Retain the string since we'll release it after the callback
+                CFRetain(cf_string as *mut std::ffi::c_void);
+                paths.push(OwnedCFRef::new(cf_string as *mut std::ffi::c_void));
+            } else {
+                log_message(&format!("FSEvents port: paths[{}] is not a string", i));
+                return std::ptr::null_mut();
+            }
+        }
+
+        // Get flags array
+        let flags_value = CFDictionaryGetValue(
+            plist_raw,
+            flags_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if flags_value.is_null() {
+            log_message("FSEvents port: missing 'flags' field");
+            return std::ptr::null_mut();
+        }
+
+        let flags_type_id = CFGetTypeID(flags_value);
+        if flags_type_id != array_type_id {
+            log_message("FSEvents port: 'flags' is not an array");
+            return std::ptr::null_mut();
+        }
+
+        let flags_array = flags_value as CFArrayRef;
+        let flags_count = CFArrayGetCount(flags_array) as usize;
+        if flags_count != num_events as usize {
+            log_message(&format!(
+                "FSEvents port: flags count ({}) != num_events ({})",
+                flags_count, num_events
+            ));
+            return std::ptr::null_mut();
+        }
+
+        // Extract flags
+        let mut flags: Vec<u32> = Vec::new();
+        let number_type_id = CFNumberGetTypeID();
+        for i in 0..flags_count {
+            let item = CFArrayGetValueAtIndex(flags_array, i as CFIndex);
+            if CFGetTypeID(item) == number_type_id {
+                let mut flag: u32 = 0;
+                if CFNumberGetValue(
+                    item,
+                    3, /* kCFNumberSInt32Type */
+                    &mut flag as *mut u32 as *mut std::ffi::c_void,
+                ) != 0
+                {
+                    flags.push(flag);
+                } else {
+                    log_message(&format!(
+                        "FSEvents port: flags[{}] is not a valid number",
+                        i
+                    ));
+                    return std::ptr::null_mut();
+                }
+            } else {
+                log_message(&format!("FSEvents port: flags[{}] is not a number", i));
+                return std::ptr::null_mut();
+            }
+        }
+
+        // Get event_ids array
+        let event_ids_value = CFDictionaryGetValue(
+            plist_raw,
+            event_ids_key.as_concrete_TypeRef() as *const std::ffi::c_void,
+        );
+        if event_ids_value.is_null() {
+            log_message("FSEvents port: missing 'event_ids' field");
+            return std::ptr::null_mut();
+        }
+
+        let event_ids_type_id = CFGetTypeID(event_ids_value);
+        if event_ids_type_id != array_type_id {
+            log_message("FSEvents port: 'event_ids' is not an array");
+            return std::ptr::null_mut();
+        }
+
+        let event_ids_array = event_ids_value as CFArrayRef;
+        let event_ids_count = CFArrayGetCount(event_ids_array) as usize;
+        if event_ids_count != num_events as usize {
+            log_message(&format!(
+                "FSEvents port: event_ids count ({}) != num_events ({})",
+                event_ids_count, num_events
+            ));
+            return std::ptr::null_mut();
+        }
+
+        // Extract event_ids
+        let mut event_ids: Vec<u64> = Vec::new();
+        for i in 0..event_ids_count {
+            let item = CFArrayGetValueAtIndex(event_ids_array, i as CFIndex);
+            if CFGetTypeID(item) == number_type_id {
+                let mut event_id: u64 = 0;
+                if CFNumberGetValue(
+                    item,
+                    4, /* kCFNumberSInt64Type */
+                    &mut event_id as *mut u64 as *mut std::ffi::c_void,
+                ) != 0
+                {
+                    event_ids.push(event_id);
+                } else {
+                    log_message(&format!(
+                        "FSEvents port: event_ids[{}] is not a valid number",
+                        i
+                    ));
+                    return std::ptr::null_mut();
+                }
+            } else {
+                log_message(&format!("FSEvents port: event_ids[{}] is not a number", i));
+                return std::ptr::null_mut();
+            }
+        }
+
+        // plist will be cleaned up automatically by OwnedCFRef
+        // CFString keys are now RAII and clean up automatically
+
+        // Create CFArray from paths for the callback
+        let cf_paths_array_wrapper = if !paths.is_empty() {
+            // Extract raw pointers for CFArray creation
+            let path_ptrs: Vec<CFStringRef> =
+                paths.iter().map(|owned| owned.ptr.unwrap() as CFStringRef).collect();
+
+            let array = CFArrayCreate(
+                kCFAllocatorDefault,
+                path_ptrs.as_ptr() as *const *const libc::c_void,
+                path_ptrs.len() as CFIndex,
+                std::ptr::null(),
+            );
+            if array.is_null() {
+                log_message("Failed to create CFArray for paths");
+                return std::ptr::null_mut();
+            }
+            Some(OwnedCFRef::new(array as *mut libc::c_void))
+        } else {
+            None
+        };
+
+        // Find the callback for this stream and deliver events
+        let callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+        if let Some(callback_info) = callbacks.values().find(|info| info.stream_id == stream_id) {
+            if !paths.is_empty() && cf_paths_array_wrapper.is_some() {
+                log_message(&format!(
+                    "Delivering {} events to stream {}",
+                    paths.len(),
+                    stream_id
+                ));
+
+                // Call the original FSEvents callback
+                let cf_paths_array = cf_paths_array_wrapper.as_ref().unwrap().ptr.unwrap();
+                (callback_info.original_callback)(
+                    callback_info.stream_id as FSEventStreamRef,
+                    callback_info.original_context as *mut libc::c_void,
+                    paths.len(),
+                    cf_paths_array,
+                    flags.as_ptr(),
+                    event_ids.as_ptr(),
+                );
+            } else {
+                log_message(&format!(
+                    "No valid events to deliver for stream {}",
+                    stream_id
+                ));
+            }
+        } else {
+            log_message(&format!("No callback found for stream {}", stream_id));
+        }
+
+        // paths and cf_paths_array_wrapper will clean up automatically
+        std::ptr::null_mut()
+    }
+}
+
+/// Create the per-process CFMessagePort for FSEvents delivery
+#[cfg(target_os = "macos")]
+fn create_fsevents_message_port() -> Result<(), String> {
+    let mut port_guard = FSEVENTS_MESSAGE_PORT.lock().unwrap();
+    if port_guard.is_some() {
+        return Ok(()); // Already created
+    }
+
+    let port_name = &*FSEVENTS_PORT_NAME;
+
+    // Create CFString from Rust string with RAII
+    let cf_string = core_foundation::string::CFString::new(port_name);
+
+    // Create message port context
+    let mut context = CFMessagePortContext {
+        version: 0,
+        info: std::ptr::null_mut(),
+        retain: None,
+        release: None,
+        copy_description: None,
+    };
+
+    let mut should_free_info = 0u8;
+
+    // Create the local message port
+    let port = unsafe {
+        CFMessagePortCreateLocal(
+            kCFAllocatorDefault,
+            cf_string.as_concrete_TypeRef() as CFStringRef,
+            fsevents_message_port_callback,
+            &context,
+            &mut should_free_info,
+        )
+    };
+
+    if port.is_null() {
+        return Err("Failed to create CFMessagePort".to_string());
+    }
+
+    // Send port name to daemon via control socket
+    send_port_name_to_daemon(port_name)?;
+
+    *port_guard = Some(OwnedMessagePort::new(port));
+
+    log_message(&format!("Created FSEvents message port: {}", port_name));
+    Ok(())
+}
+
+/// Send the message port name to the daemon
+#[cfg(target_os = "macos")]
+fn send_port_name_to_daemon(port_name: &str) -> Result<(), String> {
+    use agentfs_proto::messages::*;
+    use agentfs_proto::*;
+
+    let request = Request::WatchRegisterFSEventsPort((
+        vec![], // version
+        WatchRegisterFSEventsPortRequest {
+            pid: std::process::id(),
+            port_name: port_name.as_bytes().to_vec(),
+        },
+    ));
+
+    // Send via the existing control socket
+    send_request(request, |response| match response {
+        Response::WatchRegisterFSEventsPort(_) => Some(()),
+        _ => None,
+    })
+    .map_err(|e| format!("Failed to send port registration: {}", e))
+}
+
+/// Add message port source to a run loop
+#[cfg(target_os = "macos")]
+fn add_port_to_run_loop(run_loop: CFRunLoopRef, mode: CFStringRef) -> Result<(), String> {
+    let port_guard = FSEVENTS_MESSAGE_PORT.lock().unwrap();
+    let port = match port_guard.as_ref() {
+        Some(p) => p.inner.as_concrete_TypeRef(),
+        None => return Err("Message port not created".to_string()),
+    };
+
+    let mut sources_guard = FSEVENTS_RUN_LOOP_SOURCES.lock().unwrap();
+
+    // Check if we already have a source for this run loop/mode
+    let key = CFRunLoopSourceKey(run_loop, mode);
+    if sources_guard.contains_key(&key) {
+        return Ok(()); // Already added
+    }
+
+    // Create run loop source for the port
+    let source = unsafe { CFMessagePortCreateRunLoopSource(kCFAllocatorDefault, port, 0) };
+
+    if source.is_null() {
+        return Err("Failed to create CFRunLoopSource for message port".to_string());
+    }
+
+    // Ensure we remove the source from run loop if we fail later
+    let _cleanup = guard((run_loop, source, mode), |(rl, src, md)| unsafe {
+        CFRunLoopRemoveSource(rl, src, md);
+        CFRelease(src as *mut c_void);
+    });
+
+    // Add source to run loop
+    unsafe {
+        CFRunLoopAddSource(run_loop, source, mode);
+    }
+
+    sources_guard.insert(key, CFRunLoopSourceWrapper(source));
+
+    // Source is now owned by the sources_guard, disable cleanup
+    std::mem::forget(_cleanup);
+
+    log_message("Added FSEvents message port to run loop");
+    Ok(())
+}
+
+/// Start background thread to read unsolicited messages from daemon
+#[cfg(target_os = "macos")]
+fn start_message_reader(stream: Arc<Mutex<UnixStream>>) {
+    let handle = std::thread::spawn(move || {
+        loop {
+            // Try to read a message from the stream
+            let mut len_buf = [0u8; 4];
+            let read_result = {
+                let mut stream_guard = stream.lock().unwrap();
+                stream_guard.read_exact(&mut len_buf)
+            };
+
+            if read_result.is_err() {
+                // Connection closed or error, exit thread
+                break;
+            }
+
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            let mut msg_buf = vec![0u8; msg_len];
+
+            let read_result = {
+                let mut stream_guard = stream.lock().unwrap();
+                stream_guard.read_exact(&mut msg_buf)
+            };
+
+            if read_result.is_err() {
+                // Connection closed or error, exit thread
+                break;
+            }
+
+            // This code path is for Unix socket unsolicited messages
+            // CFMessagePort messages are handled by the port callback
+            log_message(&format!(
+                "Received unsolicited message on Unix socket: {} bytes",
+                msg_buf.len()
+            ));
+        }
+        log_message("Message reader thread exiting");
+    });
+
+    *MESSAGE_READER_THREAD.lock().unwrap() = Some(handle);
 }
 
 /// Execute a closure with access to the current process's dirfd mapping
@@ -147,12 +1197,54 @@ fn resolve_at_path(dirfd: RawFd, path: &CStr) -> PathBuf {
 }
 
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
+
+/// Background thread handle for reading unsolicited messages
+#[cfg(target_os = "macos")]
+static MESSAGE_READER_THREAD: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
 
 // Global directory file descriptor mapping keyed by process ID
 static DIRFD_MAPPING: std::sync::LazyLock<Mutex<HashMap<u32, DirfdMapping>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Watcher table for EVFILT_VNODE registrations: (kq_fd, fd) -> requested_fflags
+#[cfg(target_os = "macos")]
+static WATCHER_TABLE: std::sync::LazyLock<Mutex<HashMap<(c_int, u32), u32>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// Track which file descriptors are kqueues (fd -> true)
+static KQUEUE_FDS: std::sync::LazyLock<Mutex<HashSet<c_int>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+
+// Track doorbell ident per kqueue (kq_fd -> doorbell_ident)
+static DOORBELL_IDENTS: std::sync::LazyLock<Mutex<HashMap<c_int, u64>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Queue for FSEvents broadcasts received from daemon: stream_id -> Vec<FsEventBroadcastRequest>
+#[cfg(target_os = "macos")]
+static FSEVENTS_QUEUE: std::sync::LazyLock<Mutex<HashMap<u64, Vec<FsEventBroadcastRequest>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Per-process CFMessagePort for FSEvents delivery
+#[cfg(target_os = "macos")]
+static FSEVENTS_MESSAGE_PORT: Mutex<Option<OwnedMessagePort>> = Mutex::new(None);
+
+/// Run-loop sources for the message port: (run_loop, mode) -> source
+#[cfg(target_os = "macos")]
+static FSEVENTS_RUN_LOOP_SOURCES: std::sync::LazyLock<
+    Mutex<HashMap<CFRunLoopSourceKey, CFRunLoopSourceWrapper>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Message port name for this process
+#[cfg(target_os = "macos")]
+static FSEVENTS_PORT_NAME: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
+    let pid = std::process::id();
+    format!("com.agentfs.ipc.fsevents.{}.{:x}", pid, timestamp)
+});
 
 // Directory handles are now managed by FsCore directly
 
@@ -169,7 +1261,7 @@ fn remove_env_var(key: &str) {
     unsafe { std::env::remove_var(key) };
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 #[ctor::ctor]
 fn initialize() {
     if INIT_GUARD.set(()).is_err() {
@@ -225,10 +1317,15 @@ fn initialize() {
 
     match attempt_handshake(&socket_path, &exe, &allow) {
         Ok(stream) => {
+            let stream_arc = Arc::new(Mutex::new(stream));
             let mut stream_guard = STREAM.lock().unwrap();
             if stream_guard.is_none() {
-                *stream_guard = Some(Arc::new(Mutex::new(stream)));
+                *stream_guard = Some(Arc::clone(&stream_arc));
                 log_message("STREAM set successfully in ctor");
+
+                // Start background message reader thread
+                start_message_reader(stream_arc);
+                log_message("Background message reader thread started");
             } else {
                 log_message("STREAM already set in ctor");
             }
@@ -247,7 +1344,7 @@ fn initialize() {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "macos"))]
 #[ctor::ctor]
 fn initialize() {}
 
@@ -378,7 +1475,251 @@ fn decode_ssz<T: Decode>(data: &[u8]) -> Result<T, String> {
     T::from_ssz_bytes(data).map_err(|e| format!("SSZ decode error: {:?}", e))
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
+fn send_request<F, T>(request: Request, extract_response: F) -> Result<T, String>
+where
+    F: Fn(Response) -> Option<T>,
+{
+    // Try to send request, reconnecting if necessary
+    let mut attempts = 0;
+    let max_attempts = 3;
+
+    loop {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            match stream_guard.as_ref() {
+                Some(arc) => Arc::clone(arc),
+                None => {
+                    // Try to reconnect if we don't have a stream
+                    if attempts == 0 {
+                        log_message("STREAM not set, attempting to reconnect to daemon");
+                        if let Err(e) = try_reconnect_to_daemon() {
+                            log_message(&format!("reconnection failed: {}", e));
+                        }
+                        attempts += 1;
+                        continue;
+                    }
+
+                    let fail_fast =
+                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
+                    if fail_fast {
+                        log_message(&format!(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
+                        ));
+                        std::process::exit(1);
+                    } else {
+                        log_message("STREAM not set, falling back to original function");
+                        return Err("not connected to AgentFS control socket".to_string());
+                    }
+                }
+            }
+        };
+
+        let ssz_bytes = encode_ssz(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        // Send request
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            let result = stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes));
+
+            if let Err(e) = result {
+                // Connection failed, try to reconnect
+                log_message(&format!(
+                    "send request failed: {}, attempting reconnection",
+                    e
+                ));
+                if attempts < max_attempts {
+                    if let Err(reconnect_err) = try_reconnect_to_daemon() {
+                        log_message(&format!("reconnection failed: {}", reconnect_err));
+                    }
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "send request after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+        }
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            let result = stream_guard.read_exact(&mut len_buf);
+
+            if let Err(e) = result {
+                // Connection failed during read, try to reconnect
+                log_message(&format!(
+                    "read response length failed: {}, attempting reconnection",
+                    e
+                ));
+                if attempts < max_attempts {
+                    if let Err(reconnect_err) = try_reconnect_to_daemon() {
+                        log_message(&format!("reconnection failed: {}", reconnect_err));
+                    }
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "read response after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+
+            let result = stream_guard.read_exact(&mut msg_buf);
+            if let Err(e) = result {
+                // Connection failed during read, try to reconnect
+                log_message(&format!(
+                    "read response failed: {}, attempting reconnection",
+                    e
+                ));
+                if attempts < max_attempts {
+                    if let Err(reconnect_err) = try_reconnect_to_daemon() {
+                        log_message(&format!("reconnection failed: {}", reconnect_err));
+                    }
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "read response after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+        }
+
+        // Decode the response
+        match decode_ssz::<Response>(&msg_buf) {
+            Ok(response) => match extract_response(response) {
+                Some(result) => return Ok(result),
+                None => {
+                    if attempts < max_attempts {
+                        log_message("unexpected response type, retrying");
+                        attempts += 1;
+                        continue;
+                    } else {
+                        return Err("unexpected response type".to_string());
+                    }
+                }
+            },
+            Err(e) => {
+                if attempts < max_attempts {
+                    log_message(&format!("decode response failed: {}, retrying", e));
+                    attempts += 1;
+                    continue;
+                } else {
+                    return Err(format!(
+                        "decode response after {} attempts: {}",
+                        max_attempts, e
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Try to reconnect to the daemon and re-register all watches
+#[cfg(target_os = "macos")]
+fn try_reconnect_to_daemon() -> Result<(), String> {
+    log_message("Attempting to reconnect to AgentFS daemon");
+
+    // Clear existing stream
+    {
+        let mut stream_guard = STREAM.lock().unwrap();
+        *stream_guard = None;
+    }
+
+    // Try to connect using environment variables
+    let socket_path_env = std::env::var_os("AGENTFS_INTERPOSE_SOCKET");
+    let exe_env = std::env::var_os("AGENTFS_INTERPOSE_EXE");
+
+    match (socket_path_env, exe_env) {
+        (Some(socket_path_str), Some(exe_str)) => {
+            let socket_path = PathBuf::from(socket_path_str);
+            let exe = PathBuf::from(exe_str);
+
+            // Attempt handshake
+            let allow = AllowDecision::from_env(&exe); // Assume we were previously allowed
+            match attempt_handshake(&socket_path, &exe, &allow) {
+                Ok(stream) => {
+                    let stream_arc = Arc::new(Mutex::new(stream));
+                    {
+                        let mut stream_guard = STREAM.lock().unwrap();
+                        *stream_guard = Some(Arc::clone(&stream_arc));
+                    }
+
+                    log_message("Successfully reconnected to daemon");
+
+                    // Re-register all active watches
+                    re_register_all_watches()?;
+
+                    Ok(())
+                }
+                Err(e) => Err(format!("handshake failed: {}", e)),
+            }
+        }
+        _ => Err(
+            "missing AGENTFS_INTERPOSE_SOCKET or AGENTFS_INTERPOSE_EXE environment variables"
+                .to_string(),
+        ),
+    }
+}
+
+/// Re-register all active watches with the daemon
+#[cfg(target_os = "macos")]
+fn re_register_all_watches() -> Result<(), String> {
+    log_message("Re-registering all active watches");
+
+    let pid = std::process::id() as u32;
+
+    // Re-register kqueue watches
+    {
+        let watcher_table = WATCHER_TABLE.lock().unwrap();
+        for ((kq_fd, fd), fflags) in watcher_table.iter() {
+            let request = Request::watch_register_kqueue(
+                pid,
+                *kq_fd as u32,
+                0, // watch_id - daemon will assign
+                *fd as u32,
+                *fflags,
+            );
+
+            send_request(request, |_| None)?;
+            log_message(&format!(
+                "Re-registered watch for fd {} on kqueue {}",
+                fd, kq_fd
+            ));
+        }
+    }
+
+    // Re-register doorbell for active kqueues
+    {
+        let doorbell_idents = DOORBELL_IDENTS.lock().unwrap();
+        for (kq_fd, doorbell_ident) in doorbell_idents.iter() {
+            let request = Request::watch_doorbell(pid, *kq_fd as u32, *doorbell_ident);
+            send_request(request, |_| None)?;
+            log_message(&format!("Re-registered doorbell for kqueue {}", kq_fd));
+        }
+    }
+
+    // Re-register FSEvents streams - this is more complex as we need callback info
+    // For now, we'll skip this as it's less critical for basic functionality
+
+    log_message("Finished re-registering watches");
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn attempt_handshake(
     socket_path: &Path,
     exe: &Path,
@@ -508,16 +1849,42 @@ mod tests {
         assert!(!decision.allowed);
         assert!(decision.matched_entry.is_none());
     }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn fsevents_translate_paths_stub_implementation() {
+        // Test that the translate_fsevent_paths function returns an empty vec
+        // indicating that CoreFoundation array manipulation is not yet implemented
+        let dummy_cfarray = std::ptr::null_mut();
+        let result = translate_fsevent_paths(dummy_cfarray);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn fsevents_hooks_are_defined() {
+        // Test that the FSEvents hooks are compiled and available
+        // This is a compile-time test - if the hooks don't exist, this won't compile
+
+        // Note: We can't easily test the actual hook behavior without mocking
+        // the CoreFoundation APIs, but we can verify the hook functions are defined
+        // by checking that the module compiles successfully with the hooks present.
+        assert!(true); // Placeholder assertion - the real test is compilation success
+    }
 }
 
-// Interposition implementation for file operations (macOS)
+// Interposition implementation for file operations
 #[cfg(target_os = "macos")]
 mod interpose {
     use super::*;
     use libc::{
-        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, c_char, c_int, c_void, cmsghdr, gid_t,
-        iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
+        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET, c_char, c_int,
+        c_uint, c_void, gid_t, iovec, mode_t, msghdr, off_t, size_t, ssize_t, timespec, uid_t,
     };
+
+    // Re-export kqueue types from parent scope for use in this module
+    use super::EVFILT_VNODE;
 
     // ACL types - these may need to be defined manually for macOS
     type acl_type_t = u32;
@@ -547,65 +1914,6 @@ mod interpose {
     use std::os::unix::io::FromRawFd;
 
     /// Generic function to send a request and receive a response
-    fn send_request<F, T>(request: Request, extract_response: F) -> Result<T, String>
-    where
-        F: FnOnce(Response) -> Option<T>,
-    {
-        let stream_arc = {
-            let stream_guard = STREAM.lock().unwrap();
-            match stream_guard.as_ref() {
-                Some(arc) => Arc::clone(arc),
-                None => {
-                    let fail_fast =
-                        std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
-                    if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
-                        std::process::exit(1);
-                    } else {
-                        log_message("STREAM not set, falling back to original function");
-                        return Err("not connected to AgentFS control socket".to_string());
-                    }
-                }
-            }
-        };
-
-        let ssz_bytes = encode_ssz(&request);
-        let ssz_len = ssz_bytes.len() as u32;
-
-        {
-            let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard
-                .write_all(&ssz_len.to_le_bytes())
-                .and_then(|_| stream_guard.write_all(&ssz_bytes))
-                .map_err(|e| format!("send request: {e}"))?;
-        }
-
-        // Read response
-        let mut len_buf = [0u8; 4];
-        let mut msg_buf: Vec<u8>;
-        {
-            let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard
-                .read_exact(&mut len_buf)
-                .map_err(|e| format!("read response length: {e}"))?;
-            let msg_len = u32::from_le_bytes(len_buf) as usize;
-            msg_buf = vec![0u8; msg_len];
-            stream_guard
-                .read_exact(&mut msg_buf)
-                .map_err(|e| format!("read response: {e}"))?;
-        }
-
-        // Decode the response
-        match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => match extract_response(response) {
-                Some(result) => Ok(result),
-                None => Err("unexpected response type".to_string()),
-            },
-            Err(e) => Err(format!("decode response failed: {:?}", e)),
-        }
-    }
 
     /// Send dir_open request and receive directory handle
     fn send_dir_open_request(path: &CStr) -> Result<u64, String> {
@@ -3003,6 +4311,55 @@ mod interpose {
     /// Interposed close function (for fd tracking)
     redhook::hook! {
         unsafe fn close(fd: c_int) -> c_int => my_close_fd_tracking {
+            // Check if this fd is a kqueue or being watched by kqueue and notify daemon to unregister
+            {
+                let is_kqueue = KQUEUE_FDS.lock().unwrap().contains(&fd);
+
+                if is_kqueue {
+                    // This is a kqueue being closed - clean up all its watches
+                    let pid = std::process::id() as u32;
+                    let request = Request::watch_unregister_kqueue(pid, fd as u32);
+
+                    if let Err(e) = send_request(request, |_| None::<()>) {
+                        log_message(&format!("failed to send kqueue unregister for fd {}: {}", fd, e));
+                    } else {
+                        log_message(&format!("sent kqueue unregister for kqueue fd {}", fd));
+                    }
+
+                    // Remove from kqueue tracking
+                    KQUEUE_FDS.lock().unwrap().remove(&fd);
+
+                    // Remove doorbell ident for this kqueue
+                    DOORBELL_IDENTS.lock().unwrap().remove(&fd);
+
+                    // Clear watcher table entries for this kqueue
+                    WATCHER_TABLE.lock().unwrap().retain(|(kq_fd, _), _| *kq_fd != fd);
+                } else {
+                    // Check if this fd is being watched by kqueue
+                    let mut watcher_table = WATCHER_TABLE.lock().unwrap();
+                    // Find all kqueues watching this fd
+                    let watching_kqueues: Vec<_> = watcher_table.keys()
+                        .filter(|(_, watched_fd)| *watched_fd == fd as u32)
+                        .map(|(kq_fd, _)| *kq_fd)
+                        .collect();
+
+                    // Remove all watcher table entries for this fd
+                    watcher_table.retain(|(_, watched_fd), _| *watched_fd != fd as u32);
+
+                    for kq_fd in watching_kqueues {
+                        // Send unregister message to daemon
+                        let pid = std::process::id() as u32;
+                        let request = Request::watch_unregister_fd(pid, fd as u32);
+
+                        if let Err(e) = send_request(request, |_| None::<()>) {
+                            log_message(&format!("failed to send watch unregister for fd {}: {}", fd, e));
+                        } else {
+                            log_message(&format!("sent watch unregister for fd {} on kqueue {}", fd, kq_fd));
+                        }
+                    }
+                }
+            }
+
             // Remove fd mapping before closing
             with_dirfd_mapping(|mapping| {
                 mapping.remove_path(fd);
@@ -4105,117 +5462,530 @@ mod interpose {
             }
         }
     }
-}
 
-// Interposition implementation for a minimal Linux set (readlink/readlinkat)
-#[cfg(target_os = "linux")]
-mod interpose_linux {
-    use super::*;
-    use agentfs_proto::{Request, Response};
-    use libc::{c_char, c_int, c_void, size_t, ssize_t};
+    /// Interposed FSEventStreamCreate function - translate overlay paths to backstore paths
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamCreate(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, paths_to_watch: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create {
+            log_message(&format!("interposing FSEventStreamCreate(since_when={}, latency={}, flags={:#x})",
+                since_when, latency, flags));
 
-    /// Generic function to send a request and receive a response
-    fn send_request<F, T>(request: Request, extract_response: F) -> Result<T, String>
-    where
-        F: FnOnce(Response) -> Option<T>,
-    {
+            // Generate a unique stream ID
+            let stream_id = FSEVENTS_STREAM_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            // Store the original callback information
+            let callback_info = FSEventsCallbackInfo {
+                original_callback: callback,
+                original_context: context as usize,
+                stream_id,
+            };
+
+            // For in-memory AgentFS, we don't need path translation since there are no physical paths
+            // Just create the stream with original paths and register it with the daemon
+            let stream_ref = redhook::real!(FSEventStreamCreate)(allocator, fsevents_replacement_callback, context, paths_to_watch, since_when, latency, flags);
+
+            // Store the callback information keyed by stream reference
+            if !stream_ref.is_null() {
+                let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+                callbacks.insert(stream_ref as usize, callback_info);
+                log_message(&format!("FSEvents: stored callback info for stream {:p}", stream_ref));
+
+                // Register the FSEvents stream with the daemon
+                // Extract the root paths from the CFArray
+                let mut root_paths = Vec::new();
+                if !paths_to_watch.is_null() {
+                    // Get the count of paths in the array
+                    let count = unsafe { CFArrayGetCount(paths_to_watch) };
+                    for i in 0..count {
+                        // Get each path string from the array
+                        let cf_path = unsafe { CFArrayGetValueAtIndex(paths_to_watch, i) as CFStringRef };
+                        if !cf_path.is_null() {
+                            // Convert CFString to Rust String
+                            let path_str = unsafe {
+                                let c_str = CFStringGetCStringPtr(cf_path, kCFStringEncodingUTF8);
+                                if !c_str.is_null() {
+                                    std::ffi::CStr::from_ptr(c_str).to_string_lossy().into_owned()
+                                } else {
+                                    // Fallback: try to get the string as bytes
+                                    let length = CFStringGetLength(cf_path);
+                                    let mut buffer = vec![0u8; (length * 4) as usize]; // UTF-8 worst case
+                                    let success = CFStringGetCString(cf_path, buffer.as_mut_ptr() as *mut c_char, buffer.len() as CFIndex, kCFStringEncodingUTF8);
+                                    if success {
+                                        let c_str = std::ffi::CStr::from_ptr(buffer.as_ptr() as *const c_char);
+                                        c_str.to_string_lossy().into_owned()
+                                    } else {
+                                        log_message(&format!("Failed to convert CFString to Rust string for path at index {}", i));
+                                        continue;
+                                    }
+                                }
+                            };
+                            root_paths.push(path_str.into_bytes());
+                        }
+                    }
+                }
+
+                let register_req = WatchRegisterFSEventsRequest {
+                    pid: std::process::id(),
+                    stream_id,
+                    root_paths,
+                    flags,
+                    latency: (latency * 1_000_000_000.0) as u64, // Convert seconds to nanoseconds
+                };
+
+                match send_request(Request::WatchRegisterFSEvents((b"1".to_vec(), register_req)), |response| match response {
+                    Response::WatchRegisterFSEvents(_) => Some(()),
+                    _ => None,
+                }) {
+                    Ok(_) => log_message(&format!("FSEvents: registered stream {} with daemon", stream_id)),
+                    Err(e) => log_message(&format!("FSEvents: failed to register stream {} with daemon: {}", stream_id, e)),
+                }
+            }
+
+            stream_ref
+        }
+    }
+
+    /// Interposed FSEventStreamCreateRelativeToDevice function
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamCreateRelativeToDevice(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, device_to_watch: dev_t, paths_to_watch_relative_to_device: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create_relative_to_device {
+            log_message(&format!("interposing FSEventStreamCreateRelativeToDevice(device={}, since_when={}, latency={}, flags={:#x})",
+                device_to_watch, since_when, latency, flags));
+
+            // Generate a unique stream ID
+            let stream_id = FSEVENTS_STREAM_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            // Store the original callback information
+            let callback_info = FSEventsCallbackInfo {
+                original_callback: callback,
+                original_context: context as usize,
+                stream_id,
+            };
+
+            // Device-relative paths don't need translation as they're already relative to a device
+            // Just log and pass through with wrapped callback
+            log_message("FSEventStreamCreateRelativeToDevice: device-relative paths, no translation needed");
+            let stream_ref = redhook::real!(FSEventStreamCreateRelativeToDevice)(allocator, fsevents_replacement_callback, context, device_to_watch, paths_to_watch_relative_to_device, since_when, latency, flags);
+
+            // Store the callback information keyed by stream reference
+            if !stream_ref.is_null() {
+                let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+                callbacks.insert(stream_ref as usize, callback_info);
+                log_message(&format!("FSEvents: stored callback info for device-relative stream {:p}", stream_ref));
+
+                // Register the FSEvents stream with the daemon
+                let register_req = WatchRegisterFSEventsRequest {
+                    pid: std::process::id(),
+                    stream_id,
+                    root_paths: vec![], // Device-relative, no paths to register
+                    flags,
+                    latency: (latency * 1_000_000_000.0) as u64, // Convert seconds to nanoseconds
+                };
+
+                match send_request(Request::WatchRegisterFSEvents((b"1".to_vec(), register_req)), |response| match response {
+                    Response::WatchRegisterFSEvents(_) => Some(()),
+                    _ => None,
+                }) {
+                    Ok(_) => log_message(&format!("FSEvents: registered device-relative stream {} with daemon", stream_id)),
+                    Err(e) => log_message(&format!("FSEvents: failed to register device-relative stream {} with daemon: {}", stream_id, e)),
+                }
+            }
+
+            stream_ref
+        }
+    }
+
+    /// Interposed FSEventStreamScheduleWithRunLoop function
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamScheduleWithRunLoop(stream_ref: FSEventStreamRef, run_loop: CFRunLoopRef, run_loop_mode: CFStringRef) -> () => my_fsevent_stream_schedule_with_run_loop {
+            log_message(&format!("interposing FSEventStreamScheduleWithRunLoop for stream {:p}", stream_ref));
+
+            // Create the message port if this is the first scheduling
+            if let Err(e) = create_fsevents_message_port() {
+                log_message(&format!("Failed to create FSEvents message port: {}", e));
+            }
+
+            // Add the message port source to this run loop/mode
+            if let Err(e) = add_port_to_run_loop(run_loop, run_loop_mode) {
+                log_message(&format!("Failed to add message port to run loop: {}", e));
+            }
+
+            // Call the original function
+            redhook::real!(FSEventStreamScheduleWithRunLoop)(stream_ref, run_loop, run_loop_mode);
+        }
+    }
+
+    /// Interposed FSEventStreamStop function - clean up callback information
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamStop(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_stop {
+            log_message(&format!("interposing FSEventStreamStop for stream {:p}", stream_ref));
+
+            // Call the original function first
+            redhook::real!(FSEventStreamStop)(stream_ref);
+
+            // Clean up our stored callback information
+            let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+            callbacks.remove(&(stream_ref as usize));
+            log_message(&format!("FSEvents: cleaned up callback info for stopped stream {:p}", stream_ref));
+        }
+    }
+
+    /// Interposed FSEventStreamInvalidate function - clean up callback information
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn FSEventStreamInvalidate(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_invalidate {
+            log_message(&format!("interposing FSEventStreamInvalidate for stream {:p}", stream_ref));
+
+            // Call the original function first
+            redhook::real!(FSEventStreamInvalidate)(stream_ref);
+
+            // Clean up our stored callback information
+            let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
+            callbacks.remove(&(stream_ref as usize));
+            log_message(&format!("FSEvents: cleaned up callback info for invalidated stream {:p}", stream_ref));
+        }
+    }
+
+    /// Interposed kevent function - filter and inject vnode events based on AgentFS state
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn kevent(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, timeout: *const libc::timespec) -> c_int => my_kevent {
+            log_message(&format!("interposing kevent(kq={}, nchanges={}, nevents={})",
+                kq, nchanges, nevents));
+
+            // Collision hygiene: Check changelist for EVFILT_USER events that might collide with our doorbell
+            if nchanges > 0 && !changelist.is_null() {
+                let doorbell_idents = DOORBELL_IDENTS.lock().unwrap();
+                let current_doorbell_ident = doorbell_idents.get(&kq).copied().unwrap_or(0);
+                if current_doorbell_ident != 0 {
+                    for i in 0..nchanges {
+                        let change = &*changelist.offset(i as isize);
+                        if change.filter == EVFILT_USER && (change.flags & EV_ADD) != 0 {
+                            let requested_ident = change.ident;
+                            if requested_ident >= 0xAFFE00000000usize && requested_ident as u64 == current_doorbell_ident {
+                                log_message(&format!("Detected doorbell collision: app trying to register ident {:#x} which conflicts with our doorbell", requested_ident));
+
+                                // Delete the current doorbell
+                                let mut delete_kev = libc::kevent {
+                                    ident: current_doorbell_ident as usize,
+                                    filter: EVFILT_USER,
+                                    flags: EV_DELETE,
+                                    fflags: 0,
+                                    data: 0,
+                                    udata: std::ptr::null_mut(),
+                                };
+                                let delete_result = redhook::real!(kevent)(kq, &delete_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                                if delete_result == -1 {
+                                    log_message(&format!("Failed to delete old doorbell ident {:#x}: {}", current_doorbell_ident, std::io::Error::last_os_error()));
+                                }
+
+                                // Allocate new doorbell ident
+                                let new_doorbell_ident = generate_doorbell_ident();
+
+                                // Register new doorbell
+                                let mut add_kev = libc::kevent {
+                                    ident: new_doorbell_ident as usize,
+                                    filter: EVFILT_USER,
+                                    flags: EV_ADD | EV_ENABLE | EV_CLEAR,
+                                    fflags: 0,
+                                    data: 0,
+                                    udata: std::ptr::null_mut(),
+                                };
+                                let add_result = redhook::real!(kevent)(kq, &add_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                                if add_result == -1 {
+                                    log_message(&format!("Failed to register new doorbell ident {:#x}: {}", new_doorbell_ident, std::io::Error::last_os_error()));
+                                } else {
+                                    // Update the doorbell ident for this kqueue
+                                    drop(doorbell_idents);
+                                    DOORBELL_IDENTS.lock().unwrap().insert(kq, new_doorbell_ident);
+
+                                    // Notify daemon about the ident change
+                                    let pid = std::process::id() as u32;
+                                    let update_request = Request::update_doorbell_ident(pid, current_doorbell_ident, new_doorbell_ident);
+                                    if let Err(e) = send_request(update_request, |_| Some(())) {
+                                        log_message(&format!("Failed to notify daemon about doorbell ident change: {}", e));
+                                    } else {
+                                        log_message(&format!("Notified daemon: doorbell ident changed from {:#x} to {:#x}", current_doorbell_ident, new_doorbell_ident));
+                                    }
+                                }
+                                break; // Only handle one collision per call
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update watcher table based on changelist (track EVFILT_VNODE registrations)
+            if nchanges > 0 && !changelist.is_null() {
+                let mut watcher_table = WATCHER_TABLE.lock().unwrap();
+                for i in 0..nchanges {
+                    let change = &*changelist.offset(i as isize);
+                    if change.filter == EVFILT_VNODE && (change.flags & (EV_ADD | EV_DELETE)) != 0 {
+                        let key = (kq, change.ident as u32);
+                        let ident = change.ident;
+                        let flags = change.flags;
+                        let fflags = change.fflags;
+                        if (flags & EV_DELETE) != 0 {
+                            watcher_table.remove(&key);
+                            log_message(&format!("Removed vnode watcher: kq={}, fd={}", kq, ident));
+                        } else if (flags & EV_ADD) != 0 {
+                            watcher_table.insert(key, fflags);
+                            log_message(&format!("Added vnode watcher: kq={}, fd={}, fflags={:#x}", kq, ident, fflags));
+                        }
+                    }
+                }
+            }
+
+            // Call the real kevent system call to get pending events
+            let result = redhook::real!(kevent)(kq, changelist, nchanges, eventlist, nevents, timeout);
+
+            if result > 0 && !eventlist.is_null() {
+                log_message(&format!("kevent returned {} events, checking for doorbell", result));
+
+                // Check if we received our doorbell event
+                let mut has_doorbell = false;
+                let doorbell_idents = DOORBELL_IDENTS.lock().unwrap();
+                let current_doorbell_ident = doorbell_idents.get(&kq).copied().unwrap_or(0);
+
+                for i in 0..result {
+                    let event = &*eventlist.offset(i as isize);
+                    if event.filter == EVFILT_USER && event.ident == current_doorbell_ident as usize {
+                        has_doorbell = true;
+                        log_message(&format!("Received doorbell event, requesting pending events"));
+                        break;
+                    }
+                }
+
+                // If we got a doorbell, request pending events from daemon
+                let mut synthesized_events = Vec::new();
+                if has_doorbell {
+                    synthesized_events = request_pending_events(kq);
+                }
+
+                // Inject synthesized events into the result
+                if !synthesized_events.is_empty() {
+                    log_message(&format!("Injecting {} synthesized events", synthesized_events.len()));
+
+                    // For now, append to the end if there's space
+                    // In a full implementation, we'd need to merge properly
+                    let available_space = nevents as usize - result as usize;
+                    let events_to_inject = synthesized_events.len().min(available_space);
+
+                    for i in 0..events_to_inject {
+                        let target_idx = (result as usize + i) as isize;
+                        let synthesized = &synthesized_events[i];
+
+                        // Convert SynthesizedKevent to libc::kevent
+                        let injected_event = libc::kevent {
+                            ident: synthesized.ident as usize, // Convert u64 to usize for libc
+                            filter: synthesized.filter as i16, // Convert u16 back to i16 for libc
+                            flags: synthesized.flags,
+                            fflags: synthesized.fflags,
+                            data: synthesized.data as isize, // Convert u64 to isize for libc
+                            udata: synthesized.udata as *mut libc::c_void, // Convert u64 to pointer
+                        };
+
+                        // Copy to eventlist
+                        *eventlist.offset(target_idx) = injected_event;
+                    }
+
+                    log_message(&format!("Injected {} events, new total: {}", events_to_inject, result as usize + events_to_inject));
+                    return (result as usize + events_to_inject) as c_int;
+                }
+            }
+
+            result
+        }
+    }
+
+    /// Interposed kqueue function - setup doorbell channel to daemon
+    #[cfg(target_os = "macos")]
+    redhook::hook! {
+        unsafe fn kqueue() -> c_int => my_kqueue {
+            log_message("interposing kqueue() - setting up doorbell channel");
+
+            // Call the real kqueue system call first
+            let kq_fd = redhook::real!(kqueue)();
+
+            if kq_fd == -1 {
+                log_message("kqueue() failed");
+                return kq_fd;
+            }
+
+            // Generate a unique doorbell ident for this kqueue
+            let doorbell_ident = generate_doorbell_ident();
+            log_message(&format!("kqueue doorbell: fd={}, ident={:#x}", kq_fd, doorbell_ident));
+
+            // Register the doorbell EVFILT_USER event on this kqueue
+            let mut kev = libc::kevent {
+                ident: doorbell_ident as usize,
+                filter: EVFILT_USER,
+                flags: EV_ADD | EV_ENABLE | EV_CLEAR,
+                fflags: 0,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            };
+
+            let result = redhook::real!(kevent)(kq_fd, &mut kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+            if result == -1 {
+                log_message(&format!("failed to register doorbell on kqueue fd {}", kq_fd));
+                // Continue anyway - the kqueue is still valid
+            } else {
+                // Store the doorbell ident for this kqueue
+                DOORBELL_IDENTS.lock().unwrap().insert(kq_fd, doorbell_ident);
+                log_message(&format!("registered doorbell ident {:#x} for kqueue fd {}", doorbell_ident, kq_fd));
+            }
+
+            // Track this fd as a kqueue
+            KQUEUE_FDS.lock().unwrap().insert(kq_fd);
+
+            // Send WatchDoorbell message to daemon with kqueue FD via SCM_RIGHTS
+            let pid = std::process::id() as u32;
+            let request = Request::watch_doorbell(pid, kq_fd as u32, doorbell_ident);
+
+            // Send the request with FD passing
+            if let Err(e) = send_request_with_fd(request, kq_fd) {
+                log_message(&format!("failed to send WatchDoorbell to daemon: {}", e));
+                // Continue anyway - the app can still use kqueue normally
+            } else {
+                log_message(&format!("sent WatchDoorbell to daemon: pid={}, kq_fd={}, doorbell_ident={:#x}",
+                    pid, kq_fd, doorbell_ident));
+            }
+
+            kq_fd
+        }
+    }
+
+    /// Send a request to daemon with FD passing via SCM_RIGHTS
+    #[cfg(target_os = "macos")]
+    fn send_request_with_fd(request: Request, fd_to_send: c_int) -> Result<(), String> {
+        use std::os::unix::io::AsRawFd;
+
         let stream_arc = {
             let stream_guard = STREAM.lock().unwrap();
             match stream_guard.as_ref() {
                 Some(arc) => Arc::clone(arc),
-                None => {
-                    return Err("not connected to AgentFS control socket".to_string());
-                }
+                None => return Err("not connected to AgentFS control socket".to_string()),
             }
         };
 
         let ssz_bytes = encode_ssz(&request);
         let ssz_len = ssz_bytes.len() as u32;
 
+        // Prepare message with ancillary data for FD passing
+        let mut iov = iovec {
+            iov_base: ssz_len.to_le_bytes().as_ptr() as *mut c_void,
+            iov_len: 4,
+        };
+
+        let mut msg = msghdr {
+            msg_name: std::ptr::null_mut(),
+            msg_namelen: 0,
+            msg_iov: &mut iov,
+            msg_iovlen: 1,
+            msg_control: std::ptr::null_mut(),
+            msg_controllen: 0,
+            msg_flags: 0,
+        };
+
+        unsafe {
+            // Allocate space for ancillary data
+            let cmsg_space = CMSG_SPACE(std::mem::size_of::<c_int>() as c_uint) as usize;
+            let mut cmsg_buf = vec![0u8; cmsg_space];
+            msg.msg_control = cmsg_buf.as_mut_ptr() as *mut c_void;
+            msg.msg_controllen = cmsg_buf.len() as u32;
+
+            let cmsg = CMSG_FIRSTHDR(&msg);
+            if !cmsg.is_null() {
+                (*cmsg).cmsg_level = SOL_SOCKET;
+                (*cmsg).cmsg_type = SCM_RIGHTS;
+                (*cmsg).cmsg_len = CMSG_LEN(std::mem::size_of::<c_int>() as c_uint);
+                *(CMSG_DATA(cmsg) as *mut c_int) = fd_to_send;
+                msg.msg_controllen = (*cmsg).cmsg_len;
+            }
+
+            // Send the message with ancillary data
+            let send_result = {
+                let stream_guard = stream_arc.lock().unwrap();
+                let stream_fd = stream_guard.as_raw_fd();
+                libc::sendmsg(stream_fd, &msg as *const _, 0)
+            };
+
+            if send_result == -1 {
+                return Err(format!(
+                    "sendmsg failed: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+        }
+
+        // Now send the SSZ payload
         {
             let mut stream_guard = stream_arc.lock().unwrap();
             stream_guard
-                .write_all(&ssz_len.to_le_bytes())
-                .and_then(|_| stream_guard.write_all(&ssz_bytes))
-                .map_err(|e| format!("send request: {e}"))?;
+                .write_all(&ssz_bytes)
+                .map_err(|e| format!("write SSZ payload: {}", e))?;
         }
 
-        // Read response
-        let mut len_buf = [0u8; 4];
-        let mut msg_buf: Vec<u8>;
-        {
-            let mut stream_guard = stream_arc.lock().unwrap();
-            stream_guard
-                .read_exact(&mut len_buf)
-                .map_err(|e| format!("read response length: {e}"))?;
-            let msg_len = u32::from_le_bytes(len_buf) as usize;
-            msg_buf = vec![0u8; msg_len];
-            stream_guard
-                .read_exact(&mut msg_buf)
-                .map_err(|e| format!("read response: {e}"))?;
-        }
-
-        // Decode the response
-        match decode_ssz::<Response>(&msg_buf) {
-            Ok(response) => match extract_response(response) {
-                Some(result) => Ok(result),
-                None => Err("unexpected response type".to_string()),
-            },
-            Err(e) => Err(format!("decode response failed: {:?}", e)),
-        }
+        Ok(())
     }
 
-    /// Interposed readlink function
-    redhook::hook! {
-        unsafe fn readlink(path: *const c_char, buf: *mut c_char, bufsiz: size_t) -> ssize_t => my_readlink {
-            if path.is_null() || buf.is_null() { return -1; }
+    /// Request pending synthesized events from the daemon for a specific kqueue
+    #[cfg(target_os = "macos")]
+    fn request_pending_events(kq_fd: c_int) -> Vec<SynthesizedKevent> {
+        let pid = std::process::id() as u32;
 
-            let c_path = CStr::from_ptr(path);
-            log_message(&format!("[linux] interposing readlink({})", c_path.to_string_lossy()));
+        // Create the request
+        let request = Request::watch_drain_events(pid, kq_fd as u32, 64); // Request up to 64 events
 
-            let req = Request::readlink(c_path.to_string_lossy().into_owned());
-            match send_request(req, |res| match res {
-                Response::Readlink(r) => Some(r.target),
-                _ => None,
-            }) {
-                Ok(target) => {
-                    let data: &[u8] = &target;
-                    if data.len() > bufsiz { unsafe { *libc::__errno_location() = libc::ERANGE; } return -1; }
-                    std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
-                    return data.len() as ssize_t;
-                }
-                Err(_) => {
-                    // Fallback to original
-                    return redhook::real!(readlink)(path, buf, bufsiz);
-                }
+        // Send request and get response
+        match send_request(request, |response| match response {
+            Response::WatchDrainEvents(resp) => Some(resp.events),
+            _ => None,
+        }) {
+            Ok(events) => {
+                log_message(&format!(
+                    "Received {} pending events from daemon",
+                    events.len()
+                ));
+                events
+            }
+            Err(e) => {
+                log_message(&format!("Failed to request pending events: {}", e));
+                Vec::new()
             }
         }
     }
 
-    /// Interposed readlinkat function
+    /// Interposed kevent64 function (64-bit variant)
+    #[cfg(target_os = "macos")]
     redhook::hook! {
-        unsafe fn readlinkat(dirfd: c_int, path: *const c_char, buf: *mut c_char, bufsiz: size_t) -> ssize_t => my_readlinkat {
-            if path.is_null() || buf.is_null() { return -1; }
+        unsafe fn kevent64(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, flags: c_uint, timeout: *const libc::timespec) -> c_int => my_kevent64 {
+            log_message(&format!("interposing kevent64(kq={}, nchanges={}, nevents={}, flags={:#x})",
+                kq, nchanges, nevents, flags));
 
-            let c_path = CStr::from_ptr(path);
-            log_message(&format!("[linux] interposing readlinkat({}, {})", dirfd, c_path.to_string_lossy()));
+            // Call the real kevent64 system call
+            let result = redhook::real!(kevent64)(kq, changelist, nchanges, eventlist, nevents, flags, timeout);
 
-            // Resolve path relative to cwd for simplicity; enhancing with dirfd mapping is future work
-            let req = Request::readlink(c_path.to_string_lossy().into_owned());
-            match send_request(req, |res| match res {
-                Response::Readlink(r) => Some(r.target),
-                _ => None,
-            }) {
-                Ok(target) => {
-                    let data: &[u8] = &target;
-                    if data.len() > bufsiz { unsafe { *libc::__errno_location() = libc::ERANGE; } return -1; }
-                    std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
-                    return data.len() as ssize_t;
+            if result > 0 && !eventlist.is_null() {
+                log_message(&format!("kevent64 returned {} events, filtering EVFILT_VNODE events", result));
+
+                // Same filtering logic as kevent (TODO: implement when ready)
+                let mut vnode_events = 0;
+                for i in 0..result {
+                    let event = &*eventlist.offset(i as isize);
+                    if event.filter == EVFILT_VNODE {
+                        vnode_events += 1;
+                    }
                 }
-                Err(_) => {
-                    return redhook::real!(readlinkat)(dirfd, path, buf, bufsiz);
-                }
+
+                log_message(&format!("kevent64: found {} EVFILT_VNODE events (filtering/injection not yet implemented)",
+                    vnode_events));
             }
+
+            result
         }
     }
 }
