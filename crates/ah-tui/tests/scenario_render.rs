@@ -76,8 +76,8 @@ async fn test_tui_initial_screen_golden() -> anyhow::Result<()> {
         .spawn()
         .await?;
 
-    // Wait a moment for the TUI to initialize and render
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Wait for the TUI to initialize and render (extended for deep render)
+    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
 
     // Try to read and parse the screen output
     // If this fails, it likely means the process exited early due to initialization failure
@@ -141,8 +141,8 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
         .spawn()
         .await?;
 
-    // Wait for initial render
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Wait for initial render (extended for deep render)
+    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
 
     // Try to read and parse the screen output
     // If this fails, it likely means the process exited early due to initialization failure
