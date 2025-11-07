@@ -163,4 +163,7 @@ webui/e2e-tests/browsers/
 # WebUI development files
 webui/app/.vite/
 webui/mock-server/dist/
+
+# Insta snapshot review files (do not commit)
+*.snap.new
 webui/shared/dist/
