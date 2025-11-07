@@ -69,6 +69,10 @@ jobs:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
     steps:
+      - name: Test user namespace availability
+        run: |
+          unshare -U true && echo "✅ userns OK" || echo "❌ userns blocked"
+
       - uses: actions/checkout@v5
         with:
           submodules: 'recursive'
