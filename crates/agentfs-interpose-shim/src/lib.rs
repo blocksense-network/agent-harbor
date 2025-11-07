@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#![cfg_attr(not(unix), allow(dead_code))]
 
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ use agentfs_proto::*;
 // Error codes for interpose forwarding failures
 const FORWARDING_UNAVAILABLE: u32 = 1;
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
 const LOG_PREFIX: &str = "[agentfs-interpose]";
@@ -147,7 +147,7 @@ fn resolve_at_path(dirfd: RawFd, path: &CStr) -> PathBuf {
 }
 
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
 
 // Global directory file descriptor mapping keyed by process ID
@@ -169,7 +169,7 @@ fn remove_env_var(key: &str) {
     unsafe { std::env::remove_var(key) };
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 #[ctor::ctor]
 fn initialize() {
     if INIT_GUARD.set(()).is_err() {
@@ -247,7 +247,7 @@ fn initialize() {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(unix))]
 #[ctor::ctor]
 fn initialize() {}
 
@@ -378,7 +378,7 @@ fn decode_ssz<T: Decode>(data: &[u8]) -> Result<T, String> {
     T::from_ssz_bytes(data).map_err(|e| format!("SSZ decode error: {:?}", e))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn attempt_handshake(
     socket_path: &Path,
     exe: &Path,
