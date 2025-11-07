@@ -339,7 +339,12 @@ impl TuiArgs {
         multiplexer: &dyn Multiplexer,
         fs_snapshots: FsSnapshotsType,
     ) -> Result<()> {
-        // Do not pre-gate on availability; attempt to use the multiplexer and surface errors
+        if !multiplexer.is_available() {
+            anyhow::bail!(
+                "Multiplexer '{}' is not available on this system",
+                multiplexer.id()
+            );
+        }
 
         println!(
             "Creating new {} session for agent-harbor...",
