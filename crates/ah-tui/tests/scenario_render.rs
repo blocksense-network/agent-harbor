@@ -203,50 +203,59 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 
 /// Normalize screen content to remove non-deterministic elements
 fn normalize_screen_content(content: &str) -> String {
+    // Keep ANSI escape sequences in output, but make filtering decisions
+    // based on a version of the content with ANSI removed.
+    fn strip_ansi(s: &str) -> String {
+        // Matches most CSI sequences: ESC [ ... command
+        let csi = regex::Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]").unwrap();
+        // Matches OSC sequences: ESC ] ... ST (BEL or ESC \\)
+        let osc = regex::Regex::new(r"\x1b\].*?(\x07|\x1b\\)").unwrap();
+        let mut out = osc.replace_all(s, "").to_string();
+        out = csi.replace_all(&out, "").to_string();
+        out
+    }
+
+    // 1) Normalize known tokens first on the full content (keeps ANSI)
     let mut normalized = content.to_string();
-
-    // Keep ANSI escape sequences so snapshots remain comparable with existing fixtures
-
-    // Normalize absolute timestamps (ISO 8601 format)
     normalized = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z")
         .unwrap()
         .replace_all(&normalized, "[TIMESTAMP]")
         .to_string();
-
-    // Normalize relative timestamps (if any)
     normalized = regex::Regex::new(r"\d+[smhd] ago")
         .unwrap()
         .replace_all(&normalized, "[TIME_AGO]")
         .to_string();
-
-    // Normalize cursor visibility escape sequences
     normalized = normalized.replace("\x1b[?25h", "").replace("\x1b[?25l", "");
-
-    // Normalize cursor position escape sequences (can vary)
     normalized = regex::Regex::new(r"\x1b\[\d+;\d+H")
         .unwrap()
         .replace_all(&normalized, "[CURSOR_POS]")
         .to_string();
 
-    // Normalize other potential non-deterministic content
-    // Add more normalization rules as needed
+    // 2) Line-wise filtering using ANSI-stripped view
+    let mut kept: Vec<String> = Vec::new();
+    for line in normalized.lines() {
+        let plain = strip_ansi(line).to_lowercase();
 
-    // Drop log lines (e.g., WARN/ERROR) that can appear based on environment
-    normalized = regex::Regex::new(r"(?mi)^.*\b(WARN|ERROR)\b.*$\n?")
-        .unwrap()
-        .replace_all(&normalized, "")
-        .to_string();
+        // Drop non-deterministic or environment-specific lines
+        if plain.contains(" warn ") || plain.contains(" error ") {
+            continue;
+        }
+        // Shell error noise (varies by env)
+        if plain.contains("command not found")
+            || plain.starts_with("bash:")
+            || plain.starts_with("sh:")
+            || plain.starts_with("zsh:")
+        {
+            continue;
+        }
+        // Repository id line (can include broken prefixes due to ANSI splits)
+        if plain.contains("repository id:") || plain.contains("pository id:") {
+            continue;
+        }
 
-    // Normalize repository ID lines which can vary by environment
-    normalized = regex::Regex::new(r"(?i)repository id:.*$")
-        .unwrap()
-        .replace_all(&normalized, "[REPO_ID]")
-        .to_string();
-    // Handle cases where ANSI resets split the word (e.g., '\x1bmpository')
-    normalized = regex::Regex::new(r"(?i)pository id:.*$")
-        .unwrap()
-        .replace_all(&normalized, "[REPO_ID]")
-        .to_string();
+        // Keep the line with trailing whitespace trimmed
+        kept.push(line.trim_end().to_string());
+    }
 
-    normalized
+    kept.join("\n")
 }
