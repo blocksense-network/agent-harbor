@@ -167,11 +167,12 @@ fn execute_test_scenario(
 ///
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
-#[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: Request,
 ) -> Result<Response, String> {
+    use crate::handshake::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo};
+    use agentfs_proto::{Request, Response};
     use std::os::unix::net::UnixStream;
 
     let mut stream = UnixStream::connect(socket_path)
