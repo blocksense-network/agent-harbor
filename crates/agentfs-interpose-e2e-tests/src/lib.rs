@@ -674,7 +674,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
     }
 
     #[test]
@@ -798,7 +797,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
     }
 
     #[test]
@@ -1001,7 +999,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
     }
 
     #[test]
@@ -1090,7 +1087,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
     }
 
     /// Start daemon for testing and return daemon process and socket path
@@ -1205,7 +1201,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         // The test passes if the interposition layer loads and operations complete
         assert!(
@@ -1281,7 +1276,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         assert!(
             output.status.success(),
@@ -1352,7 +1346,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         assert!(
             output.status.success(),
@@ -1433,7 +1426,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         assert!(
             output.status.success(),
@@ -1501,7 +1493,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         // Check that directory and file were created
         assert!(
@@ -1581,7 +1572,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         // Check that file was moved
         assert!(!src_file.exists(), "Original file should be moved");
@@ -1659,7 +1649,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         // The test verifies that linkat and symlinkat operations succeed through the daemon
         // This confirms that path resolution and FsCore integration work correctly
@@ -1731,7 +1720,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         assert!(
             output.status.success(),
@@ -1813,7 +1801,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         // The test passes if all concurrent operations complete successfully
         assert!(
@@ -1893,7 +1880,6 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
-        let _ = daemon.wait();
 
         // Assert the test succeeded
         assert!(
@@ -3610,7 +3596,6 @@ mod linux_tests {
         .unwrap();
 
         let _ = daemon.kill();
-        let _ = daemon.wait();
     }
 
     #[test]
@@ -3652,6 +3637,5 @@ mod linux_tests {
         .unwrap();
 
         let _ = daemon.kill();
-        let _ = daemon.wait();
     }
 }
