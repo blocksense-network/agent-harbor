@@ -149,8 +149,8 @@ fn execute_test_scenario(
 /// using structured SSZ types for integration test verification.
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
-    request: Request,
-) -> Result<Response, String> {
+    request: agentfs_proto::Request,
+) -> Result<agentfs_proto::Response, String> {
     use crate::handshake::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo};
     use agentfs_proto::{Request, Response};
     use std::os::unix::net::UnixStream;
