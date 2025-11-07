@@ -156,6 +156,11 @@ impl AgentExecutor for CodexAgent {
             cmd.arg("--search");
         }
 
+        // Configure output format
+        if config.json_output {
+            cmd.arg("--json");
+        }
+
         // Configure stdio for piped I/O
         use std::process::Stdio;
         cmd.stdin(Stdio::piped());
