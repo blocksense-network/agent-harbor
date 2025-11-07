@@ -3107,7 +3107,71 @@ fn main() {
     macos_only::main();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn main() {
-    eprintln!("agentfs-interpose-test-helper is only supported on macOS");
+    // Minimal Linux helper supporting `dummy` and `basic-open` to exercise LD_PRELOAD path.
+    use std::io::Read;
+    use std::os::unix::io::RawFd;
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: {} <command> [args...]", args[0]);
+        std::process::exit(1);
+    }
+    match args[1].as_str() {
+        "dummy" => {
+            println!("Dummy command executed");
+        }
+        "basic-open" => {
+            if args.len() < 3 {
+                eprintln!("Usage: basic-open <filename>");
+                std::process::exit(1);
+            }
+            let filename = &args[2];
+            unsafe {
+                let c_filename = std::ffi::CString::new(filename.as_str()).unwrap();
+                let content = b"hello-linux";
+                let fd: RawFd = libc::open(
+                    c_filename.as_ptr(),
+                    libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC,
+                    0o644,
+                );
+                if fd < 0 {
+                    eprintln!("open failed: {}", std::io::Error::last_os_error());
+                    std::process::exit(1);
+                }
+                let written =
+                    libc::write(fd, content.as_ptr() as *const libc::c_void, content.len());
+                if written < 0 {
+                    eprintln!("write failed: {}", std::io::Error::last_os_error());
+                    libc::close(fd);
+                    std::process::exit(1);
+                }
+                libc::close(fd);
+
+                let fd2: RawFd = libc::open(c_filename.as_ptr(), libc::O_RDONLY, 0);
+                if fd2 < 0 {
+                    eprintln!("open rd failed: {}", std::io::Error::last_os_error());
+                    std::process::exit(1);
+                }
+                let mut buf = [0u8; 32];
+                let n = libc::read(fd2, buf.as_mut_ptr() as *mut libc::c_void, buf.len());
+                if n < 0 {
+                    eprintln!("read failed: {}", std::io::Error::last_os_error());
+                    libc::close(fd2);
+                    std::process::exit(1);
+                }
+                libc::close(fd2);
+                println!("Read back {} bytes", n);
+            }
+        }
+        other => {
+            eprintln!("Unknown command: {}", other);
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn main() {
+    eprintln!("agentfs-interpose-test-helper is not supported on this platform");
 }

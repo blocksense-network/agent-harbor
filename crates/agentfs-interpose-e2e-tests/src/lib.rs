@@ -301,6 +301,35 @@ pub fn find_dylib_path() -> PathBuf {
     );
 }
 
+#[cfg(target_os = "linux")]
+pub fn find_so_path() -> std::path::PathBuf {
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("target")
+        .join(&profile);
+
+    let direct = root.join("libagentfs_interpose_shim.so");
+    if direct.exists() {
+        return direct;
+    }
+
+    let deps_dir = root.join("deps");
+    if let Ok(entries) = std::fs::read_dir(&deps_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(std::ffi::OsStr::to_str) {
+                if name.starts_with("libagentfs_interpose_shim") && name.ends_with(".so") {
+                    return path;
+                }
+            }
+        }
+    }
+
+    panic!("Interpose shim .so not found. Expected at: {:?}", direct);
+}
+
 #[cfg(target_os = "macos")]
 pub fn find_helper_binary() -> PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
@@ -3507,5 +3536,80 @@ mod tests {
         panic!(
             "agentfs_interpose_shim library not found. Make sure to build the agentfs-interpose-shim crate."
         );
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[cfg(test)]
+mod linux_tests {
+    use super::*;
+    use std::os::unix::net::UnixStream;
+    use std::process::Command;
+    use std::time::Duration;
+    use std::{fs, thread};
+    use tempfile::tempdir;
+
+    #[test]
+    fn linux_ld_preload_shim_performs_handshake() {
+        let dir = tempdir().unwrap();
+        let socket_path = dir.path().join("agentfs.sock");
+
+        // Start mock daemon
+        let daemon_path = find_daemon_path();
+        let mut daemon = Command::new(&daemon_path)
+            .arg(&socket_path)
+            .spawn()
+            .expect("failed to start mock daemon");
+
+        // Give daemon time to start
+        thread::sleep(Duration::from_millis(300));
+
+        // Quick readiness check
+        if UnixStream::connect(&socket_path).is_err() {
+            thread::sleep(Duration::from_millis(300));
+        }
+
+        // Run helper with LD_PRELOAD
+        let helper = find_helper_binary();
+        let shim = find_so_path();
+        let output = Command::new(&helper)
+            .env("LD_PRELOAD", shim)
+            .env("AGENTFS_INTERPOSE_SOCKET", &socket_path)
+            .env("AGENTFS_INTERPOSE_ALLOWLIST", "*")
+            .env("AGENTFS_INTERPOSE_LOG", "1")
+            .arg("dummy")
+            .output()
+            .expect("failed to launch helper");
+
+        // The helper stub prints, but we only care that shim loaded
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("AgentFS interpose shim loaded"),
+            "Expected banner in stderr, got: {}",
+            stderr
+        );
+
+        // Verify daemon registered the process via handshake
+        let processes_response = query_daemon_state_structured(
+            &socket_path,
+            agentfs_proto::Request::daemon_state_processes(),
+        )
+        .unwrap();
+        match processes_response {
+            agentfs_proto::Response::DaemonState(
+                agentfs_proto::messages::DaemonStateResponseWrapper { response },
+            ) => match response {
+                agentfs_proto::messages::DaemonStateResponse::Processes(processes) => {
+                    assert!(
+                        processes.iter().any(|p| p.os_pid == 12345),
+                        "Daemon should have registered the test process"
+                    );
+                }
+                _ => panic!("Expected processes response"),
+            },
+            _ => panic!("Expected daemon state response"),
+        }
+
+        let _ = daemon.kill();
     }
 }
