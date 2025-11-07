@@ -15,6 +15,8 @@ pub struct TmuxMultiplexer {
     session_name: String,
     /// If true, assume session already exists and don't call ensure_session()
     assume_session_exists: bool,
+    /// Dedicated tmux socket name for isolated sessions (passed via `-L`)
+    socket_name: Option<String>,
 }
 
 impl Default for TmuxMultiplexer {
@@ -22,6 +24,7 @@ impl Default for TmuxMultiplexer {
         Self {
             session_name: "ah".to_string(),
             assume_session_exists: false,
+            socket_name: None,
         }
     }
 }
@@ -35,16 +38,39 @@ impl TmuxMultiplexer {
         Self {
             session_name,
             assume_session_exists: false,
+            socket_name: None,
+        }
+    }
+
+    /// Create a tmux multiplexer with a dedicated socket name (tmux `-L <socket>`)
+    pub fn with_session_and_socket(session_name: String, socket_name: String) -> Self {
+        Self {
+            session_name,
+            assume_session_exists: false,
+            socket_name: Some(socket_name),
         }
     }
 
     /// Create a tmux multiplexer that assumes the session already exists
     /// (useful for testing with continuous sessions)
     pub fn with_existing_session(session_name: String) -> Self {
-        // Wait for the session to be ready
+        Self {
+            session_name,
+            assume_session_exists: true,
+            socket_name: None,
+        }
+    }
+
+    /// Create a tmux multiplexer that assumes an existing session on a dedicated socket
+    pub fn with_existing_session_socket(session_name: String, socket_name: String) -> Self {
+        // Opportunistically wait for the session to appear on the given socket
         for _ in 0..10 {
+            let mut args = vec![];
+            args.push("-L");
+            args.push(socket_name.as_str());
+            args.extend(["has-session", "-t", session_name.as_str()]);
             if Command::new("tmux")
-                .args(["has-session", "-t", &session_name])
+                .args(&args)
                 .output()
                 .map(|o| o.status.success())
                 .unwrap_or(false)
@@ -56,12 +82,20 @@ impl TmuxMultiplexer {
         Self {
             session_name,
             assume_session_exists: true,
+            socket_name: Some(socket_name),
         }
     }
 
     /// Run a tmux command and return its output
     fn run_tmux_command(&self, args: &[&str]) -> Result<String, MuxError> {
-        let output = Command::new("tmux").args(args).output().map_err(|e| {
+        let mut full_args: Vec<&str> = Vec::new();
+        if let Some(sock) = &self.socket_name {
+            full_args.push("-L");
+            full_args.push(sock.as_str());
+        }
+        full_args.extend_from_slice(args);
+
+        let output = Command::new("tmux").args(&full_args).output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 MuxError::NotAvailable("tmux")
             } else {
@@ -470,15 +504,19 @@ mod tests {
             .unwrap()
             .as_millis();
         let session_name = format!("test-split-h-{}", timestamp);
-        if TmuxMultiplexer::new().is_ok() {
+        let socket_name = format!("sock-{}", session_name);
+        if TmuxMultiplexer::default().is_available() {
             // Start continuous tmux session for visual testing
             let _ = snapshot_testing::start_continuous_session(&session_name);
 
             // Give tmux a moment to fully initialize
             std::thread::sleep(Duration::from_millis(300));
 
-            // Create tmux API that assumes session already exists
-            let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
+            // Create tmux API for this session (ensure_session will create it)
+            let tmux = TmuxMultiplexer::with_session_and_socket(
+                session_name.to_string(),
+                socket_name.to_string(),
+            );
 
             let window_id = tmux
                 .open_window(&WindowOptions {
@@ -639,15 +677,19 @@ mod tests {
             .unwrap()
             .as_millis();
         let session_name = format!("test-cmd-{}", timestamp);
-        if TmuxMultiplexer::new().is_ok() {
+        let socket_name = format!("sock-{}", session_name);
+        if TmuxMultiplexer::default().is_available() {
             // Start continuous tmux session for visual testing
             let _ = snapshot_testing::start_continuous_session(&session_name);
 
             // Give tmux a moment to fully initialize
             std::thread::sleep(Duration::from_millis(300));
 
-            // Create tmux API that assumes session already exists
-            let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
+            // Create tmux API for this session (ensure_session will create it)
+            let tmux = TmuxMultiplexer::with_session_and_socket(
+                session_name.to_string(),
+                socket_name.to_string(),
+            );
 
             let window_id = tmux
                 .open_window(&WindowOptions {
@@ -850,15 +892,25 @@ mod tests {
             .unwrap()
             .as_millis();
         let session_name = format!("test-complex-{}", timestamp);
-        if TmuxMultiplexer::new().is_ok() {
+        let socket_name = format!("sock-{}", session_name);
+        if TmuxMultiplexer::default().is_available() {
             // Start continuous tmux session for visual testing
             let _ = snapshot_testing::start_continuous_session(&session_name);
 
             // Give tmux a moment to fully initialize
             std::thread::sleep(Duration::from_millis(300));
 
-            // Create tmux API that assumes session already exists
-            let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
+            // Create tmux API on a dedicated socket
+            let tmux = TmuxMultiplexer::with_session_and_socket(
+                session_name.to_string(),
+                socket_name.to_string(),
+            );
+
+            // Ensure session exists; skip test if environment cannot start tmux server
+            if let Err(e) = tmux.ensure_session() {
+                eprintln!("Skipping complex layout test: {}", e);
+                return;
+            }
 
             // Create window
             let window_id = tmux
@@ -1035,7 +1087,7 @@ mod snapshot_testing {
 
             // Kill any existing session first
             let _ = std::process::Command::new("tmux")
-                .args(&["kill-session", "-t", session_name])
+                .args(&["-L", session_name, "kill-session", "-t", session_name])
                 .output();
 
             // Give it a moment to clean up
@@ -1087,7 +1139,10 @@ set-environment -g ZDOTDIR ""
 
             // Spawn tmux with custom config and minimal shell for deterministic snapshots
             // Use sh instead of the default shell to avoid shell-specific behaviors
-            let tmux_cmd = format!("tmux -f {} new-session -s {} sh", config_path, session_name);
+            let tmux_cmd = format!(
+                "tmux -L {} -f {} new-session -s {} sh",
+                session_name, config_path, session_name
+            );
             let mut p = spawn(&tmux_cmd)?;
             p.set_echo(false, None)?;
 
@@ -1125,7 +1180,7 @@ set-environment -g ZDOTDIR ""
 
         // Then kill any remaining session by name
         let _ = std::process::Command::new("tmux")
-            .args(&["kill-session", "-t", session_name])
+            .args(&["-L", session_name, "kill-session", "-t", session_name])
             .output();
 
         // Give it a moment to die

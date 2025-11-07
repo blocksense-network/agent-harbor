@@ -162,8 +162,16 @@ impl TuiTestRunner {
         // Initialize vt100 parser with the specified screen size
         let vt100_parser = vt100::Parser::new(builder.height, builder.width, 0);
 
-        // Always start IPC server for screenshot capture
-        let endpoint_str = "tcp://127.0.0.1:5555".to_string();
+        // Always start IPC server for screenshot capture on a free dynamic port
+        let port = {
+            use std::net::TcpListener;
+            let listener = TcpListener::bind("127.0.0.1:0")
+                .map_err(|e| anyhow::anyhow!("Bind dynamic port: {}", e))?;
+            let port = listener.local_addr().unwrap().port();
+            drop(listener); // Free the port so the ZeroMQ server can bind it
+            port
+        };
+        let endpoint_str = format!("tcp://127.0.0.1:{}", port);
 
         // Create exit signal channel
         let (exit_tx, exit_rx) = tokio::sync::mpsc::unbounded_channel::<i32>();
