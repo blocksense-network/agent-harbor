@@ -315,7 +315,7 @@ impl Multiplexer for TmuxMultiplexer {
     fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
         // TMUX_PANE contains the current pane ID in format: %<pane_index>
         // But we need it in session:window.pane format
-        if let Ok(pane_index) = std::env::var("TMUX_PANE") {
+        if let Ok(_pane_index) = std::env::var("TMUX_PANE") {
             // Get current window information
             let output = self.run_tmux_command(&[
                 "display-message",

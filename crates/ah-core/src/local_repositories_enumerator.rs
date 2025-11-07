@@ -41,7 +41,7 @@ impl RepositoriesEnumerator for LocalRepositoriesEnumerator {
                     Repository {
                         id: repo_record.id.to_string(),
                         name: remote_url
-                            .unwrap_or(&root_path.unwrap_or(&"Unknown".to_string()))
+                            .unwrap_or(root_path.unwrap_or(&"Unknown".to_string()))
                             .clone(),
                         url: remote_url.unwrap_or(&"".to_string()).clone(),
                         default_branch: repo_record

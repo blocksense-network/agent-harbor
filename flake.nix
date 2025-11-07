@@ -473,6 +473,9 @@
 
     in {
       default = pkgs.mkShell {
+        nativeBuildInputs = [
+          pkgs.stdenv.cc  # C compiler for linking Rust crates that need it
+        ];
         buildInputs = allPackages;
 
         shellHook = ''

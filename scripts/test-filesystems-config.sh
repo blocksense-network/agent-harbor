@@ -16,3 +16,7 @@ ZFS_POOL="AH_test_zfs"
 # Btrfs configuration
 BTRFS_FILE="$CACHE_DIR/btrfs_backing.img"
 BTRFS_LOOP="/dev/loop99" # Use a high number to avoid conflicts
+
+# APFS configuration (macOS only)
+APFS_FILE="$CACHE_DIR/apfs_backing.sparseimage"
+APFS_VOLNAME="AH_test_apfs"

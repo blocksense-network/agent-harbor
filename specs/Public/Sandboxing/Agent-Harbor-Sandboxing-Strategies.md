@@ -1,4 +1,4 @@
-> **Scope:** Blocksense **agents‑workflow** project. The primary "developer" is an **AI agent**, with humans able to enter sessions for manual testing. This document captures the **cross‑strategy, platform‑agnostic requirements** for sandboxed development. Strategy‑specific designs live in separate documents (e.g., _Local Sandboxing on Linux_).
+> **Scope:** Blocksense **agent-harbor** project. The primary "developer" is an **AI agent**, with humans able to enter sessions for manual testing. This document captures the **cross‑strategy, platform‑agnostic requirements** for sandboxed development. Strategy‑specific designs live in separate documents (e.g., _Local Sandboxing on Linux_).
 
 ## Strategies in scope
 

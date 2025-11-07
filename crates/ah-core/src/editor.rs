@@ -109,7 +109,7 @@ pub fn edit_content_interactive(initial_content: Option<&str>) -> EditorResult<S
     if let Some(content) = initial_content {
         write!(temp_file, "{}\n\n", content)?;
     } else {
-        write!(temp_file, "\n")?;
+        writeln!(temp_file)?;
     }
     write!(temp_file, "{}", EDITOR_HINT)?;
     temp_file.flush()?;

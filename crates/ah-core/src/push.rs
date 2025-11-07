@@ -131,7 +131,7 @@ pub fn parse_push_to_remote_flag(value: &str) -> Result<bool> {
         Err(anyhow::anyhow!(
             "Error: Invalid value for --push-to-remote: '{}'. Valid values are: {}",
             value,
-            truthy.iter().chain(falsy.iter()).map(|s| *s).collect::<Vec<_>>().join(", ")
+            truthy.iter().chain(falsy.iter()).copied().collect::<Vec<_>>().join(", ")
         ))
     }
 }

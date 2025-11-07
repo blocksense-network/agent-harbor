@@ -3,7 +3,6 @@
 
 //! Main REST API client implementation
 
-use ah_domain_types::SelectedModel;
 use ah_rest_api_contract::*;
 use reqwest::{Client as HttpClient, Method, Response};
 use serde::{Deserialize, de::DeserializeOwned};
@@ -72,7 +71,7 @@ impl RestClient {
             url.set_query(Some(&query_params));
         }
 
-        self.get(&url.to_string()).await
+        self.get(url.as_ref()).await
     }
 
     /// Get a specific session

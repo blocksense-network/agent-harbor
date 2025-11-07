@@ -17,3 +17,6 @@ tracing.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
+
+[features]
+ah-core-integration = []

@@ -431,7 +431,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - `crates/agentfs-core/src/config.rs` - Extended configuration structures
 - `crates/agentfs-interpose-shim/src/lib.rs` - Redhook-based interposition implementation with FsCore handle delegation
 - `crates/agentfs-interpose-shim/tests/fixtures/test_helper.rs` - Comprehensive test program for file operations
-- `crates/agentfs-interpose-shim/tests/fixtures/mock_daemon.rs` - Real AgentFS daemon using production core for interpose testing
+- `crates/agentfs-daemon/src/daemon.rs` - Production AgentFS daemon implementation
 - `crates/agentfs-proto/src/messages.rs` - Interpose message types (FdOpen, FdDup, PathOp, InterposeSetGet)
 
 **Technical Highlights:**
@@ -1072,7 +1072,7 @@ Notes:
 - `crates/agentfs-interpose-shim/Cargo.toml` - cdylib configuration and dependencies including redhook for proper hooking
 - `crates/agentfs-interpose-e2e-tests/src/lib.rs` - E2E test harness and integration tests
 - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs` - Test program with direct libc calls
-- `crates/agentfs-interpose-e2e-tests/src/bin/mock_daemon.rs` - Mock daemon with real FsCore integration
+- `crates/agentfs-daemon/src/bin/agentfs-daemon.rs` - Production daemon executable
 - `crates/agentfs-proto/src/messages.rs` - SSZ message types for interpose communication
 - `crates/agentfs-core/src/vfs.rs` - FsCore handle management for both files and directories
 - `Justfile` - Build targets for interpose test binaries
@@ -1285,12 +1285,13 @@ Notes:
   - [x] Comprehensive unit tests cover all operations and edge cases
   - [x] End-to-end integration tests validate full functionality
 
-- **M24.h - Watcher translation (FSEvents lane)**
+- **M24.h - Watcher translation (FSEvents lane)** ✅ **COMPLETED**
   - Goal: Ensure path-based watchers still receive events when I/O bypasses the adapter.
   - Implementation: Translate FSEvents registrations from overlay paths to backstore paths; fd-based watchers (kqueue/kevent) require no changes.
   - Automated tests:
     - Register FSEvents on an overlay path, write via forwarded file descriptors, and assert event delivery.
   - Spec refs: watcher translation rules and FSEvents guidance.
+  - See [FsEvents.milestones.md](FsEvents.milestones.md) for detailed implementation tracking.
 
 - **M24.i - Negative matrix and no-leak invariants**
   - Goal: Hard-fail with the expected errors and never leak backstore paths.

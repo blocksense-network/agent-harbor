@@ -4,7 +4,7 @@
  */
 
 import { createContext, createSignal, useContext, Component, JSX } from 'solid-js';
-import { Toast, ToastType, ToastAction, ToastContainer } from '../components/common/Toast.js';
+import { Toast, ToastType, ToastAction, ToastContainer } from '../components/ui/Toast';
 
 interface ToastContextValue {
   toasts: () => Toast[];

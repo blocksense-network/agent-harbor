@@ -19,3 +19,7 @@ agentfs-proto = { path = "../agentfs-proto" }
 [dev-dependencies]
 tempfile = { workspace = true }
 mockall = { workspace = true }
+
+[features]
+default = ["events"]
+events = []

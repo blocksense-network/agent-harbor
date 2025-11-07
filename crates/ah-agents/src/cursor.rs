@@ -340,7 +340,7 @@ impl CursorAgent {
             })?;
 
         let mut cursor_auth_data = std::collections::HashMap::new();
-        let mut rows = stmt
+        let rows = stmt
             .query_map([], |row| {
                 let key: String = row.get(0)?;
                 let value: String = row.get(1)?;
@@ -350,10 +350,8 @@ impl CursorAgent {
                 AgentError::Other(anyhow::anyhow!("Failed to query cursorAuth data: {}", e))
             })?;
 
-        for row_result in rows {
-            if let Ok((key, value)) = row_result {
-                cursor_auth_data.insert(key, value);
-            }
+        for (key, value) in rows.flatten() {
+            cursor_auth_data.insert(key, value);
         }
 
         Ok(cursor_auth_data)
@@ -433,7 +431,7 @@ impl CursorAgent {
         })?;
 
         let mut all_data = std::collections::HashMap::new();
-        let mut rows = stmt
+        let rows = stmt
             .query_map([], |row| {
                 let key: String = row.get(0)?;
                 let value: String = row.get(1)?;
@@ -443,10 +441,8 @@ impl CursorAgent {
                 AgentError::Other(anyhow::anyhow!("Failed to query database data: {}", e))
             })?;
 
-        for row_result in rows {
-            if let Ok((key, value)) = row_result {
-                all_data.insert(key, value);
-            }
+        for (key, value) in rows.flatten() {
+            all_data.insert(key, value);
         }
 
         // Filter to cursorAuth keys for logging

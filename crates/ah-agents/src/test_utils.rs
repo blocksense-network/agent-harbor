@@ -4,7 +4,7 @@
 //! Shared utilities for integration tests
 
 use crate::AgentBinary;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 /// Start the Rust mock LLM API server for testing

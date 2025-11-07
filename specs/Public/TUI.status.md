@@ -547,7 +547,9 @@ The TUI implementation provides these core capabilities:
 - **Testing Strategy 2**: Agent activity display and event formatting tested with Mock Agent execution
 
 ### T3.8 Full Multiplexer Support (Multi-Mux Parity) ✅ **COMPLETED** (October 18, 2025)
+
 **Deliverables**
+
 - Complete `ah-mux` backends for all multiplexers listed in [TUI-Multiplexers-Overview.md](Terminal-Multiplexers/TUI-Multiplexers-Overview.md):
   - **zellij** - KDL layout-based implementation
   - **GNU screen** - CLI command-based implementation
@@ -561,6 +563,7 @@ The TUI implementation provides these core capabilities:
 - Integration testing with TUI task creation workflow for all supported multiplexer types
 
 **Automated Tests**
+
 - **Zellij Backend Tests**:
   - `ah_mux__zellij__session_lifecycle_ok`: create/focus/list windows/panes; verify via CLI introspection
   - `ah_mux__zellij__layout_creation_ok`: KDL layout file generation and execution
@@ -579,6 +582,7 @@ The TUI implementation provides these core capabilities:
   - `multiplexer_fallback_handling`: Graceful fallback when preferred multiplexer unavailable
 
 **Verification Criteria**
+
 - All trait methods pass against live binaries when available; CI gracefully skips when unavailable ✅
 - Golden snapshots stable across runs; error paths (missing binary/socket) return `NotAvailable` ✅
 - TUI task creation workflow functions correctly with all multiplexer implementations ✅
@@ -594,6 +598,7 @@ The TUI implementation provides these core capabilities:
 - **Cross-Platform**: Nix flake integration provides all multiplexers in development environment (Linux multiplexers like Tilix only available on Linux hosts, automatically excluded on macOS/Windows)
 
 **Key Source Files**:
+
 - `crates/ah-mux-core/src/lib.rs` - Core multiplexer trait definitions
 - `crates/ah-mux/src/lib.rs` - Multiplexer implementations and selection logic
 - `crates/ah-mux/src/tmux.rs` - tmux backend implementation
@@ -610,6 +615,7 @@ The TUI implementation provides these core capabilities:
 - `crates/ah-mux/tests/integration_tests.rs` - Comprehensive integration tests
 
 **Integration Points**:
+
 - All 11 multiplexer backends ready for integration with T3.6 task creation workflow
 - Comprehensive testing framework covers all implemented multiplexers
 - Nix flake provides reproducible development environment with available multiplexers

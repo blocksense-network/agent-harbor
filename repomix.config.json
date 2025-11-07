@@ -1,0 +1,12 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "include": [],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      ".direnv/**"
+    ]
+  }
+}
+

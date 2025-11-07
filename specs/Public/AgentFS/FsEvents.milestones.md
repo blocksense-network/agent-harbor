@@ -1,0 +1,666 @@
+Here’s a concrete, test-driven development plan to implement the full “shim ↔ daemon ↔ FsCore” event pipeline (kqueue/FSEvents interception, daemon-driven EVFILT_USER doorbells, kernel-like EVFILT_VNODE synthesis, and FsCore event triggers). Each milestone ends with **fully automated** verification steps you can wire into `cargo test` on macOS runners.
+
+# Milestone 0 — Groundwork: shared types, feature flags, crates COMPLETED
+
+**Goal:** Create a clean skeleton so later milestones snap in without churn.
+
+- **Crates/Modules**
+  - `agentfs-core`: already defines event model; expose `EventKind`, `EventSink`, and a subscription API behind a feature `events` (enabled by default).
+  - `agentfs-interpose-shim`: DYLD interposer that already handshakes with the daemon over a UNIX socket; we'll add kqueue interception and event injection here.
+  - `agentfs-daemon`: control plane + FsCore host; add "watch service" (registry + fanout + doorbells).
+  - `agentfs-proto`: SSZ/JSON message types covering:
+    - `WatchRegisterKqueue` (per kqueue fd + per-fd filter registrations)
+    - `WatchRegisterFSEvents` (stream params)
+    - `WatchUnregister`
+    - `WatchDoorbell` (identify doorbell for a kqueue, see M3)
+    - `FsEventBroadcast` (FsCore → daemon → shim)
+
+- **Acceptance (automated)**
+  - Build succeeds with the feature `events`.
+  - Shim loads & handshakes (already covered in existing tests).
+
+- **Implementation Details:**
+  - `events` feature flag defined and enabled by default in `agentfs-core/Cargo.toml`
+  - All SSZ message types implemented in `agentfs-proto/src/messages.rs` with proper serialization
+  - Watch service skeleton implemented in `agentfs-daemon/src/watch_service.rs`
+  - DYLD interposer handshake functionality verified through existing tests
+
+- **Verification Results:**
+  - [x] Build succeeds with the feature `events`
+  - [x] Shim loads & handshakes work correctly (verified through existing tests)
+  - [x] All SSZ message types defined and compilable
+  - [x] Watch service structure in place
+
+# Milestone 1 — FsCore Event Bus (publish/subscribe)
+
+**Goal:** Deterministic in-memory FsCore event triggers that match our overlay semantics.
+
+- **API (Rust)**
+  - `FsCore::subscribe_events(&self, sink: Arc<dyn EventSink>) -> SubscriptionId`
+  - `FsCore::unsubscribe_events(SubscriptionId)`
+  - Emit `EventKind::{Created, Removed, Modified, Renamed}` at the points where creates, unlink, writes/truncates/metadata, and rename occur. (Events for `BranchCreated`, `SnapshotCreated` already modeled; keep them but they won’t map to EVFILT_VNODE.)
+
+- **Mapping spec (FsCore → generic)**
+  - Created → {path}
+  - Removed → {path}
+  - Modified → {path}
+  - Renamed → {from,to}
+
+- **Acceptance (unit tests)**
+  - In-memory backstore (`BackstoreMode::InMemory`) scenario:
+    - create/write/rename/unlink yield the expected `EventKind` sequence with **no I/O to disk**.
+
+  - Existing overlay tests remain green (no regressions).
+
+**Milestone 1 — FsCore Event Bus** COMPLETED
+
+- **Deliverables:**
+  - Exposed `EventKind`, `EventSink`, and subscription API in `agentfs-core` behind `events` feature flag (enabled by default)
+  - Implemented `FsCore::subscribe_events(&self, sink: Arc<dyn EventSink>) -> SubscriptionId`
+  - Implemented `FsCore::unsubscribe_events(SubscriptionId)`
+  - Added event emission for `EventKind::{Created, Removed, Modified, Renamed}` at filesystem operation points
+  - Events only emitted when `track_events` is enabled in `FsConfig`
+  - Created comprehensive unit tests verifying event emission for all relevant operations
+  - Added milestone-specific test for create/write/rename/unlink sequence in in-memory backstore scenario
+
+- **Implementation Details:**
+  - **Event Infrastructure**: Added `EventKind::{Created, Removed, Modified, Renamed}` to `crates/agentfs-core/src/types.rs`
+  - **Event Sink Trait**: Implemented `EventSink` trait with `on_event(&self, &EventKind)` method
+  - **Subscription API**: Extended `FsCore` struct with `event_subscriptions: Mutex<HashMap<SubscriptionId, Arc<dyn EventSink>>>` and `next_subscription_id: Mutex<u64>`
+  - **Event Emission**: Integrated event emission into all state-changing filesystem operations (create, write, rename, unlink, set_mode, set_owner, set_times, xattr_set, xattr_remove, ftruncate)
+  - **Path Resolution**: Modified `Handle` struct to store resolved paths (`pub path: PathBuf`) for efficient event emission
+  - **Thread Safety**: Used `Mutex` for concurrent access to event subscriptions
+  - **Event Filtering**: Events only emitted when `FsConfig.track_events` is true
+
+- **Key Source Files:**
+  - `crates/agentfs-core/src/types.rs`: Event types and EventSink trait definitions
+  - `crates/agentfs-core/src/vfs.rs`: FsCore event subscription API and event emission logic
+  - `crates/agentfs-core/src/lib.rs`: Comprehensive unit tests for event emission
+
+- **Verification Results:**
+  - [x] In-memory backstore scenario: create/write/rename/unlink yield expected `EventKind` sequence with no I/O to disk
+  - [x] Existing overlay tests remain green (no regressions)
+  - [x] Event subscription/unsubscribe works correctly
+  - [x] Events only emitted when `track_events` is enabled
+  - [x] All filesystem operations emit appropriate event types
+  - [x] Thread-safe event handling with proper mutex usage
+
+# Milestone 2 — Daemon "watch service" + event fanout COMPLETED
+
+**Goal:** Central registry in FsCore that knows which target-process watches (kqueue/FSEvents) are interested in which paths and fans out FsCore events.
+
+- **Core registry responsibilities**
+  - Maintain per-process **watch table**:
+    - **Kqueue watches:** `<proc_pid, kq_id, fd, path, vnode_flags>` (store path with each watch registration).
+    - **FSEvents watches:** `<proc_pid, stream_id, path_prefixes, flags>` (high-level).
+
+  - Subscribe to FsCore (M1) and translate `EventKind` → abstract watch hits (path prefix & equality checks).
+
+- **Interpose shim responsibilities**
+  - Intercept FS monitoring API calls and forward them with suitable IPC operations to the daemon.
+
+- **Daemon responsibilities**
+  - Accepts IPC requests and delegates the implementation to the FsCore registry.
+
+- **Acceptance (integration tests; no shim yet)**
+  - Spawn daemon with **fake watches** and feed it synthetic `EventKind`; it resolves recipients correctly:
+    - Created/Removed/Modified hits matching kqueue fd path.
+    - Prefix matching for FSEvents streams (later used in M6).
+
+  - Verify no hits for unregistered or whiteout-hidden targets (uses existing overlay/whiteout semantics in core).
+
+**Milestone 2 — Daemon "watch service" + event fanout** COMPLETED
+
+- **Deliverables:**
+  - Implemented `WatchService` struct with per-process watch tables for kqueue and FSEvents watches
+  - Added path-to-FD mapping capability to support kqueue watches with path tracking
+  - Implemented path prefix matching for FSEvents streams to determine event routing
+  - Created event translation from `EventKind` to kqueue vnode flags and FSEvents event types
+  - Integrated FsCore event subscription in `WatchServiceDaemon::subscribe_events()`
+  - Added comprehensive unit tests for all routing logic and event translation
+  - Created end-to-end integration test verifying full event pipeline from FsCore to routing
+
+- **Implementation Details:**
+  - **Watch Service Registry**: Extended `WatchService` to maintain `kqueue_watches: HashMap<(u32, u32, u64), KqueueWatchRegistration>` and `fsevents_watches: HashMap<(u32, u64), FSEventsWatchRegistration>`
+  - **Kqueue Watch Registration**: Added path field to `KqueueWatchRegistration` struct for path-based routing
+  - **Event Sink Implementation**: Created `WatchServiceEventSink` that implements `EventSink` trait and routes events to appropriate watchers
+  - **Path Matching Logic**: Implemented exact path matching for kqueue watches and prefix matching for FSEvents streams
+  - **Event Translation**: Mapped `EventKind::{Created, Removed, Modified, Renamed}` to kqueue vnode flags (`NOTE_WRITE`, `NOTE_DELETE`, `NOTE_RENAME`, etc.)
+  - **Thread Safety**: Used `Arc<Mutex<...>>` for concurrent access to watch tables
+  - **Event Coalescing**: Events are routed to all matching watchers without duplicate filtering
+
+- **Key Source Files:**
+  - `crates/agentfs-daemon/src/watch_service.rs`: Complete watch service implementation with registry, routing, and event sink
+  - `crates/agentfs-interpose-e2e-tests/src/lib.rs`: End-to-end integration test for full event pipeline
+  - `crates/agentfs-proto/src/messages.rs`: SSZ message types for watch registration and event broadcasting
+
+- **Verification Results:**
+  - [x] Spawn daemon with fake watches and synthetic `EventKind` resolves recipients correctly
+  - [x] Created/Removed/Modified events hit matching kqueue fd paths
+  - [x] Prefix matching works for FSEvents streams
+  - [x] Event translation from `EventKind` to kqueue vnode flags is accurate
+  - [x] Full event pipeline from FsCore subscription through daemon routing works
+  - [x] Thread-safe concurrent access to watch tables
+  - [x] No hits for unregistered targets (proper isolation)
+
+# Milestone 3 — Kqueue "doorbell" channel (Option 4) COMPLETED
+
+**Goal:** The shim owns each app's real kqueue, but the **daemon can notify it** by posting EVFILT_USER "doorbells" on that same kqueue (daemon receives the **kqueue fd via `SCM_RIGHTS`**), avoiding polling/timeouts.
+
+- **Shim (on first `kqueue()` call)**
+  1. Call real `kqueue()`; store `kq_fd`.
+  2. Allocate a **reserved EVFILT_USER ident** for this kq: `ident = 0xAFFE00000000 | (shim_random_32())`. Keep this disjoint from app's space.
+  3. `EV_SET(&kev, ident, EVFILT_USER, EV_ADD|EV_ENABLE, 0, 0, udata=shim_marker)`
+  4. Send **`WatchDoorbell{kq_fd, ident, proc_pid}`** to daemon, passing `kq_fd` via `SCM_RIGHTS` over the existing UNIX control socket. (FD passing infra already used elsewhere.)
+
+- **Shim (collision hygiene - during `kevent()` calls)**
+  - Intercept `kevent()` calls and scan the changelist for `EV_ADD` operations on `EVFILT_USER` with our reserved ident range.
+  - If collision detected: immediately `EV_DELETE` the current doorbell ident, allocate a new ident, re-register it, and send **`UpdateDoorbellIdent{old_ident, new_ident, proc_pid}`** to daemon.
+  - Reason: kqueue events are unique by `(ident, filter)` on a given kqueue - collisions would cause undefined behavior.
+
+- **Daemon**
+  - Accepts the `kq_fd` and caches `{proc_pid → kq_fd, ident}`.
+  - Handles `UpdateDoorbellIdent` messages by updating the cached ident for the process.
+  - To wake the app's `kevent()` immediately, post:
+    - `EV_SET(&kev, ident, EVFILT_USER, 0, NOTE_TRIGGER, data=payload_id, udata=NULL); kevent(kq_fd, &kev, 1, NULL, 0, NULL);`
+
+  - `payload_id` indexes a **per-kqueue lock-free ring buffer** (next milestone) holding synthesized `struct kevent` entries to be merged by the shim.
+
+- **Acceptance (end-to-end test)**
+  - Tiny test app calls `kqueue()` and then `kevent()` with a long timeout; daemon posts a doorbell → app wakes with **one** EVFILT_USER event (correct `ident`), **no polling**.
+  - Also prove **no collision**: the app registers its own EVFILT_USER `ident = 123`; daemon doorbell uses reserved range; both events can be delivered independently. (Hook ensures we don't tamper with non-vnode filters.)
+  - **Collision hygiene**: test app registers EVFILT_USER with shim's doorbell ident → shim detects collision, deletes old doorbell, registers new ident, notifies daemon → daemon updates its cached ident → subsequent doorbells work with new ident.
+
+**Milestone 3 — Kqueue "doorbell" channel (Option 4)** COMPLETED
+
+- **Deliverables:**
+  - Implemented kqueue interception in shim with doorbell ident allocation using reserved range `0xAFFE00000000 | random_32bit`
+  - Added collision hygiene to detect and resolve EVFILT_USER ident conflicts during kevent() calls
+  - Implemented SCM_RIGHTS file descriptor passing from shim to daemon for doorbell registration
+  - Added UpdateDoorbellIdent and QueryDoorbellIdent message types to protocol
+  - Created efficient doorbell ident lookup in daemon with dedicated HashMap for O(1) access
+  - Implemented doorbell posting mechanism using NOTE_TRIGGER for immediate wakeup
+  - Added comprehensive end-to-end test for collision hygiene verification
+
+- **Implementation Details:**
+  - **Shim Interception**: Modified `my_kqueue()` to allocate reserved doorbell ident and register EVFILT_USER event, then send WatchDoorbell message with FD via SCM_RIGHTS
+  - **Collision Detection**: Added `my_kevent()` interception to scan changelist for EV_ADD operations on EVFILT_USER in reserved range, triggering collision resolution
+  - **Atomic Doorbell Storage**: Replaced HashMap with single `AtomicU64` for current doorbell ident to simplify state management
+  - **Protocol Extensions**: Added `UpdateDoorbellIdentRequest/Response` and `QueryDoorbellIdentRequest/Response` to `agentfs-proto` with proper SSZ serialization
+  - **Daemon Handling**: Extended WatchService with doorbell ident tracking and update mechanisms, implemented efficient lookup methods
+  - **Thread Safety**: Used atomic operations for doorbell ident access and Mutex for watch table modifications
+  - **FD Passing**: Leveraged existing UNIX domain socket infrastructure for secure kqueue FD transfer between processes
+
+- **Key Source Files:**
+  - `crates/agentfs-interpose-shim/src/lib.rs`: Kqueue interception, doorbell registration, and collision hygiene logic
+  - `crates/agentfs-daemon/src/watch_service.rs`: Doorbell ident tracking and posting mechanisms
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC message handling for doorbell operations
+  - `crates/agentfs-proto/src/messages.rs`: New message types for doorbell communication
+  - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs`: End-to-end collision hygiene test
+
+- **Verification Results:**
+  - [x] Tiny test app calls kqueue() and kevent() with long timeout; daemon posts doorbell → app wakes with one EVFILT_USER event (correct ident), no polling
+  - [x] App registers EVFILT_USER ident=123; daemon doorbell uses reserved range; both events delivered independently
+  - [x] Collision hygiene: test app registers EVFILT_USER with shim's doorbell ident → shim detects collision, deletes old doorbell, registers new ident, notifies daemon → daemon updates cached ident → subsequent doorbells work with new ident
+  - [x] SCM_RIGHTS FD passing works correctly between shim and daemon processes
+  - [x] Thread-safe atomic operations for doorbell ident management
+  - [x] Efficient O(1) doorbell ident lookup in daemon
+
+# Milestone 4 — Shim kevent() hook + injectable queue COMPLETED
+
+**Goal:** Interpose `kevent*(…)` and splice **synthesized EVFILT_VNODE** entries into the result set whenever a doorbell fires, without disturbing unrelated filters.
+
+- **Hook behavior** (public API only)
+  1. Call the **real** `kevent` first to collect kernel events.
+  2. If the result includes our **doorbell EVFILT_USER** ident, request the pending synthesized events from the AgentFS daemon per-kqueue buffer.
+  3. Append those `struct kevent` entries to the user’s output buffer; adjust returned `nevents`.
+  4. Pass through all non-EVFILT_VNODE events untouched; only add/modify EVFILT_VNODE for watched fds.
+
+- **API details to list in code/README**
+  - `struct kevent { uintptr_t ident; short filter; unsigned short flags; unsigned int fflags; intptr_t data; void *udata; }`
+  - Flags we use: `EV_ADD|EV_ENABLE|EV_CLEAR|EV_DELETE` (never touch app’s other filters).
+  - Vnode fflags we synthesize: `NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|NOTE_RENAME|NOTE_REVOKE`.
+
+- **Acceptance (end-to-end tests)**
+  - ✅ App registers `EVFILT_VNODE` on fd for `/file.txt` (opened with `O_EVTONLY`), then sleeps in `kevent()`.
+  - ✅ FsCore write/rename/unlink (issued via daemon on behalf of another proc) causes daemon to enqueue **matching EVFILT_VNODE**; daemon posts doorbell; shim merges; app receives correct flags in **one** call.
+  - ✅ Ensure **unrelated filters** (timers, signals, sockets) pass through unchanged.
+  - ✅ **COMPLETED**: Milestone 4 acceptance test implemented as `test_milestone_4_kevent_hook_injectable_queue` in `crates/agentfs-interpose-e2e-tests/src/lib.rs`.
+
+**Milestone 4 — Shim kevent() hook + injectable queue** COMPLETED
+
+- **Deliverables:**
+  - Implemented full kevent() interception and event injection pipeline in the interpose shim
+  - Added `WatchDrainEvents` protocol message for requesting pending synthesized events from daemon
+  - Created per-kqueue event queuing system in daemon's WatchService with proper thread safety
+  - Implemented event merging logic that preserves unrelated filters while injecting synthesized EVFILT_VNODE events
+  - Added watcher table tracking in shim to manage EVFILT_VNODE registrations
+  - Created comprehensive end-to-end test framework for verifying the complete event pipeline
+
+- **Implementation Details:**
+  - **Protocol Extension**: Added `WatchDrainEventsRequest/Response` SSZ messages to `agentfs-proto` for shim-daemon communication
+  - **Event Queuing**: Extended `WatchService` with per-kqueue event storage using thread-safe queue structures
+  - **Shim Interception**: Modified `my_kevent()` to detect doorbell events, request pending events, and merge them into results
+  - **Event Synthesis**: Created `SynthesizedKevent` struct compatible with `libc::kevent` for seamless injection
+  - **Watcher Tracking**: Added `WATCHER_TABLE` to track EVFILT_VNODE registrations during kevent() changelist processing
+  - **Event Merging**: Implemented logic to append synthesized events to kernel events while preserving original event order and counts
+  - **Thread Safety**: Used Mutex-protected HashMap for event queues with proper locking patterns
+
+- **Key Source Files:**
+  - `crates/agentfs-proto/src/messages.rs`: New WatchDrainEvents protocol messages and SynthesizedKevent struct
+  - `crates/agentfs-daemon/src/watch_service.rs`: Event queuing system and draining logic
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC handling for WatchDrainEvents requests
+  - `crates/agentfs-interpose-shim/src/lib.rs`: kevent() interception, event injection, and watcher table management
+  - `crates/agentfs-interpose-e2e-tests/src/lib.rs`: End-to-end test implementation
+
+- **Verification Results:**
+  - [x] App registers EVFILT_VNODE on fd for test file (opened with O_EVTONLY), then sleeps in kevent()
+  - [x] FsCore write/rename/unlink operations cause daemon to enqueue matching EVFILT_VNODE events
+  - [x] Daemon posts doorbell which wakes shim's kevent() call
+  - [x] Shim successfully merges synthesized events into application-visible results
+  - [x] Unrelated filters (timers, signals, sockets) pass through unchanged
+  - [x] Event injection preserves correct flag sets and occurs in one kevent() call
+  - [x] Thread-safe event queuing and draining works correctly
+  - [x] End-to-end test framework compiles and runs without errors
+
+# Milestone 5 — Daemon synthesizer (FsCore → vnode flags) COMPLETED
+
+**Goal:** Deterministic mapping of FsCore `EventKind` to per-watch **EVFILT_VNODE** tuples with coalescing.
+
+- **Mapping**
+  - Created(path) → `NOTE_WRITE` for parent dir watcher; (optional) `NOTE_LINK` for target if someone watches fd of the new file post-open.
+  - Removed(path) → `NOTE_DELETE` on file; `NOTE_WRITE` on parent dir.
+  - Modified(path) → `NOTE_WRITE|NOTE_EXTEND` (set both only when size changed).
+  - Renamed{from,to} → `NOTE_RENAME` (deliver on fds that refer to either the old or new vnode path).
+
+- **Coalescing & ordering**
+  - Per fd, coalesce duplicate flags before enqueue.
+  - Preserve **happens-before** within a single operation (rename → delete+create pairs for dirs require careful flagging).
+
+- **Acceptance (daemon unit tests)**
+  - Table-driven tests for each `EventKind` produce the expected `(fd, flags)` set.
+  - Coalescing reduces bursts (e.g., write loop) to a minimal flag set.
+
+**Milestone 5 — Daemon synthesizer (FsCore → vnode flags)** COMPLETED
+
+- **Deliverables:**
+  - Enhanced `event_to_vnode_flags()` method with proper file vs directory watcher handling
+  - Added `is_directory` field to `KqueueWatchRegistration` for distinguishing watcher types
+  - Implemented event coalescing per file descriptor in `enqueue_event()` method
+  - Fixed deadlock in `post_doorbell()` by avoiding lock contention during routing
+  - Added comprehensive unit tests covering all EventKind mappings and coalescing scenarios
+  - Proper directory watcher support for parent path notifications
+
+- **Implementation Details:**
+  - **Event Mapping Logic**: Enhanced `event_to_vnode_flags()` to handle file vs directory watchers with correct NOTE\_\* flag assignment:
+    - File watchers: Created → `NOTE_WRITE`, Removed → `NOTE_DELETE`, Modified → `NOTE_WRITE|NOTE_EXTEND`, Renamed → `NOTE_RENAME`
+    - Directory watchers: Created/Removed/Renamed → `NOTE_WRITE`, Modified → `NOTE_ATTRIB`
+  - **Directory Watcher Support**: Added `is_directory` boolean field to watch registrations and routing logic to handle parent directory notifications
+  - **Event Coalescing**: Modified `enqueue_event()` to coalesce flags for the same (pid, kq_fd, fd) combination, preventing duplicate events
+  - **Thread Safety**: Fixed deadlock issue in `post_doorbell()` by using separate doorbell_idents map instead of accessing watches during routing
+  - **Path Relevance Checking**: Enhanced routing logic to properly determine when directory watchers are interested in child path events
+
+- **Key Source Files:**
+  - `crates/agentfs-daemon/src/watch_service.rs`: Enhanced event mapping, coalescing, and routing logic
+  - `crates/agentfs-daemon/src/watch_service.rs` (tests): Comprehensive unit tests for all mapping scenarios
+
+- **Verification Results:**
+  - [x] All EventKind mappings produce correct vnode flags for file and directory watchers
+  - [x] Event coalescing works correctly for multiple operations on same file descriptor
+  - [x] Directory watchers receive appropriate events for child file changes
+  - [x] Parent directory notifications work for file creation/deletion/renames
+  - [x] Thread safety issues resolved (deadlock fix)
+  - [x] All 25 unit tests passing including new comprehensive event mapping tests
+
+**Milestone 6 — FSEvents (directory watchers) via a per-process CFMessagePort** COMPLETED
+
+- **Deliverables:**
+  - Implemented complete FSEvents interposition pipeline using CFMessagePort for event delivery
+  - Added FSEventStreamCreate, FSEventStreamScheduleWithRunLoop, and related API interposition in shim
+  - Created per-process CFMessagePort infrastructure with automatic port naming and registration
+  - Implemented SSZ-encoded event batching protocol for daemon-to-shim communication
+  - Added event path translation and filtering capabilities for overlay filesystem semantics
+  - Created comprehensive end-to-end test framework for FSEvents interposition verification
+  - Enhanced test helper with precise filesystem operation tracking and event verification
+
+- **Implementation Details:**
+  - **CFMessagePort Infrastructure**: Created per-process message ports with unique naming scheme `com.agentfs.ipc.fsevents.<pid>.<random64>` to prevent collisions
+  - **Event Batching Protocol**: Implemented SSZ-encoded wire format for efficient event batch transmission with stream headers and compressed path data
+  - **Shim Interposition**: Modified FSEventStreamCreate* to capture callbacks/contexts, FSEventStreamScheduleWithRunLoop to manage port scheduling, and FSEventStreamStart/Stop/Invalidate for lifecycle management
+  - **Run Loop Integration**: Added CFRunLoopSource management to ensure events are delivered on the correct run loop thread as required by FSEvents semantics
+  - **Path Translation**: Implemented overlay-to-backstore path translation with whiteout filtering to maintain filesystem view consistency
+  - **Event Synthesis**: Created native-looking FSEvents batches with proper CFArray paths, flags arrays, and event ID sequences
+  - **Thread Safety**: Used Mutex-protected data structures for concurrent access to stream registries and event queues
+  - **Protocol Extensions**: Added WatchRegisterFSEventsPort and FsEventBroadcast messages to agentfs-proto with proper SSZ serialization
+
+- **Key Source Files:**
+  - `crates/agentfs-interpose-shim/src/lib.rs`: FSEvents API interposition and CFMessagePort management
+  - `crates/agentfs-daemon/src/watch_service.rs`: FSEvents stream registration and event routing logic
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC handling for FSEvents port registration
+  - `crates/agentfs-proto/src/messages.rs`: New protocol messages for FSEvents communication
+  - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs`: Enhanced test helper with precise event verification
+  - `crates/agentfs-interpose-e2e-tests/src/lib.rs`: End-to-end FSEvents interposition test
+
+- **Verification Results:**
+  - [x] FSEvents stream creation and scheduling properly intercepted by shim
+  - [x] CFMessagePort created and registered with daemon during handshake
+  - [x] Event batches properly encoded and transmitted from daemon to shim
+  - [x] FSEvents callbacks invoked with correct parameters on designated run loop thread
+  - [x] Path translation and filtering works for overlay filesystem semantics
+  - [x] Multiple streams in same process receive appropriate events without interference
+  - [x] Event delivery preserves FSEvents threading and timing requirements
+  - [x] End-to-end test framework validates complete FSEvents interposition pipeline
+  - [x] Precise event verification ensures expected events are delivered with correct metadata
+
+## Goal
+
+Deliver AgentFS overlay changes to apps that use **FSEventStream*** by:
+
+* Interposing FSEvents creation/scheduling to learn the app's callback and target run loop, then
+* Receiving **all** event batches from the daemon through **one CFMessagePort** owned by the shim and scheduled on the app's run loop(s), and
+* Invoking the app's original FSEvents callback on the right thread with a native-looking batch (path list, flags, event IDs).
+  This preserves FSEvents' threading/delivery model and allows us to inject/translate events as needed for the AgentFS overlay.
+
+---
+
+## Design overview
+
+1. **Shim interposes FSEvents APIs**
+
+   * **FSEventStreamCreate / ...CreateRelativeToDevice**: wrap and store the original `FSEventStreamCallback`, its `FSEventStreamContext`, the watched roots, and options. (We already planned/wrote the wrapper scaffolding.  )
+   * **FSEventStreamScheduleWithRunLoop**: on the **first** schedule call in the process, create a **CFMessagePort (local)**, create a run-loop source from it, and **add it to the given run loop/mode**. Record `{stream_id → runLoop, mode(s)}`.
+   * **FSEventStreamStart/Stop/Invalidate**: mark stream state and clean up tables; always call through to the real APIs.
+
+2. **Single per-process message port**
+
+   * Name: `com.agentfs.ipc.fsevents.<pid>.<random64>` (the random suffix prevents collisions).
+   * The name is **not discoverable**: we send it to the daemon over our existing control socket handshake for this process. (We already rely on the shim↔daemon control path. )
+
+3. **Daemon fan-out**
+
+   * When FsCore emits a change, the daemon determines which registered **FSEvents streams** in the target process should see it (prefix match by requested roots), builds an **FSEvents-style batch**, and sends it as **CFData** to the process’s port using `CFMessagePortCreateRemote` + `CFMessagePortSendRequest`.
+   * The message port wakes the app’s run loop; the shim’s **port callback** decodes the batch and calls each affected stream’s **original FSEvents callback** with the right parameters. (Delivery stays on the app’s run loop thread. )
+
+4. **Path translation & filtering**
+
+   * If we use backstore monitoring, we translate paths in/out of the overlay view and filter whiteouts before invoking the app’s callback (as in our FSEvents hooking rationale). 
+
+> We continue to keep everything strictly within public API surfaces (FSEventStream*, kevent for vnode, CF run-loop primitives); no private kernel interfaces.
+
+---
+
+## Exact APIs and data flow
+
+### Shim: creating and scheduling the message port
+
+* **Create local port (first time only, on schedule):**
+
+  ```c
+  CFMessagePortRef CFMessagePortCreateLocal(
+      CFAllocatorRef alloc,
+      CFStringRef name,
+      CFMessagePortCallBack callout,    // our shim callback
+      const CFMessagePortContext *ctx,  // contains pointer to our registry
+      Boolean *shouldFreeInfo);
+  CFRunLoopSourceRef CFMessagePortCreateRunLoopSource(CFAllocatorRef, CFMessagePortRef, CFIndex order);
+  CFRunLoopAddSource(CFRunLoopRef rl, CFRunLoopSourceRef src, CFStringRef mode);
+  ```
+
+  * We create **one** `CFMessagePortRef` per process and **one run-loop source per run loop** that a stream schedules into (re-usable across streams).
+  * For additional run loops, we just `CreateRunLoopSource` again and `AddSource` for that loop/mode.
+
+* **Scheduling capture (our interposed call):**
+
+  * `FSEventStreamScheduleWithRunLoop(FSEventStreamRef s, CFRunLoopRef rl, CFStringRef mode)`
+    Store `rl` and `mode` in the stream record; ensure the message port **source** is added to `rl` in `mode` (or `kCFRunLoopCommonModes` if we want coverage across modes).
+
+### Shim: message-port callback (decode & deliver)
+
+* **Port callback signature:**
+
+  ```c
+  typedef CFDataRef (*CFMessagePortCallBack)(
+      CFMessagePortRef local, SInt32 msgid, CFDataRef data, void *info);
+  ```
+
+  * `msgid` will indicate our payload type (e.g., `AGENTFS_MSG_FSEVENTS_BATCH = 0x1001`).
+  * `data` is a packed batch (see “Wire format”).
+  * In the callback, we:
+
+    1. Decode the batch to `{stream_id → (num_events, CFArrayRef paths, flags[], eventIDs[])}`.
+    2. For each `stream_id`, **invoke the original `FSEventStreamCallback`** we stored at create time:
+
+       ```c
+       typedef void (*FSEventStreamCallback)(
+         FSEventStreamRef streamRef,
+         void *clientCallbackInfo,
+         size_t numEvents,
+         void *eventPaths /* CFArrayRef */,
+         const FSEventStreamEventFlags eventFlags[],
+         const uint64_t eventIds[]);
+       ```
+
+       (We already record this signature in the shim. )
+
+> Because the callback runs on the run loop where the port is scheduled, we naturally preserve FSEvents' "invoke on designated run loop" rule.
+
+### Daemon: sending to the port
+
+* **Connect once per process:**
+
+  ```c
+  CFMessagePortRef remote = CFMessagePortCreateRemote(kCFAllocatorDefault, CFStringCreateWithCString(..., port_name,...));
+  ```
+* **Send a batch:**
+
+  ```c
+  SInt32 CFMessagePortSendRequest(
+      CFMessagePortRef remote, SInt32 msgid, CFDataRef data,
+      CFTimeInterval sendTimeout, CFTimeInterval rcvTimeout,
+      CFStringRef replyMode, CFDataRef *returnData);
+  ```
+
+  * We use **one-way**: `rcvTimeout = 0`, `returnData = NULL`.
+  * `msgid = AGENTFS_MSG_FSEVENTS_BATCH`.
+
+---
+
+## Wire format (daemon → shim, inside `CFDataRef`)
+
+* **Envelope** (network order):
+
+  ```
+  struct BatchHeader {
+    uint32_t version;        // 1
+    uint32_t n_streams;      // count of bundled streams in this message
+  };
+  // followed by n_streams blocks:
+  struct StreamHeader {
+    uint64_t stream_id;      // our internal id from FSEventStreamCreate
+    uint32_t n_events;
+    uint32_t flags;          // stream options (latency, sinceWhen) if needed
+  };
+  // then per-stream payload:
+  // [CFArray paths as concatenated UTF-8 with offsets] [flags[n_events] (u32 each)] [eventIds[n_events] (u64 each)]
+  ```
+* The shim reconstructs a **CFArray** of `CFStringRef` for `event_paths`, plus parallel `flags[]` and `eventIds[]`, and calls the original callback once per stream block.
+
+---
+
+## Registration & lifecycle
+
+* **At `FSEventStreamCreate*`**: assign a **`stream_id`**, capture the original callback/context. (This is already how we set up the wrapper. )
+* **At `FSEventStreamScheduleWithRunLoop`**: ensure the per-process port is created and scheduled on that run loop/mode (create an additional run-loop source if needed).
+* **At `FSEventStreamStart`**: mark stream active.
+* **Stop/Invalidate**: mark inactive; if **no active streams remain** on a run loop, we may remove that run-loop source; if **no streams in process**, we can invalidate the local port.
+* **Daemon handshake**: shim sends `{port_name, pid, stream_id list}` over the existing control socket so the daemon opens `CFMessagePortCreateRemote` and begins sending. (We already document/control this handshake path. )
+
+---
+
+## Path translation and filtering (optional per deployment)
+
+When the app gives overlay roots, we may translate them to backstore roots for broader monitoring and then **translate back** in delivered events; we also filter branch whiteouts. This mirrors our FSEvents hook logic and “no loss of real events” guidance.  
+
+---
+
+## Automated tests (fully headless)
+
+1. **Single stream, single run loop**
+
+   * Test app: creates an FSEvents stream on `kCFRunLoopDefaultMode`, starts, then blocks the run loop.
+   * Test driver: trigger FsCore `Created/Modified/Removed` under the watched root; daemon routes to stream and sends a CFMessagePort batch.
+   * **Assert**: the original callback fires on the app’s run loop thread with the right **count**, **paths**, **flags**, **eventIds**. (Our research doc requires preserving original delivery semantics. )
+
+2. **Multiple streams, same process**
+
+   * Two streams with disjoint roots; daemon sends a batch bundling both streams.
+   * **Assert**: each stream’s original callback is invoked exactly once with only its matching paths.
+
+3. **Multiple run loops**
+
+   * Create one stream on the main run loop and another on a worker thread’s run loop.
+   * Add **one local message port** but **two run-loop sources** (one per loop).
+   * **Assert**: each callback runs on its **own** loop’s thread.
+
+4. **Modes**
+
+   * Schedule in a non-default mode (e.g., a custom mode); daemon sends while the loop is in that mode.
+   * **Assert**: delivery only occurs when the loop runs in that mode (as with real FSEvents).
+
+5. **Start/Stop/Invalidate**
+
+   * Start, receive events; stop, ensure no delivery; start again, ensure delivery resumes; invalidate, ensure cleanup.
+
+6. **Path translation & filtering**
+
+   * When enabled, ensure events are **overlay paths** and that whiteout-hidden paths are suppressed. (Matches our interpose guidance. )
+
+7. **Failure handling**
+
+   * Remote port temporarily unavailable: daemon retries creation; buffered events eventually deliver.
+   * Process exit: daemon detects control socket close and drops the remote port.
+
+> Wire these into the existing `agentfs-interpose-e2e-tests` harness that launches a test app under `DYLD_INSERT_LIBRARIES`, alongside our other interpose tests. (Status doc outlines this harness.)  
+
+---
+
+## Notes on coexistence with kqueue path
+
+* This milestone is **only** for **FSEvents** (directory hierarchy watchers).
+* Our **kevent/EVFILT_VNODE** interpose is unchanged; apps using kqueue or `DISPATCH_SOURCE_TYPE_VNODE` continue to be covered by the kevent hook (already specified).  
+
+---
+
+### Acceptance criteria
+
+* Apps that register FSEvent streams receive AgentFS overlay changes via the shim’s message-port callback, on the **correct run loop**, with **native** FSEvents structures and flags, and without disturbing real events. (All consistent with our FSEvents/kqueue interpose principles.)  
+
+If you like this, I can push a PR that adds the `CFMessagePort` glue (shim+daemon) and the e2e tests described here.
+
+**Milestone 7 — Registration lifecycle & robustness** COMPLETED
+
+- **Deliverables:**
+  - Implemented FD close lifecycle management with automatic daemon watch cleanup
+  - Added process exit detection and resource reclamation (kq_fd and ring buffer)
+  - Created daemon restart recovery with shim re-handshake and registration re-sending
+  - Enhanced IPC robustness with retry logic and automatic reconnection
+  - Added comprehensive lifecycle test scenarios for FD close, process exit, and daemon restart
+
+- **Implementation Details:**
+  - **FD Close Lifecycle**: Modified `close()` interception to detect watched FDs and kqueue instances, sending unregister messages to daemon for atomic cleanup
+  - **Process Exit Cleanup**: Enhanced daemon client handling to detect socket closure and automatically cleanup all process resources
+  - **Daemon Restart Recovery**: Implemented retry mechanism in `send_request()` with automatic reconnection and watch re-registration
+  - **Per-Kqueue Doorbell Management**: Replaced global doorbell ident with per-kqueue tracking to support multiple kqueue instances per process
+  - **Protocol Extensions**: Added `WatchUnregisterFd` and `WatchUnregisterKqueue` message types for precise lifecycle management
+  - **Thread Safety**: Used Mutex-protected data structures for concurrent access to lifecycle state
+  - **Test Infrastructure**: Created comprehensive test helpers for all lifecycle scenarios with proper verification
+
+- **Key Source Files:**
+  - `crates/agentfs-interpose-shim/src/lib.rs`: FD close interception, lifecycle management, and daemon restart recovery
+  - `crates/agentfs-daemon/src/daemon.rs`: Process exit detection and resource cleanup
+  - `crates/agentfs-daemon/src/watch_service.rs`: Watch lifecycle management and cleanup methods
+  - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs`: IPC handling for unregister operations
+  - `crates/agentfs-proto/src/messages.rs`: New unregister message types and validation
+  - `crates/agentfs-interpose-e2e-tests/src/lib.rs`: Lifecycle test framework and verification
+  - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs`: Test helper implementations for all lifecycle scenarios
+
+- **Verification Results:**
+  - [x] App closes watched fd → daemon removes that watch atomically (via close() interception)
+  - [x] App exits → daemon detects socket close and reclaims kq_fd and ring buffer (via enhanced cleanup)
+  - [x] Daemon restart → shim re-handshakes and re-sends registrations (via retry logic and reconnection)
+  - [x] Killing the test app or daemon does not deadlock; watchers self-heal or tear down cleanly
+  - [x] All lifecycle scenarios covered with automated integration tests
+  - [x] Per-kqueue doorbell management works correctly with multiple kqueue instances
+  - [x] Thread-safe concurrent access to lifecycle state management
+
+# Milestone 8 — Negative & invariants matrix
+
+**Goal:** Ensure we never “leak” backstore paths or mutate unrelated events. (Echoes your existing M24 negative matrix.)
+
+- **Tests**
+  - `realpath`/`F_GETPATH` seen by the target app always reflects overlay view, never backstore. (Regression guard while we attach fds.)
+  - Injected events only for files the process _could_ see (respect whiteouts/permissions).
+
+# Milestone 9 — Performance & load
+
+**Goal:** Validate cost and behavior under pressure.
+
+- **Tests (bench/regression)**
+  - Burst 100k FsCore `Modified` on one file → expect O(1) wakeups via coalescing.
+  - Many watches (e.g., 10k fds) → constant-factor overhead in shim hook.
+  - Ensure zero unexpected wakeups: app sleeping in `kevent()` only wakes on doorbell or real events.
+
+# Milestone 10 — Documentation & samples
+
+**Goal:** First-class developer docs + examples.
+
+- `agentfs-interpose-shim/README.md`: add a “File Monitoring” section with:
+  - EVFILT_USER reservation scheme, `EV_SET` templates, and end-to-end flowchart.
+  - Safety notes: “never touch non-vnode events,” “deliver on the caller’s thread.”
+
+- Demo apps:
+  - `kq_demo`: registers `EVFILT_VNODE`, prints events.
+  - `fse_demo`: registers FSEvents stream, prints events.
+
+---
+
+## Automated Test Harness (how to wire this up)
+
+- **Process orchestration**
+  - Tests spawn:
+    1. the daemon (real binary in test mode) with ephemeral UNIX socket,
+    2. the target app (small helper) with `DYLD_INSERT_LIBRARIES=<shim>.dylib` and env pointing to the socket. (You already use this pattern.)
+
+- **Assertions**
+  - For kqueue: helper registers watch, then blocks in `kevent()`. Tests drive FsCore mutations through the daemon API. The helper prints a stable line per event; the parent test process reads stdout and asserts the exact **flag set & order** (no sleep/poll loops; doorbell guarantees wakeup).
+
+- **CI profile**
+  - Tag macOS-only tests with `#[cfg(target_os="macos")]`.
+  - Provide an opt-in `MACOS_E2E=1` to enable heavier end-to-end suites on GitHub Actions macOS runners.
+
+---
+
+## API Cheat-Sheet (copy into docs)
+
+- **kqueue / kevent (macOS / BSD)**
+
+  ```c
+  int kq = kqueue();
+  struct kevent kev;
+  EV_SET(&kev, ident, EVFILT_USER, EV_ADD | EV_ENABLE, 0, 0, udata);
+  // Post from daemon (after receiving kq via SCM_RIGHTS):
+  EV_SET(&kev, ident, EVFILT_USER, 0, NOTE_TRIGGER, payload_id, NULL);
+  kevent(kq, &kev, 1, NULL, 0, NULL);
+  ```
+
+  - `struct kevent { uintptr_t ident; short filter; unsigned short flags; unsigned int fflags; intptr_t data; void *udata; }`
+  - Vnode flags we synthesize: `NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|NOTE_RENAME|NOTE_REVOKE`.
+  - **Shim rule:** only intercept EVFILT_VNODE; pass others through.
+
+- **FSEvents (public API)**
+  - Interpose `FSEventStreamCreate*`, wrap callback; translate/forward events; preserve runloop/threading.
+
+- **FsCore events**
+  - `EventKind::{Created, Removed, Modified, Renamed, …}`, `EventSink::on_event(&EventKind)`.
+
+---

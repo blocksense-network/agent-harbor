@@ -14,11 +14,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
 use crate::{
-    Attributes, BranchId, BranchInfo, ContentId, DirEntry, EventKind, EventSink, FileMode,
-    FileTimes, FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode,
-    SnapshotId, StreamSpec, SubscriptionId,
+    Attributes, BranchId, BranchInfo, ContentId, DirEntry, FileMode, FileTimes, FsConfig, FsStats,
+    HandleId, LockKind, LockRange, OpenOptions, ShareMode, SnapshotId, StreamSpec,
 };
+
 use crate::{Backstore, LowerFs};
+#[cfg(feature = "events")]
+use crate::{EventKind, EventSink, SubscriptionId};
 
 // Import proto types for interpose operations
 use agentfs_proto::messages::{StatData, StatfsData, TimespecData};
@@ -127,6 +129,7 @@ pub(crate) enum HandleType {
 pub(crate) struct Handle {
     pub id: HandleId,
     pub node_id: NodeId,
+    pub path: PathBuf, // Store the path for event emission
     pub kind: HandleType,
 }
 
@@ -195,6 +198,7 @@ pub struct FsCore {
     handles: Mutex<HashMap<HandleId, Handle>>,
     next_node_id: Mutex<u64>,
     next_handle_id: Mutex<u64>,
+    #[cfg(feature = "events")]
     next_subscription_id: Mutex<u64>,
     pub(crate) process_branches: Mutex<HashMap<u32, BranchId>>, // Process ID -> Branch ID mapping
     process_identities: Mutex<HashMap<u32, User>>,              // Process ID -> security identity
@@ -202,10 +206,12 @@ pub struct FsCore {
     process_parents: Mutex<HashMap<u32, u32>>,                  // Child PID -> parent PID
     process_dirfd_mappings: Mutex<HashMap<u32, DirfdMapping>>, // Process ID -> directory fd mappings
     locks: Mutex<LockManager>,                                 // Byte-range lock manager
+    #[cfg(feature = "events")]
     event_subscriptions: Mutex<HashMap<SubscriptionId, Arc<dyn EventSink>>>,
 }
 
 impl FsCore {
+    /// Create a new FsCore instance with the given configuration
     pub fn new(config: FsConfig) -> FsResult<Self> {
         // Initialize storage backend based on backstore configuration
         let storage: Arc<dyn StorageBackend> = match &config.backstore {
@@ -214,6 +220,10 @@ impl FsCore {
             }
             crate::config::BackstoreMode::HostFs { root, .. } => {
                 Arc::new(crate::storage::HostFsBackend::new(root.clone())?)
+            }
+            crate::config::BackstoreMode::RamDisk { .. } => {
+                // RamDisk creates an APFS volume for backstore, but uses in-memory for core storage
+                Arc::new(crate::storage::InMemoryBackend::new())
             }
         };
 
@@ -246,6 +256,7 @@ impl FsCore {
             handles: Mutex::new(HashMap::new()),
             next_node_id: Mutex::new(1),
             next_handle_id: Mutex::new(1),
+            #[cfg(feature = "events")]
             next_subscription_id: Mutex::new(1),
             process_branches: Mutex::new(HashMap::new()), // No processes initially bound
             process_identities: Mutex::new(HashMap::new()), // No processes initially registered
@@ -255,12 +266,59 @@ impl FsCore {
             locks: Mutex::new(LockManager {
                 locks: HashMap::new(),
             }),
+            #[cfg(feature = "events")]
             event_subscriptions: Mutex::new(HashMap::new()),
         };
 
         // Create root directory
         core.create_root_directory()?;
         Ok(core)
+    }
+
+    /// Create a new FsCore instance with RamDisk backstore for testing
+    ///
+    /// This creates an APFS RAM disk and configures the FsCore to use it for backstore operations.
+    /// Returns both the FsCore and a placeholder for cleanup.
+    ///
+    /// This function is only available on macOS and requires root privileges or appropriate entitlements.
+    #[cfg(test)]
+    pub fn new_ephemeral() -> FsResult<(Self, Box<dyn std::any::Any>)> {
+        use crate::config::{
+            BackstoreMode, CachePolicy, FsConfig, FsLimits, InterposeConfig, MemoryPolicy,
+            OverlayConfig, SecurityPolicy,
+        };
+
+        let config = FsConfig {
+            case_sensitivity: crate::config::CaseSensitivity::Sensitive,
+            memory: MemoryPolicy {
+                max_bytes_in_memory: Some(1024 * 1024 * 1024), // 1GB
+                spill_directory: None,
+            },
+            limits: FsLimits {
+                max_open_handles: 10000,
+                max_branches: 1000,
+                max_snapshots: 10000,
+            },
+            cache: CachePolicy {
+                attr_ttl_ms: 1000,
+                entry_ttl_ms: 1000,
+                negative_ttl_ms: 1000,
+                enable_readdir_plus: true,
+                auto_cache: true,
+                writeback_cache: false,
+            },
+            enable_xattrs: true,
+            enable_ads: false,
+            track_events: false,
+            security: SecurityPolicy::default(),
+            backstore: BackstoreMode::RamDisk { size_mb: 128 }, // 128MB RAM disk for testing
+            overlay: OverlayConfig::default(),
+            interpose: InterposeConfig::default(),
+        };
+
+        let core = Self::new(config)?;
+        // Return placeholder for cleanup - in practice, tests should manage ramdisk lifecycle
+        Ok((core, Box::new(())))
     }
 
     fn create_root_directory(&mut self) -> FsResult<()> {
@@ -349,6 +407,92 @@ impl FsCore {
         // For now, copy-up is handled implicitly when operations create upper entries
         // This method can be expanded later for explicit copy-up scenarios
         Ok(())
+    }
+
+    /// Collect all upper layer files for a given branch root
+    /// Returns a list of (upper_file_path, overlay_path) pairs
+    fn collect_upper_layer_files(
+        &self,
+        branch_root_id: NodeId,
+    ) -> FsResult<Vec<(std::path::PathBuf, std::path::PathBuf)>> {
+        let mut upper_files = Vec::new();
+
+        // Only collect files if we have a backstore that supports reflink
+        if let Some(backstore) = &self.backstore {
+            if backstore.supports_native_reflink() {
+                let mut to_visit = vec![(branch_root_id, std::path::PathBuf::new())];
+                let nodes = self.nodes.lock().unwrap();
+                let backstore_root = backstore.root_path();
+
+                eprintln!(
+                    "DEBUG: Collecting upper files, backstore root: {}",
+                    backstore_root.display()
+                );
+                eprintln!("DEBUG: Branch root id: {}", branch_root_id.0);
+
+                while let Some((node_id, current_path)) = to_visit.pop() {
+                    eprintln!(
+                        "DEBUG: Visiting node {} at path {}",
+                        node_id.0,
+                        current_path.display()
+                    );
+                    if let Some(node) = nodes.get(&node_id) {
+                        match &node.kind {
+                            NodeKind::File { streams } => {
+                                eprintln!("DEBUG: Found file with {} streams", streams.len());
+                                // For each stream, get the content file path from the storage backend
+                                for (stream_name, (content_id, _size)) in streams {
+                                    // Get the actual file path where this content is stored
+                                    if let Some(content_path) =
+                                        self.storage.get_content_path(*content_id)
+                                    {
+                                        eprintln!(
+                                            "DEBUG: Found content file: {}",
+                                            content_path.display()
+                                        );
+                                        // Check if the content file actually exists
+                                        if content_path.exists() {
+                                            eprintln!("DEBUG: Content file exists!");
+                                            upper_files.push((content_path, current_path.clone()));
+                                        } else {
+                                            eprintln!("DEBUG: Content file does not exist");
+                                        }
+                                    } else {
+                                        eprintln!(
+                                            "DEBUG: No content path for content_id {}",
+                                            content_id.0
+                                        );
+                                    }
+                                }
+                            }
+                            NodeKind::Directory { children } => {
+                                eprintln!(
+                                    "DEBUG: Found directory with {} children",
+                                    children.len()
+                                );
+                                // Recursively visit all children
+                                for (child_name, child_id) in children {
+                                    let child_path = current_path.join(child_name);
+                                    to_visit.push((*child_id, child_path));
+                                }
+                            }
+                            NodeKind::Symlink { .. } => {
+                                // Symlinks don't have upper layer files to clonefile
+                                // The symlink target is stored in the node metadata
+                            }
+                        }
+                    } else {
+                        eprintln!("DEBUG: Node {} not found", node_id.0);
+                    }
+                }
+            } else {
+                eprintln!("DEBUG: Backstore does not support native reflink");
+            }
+        } else {
+            eprintln!("DEBUG: No backstore available");
+        }
+
+        Ok(upper_files)
     }
 
     /// Registers a process with the filesystem, establishing its security identity and process hierarchy.
@@ -648,6 +792,13 @@ impl FsCore {
         // Clear setuid/setgid on metadata ownership change
         node.mode &= !0o6000;
         node.times.ctime = Self::current_timestamp();
+
+        // Emit Modified event for metadata change
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Modified {
+            path: path.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -928,13 +1079,29 @@ impl FsCore {
 
         let snapshot_id = SnapshotId::new();
 
+        let snapshot_name = name
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
+
         // If we have a backstore that supports native snapshots, delegate to it
         if let Some(backstore) = &self.backstore {
             if backstore.supports_native_snapshots() {
-                let snapshot_name = name
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
                 backstore.snapshot_native(&snapshot_name)?;
+            } else if backstore.supports_native_reflink() {
+                // Collect all upper layer files that need to be materialized
+                let upper_files = self.collect_upper_layer_files(branch.root_id)?;
+                eprintln!(
+                    "DEBUG: Collected {} upper files for snapshot",
+                    upper_files.len()
+                );
+                for (upper_path, overlay_path) in &upper_files {
+                    eprintln!(
+                        "DEBUG: Upper file: {} -> {}",
+                        upper_path.display(),
+                        overlay_path.display()
+                    );
+                }
+                backstore.snapshot_clonefile_materialize(&snapshot_name, &upper_files)?;
             }
         }
 
@@ -947,6 +1114,7 @@ impl FsCore {
         self.snapshots.lock().unwrap().insert(snapshot_id, snapshot);
 
         // Emit event
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::SnapshotCreated {
             id: snapshot_id,
             name: name.map(|s| s.to_string()),
@@ -998,6 +1166,7 @@ impl FsCore {
         self.branches.lock().unwrap().insert(branch_id, branch);
 
         // Emit event
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::BranchCreated {
             id: branch_id,
             name: name.map(|s| s.to_string()),
@@ -1155,6 +1324,7 @@ impl FsCore {
     }
 
     // Event subscription operations
+    #[cfg(feature = "events")]
     pub fn subscribe_events(&self, cb: Arc<dyn EventSink>) -> FsResult<SubscriptionId> {
         let mut subscriptions = self.event_subscriptions.lock().unwrap();
         let mut next_id = self.next_subscription_id.lock().unwrap();
@@ -1164,6 +1334,7 @@ impl FsCore {
         Ok(subscription_id)
     }
 
+    #[cfg(feature = "events")]
     pub fn unsubscribe_events(&self, sub: SubscriptionId) -> FsResult<()> {
         let mut subscriptions = self.event_subscriptions.lock().unwrap();
         if subscriptions.remove(&sub).is_none() {
@@ -1193,6 +1364,14 @@ impl FsCore {
     }
 
     // Helper method to emit events to all subscribers
+    #[cfg(feature = "events")]
+    /// Reconstruct the path for a given node ID within the current process branch
+    fn path_for_node(&self, pid: &PID, node_id: NodeId) -> Option<PathBuf> {
+        // For now, return a placeholder path since reconstructing paths is complex
+        // In a full implementation, this would walk the directory tree
+        Some(PathBuf::from("/reconstructed_path"))
+    }
+
     fn emit_event(&self, event: EventKind) {
         if !self.config.track_events {
             return;
@@ -1270,6 +1449,7 @@ impl FsCore {
         let handle = Handle {
             id: handle_id,
             node_id: file_node_id,
+            path: path.to_path_buf(),
             kind: HandleType::File {
                 options: opts.clone(),
                 deleted: false,
@@ -1280,6 +1460,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(handle_id)
@@ -1310,6 +1491,7 @@ impl FsCore {
             let handle = Handle {
                 id: handle_id,
                 node_id,
+                path: path.to_path_buf(),
                 kind: HandleType::File {
                     options: opts.clone(),
                     deleted: false,
@@ -1502,9 +1684,11 @@ impl FsCore {
         }
 
         let handle_id = self.allocate_handle_id();
+        let path = self.path_for_node(pid, node_id).unwrap_or_else(|| PathBuf::from("/unknown"));
         let handle = Handle {
             id: handle_id,
             node_id,
+            path,
             kind: HandleType::File {
                 options: opts.clone(),
                 deleted: false,
@@ -1631,6 +1815,15 @@ impl FsCore {
                 *size = new_size;
                 node.times.mtime = Self::current_timestamp();
                 node.times.ctime = node.times.mtime;
+
+                // Emit Modified event for file content changes
+                #[cfg(feature = "events")]
+                if written > 0 {
+                    self.emit_event(EventKind::Modified {
+                        path: handle.path.to_string_lossy().to_string(),
+                    });
+                }
+
                 Ok(written)
             }
             NodeKind::Directory { .. } => Err(FsError::IsADirectory),
@@ -1811,6 +2004,13 @@ impl FsCore {
     pub fn set_times(&self, pid: &PID, path: &Path, times: FileTimes) -> FsResult<()> {
         let (node_id, _) = self.resolve_path(pid, path)?;
         self.update_node_times(node_id, times);
+
+        // Emit Modified event for metadata change
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Modified {
+            path: path.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -1879,6 +2079,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(())
@@ -1924,6 +2125,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Removed { path: path_str });
 
         Ok(())
@@ -2215,6 +2417,7 @@ impl FsCore {
         let handle = Handle {
             id: handle_id,
             node_id,
+            path: path.to_path_buf(),
             kind: HandleType::Directory {
                 position: 0,
                 entries: entries.into_iter().map(|(entry, _)| entry).collect(),
@@ -2272,6 +2475,14 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         if let Some(node) = nodes.get_mut(&node_id) {
             node.xattrs.insert(name.to_string(), value.to_vec());
+
+            // Emit Modified event for metadata change
+            #[cfg(feature = "events")]
+            drop(nodes); // Release lock before emitting event
+            self.emit_event(EventKind::Modified {
+                path: path.to_string_lossy().to_string(),
+            });
+
             Ok(())
         } else {
             Err(FsError::NotFound)
@@ -2290,6 +2501,13 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         if let Some(node) = nodes.get_mut(&node_id) {
             if node.xattrs.remove(name).is_some() {
+                // Emit Modified event for metadata change
+                #[cfg(feature = "events")]
+                drop(nodes); // Release lock before emitting event
+                self.emit_event(EventKind::Modified {
+                    path: path.to_string_lossy().to_string(),
+                });
+
                 Ok(())
             } else {
                 Err(FsError::NotFound)
@@ -3042,6 +3260,7 @@ impl FsCore {
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Removed { path: path_str });
 
         Ok(())
@@ -3071,6 +3290,13 @@ impl FsCore {
         // ctime changes on metadata change
         let now = FsCore::current_timestamp();
         node.times.ctime = now;
+
+        // Emit Modified event for metadata change
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Modified {
+            path: path.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -3246,7 +3472,12 @@ impl FsCore {
 
     /// Truncate file (ftruncate) for an open file descriptor
     pub fn ftruncate(&self, pid: &PID, handle_id: HandleId, length: u64) -> FsResult<()> {
-        let node_id = self.get_node_id_for_handle(pid, handle_id)?;
+        let handles = self.handles.lock().unwrap();
+        let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
+        let node_id = handle.node_id;
+        let handle_path = handle.path.clone();
+        drop(handles);
+
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
 
@@ -3284,6 +3515,15 @@ impl FsCore {
         let now = FsCore::current_timestamp();
         node.times.ctime = now;
         node.times.mtime = now;
+
+        // Emit Modified event for file content change
+        #[cfg(feature = "events")]
+        {
+            drop(nodes); // Release lock before emitting event
+            self.emit_event(EventKind::Modified {
+                path: handle_path.to_string_lossy().to_string(),
+            });
+        }
 
         Ok(())
     }
@@ -3496,6 +3736,13 @@ impl FsCore {
             node.times.ctime = now;
         }
 
+        // Emit Renamed event
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Renamed {
+            from: old.to_string_lossy().to_string(),
+            to: new.to_string_lossy().to_string(),
+        });
+
         Ok(())
     }
 
@@ -3547,6 +3794,7 @@ impl FsCore {
 
         // Emit event
         let path_str = linkpath.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(())
@@ -3619,6 +3867,7 @@ impl FsCore {
 
         // Emit event
         let path_str = new_path.to_string_lossy().to_string();
+        #[cfg(feature = "events")]
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(())

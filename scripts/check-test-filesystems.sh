@@ -15,7 +15,7 @@ echo ""
 # Check if cache directory exists
 if [ -d "$CACHE_DIR" ]; then
   echo "✅ Cache directory exists"
-  ls -la "$CACHE_DIR" | grep -E "(zfs_backing|btrfs_backing|\.img$)" || echo "   No backing files found"
+  ls -la "$CACHE_DIR" | grep -E "(zfs_backing|btrfs_backing|apfs_backing|\.img$|\.sparseimage$)" || echo "   No backing files found"
 else
   echo "❌ Cache directory does not exist"
   echo "   Run 'just create-test-filesystems' to set up test filesystems"
@@ -96,9 +96,57 @@ fi
 
 echo ""
 
+# Check APFS status (macOS only)
+echo "APFS Status:"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "  ✅ Running on macOS"
+
+  if [ -f "$APFS_FILE" ]; then
+    echo "  ✅ APFS backing file exists ($(du -h "$APFS_FILE" | cut -f1))"
+  else
+    echo "  ❌ APFS backing file missing"
+  fi
+
+  # Check if volume is attached
+  if hdiutil info | grep -q "$APFS_VOLNAME"; then
+    echo "  ✅ APFS volume '$APFS_VOLNAME' is attached"
+
+    # Check if mounted
+    if [ -d "/Volumes/$APFS_VOLNAME" ]; then
+      echo "  ✅ APFS volume mounted at /Volumes/$APFS_VOLNAME"
+
+      # Check filesystem type
+      if command -v diskutil >/dev/null 2>&1; then
+        FS_TYPE=$(diskutil info "/Volumes/$APFS_VOLNAME" 2>/dev/null | grep "File System Personality:" | sed 's/.*: //' | tr -d '\n' | xargs)
+        if [[ "$FS_TYPE" == "APFS" ]]; then
+          echo "  ✅ Filesystem type: $FS_TYPE"
+        else
+          echo "  ⚠️  Unexpected filesystem type: $FS_TYPE"
+        fi
+      fi
+
+      # Check if writable
+      if [ -w "/Volumes/$APFS_VOLNAME" ]; then
+        echo "  ✅ Mount point is writable"
+      else
+        echo "  ❌ Mount point is not writable"
+      fi
+    else
+      echo "  ❌ APFS volume not mounted at expected location /Volumes/$APFS_VOLNAME"
+    fi
+  else
+    echo "  ❌ APFS volume '$APFS_VOLNAME' not attached"
+  fi
+else
+  echo "  ℹ️  APFS check skipped (not on macOS)"
+fi
+
+echo ""
+
 # Summary
 ZFS_READY=false
 BTRFS_READY=false
+APFS_READY=false
 
 if command -v zfs >/dev/null 2>&1 && zpool list "$ZFS_POOL" >/dev/null 2>&1 && zfs list "$ZFS_POOL/test_dataset" >/dev/null 2>&1; then
   ZFS_READY=true
@@ -106,6 +154,10 @@ fi
 
 if command -v mkfs.btrfs >/dev/null 2>&1 && [ -b "$BTRFS_LOOP" ] && mountpoint -q "$CACHE_DIR/btrfs_mount"; then
   BTRFS_READY=true
+fi
+
+if [[ "$(uname -s)" == "Darwin" ]] && [ -f "$APFS_FILE" ] && hdiutil info | grep -q "$APFS_VOLNAME" && [ -d "/Volumes/$APFS_VOLNAME" ] && [ -w "/Volumes/$APFS_VOLNAME" ]; then
+  APFS_READY=true
 fi
 
 echo "Summary:"
@@ -121,9 +173,17 @@ else
   echo "  ❌ Btrfs test filesystem not ready"
 fi
 
-if $ZFS_READY || $BTRFS_READY; then
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if $APFS_READY; then
+    echo "  ✅ APFS test filesystem ready"
+  else
+    echo "  ❌ APFS test filesystem not ready"
+  fi
+fi
+
+if $ZFS_READY || $BTRFS_READY || $APFS_READY; then
   echo ""
-  echo "Test filesystems are ready! You can run ZFS/Btrfs provider tests."
+  echo "Test filesystems are ready! You can run ZFS/Btrfs/APFS provider tests."
   exit 0
 else
   echo ""

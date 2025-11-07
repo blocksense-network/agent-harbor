@@ -7,9 +7,7 @@
 //! the real REST API client or a mock client, allowing seamless switching between
 //! production and testing environments.
 
-use ah_domain_types::{
-    Branch, Repository as DomainRepository, SelectedModel, TaskExecution, TaskInfo, TaskState,
-};
+use ah_domain_types::{SelectedModel, TaskExecution, TaskInfo, TaskState};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
@@ -122,13 +120,13 @@ where
                 if let Some(status) = event.status {
                     TaskEvent::Status {
                         status,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 } else {
                     // Default to running if no status
                     TaskEvent::Status {
                         status: TaskExecutionStatus::Running,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 }
             }
@@ -143,14 +141,14 @@ where
                         },
                         message,
                         tool_execution_id: event.tool_execution_id,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 } else {
                     TaskEvent::Log {
                         level: LogLevel::Info,
                         message: "Unknown log event".to_string(),
                         tool_execution_id: None,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 }
             }
@@ -159,13 +157,13 @@ where
                     TaskEvent::Thought {
                         thought,
                         reasoning: event.reasoning,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 } else {
                     TaskEvent::Thought {
                         thought: "Unknown thought".to_string(),
                         reasoning: None,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 }
             }
@@ -178,7 +176,7 @@ where
                             .tool_execution_id
                             .unwrap_or_else(|| "unknown".to_string()),
                         status: ToolStatus::Started, // Assume started for tool use events
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 } else {
                     TaskEvent::ToolUse {
@@ -186,7 +184,7 @@ where
                         tool_args: serde_json::json!({}),
                         tool_execution_id: "unknown".to_string(),
                         status: ToolStatus::Started,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 }
             }
@@ -199,7 +197,7 @@ where
                             .tool_execution_id
                             .unwrap_or_else(|| "unknown".to_string()),
                         status: ToolStatus::Completed, // Assume completed for tool result events
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 } else {
                     TaskEvent::ToolResult {
@@ -207,7 +205,7 @@ where
                         tool_output: "Unknown output".to_string(),
                         tool_execution_id: "unknown".to_string(),
                         status: ToolStatus::Completed,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 }
             }
@@ -218,7 +216,7 @@ where
                         lines_added: event.lines_added.unwrap_or(0) as usize,
                         lines_removed: event.lines_removed.unwrap_or(0) as usize,
                         description: event.description,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 } else {
                     TaskEvent::FileEdit {
@@ -226,7 +224,7 @@ where
                         lines_added: 0,
                         lines_removed: 0,
                         description: None,
-                        ts: event.ts.into(),
+                        ts: event.ts,
                     }
                 }
             }
@@ -235,14 +233,14 @@ where
                 level: LogLevel::Info,
                 message: format!("Unhandled event type: {:?}", event.event_type),
                 tool_execution_id: None,
-                ts: event.ts.into(),
+                ts: event.ts,
             },
         }
     }
 }
 
 #[async_trait]
-impl<C> crate::TaskManager for GenericRestTaskManager<C>
+impl<C> TaskManager for GenericRestTaskManager<C>
 where
     C: RestApiClient + Clone + 'static,
 {

@@ -258,10 +258,16 @@ build-cgroup-test-binaries:
 build-overlay-test-binaries:
     cargo build --bin overlay_test_orchestrator --bin blacklist_tester --bin overlay_writer
 
-# Build interpose shim test binaries (agentfs-interpose-test-helper, agentfs-interpose-mock-daemon)
+# Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-interpose-test-helper --bin agentfs-interpose-mock-daemon
+    cargo build --bin agentfs-daemon
     cargo build -p agentfs-interpose-shim
+    # agentfs-interpose-test-helper is macOS-only
+    if [[ "{{os_family()}}" == "macos" ]]; then \
+        cargo build --bin agentfs-interpose-test-helper; \
+    else \
+        echo "Skipping compilation of agentfs-interpose-test-helper: Not on macOS."; \
+    fi
 
 # Build sbx-helper binary
 build-sbx-helper:
@@ -489,7 +495,6 @@ repomix-webui *args:
         --style markdown \
         --header-text "WebUI Complete Implementation and Specification" \
         --include "{{REPOMIX_WEBUI_PATTERNS}}" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # Create repomix bundle of all specs files
@@ -727,7 +732,6 @@ repomix-tui *args:
         --style markdown \
         --header-text "TUI Complete Implementation and Specification" \
         --include "{{REPOMIX_TUI_PATTERNS}}" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # TUI Exploration PoC include patterns as a multiline string
@@ -762,6 +766,18 @@ crates/ah-cli/src/agent/mod.rs
 tests/tools/e2e_macos_fskit/**
 """, "\n", ",")
 
+# AgentFS interpose-specific include patterns as a multiline string
+REPOMIX_AGENTFS_INTERPOSE_PATTERNS := replace("""
+specs/Public/AgentFS/AgentFS.md
+specs/Public/AgentFS/AgentFS-Core.md
+specs/Public/AgentFS/AgentFS-Per-process-FS-mounts.md
+specs/Public/AgentFS/macOS-FS-Hooks.md
+crates/agentfs-core/**
+crates/agentfs-proto/**
+crates/agentfs-interpose-shim/**
+crates/agentfs-interpose-e2e-tests/**
+""", "\n", ",")
+
 # AgentFS specs-only include patterns as a multiline string
 REPOMIX_AGENTFS_SPECS_PATTERNS := replace("""
 specs/Public/AgentFS/**
@@ -780,7 +796,6 @@ repomix-agentfs-specs *args:
         --style markdown \
         --header-text "AgentFS Specifications and Related Documentation" \
         --include "{{REPOMIX_AGENTFS_SPECS_PATTERNS}}" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # Create a repomix snapshot of all AgentFS-related files (specs and implementation)
@@ -795,6 +810,17 @@ repomix-agentfs *args:
         --include "{{REPOMIX_AGENTFS_PATTERNS}}" \
         {{args}}
 
+# Create repomix bundle of AgentFS interpose-specific files (core, proto, shim, server)
+repomix-agentfs-interpose:
+    @echo "📦 Creating AgentFS interpose repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/AgentFS-Interpose.md \
+        --style markdown \
+        --header-text "AgentFS Interpose Implementation (Core, Proto, Shim, Server)" \
+        --include "{{REPOMIX_AGENTFS_INTERPOSE_PATTERNS}}"
+
 # Create a repomix snapshot of the LLM API Proxy crate
 repomix-llm-api-proxy *args:
     @echo "📦 Creating LLM API Proxy repomix snapshot..."
@@ -805,7 +831,6 @@ repomix-llm-api-proxy *args:
         --style markdown \
         --header-text "LLM API Proxy - Complete Implementation and Specification" \
         --include "crates/llm-api-proxy/**,specs/Public/Scenario-Format.md" \
-        --ignore ".direnv/**" \
         {{args}}
 
 # Run overlay tests with E2E enforcement verification

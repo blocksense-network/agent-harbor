@@ -93,7 +93,19 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         | Request::DirfdCloseFd((version, _))
         | Request::DirfdDupFd((version, _))
         | Request::DirfdSetCwd((version, _))
-        | Request::DirfdResolvePath((version, _)) => {
+        | Request::DirfdResolvePath((version, _))
+        | Request::FSEventsTranslatePaths((version, _))
+        | Request::WatchRegisterKqueue((version, _))
+        | Request::WatchRegisterFSEvents((version, _))
+        | Request::WatchRegisterFSEventsPort((version, _))
+        | Request::WatchUnregister((version, _))
+        | Request::WatchUnregisterFd((version, _))
+        | Request::WatchUnregisterKqueue((version, _))
+        | Request::WatchDoorbell((version, _))
+        | Request::UpdateDoorbellIdent((version, _))
+        | Request::QueryDoorbellIdent((version, _))
+        | Request::FsEventBroadcast((version, _))
+        | Request::WatchDrainEvents((version, _)) => {
             if version != b"1" {
                 return Err(ValidationError::Schema("version must be '1'".to_string()));
             }
@@ -193,6 +205,18 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
         | Response::DirfdDupFd(_)
         | Response::DirfdSetCwd(_)
         | Response::DirfdResolvePath(_)
+        | Response::FSEventsTranslatePaths(_)
+        | Response::WatchRegisterKqueue(_)
+        | Response::WatchRegisterFSEvents(_)
+        | Response::WatchRegisterFSEventsPort(_)
+        | Response::WatchUnregister(_)
+        | Response::WatchUnregisterFd(_)
+        | Response::WatchUnregisterKqueue(_)
+        | Response::WatchDoorbell(_)
+        | Response::UpdateDoorbellIdent(_)
+        | Response::QueryDoorbellIdent(_)
+        | Response::FsEventBroadcast(_)
+        | Response::WatchDrainEvents(_)
         | Response::Error(_) => Ok(()),
     }
 }

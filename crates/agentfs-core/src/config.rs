@@ -144,6 +144,11 @@ pub enum BackstoreMode {
         /// Whether to prefer native filesystem snapshots
         prefer_native_snapshots: bool,
     },
+    /// Create and use a RAM disk with APFS filesystem
+    RamDisk {
+        /// Size of RAM disk in megabytes
+        size_mb: u32,
+    },
 }
 
 impl Default for BackstoreMode {

@@ -4,18 +4,18 @@ Minimal DYLD interposer shim for macOS that bootstraps AgentFS interpose session
 
 ## Features
 
-* Loads via `DYLD_INSERT_LIBRARIES`.
-* Performs a guarded handshake with the AgentFS control socket.
-* Optional allow-list to restrict which executables activate the shim (development safety).
+- Loads via `DYLD_INSERT_LIBRARIES`.
+- Performs a guarded handshake with the AgentFS control socket.
+- Optional allow-list to restrict which executables activate the shim (development safety).
 
 ## Environment Variables
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `AGENTFS_INTERPOSE_ENABLED` | Enable (`1`/`true`) or disable (`0`/`false`) the shim. | Enabled |
-| `AGENTFS_INTERPOSE_SOCKET` | Path to the AgentFS control UNIX-domain socket. Required for handshake. | *(unset)* |
-| `AGENTFS_INTERPOSE_ALLOWLIST` | Comma-separated allow-list of executable basenames or path fragments. `*` allows all. | *(allow all)* |
-| `AGENTFS_INTERPOSE_LOG` | When set to `0`/`false`, suppress shim diagnostics. Any other value keeps logging enabled. | Logging enabled |
+| Variable                      | Description                                                                                | Default         |
+| ----------------------------- | ------------------------------------------------------------------------------------------ | --------------- |
+| `AGENTFS_INTERPOSE_ENABLED`   | Enable (`1`/`true`) or disable (`0`/`false`) the shim.                                     | Enabled         |
+| `AGENTFS_INTERPOSE_SOCKET`    | Path to the AgentFS control UNIX-domain socket. Required for handshake.                    | _(unset)_       |
+| `AGENTFS_INTERPOSE_ALLOWLIST` | Comma-separated allow-list of executable basenames or path fragments. `*` allows all.      | _(allow all)_   |
+| `AGENTFS_INTERPOSE_LOG`       | When set to `0`/`false`, suppress shim diagnostics. Any other value keeps logging enabled. | Logging enabled |
 
 ## Handshake
 
