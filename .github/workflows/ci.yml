@@ -154,9 +154,6 @@ jobs:
       - name: Install JS deps
         run: yarn install
 
-      - name: Install dependencies
-        run: just webui-install
-
       - name: Lint WebUI code
         run: just webui-lint
 
