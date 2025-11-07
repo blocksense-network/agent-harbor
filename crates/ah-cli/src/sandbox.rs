@@ -383,6 +383,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "TODO: Add support for GHA CI"]
     fn test_sandbox_filesystem_isolation_cli_integration() {
         // Integration test for `ah agent sandbox` command CLI functionality
         // This tests that the sandbox command accepts parameters and attempts execution
