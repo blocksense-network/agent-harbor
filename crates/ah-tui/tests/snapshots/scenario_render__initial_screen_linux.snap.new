@@ -1,6 +1,0 @@
----
-source: crates/ah-tui/tests/scenario_render.rs
-assertion_line: 109
-expression: normalized_screen
----
-

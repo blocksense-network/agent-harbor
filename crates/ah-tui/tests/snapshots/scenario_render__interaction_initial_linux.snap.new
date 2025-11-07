@@ -1,6 +1,0 @@
----
-source: crates/ah-tui/tests/scenario_render.rs
-assertion_line: 156
-expression: initial_screen
----
-
