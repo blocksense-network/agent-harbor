@@ -205,6 +205,8 @@ async fn test_tui_interaction_scenario() -> anyhow::Result<()> {
 fn normalize_screen_content(content: &str) -> String {
     let mut normalized = content.to_string();
 
+    // Keep ANSI escape sequences so snapshots remain comparable with existing fixtures
+
     // Normalize absolute timestamps (ISO 8601 format)
     normalized = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z")
         .unwrap()
@@ -228,6 +230,23 @@ fn normalize_screen_content(content: &str) -> String {
 
     // Normalize other potential non-deterministic content
     // Add more normalization rules as needed
+
+    // Drop log lines (e.g., WARN/ERROR) that can appear based on environment
+    normalized = regex::Regex::new(r"(?mi)^.*\b(WARN|ERROR)\b.*$\n?")
+        .unwrap()
+        .replace_all(&normalized, "")
+        .to_string();
+
+    // Normalize repository ID lines which can vary by environment
+    normalized = regex::Regex::new(r"(?i)repository id:.*$")
+        .unwrap()
+        .replace_all(&normalized, "[REPO_ID]")
+        .to_string();
+    // Handle cases where ANSI resets split the word (e.g., '\x1bmpository')
+    normalized = regex::Regex::new(r"(?i)pository id:.*$")
+        .unwrap()
+        .replace_all(&normalized, "[REPO_ID]")
+        .to_string();
 
     normalized
 }

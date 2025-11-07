@@ -4130,7 +4130,7 @@ mod interpose_linux {
             }
         };
 
-        let ssz_bytes = agentfs_proto::encode_ssz_message(&request);
+        let ssz_bytes = encode_ssz(&request);
         let ssz_len = ssz_bytes.len() as u32;
 
         {
@@ -4157,7 +4157,7 @@ mod interpose_linux {
         }
 
         // Decode the response
-        match agentfs_proto::decode_ssz_message::<Response>(&msg_buf) {
+        match decode_ssz::<Response>(&msg_buf) {
             Ok(response) => match extract_response(response) {
                 Some(result) => Ok(result),
                 None => Err("unexpected response type".to_string()),
@@ -4180,7 +4180,7 @@ mod interpose_linux {
                 _ => None,
             }) {
                 Ok(target) => {
-                    let data = target.as_bytes();
+                    let data: &[u8] = &target;
                     if data.len() > bufsiz { unsafe { *libc::__errno_location() = libc::ERANGE; } return -1; }
                     std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
                     return data.len() as ssize_t;
@@ -4208,7 +4208,7 @@ mod interpose_linux {
                 _ => None,
             }) {
                 Ok(target) => {
-                    let data = target.as_bytes();
+                    let data: &[u8] = &target;
                     if data.len() > bufsiz { unsafe { *libc::__errno_location() = libc::ERANGE; } return -1; }
                     std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
                     return data.len() as ssize_t;
