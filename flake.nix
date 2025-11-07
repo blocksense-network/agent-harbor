@@ -449,6 +449,8 @@
 
       # Linux-specific packages
       linuxPackages = pkgs.lib.optionals isLinux [
+        # Tmux for integration tests (tmux multiplexer)
+        pkgs.tmux
         # Use Chromium on Linux for mermaid-cli's Puppeteer
         pkgs.chromium
         # Linux-only filesystem utilities for snapshot functionality
