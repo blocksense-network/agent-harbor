@@ -3121,6 +3121,31 @@ fn main() {
         "dummy" => {
             println!("Dummy command executed");
         }
+        "readlink-test" => {
+            if args.len() < 3 {
+                eprintln!("Usage: readlink-test <path>");
+                std::process::exit(1);
+            }
+            let link_path = &args[2];
+            unsafe {
+                let c_link_path = std::ffi::CString::new(link_path.as_str()).unwrap();
+                let mut buffer = [0i8; 4096];
+                let result =
+                    libc::readlink(c_link_path.as_ptr(), buffer.as_mut_ptr(), buffer.len());
+                if result >= 0 {
+                    let target_len = result as usize;
+                    let target = std::str::from_utf8(std::slice::from_raw_parts(
+                        buffer.as_ptr() as *const u8,
+                        target_len,
+                    ))
+                    .unwrap_or("<invalid utf8>");
+                    println!("readlink target: {}", target);
+                } else {
+                    let err = std::io::Error::last_os_error();
+                    println!("readlink failed: {}", err);
+                }
+            }
+        }
         "basic-open" => {
             if args.len() < 3 {
                 eprintln!("Usage: basic-open <filename>");
