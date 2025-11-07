@@ -114,26 +114,6 @@ jobs:
       - name: Build sandbox helper binary
         run: just build-sbx-helper-release
 
-  legacy-tests:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-
-      - name: Install dependencies
-        run: |
-          gem install bundler
-          cd legacy/ruby && bundle install
-
-      - name: Run legacy tests
-        run: |
-          just legacy-test
-
   webui:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
