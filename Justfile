@@ -328,17 +328,6 @@ test-cgroups:
 # WebUI Development Targets
 # ========================
 
-# Install dependencies for mock server only
-mock-server-install:
-    yarn workspace ah-webui-mock-server install
-
-# Install dependencies for all WebUI projects
-webui-install:
-    yarn workspace shared install
-    yarn workspace ah-webui-ssr-sidecar install
-    just mock-server-install
-    yarn workspace ah-webui-e2e-tests install
-
 # Build WebUI application (SSR mode - default for development/testing)
 webui-build:
     yarn workspace ah-webui-ssr-sidecar run build
