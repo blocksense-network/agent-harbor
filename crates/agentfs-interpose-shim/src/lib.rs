@@ -510,7 +510,7 @@ mod tests {
     }
 }
 
-// Interposition implementation for file operations
+// Interposition implementation for file operations (macOS)
 #[cfg(target_os = "macos")]
 mod interpose {
     use super::*;
@@ -4101,6 +4101,119 @@ mod interpose {
                 Ok(_) => 0,
                 Err(_) => {
                     return redhook::real!(fclonefileat)(from_fd, to_fd, to, flags);
+                }
+            }
+        }
+    }
+}
+
+// Interposition implementation for a minimal Linux set (readlink/readlinkat)
+#[cfg(target_os = "linux")]
+mod interpose_linux {
+    use super::*;
+    use agentfs_proto::{Request, Response};
+    use libc::{c_char, c_int, c_void, size_t, ssize_t};
+
+    /// Generic function to send a request and receive a response
+    fn send_request<F, T>(request: Request, extract_response: F) -> Result<T, String>
+    where
+        F: FnOnce(Response) -> Option<T>,
+    {
+        let stream_arc = {
+            let stream_guard = STREAM.lock().unwrap();
+            match stream_guard.as_ref() {
+                Some(arc) => Arc::clone(arc),
+                None => {
+                    return Err("not connected to AgentFS control socket".to_string());
+                }
+            }
+        };
+
+        let ssz_bytes = agentfs_proto::encode_ssz_message(&request);
+        let ssz_len = ssz_bytes.len() as u32;
+
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard
+                .write_all(&ssz_len.to_le_bytes())
+                .and_then(|_| stream_guard.write_all(&ssz_bytes))
+                .map_err(|e| format!("send request: {e}"))?;
+        }
+
+        // Read response
+        let mut len_buf = [0u8; 4];
+        let mut msg_buf: Vec<u8>;
+        {
+            let mut stream_guard = stream_arc.lock().unwrap();
+            stream_guard
+                .read_exact(&mut len_buf)
+                .map_err(|e| format!("read response length: {e}"))?;
+            let msg_len = u32::from_le_bytes(len_buf) as usize;
+            msg_buf = vec![0u8; msg_len];
+            stream_guard
+                .read_exact(&mut msg_buf)
+                .map_err(|e| format!("read response: {e}"))?;
+        }
+
+        // Decode the response
+        match agentfs_proto::decode_ssz_message::<Response>(&msg_buf) {
+            Ok(response) => match extract_response(response) {
+                Some(result) => Ok(result),
+                None => Err("unexpected response type".to_string()),
+            },
+            Err(e) => Err(format!("decode response failed: {:?}", e)),
+        }
+    }
+
+    /// Interposed readlink function
+    redhook::hook! {
+        unsafe fn readlink(path: *const c_char, buf: *mut c_char, bufsiz: size_t) -> ssize_t => my_readlink {
+            if path.is_null() || buf.is_null() { return -1; }
+
+            let c_path = CStr::from_ptr(path);
+            log_message(&format!("[linux] interposing readlink({})", c_path.to_string_lossy()));
+
+            let req = Request::readlink(c_path.to_string_lossy().into_owned());
+            match send_request(req, |res| match res {
+                Response::Readlink(r) => Some(r.target),
+                _ => None,
+            }) {
+                Ok(target) => {
+                    let data = target.as_bytes();
+                    if data.len() > bufsiz { unsafe { *libc::__errno_location() = libc::ERANGE; } return -1; }
+                    std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
+                    return data.len() as ssize_t;
+                }
+                Err(_) => {
+                    // Fallback to original
+                    return redhook::real!(readlink)(path, buf, bufsiz);
+                }
+            }
+        }
+    }
+
+    /// Interposed readlinkat function
+    redhook::hook! {
+        unsafe fn readlinkat(dirfd: c_int, path: *const c_char, buf: *mut c_char, bufsiz: size_t) -> ssize_t => my_readlinkat {
+            if path.is_null() || buf.is_null() { return -1; }
+
+            let c_path = CStr::from_ptr(path);
+            log_message(&format!("[linux] interposing readlinkat({}, {})", dirfd, c_path.to_string_lossy()));
+
+            // Resolve path relative to cwd for simplicity; enhancing with dirfd mapping is future work
+            let req = Request::readlink(c_path.to_string_lossy().into_owned());
+            match send_request(req, |res| match res {
+                Response::Readlink(r) => Some(r.target),
+                _ => None,
+            }) {
+                Ok(target) => {
+                    let data = target.as_bytes();
+                    if data.len() > bufsiz { unsafe { *libc::__errno_location() = libc::ERANGE; } return -1; }
+                    std::ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
+                    return data.len() as ssize_t;
+                }
+                Err(_) => {
+                    return redhook::real!(readlinkat)(dirfd, path, buf, bufsiz);
                 }
             }
         }

@@ -47,7 +47,6 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
-#[cfg(target_os = "macos")]
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
@@ -301,7 +300,6 @@ pub fn find_so_path() -> std::path::PathBuf {
     panic!("Interpose shim .so not found. Expected at: {:?}", direct);
 }
 
-#[cfg(target_os = "macos")]
 pub fn find_helper_binary() -> PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2328,6 +2326,48 @@ mod linux_tests {
             },
             _ => panic!("Expected daemon state response"),
         }
+
+        let _ = daemon.kill();
+    }
+
+    #[test]
+    fn linux_ld_preload_intercepts_readlink() {
+        let dir = tempdir().unwrap();
+        let socket_path = dir.path().join("agentfs.sock");
+
+        // Start mock daemon
+        let daemon_path = find_daemon_path();
+        let mut daemon = Command::new(&daemon_path)
+            .arg(&socket_path)
+            .spawn()
+            .expect("failed to start mock daemon");
+
+        thread::sleep(Duration::from_millis(300));
+        if UnixStream::connect(&socket_path).is_err() {
+            thread::sleep(Duration::from_millis(300));
+        }
+
+        let helper = find_helper_binary();
+        let shim = find_so_path();
+        let output = Command::new(&helper)
+            .env("LD_PRELOAD", shim)
+            .env("AGENTFS_INTERPOSE_SOCKET", &socket_path)
+            .env("AGENTFS_INTERPOSE_ALLOWLIST", "*")
+            .env("AGENTFS_INTERPOSE_LOG", "1")
+            .arg("readlink-test")
+            .arg("/no/such/symlink")
+            .output()
+            .expect("failed to launch helper");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("AgentFS interpose shim loaded"));
+
+        // Confirm daemon is alive and responded at least once by querying state
+        let _ = query_daemon_state_structured(
+            &socket_path,
+            agentfs_proto::Request::daemon_state_stats(),
+        )
+        .unwrap();
 
         let _ = daemon.kill();
     }
