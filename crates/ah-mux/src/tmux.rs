@@ -401,100 +401,92 @@ mod tests {
     #[test]
     fn test_session_ensure_creates_session() {
         let tmux = TmuxMultiplexer::with_session_name("test-session-create".to_string());
-        if tmux.is_available() {
-            // Clean up any existing session first
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-create"]);
+        // Clean up any existing session first
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-create"]);
 
-            // Verify session doesn't exist initially
-            let result = tmux.run_tmux_command(&["has-session", "-t", "test-session-create"]);
-            assert!(result.is_err()); // Should fail because session doesn't exist
+        // Verify session doesn't exist initially
+        let result = tmux.run_tmux_command(&["has-session", "-t", "test-session-create"]);
+        assert!(result.is_err()); // Should fail because session doesn't exist
 
-            // Ensure session creates it
-            tmux.ensure_session().unwrap();
+        // Ensure session creates it
+        tmux.ensure_session().unwrap();
 
-            // Verify session now exists
-            let result = tmux.run_tmux_command(&["has-session", "-t", "test-session-create"]);
-            assert!(result.is_ok());
+        // Verify session now exists
+        let result = tmux.run_tmux_command(&["has-session", "-t", "test-session-create"]);
+        assert!(result.is_ok());
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-create"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-create"]);
     }
 
     #[test]
     fn test_session_ensure_idempotent() {
         let tmux = TmuxMultiplexer::with_session_name("test-session-idempotent".to_string());
-        if tmux.is_available() {
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-idempotent"]);
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-idempotent"]);
 
-            // Create session
-            tmux.ensure_session().unwrap();
+        // Create session
+        tmux.ensure_session().unwrap();
 
-            // Call ensure_session again - should be idempotent
-            tmux.ensure_session().unwrap();
+        // Call ensure_session again - should be idempotent
+        tmux.ensure_session().unwrap();
 
-            // Verify session still exists
-            let result = tmux.run_tmux_command(&["has-session", "-t", "test-session-idempotent"]);
-            assert!(result.is_ok());
+        // Verify session still exists
+        let result = tmux.run_tmux_command(&["has-session", "-t", "test-session-idempotent"]);
+        assert!(result.is_ok());
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-idempotent"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-session-idempotent"]);
     }
 
     #[test]
     fn test_open_window_with_title_and_cwd() {
         let tmux = TmuxMultiplexer::with_session_name("test-win-create-001".to_string());
-        if tmux.is_available() {
-            // Clean up any existing session
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-create-001"]);
+        // Clean up any existing session
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-create-001"]);
 
-            let opts = WindowOptions {
-                title: Some("my-test-window-001"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-            };
+        let opts = WindowOptions {
+            title: Some("my-test-window-001"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+        };
 
-            let window_id = tmux.open_window(&opts).unwrap();
-            assert_eq!(window_id, "test-win-create-001:1");
+        let window_id = tmux.open_window(&opts).unwrap();
+        assert_eq!(window_id, "test-win-create-001:1");
 
-            // Verify window exists and has correct title
-            let windows = tmux.list_windows(Some("my-test-window-001")).unwrap();
-            assert_eq!(windows.len(), 1);
-            assert_eq!(windows[0], "test-win-create-001:1");
+        // Verify window exists and has correct title
+        let windows = tmux.list_windows(Some("my-test-window-001")).unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0], "test-win-create-001:1");
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-create-001"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-create-001"]);
     }
 
     #[test]
     fn test_open_window_focus() {
         let tmux = TmuxMultiplexer::with_session_name("test-win-focus-002".to_string());
-        if tmux.is_available() {
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-focus-002"]);
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-focus-002"]);
 
-            let opts = WindowOptions {
-                title: Some("focus-test-002"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: true, // Should focus the window
-            };
+        let opts = WindowOptions {
+            title: Some("focus-test-002"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: true, // Should focus the window
+        };
 
-            let window_id = tmux.open_window(&opts).unwrap();
+        let window_id = tmux.open_window(&opts).unwrap();
 
-            // Instead of checking global state (which can be affected by other tests),
-            // just verify that the window was created and focus operation succeeded
-            let windows = tmux.list_windows(Some("focus-test-002")).unwrap();
-            assert_eq!(windows.len(), 1);
-            assert_eq!(windows[0], window_id);
+        // Instead of checking global state (which can be affected by other tests),
+        // just verify that the window was created and focus operation succeeded
+        let windows = tmux.list_windows(Some("focus-test-002")).unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0], window_id);
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-focus-002"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-win-focus-002"]);
     }
 
     #[test]
@@ -505,169 +497,163 @@ mod tests {
             .as_millis();
         let session_name = format!("test-split-h-{}", timestamp);
         let socket_name = format!("sock-{}", session_name);
-        if TmuxMultiplexer::default().is_available() {
-            // Start continuous tmux session for visual testing
-            let _ = snapshot_testing::start_continuous_session(&session_name);
+        // Start continuous tmux session for visual testing
+        let _ = snapshot_testing::start_continuous_session(&session_name);
 
-            // Give tmux a moment to fully initialize
-            std::thread::sleep(Duration::from_millis(300));
+        // Give tmux a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(300));
 
-            // Create tmux API for this session (ensure_session will create it)
-            let tmux = TmuxMultiplexer::with_session_and_socket(
-                session_name.to_string(),
-                socket_name.to_string(),
-            );
+        // Create tmux API for this session (ensure_session will create it)
+        let tmux = TmuxMultiplexer::with_session_and_socket(
+            session_name.to_string(),
+            socket_name.to_string(),
+        );
 
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("split-test-003"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
-
-            let initial_pane = format!("{}.0", window_id);
-
-            // Run command in initial pane
-            tmux.run_command(
-                &initial_pane,
-                "echo 'Left pane content'",
-                &CommandOptions::default(),
-            )
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("split-test-003"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
             .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
 
-            // Strategic snapshot: before split
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("before_split_horizontal", snapshot);
-            }
+        let initial_pane = format!("{}.0", window_id);
 
-            // Split horizontally
-            let new_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&initial_pane),
-                    SplitDirection::Horizontal,
-                    Some(60), // 60% for left pane
-                    &CommandOptions {
-                        cwd: Some(Path::new("/tmp")),
-                        env: None,
-                    },
-                    None,
-                )
-                .unwrap();
+        // Run command in initial pane
+        tmux.run_command(
+            &initial_pane,
+            "echo 'Left pane content'",
+            &CommandOptions::default(),
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
 
-            // The exact window/pane numbering can vary depending on how tmux starts
-            // Just verify it's a valid pane ID format
-            assert!(new_pane.starts_with(&format!("{}:", session_name)));
-
-            // Run command in new pane
-            tmux.run_command(
-                &new_pane,
-                "echo 'Right pane content'",
-                &CommandOptions::default(),
-            )
-            .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after split
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("after_split_horizontal", snapshot);
-            }
-
-            // Verify both panes exist
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert_eq!(panes.len(), 2);
-            // Just verify the panes have the correct session prefix - exact numbering may vary
-            assert!(panes.iter().all(|p| p.starts_with(&format!("{}:", session_name))));
-
-            // Clean up
-            let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
+        // Strategic snapshot: before split
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("before_split_horizontal", snapshot);
         }
+
+        // Split horizontally
+        let new_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&initial_pane),
+                SplitDirection::Horizontal,
+                Some(60), // 60% for left pane
+                &CommandOptions {
+                    cwd: Some(Path::new("/tmp")),
+                    env: None,
+                },
+                None,
+            )
+            .unwrap();
+
+        // The exact window/pane numbering can vary depending on how tmux starts
+        // Just verify it's a valid pane ID format
+        assert!(new_pane.starts_with(&format!("{}:", session_name)));
+
+        // Run command in new pane
+        tmux.run_command(
+            &new_pane,
+            "echo 'Right pane content'",
+            &CommandOptions::default(),
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after split
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("after_split_horizontal", snapshot);
+        }
+
+        // Verify both panes exist
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert_eq!(panes.len(), 2);
+        // Just verify the panes have the correct session prefix - exact numbering may vary
+        assert!(panes.iter().all(|p| p.starts_with(&format!("{}:", session_name))));
+
+        // Clean up
+        let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
     }
 
     #[test]
     fn test_split_pane_vertical() {
         let tmux = TmuxMultiplexer::with_session_name("test-split-v-004".to_string());
-        if tmux.is_available() {
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-v-004"]);
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-v-004"]);
 
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("split-v-test-004"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("split-v-test-004"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            let initial_pane = format!("{}.0", window_id);
+        let initial_pane = format!("{}.0", window_id);
 
-            // Split vertically
-            let new_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&initial_pane),
-                    SplitDirection::Vertical,
-                    Some(70),
-                    &CommandOptions::default(),
-                    None,
-                )
-                .unwrap();
+        // Split vertically
+        let new_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&initial_pane),
+                SplitDirection::Vertical,
+                Some(70),
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
 
-            assert_eq!(new_pane, "test-split-v-004:1.1");
+        assert_eq!(new_pane, "test-split-v-004:1.1");
 
-            // Verify both panes exist
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert_eq!(panes.len(), 2);
+        // Verify both panes exist
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert_eq!(panes.len(), 2);
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-v-004"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-v-004"]);
     }
 
     #[test]
     fn test_split_pane_with_initial_command() {
         let tmux = TmuxMultiplexer::with_session_name("test-split-cmd".to_string());
-        if tmux.is_available() {
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-cmd"]);
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-cmd"]);
 
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("split-cmd-test"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("split-cmd-test"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            let initial_pane = format!("{}.0", window_id);
+        let initial_pane = format!("{}.0", window_id);
 
-            // Split with initial command that should keep the pane alive
-            let new_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&initial_pane),
-                    SplitDirection::Horizontal,
-                    None,
-                    &CommandOptions::default(),
-                    Some("sleep 300"), // Long-running command to keep pane alive
-                )
-                .unwrap();
+        // Split with initial command that should keep the pane alive
+        let new_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&initial_pane),
+                SplitDirection::Horizontal,
+                None,
+                &CommandOptions::default(),
+                Some("sleep 300"), // Long-running command to keep pane alive
+            )
+            .unwrap();
 
-            // Verify pane was created
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert_eq!(panes.len(), 2);
-            assert!(panes.contains(&new_pane));
+        // Verify pane was created
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert_eq!(panes.len(), 2);
+        assert!(panes.contains(&new_pane));
 
-            // Clean up (kill the sleep process first)
-            let _ = tmux.run_tmux_command(&["send-keys", "-t", &new_pane, "C-c"]);
-            thread::sleep(Duration::from_millis(100)); // Give time for signal to be processed
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-cmd"]);
-        }
+        // Clean up (kill the sleep process first)
+        let _ = tmux.run_tmux_command(&["send-keys", "-t", &new_pane, "C-c"]);
+        thread::sleep(Duration::from_millis(100)); // Give time for signal to be processed
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-split-cmd"]);
     }
 
     #[test]
@@ -678,211 +664,201 @@ mod tests {
             .as_millis();
         let session_name = format!("test-cmd-{}", timestamp);
         let socket_name = format!("sock-{}", session_name);
-        if TmuxMultiplexer::default().is_available() {
-            // Start continuous tmux session for visual testing
-            let _ = snapshot_testing::start_continuous_session(&session_name);
+        // Start continuous tmux session for visual testing
+        let _ = snapshot_testing::start_continuous_session(&session_name);
 
-            // Give tmux a moment to fully initialize
-            std::thread::sleep(Duration::from_millis(300));
+        // Give tmux a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(300));
 
-            // Create tmux API for this session (ensure_session will create it)
-            let tmux = TmuxMultiplexer::with_session_and_socket(
-                session_name.to_string(),
-                socket_name.to_string(),
-            );
+        // Create tmux API for this session (ensure_session will create it)
+        let tmux = TmuxMultiplexer::with_session_and_socket(
+            session_name.to_string(),
+            socket_name.to_string(),
+        );
 
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("cmd-text-test"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("cmd-text-test"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            let pane_id = format!("{}.0", window_id);
+        let pane_id = format!("{}.0", window_id);
 
-            // Run a command
-            tmux.run_command(&pane_id, "echo 'hello world'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
+        // Run a command
+        tmux.run_command(&pane_id, "echo 'hello world'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
 
-            // Strategic snapshot: after running command
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("after_run_command", snapshot);
-            }
-
-            // Send text
-            tmux.send_text(&pane_id, "some input text").unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after sending text
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("after_send_text", snapshot);
-            }
-
-            // Commands should not fail - we can't easily verify output without pexpect
-            // but we can verify the pane still exists
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert!(!panes.is_empty());
-
-            // Clean up
-            let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
+        // Strategic snapshot: after running command
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("after_run_command", snapshot);
         }
+
+        // Send text
+        tmux.send_text(&pane_id, "some input text").unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after sending text
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("after_send_text", snapshot);
+        }
+
+        // Commands should not fail - we can't easily verify output without pexpect
+        // but we can verify the pane still exists
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert!(!panes.is_empty());
+
+        // Clean up
+        let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
     }
 
     #[test]
     fn test_focus_window_and_pane() {
         let tmux = TmuxMultiplexer::with_session_name("test-focus-005".to_string());
-        if tmux.is_available() {
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-focus-005"]);
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-focus-005"]);
 
-            // Create first window
-            let window1 = tmux
-                .open_window(&WindowOptions {
-                    title: Some("window1-005"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        // Create first window
+        let window1 = tmux
+            .open_window(&WindowOptions {
+                title: Some("window1-005"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            // Create second window
-            let window2 = tmux
-                .open_window(&WindowOptions {
-                    title: Some("window2-005"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        // Create second window
+        let window2 = tmux
+            .open_window(&WindowOptions {
+                title: Some("window2-005"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            // Test window focusing (don't check global state due to test interference)
-            tmux.focus_window(&window1).unwrap();
-            tmux.focus_window(&window2).unwrap();
+        // Test window focusing (don't check global state due to test interference)
+        tmux.focus_window(&window1).unwrap();
+        tmux.focus_window(&window2).unwrap();
 
-            // Split a pane and test pane focusing
-            let pane1 = format!("{}.0", window2);
-            let pane2 = tmux
-                .split_pane(
-                    Some(&window2),
-                    Some(&pane1),
-                    SplitDirection::Horizontal,
-                    None,
-                    &CommandOptions::default(),
-                    None,
-                )
-                .unwrap();
+        // Split a pane and test pane focusing
+        let pane1 = format!("{}.0", window2);
+        let pane2 = tmux
+            .split_pane(
+                Some(&window2),
+                Some(&pane1),
+                SplitDirection::Horizontal,
+                None,
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
 
-            // Test pane focusing (don't check global state due to test interference)
-            tmux.focus_pane(&pane1).unwrap();
-            tmux.focus_pane(&pane2).unwrap();
+        // Test pane focusing (don't check global state due to test interference)
+        tmux.focus_pane(&pane1).unwrap();
+        tmux.focus_pane(&pane2).unwrap();
 
-            // Verify panes were created correctly
-            let panes = tmux.list_panes(&window2).unwrap();
-            assert_eq!(panes.len(), 2);
-            assert!(panes.contains(&pane1));
-            assert!(panes.contains(&pane2));
+        // Verify panes were created correctly
+        let panes = tmux.list_panes(&window2).unwrap();
+        assert_eq!(panes.len(), 2);
+        assert!(panes.contains(&pane1));
+        assert!(panes.contains(&pane2));
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-focus-005"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-focus-005"]);
     }
 
     #[test]
     fn test_list_windows_filtering() {
         let tmux = TmuxMultiplexer::with_session_name("test-list-win-006".to_string());
-        if tmux.is_available() {
-            // Aggressive cleanup - kill any existing session and all windows
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-list-win-006"]);
+        // Aggressive cleanup - kill any existing session and all windows
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-list-win-006"]);
 
-            // Create windows with different titles
-            tmux.open_window(&WindowOptions {
-                title: Some("alpha-window-006"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-            })
-            .unwrap();
+        // Create windows with different titles
+        tmux.open_window(&WindowOptions {
+            title: Some("alpha-window-006"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+        })
+        .unwrap();
 
-            tmux.open_window(&WindowOptions {
-                title: Some("beta-window-006"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-            })
-            .unwrap();
+        tmux.open_window(&WindowOptions {
+            title: Some("beta-window-006"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+        })
+        .unwrap();
 
-            tmux.open_window(&WindowOptions {
-                title: Some("alpha-other-006"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-            })
-            .unwrap();
+        tmux.open_window(&WindowOptions {
+            title: Some("alpha-other-006"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+        })
+        .unwrap();
 
-            // List all windows in our session
-            // Note: tmux creates a default window (index 0) when creating a session
-            let all_windows = tmux.list_windows(None).unwrap();
-            assert_eq!(all_windows.len(), 4); // default window + 3 created windows
+        // List all windows in our session
+        // Note: tmux creates a default window (index 0) when creating a session
+        let all_windows = tmux.list_windows(None).unwrap();
+        assert_eq!(all_windows.len(), 4); // default window + 3 created windows
 
-            // Filter by "alpha"
-            let alpha_windows = tmux.list_windows(Some("alpha")).unwrap();
-            assert_eq!(alpha_windows.len(), 2);
+        // Filter by "alpha"
+        let alpha_windows = tmux.list_windows(Some("alpha")).unwrap();
+        assert_eq!(alpha_windows.len(), 2);
 
-            // Filter by "beta"
-            let beta_windows = tmux.list_windows(Some("beta")).unwrap();
-            assert_eq!(beta_windows.len(), 1);
+        // Filter by "beta"
+        let beta_windows = tmux.list_windows(Some("beta")).unwrap();
+        assert_eq!(beta_windows.len(), 1);
 
-            // Filter by non-existent title
-            let none_windows = tmux.list_windows(Some("nonexistent")).unwrap();
-            assert_eq!(none_windows.len(), 0);
+        // Filter by non-existent title
+        let none_windows = tmux.list_windows(Some("nonexistent")).unwrap();
+        assert_eq!(none_windows.len(), 0);
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-list-win-006"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-list-win-006"]);
     }
 
     #[test]
     fn test_error_handling_invalid_session() {
         let tmux = TmuxMultiplexer::with_session_name("nonexistent-session".to_string());
-        if tmux.is_available() {
-            // Try to focus a window in non-existent session
-            let invalid_window = "nonexistent-session:1".to_string();
-            let result = tmux.focus_window(&invalid_window);
-            assert!(result.is_err());
-            assert!(matches!(result.unwrap_err(), MuxError::CommandFailed(_)));
-        }
+        // Try to focus a window in non-existent session
+        let invalid_window = "nonexistent-session:1".to_string();
+        let result = tmux.focus_window(&invalid_window);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MuxError::CommandFailed(_)));
     }
 
     #[test]
     fn test_error_handling_invalid_pane() {
         let tmux = TmuxMultiplexer::with_session_name("test-error-pane".to_string());
-        if tmux.is_available() {
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-error-pane"]);
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-error-pane"]);
 
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("error-test"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("error-test"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            // Try to focus non-existent pane
-            let result = tmux.focus_pane(&format!("{}.999", window_id));
-            assert!(result.is_err());
+        // Try to focus non-existent pane
+        let result = tmux.focus_pane(&format!("{}.999", window_id));
+        assert!(result.is_err());
 
-            // Try to send text to non-existent pane
-            let result = tmux.send_text(&format!("{}.999", window_id), "test");
-            assert!(result.is_err());
+        // Try to send text to non-existent pane
+        let result = tmux.send_text(&format!("{}.999", window_id), "test");
+        assert!(result.is_err());
 
-            // Clean up
-            let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-error-pane"]);
-        }
+        // Clean up
+        let _ = tmux.run_tmux_command(&["kill-session", "-t", "test-error-pane"]);
     }
 
     #[test]
@@ -893,109 +869,107 @@ mod tests {
             .as_millis();
         let session_name = format!("test-complex-{}", timestamp);
         let socket_name = format!("sock-{}", session_name);
-        if TmuxMultiplexer::default().is_available() {
-            // Start continuous tmux session for visual testing
-            let _ = snapshot_testing::start_continuous_session(&session_name);
+        // Start continuous tmux session for visual testing
+        let _ = snapshot_testing::start_continuous_session(&session_name);
 
-            // Give tmux a moment to fully initialize
-            std::thread::sleep(Duration::from_millis(300));
+        // Give tmux a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(300));
 
-            // Create tmux API on a dedicated socket
-            let tmux = TmuxMultiplexer::with_session_and_socket(
-                session_name.to_string(),
-                socket_name.to_string(),
-            );
+        // Create tmux API on a dedicated socket
+        let tmux = TmuxMultiplexer::with_session_and_socket(
+            session_name.to_string(),
+            socket_name.to_string(),
+        );
 
-            // Ensure session exists; skip test if environment cannot start tmux server
-            if let Err(e) = tmux.ensure_session() {
-                eprintln!("Skipping complex layout test: {}", e);
-                return;
-            }
-
-            // Create window
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("complex-layout-008"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
-
-            let pane0 = format!("{}.0", window_id);
-
-            // Run initial command in editor pane
-            tmux.run_command(&pane0, "echo 'editor pane'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: initial single pane
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("complex_layout_initial", snapshot);
-            }
-
-            // Create a 3-pane layout: editor (left), agent (top-right), logs (bottom-right)
-            let agent_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&pane0),
-                    SplitDirection::Horizontal,
-                    Some(70), // 70% for editor
-                    &CommandOptions::default(),
-                    None,
-                )
-                .unwrap();
-
-            // Run command in agent pane
-            tmux.run_command(&agent_pane, "echo 'agent pane'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after first split (2 panes)
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("complex_layout_two_panes", snapshot);
-            }
-
-            let logs_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&agent_pane),
-                    SplitDirection::Vertical,
-                    Some(60), // 60% for agent, 40% for logs
-                    &CommandOptions::default(),
-                    None,
-                )
-                .unwrap();
-
-            // Run command in logs pane
-            tmux.run_command(&logs_pane, "echo 'logs pane'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: final 3-pane layout
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("complex_layout_final", snapshot);
-            }
-
-            // Verify all panes exist
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert_eq!(panes.len(), 3);
-            assert!(panes.contains(&pane0));
-            assert!(panes.contains(&agent_pane));
-            assert!(panes.contains(&logs_pane));
-
-            // Test focusing different panes - need to focus window first since display-message works on active window
-            tmux.focus_window(&window_id).unwrap();
-
-            // Test pane focusing by checking that we can focus different panes
-            // (we don't check the exact pane index since tmux pane indexing can be complex)
-            tmux.focus_pane(&agent_pane).unwrap();
-            tmux.focus_pane(&logs_pane).unwrap();
-            tmux.focus_pane(&pane0).unwrap();
-
-            // Clean up
-            let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
+        // Ensure session exists; skip test if environment cannot start tmux server
+        if let Err(e) = tmux.ensure_session() {
+            eprintln!("Skipping complex layout test: {}", e);
+            return;
         }
+
+        // Create window
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("complex-layout-008"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
+
+        let pane0 = format!("{}.0", window_id);
+
+        // Run initial command in editor pane
+        tmux.run_command(&pane0, "echo 'editor pane'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: initial single pane
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("complex_layout_initial", snapshot);
+        }
+
+        // Create a 3-pane layout: editor (left), agent (top-right), logs (bottom-right)
+        let agent_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&pane0),
+                SplitDirection::Horizontal,
+                Some(70), // 70% for editor
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        // Run command in agent pane
+        tmux.run_command(&agent_pane, "echo 'agent pane'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after first split (2 panes)
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("complex_layout_two_panes", snapshot);
+        }
+
+        let logs_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&agent_pane),
+                SplitDirection::Vertical,
+                Some(60), // 60% for agent, 40% for logs
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        // Run command in logs pane
+        tmux.run_command(&logs_pane, "echo 'logs pane'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: final 3-pane layout
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("complex_layout_final", snapshot);
+        }
+
+        // Verify all panes exist
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert_eq!(panes.len(), 3);
+        assert!(panes.contains(&pane0));
+        assert!(panes.contains(&agent_pane));
+        assert!(panes.contains(&logs_pane));
+
+        // Test focusing different panes - need to focus window first since display-message works on active window
+        tmux.focus_window(&window_id).unwrap();
+
+        // Test pane focusing by checking that we can focus different panes
+        // (we don't check the exact pane index since tmux pane indexing can be complex)
+        tmux.focus_pane(&agent_pane).unwrap();
+        tmux.focus_pane(&logs_pane).unwrap();
+        tmux.focus_pane(&pane0).unwrap();
+
+        // Clean up
+        let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
     }
 
     #[test]
@@ -1003,45 +977,43 @@ mod tests {
         let tmux1 = TmuxMultiplexer::with_session_name("session1-007".to_string());
         let tmux2 = TmuxMultiplexer::with_session_name("session2-007".to_string());
 
-        if tmux1.is_available() && tmux2.is_available() {
-            // Clean up both sessions aggressively
-            let _ = tmux1.run_tmux_command(&["kill-session", "-t", "session1-007"]);
-            let _ = tmux2.run_tmux_command(&["kill-session", "-t", "session2-007"]);
+        // Clean up both sessions aggressively
+        let _ = tmux1.run_tmux_command(&["kill-session", "-t", "session1-007"]);
+        let _ = tmux2.run_tmux_command(&["kill-session", "-t", "session2-007"]);
 
-            // Create windows in different sessions
-            let _window1 = tmux1
-                .open_window(&WindowOptions {
-                    title: Some("session1-win-007"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        // Create windows in different sessions
+        let _window1 = tmux1
+            .open_window(&WindowOptions {
+                title: Some("session1-win-007"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            let _window2 = tmux2
-                .open_window(&WindowOptions {
-                    title: Some("session2-win-007"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
+        let _window2 = tmux2
+            .open_window(&WindowOptions {
+                title: Some("session2-win-007"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
 
-            // Verify sessions are isolated - each should see their session's windows
-            // Note: tmux creates a default window (index 0) when creating a session,
-            // so each session has 2 windows total
-            let windows1 = tmux1.list_windows(None).unwrap();
-            let windows2 = tmux2.list_windows(None).unwrap();
+        // Verify sessions are isolated - each should see their session's windows
+        // Note: tmux creates a default window (index 0) when creating a session,
+        // so each session has 2 windows total
+        let windows1 = tmux1.list_windows(None).unwrap();
+        let windows2 = tmux2.list_windows(None).unwrap();
 
-            assert_eq!(windows1.len(), 2); // default window + created window
-            assert_eq!(windows2.len(), 2); // default window + created window
-            assert!(windows1.iter().all(|w| w.starts_with("session1-007:")));
-            assert!(windows2.iter().all(|w| w.starts_with("session2-007:")));
+        assert_eq!(windows1.len(), 2); // default window + created window
+        assert_eq!(windows2.len(), 2); // default window + created window
+        assert!(windows1.iter().all(|w| w.starts_with("session1-007:")));
+        assert!(windows2.iter().all(|w| w.starts_with("session2-007:")));
 
-            // Clean up
-            let _ = tmux1.run_tmux_command(&["kill-session", "-t", "session1-007"]);
-            let _ = tmux2.run_tmux_command(&["kill-session", "-t", "session2-007"]);
-        }
+        // Clean up
+        let _ = tmux1.run_tmux_command(&["kill-session", "-t", "session1-007"]);
+        let _ = tmux2.run_tmux_command(&["kill-session", "-t", "session2-007"]);
     }
 
     #[test]
