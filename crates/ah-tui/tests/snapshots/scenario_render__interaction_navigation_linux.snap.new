@@ -1,0 +1,6 @@
+---
+source: crates/ah-tui/tests/scenario_render.rs
+assertion_line: 176
+expression: navigation_screen
+---
+[48;2;17;17;27m
