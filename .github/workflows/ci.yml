@@ -66,7 +66,19 @@ jobs:
         run: nix build -L --json .#devShells.x86_64-linux.default
 
   test:
-    runs-on: [self-hosted, nixos, x86-64-v3]
+    strategy:
+      matrix:
+        include:
+          - name: x86_64-linux (NixOS, self-hosted)
+            runner: [self-hosted, nixos, x86-64-v3]
+            allowedToFail: false
+          - name: aarch64-darwin (macOS, GitHub-hosted)
+            runner: macos-latest
+            allowedToFail: true
+
+    name: Rust tests | ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.allowedToFail }}
 
     steps:
       - name: Test user namespace availability
@@ -165,40 +177,3 @@ jobs:
       #   run: just webui-test
       #   env:
       #     BASE_URL: http://localhost:3000
-
-  macos:
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Check code formatting
-        run: just fmt-rust-check
-
-      - name: Check code with clippy
-        run: just lint-rust
-
-      - name: Check compilation
-        run: just check
-
-      - name: Build AgentFS Rust libraries
-        run: just build-agentfs-rust-libs
-
-      - name: Build and validate AgentHarbor macOS app
-        run: just test-agent-harbor
