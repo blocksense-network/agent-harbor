@@ -79,6 +79,7 @@ dependencies = [
  "agentfs-interpose-e2e-tests",
  "agentfs-proto",
  "anyhow",
+ "ethereum_ssz",
  "libc",
  "serde",
  "serde_json",

@@ -18,6 +18,7 @@ use agentfs_core::config::BackstoreMode;
 use agentfs_daemon::handshake::{
     AllowlistInfo, HandshakeData, HandshakeMessage, ProcessInfo, ShimInfo,
 };
+#[cfg(target_os = "macos")]
 use agentfs_interpose_e2e_tests::{decode_ssz_message, encode_ssz_message};
 use agentfs_proto::messages::DaemonStateProcessesRequest;
 use agentfs_proto::{
@@ -27,6 +28,22 @@ use agentfs_proto::{
 use anyhow::Result;
 use tempfile::tempdir;
 use tokio::time;
+
+#[cfg(not(target_os = "macos"))]
+mod ssz_helpers {
+    use ssz::{Decode, Encode};
+
+    pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
+        data.as_ssz_bytes()
+    }
+
+    pub fn decode_ssz_message<T: Decode>(data: &[u8]) -> Result<T, ssz::DecodeError> {
+        T::from_ssz_bytes(data)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+use ssz_helpers::{decode_ssz_message, encode_ssz_message};
 
 /// Find the path to the agentfs-daemon binary
 pub fn find_daemon_path() -> std::path::PathBuf {
@@ -332,7 +349,7 @@ fn query_daemon_state_structured(
     decode_ssz_message(&response_buf).map_err(|e| format!("Failed to decode response: {:?}", e))
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 

@@ -468,6 +468,7 @@ impl WatchServiceEventSink {
     }
 
     /// Convert EventKind to kqueue vnode flags for a specific path and watcher context
+    #[cfg(target_os = "macos")]
     fn event_to_vnode_flags(
         &self,
         evt: &EventKind,
@@ -510,7 +511,21 @@ impl WatchServiceEventSink {
         }
     }
 
+    /// Convert EventKind to kqueue vnode flags (no-op on non-macOS)
+    #[cfg(not(target_os = "macos"))]
+    fn event_to_vnode_flags(
+        &self,
+        evt: &EventKind,
+        watched_path: &str,
+        affected_path: &str,
+        is_directory_watcher: bool,
+    ) -> u32 {
+        let _ = (evt, watched_path, affected_path, is_directory_watcher);
+        0
+    }
+
     /// Route event to matching kqueue watchers with coalescing
+    #[cfg(target_os = "macos")]
     fn route_to_kqueue_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
         let watches = self.watch_service.kqueue_watches.lock().unwrap();
 
@@ -590,6 +605,12 @@ impl WatchServiceEventSink {
                 tracing::error!("Failed to post doorbell for event: {}", e);
             }
         }
+    }
+
+    /// Route events to kqueue watchers (no-op on non-macOS)
+    #[cfg(not(target_os = "macos"))]
+    fn route_to_kqueue_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
+        let _ = (evt, affected_paths);
     }
 
     /// Route event to matching FSEvents watchers
@@ -801,7 +822,7 @@ impl WatchServiceEventSink {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 

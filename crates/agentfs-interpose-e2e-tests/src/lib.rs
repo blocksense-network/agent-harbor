@@ -69,6 +69,8 @@ use agentfs_daemon::watch_service::WatchServiceEventSink;
 use agentfs_daemon::*;
 #[cfg(target_os = "macos")]
 use agentfs_proto::*;
+#[cfg(not(target_os = "macos"))]
+use agentfs_proto::{Request, Response};
 
 // For dlsym to get original function pointers
 #[cfg(target_os = "macos")]
@@ -108,6 +110,7 @@ fn remove_env_var(key: &str) {
 ///
 /// The test_helper binary itself contains rich assertions and will exit with
 /// non-zero status if AgentFS behavior doesn't match expectations.
+#[cfg(target_os = "macos")]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     command: &str,
@@ -149,10 +152,21 @@ fn execute_test_scenario(
     output.status
 }
 
+#[cfg(not(target_os = "macos"))]
+fn execute_test_scenario(
+    socket_path: &std::path::Path,
+    command: &str,
+    args: &[&str],
+) -> std::process::ExitStatus {
+    let _ = (socket_path, command, args);
+    unimplemented!("agentfs interpose test scenarios are only supported on macOS");
+}
+
 /// Query daemon state for verification (structured SSZ-based)
 ///
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
+#[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: Request,
@@ -227,6 +241,15 @@ fn query_daemon_state_structured(
 
     decode_ssz_message::<Response>(&response_buf)
         .map_err(|e| format!("Failed to decode response: {:?}", e))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn query_daemon_state_structured(
+    socket_path: &std::path::Path,
+    request: Request,
+) -> Result<Response, String> {
+    let _ = (socket_path, request);
+    Err("agentfs interpose daemon queries are only supported on macOS".to_string())
 }
 
 #[cfg(target_os = "macos")]
