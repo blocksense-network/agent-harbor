@@ -201,6 +201,7 @@
     "emacsclient",
     "endswith",
     "enew",
+    "ENAMETOOLONG",
     "ENOENT",
     "ENOSPC",
     "ENOSYS",

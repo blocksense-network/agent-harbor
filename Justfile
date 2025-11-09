@@ -26,7 +26,7 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-fuse-test-binaries
 
 # Run Rust tests
 test-rust *args: build-rust-test-binaries
@@ -297,6 +297,14 @@ build-debugging-tests: build-sbx-helper build-debugging-test-binaries
 # Build TUI test binaries
 build-tui-test-binaries:
     cargo build -p tui-testing --bin test-guest
+
+# Build FUSE test binaries (requires FUSE support)
+build-fuse-test-binaries:
+    cargo build --package agentfs-fuse-host --features fuse
+
+# Build FUSE host binary (requires FUSE support)
+build-fuse-host:
+    cargo build --package agentfs-fuse-host --features fuse --bin agentfs-fuse-host
 
 # Build all TUI test binaries needed for TUI testing
 build-tui-tests: build-tui-test-binaries
@@ -763,6 +771,21 @@ crates/ah-cli/src/agent/mod.rs
 tests/tools/e2e_macos_fskit/**
 """, "\n", ",")
 
+# FUSE adapter include patterns as a multiline string
+REPOMIX_AGENTFS_FUSE_PATTERNS := replace("""
+specs/Public/AgentFS/**
+specs/Research/Compiling-and-Testing-FUSE-File-Systems.md
+crates/agentfs-core/**
+crates/agentfs-proto/**
+crates/agentfs-fuse-host/**
+crates/ah-cli/src/agent/fs.rs
+crates/ah-cli/src/agent/mod.rs
+tests/agentfs-daemon-backstore-integration/**
+Justfile
+flake.nix
+.github/workflows/ci.yml
+""", "\n", ",")
+
 # AgentFS interpose-specific include patterns as a multiline string
 REPOMIX_AGENTFS_INTERPOSE_PATTERNS := replace("""
 specs/Public/AgentFS/AgentFS.md
@@ -848,6 +871,18 @@ repomix-llm-api-proxy *args:
         --style markdown \
         --header-text "LLM API Proxy - Complete Implementation and Specification" \
         --include "crates/llm-api-proxy/**,specs/Public/Scenario-Format.md" \
+        {{args}}
+
+# Create repomix bundle of all FUSE adapter-related files (specs + implementation)
+repomix-agentfs-fuse *args:
+    @echo "📦 Creating AgentFS FUSE adapter repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/AgentFS-FUSE-Adapter.md \
+        --style markdown \
+        --header-text "AgentFS FUSE Adapter: Complete Implementation and Specification" \
+        --include "{{REPOMIX_AGENTFS_FUSE_PATTERNS}}" \
         {{args}}
 
 # Run overlay tests with E2E enforcement verification
