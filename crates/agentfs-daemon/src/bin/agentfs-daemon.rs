@@ -20,27 +20,8 @@ use agentfs_daemon::{AgentFsDaemon, decode_ssz_message, encode_ssz_message};
 // AgentFS proto imports
 use agentfs_proto::*;
 
-// CoreFoundation extern declarations for macOS
 #[cfg(target_os = "macos")]
-type CFAllocatorRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFStringRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFMessagePortRef = *mut std::ffi::c_void;
-
-#[cfg(target_os = "macos")]
-extern "C" {
-    static kCFAllocatorDefault: CFAllocatorRef;
-
-    fn CFMessagePortCreateRemote(allocator: CFAllocatorRef, name: CFStringRef) -> CFMessagePortRef;
-    fn CFRelease(cf: *mut std::ffi::c_void);
-
-    fn CFStringCreateWithCString(
-        alloc: CFAllocatorRef,
-        c_str: *const std::ffi::c_char,
-        encoding: u32,
-    ) -> CFStringRef;
-}
+use agentfs_daemon::macos::interposition::create_remote_port;
 
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
@@ -517,37 +498,26 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     // Create CFMessagePort remote connection
                     #[cfg(target_os = "macos")]
                     {
-                        use agentfs_daemon::watch_service::*;
-                        let cf_port_name = unsafe {
-                            CFStringCreateWithCString(
-                                kCFAllocatorDefault,
-                                port_name.as_ptr() as *const _,
-                                0x08000100,
-                            )
-                        };
-
-                        if !cf_port_name.is_null() {
-                            let cf_port = unsafe {
-                                CFMessagePortCreateRemote(kCFAllocatorDefault, cf_port_name)
-                            };
-
-                            if !cf_port.is_null() {
-                                daemon.register_fsevents_port(port_reg_req.pid, cf_port);
-                                log::info!(
-                                    "Registered FSEvents CFMessagePort for pid {}: {}",
-                                    port_reg_req.pid,
-                                    port_name
-                                );
-                            } else {
-                                log::error!(
-                                    "Failed to create CFMessagePort remote for pid {}",
-                                    port_reg_req.pid
-                                );
-                            }
-
-                        // Don't release cf_port_name here - daemon owns it now
+                        if std::ffi::CString::new(port_name.as_str()).is_err() {
+                            log::error!("Invalid port name encoding: {}", port_name);
                         } else {
-                            log::error!("Failed to create CFString for port name: {}", port_name);
+                            match create_remote_port(&port_name) {
+                                Ok(port) => {
+                                    daemon.register_fsevents_port(port_reg_req.pid, port);
+                                    log::info!(
+                                        "Registered FSEvents CFMessagePort for pid {}: {}",
+                                        port_reg_req.pid,
+                                        port_name
+                                    );
+                                }
+                                Err(err) => {
+                                    log::error!(
+                                        "Failed to create CFMessagePort remote for pid {}: {}",
+                                        port_reg_req.pid,
+                                        err
+                                    );
+                                }
+                            }
                         }
                     }
 

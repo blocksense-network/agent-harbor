@@ -7,16 +7,7 @@
 //! FSEvents testing, kqueue operations, and other platform-specific tests.
 
 #[cfg(target_os = "macos")]
-pub mod fsevents_tests {
-    // TODO: Move macOS-specific FSEvents test functionality here from test_helper.rs
-}
+pub mod tests;
 
 #[cfg(target_os = "macos")]
-pub mod kqueue_tests {
-    // TODO: Move macOS-specific kqueue test functionality here from test_helper.rs
-}
-
-#[cfg(target_os = "macos")]
-pub mod lifecycle_tests {
-    // TODO: Move macOS-specific lifecycle test functionality here from test_helper.rs
-}
+pub use tests::*;
