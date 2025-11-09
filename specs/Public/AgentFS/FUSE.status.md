@@ -39,11 +39,13 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - `crates/agentfs-fuse-host/src/adapter.rs` - FUSE adapter implementation mapping operations to core
   - `crates/agentfs-fuse-host/Cargo.toml` - Dependencies and feature flags
   - `crates/agentfs-core/src/config.rs` - Added serde derives and Default implementations for FsConfig
+  - `pjdfstest` - POSIX filesystem test suite runner added to Nix dev environment
+  - `Justfile` - Added testing targets: `mount-fuse` for mounting, `test-fuse-basic` for smoke tests, `setup-pjdfstest-suite` for automated suite setup, `run-pjdfstest` for comprehensive testing
 
 - **Verification Results**:
   - [x] I1 FUSE host basic ops pass - Code compiles successfully and implements all FUSE operations with correct client PID handling; requires integration testing with mounted filesystem
   - [x] I2 Control plane ioctl flows pass with SSZ union type validation - SSZ serialization implemented with proper error handling; requires testing with mounted filesystem
-  - [ ] pjdfstests subset green - No pjdfstests have been executed against mounted filesystem
+  - [ ] pjdfstests subset green - pjdfstest suite automated setup complete; FUSE mounting works (`just mount-fuse /tmp/agentfs`); basic operations return "Function not implemented" (expected - core operations need implementation)
 
 **F2. FUSE Mount/Unmount Cycle Testing** (3–4d)
 

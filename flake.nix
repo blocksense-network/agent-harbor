@@ -40,6 +40,10 @@
       inputs.git-hooks.follows = "git-hooks";
       inputs.rust-overlay.follows = "rust-overlay";
     };
+    pjdfstest-src = {
+      url = "https://github.com/pjd/pjdfstest/archive/master.tar.gz";
+      flake = false;
+    };
   };
 
   outputs = {
@@ -50,6 +54,7 @@
     nix-ai-tools,
     codex,
     sosumi-docs-downloader,
+    pjdfstest-src,
     ...
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
@@ -299,11 +304,29 @@
           name = "agent-harbor";
           paths = [ah-binary ah-fs-snapshot-daemon-binary];
         };
+        pjdfstest = pkgs.stdenv.mkDerivation {
+          pname = "pjdfstest";
+          version = "master";
+          src = pjdfstest-src;
+          nativeBuildInputs = [ pkgs.autoreconfHook ];
+          buildInputs = [ pkgs.perl ];
+          installPhase = ''
+            mkdir -p $out/bin
+            cp pjdfstest $out/bin/
+            chmod +x $out/bin/pjdfstest
+          '';
+          meta = with pkgs.lib; {
+            description = "POSIX filesystem test suite";
+            license = licenses.bsd3;
+            platforms = platforms.all;
+          };
+        };
       in {
         ah = ah-binary;
         ah-fs-snapshot-daemon = ah-fs-snapshot-daemon-binary;
         agent-harbor = agent-harbor;
         legacy-cloud-agent-utils = legacy-cloud-agent-utils;
+        pjdfstest = pjdfstest;
         sosumi-docs-downloader = sosumi-docs-downloader.packages.${system}.sosumi-docs-downloader;
         default = ah-script;
       }
@@ -374,6 +397,11 @@
         pkgs.taplo
         pkgs.addlicense
 
+        # Autotools for building C projects (pjdfstest, etc.)
+        pkgs.autoconf
+        pkgs.automake
+        pkgs.libtool
+
         # pkgs.nodePackages."ajv-cli" # JSON Schema validator
 
         # WebUI testing
@@ -414,6 +442,9 @@
         # Additional compression libraries for mitmproxy addon
         pkgs.python3Packages.brotli
         pkgs.python3Packages.zstandard
+
+        # Filesystem testing
+        (self.packages.${system}.pjdfstest) # POSIX filesystem test suite for FUSE testing
       ];
 
       # Linux-specific packages
