@@ -10,11 +10,9 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "macos")]
-use crate::macos::kqueue::*;
+use crate::macos::kqueue::{self, FseventsSendJob};
 #[cfg(target_os = "macos")]
-use core_foundation::base::TCFType;
-#[cfg(target_os = "macos")]
-use libc::{c_int, kevent as libc_kevent, timespec};
+use libc::c_int;
 
 // CoreFoundation types for CFMessagePort
 
@@ -58,18 +56,6 @@ pub struct FSEventsWatchRegistration {
     pub latency: u64,
     pub next_event_id: u64,
     pub last_sent_event_id: u64,
-}
-
-#[cfg(target_os = "macos")]
-struct FseventsSendJob {
-    pid: u32,
-    registration_id: u64,
-    stream_id: u64,
-    root: String,
-    paths: Vec<String>,
-    flags: Vec<u32>,
-    start_event_id: u64,
-    reserved_next_event_id: u64,
 }
 
 impl WatchService {
@@ -248,30 +234,8 @@ impl WatchService {
 
         match (doorbell_ident, actual_kq_fd) {
             (Some(ident), Some(&kq_fd_actual)) => {
-                // Post EVFILT_USER NOTE_TRIGGER event to the kqueue
-                let mut kev = libc::kevent {
-                    ident: ident as usize,
-                    filter: EVFILT_USER as i16,
-                    flags: 0, // 0 means we're triggering, not adding
-                    fflags: NOTE_TRIGGER | ((payload_id & 0xFFFFFF) as u32),
-                    data: 0,
-                    udata: std::ptr::null_mut(),
-                };
-
-                let timeout = timespec {
-                    tv_sec: 0,
-                    tv_nsec: 0,
-                };
-
-                unsafe {
-                    let result =
-                        libc_kevent(kq_fd_actual, &mut kev, 1, std::ptr::null_mut(), 0, &timeout);
-                    if result == -1 {
-                        Err(format!(
-                            "kevent doorbell failed: {}",
-                            std::io::Error::last_os_error()
-                        ))
-                    } else {
+                match kqueue::trigger_user_event(kq_fd_actual, ident, payload_id) {
+                    Ok(()) => {
                         tracing::debug!(
                             "Posted doorbell ident={:#x}, payload_id={} to kqueue fd={} for pid={}",
                             ident,
@@ -281,6 +245,7 @@ impl WatchService {
                         );
                         Ok(())
                     }
+                    Err(err) => Err(err),
                 }
             }
             _ => {
@@ -521,8 +486,8 @@ impl WatchServiceEventSink {
             match evt {
                 EventKind::Created { .. }
                 | EventKind::Removed { .. }
-                | EventKind::Renamed { .. } => NOTE_WRITE,
-                EventKind::Modified { .. } => NOTE_ATTRIB, // Directory sees child modifications as attribute changes
+                | EventKind::Renamed { .. } => kqueue::NOTE_WRITE,
+                EventKind::Modified { .. } => kqueue::NOTE_ATTRIB, // Directory sees child modifications as attribute changes
                 _ => 0,
             }
         } else {
@@ -532,13 +497,13 @@ impl WatchServiceEventSink {
             }
 
             match evt {
-                EventKind::Created { .. } => NOTE_WRITE,
-                EventKind::Removed { .. } => NOTE_DELETE,
-                EventKind::Modified { .. } => NOTE_WRITE | NOTE_EXTEND,
+                EventKind::Created { .. } => kqueue::NOTE_WRITE,
+                EventKind::Removed { .. } => kqueue::NOTE_DELETE,
+                EventKind::Modified { .. } => kqueue::NOTE_WRITE | kqueue::NOTE_EXTEND,
                 EventKind::Renamed { .. } => {
                     // For renames, the affected_path might be the source or destination
                     // But since we already checked watched_path == affected_path, it's fine
-                    NOTE_RENAME
+                    kqueue::NOTE_RENAME
                 }
                 _ => 0,
             }
@@ -610,8 +575,8 @@ impl WatchServiceEventSink {
             // Create synthesized kevent for this watcher
             let synthesized_event = SynthesizedKevent {
                 ident: fd as u64,
-                filter: EVFILT_VNODE as u16, // Convert to u16 for SSZ
-                flags: 0,                    // No EV_ADD/EV_DELETE for synthesized events
+                filter: kqueue::EVFILT_VNODE as u16, // Convert to u16 for SSZ
+                flags: 0,                            // No EV_ADD/EV_DELETE for synthesized events
                 fflags: flags,
                 data: 0,  // Usually 0 for vnode events
                 udata: 0, // Usually NULL for synthesized events
@@ -652,7 +617,7 @@ impl WatchServiceEventSink {
 
                 let send_result = {
                     let daemon_guard = daemon.lock().unwrap();
-                    let result = self.send_fsevents_batch_via_port(&daemon_guard, &job);
+                    let result = kqueue::send_fsevents_batch_via_port(&daemon_guard, &job);
                     drop(daemon_guard);
                     result
                 };
@@ -690,230 +655,6 @@ impl WatchServiceEventSink {
             let _ = evt;
             let _ = affected_paths;
             let _ = daemon;
-        }
-    }
-
-    /// Send an FSEvents batch via CFMessagePort using binary property list format
-    #[cfg(target_os = "macos")]
-    fn send_fsevents_batch_via_port(
-        &self,
-        daemon: &AgentFsDaemon,
-        job: &FseventsSendJob,
-    ) -> Result<(), String> {
-        const AGENTFS_MSG_FSEVENTS_BATCH: SInt32 = 0x1001;
-
-        let num_events = job.paths.len();
-        if num_events == 0 {
-            return Ok(());
-        }
-        if num_events != job.flags.len() {
-            return Err(format!(
-                "FSEvents batch requires parallel arrays but got {} paths and {} flags",
-                num_events,
-                job.flags.len()
-            ));
-        }
-        if job.reserved_next_event_id <= job.start_event_id {
-            return Err(format!(
-                "Invalid event id reservation for pid {} stream {} (start={}, reserved_next={})",
-                job.pid, job.stream_id, job.start_event_id, job.reserved_next_event_id
-            ));
-        }
-
-        let latest_event_id = job.reserved_next_event_id - 1;
-        let mut event_ids: Vec<u64> = Vec::with_capacity(num_events);
-        for offset in 0..num_events {
-            let event_id = job.start_event_id.checked_add(offset as u64).ok_or_else(|| {
-                format!(
-                    "FSEvents event id overflow for pid {} stream {} (start={}, offset={})",
-                    job.pid, job.stream_id, job.start_event_id, offset
-                )
-            })?;
-            event_ids.push(event_id);
-        }
-
-        if let Some(&computed_latest) = event_ids.last() {
-            if computed_latest != latest_event_id {
-                return Err(format!(
-                    "Latest event id mismatch for pid {} stream {} (expected {}, computed {})",
-                    job.pid, job.stream_id, latest_event_id, computed_latest
-                ));
-            }
-        }
-
-        // Create CFArrays for paths, flags, and eventIds using RAII wrappers
-        unsafe {
-            use core_foundation::number::CFNumber;
-            use core_foundation::string::CFString;
-
-            // Create CFArray for paths (CFString)
-            let paths_array_raw = CFArrayCreateMutable(
-                kCFAllocatorDefault,
-                num_events as CFIndex,
-                kCFTypeArrayCallBacks,
-            );
-            if paths_array_raw.is_null() {
-                return Err("Failed to create paths CFArray".to_string());
-            }
-            let mut paths_array = OwnedCFRef::new(paths_array_raw as *mut std::ffi::c_void);
-
-            for path in &job.paths {
-                let cf_string = CFString::new(path);
-                CFArrayAppendValue(
-                    paths_array_raw,
-                    cf_string.as_CFTypeRef() as *const std::ffi::c_void,
-                );
-            }
-
-            // Create CFArray for flags (CFNumber)
-            let flags_array_raw = CFArrayCreateMutable(
-                kCFAllocatorDefault,
-                num_events as CFIndex,
-                kCFTypeArrayCallBacks,
-            );
-            if flags_array_raw.is_null() {
-                return Err("Failed to create flags CFArray".to_string());
-            }
-            let mut flags_array = OwnedCFRef::new(flags_array_raw as *mut std::ffi::c_void);
-
-            for &flag in &job.flags {
-                let flag_number = CFNumber::from(flag as i32);
-                CFArrayAppendValue(
-                    flags_array_raw,
-                    flag_number.as_CFTypeRef() as *const std::ffi::c_void,
-                );
-            }
-
-            // Create CFArray for eventIds (CFNumber)
-            let event_ids_array_raw = CFArrayCreateMutable(
-                kCFAllocatorDefault,
-                num_events as CFIndex,
-                kCFTypeArrayCallBacks,
-            );
-            if event_ids_array_raw.is_null() {
-                return Err("Failed to create eventIds CFArray".to_string());
-            }
-            let mut event_ids_array = OwnedCFRef::new(event_ids_array_raw as *mut std::ffi::c_void);
-
-            for event_id in &event_ids {
-                let id_number = CFNumber::from(*event_id as i64);
-                CFArrayAppendValue(
-                    event_ids_array_raw,
-                    id_number.as_CFTypeRef() as *const std::ffi::c_void,
-                );
-            }
-
-            // Create top-level dictionary
-            let dict_raw = CFDictionaryCreateMutable(
-                kCFAllocatorDefault,
-                0,
-                kCFTypeDictionaryKeyCallBacks,
-                kCFTypeDictionaryValueCallBacks,
-            );
-            if dict_raw.is_null() {
-                return Err("Failed to create CFDictionary".to_string());
-            }
-            let mut dict = OwnedCFRef::new(dict_raw as *mut std::ffi::c_void);
-
-            // Set dictionary values using RAII CFString keys and values
-            let type_key = CFString::new("type");
-            let fsevents_batch_str = CFString::new("fsevents_batch");
-            CFDictionarySetValue(
-                dict_raw,
-                type_key.as_CFTypeRef() as *const std::ffi::c_void,
-                fsevents_batch_str.as_CFTypeRef() as *const std::ffi::c_void,
-            );
-
-            let version_key = CFString::new("version");
-            let version_number = CFNumber::from(1i32);
-            CFDictionarySetValue(
-                dict_raw,
-                version_key.as_CFTypeRef() as *const std::ffi::c_void,
-                version_number.as_CFTypeRef() as *const std::ffi::c_void,
-            );
-
-            let stream_id_key = CFString::new("stream_id");
-            let stream_id_number = CFNumber::from(job.stream_id as i64);
-            CFDictionarySetValue(
-                dict_raw,
-                stream_id_key.as_CFTypeRef() as *const std::ffi::c_void,
-                stream_id_number.as_CFTypeRef() as *const std::ffi::c_void,
-            );
-
-            let num_events_key = CFString::new("num_events");
-            let num_events_number = CFNumber::from(num_events as i64);
-            CFDictionarySetValue(
-                dict_raw,
-                num_events_key.as_CFTypeRef() as *const std::ffi::c_void,
-                num_events_number.as_CFTypeRef() as *const std::ffi::c_void,
-            );
-
-            let paths_key = CFString::new("paths");
-            CFDictionarySetValue(
-                dict_raw,
-                paths_key.as_CFTypeRef() as *const std::ffi::c_void,
-                paths_array_raw as *const std::ffi::c_void,
-            );
-
-            let flags_key = CFString::new("flags");
-            CFDictionarySetValue(
-                dict_raw,
-                flags_key.as_CFTypeRef() as *const std::ffi::c_void,
-                flags_array_raw as *const std::ffi::c_void,
-            );
-
-            let event_ids_key = CFString::new("event_ids");
-            CFDictionarySetValue(
-                dict_raw,
-                event_ids_key.as_CFTypeRef() as *const std::ffi::c_void,
-                event_ids_array_raw as *const std::ffi::c_void,
-            );
-
-            let latest_event_id_key = CFString::new("latest_event_id");
-            let latest_event_id_number = CFNumber::from(latest_event_id as i64);
-            CFDictionarySetValue(
-                dict_raw,
-                latest_event_id_key.as_CFTypeRef() as *const std::ffi::c_void,
-                latest_event_id_number.as_CFTypeRef() as *const std::ffi::c_void,
-            );
-
-            // Add root field
-            let root_key = CFString::new("root");
-            let root_str = CFString::new(&job.root);
-            CFDictionarySetValue(
-                dict_raw,
-                root_key.as_CFTypeRef() as *const std::ffi::c_void,
-                root_str.as_CFTypeRef() as *const std::ffi::c_void,
-            );
-
-            // Serialize to binary property list
-            let mut error: CFErrorRef = std::ptr::null_mut();
-            let cf_data_raw = CFPropertyListCreateData(
-                kCFAllocatorDefault,
-                dict_raw as CFPropertyListRef,
-                K_CFPROPERTY_LIST_BINARY_FORMAT_V1_0,
-                0,
-                &mut error,
-            );
-
-            // Handle error - arrays and dict will be cleaned up automatically by OwnedCFRef
-            if !error.is_null() {
-                let _error = OwnedCFRef::new(error as *mut std::ffi::c_void);
-                return Err("Failed to serialize property list".to_string());
-            }
-
-            if cf_data_raw.is_null() {
-                return Err("Failed to create CFData from property list".to_string());
-            }
-
-            // Wrap CFData in RAII wrapper
-            let cf_data = OwnedCFRef::new(cf_data_raw as *mut std::ffi::c_void);
-
-            // Send via CFMessagePort
-            let result =
-                daemon.send_fsevents_batch(job.pid, AGENTFS_MSG_FSEVENTS_BATCH, cf_data_raw);
-
-            result
         }
     }
 
@@ -997,27 +738,27 @@ impl WatchServiceEventSink {
         match evt {
             EventKind::Created { path } => {
                 let is_dir = std::path::Path::new(path).is_dir();
-                let flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED
+                let flag = kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED
                     | if is_dir {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
                     } else {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
                     };
                 vec![(path.clone(), flag)]
             }
             EventKind::Removed { path } => {
                 // Removal loses type information; default to file semantics.
-                let flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED
-                    | K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE;
+                let flag = kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED
+                    | kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE;
                 vec![(path.clone(), flag)]
             }
             EventKind::Modified { path } => {
                 let is_dir = std::path::Path::new(path).is_dir();
-                let flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_MODIFIED
+                let flag = kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_MODIFIED
                     | if is_dir {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
                     } else {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
                     };
                 vec![(path.clone(), flag)]
             }
@@ -1025,20 +766,20 @@ impl WatchServiceEventSink {
                 let from_is_dir = std::path::Path::new(from).is_dir();
                 let to_is_dir = std::path::Path::new(to).is_dir();
 
-                let from_flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED
-                    | K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED
+                let from_flag = kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED
+                    | kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_REMOVED
                     | if from_is_dir {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
                     } else {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
                     };
 
-                let to_flag = K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED
-                    | K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED
+                let to_flag = kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_RENAMED
+                    | kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_CREATED
                     | if to_is_dir {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_DIR
                     } else {
-                        K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
+                        kqueue::K_FSEVENT_STREAM_EVENT_FLAG_ITEM_IS_FILE
                     };
 
                 vec![(from.clone(), from_flag), (to.clone(), to_flag)]
@@ -1167,7 +908,7 @@ mod tests {
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", "/tmp/test.txt", false);
 
-        assert_eq!(flags, NOTE_WRITE);
+        assert_eq!(flags, kqueue::NOTE_WRITE);
     }
 
     #[test]
@@ -1180,7 +921,7 @@ mod tests {
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", "/tmp/test.txt", false);
 
-        assert_eq!(flags, NOTE_DELETE);
+        assert_eq!(flags, kqueue::NOTE_DELETE);
     }
 
     #[test]
@@ -1193,7 +934,7 @@ mod tests {
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/test.txt", "/tmp/test.txt", false);
 
-        assert_eq!(flags, NOTE_WRITE | NOTE_EXTEND);
+        assert_eq!(flags, kqueue::NOTE_WRITE | kqueue::NOTE_EXTEND);
     }
 
     #[test]
@@ -1207,7 +948,7 @@ mod tests {
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/old.txt", "/tmp/old.txt", false);
 
-        assert_eq!(flags, NOTE_RENAME);
+        assert_eq!(flags, kqueue::NOTE_RENAME);
     }
 
     #[test]
@@ -1221,7 +962,7 @@ mod tests {
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp/new.txt", "/tmp/new.txt", false);
 
-        assert_eq!(flags, NOTE_RENAME);
+        assert_eq!(flags, kqueue::NOTE_RENAME);
     }
 
     #[test]
@@ -1235,7 +976,7 @@ mod tests {
         };
         let flags = sink.event_to_vnode_flags(&event, "/tmp", "/tmp", true); // directory watcher
 
-        assert_eq!(flags, NOTE_WRITE);
+        assert_eq!(flags, kqueue::NOTE_WRITE);
     }
 
     #[test]
@@ -1249,7 +990,7 @@ mod tests {
 
         // Directory watcher on parent directory should get NOTE_WRITE
         let flags = sink.event_to_vnode_flags(&event, "/tmp/dir", "/tmp/dir/file.txt", true);
-        assert_eq!(flags, NOTE_WRITE);
+        assert_eq!(flags, kqueue::NOTE_WRITE);
 
         // Directory watcher on unrelated directory should get 0
         let flags = sink.event_to_vnode_flags(&event, "/tmp/other", "/tmp/dir/file.txt", true);
@@ -1267,7 +1008,7 @@ mod tests {
 
         // File watcher on the created file should get NOTE_WRITE
         let flags = sink.event_to_vnode_flags(&event, "/tmp/file.txt", "/tmp/file.txt", false);
-        assert_eq!(flags, NOTE_WRITE);
+        assert_eq!(flags, kqueue::NOTE_WRITE);
 
         // File watcher on different file should get 0
         let flags = sink.event_to_vnode_flags(&event, "/tmp/other.txt", "/tmp/file.txt", false);
@@ -1285,7 +1026,7 @@ mod tests {
 
         // Directory watcher on parent should get NOTE_WRITE
         let flags = sink.event_to_vnode_flags(&event, "/tmp/dir", "/tmp/dir/file.txt", true);
-        assert_eq!(flags, NOTE_WRITE);
+        assert_eq!(flags, kqueue::NOTE_WRITE);
     }
 
     #[test]
@@ -1299,7 +1040,7 @@ mod tests {
 
         // File watcher on the removed file should get NOTE_DELETE
         let flags = sink.event_to_vnode_flags(&event, "/tmp/file.txt", "/tmp/file.txt", false);
-        assert_eq!(flags, NOTE_DELETE);
+        assert_eq!(flags, kqueue::NOTE_DELETE);
     }
 
     #[test]
@@ -1313,7 +1054,7 @@ mod tests {
 
         // Directory watcher should get NOTE_ATTRIB for child modifications
         let flags = sink.event_to_vnode_flags(&event, "/tmp/dir", "/tmp/dir/file.txt", true);
-        assert_eq!(flags, NOTE_ATTRIB);
+        assert_eq!(flags, kqueue::NOTE_ATTRIB);
     }
 
     #[test]
@@ -1327,7 +1068,7 @@ mod tests {
 
         // File watcher should get NOTE_WRITE | NOTE_EXTEND
         let flags = sink.event_to_vnode_flags(&event, "/tmp/file.txt", "/tmp/file.txt", false);
-        assert_eq!(flags, NOTE_WRITE | NOTE_EXTEND);
+        assert_eq!(flags, kqueue::NOTE_WRITE | kqueue::NOTE_EXTEND);
     }
 
     #[test]
@@ -1342,12 +1083,12 @@ mod tests {
             1,
             10,
             "/tmp/file.txt".to_string(),
-            NOTE_WRITE | NOTE_DELETE,
+            kqueue::NOTE_WRITE | kqueue::NOTE_DELETE,
             false,
         );
 
         // Register a directory watch on /tmp
-        service.register_kqueue_watch(123, 5, 2, 11, "/tmp".to_string(), NOTE_WRITE, true);
+        service.register_kqueue_watch(123, 5, 2, 11, "/tmp".to_string(), kqueue::NOTE_WRITE, true);
 
         let event = EventKind::Created {
             path: "/tmp/file.txt".to_string(),
@@ -1366,9 +1107,9 @@ mod tests {
         let dir_event = events.iter().find(|e| e.ident == 11).unwrap();
 
         // File watcher gets NOTE_WRITE
-        assert_eq!(file_event.fflags, NOTE_WRITE);
+        assert_eq!(file_event.fflags, kqueue::NOTE_WRITE);
         // Directory watcher gets NOTE_WRITE
-        assert_eq!(dir_event.fflags, NOTE_WRITE);
+        assert_eq!(dir_event.fflags, kqueue::NOTE_WRITE);
     }
 
     #[test]
@@ -1383,7 +1124,12 @@ mod tests {
             1,
             10,
             "/tmp/file.txt".to_string(),
-            NOTE_WRITE | NOTE_DELETE | NOTE_EXTEND | NOTE_ATTRIB | NOTE_LINK | NOTE_RENAME,
+            kqueue::NOTE_WRITE
+                | kqueue::NOTE_DELETE
+                | kqueue::NOTE_EXTEND
+                | kqueue::NOTE_ATTRIB
+                | kqueue::NOTE_LINK
+                | kqueue::NOTE_RENAME,
             false,
         );
 
@@ -1407,7 +1153,7 @@ mod tests {
         let event = &events[0];
         assert_eq!(event.ident, 10);
         // Should have NOTE_WRITE from create + NOTE_WRITE|NOTE_EXTEND from modify
-        assert_eq!(event.fflags, NOTE_WRITE | NOTE_EXTEND);
+        assert_eq!(event.fflags, kqueue::NOTE_WRITE | kqueue::NOTE_EXTEND);
     }
 
     #[test]
@@ -1422,7 +1168,7 @@ mod tests {
             1,
             10,
             "/tmp/old.txt".to_string(),
-            NOTE_RENAME,
+            kqueue::NOTE_RENAME,
             false,
         );
         service.register_kqueue_watch(
@@ -1431,11 +1177,11 @@ mod tests {
             2,
             11,
             "/tmp/new.txt".to_string(),
-            NOTE_RENAME,
+            kqueue::NOTE_RENAME,
             false,
         );
         // Register directory watch on parent
-        service.register_kqueue_watch(123, 5, 3, 12, "/tmp".to_string(), NOTE_WRITE, true);
+        service.register_kqueue_watch(123, 5, 3, 12, "/tmp".to_string(), kqueue::NOTE_WRITE, true);
 
         let event = EventKind::Renamed {
             from: "/tmp/old.txt".to_string(),
@@ -1455,9 +1201,9 @@ mod tests {
         let new_file_event = events.iter().find(|e| e.ident == 11).unwrap();
         let dir_event = events.iter().find(|e| e.ident == 12).unwrap();
 
-        assert_eq!(old_file_event.fflags, NOTE_RENAME);
-        assert_eq!(new_file_event.fflags, NOTE_RENAME);
-        assert_eq!(dir_event.fflags, NOTE_WRITE);
+        assert_eq!(old_file_event.fflags, kqueue::NOTE_RENAME);
+        assert_eq!(new_file_event.fflags, kqueue::NOTE_RENAME);
+        assert_eq!(dir_event.fflags, kqueue::NOTE_WRITE);
     }
 
     #[test]
@@ -1466,7 +1212,7 @@ mod tests {
         let sink = WatchServiceEventSink::new_without_daemon(service.clone());
 
         // Register directory watch on /tmp
-        service.register_kqueue_watch(123, 5, 1, 10, "/tmp".to_string(), NOTE_WRITE, true);
+        service.register_kqueue_watch(123, 5, 1, 10, "/tmp".to_string(), kqueue::NOTE_WRITE, true);
 
         let event = EventKind::Created {
             path: "/tmp/subdir/file.txt".to_string(),
@@ -1482,7 +1228,7 @@ mod tests {
 
         let event = &events[0];
         assert_eq!(event.ident, 10);
-        assert_eq!(event.fflags, NOTE_WRITE);
+        assert_eq!(event.fflags, kqueue::NOTE_WRITE);
     }
 
     #[test]
@@ -1497,7 +1243,7 @@ mod tests {
             1,
             10,
             "/tmp/file.txt".to_string(),
-            NOTE_DELETE,
+            kqueue::NOTE_DELETE,
             false,
         );
 
@@ -1523,7 +1269,7 @@ mod tests {
             1,
             10,
             "/tmp/file.txt".to_string(),
-            NOTE_WRITE,
+            kqueue::NOTE_WRITE,
             false,
         );
 
