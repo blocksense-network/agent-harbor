@@ -417,6 +417,8 @@
         pkgs.asciinema # Terminal session recorder
         pkgs.fzf
         pkgs.sqlite # For examining the databases of Cursor and VS Code
+        # Tmux multiplexer for integration tests (all platforms)
+        pkgs.tmux
 
         # ASCII art tools for logo conversion
         pkgs.chafa
@@ -449,8 +451,6 @@
 
       # Linux-specific packages
       linuxPackages = pkgs.lib.optionals isLinux [
-        # Tmux for integration tests (tmux multiplexer)
-        pkgs.tmux
         # Use Chromium on Linux for mermaid-cli's Puppeteer
         pkgs.chromium
         # Linux-only filesystem utilities for snapshot functionality
