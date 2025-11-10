@@ -260,7 +260,9 @@ build-overlay-test-binaries:
 
 # Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-interpose-test-helper --bin agentfs-interpose-mock-daemon
+    # Build the test helper and the production daemon used by tests
+    cargo build --bin agentfs-interpose-test-helper
+    cargo build -p agentfs-daemon --bin agentfs-daemon
     cargo build -p agentfs-interpose-shim
 
 # Build sbx-helper binary
