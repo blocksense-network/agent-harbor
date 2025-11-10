@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 echo "Setting up pjdfstest test suite..."
 mkdir -p resources
 cd resources
 
 if [ -d "pjdfstest" ]; then
-    echo "pjdfstest directory already exists, updating..."
-    cd pjdfstest
-    git pull
+  echo "pjdfstest directory already exists, updating..."
+  cd pjdfstest
+  git pull
 else
-    echo "Cloning pjdfstest repository..."
-    git clone https://github.com/pjd/pjdfstest.git
-    cd pjdfstest
+  echo "Cloning pjdfstest repository..."
+  git clone https://github.com/pjd/pjdfstest.git
+  cd pjdfstest
 fi
 
 echo "Building pjdfstest test suite..."

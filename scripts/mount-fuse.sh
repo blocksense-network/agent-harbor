@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 mountpoint="$1"
 if [ ! -d "$mountpoint" ]; then
-    echo "Creating mount point: $mountpoint"
-    mkdir -p "$mountpoint"
+  echo "Creating mount point: $mountpoint"
+  mkdir -p "$mountpoint"
 fi
 
 # Ensure the mount point is owned by the current user
