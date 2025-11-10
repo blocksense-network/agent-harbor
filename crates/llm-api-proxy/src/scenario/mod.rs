@@ -282,7 +282,7 @@ impl ScenarioPlayer {
 
         for tool_def in tool_definitions {
             if let Some(tool_name) = tool_def.get("name").and_then(|n| n.as_str()) {
-                // Force validation failure only when strict mode is on and the env-flag is set
+                // Force validation failure if FORCE_TOOLS_VALIDATION_FAILURE is set
                 let is_invalid = !valid_tools.contains(tool_name) || force_failure_enabled;
 
                 if is_invalid {
