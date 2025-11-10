@@ -91,7 +91,7 @@ The API contract foundation has been implemented in the `crates/ah-rest-api-cont
 
 **Status**: Completed
 
-**Reference Implementation**: See `PoC/tui-exploration/src/task_manager.rs` for the prototype trait design and `MockTaskManager` implementation that demonstrates the intended interface.
+**Reference Implementation**: See `crates/ah-core/src/task_manager.rs` for the trait design and `MockTaskManager` implementation that demonstrates the intended interface.
 
 ### Deliverables
 
@@ -149,7 +149,7 @@ The TaskManager trait has been implemented in `crates/ah-core/src/task_manager.r
 
 **Status**: Completed
 
-**Reference Implementation**: See `PoC/tui-exploration/src/task_manager.rs` for `MockTaskManager` implementation demonstrating the interface, and `PoC/tui-exploration/src/view_model.rs` for examples of MVVM testing patterns with simulated tokio time.
+**Reference Implementation**: See `crates/ah-core/src/task_manager.rs` for `MockTaskManager` implementation demonstrating the interface, and MVVM testing patterns in the ah-tui crate.
 
 ### Deliverables
 
@@ -190,7 +190,7 @@ The MockRestClient has been implemented in `crates/ah-rest-mock-client/src/lib.r
 - **Configurable Behavior**: Support for custom delays and failure injection for testing edge cases
 - **Deterministic IDs**: Hash-based task ID generation for reproducible test scenarios
 - **Thread Safety**: All operations are async and thread-safe using Tokio primitives
-- **PoC Compatibility**: Event sequences match the patterns from PoC/tui-exploration for seamless integration
+- **PoC Compatibility**: Event sequences match the patterns from previous PoC implementations for seamless integration
 
 ### Key Source Files
 
@@ -879,9 +879,9 @@ The production server task lifecycle has been fully implemented with comprehensi
 
 - **Contract tests** ensure client and server agree on API shape
 - **Mock client** enables TUI testing with simulated time (tokio::time::pause)
-  - Supports MVVM-style testing as demonstrated in PoC/tui-exploration
+  - Supports MVVM-style testing as demonstrated in ah-tui crate
   - ViewModels tested independently with accelerated time simulation
-  - See PoC/tui-exploration/src/view_model.rs for testing patterns
+  - See MVVM testing patterns in the ah-tui crate
 - **Existing mock server** (webui/mock-server) validates production client behavior
 - **Integration tests** validate real behavior against specifications
 - **Property-based tests** for serialization and validation logic

@@ -39,24 +39,13 @@ test-rust-single *args: build-rust-test-binaries
 test-rust-verbose *args: build-rust-test-binaries
     cargo nextest run --workspace --verbose {{args}}
 
-# Build TUI exploration binary (legacy implementation)
-build-tui-exploration:
-    cd PoC/tui-exploration && cargo build --bin tui-exploration
+# Build mock TUI dashboard binary
+build-mock-tui-dashboard:
+    cd tests/tools/mock-tui-dashboard && cargo build --bin mock-tui-dashboard
 
-# Build TUI MVVM binary (new MVVM architecture)
-build-tui-mvvm:
-    cd PoC/tui-exploration && cargo build --bin tui-mvvm
-
-# Run TUI exploration binary (legacy implementation)
-run-tui-exploration: build-tui-exploration
-    cd PoC/tui-exploration && cargo run --bin tui-exploration
-
-# Run TUI MVVM binary (new MVVM architecture)
-run-tui-mvvm: build-tui-mvvm
-    cd PoC/tui-exploration && cargo run --bin tui-mvvm
-
-# Build both TUI binaries
-build-tui-both: build-tui-exploration build-tui-mvvm
+# Run mock TUI dashboard (new MVVM architecture)
+run-mock-tui-dashboard: build-mock-tui-dashboard
+    cd tests/tools/mock-tui-dashboard && cargo run --bin mock-tui-dashboard
 
 # Snapshot Testing with Insta
 # ===========================
@@ -694,25 +683,6 @@ repomix-tui *args:
         --include "{{REPOMIX_TUI_PATTERNS}}" \
         {{args}}
 
-# TUI Exploration PoC include patterns as a multiline string
-REPOMIX_TUI_EXPLORATION_PATTERNS := replace("""
-PoC/tui-exploration/**/*
-specs/Public/TUI-PRD.md
-specs/Public/TUI.status.md
-""", "\n", ",")
-
-# Create repomix bundle of TUI exploration PoC (implementation + related specs)
-repomix-tui-exploration *args:
-    @echo "📦 Creating TUI exploration PoC repomix snapshot..."
-    mkdir -p {{REPOMIX_OUT_DIR}}
-    repomix \
-        . \
-        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-TUI-Exploration.md \
-        --style markdown \
-        --header-text "TUI Exploration PoC - Interactive Dashboard Implementation" \
-        --include "{{REPOMIX_TUI_EXPLORATION_PATTERNS}}" \
-        --ignore "PoC/tui-exploration/target/**" \
-        {{args}}
 
 # AgentFS include patterns as a multiline string
 REPOMIX_AGENTFS_PATTERNS := replace("""
