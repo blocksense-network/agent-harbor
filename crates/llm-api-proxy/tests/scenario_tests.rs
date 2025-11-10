@@ -1070,8 +1070,6 @@ async fn test_tool_changes_tracking_with_version() -> Result<(), Box<dyn std::er
 
 #[tokio::test]
 async fn test_agent_type_detection() -> Result<(), Box<dyn std::error::Error>> {
-    // Ensure forced validation/capture is disabled for this test to avoid cross-test interference
-    std::env::remove_var("FORCE_TOOLS_VALIDATION_FAILURE");
     use std::io::Write;
     use tempfile::TempDir;
 
