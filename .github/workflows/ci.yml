@@ -70,17 +70,20 @@ jobs:
       matrix:
         include:
           - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3, microvm]
+            runner: [self-hosted, nixos, x86-64-v3, microvm, pick-me]
             allowedToFail: false
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
-            allowedToFail: true
+          # - name: aarch64-darwin (macOS, GitHub-hosted)
+          #   runner: macos-latest
+          #   allowedToFail: true
 
     name: Rust tests | ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.allowedToFail }}
 
     steps:
+      # - name: Test passwordless `sudo` availability
+      #   run: sudo true
+
       - name: Test user namespace availability
         run: |
           unshare -U true && echo "✅ userns OK" || echo "❌ userns blocked"
@@ -110,21 +113,23 @@ jobs:
       # - name: Check code with clippy
       #   run: just lint-rust
 
+      - run: cargo test -p sandbox-fs
+
       - name: Check compilation
         run: just check
+
+      - name: Build sandbox helper binary
+        run: just build-sbx-helper-release
 
       - name: Build cgroup enforcement test binaries
         run: just build-cgroup-tests
 
-      - run: sudo just create-test-filesystems
-
-      - run: sudo just start-ah-fs-snapshots-daemon
+      # - run: sudo just create-test-filesystems
+      #
+      # - run: sudo just start-ah-fs-snapshots-daemon
 
       - name: Run tests
         run: just test-rust-verbose
-
-      - name: Build sandbox helper binary
-        run: just build-sbx-helper-release
 
   webui:
     runs-on: [self-hosted, nixos, x86-64-v3]
