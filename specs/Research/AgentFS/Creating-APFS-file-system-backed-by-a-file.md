@@ -26,8 +26,8 @@ For images you can grow/shrink the **image** with `hdiutil resize -size 50g …`
 **Bootability caveat**
 APFS images are great for sandboxes and data, but using one directly as a **bootable** macOS startup volume is non-trivial. Community write-ups show that restoring or booting APFS system volumes from images often requires additional steps (`asr`, volume groups, `bless`) and can be finicky—so treating these as data/test volumes (not ready-made boot disks) is the safe guidance. ([Apple Support Community][5])
 
-[1]: https://apple.stackexchange.com/questions/375170/how-do-you-create-an-apfs-volume-inside-an-ordinary-file?utm_source=chatgpt.com "How do you create an APFS volume inside an ordinary file?"
-[2]: https://ss64.com/mac/hdiutil.html "hdiutil Man Page - macOS - SS64.com"
-[3]: https://www.oio.ch/docs/Diskutil%20%288%29%20APFS%20commands "Diskutil (8) APFS commands"
-[4]: https://eclecticlight.co/2019/03/16/disk-utility-cant-resize-apfs-disk-images-but-hdiutil-can/?utm_source=chatgpt.com "Disk Utility can’t resize APFS disk images, but hdiutil can"
-[5]: https://discussions.apple.com/thread/253764742?utm_source=chatgpt.com "FYI: Restoring an APFS Container from a d… - Apple Community"
+[1]: https://apple.stackexchange.com/questions/375170/how-do-you-create-an-apfs-volume-inside-an-ordinary-file?utm_source=chatgpt.com 'How do you create an APFS volume inside an ordinary file?'
+[2]: https://ss64.com/mac/hdiutil.html 'hdiutil Man Page - macOS - SS64.com'
+[3]: https://www.oio.ch/docs/Diskutil%20%288%29%20APFS%20commands 'Diskutil (8) APFS commands'
+[4]: https://eclecticlight.co/2019/03/16/disk-utility-cant-resize-apfs-disk-images-but-hdiutil-can/?utm_source=chatgpt.com 'Disk Utility can’t resize APFS disk images, but hdiutil can'
+[5]: https://discussions.apple.com/thread/253764742?utm_source=chatgpt.com 'FYI: Restoring an APFS Container from a d… - Apple Community'
