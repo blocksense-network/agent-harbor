@@ -182,7 +182,7 @@ export const DraftTaskCard = (props: DraftTaskCardProps) => {
       };
 
       const response = await apiClient.createTask(taskData);
-      props.onTaskCreated?.(response.id);
+      response.session_ids.map(id => props.onTaskCreated?.(id));
     } catch (error) {
       console.error('Failed to create task:', error);
     } finally {
