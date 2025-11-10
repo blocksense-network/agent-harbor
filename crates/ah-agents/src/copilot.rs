@@ -192,7 +192,13 @@ impl AgentExecutor for CopilotAgent {
     ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Copilot CLI launch with prompt: {:?}",
-            config.prompt.chars().take(50).collect::<String>()
+            config
+                .prompt
+                .as_deref()
+                .unwrap_or("<empty>")
+                .chars()
+                .take(50)
+                .collect::<String>()
         );
 
         // Determine if we're using a custom HOME directory
@@ -279,8 +285,8 @@ impl AgentExecutor for CopilotAgent {
             warn!("JSON output is not yet supported by Copilot CLI");
         }
 
-        if !config.prompt.is_empty() {
-            cmd.arg("-p").arg(&config.prompt);
+        if let Some(prompt) = &config.prompt {
+            cmd.arg("-p").arg(prompt);
         }
 
         debug!("Copilot CLI command prepared successfully");
