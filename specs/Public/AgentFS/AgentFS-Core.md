@@ -59,6 +59,7 @@ For interpose mode on filesystems supporting native block cloning (APFS `clonefi
 - **Windows ReFS**: Similar approach using `FSCTL_DUPLICATE_EXTENTS_TO_FILE` to create block-level clones. Constraints include same-volume requirements, cluster alignment, and ≤4GB per clone operation, but automatic block cloning is supported in copy operations as of Windows 11 24H2.
 
 **Benefits:**
+
 - **Persistence**: When backed by a directory (not a RamDisk), cloned files remain accessible even if AgentFS process terminates.
 - **Memory efficiency**: Large files don't consume RAM for snapshots.
 - **Performance**: Filesystem handles CoW natively through the fast paths in the kernel.
