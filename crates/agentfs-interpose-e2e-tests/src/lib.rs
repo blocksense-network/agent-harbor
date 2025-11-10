@@ -7,6 +7,7 @@
 pub mod macos;
 
 use ssz::{Decode, Encode};
+use std::io::{Read, Write};
 
 // Common functions available on all platforms
 pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
@@ -170,7 +171,7 @@ fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: agentfs_proto::Request,
 ) -> Result<agentfs_proto::Response, String> {
-    use crate::handshake::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo};
+    use agentfs_daemon::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo, handshake};
     use agentfs_proto::{Request, Response};
     use std::os::unix::net::UnixStream;
 
