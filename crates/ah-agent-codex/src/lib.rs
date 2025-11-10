@@ -20,7 +20,7 @@
 //!     println!("Codex version: {}", version.version);
 //!
 //!     // Launch agent
-//!     let config = AgentLaunchConfig::new("Implement feature X", "/tmp/agent-home");
+//!     let config = AgentLaunchConfig::new("/tmp/agent-home").prompt("Implement feature X");
 //!     let mut child = agent.launch(config).await?;
 //!     let status = child.wait().await?;
 //!

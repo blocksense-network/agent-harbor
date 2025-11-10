@@ -28,7 +28,7 @@ expectrl = { version = "0.3", features = ["async"] }
 nix = { version = "0.27", features = ["signal"] }
 futures-lite = "1.13"
 futures = "0.3"
-vt100 = "0.15"
+vt100 = { path = "../../vendor/vt100" }
 insta = { version = "1.40", features = ["json"] }
 regex = "1.0"
 crossterm = "0.29"

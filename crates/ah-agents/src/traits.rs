@@ -9,12 +9,13 @@ use std::{
     process::Stdio,
 };
 use tokio::process::Child;
+use tracing::info;
 
 /// Agent launch configuration
 #[derive(Debug, Clone)]
 pub struct AgentLaunchConfig {
-    /// Initial prompt for the agent
-    pub prompt: String,
+    /// Initial prompt for the agent (optional)
+    pub prompt: Option<String>,
 
     /// Custom HOME directory for the agent (for environment isolation)
     pub home_dir: PathBuf,
@@ -53,6 +54,9 @@ pub struct AgentLaunchConfig {
     /// For Codex: enables --search flag
     /// No effect for Claude yet
     pub web_search: bool,
+
+    /// Command to execute after each tool use or agent edit (if supported by the agent)
+    pub snapshot_cmd: Option<String>,
 
     /// Model to use for the agent (optional, agent-specific defaults apply)
     pub model: Option<String>,
@@ -175,6 +179,14 @@ pub trait AgentExecutor: Send + Sync {
         let mut cmd = self.prepare_launch(config).await?;
         // Convert tokio command to std command and exec
         use std::os::unix::process::CommandExt;
+
+        // Log the command being executed
+        let program = cmd.as_std().get_program().to_string_lossy();
+        let args: Vec<String> =
+            cmd.as_std().get_args().map(|arg| arg.to_string_lossy().to_string()).collect();
+        let command_line = format!("{} {}", program, args.join(" "));
+        info!("Executing agent command: {}", command_line);
+
         let err = cmd
             .as_std_mut()
             .stdin(Stdio::inherit())
@@ -245,9 +257,9 @@ pub trait AgentExecutor: Send + Sync {
 
 /// Builder for launch configuration
 impl AgentLaunchConfig {
-    pub fn new(prompt: impl Into<String>, home_dir: impl Into<PathBuf>) -> Self {
+    pub fn new(home_dir: impl Into<PathBuf>) -> Self {
         Self {
-            prompt: prompt.into(),
+            prompt: None,
             home_dir: home_dir.into(),
             interactive: false,
             json_output: false,
@@ -257,10 +269,16 @@ impl AgentLaunchConfig {
             env_vars: Vec::new(),
             working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             copy_credentials: true, // Default to true for convenience
-            unrestricted: false,
+            unrestricted: true,
             web_search: false,
+            snapshot_cmd: None,
             model: None,
         }
+    }
+
+    pub fn prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = Some(prompt.into());
+        self
     }
 
     pub fn interactive(mut self, interactive: bool) -> Self {
@@ -312,6 +330,11 @@ impl AgentLaunchConfig {
 
     pub fn web_search(mut self, web_search: bool) -> Self {
         self.web_search = web_search;
+        self
+    }
+
+    pub fn snapshot_cmd(mut self, cmd: impl Into<String>) -> Self {
+        self.snapshot_cmd = Some(cmd.into());
         self
     }
 

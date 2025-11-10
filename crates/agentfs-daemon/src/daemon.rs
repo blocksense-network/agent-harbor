@@ -127,66 +127,18 @@ use crate::handshake::*;
 use crate::{WatchService, WatchServiceEventSink, decode_ssz_message, encode_ssz_message};
 
 #[cfg(target_os = "macos")]
-use core_foundation::{base::TCFType, string::CFString};
+use crate::macos::interposition::{
+    CFDataRef, CFMessagePortWrapper, create_remote_port,
+    register_fsevents_port as register_port_in_map, send_fsevents_batch as send_batch_via_port,
+};
+#[cfg(target_os = "macos")]
+use crate::macos::kqueue::SInt32;
 
 /// Helper function to get PID for client operations (avoids nested locking issues)
 fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) -> PID {
     let daemon_guard = daemon.lock().unwrap();
     daemon_guard.processes[&client_pid].clone()
 }
-
-// CoreFoundation types for CFMessagePort
-#[cfg(target_os = "macos")]
-type CFAllocatorRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFStringRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFMessagePortRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFDataRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFIndex = isize;
-#[cfg(target_os = "macos")]
-type CFTimeInterval = f64;
-#[cfg(target_os = "macos")]
-type SInt32 = i32;
-
-#[cfg(target_os = "macos")]
-extern "C" {
-    static kCFAllocatorDefault: CFAllocatorRef;
-
-    fn CFMessagePortCreateRemote(allocator: CFAllocatorRef, name: CFStringRef) -> CFMessagePortRef;
-    fn CFMessagePortSendRequest(
-        remote: CFMessagePortRef,
-        msgid: SInt32,
-        data: CFDataRef,
-        send_timeout: CFTimeInterval,
-        rcv_timeout: CFTimeInterval,
-        reply_mode: CFStringRef,
-        return_data: *mut CFDataRef,
-    ) -> i32; // SInt32, 0 on success
-    fn CFMessagePortInvalidate(port: CFMessagePortRef);
-    fn CFRelease(cf: *mut std::ffi::c_void);
-
-    fn CFStringCreateWithCString(
-        alloc: CFAllocatorRef,
-        c_str: *const std::ffi::c_char,
-        encoding: u32,
-    ) -> CFStringRef;
-
-    fn CFDataCreate(allocator: CFAllocatorRef, bytes: *const u8, length: CFIndex) -> CFDataRef;
-}
-
-// Wrapper for CFMessagePortRef to make it Send + Sync
-#[cfg(target_os = "macos")]
-#[derive(Clone)]
-struct CFMessagePortWrapper(CFMessagePortRef);
-
-// CFMessagePort is thread-safe according to Apple's documentation
-#[cfg(target_os = "macos")]
-unsafe impl Send for CFMessagePortWrapper {}
-#[cfg(target_os = "macos")]
-unsafe impl Sync for CFMessagePortWrapper {}
 
 /// Real AgentFS daemon using the core filesystem
 pub struct AgentFsDaemon {
@@ -288,6 +240,93 @@ impl AgentFsDaemon {
         Ok(daemon_instance)
     }
 
+    /// Create a new daemon instance with backstore configuration
+    pub fn new_with_backstore(
+        lower_dir: Option<PathBuf>,
+        upper_dir: Option<PathBuf>,
+        _work_dir: Option<PathBuf>,
+        backstore_mode: agentfs_core::config::BackstoreMode,
+    ) -> FsResult<Self> {
+        // Configure FsCore based on overlay and backstore settings
+        let config = if let Some(lower) = lower_dir {
+            println!(
+                "AgentFsDaemon: configuring overlay with lower={}",
+                lower.display()
+            );
+            FsConfig {
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+                overlay: agentfs_core::config::OverlayConfig {
+                    enabled: true,
+                    lower_root: Some(lower),
+                    copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                },
+                backstore: backstore_mode,
+                ..Default::default()
+            }
+        } else {
+            // Use default FsCore configuration with custom backstore
+            FsConfig {
+                interpose: InterposeConfig {
+                    enabled: true,
+                    max_copy_bytes: 64 * 1024 * 1024, // 64MB
+                    require_reflink: false,
+                    allow_windows_reparse: false,
+                },
+                backstore: backstore_mode,
+                ..Default::default()
+            }
+        };
+
+        // Initialize FsCore with the configuration
+        let core = Arc::new(Mutex::new(FsCore::new(config)?));
+
+        // Create watch service
+        let watch_service = Arc::new(WatchService::new());
+
+        // Create the daemon instance
+        let mut daemon_instance = Self {
+            core: Arc::clone(&core),
+            watch_service: Arc::clone(&watch_service),
+            processes: HashMap::new(),
+            opened_files: HashMap::new(),
+            opened_dirs: HashMap::new(),
+            connections: HashMap::new(),
+            #[cfg(target_os = "macos")]
+            fsevents_ports: HashMap::new(),
+        };
+
+        // Subscribe the watch service to FsCore events
+        {
+            let core_clone = Arc::clone(&core);
+            let watch_service_clone = Arc::clone(&watch_service);
+            let daemon_arc = Arc::new(Mutex::new(daemon_instance));
+            let daemon_clone = Arc::clone(&daemon_arc);
+            let sink = Arc::new(WatchServiceEventSink::new(
+                watch_service_clone,
+                daemon_clone,
+            ));
+
+            // Lock the core temporarily to subscribe to events
+            let mut core_guard = core_clone.lock().unwrap();
+            core_guard
+                .subscribe_events(sink)
+                .expect("Failed to subscribe watch service to events");
+
+            // Extract the daemon instance back
+            daemon_instance = Arc::try_unwrap(daemon_arc)
+                .unwrap_or_else(|_| panic!("Failed to unwrap daemon - still has references"))
+                .into_inner()
+                .unwrap_or_else(|_| panic!("Failed to get daemon from mutex - poisoned"));
+        }
+
+        Ok(daemon_instance)
+    }
+
     /// Register a process with the daemon
     pub fn register_process(&mut self, pid: u32, ppid: u32, uid: u32, gid: u32) -> FsResult<PID> {
         let registered_pid = self.core.lock().unwrap().register_process(pid, ppid, uid, gid);
@@ -348,43 +387,19 @@ impl AgentFsDaemon {
 
     /// Register a CFMessagePort for FSEvents delivery to a process
     #[cfg(target_os = "macos")]
-    pub fn register_fsevents_port(&mut self, pid: u32, port: CFMessagePortRef) {
-        self.fsevents_ports.insert(pid, CFMessagePortWrapper(port));
+    pub fn register_fsevents_port(&mut self, pid: u32, port: CFMessagePortWrapper) {
+        register_port_in_map(&mut self.fsevents_ports, pid, port);
     }
 
     /// Send an FSEvents batch to a process via CFMessagePort
     #[cfg(target_os = "macos")]
-    pub fn send_fsevents_batch(
+    pub unsafe fn send_fsevents_batch(
         &self,
         pid: u32,
         msgid: SInt32,
         data: CFDataRef,
     ) -> Result<(), String> {
-        if let Some(port_wrapper) = self.fsevents_ports.get(&pid) {
-            // Send one-way message (no response expected)
-            let result = unsafe {
-                CFMessagePortSendRequest(
-                    port_wrapper.0,
-                    msgid,
-                    data,
-                    1.0,
-                    0.0,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                )
-            };
-
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(format!(
-                    "CFMessagePortSendRequest failed with code {}",
-                    result
-                ))
-            }
-        } else {
-            Err(format!("No FSEvents port registered for pid {}", pid))
-        }
+        send_batch_via_port(&self.fsevents_ports, pid, msgid, data)
     }
 
     /// Register a kqueue watch
@@ -674,6 +689,44 @@ impl AgentFsDaemon {
         Ok(DaemonStateResponseWrapper {
             response: DaemonStateResponse::FilesystemState(filesystem_state),
         })
+    }
+
+    pub fn get_daemon_state_backstore(&self) -> Result<DaemonStateResponseWrapper, String> {
+        // For now, return a basic backstore status
+        let backstore_status = agentfs_proto::BackstoreStatus {
+            mode: b"InMemory".to_vec(),
+            root_path: None,
+            size_mb: None,
+            mount_point: None,
+            supports_native_snapshots: Some(0), // false = 0
+        };
+
+        Ok(DaemonStateResponseWrapper {
+            response: DaemonStateResponse::BackstoreStatus(backstore_status),
+        })
+    }
+
+    /// Handle a client request
+    pub fn handle_request(
+        &mut self,
+        request: Request,
+        client_pid: u32,
+    ) -> Result<Response, String> {
+        match request {
+            Request::DaemonStateProcesses(_) => {
+                self.get_daemon_state_processes().map(|wrapper| Response::DaemonState(wrapper))
+            }
+            Request::DaemonStateStats(_) => {
+                self.get_daemon_state_stats().map(|wrapper| Response::DaemonState(wrapper))
+            }
+            Request::DaemonStateFilesystem(req) => self
+                .get_daemon_state_filesystem(&req.query)
+                .map(|wrapper| Response::DaemonState(wrapper)),
+            Request::DaemonStateBackstore(_) => {
+                self.get_daemon_state_backstore().map(|wrapper| Response::DaemonState(wrapper))
+            }
+            _ => Err(format!("Request type not implemented: {:?}", request)),
+        }
     }
 
     /// Capture filesystem state from FsCore instead of real filesystem
@@ -1263,11 +1316,25 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         if let Err(e) = daemon.register_process(client_pid, 0, 0, 0) {
             return;
         }
+        // Register the connection for sending unsolicited messages
+        daemon.register_connection(
+            client_pid,
+            stream.try_clone().expect("Failed to clone stream"),
+        );
     }
+
+    // Ensure cleanup happens when function exits
+    let cleanup = || {
+        let mut daemon = daemon.lock().unwrap();
+        daemon.unregister_connection(client_pid);
+        // Clean up all watch registrations for this process
+        daemon.cleanup_process_watches(client_pid);
+    };
 
     // Handle handshake
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -1275,6 +1342,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     let mut msg_buf = vec![0u8; msg_len];
 
     if stream.read_exact(&mut msg_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -1284,12 +1352,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         let _ = stream.write_all(ack);
         let _ = stream.flush();
     } else {
+        cleanup();
         return;
     }
 
     // Handle one request
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -2076,33 +2146,22 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     {
                         let port_name_str =
                             String::from_utf8_lossy(&port_req.port_name).to_string();
-                        let port_name_cstr = match std::ffi::CString::new(port_name_str.as_str()) {
-                            Ok(cstr) => cstr,
-                            Err(_) => {
-                                let response = Response::error(
-                                    "Invalid port name encoding".to_string(),
-                                    Some(22),
-                                );
+                        if std::ffi::CString::new(port_name_str.as_str()).is_err() {
+                            let response =
+                                Response::error("Invalid port name encoding".to_string(), Some(22));
+                            send_response(&mut stream, &response);
+                            cleanup();
+                            return;
+                        }
+                        let port = match create_remote_port(&port_name_str) {
+                            Ok(port) => port,
+                            Err(err) => {
+                                let response = Response::error(err, Some(22));
                                 send_response(&mut stream, &response);
+                                cleanup();
                                 return;
                             }
                         };
-                        let cf_name = CFString::new(&port_name_str);
-                        let port = unsafe {
-                            CFMessagePortCreateRemote(
-                                kCFAllocatorDefault,
-                                cf_name.as_CFTypeRef() as CFStringRef,
-                            )
-                        };
-                        // cf_name will be automatically cleaned up by RAII when it goes out of scope
-                        if port.is_null() {
-                            let response = Response::error(
-                                "Failed to create CFMessagePort".to_string(),
-                                Some(22),
-                            );
-                            send_response(&mut stream, &response);
-                            return;
-                        }
                         let mut daemon_guard = daemon.lock().unwrap();
                         daemon_guard.register_fsevents_port(port_req.pid, port);
                         let response = Response::watch_register_fsevents_port();
@@ -2122,6 +2181,9 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         }
         Err(e) => {}
     }
+
+    // Cleanup: unregister the connection
+    cleanup();
 }
 
 fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {

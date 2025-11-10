@@ -28,6 +28,7 @@ pub mod rest_task_manager;
 pub mod session;
 pub mod task;
 pub mod task_manager;
+pub mod task_manager_init;
 pub mod workspace_files_enumerator;
 
 /// Core result type used throughout the AH system.
@@ -62,6 +63,13 @@ pub use ah_mux_core::SplitMode;
 /// Task manager abstraction for different execution modes (local, remote, mock).
 pub use task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 
+/// Task manager initialization utilities.
+pub use task_manager_init::{
+    MultiplexerPreference, TaskManagerConfig, create_dashboard_task_manager,
+    create_local_task_manager, create_local_task_manager_with_multiplexer,
+    create_session_viewer_task_manager, create_task_manager_no_recording,
+};
+
 /// Local task manager for direct execution on the local machine.
 /// Uses a dynamic multiplexer implementation.
 pub use local_task_manager::LocalTaskManager;
@@ -70,7 +78,7 @@ pub use local_task_manager::LocalTaskManager;
 pub use remote_workspace_files_enumerator::RemoteWorkspaceFilesEnumerator;
 
 /// Re-export domain types
-pub use ah_domain_types::{LogLevel, TaskExecutionStatus, ToolStatus};
+pub use ah_domain_types::{LogLevel, TaskState, ToolStatus};
 
 /// Agent execution engine for spawning and managing agent processes.
 pub use agent_executor::{AgentExecutionConfig, AgentExecutor, WorkingCopyMode};

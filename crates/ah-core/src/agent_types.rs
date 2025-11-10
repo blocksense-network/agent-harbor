@@ -23,3 +23,18 @@ pub enum AgentType {
     /// Goose agent
     Goose,
 }
+
+impl std::fmt::Display for AgentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentType::Mock => write!(f, "mock"),
+            AgentType::Codex => write!(f, "codex"),
+            AgentType::Claude => write!(f, "claude"),
+            AgentType::Gemini => write!(f, "gemini"),
+            AgentType::Opencode => write!(f, "opencode"),
+            AgentType::Qwen => write!(f, "qwen"),
+            AgentType::CursorCli => write!(f, "cursor-cli"),
+            AgentType::Goose => write!(f, "goose"),
+        }
+    }
+}

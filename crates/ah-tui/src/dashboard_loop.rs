@@ -8,139 +8,35 @@
 //! Dependencies are injected, making this module independent of specific service implementations.
 
 use crossbeam_channel as chan;
-use crossterm::{
-    ExecutableCommand,
-    event::{
-        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
-    event::{Event, KeyEventKind, MouseButton, MouseEventKind},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::{
-    io::{self, Stdout},
-    panic,
     sync::Arc,
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::Duration,
 };
-use tracing::trace;
-
-// External dependencies
-use ctrlc;
-
-// Global flag to ensure cleanup only happens once
-static CLEANUP_DONE: AtomicBool = AtomicBool::new(false);
-
-// Track what we modified so we can restore properly
-static RAW_MODE_ENABLED: AtomicBool = AtomicBool::new(false);
-static ALTERNATE_SCREEN_ACTIVE: AtomicBool = AtomicBool::new(false);
-static KB_FLAGS_PUSHED: AtomicBool = AtomicBool::new(false);
-static MOUSE_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
+use tracing::{debug, trace};
 
 use crate::{
     Theme, ViewCache, WorkspaceFilesEnumerator,
     settings::Settings,
-    view::{self, HitTestRegistry, header, modals},
+    terminal::{self, TerminalConfig},
+    view::{self, HitTestRegistry, TuiDependencies, header, modals},
     view_model::{MouseAction, Msg as ViewModelMsg, ViewModel},
 };
 use ah_core::TaskManager;
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 
-/// Dashboard dependencies that are injected
-pub struct DashboardDependencies {
-    pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
-    pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
-    pub task_manager: Arc<dyn TaskManager>,
-    pub repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator>,
-    pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,
-    pub settings: Settings,
-    /// Currently detected repository (if any) to be selected by default
-    pub current_repository: Option<String>,
-}
-
-/// Setup terminal for TUI
-fn setup_terminal() -> Result<(), Box<dyn std::error::Error>> {
-    let mut stdout = io::stdout();
-
-    crossterm::terminal::enable_raw_mode()?;
-    RAW_MODE_ENABLED.store(true, Ordering::SeqCst);
-
-    stdout.execute(EnterAlternateScreen)?;
-    ALTERNATE_SCREEN_ACTIVE.store(true, Ordering::SeqCst);
-
-    // Setup enhanced keyboard and mouse support for better image rendering
-    stdout.execute(PushKeyboardEnhancementFlags(
-        KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-            | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS,
-    ))?;
-    KB_FLAGS_PUSHED.store(true, Ordering::SeqCst);
-
-    stdout.execute(EnableMouseCapture)?;
-    MOUSE_CAPTURE_ENABLED.store(true, Ordering::SeqCst);
-
-    Ok(())
-}
-
-/// Cleanup terminal after TUI
-fn cleanup_terminal() {
-    if CLEANUP_DONE.swap(true, Ordering::SeqCst) {
-        return; // Already cleaned up
-    }
-
-    let mut stdout = io::stdout();
-
-    // Pop keyboard enhancement flags first (must be done while still in raw mode/alternate screen)
-    if KB_FLAGS_PUSHED.load(Ordering::SeqCst) {
-        let _ = stdout.execute(PopKeyboardEnhancementFlags);
-        KB_FLAGS_PUSHED.store(false, Ordering::SeqCst);
-    }
-
-    if MOUSE_CAPTURE_ENABLED.load(Ordering::SeqCst) {
-        let _ = stdout.execute(DisableMouseCapture);
-        MOUSE_CAPTURE_ENABLED.store(false, Ordering::SeqCst);
-    }
-
-    // Disable raw mode next
-    if RAW_MODE_ENABLED.load(Ordering::SeqCst) {
-        let _ = crossterm::terminal::disable_raw_mode();
-        RAW_MODE_ENABLED.store(false, Ordering::SeqCst);
-    }
-
-    // Leave alternate screen last
-    if ALTERNATE_SCREEN_ACTIVE.load(Ordering::SeqCst) {
-        let _ = stdout.execute(LeaveAlternateScreen);
-        ALTERNATE_SCREEN_ACTIVE.store(false, Ordering::SeqCst);
-    }
-}
-
 /// Run the dashboard application with injected dependencies
-pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn std::error::Error>> {
-    // Setup terminal
-    setup_terminal()?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
-
+pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::error::Error>> {
     // Install signal handler for graceful shutdown
     let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
 
-    ctrlc::set_handler(move || {
-        cleanup_terminal();
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
-
-    // Install panic hook for cleanup on panic
-    let default_panic = panic::take_hook();
-    panic::set_hook(Box::new(move |panic_info| {
-        cleanup_terminal();
-        default_panic(panic_info);
-    }));
+    // Setup terminal with signal handlers
+    terminal::setup_terminal(TerminalConfig::default().with_running_flag(running.clone()))?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
 
     // Initialize MVVM components with injected dependencies
     let mut view_model = ViewModel::new_with_background_loading_and_current_repo(
@@ -198,13 +94,13 @@ pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn st
 
                 match event {
                     Event::Key(key) => {
-                        // Key logging for debugging (trace level, disabled by default)
-                        trace!(
+                        // Debug logging for key events
+                        debug!(
                             key_code = ?key.code,
                             modifiers = ?key.modifiers,
                             key_kind = ?key.kind,
                             focus_element = ?view_model.focus_element,
-                            "Key event received"
+                            "Key event received in dashboard"
                         );
 
                         // Send key event to ViewModel via message system
@@ -266,6 +162,7 @@ pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn st
                         // Render modals on top of main UI
                         modals::render_modals(frame, &view_model, size, &theme);
                     })?;
+
                     view_model.needs_redraw = false;
                 }
             }
@@ -292,7 +189,7 @@ pub async fn run_dashboard(deps: DashboardDependencies) -> Result<(), Box<dyn st
     }
 
     // Ensure cleanup happens
-    cleanup_terminal();
+    terminal::cleanup_terminal();
 
     Ok(())
 }

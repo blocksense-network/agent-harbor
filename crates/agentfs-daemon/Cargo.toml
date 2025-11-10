@@ -13,6 +13,7 @@ path = "src/bin/agentfs-daemon.rs"
 [dependencies]
 agentfs-core = { path = "../agentfs-core" }
 agentfs-proto = { path = "../agentfs-proto" }
+clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -29,6 +30,13 @@ tokio = { version = "1.0", features = [
 ] }
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
+
+# macOS-specific dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+agentfs-backstore-macos = { path = "../agentfs-backstore-macos" }
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 scopeguard = "1.2"
+
+[dev-dependencies]
+tempfile = "3.0"

@@ -112,7 +112,8 @@ async fn test_credential_copying() {
 
 #[tokio::test]
 async fn test_launch_config_builder() {
-    let config = AgentLaunchConfig::new("test prompt", "/tmp/home")
+    let config = AgentLaunchConfig::new("/tmp/home")
+        .prompt("test prompt")
         .interactive(true)
         .json_output(true)
         .api_server("http://localhost:18080")
@@ -120,7 +121,7 @@ async fn test_launch_config_builder() {
         .env("KEY1", "VALUE1")
         .working_dir("/tmp/work");
 
-    assert_eq!(config.prompt, "test prompt");
+    assert_eq!(config.prompt, Some("test prompt".to_string()));
     assert_eq!(config.home_dir, PathBuf::from("/tmp/home"));
     assert!(config.interactive);
     assert!(config.json_output);

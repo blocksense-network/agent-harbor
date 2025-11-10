@@ -7,12 +7,15 @@
 //! with clean separation between Model (business logic), ViewModel (UI logic),
 //! and View (rendering).
 
-use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
+use ah_core::{
+    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator,
+};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::{
-    dashboard_loop::{DashboardDependencies, run_dashboard},
+    dashboard_loop::run_dashboard,
     settings::Settings,
+    view::TuiDependencies,
 };
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use std::{fs::OpenOptions, sync::Arc};
@@ -47,12 +50,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::default();
 
     // Create dashboard dependencies
-    let deps = DashboardDependencies {
+    let mock_client = MockRestClient::with_mock_data();
+    let deps = TuiDependencies {
         workspace_files,
         workspace_workflows,
         task_manager,
-        repositories_enumerator: Arc::new(MockRestClient::with_mock_data()),
-        branches_enumerator: Arc::new(MockRestClient::with_mock_data()),
+        repositories_enumerator: Arc::new(RemoteRepositoriesEnumerator::new(
+            mock_client.clone(),
+            "mock-server".to_string(),
+        )),
+        branches_enumerator: Arc::new(RemoteBranchesEnumerator::new(
+            mock_client,
+            "mock-server".to_string(),
+        )),
         settings,
         current_repository: None,
     };

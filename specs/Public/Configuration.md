@@ -230,3 +230,8 @@ ENV examples:
 AH_REMOTE_SERVER=office-1
 AH_REPO_SUPPORTED_AGENTS=all
 ```
+
+### Rust Configuration Patterns
+
+- Each crate defines its own configuration structs which must be provided by the user when instantiating types from the crate.
+- To promote maximum flexibility, crates should avoid providing default configuration values that are highly-specific to agent harbor. Instead, the default agent harbor configuration is provided in the `ah-configuration-types` module, which is referenced only in the `ah-cli` crate. This simplifies the creation of alternative CLI tools and entry points for the functionality of the crates for testing purposes.

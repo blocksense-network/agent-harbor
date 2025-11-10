@@ -20,27 +20,8 @@ use agentfs_daemon::{AgentFsDaemon, decode_ssz_message, encode_ssz_message};
 // AgentFS proto imports
 use agentfs_proto::*;
 
-// CoreFoundation extern declarations for macOS
 #[cfg(target_os = "macos")]
-type CFAllocatorRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFStringRef = *mut std::ffi::c_void;
-#[cfg(target_os = "macos")]
-type CFMessagePortRef = *mut std::ffi::c_void;
-
-#[cfg(target_os = "macos")]
-extern "C" {
-    static kCFAllocatorDefault: CFAllocatorRef;
-
-    fn CFMessagePortCreateRemote(allocator: CFAllocatorRef, name: CFStringRef) -> CFMessagePortRef;
-    fn CFRelease(cf: *mut std::ffi::c_void);
-
-    fn CFStringCreateWithCString(
-        alloc: CFAllocatorRef,
-        c_str: *const std::ffi::c_char,
-        encoding: u32,
-    ) -> CFStringRef;
-}
+use agentfs_daemon::macos::interposition::create_remote_port;
 
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
@@ -57,20 +38,21 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!(
-            "Usage: {} <socket_path> [--lower-dir <path>] [--upper-dir <path>] [--work-dir <path>]",
+            "Usage: {} <socket_path> [--backstore-mode <mode> [--backstore-root <path>] [--backstore-size-mb <mb>]] [--lower-dir <path>] [--upper-dir <path>] [--work-dir <path>]",
             args[0]
         );
+        eprintln!("Backstore modes: InMemory, HostFs, RamDisk");
         std::process::exit(1);
     }
 
-    let socket_path = &args[1];
-
-    // Parse overlay arguments
+    // Parse overlay and backstore arguments
+    let mut socket_path = None;
     let mut lower_dir = None;
     let mut upper_dir = None;
     let mut work_dir = None;
+    let mut backstore_mode = agentfs_core::config::BackstoreMode::InMemory;
 
-    let mut i = 2;
+    let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--lower-dir" => {
@@ -100,27 +82,92 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-            _ => {
-                eprintln!("Unknown argument: {}", args[i]);
-                std::process::exit(1);
+            "--backstore-mode" => {
+                if i + 1 < args.len() {
+                    backstore_mode = match args[i + 1].as_str() {
+                        "InMemory" => agentfs_core::config::BackstoreMode::InMemory,
+                        "HostFs" => agentfs_core::config::BackstoreMode::HostFs {
+                            root: PathBuf::from("/tmp/agentfs-backstore"),
+                            prefer_native_snapshots: true,
+                        },
+                        "RamDisk" => agentfs_core::config::BackstoreMode::RamDisk { size_mb: 64 },
+                        _ => {
+                            eprintln!("Invalid backstore mode: {}", args[i + 1]);
+                            std::process::exit(1);
+                        }
+                    };
+                    i += 2;
+                } else {
+                    eprintln!("--backstore-mode requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            "--backstore-root" => {
+                if i + 1 < args.len() {
+                    // Update the backstore mode to HostFs with the specified root
+                    if let agentfs_core::config::BackstoreMode::HostFs { ref mut root, .. } =
+                        backstore_mode
+                    {
+                        *root = PathBuf::from(&args[i + 1]);
+                    } else {
+                        eprintln!("--backstore-root can only be used with --backstore-mode HostFs");
+                        std::process::exit(1);
+                    }
+                    i += 2;
+                } else {
+                    eprintln!("--backstore-root requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            "--backstore-size-mb" => {
+                if i + 1 < args.len() {
+                    // Update the backstore mode to RamDisk with the specified size
+                    if let agentfs_core::config::BackstoreMode::RamDisk { ref mut size_mb } =
+                        backstore_mode
+                    {
+                        *size_mb = args[i + 1].parse().unwrap_or(64);
+                    } else {
+                        eprintln!(
+                            "--backstore-size-mb can only be used with --backstore-mode RamDisk"
+                        );
+                        std::process::exit(1);
+                    }
+                    i += 2;
+                } else {
+                    eprintln!("--backstore-size-mb requires an argument");
+                    std::process::exit(1);
+                }
+            }
+            arg => {
+                // Assume this is the socket path if we haven't found it yet
+                if socket_path.is_none() {
+                    socket_path = Some(arg.to_string());
+                    i += 1;
+                } else {
+                    eprintln!("Unknown argument: {}", arg);
+                    std::process::exit(1);
+                }
             }
         }
     }
 
-    // Clean up any existing socket
-    let _ = std::fs::remove_file(socket_path);
+    let socket_path = socket_path.expect("Socket path is required");
 
-    let listener = UnixListener::bind(socket_path).expect("failed to bind socket");
+    // Clean up any existing socket
+    let _ = std::fs::remove_file(&socket_path);
+
+    let listener = UnixListener::bind(&socket_path).expect("failed to bind socket");
     println!("AgentFS Daemon: listening on {}", socket_path);
 
     // Create the daemon instance (this will use the library implementation)
-    let daemon = match AgentFsDaemon::new_with_overlay(lower_dir, upper_dir, work_dir) {
-        Ok(daemon) => Arc::new(Mutex::new(daemon)),
-        Err(e) => {
-            eprintln!("Failed to create AgentFS daemon: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let daemon =
+        match AgentFsDaemon::new_with_backstore(lower_dir, upper_dir, work_dir, backstore_mode) {
+            Ok(daemon) => Arc::new(Mutex::new(daemon)),
+            Err(e) => {
+                eprintln!("Failed to create AgentFS daemon: {:?}", e);
+                std::process::exit(1);
+            }
+        };
 
     println!("AgentFS Daemon: initialized successfully");
 
@@ -173,6 +220,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     // Handle handshake
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -180,6 +228,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     let mut msg_buf = vec![0u8; msg_len];
 
     if stream.read_exact(&mut msg_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -189,12 +238,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         let _ = stream.write_all(ack);
         let _ = stream.flush();
     } else {
+        cleanup();
         return;
     }
 
     // Handle one request
     let mut len_buf = [0u8; 4];
     if stream.read_exact(&mut len_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -202,6 +253,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
 
     let mut msg_buf = vec![0u8; msg_len];
     if stream.read_exact(&mut msg_buf).is_err() {
+        cleanup();
         return;
     }
 
@@ -446,37 +498,26 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     // Create CFMessagePort remote connection
                     #[cfg(target_os = "macos")]
                     {
-                        use agentfs_daemon::watch_service::*;
-                        let cf_port_name = unsafe {
-                            CFStringCreateWithCString(
-                                kCFAllocatorDefault,
-                                port_name.as_ptr() as *const _,
-                                0x08000100,
-                            )
-                        };
-
-                        if !cf_port_name.is_null() {
-                            let cf_port = unsafe {
-                                CFMessagePortCreateRemote(kCFAllocatorDefault, cf_port_name)
-                            };
-
-                            if !cf_port.is_null() {
-                                daemon.register_fsevents_port(port_reg_req.pid, cf_port);
-                                log::info!(
-                                    "Registered FSEvents CFMessagePort for pid {}: {}",
-                                    port_reg_req.pid,
-                                    port_name
-                                );
-                            } else {
-                                log::error!(
-                                    "Failed to create CFMessagePort remote for pid {}",
-                                    port_reg_req.pid
-                                );
-                            }
-
-                        // Don't release cf_port_name here - daemon owns it now
+                        if std::ffi::CString::new(port_name.as_str()).is_err() {
+                            log::error!("Invalid port name encoding: {}", port_name);
                         } else {
-                            log::error!("Failed to create CFString for port name: {}", port_name);
+                            match create_remote_port(&port_name) {
+                                Ok(port) => {
+                                    daemon.register_fsevents_port(port_reg_req.pid, port);
+                                    log::info!(
+                                        "Registered FSEvents CFMessagePort for pid {}: {}",
+                                        port_reg_req.pid,
+                                        port_name
+                                    );
+                                }
+                                Err(err) => {
+                                    log::error!(
+                                        "Failed to create CFMessagePort remote for pid {}: {}",
+                                        port_reg_req.pid,
+                                        err
+                                    );
+                                }
+                            }
                         }
                     }
 

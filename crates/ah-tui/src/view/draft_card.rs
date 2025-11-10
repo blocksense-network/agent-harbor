@@ -11,7 +11,7 @@ use ratatui::{
 
 use super::Theme;
 use crate::view_model::task_entry::CardFocusElement;
-use crate::view_model::{FocusElement, TaskEntryViewModel};
+use crate::view_model::{DashboardFocusState, TaskEntryViewModel};
 
 /// Geometry describing interactive regions inside a rendered draft card.
 #[derive(Debug, Clone, Copy)]

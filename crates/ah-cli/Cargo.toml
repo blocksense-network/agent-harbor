@@ -22,6 +22,7 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+ratatui = "0.29"
 
 # AH core dependencies
 ah-core = { path = "../ah-core" }
@@ -35,9 +36,9 @@ ah-fs-snapshots = { path = "../ah-fs-snapshots", features = [
   "btrfs",
   "git",
 ] }
-ah-fs-snapshots-zfs = { path = "../ah-fs-snapshots-zfs" }
-ah-fs-snapshots-btrfs = { path = "../ah-fs-snapshots-btrfs" }
-ah-fs-snapshots-git = { path = "../ah-fs-snapshots-git" }
+ah-fs-snapshots-zfs = { path = "../ah-fs-snapshots-zfs", optional = true }
+ah-fs-snapshots-btrfs = { path = "../ah-fs-snapshots-btrfs", optional = true }
+ah-fs-snapshots-git = { path = "../ah-fs-snapshots-git", optional = true }
 chrono = { workspace = true, features = ["serde"] }
 reqwest = { workspace = true, features = ["json"] }
 uuid = { workspace = true, features = ["v4"] }
@@ -74,7 +75,7 @@ ethereum_ssz_derive = "0.8"
 
 # Agent recording dependencies
 ah-recorder = { path = "../ah-recorder" }
-vt100 = "0.15"
+vt100 = { path = "../../vendor/vt100" }
 crossterm = { workspace = true }
 tempfile = { workspace = true }
 dirs = "5.0"
@@ -97,3 +98,9 @@ winapi = { version = "0.3", features = [
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 tui-testing = { path = "../tui-testing" }
+
+[features]
+default = ["zfs", "btrfs", "git"]
+zfs = ["ah-fs-snapshots/zfs", "ah-fs-snapshots-zfs"]
+btrfs = ["ah-fs-snapshots/btrfs", "ah-fs-snapshots-btrfs"]
+git = ["ah-fs-snapshots/git", "ah-fs-snapshots-git"]

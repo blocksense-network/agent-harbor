@@ -18,6 +18,8 @@ ah-test-scenarios = { path = "../ah-test-scenarios" }
 ah-domain-types = { path = "../ah-domain-types" }
 ah-core = { path = "../ah-core" }
 ah-workflows = { path = "../ah-workflows" }
+ah-recorder = { path = "../ah-recorder" }
+ah-mux = { path = "../ah-mux" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
 ratatui = "0.29"
@@ -29,7 +31,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 futures = { workspace = true }
-unicode-width = { workspace = true }
+unicode-width = "=0.2.0"
 clap = { workspace = true, features = ["derive"] }
 tui-textarea = { path = "../../vendor/tui-textarea", features = ["search"] }
 similar = "2.5"
@@ -37,6 +39,7 @@ ratatui-image = { version = "8", features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 crossbeam-channel = "0.5"
 nucleo = "0.5"
+nucleo-matcher = "0.3"
 once_cell = "1.0"
 unicode-segmentation = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -44,15 +47,24 @@ async-trait = "0.1"
 unic-langid = "0.9"
 ctrlc = "3.4"
 uuid = { version = "1.0", features = ["v4"] }
+tempfile = "3.0"
+ssz_rs = "0.9"
+interprocess = { version = "2.0", features = ["tokio"] }
+ethereum_ssz = { workspace = true }
+ethereum_ssz_derive = { workspace = true }
+vt100 = { path = "../../vendor/vt100" }
+
+# Aliases for SSZ crates (matching recorder pattern)
+ssz = { package = "ethereum_ssz", version = "0.8" }
+ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
 
 [dev-dependencies]
 tokio-test = "0.4"
 ah-test-scenarios = { path = "../ah-test-scenarios" }
 ah-rest-mock-client = { path = "../ah-rest-mock-client" }
 url = { workspace = true }
-tempfile = "3.0"
 tui-testing = { path = "../tui-testing" }
 expectrl = "0.3"
-vt100 = "0.15"
+vt100 = { path = "../../vendor/vt100" }
 insta = { version = "1.40", features = ["json"] }
 regex = "1.0"

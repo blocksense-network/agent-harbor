@@ -9,6 +9,8 @@
 
 pub mod daemon;
 pub mod handshake;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod watch_service;
 
 // Re-export the main daemon types

@@ -976,6 +976,19 @@
         "type": "github"
       }
     },
+    "pjdfstest-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1762315127,
+        "narHash": "sha256-2Kedquw9Ly/G69ybXmvKDvWuct6/r5jo1DWuhUzv6YM=",
+        "type": "tarball",
+        "url": "https://github.com/pjd/pjdfstest/archive/master.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/pjd/pjdfstest/archive/master.tar.gz"
+      }
+    },
     "root": {
       "inputs": {
         "codex": "codex",
@@ -989,6 +1002,7 @@
           "nixos-modules",
           "nixpkgs-unstable"
         ],
+        "pjdfstest-src": "pjdfstest-src",
         "rust-overlay": "rust-overlay",
         "sosumi-docs-downloader": "sosumi-docs-downloader"
       }

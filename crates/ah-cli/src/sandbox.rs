@@ -13,7 +13,7 @@ use sandbox_core::Sandbox;
 use sandbox_seccomp;
 
 /// Arguments for running a command in a sandbox
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct SandboxRunArgs {
     /// Sandbox type (currently only 'local' is supported)
     #[arg(long = "type", default_value = "local")]
@@ -115,6 +115,7 @@ pub async fn prepare_workspace_with_fallback(
     workspace_path: &std::path::Path,
 ) -> Result<PreparedWorkspace> {
     // Try providers in order of preference: ZFS -> Btrfs -> Git
+    #[allow(unused_mut)]
     let mut providers_to_try: Vec<(&str, fn() -> Result<Box<dyn FsSnapshotProvider>>)> = Vec::new();
 
     #[cfg(feature = "zfs")]
@@ -154,7 +155,7 @@ pub async fn prepare_workspace_with_fallback(
                         );
                         return Ok(workspace);
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         continue;
                     }
                 }

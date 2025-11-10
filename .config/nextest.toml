@@ -1,0 +1,18 @@
+[profile.default]
+# Don't show output for passing tests
+status-level = "leak"
+
+# Show any skipped tests in the end
+final-status-level = "skip"
+
+# Mark tests “slow” after 30s and kill them after 2 periods (60s),
+# with a 10s grace period before SIGKILL (Unix).
+slow-timeout = { period = "30s", terminate-after = 2, grace-period = "10s" }
+global-timeout = "5m"
+
+[profile.single]
+status-level = "leak"
+final-status-level = "leak"
+success-output = "immediate"
+retries = 0
+global-timeout = "1m"

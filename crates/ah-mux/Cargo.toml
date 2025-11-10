@@ -36,7 +36,7 @@ emacs = []
 tokio-test = "0.4"
 expectrl = { version = "0.3", features = ["async"] }
 futures-lite = "1.13"
-vt100 = "0.15"
+vt100 = { path = "../../vendor/vt100" }
 insta = { version = "1.40", features = ["json"] }
 anyhow = "1.0"
 serde_json = "1.0"

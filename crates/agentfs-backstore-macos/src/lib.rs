@@ -389,6 +389,11 @@ impl RealBackstore {
         })
     }
 
+    /// Get the mount point of the owned RAM disk, if any
+    pub fn ramdisk_mount_point(&self) -> Option<&PathBuf> {
+        self._ramdisk.as_ref().map(|ramdisk| &ramdisk.mount_point)
+    }
+
     /// Create an APFS snapshot using diskutil
     ///
     /// This function runs `diskutil apfs createSnapshot <volume> <name> -readonly`
@@ -556,6 +561,10 @@ impl Backstore for RealBackstore {
 
     fn root_path(&self) -> std::path::PathBuf {
         self.root.clone()
+    }
+
+    fn mount_point(&self) -> Option<std::path::PathBuf> {
+        self.ramdisk_mount_point().map(|p| p.clone())
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

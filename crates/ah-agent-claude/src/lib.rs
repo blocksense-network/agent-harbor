@@ -20,7 +20,7 @@
 //!     println!("Claude version: {}", version.version);
 //!
 //!     // Launch agent
-//!     let config = AgentLaunchConfig::new("Fix bug in main.rs", "/tmp/agent-home");
+//!     let config = AgentLaunchConfig::new("/tmp/agent-home").prompt("Fix bug in main.rs");
 //!     let mut child = agent.launch(config).await?;
 //!     let status = child.wait().await?;
 //!

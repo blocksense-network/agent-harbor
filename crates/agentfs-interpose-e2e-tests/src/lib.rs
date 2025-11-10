@@ -3,10 +3,10 @@
 
 // Handshake types are now provided by the agentfs-daemon crate
 
-use agentfs_daemon::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo, handshake};
-use agentfs_proto::{Request, Response};
+#[cfg(target_os = "macos")]
+pub mod macos;
+
 use ssz::{Decode, Encode};
-use std::io::{Read, Write};
 
 // Common functions available on all platforms
 pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
@@ -68,6 +68,8 @@ use agentfs_daemon::watch_service::WatchServiceEventSink;
 use agentfs_daemon::*;
 #[cfg(target_os = "macos")]
 use agentfs_proto::*;
+#[cfg(not(target_os = "macos"))]
+use agentfs_proto::{Request, Response};
 
 // For dlsym to get original function pointers
 #[cfg(target_os = "macos")]
@@ -149,10 +151,21 @@ fn execute_test_scenario(
     output.status
 }
 
+#[cfg(not(target_os = "macos"))]
+fn execute_test_scenario(
+    socket_path: &std::path::Path,
+    command: &str,
+    args: &[&str],
+) -> std::process::ExitStatus {
+    let _ = (socket_path, command, args);
+    unimplemented!("agentfs interpose test scenarios are only supported on macOS");
+}
+
 /// Query daemon state for verification (structured SSZ-based)
 ///
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
+#[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: agentfs_proto::Request,
@@ -229,6 +242,15 @@ fn query_daemon_state_structured(
 
     decode_ssz_message::<Response>(&response_buf)
         .map_err(|e| format!("Failed to decode response: {:?}", e))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn query_daemon_state_structured(
+    socket_path: &std::path::Path,
+    request: Request,
+) -> Result<Response, String> {
+    let _ = (socket_path, request);
+    Err("agentfs interpose daemon queries are only supported on macOS".to_string())
 }
 
 #[cfg(target_os = "macos")]
@@ -529,7 +551,6 @@ mod tests {
         remove_env_var("AGENTFS_INTERPOSE_LOG");
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_file_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -553,16 +574,14 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
 
-        // Give daemon time to start and check if socket is ready
+        // Give daemon time to start
         thread::sleep(Duration::from_millis(500));
-        let test_connect = UnixStream::connect(&socket_path);
-        if test_connect.is_err() {
-            thread::sleep(Duration::from_millis(500));
-        }
 
         // Execute the test scenario - the helper binary tests file operations
         // File operations may fail due to FsCore/real filesystem disconnect, but interposition works
@@ -657,7 +676,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_directory_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -681,6 +699,8 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -779,7 +799,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_readlink_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -804,6 +823,8 @@ mod tests {
         let socket_path = std::path::Path::new("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -892,7 +913,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_metadata_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -914,6 +934,8 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -979,7 +1001,6 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn interpose_end_to_end_namespace_operations() {
         let _lock = match ENV_GUARD.lock() {
@@ -1001,6 +1022,8 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let daemon_path = find_daemon_path();
         let mut daemon = Command::new(&daemon_path)
+            .arg("--backstore-mode")
+            .arg("InMemory")
             .arg(&socket_path)
             .spawn()
             .expect("failed to start mock daemon");
@@ -1091,7 +1114,7 @@ mod tests {
         let daemon_path = find_daemon_path();
 
         let mut daemon_cmd = Command::new(&daemon_path);
-        daemon_cmd.arg(&socket_path);
+        daemon_cmd.arg("--backstore-mode").arg("InMemory").arg(&socket_path);
 
         // Pass overlay configuration if provided
         if let (Some(lower), Some(upper), Some(work)) = (lower_dir, upper_dir, work_dir) {
@@ -1106,12 +1129,8 @@ mod tests {
 
         let daemon = daemon_cmd.spawn().expect("failed to start mock daemon");
 
-        // Give daemon time to start and check if socket is ready
+        // Give daemon time to start
         thread::sleep(Duration::from_millis(500));
-        let test_connect = UnixStream::connect(&socket_path);
-        if test_connect.is_err() {
-            thread::sleep(Duration::from_millis(500));
-        }
 
         (daemon, socket_path)
     }

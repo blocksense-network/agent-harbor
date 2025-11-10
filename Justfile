@@ -26,15 +26,18 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-fuse-test-binaries
 
 # Run Rust tests
-test-rust: build-rust-test-binaries
-    cargo nextest run --workspace --final-status-level skip
+test-rust *args: build-rust-test-binaries
+    cargo nextest run --workspace {{args}}
+
+test-rust-single *args: build-rust-test-binaries
+    cargo nextest run --workspace --profile single {{args}}
 
 # Run Rust tests with verbose output
-test-rust-verbose: build-rust-test-binaries
-    cargo nextest run --workspace --verbose
+test-rust-verbose *args: build-rust-test-binaries
+    cargo nextest run --workspace --verbose {{args}}
 
 # Build TUI exploration binary (legacy implementation)
 build-tui-exploration:
@@ -260,14 +263,8 @@ build-overlay-test-binaries:
 
 # Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-daemon
+    cargo build --bin agentfs-interpose-test-helper --bin agentfs-daemon
     cargo build -p agentfs-interpose-shim
-    # agentfs-interpose-test-helper is macOS-only
-    if [[ "{{os_family()}}" == "macos" ]]; then \
-        cargo build --bin agentfs-interpose-test-helper; \
-    else \
-        echo "Skipping compilation of agentfs-interpose-test-helper: Not on macOS."; \
-    fi
 
 # Build sbx-helper binary
 build-sbx-helper:
@@ -300,6 +297,116 @@ build-debugging-tests: build-sbx-helper build-debugging-test-binaries
 # Build TUI test binaries
 build-tui-test-binaries:
     cargo build -p tui-testing --bin test-guest
+
+# Build FUSE test binaries (requires FUSE support)
+build-fuse-test-binaries:
+    cargo build --package agentfs-fuse-host --features fuse
+
+# Build FUSE host binary (requires FUSE support)
+build-fuse-host:
+    cargo build --package agentfs-fuse-host --features fuse --bin agentfs-fuse-host
+
+# Run basic filesystem smoke tests against a mounted FUSE filesystem
+# Usage: just test-fuse-basic /mnt/agentfs
+# Note: Mount the filesystem first with: just mount-fuse /mnt/agentfs
+test-fuse-basic mountpoint:
+    #!/usr/bin/env bash
+    if [ ! -d "{{mountpoint}}" ]; then
+        echo "Error: Mount point {{mountpoint}} does not exist"
+        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
+        exit 1
+    fi
+    if ! mountpoint -q "{{mountpoint}}"; then
+        echo "Error: {{mountpoint}} is not a mount point"
+        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
+        exit 1
+    fi
+    echo "Running basic filesystem smoke tests against {{mountpoint}}..."
+    # Basic smoke tests for FUSE filesystem functionality
+    cd "{{mountpoint}}" && \
+    echo "Testing basic operations..." && \
+    echo "test content" > test_file.txt && \
+    cat test_file.txt > /dev/null && \
+    mkdir test_dir && \
+    ls -la > /dev/null && \
+    rm test_file.txt && \
+    rmdir test_dir && \
+    echo "Basic filesystem operations completed successfully"
+
+# Mount the AgentFS FUSE filesystem at a given mount point
+# Usage: just mount-fuse /tmp/agentfs  (recommended for user mounting)
+mount-fuse mountpoint:
+    #!/usr/bin/env bash
+    if [ ! -d "{{mountpoint}}" ]; then
+        echo "Creating mount point: {{mountpoint}}"
+        mkdir -p "{{mountpoint}}"
+    fi
+
+    # Ensure the mount point is owned by the current user
+    sudo chown $(whoami) "{{mountpoint}}" || true
+
+    echo "Mounting AgentFS FUSE filesystem at {{mountpoint}}..."
+    echo "Note: This will run in the background. To unmount later: fusermount -u {{mountpoint}}"
+    echo ""
+    ./target/debug/agentfs-fuse-host "{{mountpoint}}" &
+    echo "AgentFS FUSE filesystem mounted. PID: $!"
+
+# Setup comprehensive pjdfstest suite with test files
+# Usage: just setup-pjdfstest-suite
+setup-pjdfstest-suite:
+    #!/usr/bin/env bash
+    echo "Setting up pjdfstest test suite..."
+    mkdir -p resources
+    cd resources
+
+    if [ -d "pjdfstest" ]; then
+        echo "pjdfstest directory already exists, updating..."
+        cd pjdfstest
+        git pull
+    else
+        echo "Cloning pjdfstest repository..."
+        git clone https://github.com/pjd/pjdfstest.git
+        cd pjdfstest
+    fi
+
+    echo "Building pjdfstest test suite..."
+    autoreconf -ifs
+    ./configure
+    make pjdfstest
+
+    echo "pjdfstest suite ready!"
+    echo "To run tests against a mounted filesystem (requires root):"
+    echo "  cd /path/to/mounted/filesystem"
+    echo "  prove -rv resources/pjdfstest/tests"
+    echo ""
+    echo "Available test files:"
+    ls tests/ | head -10
+
+# Run pjdfstest suite against a mounted FUSE filesystem
+# Usage: just run-pjdfstest /mnt/agentfs
+# Prerequisites:
+#   1. just setup-pjdfstest-suite  (one-time setup)
+#   2. just mount-fuse /mnt/agentfs  (mount the filesystem)
+run-pjdfstest mountpoint:
+    #!/usr/bin/env bash
+    if [ ! -d "{{mountpoint}}" ]; then
+        echo "Error: Mount point {{mountpoint}} does not exist"
+        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
+        exit 1
+    fi
+    if ! mountpoint -q "{{mountpoint}}"; then
+        echo "Error: {{mountpoint}} is not a mount point"
+        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
+        exit 1
+    fi
+    if [ ! -d "resources/pjdfstest" ]; then
+        echo "Error: pjdfstest suite not set up. Run 'just setup-pjdfstest-suite' first"
+        exit 1
+    fi
+    echo "Running pjdfstest suite against {{mountpoint}}..."
+    echo "Note: This requires root privileges and may take a long time"
+    echo "Press Ctrl+C to interrupt the test suite"
+    cd "{{mountpoint}}" && prove -rv ../../resources/pjdfstest/tests
 
 # Build all TUI test binaries needed for TUI testing
 build-tui-tests: build-tui-test-binaries
@@ -766,6 +873,21 @@ crates/ah-cli/src/agent/mod.rs
 tests/tools/e2e_macos_fskit/**
 """, "\n", ",")
 
+# FUSE adapter include patterns as a multiline string
+REPOMIX_AGENTFS_FUSE_PATTERNS := replace("""
+specs/Public/AgentFS/**
+specs/Research/Compiling-and-Testing-FUSE-File-Systems.md
+crates/agentfs-core/**
+crates/agentfs-proto/**
+crates/agentfs-fuse-host/**
+crates/ah-cli/src/agent/fs.rs
+crates/ah-cli/src/agent/mod.rs
+tests/agentfs-daemon-backstore-integration/**
+Justfile
+flake.nix
+.github/workflows/ci.yml
+""", "\n", ",")
+
 # AgentFS interpose-specific include patterns as a multiline string
 REPOMIX_AGENTFS_INTERPOSE_PATTERNS := replace("""
 specs/Public/AgentFS/AgentFS.md
@@ -821,6 +943,26 @@ repomix-agentfs-interpose:
         --header-text "AgentFS Interpose Implementation (Core, Proto, Shim, Server)" \
         --include "{{REPOMIX_AGENTFS_INTERPOSE_PATTERNS}}"
 
+# Record/Replay include patterns as a multiline string
+REPOMIX_RECORD_REPLAY_PATTERNS := replace("""
+specs/Public/ah-agent-record.md
+crates/ah-recorder/**
+crates/ah-cli/src/agent/record.rs
+crates/ah-cli/src/agent/replay.rs
+""", "\n", ",")
+
+# Create repomix bundle of all record/replay functionality (spec + implementation)
+repomix-record-replay:
+    @echo "📦 Creating Record/Replay repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-Record-Replay.md \
+        --style markdown \
+        --header-text "Agent Harbor Record/Replay - Complete Implementation and Specification" \
+        --include "{{REPOMIX_RECORD_REPLAY_PATTERNS}}" \
+        --ignore ".direnv/**"
+
 # Create a repomix snapshot of the LLM API Proxy crate
 repomix-llm-api-proxy *args:
     @echo "📦 Creating LLM API Proxy repomix snapshot..."
@@ -831,6 +973,18 @@ repomix-llm-api-proxy *args:
         --style markdown \
         --header-text "LLM API Proxy - Complete Implementation and Specification" \
         --include "crates/llm-api-proxy/**,specs/Public/Scenario-Format.md" \
+        {{args}}
+
+# Create repomix bundle of all FUSE adapter-related files (specs + implementation)
+repomix-agentfs-fuse *args:
+    @echo "📦 Creating AgentFS FUSE adapter repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/AgentFS-FUSE-Adapter.md \
+        --style markdown \
+        --header-text "AgentFS FUSE Adapter: Complete Implementation and Specification" \
+        --include "{{REPOMIX_AGENTFS_FUSE_PATTERNS}}" \
         {{args}}
 
 # Run overlay tests with E2E enforcement verification
@@ -931,3 +1085,11 @@ mitm *args:
 outdated:
     cargo outdated
     yarn outdated
+
+# Inspect AHR recording files
+# Usage: just inspect-ahr <path/to/recording.ahr>
+inspect-ahr *args:
+    @cargo build --quiet --bin inspect_ahr --package ah-recorder --message-format=json \
+      | jq -c 'select(.reason=="compiler-message" and .message.level=="error")' \
+      # The above shows only build errors from cargo
+    @./target/debug/inspect_ahr {{args}}
