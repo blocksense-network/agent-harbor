@@ -3590,11 +3590,18 @@ mod linux_tests {
         // Upstream shim performs handshake only on macOS; on Linux we only
         // verify that the helper ran and the daemon responds to a state query.
         // On Linux, structured daemon queries are not implemented yet.
-        // Attempt the query but don't fail the test if unsupported.
-        let _ = query_daemon_state_structured(
+        // Assert that the query returns the expected macOS-only error.
+        match query_daemon_state_structured(
             &socket_path,
             agentfs_proto::Request::daemon_state_stats(),
-        );
+        ) {
+            Err(msg) => assert!(
+                msg.contains("only supported on macOS"),
+                "unexpected error: {}",
+                msg
+            ),
+            Ok(_) => panic!("expected unsupported on Linux for daemon_state_stats"),
+        }
 
         let _ = daemon.kill();
     }
@@ -3632,11 +3639,18 @@ mod linux_tests {
 
         // Confirm daemon is alive and responded at least once by querying state
         // On Linux, structured daemon queries are not implemented yet.
-        // Attempt the query but don't fail the test if unsupported.
-        let _ = query_daemon_state_structured(
+        // Assert that the query returns the expected macOS-only error.
+        match query_daemon_state_structured(
             &socket_path,
             agentfs_proto::Request::daemon_state_stats(),
-        );
+        ) {
+            Err(msg) => assert!(
+                msg.contains("only supported on macOS"),
+                "unexpected error: {}",
+                msg
+            ),
+            Ok(_) => panic!("expected unsupported on Linux for daemon_state_stats"),
+        }
 
         let _ = daemon.kill();
     }
