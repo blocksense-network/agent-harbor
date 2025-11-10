@@ -21,7 +21,6 @@ on:
   push:
     branches: [main, linux-sandbox]
   pull_request:
-    branches: [main, linux-sandbox]
 
 env:
   CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
