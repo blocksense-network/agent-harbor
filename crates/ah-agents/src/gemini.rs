@@ -210,7 +210,7 @@ impl AgentExecutor for GeminiAgent {
     ) -> AgentResult<tokio::process::Command> {
         info!(
             "Preparing Gemini CLI launch with prompt: {:?}",
-            config.prompt.chars().take(50).collect::<String>()
+            config.prompt.as_ref().map(|p| p.chars().take(50).collect::<String>())
         );
 
         let env_gemini_key = std::env::var("GEMINI_API_KEY").ok();
@@ -343,8 +343,10 @@ impl AgentExecutor for GeminiAgent {
             cmd.arg("--output-format").arg("text");
         }
 
-        if !config.prompt.is_empty() {
-            cmd.arg(&config.prompt);
+        if let Some(prompt) = &config.prompt {
+            if !prompt.is_empty() {
+                cmd.arg(prompt);
+            }
         }
 
         debug!("Gemini CLI command prepared successfully");
