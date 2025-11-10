@@ -1,0 +1,12 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-agent-cursor"
+version = "0.1.0"
+edition = "2021"
+description = "Cursor CLI Agent Facade for Agent Harbor"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+ah-agents = { path = "../ah-agents", features = ["cursor-cli"] }

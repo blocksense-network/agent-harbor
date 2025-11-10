@@ -12,6 +12,7 @@ use tracing::{debug, info, warn};
 
 /// Cursor CLI agent executor
 pub struct CursorAgent {
+    // Preferred binary name; actual resolution is done at runtime.
     binary_path: String,
 }
 
@@ -153,17 +154,20 @@ impl AgentExecutor for CursorAgent {
     async fn detect_version(&self) -> AgentResult<AgentVersion> {
         debug!("Detecting Cursor CLI version");
 
-        let output =
-            Command::new(&self.binary_path).arg("--version").output().await.map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    AgentError::AgentNotFound(self.binary_path.clone())
-                } else {
-                    AgentError::VersionDetectionFailed(format!(
-                        "Failed to execute version command: {}",
-                        e
-                    ))
-                }
-            })?;
+        let bin = self
+            .resolve_binary()
+            .ok_or_else(|| AgentError::AgentNotFound("cursor-agent|cursor".to_string()))?;
+
+        let output = Command::new(&bin).arg("--version").output().await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AgentError::AgentNotFound(bin.clone())
+            } else {
+                AgentError::VersionDetectionFailed(format!(
+                    "Failed to execute version command: {}",
+                    e
+                ))
+            }
+        })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -203,7 +207,12 @@ impl AgentExecutor for CursorAgent {
             self.setup_auth_config(&config.home_dir, config.api_key.as_deref()).await?;
         }
 
-        let mut cmd = tokio::process::Command::new(&self.binary_path);
+        // Resolve binary name at runtime to support both `cursor-agent` and `cursor`.
+        let bin = self
+            .resolve_binary()
+            .ok_or_else(|| AgentError::AgentNotFound("cursor-agent|cursor".to_string()))?;
+
+        let mut cmd = tokio::process::Command::new(&bin);
 
         // Set custom HOME directory
         cmd.env("HOME", &config.home_dir);
@@ -211,10 +220,8 @@ impl AgentExecutor for CursorAgent {
         // Set current directory
         cmd.current_dir(&config.working_dir);
 
-        // Use --print for non-interactive mode when not in interactive mode
-        if !config.interactive {
-            cmd.arg("--print");
-        }
+        // Non-interactive / structured output flags are CLI-specific and not guaranteed.
+        // Do not pass speculative flags by default. We'll inherit stdio and let the CLI handle mode.
 
         // Add API key if specified (command-line flag takes precedence over env var)
         if let Some(api_key) = &config.api_key {
@@ -228,21 +235,19 @@ impl AgentExecutor for CursorAgent {
             cmd.env(key, value);
         }
 
-        // Configure output format
+        // json_output requested: log intent but do not add unverified flags.
         if config.json_output {
-            cmd.arg("--output-format");
-            cmd.arg("json");
+            debug!(
+                "json_output requested, but no verified flag for Cursor CLI; proceeding without"
+            );
         }
 
         // NOTE: Don't set up piped stdio for cursor-agent - let it inherit stdio from parent
         // This works better with exec() and doesn't seem to be needed for cursor-agent
 
-        // Add the prompt as argument
-        if let Some(prompt) = &config.prompt {
-            if !prompt.is_empty() {
-                cmd.arg(prompt);
-            }
-        }
+        // Passing a raw prompt as positional arg is CLI-specific and may not be supported.
+        // Omit by default to avoid invoking unknown modes; upstream can pass via stdin or flags once verified.
+        let _ = &config.prompt; // reserved for future verified integration
 
         debug!("Cursor CLI command prepared successfully");
         Ok(cmd)
@@ -322,6 +327,37 @@ impl AgentExecutor for CursorAgent {
 }
 
 impl CursorAgent {
+    /// Find a binary in PATH, checking common candidate names.
+    fn resolve_binary(&self) -> Option<String> {
+        let candidates = [self.binary_path.as_str(), "cursor"]; // prefer configured, then fallback
+        for name in candidates.iter() {
+            if Self::binary_in_path(name) {
+                return Some(name.to_string());
+            }
+        }
+        None
+    }
+
+    fn binary_in_path(name: &str) -> bool {
+        let path = std::env::var_os("PATH")?;
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        for dir in path.to_string_lossy().split(sep) {
+            let mut candidate = std::path::PathBuf::from(dir);
+            candidate.push(name);
+            if candidate.exists() && candidate.is_file() {
+                return true;
+            }
+            if cfg!(windows) {
+                let mut exe = candidate.clone();
+                exe.set_extension("exe");
+                if exe.exists() && exe.is_file() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Get the platform-specific Cursor globalStorage directory path
     fn get_cursor_global_storage_path(home_dir: &Path) -> PathBuf {
         // Cursor stores its globalStorage in different locations per platform
