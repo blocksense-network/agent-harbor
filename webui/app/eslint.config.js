@@ -21,9 +21,7 @@ export default [
     settings: {
       // Tailwind v4: point to the CSS entry that has `@import "tailwindcss";`
       'better-tailwindcss': {
-        entryPoint: 'src/app.css',
-        tailwindConfig: 'tailwind.config.js',
-        ignore: ['tom-select-input', 'model-multi-select']
+        entryPoint: 'src/app.css'
       }
     },
     rules: {
@@ -31,7 +29,7 @@ export default [
       ...betterTw.configs['recommended'].rules,
       // Disable unregistered class checking for known third-party/custom classes
       'better-tailwindcss/no-unregistered-classes': ['error', {
-        ignore: ['tom-select-input', 'model-multi-select', 'toast-item', 'prose', 'prose-sm']
+        ignore: ['tom-select-input']
       }]
     }
   },
