@@ -169,8 +169,10 @@ fn execute_test_scenario(
 #[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
-    request: Request,
-) -> Result<Response, String> {
+    request: agentfs_proto::Request,
+) -> Result<agentfs_proto::Response, String> {
+    use agentfs_daemon::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo, handshake};
+    use agentfs_proto::{Request, Response};
     use std::os::unix::net::UnixStream;
 
     let mut stream = UnixStream::connect(socket_path)
