@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 mountpoint="$1"
 if [ ! -d "$mountpoint" ]; then
     echo "Error: Mount point $mountpoint does not exist"
