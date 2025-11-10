@@ -260,13 +260,12 @@ impl ScenarioPlayer {
         }
 
         // Check FORCE_TOOLS_VALIDATION_FAILURE environment variable
-        // Only honor the env flag when strict validation is enabled to avoid weakening tests.
         let force_validation_failure = std::env::var("FORCE_TOOLS_VALIDATION_FAILURE")
             .unwrap_or_default()
             .to_lowercase();
 
         let force_failure_enabled =
-            strict && matches!(force_validation_failure.as_str(), "1" | "true" | "yes");
+            matches!(force_validation_failure.as_str(), "1" | "true" | "yes");
 
         // Get agent type from config
         let config_guard = self.config.read().await;
