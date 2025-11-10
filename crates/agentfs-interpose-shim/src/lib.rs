@@ -1,7 +1,6 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
-
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use libc::{c_int, c_void};
