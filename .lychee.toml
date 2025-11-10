@@ -48,6 +48,8 @@ exclude = [
   "https://unix.stackexchange.com/.*",
   "https://apple.stackexchange.com/.*",
   "https://medium.com/.*",
+  # Certificate/TLS issues on linuxcontainers.org
+  "https://linuxcontainers.org/.*",
   "https://security.stackexchange.com/.*",
   "https://docs.solidjs.com/.*",
   "https://github.com/.*",

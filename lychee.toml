@@ -33,6 +33,7 @@ exclude = [
   "^https://news.ycombinator.com/.*",
   "^http://class.ece.iastate.edu/.*",
   "^https://class.ece.iastate.edu/.*",
+  "^https://linuxcontainers.org/.*",
   "com.apple.WebProcess.sb.in",
 ]
 
