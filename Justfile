@@ -108,17 +108,7 @@ insta-accept-pkg pkg:
 # Note: Some snapshots (like tmux golden snapshots) capture dynamic terminal output
 # and may need periodic acceptance due to timing/environment differences.
 insta-check:
-    #!/usr/bin/env bash
-    echo "🔍 Running snapshot tests..."
-    if cargo insta test --no-quiet >/dev/null 2>&1; then
-        echo "✅ All snapshots are up to date!"
-    else
-        echo "📝 Snapshots need review. Use 'just insta-review' to review changes."
-        echo "   Or use 'just insta-accept' to accept all changes blindly."
-        echo "   Or use 'just insta-pending' to see what changed."
-        echo "   Note: Dynamic snapshots (tmux terminal output) may need periodic updates."
-        exit 1
-    fi
+    ./scripts/insta-test.sh
 
 # Lint Rust code
 lint-rust:
@@ -165,13 +155,7 @@ conf-schema-validate:
 
 # Check TOML files with Taplo (uses schema mapping if configured)
 conf-schema-taplo-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! command -v taplo >/dev/null 2>&1; then
-        echo "taplo is not installed. Example to run once: nix shell ~/nixpkgs#taplo -c taplo check" >&2
-        exit 127
-    fi
-    taplo check
+    ./scripts/lint-toml.sh
 
 # Serve schema docs locally with Docson (opens http://localhost:3000)
 conf-schema-docs:
@@ -300,87 +284,27 @@ build-tui-test-binaries:
 
 # Build FUSE test binaries (requires FUSE support)
 build-fuse-test-binaries:
-    cargo build --package agentfs-fuse-host --features fuse
+    ./scripts/build-fuse-test-binaries.sh
 
 # Build FUSE host binary (requires FUSE support)
 build-fuse-host:
-    cargo build --package agentfs-fuse-host --features fuse --bin agentfs-fuse-host
+    ./scripts/build-fuse-host.sh
 
 # Run basic filesystem smoke tests against a mounted FUSE filesystem
 # Usage: just test-fuse-basic /mnt/agentfs
 # Note: Mount the filesystem first with: just mount-fuse /mnt/agentfs
 test-fuse-basic mountpoint:
-    #!/usr/bin/env bash
-    if [ ! -d "{{mountpoint}}" ]; then
-        echo "Error: Mount point {{mountpoint}} does not exist"
-        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
-        exit 1
-    fi
-    if ! mountpoint -q "{{mountpoint}}"; then
-        echo "Error: {{mountpoint}} is not a mount point"
-        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
-        exit 1
-    fi
-    echo "Running basic filesystem smoke tests against {{mountpoint}}..."
-    # Basic smoke tests for FUSE filesystem functionality
-    cd "{{mountpoint}}" && \
-    echo "Testing basic operations..." && \
-    echo "test content" > test_file.txt && \
-    cat test_file.txt > /dev/null && \
-    mkdir test_dir && \
-    ls -la > /dev/null && \
-    rm test_file.txt && \
-    rmdir test_dir && \
-    echo "Basic filesystem operations completed successfully"
+    ./scripts/test-fuse-basic.sh "{{mountpoint}}"
 
 # Mount the AgentFS FUSE filesystem at a given mount point
 # Usage: just mount-fuse /tmp/agentfs  (recommended for user mounting)
 mount-fuse mountpoint:
-    #!/usr/bin/env bash
-    if [ ! -d "{{mountpoint}}" ]; then
-        echo "Creating mount point: {{mountpoint}}"
-        mkdir -p "{{mountpoint}}"
-    fi
-
-    # Ensure the mount point is owned by the current user
-    sudo chown $(whoami) "{{mountpoint}}" || true
-
-    echo "Mounting AgentFS FUSE filesystem at {{mountpoint}}..."
-    echo "Note: This will run in the background. To unmount later: fusermount -u {{mountpoint}}"
-    echo ""
-    ./target/debug/agentfs-fuse-host "{{mountpoint}}" &
-    echo "AgentFS FUSE filesystem mounted. PID: $!"
+    ./scripts/mount-fuse.sh "{{mountpoint}}"
 
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
-    #!/usr/bin/env bash
-    echo "Setting up pjdfstest test suite..."
-    mkdir -p resources
-    cd resources
-
-    if [ -d "pjdfstest" ]; then
-        echo "pjdfstest directory already exists, updating..."
-        cd pjdfstest
-        git pull
-    else
-        echo "Cloning pjdfstest repository..."
-        git clone https://github.com/pjd/pjdfstest.git
-        cd pjdfstest
-    fi
-
-    echo "Building pjdfstest test suite..."
-    autoreconf -ifs
-    ./configure
-    make pjdfstest
-
-    echo "pjdfstest suite ready!"
-    echo "To run tests against a mounted filesystem (requires root):"
-    echo "  cd /path/to/mounted/filesystem"
-    echo "  prove -rv resources/pjdfstest/tests"
-    echo ""
-    echo "Available test files:"
-    ls tests/ | head -10
+    ./scripts/setup-pjdfstest.sh
 
 # Run pjdfstest suite against a mounted FUSE filesystem
 # Usage: just run-pjdfstest /mnt/agentfs
@@ -388,25 +312,7 @@ setup-pjdfstest-suite:
 #   1. just setup-pjdfstest-suite  (one-time setup)
 #   2. just mount-fuse /mnt/agentfs  (mount the filesystem)
 run-pjdfstest mountpoint:
-    #!/usr/bin/env bash
-    if [ ! -d "{{mountpoint}}" ]; then
-        echo "Error: Mount point {{mountpoint}} does not exist"
-        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
-        exit 1
-    fi
-    if ! mountpoint -q "{{mountpoint}}"; then
-        echo "Error: {{mountpoint}} is not a mount point"
-        echo "Hint: Mount the filesystem first with: just mount-fuse {{mountpoint}}"
-        exit 1
-    fi
-    if [ ! -d "resources/pjdfstest" ]; then
-        echo "Error: pjdfstest suite not set up. Run 'just setup-pjdfstest-suite' first"
-        exit 1
-    fi
-    echo "Running pjdfstest suite against {{mountpoint}}..."
-    echo "Note: This requires root privileges and may take a long time"
-    echo "Press Ctrl+C to interrupt the test suite"
-    cd "{{mountpoint}}" && prove -rv ../../resources/pjdfstest/tests
+    ./scripts/run-pjdfstest.sh "{{mountpoint}}"
 
 # Build all TUI test binaries needed for TUI testing
 build-tui-tests: build-tui-test-binaries
@@ -526,60 +432,7 @@ webui-test-report:
 
 # Show failed WebUI tests from the most recent run
 webui-test-failed:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    LOGS_DIR="webui/e2e-tests/test-results/logs"
-    if [ ! -d "$LOGS_DIR" ]; then
-        echo "❌ No test logs directory found at $LOGS_DIR"
-        exit 1
-    fi
-    # Find the most recent test run directory
-    LATEST_RUN=$(ls -td "$LOGS_DIR"/test-run-* | head -1)
-    if [ -z "$LATEST_RUN" ]; then
-        echo "❌ No test runs found in $LOGS_DIR"
-        exit 1
-    fi
-
-    echo "🔍 Analyzing test results from $(basename "$LATEST_RUN")..."
-    echo "=============================================="
-
-    # Parse failed tests from individual log files
-    FAILED_TESTS=$(grep -l "RESULT: Test failed" "$LATEST_RUN"/*.log | wc -l)
-    TOTAL_TESTS=$(ls "$LATEST_RUN"/*.log | grep -v "failed-tests\|test-summary" | wc -l)
-
-    if [ "$FAILED_TESTS" -gt 0 ]; then
-        echo "❌ $FAILED_TESTS failed tests out of $TOTAL_TESTS total tests"
-        echo ""
-        echo "📋 Failed tests:"
-        echo "---------------"
-
-        # Extract failed test information from log files
-        for log_file in "$LATEST_RUN"/*.log; do
-            if grep -q "RESULT: Test failed" "$log_file"; then
-                TEST_NAME=$(grep "TEST_START:" "$log_file" | sed 's/.*TEST_START: //')
-                TEST_ID=$(grep "TEST_ID:" "$log_file" | sed 's/.*TEST_ID: //')
-                TEST_FILE=$(grep "TEST_FILE:" "$log_file" | sed 's/.*TEST_FILE: //' | sed 's|.*/||')
-                TEST_LINE=$(grep "TEST_LINE:" "$log_file" | sed 's/.*TEST_LINE: //')
-                ERROR_MSG=$(grep "ERROR:" "$log_file" | head -1 | sed 's/.*ERROR: //' | cut -c1-80)
-
-                echo "• $TEST_NAME"
-                echo "  📄 $(basename "$log_file")"
-                echo "  📍 $TEST_FILE:$TEST_LINE"
-                if [ -n "$ERROR_MSG" ]; then
-                    echo "  💥 ${ERROR_MSG:0:80}..."
-                fi
-                echo ""
-            fi
-        done
-
-        echo "💡 Commands to investigate further:"
-        echo "   • View Playwright HTML report: just webui-test-report"
-        echo "   • View detailed JSON: cat $LATEST_RUN/test-summary.json"
-        echo "   • List all log files: ls -la $LATEST_RUN/*.log"
-        echo "   • View specific test log: cat $LATEST_RUN/<filename>.log"
-    else
-        echo "✅ All $TOTAL_TESTS tests passed!"
-    fi
+    ./scripts/webui-test-failed.sh
 
 # WebUI include patterns as a multiline string
 REPOMIX_WEBUI_PATTERNS := replace("""
