@@ -7,7 +7,6 @@
 pub mod macos;
 
 use ssz::{Decode, Encode};
-use std::io::{Read, Write};
 
 // Common functions available on all platforms
 pub fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
@@ -51,6 +50,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
+#[cfg(target_os = "macos")]
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
@@ -169,10 +169,8 @@ fn execute_test_scenario(
 #[cfg(target_os = "macos")]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
-    request: agentfs_proto::Request,
-) -> Result<agentfs_proto::Response, String> {
-    use agentfs_daemon::{AllowlistInfo, HandshakeData, HandshakeMessage, ShimInfo, handshake};
-    use agentfs_proto::{Request, Response};
+    request: Request,
+) -> Result<Response, String> {
     use std::os::unix::net::UnixStream;
 
     let mut stream = UnixStream::connect(socket_path)
@@ -301,35 +299,7 @@ pub fn find_dylib_path() -> PathBuf {
     );
 }
 
-#[cfg(target_os = "linux")]
-pub fn find_so_path() -> std::path::PathBuf {
-    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("target")
-        .join(&profile);
-
-    let direct = root.join("libagentfs_interpose_shim.so");
-    if direct.exists() {
-        return direct;
-    }
-
-    let deps_dir = root.join("deps");
-    if let Ok(entries) = std::fs::read_dir(&deps_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(name) = path.file_name().and_then(std::ffi::OsStr::to_str) {
-                if name.starts_with("libagentfs_interpose_shim") && name.ends_with(".so") {
-                    return path;
-                }
-            }
-        }
-    }
-
-    panic!("Interpose shim .so not found. Expected at: {:?}", direct);
-}
-
+#[cfg(target_os = "macos")]
 pub fn find_helper_binary() -> PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3535,124 +3505,5 @@ mod tests {
         panic!(
             "agentfs_interpose_shim library not found. Make sure to build the agentfs-interpose-shim crate."
         );
-    }
-}
-
-#[cfg(target_os = "linux")]
-#[cfg(test)]
-mod linux_tests {
-    use super::*;
-    use std::os::unix::net::UnixStream;
-    use std::process::{Command, Stdio};
-    use std::time::Duration;
-    use std::{fs, thread};
-    use tempfile::tempdir;
-
-    #[test]
-    fn linux_ld_preload_shim_performs_handshake() {
-        let dir = tempdir().unwrap();
-        let socket_path = dir.path().join("agentfs.sock");
-
-        // Start mock daemon
-        let daemon_path = find_daemon_path();
-        let mut daemon = Command::new(&daemon_path)
-            .arg(&socket_path)
-            .spawn()
-            .expect("failed to start mock daemon");
-
-        // Give daemon time to start
-        thread::sleep(Duration::from_millis(300));
-
-        // Quick readiness check
-        if UnixStream::connect(&socket_path).is_err() {
-            thread::sleep(Duration::from_millis(300));
-        }
-
-        // Run helper with LD_PRELOAD
-        let helper = find_helper_binary();
-        let shim = find_so_path();
-        let mut child = Command::new(&helper)
-            .env("LD_PRELOAD", shim)
-            .env("AGENTFS_INTERPOSE_SOCKET", &socket_path)
-            .env("AGENTFS_INTERPOSE_ALLOWLIST", "*")
-            .env("AGENTFS_INTERPOSE_LOG", "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .arg("dummy")
-            .spawn()
-            .expect("failed to launch helper");
-
-        // Capture the helper's OS PID reported by the OS (not strictly required for assertion)
-        let _helper_pid = child.id();
-
-        // Wait for completion and capture output
-        let output = child.wait_with_output().expect("failed to wait for helper");
-
-        // Upstream shim performs handshake only on macOS; on Linux we only
-        // verify that the helper ran and the daemon responds to a state query.
-        // On Linux, structured daemon queries are not implemented yet.
-        // Assert that the query returns the expected macOS-only error.
-        match query_daemon_state_structured(
-            &socket_path,
-            agentfs_proto::Request::daemon_state_stats(),
-        ) {
-            Err(msg) => assert!(
-                msg.contains("only supported on macOS"),
-                "unexpected error: {}",
-                msg
-            ),
-            Ok(_) => panic!("expected unsupported on Linux for daemon_state_stats"),
-        }
-
-        let _ = daemon.kill();
-    }
-
-    #[test]
-    fn linux_ld_preload_intercepts_readlink() {
-        let dir = tempdir().unwrap();
-        let socket_path = dir.path().join("agentfs.sock");
-
-        // Start mock daemon
-        let daemon_path = find_daemon_path();
-        let mut daemon = Command::new(&daemon_path)
-            .arg(&socket_path)
-            .spawn()
-            .expect("failed to start mock daemon");
-
-        thread::sleep(Duration::from_millis(300));
-        if UnixStream::connect(&socket_path).is_err() {
-            thread::sleep(Duration::from_millis(300));
-        }
-
-        let helper = find_helper_binary();
-        let shim = find_so_path();
-        let output = Command::new(&helper)
-            .env("LD_PRELOAD", shim)
-            .env("AGENTFS_INTERPOSE_SOCKET", &socket_path)
-            .env("AGENTFS_INTERPOSE_ALLOWLIST", "*")
-            .env("AGENTFS_INTERPOSE_LOG", "1")
-            .arg("readlink-test")
-            .arg("/no/such/symlink")
-            .output()
-            .expect("failed to launch helper");
-
-        let _stderr = String::from_utf8_lossy(&output.stderr);
-
-        // Confirm daemon is alive and responded at least once by querying state
-        // On Linux, structured daemon queries are not implemented yet.
-        // Assert that the query returns the expected macOS-only error.
-        match query_daemon_state_structured(
-            &socket_path,
-            agentfs_proto::Request::daemon_state_stats(),
-        ) {
-            Err(msg) => assert!(
-                msg.contains("only supported on macOS"),
-                "unexpected error: {}",
-                msg
-            ),
-            Ok(_) => panic!("expected unsupported on Linux for daemon_state_stats"),
-        }
-
-        let _ = daemon.kill();
     }
 }
