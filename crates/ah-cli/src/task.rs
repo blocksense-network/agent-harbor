@@ -2860,11 +2860,13 @@ exit {}
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 
         // Get the ZFS test filesystem mount point (platform-specific)
-        let zfs_test_mount = crate::test_config::get_zfs_test_mount_point()?;
-        if !zfs_test_mount.exists() {
-            eprintln!("⚠️  ZFS test filesystem not available, skipping test");
-            return Ok(());
-        }
+        let zfs_test_mount = match crate::test_config::get_zfs_test_mount_point() {
+            Ok(mount) if mount.exists() => mount,
+            _ => {
+                eprintln!("⚠️  ZFS test filesystem not available, skipping test");
+                return Ok(());
+            }
+        };
 
         // Create a subdirectory for this test
         let repo_dir = zfs_test_mount.join("codex_fs_snapshots_test");
