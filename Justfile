@@ -166,6 +166,11 @@ md-links:
 md-spell:
     cspell "specs/**/*.md"
 
+# Add words to the shared cspell allow-list
+allow-words *words:
+    ./scripts/allow_words.py {{words}}
+    @git add .cspell.json
+
 # Create reusable file-backed filesystems for testing ZFS and Btrfs providers
 # This sets up persistent test environments in ~/.cache/agent-harbor
 create-test-filesystems:
