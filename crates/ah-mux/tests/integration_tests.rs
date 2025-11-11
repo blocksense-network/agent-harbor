@@ -255,7 +255,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_measure_terminal_size() {
         // This test just verifies the measurement function works
         // It doesn't test the actual multiplexer functionality

@@ -464,7 +464,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_horizontal() {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -634,7 +633,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_run_command_and_send_text() {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -846,7 +844,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_complex_layout_creation() {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
