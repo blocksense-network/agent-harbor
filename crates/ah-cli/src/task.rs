@@ -652,6 +652,22 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    fn assert_snapshot_provider_used_if_possible(output: &str) {
+        let require = std::env::var("AH_REQUIRE_SANDBOX_PROVIDER")
+            .map(|value| {
+                let normalized = value.to_ascii_lowercase();
+                matches!(normalized.as_str(), "1" | "true" | "yes")
+            })
+            .unwrap_or(false);
+
+        if require {
+            assert!(
+                !output.contains("No filesystem snapshot providers available"),
+                "Expected sandbox to use filesystem snapshot provider (set AH_REQUIRE_SANDBOX_PROVIDER)"
+            );
+        }
+    }
+
     #[test]
     fn test_parse_push_to_remote_flag_truthy() {
         assert!(parse_push_to_remote_flag("1").unwrap());
@@ -1064,8 +1080,19 @@ mod tests {
         let temp_home = tempfile::TempDir::new()?;
         std::env::set_var("HOME", temp_home.path());
 
-        let remote_dir = tempfile::TempDir::new()?;
-        let repo_dir = tempfile::TempDir::new()?;
+        let test_fs_root = crate::test_config::get_preferred_test_filesystem_root();
+
+        let repo_dir = if let Some(root) = test_fs_root.as_ref() {
+            tempfile::Builder::new().prefix("ah_repo_").tempdir_in(root)?
+        } else {
+            tempfile::TempDir::new()?
+        };
+
+        let remote_dir = if let Some(root) = test_fs_root.as_ref() {
+            tempfile::Builder::new().prefix("ah_remote_").tempdir_in(root)?
+        } else {
+            tempfile::TempDir::new()?
+        };
 
         // Create bare remote repository
         Command::new("git").args(["init", "--bare"]).current_dir(&remote_dir).output()?;
@@ -1715,7 +1742,6 @@ exit {}
     }
 
     #[test]
-    #[ignore] // Basic sandbox execution not yet implemented - workspace preparation works but actual sandbox launching is TODO
     fn integration_test_sandbox_basic() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1742,6 +1768,7 @@ exit {}
             eprintln!("Command failed with output: {}", output);
         }
         assert!(status.success());
+        assert_snapshot_provider_used_if_possible(&output);
 
         // Verify task branch was created
         assert_task_branch_created_integration(
@@ -1758,11 +1785,10 @@ exit {}
     }
 
     #[test]
-    #[ignore] // Requires additional sandbox-core implementation for network access control
     fn integration_test_sandbox_with_network() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
 
-        let (status, _output, _editor_called) = run_ah_task_create_integration(
+        let (status, output, _editor_called) = run_ah_task_create_integration(
             repo_dir.path(),
             "sandbox-net",
             Some("Test task with network access"),
@@ -1777,6 +1803,7 @@ exit {}
 
         // Should succeed
         assert!(status.success());
+        assert_snapshot_provider_used_if_possible(&output);
 
         // Verify task branch was created
         assert_task_branch_created_integration(
@@ -1790,11 +1817,10 @@ exit {}
     }
 
     #[test]
-    #[ignore] // Requires additional sandbox-core implementation for dynamic filesystem access control
     fn integration_test_sandbox_with_seccomp() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
 
-        let (status, _output, _editor_called) = run_ah_task_create_integration(
+        let (status, output, _editor_called) = run_ah_task_create_integration(
             repo_dir.path(),
             "sandbox-seccomp",
             Some("Test task with seccomp"),
@@ -1809,6 +1835,7 @@ exit {}
 
         // Should succeed
         assert!(status.success());
+        assert_snapshot_provider_used_if_possible(&output);
 
         // Verify task branch was created
         assert_task_branch_created_integration(
@@ -2403,25 +2430,44 @@ exit {}
     ) -> Result<(std::process::ExitStatus, String, String)> {
         use std::process::Command;
 
+        // Provide overrides for Git configuration so developer machine settings
+        // (for example, commit signing) don't leak into the test environment.
+        let git_home_override =
+            TempDir::new().context("Failed to create temporary git HOME override")?;
+        let git_config_override = git_home_override.path().join(".gitconfig");
+        fs::write(&git_config_override, "[commit]\n\tgpgsign = false\n")
+            .context("Failed to write test git global config override")?;
+        let git_global_config_path = repo_path.join(".git").join("test-global-config");
+        fs::write(&git_global_config_path, "[commit]\n\tgpgsign = false\n")
+            .context("Failed to write repository git config override")?;
+
         // Build command
         let binary_path = get_ah_binary_path();
-
         let mut cmd = Command::new(&binary_path);
-        cmd.args(["agent", "start", "--agent", agent])
-            .current_dir(repo_path)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
+        cmd.args(["agent", "start", "--agent", agent]).current_dir(repo_path);
+
+        // Inherit the parent's environment first
+        for (key, value) in std::env::vars() {
+            cmd.env(key, value);
+        }
+
+        // Apply sandbox-safe overrides after inheriting the parent environment so customised
+        // values take precedence over developer defaults.
+        cmd.env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", ".git/test-global-config")
+            .env("HOME", git_home_override.path())
+            .env("XDG_CONFIG_HOME", git_home_override.path())
             .env("GIT_TERMINAL_PROMPT", "0")
+            // Ensure Git never attempts to invoke GPG for commit signing during tests.
+            // Some developer environments enable commit.gpgsign by default which causes
+            // non-interactive invocations to hang waiting for a passphrase.
+            .env("GIT_COMMIT_GPGSIGN", "0")
             .env("GIT_ASKPASS", "echo")
             .env("SSH_ASKPASS", "echo");
 
         // Add agent flags
         for flag in agent_flags {
             cmd.arg("--agent-flags").arg(flag);
-        }
-
-        // Inherit the parent's environment first
-        for (key, value) in std::env::vars() {
-            cmd.env(key, value);
         }
 
         // Override specific environment variables for the test
@@ -2604,7 +2650,6 @@ exit {}
     }
 
     #[test]
-    #[ignore = "requires manual setup and can hang indefinitely"]
     fn integration_test_agent_start_fs_snapshots_sandbox() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
 

@@ -1,16 +1,14 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_fs_snapshots::{FsSnapshotProvider, PreparedWorkspace, WorkingCopyMode};
+use ah_fs_snapshots::{
+    FsSnapshotProvider, PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode,
+};
 use anyhow::{Context, Result};
 use clap::Args;
-use std::path::PathBuf;
-
 #[cfg(target_os = "linux")]
-use sandbox_core::Sandbox;
-
-#[cfg(target_os = "linux")]
-use sandbox_seccomp;
+use sandbox_core::ProcessConfig;
+use std::path::{Path, PathBuf};
 
 /// Arguments for running a command in a sandbox
 #[derive(Args, Clone)]
@@ -55,30 +53,37 @@ pub struct SandboxRunArgs {
 impl SandboxRunArgs {
     /// Execute the sandbox run command
     pub async fn run(self) -> Result<()> {
-        // Validate arguments
-        if self.sandbox_type != "local" {
+        let SandboxRunArgs {
+            sandbox_type,
+            allow_network,
+            allow_containers,
+            allow_kvm,
+            seccomp,
+            seccomp_debug,
+            mount_rw,
+            overlay,
+            command,
+        } = self;
+
+        if sandbox_type != "local" {
             return Err(anyhow::anyhow!(
                 "Only 'local' sandbox type is currently supported"
             ));
         }
 
-        // Parse boolean flags
-        let allow_network = parse_bool_flag(&self.allow_network)?;
-        let allow_containers = parse_bool_flag(&self.allow_containers)?;
-        let allow_kvm = parse_bool_flag(&self.allow_kvm)?;
-        let seccomp = parse_bool_flag(&self.seccomp)?;
-        let seccomp_debug = parse_bool_flag(&self.seccomp_debug)?;
+        let allow_network = parse_bool_flag(&allow_network)?;
+        let allow_containers = parse_bool_flag(&allow_containers)?;
+        let allow_kvm = parse_bool_flag(&allow_kvm)?;
+        let seccomp = parse_bool_flag(&seccomp)?;
+        let seccomp_debug = parse_bool_flag(&seccomp_debug)?;
 
-        if self.command.is_empty() {
+        if command.is_empty() {
             return Err(anyhow::anyhow!("No command specified to run in sandbox"));
         }
 
-        // Get current working directory as the workspace to snapshot
         let workspace_path =
             std::env::current_dir().context("Failed to get current working directory")?;
 
-        // Prepare writable workspace using FS snapshots
-        // Try providers in order of preference: ZFS -> Btrfs -> Git
         let prepared_workspace = prepare_workspace_with_fallback(&workspace_path)
             .await
             .context("Failed to prepare writable workspace with any provider")?;
@@ -90,23 +95,80 @@ impl SandboxRunArgs {
         println!("Working copy mode: {:?}", prepared_workspace.working_copy);
         println!("Provider: {:?}", prepared_workspace.provider);
 
-        // TODO: Configure and launch sandbox with prepared workspace
-        println!("Sandbox run command would execute: {:?}", self.command);
-        println!("Configuration:");
-        println!("  Type: {}", self.sandbox_type);
-        println!("  Allow network: {}", allow_network);
-        println!("  Allow containers: {}", allow_containers);
-        println!("  Allow KVM: {}", allow_kvm);
-        println!("  Seccomp: {}", seccomp);
-        println!("  Seccomp debug: {}", seccomp_debug);
-        println!("  Mount RW paths: {:?}", self.mount_rw);
-        println!("  Overlay paths: {:?}", self.overlay);
+        if prepared_workspace.provider == SnapshotProviderKind::Disable {
+            println!("⚠️  No filesystem snapshot provider available; using in-place workspace");
+        }
 
-        // Cleanup the prepared workspace (in real implementation, this would be done after sandbox exits)
-        // Note: We need to keep track of the provider that created the workspace for cleanup
-        println!("Note: Workspace cleanup would happen here in production implementation");
+        let cleanup_token = prepared_workspace.cleanup_token.clone();
+        let provider_kind = prepared_workspace.provider;
+        let env_vars: Vec<(String, String)> = std::env::vars().collect();
 
-        Ok(())
+        #[cfg(target_os = "linux")]
+        let result: Result<()> = {
+            let exec_dir = prepared_workspace.exec_path.clone();
+
+            println!(
+                "Running command inside sandbox workspace: {}",
+                exec_dir.display()
+            );
+            println!("Command: {:?}", command);
+            println!("Configuration:");
+            println!("  Allow network: {}", allow_network);
+            println!("  Allow containers: {}", allow_containers);
+            println!("  Allow KVM: {}", allow_kvm);
+            println!("  Seccomp: {}", seccomp);
+            println!("  Seccomp debug: {}", seccomp_debug);
+            println!("  Mount RW paths: {:?}", mount_rw);
+            println!("  Overlay paths: {:?}", overlay);
+
+            let mut sandbox = create_sandbox_from_args(
+                allow_network,
+                allow_containers,
+                allow_kvm,
+                seccomp,
+                seccomp_debug,
+                &mount_rw,
+                &overlay,
+                Some(exec_dir.as_path()),
+            )?
+            .with_process_config(ProcessConfig {
+                command,
+                working_dir: Some(exec_dir.to_string_lossy().to_string()),
+                env: env_vars,
+            });
+
+            let exec_result = sandbox.exec_process().await;
+
+            if let Err(err) = sandbox.stop() {
+                eprintln!("⚠️  Sandbox stop cleanup encountered an error: {}", err);
+            }
+
+            if let Err(err) = sandbox.cleanup().await {
+                eprintln!(
+                    "⚠️  Sandbox filesystem cleanup encountered an error: {}",
+                    err
+                );
+            }
+
+            let outcome =
+                exec_result.context("Failed to execute command inside sandbox").map(|_| {
+                    println!("✅ Sandbox command completed successfully");
+                });
+
+            cleanup_prepared_workspace(&workspace_path, provider_kind, &cleanup_token);
+
+            outcome
+        };
+
+        #[cfg(not(target_os = "linux"))]
+        let result: Result<()> = {
+            cleanup_prepared_workspace(&workspace_path, provider_kind, &cleanup_token);
+            Err(anyhow::anyhow!(
+                "Sandbox functionality is only available on Linux"
+            ))
+        };
+
+        result
     }
 }
 
@@ -115,7 +177,10 @@ pub async fn prepare_workspace_with_fallback(
     workspace_path: &std::path::Path,
 ) -> Result<PreparedWorkspace> {
     // Try providers in order of preference: ZFS -> Btrfs -> Git
-    #[allow(unused_mut)]
+    #[cfg_attr(
+        not(any(feature = "zfs", feature = "btrfs", feature = "git")),
+        allow(unused_mut)
+    )]
     let mut providers_to_try: Vec<(&str, fn() -> Result<Box<dyn FsSnapshotProvider>>)> = Vec::new();
 
     #[cfg(feature = "zfs")]
@@ -155,7 +220,13 @@ pub async fn prepare_workspace_with_fallback(
                         );
                         return Ok(workspace);
                     }
-                    Err(_e) => {
+                    Err(err) => {
+                        tracing::debug!(
+                            "Snapshot provider {} failed in {:?} mode: {}",
+                            name,
+                            mode,
+                            err
+                        );
                         continue;
                     }
                 }
@@ -163,52 +234,52 @@ pub async fn prepare_workspace_with_fallback(
         }
     }
 
-    Err(anyhow::anyhow!(
-        "No filesystem snapshot provider could prepare a workspace"
-    ))
+    println!("⚠️  No filesystem snapshot providers available; falling back to in-place workspace");
+    Ok(PreparedWorkspace {
+        exec_path: workspace_path.to_path_buf(),
+        working_copy: WorkingCopyMode::InPlace,
+        provider: SnapshotProviderKind::Disable,
+        cleanup_token: ah_fs_snapshots::generate_unique_id(),
+    })
 }
 
 /// Create a sandbox instance configured from CLI parameters
 #[cfg(target_os = "linux")]
 pub fn create_sandbox_from_args(
-    allow_network: &str,
-    allow_containers: &str,
-    allow_kvm: &str,
-    seccomp: &str,
-    seccomp_debug: &str,
-    _mount_rw: &[PathBuf],
-    _overlay: &[PathBuf],
+    allow_network: bool,
+    allow_containers: bool,
+    allow_kvm: bool,
+    seccomp: bool,
+    seccomp_debug: bool,
+    mount_rw: &[PathBuf],
+    overlay: &[PathBuf],
+    working_dir: Option<&Path>,
 ) -> Result<sandbox_core::Sandbox> {
-    let allow_network = parse_bool_flag(allow_network)?;
-    let allow_containers = parse_bool_flag(allow_containers)?;
-    let allow_kvm = parse_bool_flag(allow_kvm)?;
-    let seccomp = parse_bool_flag(seccomp)?;
-    let seccomp_debug = parse_bool_flag(seccomp_debug)?;
-
-    // Start with default sandbox configuration
     let mut sandbox = sandbox_core::Sandbox::new();
 
-    // Enable cgroups by default for resource control
+    #[cfg(not(feature = "seccomp"))]
+    let _ = (seccomp, seccomp_debug);
+
     sandbox = sandbox.with_default_cgroups();
 
-    // Configure networking
     if allow_network {
         sandbox = sandbox.with_default_network();
-        // TODO: Set target PID for slirp4netns when we have the process
     }
 
-    // Configure seccomp
     #[cfg(feature = "seccomp")]
     if seccomp {
+        let root_dir = working_dir
+            .map(|dir| dir.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
+
         let seccomp_config = sandbox_seccomp::SeccompConfig {
             debug_mode: seccomp_debug,
-            supervisor_tx: None, // TODO: Set up supervisor communication
-            root_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+            supervisor_tx: None,
+            root_dir,
         };
         sandbox = sandbox.with_seccomp(seccomp_config);
     }
 
-    // Configure devices
     if allow_containers || allow_kvm {
         if allow_containers && allow_kvm {
             sandbox = sandbox.with_container_and_vm_devices();
@@ -219,8 +290,22 @@ pub fn create_sandbox_from_args(
         }
     }
 
-    // TODO: Handle mount_rw and overlay paths
-    // This would require extending sandbox-fs to accept additional bind mounts and overlays
+    let mut fs_config = sandbox_core::FilesystemConfig::default();
+
+    if let Some(dir) = working_dir {
+        fs_config.working_dir = Some(dir.to_string_lossy().to_string());
+    }
+
+    for path in mount_rw {
+        let path_str = path.to_string_lossy().to_string();
+        fs_config.bind_mounts.push((path_str.clone(), path_str.clone()));
+    }
+
+    for path in overlay {
+        fs_config.overlay_paths.push(path.to_string_lossy().to_string());
+    }
+
+    sandbox = sandbox.with_filesystem(fs_config);
 
     Ok(sandbox)
 }
@@ -228,17 +313,46 @@ pub fn create_sandbox_from_args(
 /// Create a sandbox instance configured from CLI parameters (non-Linux stub)
 #[cfg(not(target_os = "linux"))]
 pub fn create_sandbox_from_args(
-    _allow_network: &str,
-    _allow_containers: &str,
-    _allow_kvm: &str,
-    _seccomp: &str,
-    _seccomp_debug: &str,
+    _allow_network: bool,
+    _allow_containers: bool,
+    _allow_kvm: bool,
+    _seccomp: bool,
+    _seccomp_debug: bool,
     _mount_rw: &[PathBuf],
     _overlay: &[PathBuf],
+    _working_dir: Option<&Path>,
 ) -> Result<()> {
     Err(anyhow::anyhow!(
         "Sandbox functionality is only available on Linux"
     ))
+}
+
+fn cleanup_prepared_workspace(
+    workspace_path: &Path,
+    provider_kind: SnapshotProviderKind,
+    cleanup_token: &str,
+) {
+    if provider_kind == SnapshotProviderKind::Disable {
+        // No provider resources were allocated; nothing to clean up.
+        return;
+    }
+
+    match ah_fs_snapshots::provider_for(workspace_path) {
+        Ok(provider) => {
+            if let Err(err) = provider.cleanup(cleanup_token) {
+                eprintln!(
+                    "⚠️  Failed to cleanup sandbox workspace (token={}): {}",
+                    cleanup_token, err
+                );
+            }
+        }
+        Err(err) => {
+            eprintln!(
+                "⚠️  Unable to clean up sandbox workspace (provider lookup failed): {}",
+                err
+            );
+        }
+    }
 }
 
 /// Parse a boolean flag string (yes/no, true/false, 1/0)
@@ -269,7 +383,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires manual setup and can hang indefinitely"]
     fn test_sandbox_filesystem_isolation_cli_integration() {
         // Integration test for `ah agent sandbox` command CLI functionality
         // This tests that the sandbox command accepts parameters and attempts execution

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::types::{Request, Response};
-use std::process::Stdio;
+use libc::geteuid;
+use std::process::{Output, Stdio};
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
@@ -51,30 +52,37 @@ async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
 
     // Validate that the snapshot exists
     if !zfs_snapshot_exists(&snapshot).await {
+        debug!("Snapshot {} does not exist; returning error", snapshot);
         return Response::error(format!("ZFS snapshot {} does not exist", snapshot));
     }
 
     // Validate that the clone dataset doesn't already exist
     if zfs_dataset_exists(&clone).await {
+        debug!("Clone dataset {} already exists; returning error", clone);
         return Response::error(format!("ZFS dataset {} already exists", clone));
     }
 
-    // Execute zfs clone with sudo
-    match run_command("sudo", &["zfs", "clone", &snapshot, &clone]).await {
+    // Execute zfs clone with elevated privileges
+    match run_privileged_command("zfs", &["clone", &snapshot, &clone]).await {
         Ok(_) => {
             // Get the mountpoint of the cloned dataset
             match get_zfs_mountpoint(&clone).await {
-                Ok(mountpoint) => {
-                    if mountpoint != "none" && mountpoint != "legacy" {
-                        // Set ownership to the user who started the daemon
-                        if let Some(user) = get_sudo_user() {
-                            let _ = run_command("sudo", &["chown", "-R", &user, &mountpoint]).await;
-                        }
-                        Response::success_with_mountpoint(mountpoint)
-                    } else {
+                Ok(mountpoint) => match mountpoint.as_str() {
+                    "none" | "legacy" => {
+                        debug!(
+                            "Clone {} has mountpoint {}; returning success without mountpoint",
+                            clone, mountpoint
+                        );
                         Response::success()
                     }
-                }
+                    _ => {
+                        debug!(
+                            "Clone {} mounted at {} (preserving original ownership)",
+                            clone, mountpoint
+                        );
+                        Response::success_with_mountpoint(mountpoint)
+                    }
+                },
                 Err(e) => {
                     warn!("Failed to get mountpoint for clone {}: {}", clone, e);
                     Response::success() // Clone succeeded but mountpoint unknown
@@ -86,6 +94,7 @@ async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
                 "Failed to create ZFS clone {} from {}: {}",
                 clone, snapshot, e
             );
+            debug!("Returning error to client for clone {}: {}", clone, e);
             Response::error(format!(
                 "Failed to create ZFS clone {} from {}: {}",
                 clone, snapshot, e
@@ -107,8 +116,8 @@ async fn handle_zfs_snapshot(source: String, snapshot: String) -> Response {
         return Response::error(format!("ZFS snapshot {} already exists", snapshot));
     }
 
-    // Execute zfs snapshot with sudo
-    match run_command("sudo", &["zfs", "snapshot", &snapshot]).await {
+    // Execute zfs snapshot with elevated privileges
+    match run_privileged_command("zfs", &["snapshot", &snapshot]).await {
         Ok(_) => Response::success(),
         Err(e) => {
             error!("Failed to create ZFS snapshot {}: {}", snapshot, e);
@@ -125,8 +134,8 @@ async fn handle_zfs_delete(target: String) -> Response {
         return Response::error(format!("ZFS dataset {} does not exist", target));
     }
 
-    // Execute zfs destroy with sudo
-    match run_command("sudo", &["zfs", "destroy", "-r", &target]).await {
+    // Execute zfs destroy with elevated privileges
+    match run_privileged_command("zfs", &["destroy", "-r", &target]).await {
         Ok(_) => Response::success(),
         Err(e) => {
             error!("Failed to delete ZFS dataset {}: {}", target, e);
@@ -151,17 +160,12 @@ async fn handle_btrfs_clone(source: String, destination: String) -> Response {
         return Response::error(format!("Destination {} already exists", destination));
     }
 
-    // Execute btrfs subvolume snapshot with sudo
-    match run_command(
-        "sudo",
-        &["btrfs", "subvolume", "snapshot", &source, &destination],
-    )
-    .await
-    {
+    // Execute btrfs subvolume snapshot with elevated privileges
+    match run_privileged_command("btrfs", &["subvolume", "snapshot", &source, &destination]).await {
         Ok(_) => {
             // Set ownership to the user who started the daemon
             if let Some(user) = get_sudo_user() {
-                let _ = run_command("sudo", &["chown", "-R", &user, &destination]).await;
+                let _ = run_privileged_command("chown", &["-R", &user, &destination]).await;
             }
             Response::success_with_path(destination)
         }
@@ -191,8 +195,8 @@ async fn handle_btrfs_delete(target: String) -> Response {
         return Response::error(format!("Btrfs subvolume {} does not exist", target));
     }
 
-    // Execute btrfs subvolume delete with sudo
-    match run_command("sudo", &["btrfs", "subvolume", "delete", "-R", &target]).await {
+    // Execute btrfs subvolume delete with elevated privileges
+    match run_privileged_command("btrfs", &["subvolume", "delete", "-R", &target]).await {
         Ok(_) => Response::success(),
         Err(e) => {
             error!("Failed to delete Btrfs subvolume {}: {}", target, e);
@@ -204,19 +208,36 @@ async fn handle_btrfs_delete(target: String) -> Response {
     }
 }
 
-async fn run_command(program: &str, args: &[&str]) -> Result<(), String> {
+fn running_as_root() -> bool {
+    unsafe { geteuid() == 0 }
+}
+
+async fn run_privileged_command(program: &str, args: &[&str]) -> Result<Output, String> {
+    if running_as_root() {
+        run_command(program, args).await
+    } else {
+        let mut full_args: Vec<String> = Vec::with_capacity(args.len() + 2);
+        full_args.push("-n".to_string());
+        full_args.push(program.to_string());
+        full_args.extend(args.iter().map(|s| s.to_string()));
+        let ref_args: Vec<&str> = full_args.iter().map(|s| s.as_str()).collect();
+        run_command("sudo", &ref_args).await
+    }
+}
+
+async fn run_command(program: &str, args: &[&str]) -> Result<Output, String> {
     debug!("Running command: {} {}", program, args.join(" "));
 
     let output = Command::new(program)
         .args(args)
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
         .await
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
+        .map_err(|e| format!("Failed to execute command '{}': {}", program, e))?;
 
     if output.status.success() {
-        Ok(())
+        Ok(output)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(stderr.trim().to_string())
@@ -224,19 +245,10 @@ async fn run_command(program: &str, args: &[&str]) -> Result<(), String> {
 }
 
 async fn get_zfs_mountpoint(dataset: &str) -> Result<String, String> {
-    let output = Command::new("sudo")
-        .args(["zfs", "get", "-H", "-o", "value", "mountpoint", dataset])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to get mountpoint: {}", e))?;
+    let output =
+        run_privileged_command("zfs", &["get", "-H", "-o", "value", "mountpoint", dataset]).await?;
 
-    if output.status.success() {
-        let mountpoint = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(mountpoint)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(stderr.trim().to_string())
-    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 fn get_sudo_user() -> Option<String> {
@@ -247,15 +259,14 @@ async fn handle_zfs_list_snapshots(dataset: String) -> Response {
     debug!("Listing ZFS snapshots for dataset: {}", dataset);
 
     // Run zfs list to get all snapshots for this dataset
-    let result = Command::new("zfs")
-        .args(["list", "-t", "snapshot", "-H", "-o", "name", "-r", &dataset])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await;
+    let result = run_privileged_command(
+        "zfs",
+        &["list", "-t", "snapshot", "-H", "-o", "name", "-r", &dataset],
+    )
+    .await;
 
     match result {
-        Ok(output) if output.status.success() => {
+        Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let snapshots: Vec<String> = stdout
                 .lines()
@@ -268,23 +279,21 @@ async fn handle_zfs_list_snapshots(dataset: String) -> Response {
                 Err(e) => Response::error(format!("Failed to serialize snapshot list: {}", e)),
             }
         }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Response::error(format!("ZFS list command failed: {}", stderr))
-        }
         Err(e) => Response::error(format!("Failed to execute zfs list: {}", e)),
     }
 }
 
 pub async fn zfs_dataset_exists(dataset: &str) -> bool {
-    run_command("zfs", &["list", dataset]).await.is_ok()
+    run_privileged_command("zfs", &["list", dataset]).await.is_ok()
 }
 
 pub async fn zfs_snapshot_exists(snapshot: &str) -> bool {
-    run_command("zfs", &["list", "-t", "snapshot", snapshot]).await.is_ok()
+    run_privileged_command("zfs", &["list", "-t", "snapshot", snapshot])
+        .await
+        .is_ok()
 }
 
 pub async fn btrfs_subvolume_exists(path: &str) -> bool {
     // Check if path exists and is a btrfs subvolume
-    run_command("btrfs", &["subvolume", "show", path]).await.is_ok()
+    run_privileged_command("btrfs", &["subvolume", "show", path]).await.is_ok()
 }

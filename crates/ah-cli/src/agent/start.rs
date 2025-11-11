@@ -658,17 +658,15 @@ impl AgentStartArgs {
 
             // Create sandbox configuration from CLI parameters
             let mut sandbox = crate::sandbox::create_sandbox_from_args(
-                &self.allow_network.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
-                &self.allow_containers.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
-                &self.allow_kvm.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
-                &self.seccomp.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
-                &self.seccomp_debug.map(|b| if b { "yes" } else { "no" }).unwrap_or("no"),
+                self.allow_network.unwrap_or(false),
+                self.allow_containers.unwrap_or(false),
+                self.allow_kvm.unwrap_or(false),
+                self.seccomp.unwrap_or(false),
+                self.seccomp_debug.unwrap_or(false),
                 &self.mount_rw,
                 &self.overlay,
+                Some(actual_cwd.as_path()),
             )?;
-
-            // Start the sandbox (sets up namespaces, cgroups, etc.)
-            sandbox.start().await.context("Failed to start sandbox environment")?;
 
             // Configure the process to run the mock agent
             let mut agent_cmd = vec![
@@ -723,16 +721,22 @@ impl AgentStartArgs {
                 env: config.env_vars,
             };
 
-            // Set up the process manager with the agent command
-            let process_manager = sandbox_core::ProcessManager::with_config(process_config);
+            sandbox = sandbox.with_process_config(process_config);
 
-            // Execute the agent in the sandbox
-            process_manager
-                .exec_as_pid1()
-                .context("Failed to execute mock agent in sandbox")?;
+            let exec_result = sandbox.exec_process().await;
 
-            // Clean up the sandbox
-            sandbox.stop().context("Failed to clean up sandbox environment")?;
+            if let Err(err) = sandbox.stop() {
+                eprintln!("⚠️  Sandbox stop cleanup encountered an error: {}", err);
+            }
+
+            if let Err(err) = sandbox.cleanup().await {
+                eprintln!(
+                    "⚠️  Sandbox filesystem cleanup encountered an error: {}",
+                    err
+                );
+            }
+
+            exec_result.context("Failed to execute mock agent in sandbox")?;
 
             Ok(())
         }

@@ -89,3 +89,22 @@ pub fn get_zfs_test_mount_point() -> Result<std::path::PathBuf, anyhow::Error> {
 
     Ok(std::path::PathBuf::from(mountpoint))
 }
+
+/// Determine the best available test filesystem root for integration tests.
+///
+/// Preference order:
+/// 1. Explicit `AH_TEST_FILESYSTEM_ROOT` environment variable.
+/// 2. Shared ZFS test filesystem created via `just create-test-filesystems`.
+pub fn get_preferred_test_filesystem_root() -> Option<std::path::PathBuf> {
+    if let Ok(path) = std::env::var("AH_TEST_FILESYSTEM_ROOT") {
+        let candidate = std::path::PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    match get_zfs_test_mount_point() {
+        Ok(mount) if mount.exists() => Some(mount),
+        _ => None,
+    }
+}
