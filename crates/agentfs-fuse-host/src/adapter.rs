@@ -5,8 +5,8 @@
 //!
 //! Maps FUSE operations to AgentFS Core calls.
 
-#[cfg(not(feature = "fuse"))]
-compile_error!("This module requires the 'fuse' feature to be enabled");
+#[cfg(not(all(feature = "fuse", target_os = "linux")))]
+compile_error!("This module requires the 'fuse' feature on Linux");
 
 use agentfs_core::{
     Attributes, DirEntry, FileTimes, FsConfig, FsCore, FsError, HandleId, LockRange, OpenOptions,
