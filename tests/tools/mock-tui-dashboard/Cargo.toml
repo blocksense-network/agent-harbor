@@ -1,8 +1,10 @@
 # Copyright 2025 Schelling Point Labs Inc
 # SPDX-License-Identifier: AGPL-3.0-only
 
+[workspace]
+
 [package]
-name = "tui-exploration"
+name = "mock-tui-dashboard"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,7 +15,7 @@ anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
 image = { version = "0.25", default-features = false, features = ["png"] }
-tui-textarea = { path = "../../vendor/tui-textarea", features = ["search"] }
+tui-textarea = { path = "../../../vendor/tui-textarea", features = ["search"] }
 tui-input = "0.10"
 crossbeam-channel = "0.5"
 ctrlc = "3.4"
@@ -34,12 +36,12 @@ tokio = { version = "1.0", features = [
   "test-util",
   "io-util",
 ] }
-ah-repo = { path = "../../crates/ah-repo" }
-ah-workflows = { path = "../../crates/ah-workflows" }
-ah-core = { path = "../../crates/ah-core" }
-ah-domain-types = { path = "../../crates/ah-domain-types" }
-ah-tui = { path = "../../crates/ah-tui" }
-ah-rest-mock-client = { path = "../../crates/ah-rest-mock-client" }
+ah-repo = { path = "../../../crates/ah-repo" }
+ah-workflows = { path = "../../../crates/ah-workflows" }
+ah-core = { path = "../../../crates/ah-core" }
+ah-domain-types = { path = "../../../crates/ah-domain-types" }
+ah-tui = { path = "../../../crates/ah-tui" }
+ah-rest-mock-client = { path = "../../../crates/ah-rest-mock-client" }
 tempfile = "3.0"
 time = { version = "0.3", features = ["serde", "serde-well-known"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -54,17 +56,5 @@ version = "8"
 features = ["crossterm"]
 
 [[bin]]
-name = "tui-exploration"
-path = "src/main.rs"
-
-[[bin]]
-name = "tui-mvvm"
-path = "src/main_mvvm.rs"
-
-[[bin]]
-name = "test-event-stream"
-path = "test_event_stream.rs"
-
-[[bin]]
-name = "test-enhanced-settings"
-path = "test_enhanced_settings.rs"
+name = "mock-tui-dashboard"
+path = "src/mock_tui_dashboard.rs"

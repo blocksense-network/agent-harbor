@@ -46,7 +46,7 @@ reqwest = { version = "0.12", features = ["json"] }
 llm-api-proxy = { path = "../llm-api-proxy" }
 
 [features]
-default = ["claude", "codex", "cursor-cli"]
+default = ["claude", "codex", "cursor-cli", "copilot-cli", "gemini"]
 # Feature gates for each agent backend
 claude = []
 codex = []

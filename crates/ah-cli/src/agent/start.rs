@@ -27,6 +27,8 @@ pub enum CliAgentType {
     Codex,
     /// Anthropic Claude Code agent
     Claude,
+    /// GitHub Copilot CLI agent
+    Copilot,
     /// Google Gemini CLI agent
     Gemini,
     /// OpenCode agent
@@ -45,6 +47,7 @@ impl From<CliAgentType> for AgentType {
             CliAgentType::Mock => AgentType::Mock,
             CliAgentType::Codex => AgentType::Codex,
             CliAgentType::Claude => AgentType::Claude,
+            CliAgentType::Copilot => AgentType::Copilot,
             CliAgentType::Gemini => AgentType::Gemini,
             CliAgentType::Opencode => AgentType::Opencode,
             CliAgentType::Qwen => AgentType::Qwen,
@@ -178,9 +181,17 @@ pub struct AgentStartArgs {
     #[arg(long)]
     pub codex_model: Option<String>,
 
+    /// Model to use specifically for Copilot agent (overrides --model)
+    #[arg(long)]
+    pub copilot_model: Option<String>,
+
     /// Model to use specifically for Claude agent (overrides --model)
     #[arg(long)]
     pub claude_model: Option<String>,
+
+    /// Model to use specifically for Gemini agent (overrides --model)
+    #[arg(long)]
+    pub gemini_model: Option<String>,
 
     /// Additional writable paths to bind mount
     #[arg(long)]
@@ -229,16 +240,18 @@ impl AgentStartArgs {
         let agent: Box<dyn AgentExecutor> = match agent_type {
             AgentType::Claude => Box::new(ah_agents::claude()),
             AgentType::Codex => Box::new(ah_agents::codex()),
+            AgentType::Copilot => Box::new(ah_agents::copilot_cli()),
             AgentType::CursorCli => Box::new(ah_agents::cursor_cli()),
+            AgentType::Gemini => Box::new(ah_agents::gemini()),
             // For agents not yet implemented in ah-agents, fall back to old logic
-            AgentType::Gemini | AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
+            AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
                 return self.run_legacy_agent(agent_type).await;
             }
             AgentType::Mock => unreachable!(), // handled above
         };
 
         // Handle LLM API proxy configuration
-        let config = if let Some(proxy_url) = &self.llm_api_proxy_url {
+        let mut config = if let Some(proxy_url) = &self.llm_api_proxy_url {
             let session_api_key =
                 self.prepare_proxy_session(proxy_url, &agent, agent_type.clone()).await?;
             let mut config = self.build_agent_config(agent_type)?;
@@ -297,6 +310,20 @@ impl AgentStartArgs {
                     serde_json::json!({"source_pattern": "haiku", "provider": "anthropic", "model": "claude-3-5-haiku-20241022"}),
                     serde_json::json!({"source_pattern": "opus", "provider": "anthropic", "model": "claude-3-opus-20240229"}),
                     serde_json::json!({"source_pattern": "sonnet", "provider": "anthropic", "model": "claude-3-5-sonnet-20241022"}),
+                ],
+            ),
+            AgentType::Copilot => (
+                "github",
+                "https://api.github.com",
+                vec![
+                    serde_json::json!({"source_pattern": "copilot", "provider": "github", "model": "claude-sonnet-4-5-20250929"}),
+                ],
+            ),
+            AgentType::Gemini => (
+                "google",
+                "https://generativelanguage.googleapis.com/v1beta",
+                vec![
+                    serde_json::json!({"source_pattern": "gemini", "provider": "google", "model": "gemini-2.5-pro"}),
                 ],
             ),
             // For other agents, use OpenRouter as fallback
@@ -449,6 +476,21 @@ impl AgentStartArgs {
                     .or_else(|| self.model.clone())
                     .unwrap_or_else(|| "sonnet".to_string())
             }
+            AgentType::Copilot => {
+                // copilot-model takes precedence over model
+                self.copilot_model
+                    .clone()
+                    .or_else(|| self.model.clone())
+                    .unwrap_or_else(|| "claude-sonnet-4.5".to_string())
+            }
+
+            AgentType::Gemini => {
+                // gemini-model takes precedence over model
+                self.gemini_model
+                    .clone()
+                    .or_else(|| self.model.clone())
+                    .unwrap_or_else(|| "gemini-2.5-pro".to_string())
+            }
             // For other agents, use the general model flag or None
             _ => self.model.clone().unwrap_or_default(),
         };
@@ -475,6 +517,8 @@ impl AgentStartArgs {
             AgentType::Claude => "claude",
             AgentType::Codex => "codex",
             AgentType::CursorCli => "cursor-cli",
+            AgentType::Copilot => "copilot",
+            AgentType::Gemini => "gemini",
             _ => "unknown",
         };
 
@@ -484,7 +528,6 @@ impl AgentStartArgs {
     /// Run legacy agent implementations (not yet migrated to ah-agents)
     async fn run_legacy_agent(&self, agent_type: AgentType) -> anyhow::Result<()> {
         match agent_type {
-            AgentType::Gemini => self.run_mock_agent().await,
             AgentType::Opencode => self.run_mock_agent().await,
             AgentType::Qwen => self.run_mock_agent().await,
             AgentType::Goose => self.run_mock_agent().await,

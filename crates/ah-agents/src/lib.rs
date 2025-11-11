@@ -72,6 +72,12 @@ pub mod codex;
 #[cfg(feature = "cursor-cli")]
 pub mod cursor;
 
+#[cfg(feature = "copilot-cli")]
+pub mod copilot;
+
+#[cfg(feature = "gemini")]
+pub mod gemini;
+
 // Re-export core types
 pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
@@ -100,6 +106,16 @@ pub fn cursor_cli() -> cursor::CursorAgent {
     cursor::CursorAgent::new()
 }
 
+#[cfg(feature = "copilot-cli")]
+pub fn copilot_cli() -> copilot::CopilotAgent {
+    copilot::CopilotAgent::new()
+}
+
+#[cfg(feature = "gemini")]
+pub fn gemini() -> gemini::GeminiAgent {
+    gemini::GeminiAgent::new()
+}
+
 /// Get an agent executor by name
 ///
 /// This function returns a boxed trait object for the requested agent.
@@ -123,6 +139,12 @@ pub fn agent_by_name(name: &str) -> Option<Box<dyn AgentExecutor>> {
 
         #[cfg(feature = "cursor-cli")]
         "cursor-cli" => Some(Box::new(cursor::CursorAgent::new())),
+
+        #[cfg(feature = "copilot-cli")]
+        "copilot-cli" => Some(Box::new(copilot::CopilotAgent::new())),
+
+        #[cfg(feature = "gemini")]
+        "gemini" => Some(Box::new(gemini::GeminiAgent::new())),
 
         _ => None,
     }
@@ -188,6 +210,9 @@ mod tests {
 
         #[cfg(feature = "codex")]
         assert!(agents.contains(&"codex"));
+
+        #[cfg(feature = "copilot-cli")]
+        assert!(agents.contains(&"copilot-cli"));
     }
 
     #[cfg(feature = "claude")]
@@ -211,6 +236,20 @@ mod tests {
         assert_eq!(agent.name(), "cursor-cli");
     }
 
+    #[cfg(feature = "copilot-cli")]
+    #[test]
+    fn test_copilot_cli_constructor() {
+        let agent = copilot_cli();
+        assert_eq!(agent.name(), "copilot-cli");
+    }
+
+    #[cfg(feature = "gemini")]
+    #[test]
+    fn test_gemini_constructor() {
+        let agent = gemini();
+        assert_eq!(agent.name(), "gemini");
+    }
+
     #[cfg(feature = "claude")]
     #[test]
     fn test_agent_by_name_claude() {
@@ -225,6 +264,22 @@ mod tests {
         let agent = agent_by_name("cursor-cli");
         assert!(agent.is_some());
         assert_eq!(agent.unwrap().name(), "cursor-cli");
+    }
+
+    #[cfg(feature = "copilot-cli")]
+    #[test]
+    fn test_agent_by_name_copilot_cli() {
+        let agent = agent_by_name("copilot-cli");
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().name(), "copilot-cli");
+    }
+
+    #[cfg(feature = "gemini")]
+    #[test]
+    fn test_agent_by_name_gemini() {
+        let agent = agent_by_name("gemini");
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().name(), "gemini");
     }
 
     #[test]

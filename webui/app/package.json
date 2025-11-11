@@ -52,6 +52,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@livestore/livestore": "^0.3.0",
+    "@livestore/solid": "^0.3.0",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.0",
     "@solidjs/start": "^1.1.0",
@@ -64,7 +66,6 @@
     "@solidjs/testing-library": "^0.8.10",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.0.7",
-    "@testing-library/jest-dom": "^6.9.0",
     "@types/node": "^24.6.2",
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",

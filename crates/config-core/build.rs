@@ -121,9 +121,9 @@ mod schema {
 fn main() {
     // Generate schema from SchemaRoot with inlined subschemas for cleaner output
     let settings =
-        schemars::gen::SchemaSettings::draft2019_09().with(|s| s.inline_subschemas = true);
-    let gen = settings.into_generator();
-    let root_schema = gen.into_root_schema_for::<schema::SchemaRoot>();
+        schemars::r#gen::SchemaSettings::draft2019_09().with(|s| s.inline_subschemas = true);
+    let r#gen = settings.into_generator();
+    let root_schema = r#gen.into_root_schema_for::<schema::SchemaRoot>();
     let generated = serde_json::to_value(root_schema).unwrap();
 
     // Read expected schema if it exists

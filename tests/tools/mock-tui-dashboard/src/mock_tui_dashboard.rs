@@ -12,11 +12,7 @@ use ah_core::{
 };
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
-use ah_tui::{
-    dashboard_loop::run_dashboard,
-    settings::Settings,
-    view::TuiDependencies,
-};
+use ah_tui::{dashboard_loop::run_dashboard, settings::Settings, view::TuiDependencies};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use std::{fs::OpenOptions, sync::Arc};
 

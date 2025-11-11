@@ -12,6 +12,8 @@ pub enum AgentType {
     Codex,
     /// Anthropic Claude Code agent
     Claude,
+    /// GitHub Copilot CLI agent
+    Copilot,
     /// Google Gemini CLI agent
     Gemini,
     /// OpenCode agent
@@ -34,6 +36,7 @@ impl std::fmt::Display for AgentType {
             AgentType::Opencode => write!(f, "opencode"),
             AgentType::Qwen => write!(f, "qwen"),
             AgentType::CursorCli => write!(f, "cursor-cli"),
+            AgentType::Copilot => write!(f, "copilot"),
             AgentType::Goose => write!(f, "goose"),
         }
     }

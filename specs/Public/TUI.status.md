@@ -422,7 +422,7 @@ The TUI implementation provides these core capabilities:
 - Static footer showing context-sensitive shortcuts
 - Focus on visual design, spacing, colors, and typography to establish the dashboard aesthetic
 - No interactive functionality - purely static rendering for style iteration
-- Implementation in new Ratatui Rust program located in `PoC/tui-exploration`
+- Implementation completed in PoC phase and code has been removed (styles finalized in ah-tui crate)
 
 **Manual Tests**
 
@@ -446,7 +446,7 @@ The TUI implementation provides these core capabilities:
 
 **Deliverables**
 
-- Complete implementation of the task-centric dashboard UI with Agent Harbor branding and header in the ah-tui crate, based on the finalized styling of the tui-exploration program.
+- Complete implementation of the task-centric dashboard UI with Agent Harbor branding and header in the ah-tui crate, based on the finalized styling from the PoC exploration phase.
 - Task feed showing chronological list of draft, active, and completed tasks with proper card layouts
 - Draft task creation card always visible at the top with repository/branch/agent/model selectors
 - Keyboard navigation between all task cards with visual selection states

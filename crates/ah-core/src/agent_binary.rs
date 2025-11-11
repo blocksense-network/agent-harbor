@@ -24,6 +24,7 @@ impl AgentBinary {
             AgentType::Mock => "mock-agent",
             AgentType::Codex => "codex",
             AgentType::Claude => "claude",
+            AgentType::Copilot => "copilot",
             AgentType::Gemini => "gemini",
             AgentType::Opencode => "opencode",
             AgentType::Qwen => "qwen",
@@ -86,6 +87,7 @@ impl AgentBinary {
             AgentType::Opencode => "opencode",
             AgentType::Qwen => "qwen",
             AgentType::CursorCli => "cursor-cli",
+            AgentType::Copilot => "copilot",
             AgentType::Goose => "goose",
             AgentType::Mock => "mock",
         }
