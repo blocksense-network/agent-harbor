@@ -4,7 +4,7 @@
 //! Linux namespace management for sandbox isolation.
 
 use nix::sched::{CloneFlags, unshare};
-use nix::unistd::{Gid, Uid, getuid, setgroups, setresgid, setresuid};
+use nix::unistd::{Gid, Uid, getuid, setresgid, setresuid};
 use tracing::{debug, info, warn};
 
 use crate::Result;
@@ -121,6 +121,17 @@ impl NamespaceManager {
             self.write_mapping("/proc/self/uid_map", &default_uid_map)?;
         }
 
+        // Since Linux 3.19, unprivileged user namespaces must write "deny" to setgroups
+        // before writing to gid_map. Older kernels may not support this file; ignore ENOENT.
+        if let Err(err) = self.write_mapping("/proc/self/setgroups", "deny") {
+            match err {
+                Error::Namespace(ref msg) if msg.contains("No such file") => {
+                    // Ignore on kernels without setgroups support.
+                }
+                _ => return Err(err),
+            }
+        }
+
         if let Some(gid_map) = &self.config.gid_map {
             self.write_mapping("/proc/self/gid_map", gid_map)?;
         } else {
@@ -129,9 +140,6 @@ impl NamespaceManager {
             let default_gid_map = format!("{} 0 1", gid);
             self.write_mapping("/proc/self/gid_map", &default_gid_map)?;
         }
-
-        // Set setgroups to "deny" for user namespaces (required since Linux 3.19)
-        self.write_mapping("/proc/self/setgroups", "deny")?;
 
         // Switch to root in the namespace
         setresuid(Uid::from_raw(0), Uid::from_raw(0), Uid::from_raw(0)).map_err(|e| {
