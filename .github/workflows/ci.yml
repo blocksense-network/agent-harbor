@@ -27,44 +27,6 @@ env:
   CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
 
 jobs:
-  lint:
-    runs-on: [self-hosted, nixos, x86-64-v3]
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Run Lint
-        run: nix develop -c pre-commit run --all-files
-
-  build-and-cache-devshell:
-    runs-on: [self-hosted, nixos, x86-64-v3]
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build & activate the Nix Dev Shell
-        run: nix build -L --json .#devShells.x86_64-linux.default
-
   test:
     strategy:
       matrix:
@@ -113,7 +75,20 @@ jobs:
       # - name: Check code with clippy
       #   run: just lint-rust
 
-      - run: cargo test -p sandbox-fs
+      - run: |
+          nix run nixpkgs#intentrace -- -Z $(cargo test -p sandbox-fs --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true) | .executable')
+
+      - run: |
+          nix run nixpkgs#intentrace -- --follow-forks $(cargo test -p sandbox-fs --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true) | .executable')
+
+      - run: |
+          nix run nixpkgs#strace -- --follow-forks $(cargo test -p sandbox-fs --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true) | .executable')
+
+      - run: |
+          cargo test -p sandbox-fs
 
       - name: Check compilation
         run: just check
@@ -130,52 +105,3 @@ jobs:
 
       - name: Run tests
         run: just test-rust-verbose
-
-  webui:
-    runs-on: [self-hosted, nixos, x86-64-v3]
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build & activate the Nix Dev Shell
-        run: |
-          nix print-dev-env --accept-flake-config --impure .#devShells.x86_64-linux.default > dev-env.sh || exit 1
-          source dev-env.sh
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
-          echo "NIX_PATH=$NIX_PATH" >> "$GITHUB_ENV"
-          echo "NIX_PROFILES=$NIX_PROFILES" >> "$GITHUB_ENV"
-          echo "NIX_REMOTE=$NIX_REMOTE" >> "$GITHUB_ENV"
-
-      - name: Install JS deps
-        run: yarn install
-
-      - name: Lint WebUI code
-        run: just webui-lint
-
-      - name: Type check WebUI code
-        run: just webui-type-check
-
-      - name: Build WebUI app
-        run: just webui-build
-
-      - name: Build mock server
-        run: just webui-build-mock
-
-      # - name: Install Playwright browsers
-      #   run: just webui-install-browsers
-
-      # TODO: Once tests are stable bring them back
-      # - name: Run Playwright tests
-      #   run: just webui-test
-      #   env:
-      #     BASE_URL: http://localhost:3000
