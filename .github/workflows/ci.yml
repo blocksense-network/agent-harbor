@@ -31,7 +31,7 @@ jobs:
       matrix:
         include:
           - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3, microvm, pick-me]
+            runner: [self-hosted, nixos, x86-64-v3, microvm, banica]
             allowedToFail: false
           # - name: aarch64-darwin (macOS, GitHub-hosted)
           #   runner: macos-latest
@@ -42,8 +42,8 @@ jobs:
     continue-on-error: ${{ matrix.allowedToFail }}
 
     steps:
-      # - name: Test passwordless `sudo` availability
-      #   run: sudo true
+      - name: Test passwordless `sudo` availability
+        run: sudo whoami
 
       - name: Test user namespace availability
         run: |
