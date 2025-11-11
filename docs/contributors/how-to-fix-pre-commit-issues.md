@@ -31,8 +31,8 @@ CSpell: Files checked: 190, Issues found: 148 in 26 files.
    - **Code references**: Add acronyms, function names, etc.
 
 3. **Add missing words to `.cspell.json`**:
-   - Open `.cspell.json` (located in the repository root)
-   - Add words to the `"words"` array in alphabetical order
+   - Prefer `just allow-words newword anotherword` to add terms while keeping the list sorted (pass multiple words in one run; add `--dry-run` first if you want to preview the changes)
+   - Alternatively, open `.cspell.json` (located in the repository root) and edit the `"words"` array directly, maintaining alphabetical order
    - Include technical terms, system constants, library names, and project-specific jargon
 
 4. **Verify the fix**:
