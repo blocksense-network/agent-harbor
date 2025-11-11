@@ -6,10 +6,10 @@
 //! This binary implements a FUSE host that mounts AgentFS volumes
 //! using libfuse (Linux) or macFUSE (macOS).
 
-#[cfg(feature = "fuse")]
+#[cfg(all(feature = "fuse", target_os = "linux"))]
 mod adapter;
 
-#[cfg(feature = "fuse")]
+#[cfg(all(feature = "fuse", target_os = "linux"))]
 use adapter::AgentFsFuse;
 use agentfs_core::FsConfig;
 use anyhow::Result;
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     let config = load_config(args.config)?;
     info!("Configuration loaded: {:?}", config);
 
-    #[cfg(feature = "fuse")]
+    #[cfg(all(feature = "fuse", target_os = "linux"))]
     {
         let filesystem = AgentFsFuse::new(config.clone())?;
 
@@ -117,7 +117,7 @@ fn main() -> Result<()> {
         fuser::mount2(filesystem, &args.mount_point, &mount_options)?;
     }
 
-    #[cfg(not(feature = "fuse"))]
+    #[cfg(not(all(feature = "fuse", target_os = "linux")))]
     {
         warn!("FUSE support not compiled in. This binary is for testing only.");
         info!(
