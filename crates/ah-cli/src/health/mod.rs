@@ -297,14 +297,38 @@ impl HealthArgs {
 
     /// Get Codex health status
     async fn get_codex_health_status(&self) -> Option<AgentHealthStatus> {
-        let mut status = AgentHealthStatus::new("Codex");
+        let codex_agent = ah_agents::codex();
 
-        // Check if we can access codex functionality
-        // For now, this is a placeholder - actual implementation would check browser automation, etc.
-        status = status.with_availability(false, None);
-        status = status.with_note("Codex health checking not yet implemented");
+        // Use structured status function with timeout for consistency
+        let status_result = tokio::time::timeout(
+            std::time::Duration::from_millis(1000),
+            codex_agent.get_codex_status(),
+        )
+        .await;
 
-        Some(status)
+        match status_result {
+            Ok(codex_status) => {
+                let mut status = AgentHealthStatus::new("Codex CLI")
+                    .with_availability(codex_status.available, codex_status.version)
+                    .with_auth(
+                        codex_status.authenticated,
+                        codex_status.auth_method,
+                        codex_status.auth_source,
+                    );
+
+                if let Some(error) = codex_status.error {
+                    status = status.with_error(error);
+                }
+
+                if !codex_status.authenticated && codex_status.available {
+                    status = status
+                        .with_note("Try setting OPENAI_API_KEY environment variable or logging in with Codex auth");
+                }
+
+                Some(status)
+            }
+            Err(_) => Some(AgentHealthStatus::new("Codex CLI").with_timeout()),
+        }
     }
 
     /// Get Claude health status

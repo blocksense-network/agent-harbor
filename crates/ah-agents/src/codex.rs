@@ -6,9 +6,27 @@ use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
+
+/// Status information for the Codex CLI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexStatus {
+    /// Whether the CLI is installed and available
+    pub available: bool,
+    /// Version information if available
+    pub version: Option<String>,
+    /// Whether the user is authenticated
+    pub authenticated: bool,
+    /// Authentication method used (e.g., "OPENAI_API_KEY", "CODEX_API_KEY", "OAuth Token Exchange")
+    pub auth_method: Option<String>,
+    /// Source of authentication (config file path, environment variable name, etc.)
+    pub auth_source: Option<String>,
+    /// Any error that occurred during status check
+    pub error: Option<String>,
+}
 
 /// Codex CLI agent executor
 pub struct CodexAgent {
@@ -42,6 +60,122 @@ impl CodexAgent {
                 output
             )))
         }
+    }
+
+    /// Get comprehensive status information for Codex CLI
+    ///
+    /// Returns CodexStatus with detailed information about:
+    /// - CLI availability and version
+    /// - Authentication status and method
+    /// - API key information source
+    /// - Any errors encountered
+    pub async fn get_codex_status(&self) -> CodexStatus {
+        // Check CLI availability by detecting version with timeout
+        let (available, version, mut error) = match tokio::time::timeout(
+            std::time::Duration::from_millis(1500),
+            self.detect_version(),
+        )
+        .await
+        {
+            Ok(Ok(version_info)) => (true, Some(version_info.version), None),
+            Ok(Err(AgentError::AgentNotFound(_))) => {
+                (false, None, Some("Codex CLI not found in PATH".to_string()))
+            }
+            Ok(Err(e)) => (
+                false,
+                None,
+                Some(format!("Version detection failed: {}", e)),
+            ),
+            Err(_) => (false, None, Some("Version detection timed out".to_string())),
+        };
+
+        if !available {
+            return CodexStatus {
+                available: false,
+                version: None,
+                authenticated: false,
+                auth_method: None,
+                auth_source: None,
+                error,
+            };
+        }
+
+        // Check authentication status
+        let (authenticated, auth_method, auth_source) = match self.get_user_api_key().await {
+            Ok(Some(_api_key)) => {
+                let method = self.detect_auth_method().await;
+                let source = self.detect_auth_source().await;
+                (true, Some(method), Some(source))
+            }
+            Ok(None) => (false, None, None),
+            Err(e) => {
+                error = Some(format!("Authentication check failed: {}", e));
+                (false, None, None)
+            }
+        };
+
+        CodexStatus {
+            available,
+            version,
+            authenticated,
+            auth_method,
+            auth_source,
+            error,
+        }
+    }
+
+    /// Detect which authentication method is being used for Codex
+    async fn detect_auth_method(&self) -> String {
+        // Check in order of precedence to determine which method is being used
+        if std::env::var("OPENAI_API_KEY").is_ok() {
+            return "OPENAI_API_KEY environment variable".to_string();
+        }
+        if std::env::var("OPENAI_API_KEY_FILE").is_ok() {
+            return "OPENAI_API_KEY_FILE".to_string();
+        }
+        if std::env::var("CODEX_API_KEY").is_ok() {
+            return "CODEX_API_KEY environment variable".to_string();
+        }
+
+        // Check for OAuth token exchange capability
+        if let Some(home_dir) = dirs::home_dir() {
+            let auth_path = home_dir.join(".codex").join("auth.json");
+            if auth_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&auth_path) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if json.get("oauth").is_some() {
+                            return "OAuth Token Exchange from Codex auth file".to_string();
+                        }
+                    }
+                }
+            }
+        }
+
+        "Unknown".to_string()
+    }
+
+    /// Detect the source of authentication for Codex
+    async fn detect_auth_source(&self) -> String {
+        // Check in order of precedence to determine the actual source
+        if std::env::var("OPENAI_API_KEY").is_ok() {
+            return "OPENAI_API_KEY".to_string();
+        }
+        if let Ok(file_path) = std::env::var("OPENAI_API_KEY_FILE") {
+            return format!("File: {}", file_path);
+        }
+        if std::env::var("CODEX_API_KEY").is_ok() {
+            return "CODEX_API_KEY".to_string();
+        }
+
+        // Check for OAuth credentials in Codex auth file
+        if let Some(home_dir) = dirs::home_dir() {
+            let auth_path = home_dir.join(".codex").join("auth.json");
+            if auth_path.exists() {
+                return format!("OAuth credentials: {}", auth_path.display());
+            }
+        }
+
+        "Unknown".to_string()
     }
 }
 
