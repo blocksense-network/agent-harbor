@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 /// XPC service for handling control operations
 #[cfg(target_os = "macos")]
 pub struct XpcControlService {
+    #[allow(dead_code)]
     adapter: Arc<FsKitAdapter>,
     service_name: String,
 }
@@ -48,6 +49,7 @@ impl XpcControlService {
     }
 
     /// Handle incoming XPC request
+    #[allow(dead_code)]
     async fn handle_request(
         &self,
         request_data: &[u8],
@@ -193,6 +195,7 @@ impl XpcControlService {
         }
     }
 
+    #[allow(dead_code)]
     async fn handle_snapshot_create(
         &self,
         request: SnapshotCreateRequest,
@@ -220,6 +223,7 @@ impl XpcControlService {
         }
     }
 
+    #[allow(dead_code)]
     async fn handle_snapshot_list(
         &self,
         _request: SnapshotListRequest,
@@ -237,6 +241,7 @@ impl XpcControlService {
         Ok(response.as_ssz_bytes())
     }
 
+    #[allow(dead_code)]
     async fn handle_branch_create(
         &self,
         request: BranchCreateRequest,
@@ -266,6 +271,7 @@ impl XpcControlService {
         }
     }
 
+    #[allow(dead_code)]
     async fn handle_branch_bind(
         &self,
         request: BranchBindRequest,
@@ -286,6 +292,7 @@ impl XpcControlService {
         }
     }
 
+    #[allow(dead_code)]
     fn map_error_code(&self, error: &agentfs_core::FsError) -> u32 {
         match error {
             agentfs_core::FsError::NotFound => 2,         // ENOENT
