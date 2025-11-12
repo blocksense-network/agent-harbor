@@ -7,38 +7,30 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-#[cfg(target_os = "macos")]
-extern "C" {
-    fn clonefile(
-        src: *const libc::c_char,
-        dst: *const libc::c_char,
-        flags: libc::c_int,
-    ) -> libc::c_int;
-}
+// Note: we use libc::clonefile directly on macOS in platform-specific sections.
 
 use crate::config::BackstoreMode;
 use crate::error::FsResult;
 use crate::{Backstore, ContentId, FsError};
 
-/// Storage backend trait for content-addressable storage with copy-on-write
 pub trait StorageBackend: Send + Sync {
     fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize>;
     fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize>;
     fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()>;
     fn allocate(&self, initial: &[u8]) -> FsResult<ContentId>;
     fn clone_cow(&self, base: ContentId) -> FsResult<ContentId>;
+
+    /// Mark content immutable so further writes are prevented.
     fn seal(&self, id: ContentId) -> FsResult<()>; // for snapshot immutability
 
-    /// Get the filesystem path for a content ID (if the backend stores content as files)
-    fn get_content_path(&self, id: ContentId) -> Option<std::path::PathBuf> {
-        // Default implementation returns None (for in-memory backends)
+    /// Get the filesystem path for a content ID (if the backend stores content as files).
+    /// Default returns None. Backends with file-based storage override this.
+    fn get_content_path(&self, _id: ContentId) -> Option<std::path::PathBuf> {
         None
     }
 
-    /// Seal an entire content tree (recursive sealing for snapshots)
+    /// Seal an entire content tree (recursive sealing for snapshots). Default no-op.
     fn seal_content_tree(&self, _root_content_id: ContentId) -> FsResult<()> {
-        // For now, this is a no-op. In a real implementation, this would
-        // recursively seal all content IDs in the tree
         Ok(())
     }
 }
@@ -73,6 +65,7 @@ impl InMemoryBackend {
         *refcounts.entry(id).or_insert(0) += 1;
     }
 
+    #[allow(dead_code)] // Called by future drop logic for reference-managed content; suppress until integrated
     fn decrement_refcount(&self, id: ContentId) {
         let mut refcounts = self.refcounts.lock().unwrap();
         if let Some(count) = refcounts.get_mut(&id) {
@@ -263,7 +256,11 @@ impl StorageBackend for HostFsBackend {
 
     fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize> {
         let path = self.content_path(id);
-        let mut file = std::fs::OpenOptions::new().write(true).create(true).open(&path)?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)?;
         use std::io::{Seek, Write};
         file.seek(std::io::SeekFrom::Start(offset))?;
         let n = file.write(data)?;
@@ -299,7 +296,7 @@ impl StorageBackend for HostFsBackend {
         let new_path = self.content_path(new_id);
 
         // Try reflink first, fall back to copy
-        if let Err(_) = self.reflink(&base_path, &new_path) {
+        if self.reflink(&base_path, &new_path).is_err() {
             std::fs::copy(&base_path, &new_path)?;
         }
 
@@ -377,7 +374,7 @@ impl Backstore for HostFsBackstore {
                     parent.display()
                 );
                 if let Ok(output) =
-                    Command::new("diskutil").args(&["info", &parent.to_string_lossy()]).output()
+                    Command::new("diskutil").args(["info", &parent.to_string_lossy()]).output()
                 {
                     let output_str = String::from_utf8_lossy(&output.stdout);
                     eprintln!(
@@ -627,7 +624,7 @@ mod tests {
         backend.seal(id).unwrap();
 
         // Verify it's marked as sealed
-        assert_eq!(*backend.sealed.lock().unwrap().get(&id).unwrap(), true);
+        assert!(*backend.sealed.lock().unwrap().get(&id).unwrap());
     }
 
     #[test]

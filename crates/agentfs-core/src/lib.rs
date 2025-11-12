@@ -26,12 +26,7 @@ pub use vfs::{DirfdMapping, FsCore, PID};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        BackstoreMode, CopyUpMode, InterposeConfig, OverlayConfig, SecurityPolicy,
-    };
-    use mockall::predicate::*;
-    use std::cell::RefCell;
-    use std::sync::{Arc, Mutex};
+    use crate::config::{BackstoreMode, CopyUpMode, InterposeConfig, OverlayConfig};
 
     #[test]
     fn test_chown_updates_uid_gid_and_ctime() {
@@ -84,6 +79,7 @@ mod tests {
         assert_eq!(user.uid, 1000);
         assert_eq!(user.gid, 1000);
     }
+    #[test]
     fn test_error_display() {
         let err = FsError::NotFound;
         assert_eq!(err.to_string(), "not found");
@@ -1395,7 +1391,7 @@ mod tests {
         let core = FsCore::new(cfg).unwrap();
 
         let root_pid = core.register_process(1, 1, 0, 0);
-        let alice_pid = core.register_process(1000, 1, 1000, 1000);
+        let _alice_pid = core.register_process(1000, 1, 1000, 1000);
 
         // Create directory as root, then create file as root and chown to alice with 0600
         core.mkdir(&root_pid, "/d".as_ref(), 0o711).unwrap(); // allow traversal for root and execute for others
@@ -1434,7 +1430,7 @@ mod tests {
     fn test_set_owner_clears_setid_bits() {
         let (core, _) = test_core_posix();
         let root = core.register_process(1, 1, 0, 0);
-        let alice = core.register_process(1000, 1, 1000, 1000);
+        let _alice = core.register_process(1000, 1, 1000, 1000);
 
         let h = core.create(&root, "/suidfile".as_ref(), &rw_create()).unwrap();
         core.close(&root, h).unwrap();
@@ -1979,7 +1975,7 @@ mod tests {
 
         // Test with interpose enabled - Reflink Success scenario
         {
-            let mut config = FsConfig {
+            let config = FsConfig {
                 case_sensitivity: CaseSensitivity::Sensitive,
                 memory: MemoryPolicy {
                     max_bytes_in_memory: Some(1024 * 1024),
@@ -2066,7 +2062,7 @@ mod tests {
 
         // Test with require_reflink=true - Forwarding Declined (Policy) scenario
         {
-            let mut config = FsConfig {
+            let config = FsConfig {
                 case_sensitivity: CaseSensitivity::Sensitive,
                 memory: MemoryPolicy {
                     max_bytes_in_memory: Some(1024 * 1024),
@@ -2127,7 +2123,7 @@ mod tests {
 
         // Test interpose disabled
         {
-            let mut config = FsConfig {
+            let config = FsConfig {
                 case_sensitivity: CaseSensitivity::Sensitive,
                 memory: MemoryPolicy {
                     max_bytes_in_memory: Some(1024 * 1024),
@@ -2188,7 +2184,7 @@ mod tests {
 
         // Test write operations (should fail)
         {
-            let mut config = FsConfig {
+            let config = FsConfig {
                 case_sensitivity: CaseSensitivity::Sensitive,
                 memory: MemoryPolicy {
                     max_bytes_in_memory: Some(1024 * 1024),
