@@ -390,7 +390,7 @@ impl AgentExecutor for CopilotAgent {
                             let tokens_obj = val.get("copilot_tokens").and_then(|v| v.as_object());
 
                             // Utility function to try retrieving a token by (host, login) tuple
-                            let mut try_get_token = |host: &str, login: &str| -> Option<String> {
+                            let try_get_token = |host: &str, login: &str| -> Option<String> {
                                 let key = format!("{}:{}", host, login);
                                 tokens_obj
                                     .and_then(|obj| obj.get(&key))

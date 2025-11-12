@@ -1,11 +1,11 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/// Shared utilities for building snapshot commands across different agent implementations
+//! Shared utilities for building snapshot commands across different agent implementations
 
 /// Build a snapshot command string with recorder socket parameter if available
 pub fn build_snapshot_command(base_command: &str) -> String {
-    if let Some(recorder_socket) = std::env::var("AH_RECORDER_IPC_SOCKET").ok() {
+    if let Ok(recorder_socket) = std::env::var("AH_RECORDER_IPC_SOCKET") {
         format!("{} --recorder-socket {}", base_command, recorder_socket)
     } else {
         base_command.to_string()
