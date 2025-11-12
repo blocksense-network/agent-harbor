@@ -309,14 +309,38 @@ impl HealthArgs {
 
     /// Get Claude health status
     async fn get_claude_health_status(&self) -> Option<AgentHealthStatus> {
-        let mut status = AgentHealthStatus::new("Claude");
+        let claude_agent = ah_agents::claude();
 
-        // Check if claude agent is available
-        // For now, this is a placeholder - actual implementation would check API keys, etc.
-        status = status.with_availability(false, None);
-        status = status.with_note("Claude health checking not yet implemented");
+        // Use structured status function with timeout for consistency
+        let status_result = tokio::time::timeout(
+            std::time::Duration::from_millis(1000),
+            claude_agent.get_claude_status(),
+        )
+        .await;
 
-        Some(status)
+        match status_result {
+            Ok(claude_status) => {
+                let mut status = AgentHealthStatus::new("Claude CLI")
+                    .with_availability(claude_status.available, claude_status.version)
+                    .with_auth(
+                        claude_status.authenticated,
+                        claude_status.auth_method,
+                        claude_status.auth_source,
+                    );
+
+                if let Some(error) = claude_status.error {
+                    status = status.with_error(error);
+                }
+
+                if !claude_status.authenticated && claude_status.available {
+                    status = status
+                        .with_note("Try setting ANTHROPIC_API_KEY environment variable or logging in with Claude Code");
+                }
+
+                Some(status)
+            }
+            Err(_) => Some(AgentHealthStatus::new("Claude CLI").with_timeout()),
+        }
     }
 
     /// Check Cursor CLI login status and extract access token
