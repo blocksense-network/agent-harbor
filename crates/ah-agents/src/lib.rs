@@ -86,6 +86,8 @@ pub use traits::{
 // Re-export agent-specific types
 #[cfg(feature = "copilot-cli")]
 pub use copilot::CopilotStatus;
+#[cfg(feature = "claude")]
+pub use claude::ClaudeStatus;
 #[cfg(feature = "gemini")]
 pub use gemini::GeminiStatus;
 
