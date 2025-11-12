@@ -11,8 +11,6 @@ use ah_fs_snapshots_traits::{
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-// use tokio::process::Command; // Not currently used; retain comment for future async exec consideration.
-
 /// ZFS snapshot provider implementation.
 pub struct ZfsProvider {
     daemon_client: DaemonClient,
