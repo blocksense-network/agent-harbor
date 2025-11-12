@@ -310,14 +310,14 @@ mod tests {
     #[test]
     fn test_screen_focus_pane_not_available() {
         let mux = ScreenMultiplexer::new().unwrap();
-        let result = mux.focus_pane("dummy");
+        let result = mux.focus_pane(&"dummy".to_string());
         assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
     }
 
     #[test]
     fn test_screen_list_panes_not_available() {
         let mux = ScreenMultiplexer::new().unwrap();
-        let result = mux.list_panes("dummy");
+        let result = mux.list_panes(&"dummy".to_string());
         assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
     }
 }
