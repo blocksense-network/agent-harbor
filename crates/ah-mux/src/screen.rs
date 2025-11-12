@@ -303,21 +303,27 @@ mod tests {
 
     #[test]
     fn test_screen_id() {
-        let mux = ScreenMultiplexer::new().unwrap();
-        assert_eq!(mux.id(), "screen");
+        // Only run if screen is available
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            assert_eq!(mux.id(), "screen");
+        }
     }
 
     #[test]
     fn test_screen_focus_pane_not_available() {
-        let mux = ScreenMultiplexer::new().unwrap();
-        let result = mux.focus_pane(&"dummy".to_string());
-        assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
+        // Only run if screen is available
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.focus_pane(&"dummy".to_string());
+            assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
+        }
     }
 
     #[test]
     fn test_screen_list_panes_not_available() {
-        let mux = ScreenMultiplexer::new().unwrap();
-        let result = mux.list_panes(&"dummy".to_string());
-        assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
+        // Only run if screen is available
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.list_panes(&"dummy".to_string());
+            assert!(matches!(result, Err(MuxError::NotAvailable("screen"))));
+        }
     }
 }
