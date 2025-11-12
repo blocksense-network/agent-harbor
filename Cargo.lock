@@ -330,6 +330,7 @@ dependencies = [
  "ureq",
  "uuid",
  "vt100",
+ "which 6.0.3",
  "winapi",
 ]
 
