@@ -1028,7 +1028,6 @@ mod tests {
 
 #[cfg(test)]
 mod snapshot_testing {
-    use super::*;
     use expectrl::spawn;
     use std::time::Duration;
     use vt100::Parser;
@@ -1151,8 +1150,8 @@ set-environment -g ZDOTDIR ""
     pub fn process_pending_output() -> anyhow::Result<()> {
         CONTINUOUS_SESSION.with(|session_cell| {
             let mut session = session_cell.borrow_mut();
-            if let Some((ref mut p, ref mut parser, _)) = session.as_mut() {
-                let mut buf = [0u8; 8192];
+            if let Some((ref mut _p, ref mut _parser, _)) = session.as_mut() {
+                let _buf = [0u8; 8192];
                 // Try to read any available output
                 // TODO: Implement proper async reading or use expectrl's expect API
                 // For now, skip raw byte reading to avoid async/sync complexity in tests
