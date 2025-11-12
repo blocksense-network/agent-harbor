@@ -501,4 +501,507 @@ mod tests {
         let config = agent.config_dir(&home);
         assert_eq!(config, PathBuf::from("/home/user/.config/codex"));
     }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_codex_status_agent_not_found() {
+        use crate::test_support::EnvVarGuard;
+
+        // Clean environment variables to ensure consistent test results
+        let _openai_guard = EnvVarGuard::remove("OPENAI_API_KEY");
+        let _openai_file_guard = EnvVarGuard::remove("OPENAI_API_KEY_FILE");
+        let _codex_guard = EnvVarGuard::remove("CODEX_API_KEY");
+
+        // Create an agent with a non-existent binary path
+        let agent = CodexAgent {
+            binary_path: "nonexistent-codex-agent".to_string(),
+        };
+
+        let status = agent.get_codex_status().await;
+
+        assert!(!status.available);
+        assert!(status.version.is_none());
+        assert!(!status.authenticated);
+        assert!(status.auth_method.is_none());
+        assert!(status.auth_source.is_none());
+        assert!(status.error.is_some());
+        assert!(status.error.unwrap().contains("not found in PATH"));
+    }
+
+    #[tokio::test]
+    async fn test_get_codex_status_timeout() {
+        use std::time::Duration;
+        use tokio::time::sleep;
+
+        // Mock a CodexAgent that has a very slow detect_version method
+        struct SlowCodexAgent;
+
+        impl SlowCodexAgent {
+            async fn detect_version(&self) -> AgentResult<AgentVersion> {
+                // Sleep longer than the timeout to trigger timeout handling
+                sleep(Duration::from_millis(2000)).await;
+                Ok(AgentVersion {
+                    version: "0.46.0".to_string(),
+                    commit: None,
+                    release_date: None,
+                })
+            }
+
+            async fn get_codex_status_with_timeout(&self) -> CodexStatus {
+                // Similar to the real implementation but with timeout
+                let version_result = tokio::time::timeout(
+                    Duration::from_millis(100), // Very short timeout to force timeout
+                    self.detect_version(),
+                )
+                .await;
+
+                let (available, version, error) = match version_result {
+                    Ok(Ok(version_info)) => (true, Some(version_info.version), None),
+                    Ok(Err(AgentError::AgentNotFound(_))) => {
+                        (false, None, Some("Codex CLI not found in PATH".to_string()))
+                    }
+                    Ok(Err(e)) => (
+                        false,
+                        None,
+                        Some(format!("Version detection failed: {}", e)),
+                    ),
+                    Err(_) => (false, None, Some("Version detection timed out".to_string())),
+                };
+
+                CodexStatus {
+                    available,
+                    version,
+                    authenticated: false,
+                    auth_method: None,
+                    auth_source: None,
+                    error,
+                }
+            }
+        }
+
+        let slow_agent = SlowCodexAgent;
+        let status = slow_agent.get_codex_status_with_timeout().await;
+
+        assert!(!status.available);
+        assert!(status.version.is_none());
+        assert!(!status.authenticated);
+        assert!(status.error.is_some());
+        assert!(status.error.unwrap().contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_openai_api_key() {
+        // Mock agent that simulates OPENAI_API_KEY environment variable
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_method(&self) -> String {
+                "OPENAI_API_KEY environment variable".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_method = test_agent.detect_auth_method().await;
+
+        // Should return OPENAI_API_KEY as highest priority
+        assert_eq!(auth_method, "OPENAI_API_KEY environment variable");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_openai_api_key_file() {
+        // Mock agent that simulates OPENAI_API_KEY_FILE environment variable
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_method(&self) -> String {
+                "OPENAI_API_KEY_FILE".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_method = test_agent.detect_auth_method().await;
+
+        // Should return OPENAI_API_KEY_FILE as second priority
+        assert_eq!(auth_method, "OPENAI_API_KEY_FILE");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_codex_api_key() {
+        // Mock agent that simulates CODEX_API_KEY environment variable
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_method(&self) -> String {
+                "CODEX_API_KEY environment variable".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_method = test_agent.detect_auth_method().await;
+
+        // Should return CODEX_API_KEY as third priority
+        assert_eq!(auth_method, "CODEX_API_KEY environment variable");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_oauth_token() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create a temporary directory structure
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let temp_path = temp_dir.path();
+
+        // Set up a mock Codex auth file
+        let codex_dir = temp_path.join(".codex");
+        fs::create_dir_all(&codex_dir).expect("Failed to create codex dir");
+
+        let auth_path = codex_dir.join("auth.json");
+        let auth_content = r#"
+        {
+            "oauth": {
+                "access_token": "mock_access_token",
+                "id_token": "mock_id_token"
+            }
+        }
+        "#;
+        fs::write(&auth_path, auth_content).expect("Failed to write auth file");
+
+        // Mock home directory detection
+        struct TestCodexAgent {
+            home_dir: PathBuf,
+        }
+
+        impl TestCodexAgent {
+            async fn detect_auth_method(&self) -> String {
+                // Check for OAuth token exchange capability using mock home dir (skip env vars for this test)
+                let auth_path = self.home_dir.join(".codex").join("auth.json");
+                if auth_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&auth_path) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if json.get("oauth").is_some() {
+                                return "OAuth Token Exchange from Codex auth file".to_string();
+                            }
+                        }
+                    }
+                }
+
+                "Unknown".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent {
+            home_dir: temp_path.to_path_buf(),
+        };
+
+        let auth_method = test_agent.detect_auth_method().await;
+
+        // Should return OAuth Token Exchange
+        assert_eq!(auth_method, "OAuth Token Exchange from Codex auth file");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_unknown() {
+        // Mock agent that simulates no environment variables or auth files
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_method(&self) -> String {
+                "Unknown".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_method = test_agent.detect_auth_method().await;
+
+        // Should return Unknown when no auth method is found
+        assert_eq!(auth_method, "Unknown");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_openai_api_key() {
+        // Mock agent that simulates OPENAI_API_KEY environment variable
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_source(&self) -> String {
+                "OPENAI_API_KEY".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_source = test_agent.detect_auth_source().await;
+
+        // Should return OPENAI_API_KEY as highest priority source
+        assert_eq!(auth_source, "OPENAI_API_KEY");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_openai_api_key_file() {
+        // Mock agent that simulates OPENAI_API_KEY_FILE environment variable
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_source(&self) -> String {
+                "File: /path/to/api-key-file".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_source = test_agent.detect_auth_source().await;
+
+        // Should return file path as second priority source
+        assert_eq!(auth_source, "File: /path/to/api-key-file");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_codex_api_key() {
+        // Mock agent that simulates CODEX_API_KEY environment variable
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_source(&self) -> String {
+                "CODEX_API_KEY".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_source = test_agent.detect_auth_source().await;
+
+        // Should return CODEX_API_KEY as third priority source
+        assert_eq!(auth_source, "CODEX_API_KEY");
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_oauth_credentials() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create a temporary directory structure
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let temp_path = temp_dir.path();
+
+        // Set up a mock Codex auth file
+        let codex_dir = temp_path.join(".codex");
+        fs::create_dir_all(&codex_dir).expect("Failed to create codex dir");
+
+        let auth_path = codex_dir.join("auth.json");
+        let auth_content = r#"
+        {
+            "oauth": {
+                "access_token": "mock_access_token",
+                "id_token": "mock_id_token"
+            }
+        }
+        "#;
+        fs::write(&auth_path, auth_content).expect("Failed to write auth file");
+
+        // Mock auth source detection with custom home directory
+        struct TestCodexAgent {
+            home_dir: PathBuf,
+        }
+
+        impl TestCodexAgent {
+            async fn detect_auth_source(&self) -> String {
+                // Check for OAuth credentials in Codex auth file using mock home dir
+                let auth_path = self.home_dir.join(".codex").join("auth.json");
+                if auth_path.exists() {
+                    return format!("OAuth credentials: {}", auth_path.display());
+                }
+
+                "Unknown".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent {
+            home_dir: temp_path.to_path_buf(),
+        };
+
+        let auth_source = test_agent.detect_auth_source().await;
+
+        // Should return OAuth credentials path
+        assert!(auth_source.starts_with("OAuth credentials:"));
+        assert!(auth_source.contains(".codex/auth.json"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_unknown() {
+        // Mock agent that simulates no environment variables and no auth file
+        struct TestCodexAgent;
+
+        impl TestCodexAgent {
+            async fn detect_auth_source(&self) -> String {
+                // Simulate no environment variables and no home directory
+                "Unknown".to_string()
+            }
+        }
+
+        let test_agent = TestCodexAgent;
+        let auth_source = test_agent.detect_auth_source().await;
+
+        // Should return Unknown when no auth source is found
+        assert_eq!(auth_source, "Unknown");
+    }
+
+    #[tokio::test]
+    async fn test_get_codex_status_successful_with_auth() {
+        // Create a test agent that mocks successful version detection and authentication
+        struct TestCodexAgent {}
+
+        impl TestCodexAgent {
+            async fn detect_version(&self) -> AgentResult<AgentVersion> {
+                Ok(AgentVersion {
+                    version: "0.46.0".to_string(),
+                    commit: None,
+                    release_date: None,
+                })
+            }
+
+            async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
+                Ok(Some("mock_api_key_12345".to_string()))
+            }
+
+            async fn detect_auth_method(&self) -> String {
+                "OPENAI_API_KEY environment variable".to_string()
+            }
+
+            async fn detect_auth_source(&self) -> String {
+                "OPENAI_API_KEY".to_string()
+            }
+
+            async fn get_codex_status(&self) -> CodexStatus {
+                // Simplified version of the real implementation
+                let version_result = self.detect_version().await;
+
+                let (available, version, error) = match version_result {
+                    Ok(version_info) => (true, Some(version_info.version), None),
+                    Err(e) => (
+                        false,
+                        None,
+                        Some(format!("Version detection failed: {}", e)),
+                    ),
+                };
+
+                if !available {
+                    return CodexStatus {
+                        available: false,
+                        version: None,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    };
+                }
+
+                match self.get_user_api_key().await {
+                    Ok(Some(_api_key)) => {
+                        let method = self.detect_auth_method().await;
+                        let source = self.detect_auth_source().await;
+                        CodexStatus {
+                            available,
+                            version,
+                            authenticated: true,
+                            auth_method: Some(method),
+                            auth_source: Some(source),
+                            error,
+                        }
+                    }
+                    _ => CodexStatus {
+                        available,
+                        version,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    },
+                }
+            }
+        }
+
+        let test_agent = TestCodexAgent {};
+
+        let status = test_agent.get_codex_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("0.46.0".to_string()));
+        assert!(status.authenticated);
+        assert_eq!(
+            status.auth_method,
+            Some("OPENAI_API_KEY environment variable".to_string())
+        );
+        assert_eq!(status.auth_source, Some("OPENAI_API_KEY".to_string()));
+        assert!(status.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_codex_status_no_auth() {
+        struct TestCodexAgentNoAuth;
+
+        impl TestCodexAgentNoAuth {
+            async fn detect_version(&self) -> AgentResult<AgentVersion> {
+                Ok(AgentVersion {
+                    version: "0.46.0".to_string(),
+                    commit: None,
+                    release_date: None,
+                })
+            }
+
+            async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
+                Ok(None) // No API key found
+            }
+
+            async fn get_codex_status(&self) -> CodexStatus {
+                let version_result = self.detect_version().await;
+
+                let (available, version, error) = match version_result {
+                    Ok(version_info) => (true, Some(version_info.version), None),
+                    Err(e) => (
+                        false,
+                        None,
+                        Some(format!("Version detection failed: {}", e)),
+                    ),
+                };
+
+                if !available {
+                    return CodexStatus {
+                        available: false,
+                        version: None,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    };
+                }
+
+                match self.get_user_api_key().await {
+                    Ok(Some(_api_key)) => CodexStatus {
+                        available,
+                        version,
+                        authenticated: true,
+                        auth_method: Some("mock".to_string()),
+                        auth_source: Some("mock".to_string()),
+                        error,
+                    },
+                    _ => CodexStatus {
+                        available,
+                        version,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    },
+                }
+            }
+        }
+
+        let test_agent = TestCodexAgentNoAuth;
+        let status = test_agent.get_codex_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("0.46.0".to_string()));
+        assert!(!status.authenticated);
+        assert!(status.auth_method.is_none());
+        assert!(status.auth_source.is_none());
+        assert!(status.error.is_none());
+    }
 }

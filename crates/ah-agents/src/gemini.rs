@@ -271,7 +271,7 @@ impl GeminiAgent {
     /// - Any errors encountered
     pub async fn get_gemini_status(&self) -> GeminiStatus {
         // Check CLI availability by detecting version with timeout
-        let (available, version, mut error) = match tokio::time::timeout(
+        let (available, version, error) = match tokio::time::timeout(
             std::time::Duration::from_millis(1500),
             self.detect_version(),
         )
@@ -304,10 +304,7 @@ impl GeminiAgent {
 
         // Check authentication status using synchronous method to avoid hanging
         let (auth_method, auth_source) = self.detect_auth_details_sync();
-        let authenticated = match (&auth_method, &auth_source) {
-            (method, source) if method != "Unknown" && source != "Unknown" => true,
-            _ => false,
-        };
+        let authenticated = matches!((&auth_method, &auth_source), (method, source) if method != "Unknown" && source != "Unknown");
 
         GeminiStatus {
             available,
@@ -728,5 +725,609 @@ mod tests {
         assert!(paths.contains(&PathBuf::from(".gemini/google_accounts.json")));
         assert!(paths.contains(&PathBuf::from(".gemini/oauth_creds.json")));
         assert!(paths.contains(&PathBuf::from(".gemini/settings.json")));
+    }
+
+    // Tests for detect_auth_details_sync method
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_gemini_api_key() {
+        use crate::test_support::EnvVarGuard;
+
+        // Set up temporary home directory for test
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Create .gemini directory and settings.json
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let settings_content = serde_json::json!({
+            "security": {
+                "auth": {
+                    "selectedType": "gemini-api-key"
+                }
+            }
+        });
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings_content).unwrap(),
+        )
+        .unwrap();
+
+        // Set environment variable
+        let _api_key_guard = EnvVarGuard::set("GEMINI_API_KEY", "test-api-key");
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "gemini-api-key");
+        assert_eq!(auth_source, "GEMINI_API_KEY");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_vertex_ai() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let settings_content = serde_json::json!({
+            "security": {
+                "auth": {
+                    "selectedType": "vertex-ai"
+                }
+            }
+        });
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings_content).unwrap(),
+        )
+        .unwrap();
+
+        let _google_api_key_guard = EnvVarGuard::set("GOOGLE_API_KEY", "test-google-key");
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "vertex-ai");
+        assert_eq!(auth_source, "GOOGLE_API_KEY");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_oauth_personal() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let settings_content = serde_json::json!({
+            "security": {
+                "auth": {
+                    "selectedType": "oauth-personal"
+                }
+            }
+        });
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings_content).unwrap(),
+        )
+        .unwrap();
+
+        // Create oauth_creds.json file
+        let oauth_creds_path = gemini_dir.join("oauth_creds.json");
+        std::fs::write(&oauth_creds_path, r#"{"token": "test"}"#).unwrap();
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "oauth-personal");
+        assert_eq!(auth_source, oauth_creds_path.to_string_lossy());
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_configured_but_invalid() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Clean environment variables
+        let _gemini_guard = EnvVarGuard::remove("GEMINI_API_KEY");
+        let _google_guard = EnvVarGuard::remove("GOOGLE_API_KEY");
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let settings_content = serde_json::json!({
+            "security": {
+                "auth": {
+                    "selectedType": "gemini-api-key"
+                }
+            }
+        });
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings_content).unwrap(),
+        )
+        .unwrap();
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "gemini-api-key");
+        assert_eq!(auth_source, "configured but invalid");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_fallback_gemini_api_key() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // No settings.json file, so should fallback to env vars
+        let _gemini_api_key_guard = EnvVarGuard::set("GEMINI_API_KEY", "test-key");
+        let _google_guard = EnvVarGuard::remove("GOOGLE_API_KEY");
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "gemini-api-key");
+        assert_eq!(auth_source, "GEMINI_API_KEY");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_fallback_google_api_key() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // No settings.json file, so should fallback to env vars
+        let _gemini_guard = EnvVarGuard::remove("GEMINI_API_KEY");
+        let _google_api_key_guard = EnvVarGuard::set("GOOGLE_API_KEY", "test-google-key");
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "vertex-ai");
+        assert_eq!(auth_source, "GOOGLE_API_KEY");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_fallback_oauth() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Clean environment variables
+        let _gemini_guard = EnvVarGuard::remove("GEMINI_API_KEY");
+        let _google_guard = EnvVarGuard::remove("GOOGLE_API_KEY");
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        // Create oauth_creds.json file without settings.json
+        let oauth_creds_path = gemini_dir.join("oauth_creds.json");
+        std::fs::write(&oauth_creds_path, r#"{"token": "test"}"#).unwrap();
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "oauth-personal");
+        assert_eq!(auth_source, oauth_creds_path.to_string_lossy());
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_no_auth() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Clean environment variables
+        let _gemini_guard = EnvVarGuard::remove("GEMINI_API_KEY");
+        let _google_guard = EnvVarGuard::remove("GOOGLE_API_KEY");
+
+        // Create empty gemini dir but no credentials
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "Unknown");
+        assert_eq!(auth_source, "Unknown");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_no_home() {
+        use crate::test_support::EnvVarGuard;
+
+        let _home_guard = EnvVarGuard::remove("HOME");
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "Unknown");
+        assert_eq!(auth_source, "Unknown");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_malformed_settings() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        // Create malformed settings.json
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(&settings_path, "{ invalid json }").unwrap();
+
+        // Should fallback to env vars when settings parsing fails
+        let _gemini_api_key_guard = EnvVarGuard::set("GEMINI_API_KEY", "test-key");
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "gemini-api-key");
+        assert_eq!(auth_source, "GEMINI_API_KEY");
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_detect_auth_details_sync_unknown_auth_type() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let settings_content = serde_json::json!({
+            "security": {
+                "auth": {
+                    "selectedType": "unknown-auth-type"
+                }
+            }
+        });
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings_content).unwrap(),
+        )
+        .unwrap();
+
+        let agent = GeminiAgent::new();
+        let (auth_method, auth_source) = agent.detect_auth_details_sync();
+
+        assert_eq!(auth_method, "unknown-auth-type");
+        assert_eq!(auth_source, "configured but invalid");
+    }
+
+    // Tests for get_gemini_status method
+
+    // Mock GeminiAgent for testing get_gemini_status
+    struct MockGeminiAgent {
+        binary_path: String,
+        should_timeout: bool,
+        should_fail: bool,
+        should_not_exist: bool,
+        version_to_return: Option<String>,
+    }
+
+    impl MockGeminiAgent {
+        fn new() -> Self {
+            Self {
+                binary_path: "gemini".to_string(),
+                should_timeout: false,
+                should_fail: false,
+                should_not_exist: false,
+                version_to_return: Some("1.0.0".to_string()),
+            }
+        }
+
+        fn with_timeout(mut self) -> Self {
+            self.should_timeout = true;
+            self
+        }
+
+        fn with_failure(mut self) -> Self {
+            self.should_fail = true;
+            self
+        }
+
+        fn with_not_found(mut self) -> Self {
+            self.should_not_exist = true;
+            self
+        }
+
+        fn with_version(mut self, version: &str) -> Self {
+            self.version_to_return = Some(version.to_string());
+            self
+        }
+
+        async fn detect_version(&self) -> AgentResult<AgentVersion> {
+            if self.should_not_exist {
+                return Err(AgentError::AgentNotFound(self.binary_path.clone()));
+            }
+
+            if self.should_fail {
+                return Err(AgentError::VersionDetectionFailed(
+                    "Test failure".to_string(),
+                ));
+            }
+
+            if self.should_timeout {
+                // Simulate a hanging operation
+                tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+            }
+
+            Ok(AgentVersion {
+                version: self.version_to_return.clone().unwrap_or("1.0.0".to_string()),
+                commit: None,
+                release_date: None,
+            })
+        }
+
+        fn detect_auth_details_sync(&self) -> (String, String) {
+            // Use the real implementation
+            let agent = GeminiAgent::new();
+            agent.detect_auth_details_sync()
+        }
+
+        async fn get_gemini_status(&self) -> GeminiStatus {
+            // Check CLI availability by detecting version with timeout
+            let (available, version, error) = match tokio::time::timeout(
+                std::time::Duration::from_millis(1500),
+                self.detect_version(),
+            )
+            .await
+            {
+                Ok(Ok(version_info)) => (true, Some(version_info.version), None),
+                Ok(Err(AgentError::AgentNotFound(_))) => (
+                    false,
+                    None,
+                    Some("Gemini CLI not found in PATH".to_string()),
+                ),
+                Ok(Err(e)) => (false, None, Some(format!("{}", e))),
+                Err(_) => (false, None, Some("Version detection timed out".to_string())),
+            };
+
+            if !available {
+                return GeminiStatus {
+                    available: false,
+                    version: None,
+                    authenticated: false,
+                    auth_method: None,
+                    auth_source: None,
+                    error,
+                };
+            }
+
+            // Check authentication status using synchronous method to avoid hanging
+            let (auth_method, auth_source) = self.detect_auth_details_sync();
+            let authenticated = matches!((&auth_method, &auth_source), (method, source) if method != "Unknown" && source != "Unknown");
+
+            GeminiStatus {
+                available,
+                version,
+                authenticated,
+                auth_method: if authenticated {
+                    Some(auth_method)
+                } else {
+                    None
+                },
+                auth_source: if authenticated {
+                    Some(auth_source)
+                } else {
+                    None
+                },
+                error,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_gemini_status_agent_not_found() {
+        let mock_agent = MockGeminiAgent::new().with_not_found();
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(!status.available);
+        assert_eq!(status.version, None);
+        assert!(!status.authenticated);
+        assert_eq!(status.auth_method, None);
+        assert_eq!(status.auth_source, None);
+        assert_eq!(
+            status.error,
+            Some("Gemini CLI not found in PATH".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_gemini_status_timeout() {
+        let mock_agent = MockGeminiAgent::new().with_timeout();
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(!status.available);
+        assert_eq!(status.version, None);
+        assert!(!status.authenticated);
+        assert_eq!(status.auth_method, None);
+        assert_eq!(status.auth_source, None);
+        assert_eq!(
+            status.error,
+            Some("Version detection timed out".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_gemini_status_version_detection_failed() {
+        let mock_agent = MockGeminiAgent::new().with_failure();
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(!status.available);
+        assert_eq!(status.version, None);
+        assert!(!status.authenticated);
+        assert_eq!(status.auth_method, None);
+        assert_eq!(status.auth_source, None);
+        assert_eq!(
+            status.error,
+            Some("Version detection failed: Test failure".to_string())
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_gemini_status_successful_with_auth() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Set up authentication
+        let _gemini_api_key_guard = EnvVarGuard::set("GEMINI_API_KEY", "test-key");
+
+        let mock_agent = MockGeminiAgent::new().with_version("1.2.3");
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("1.2.3".to_string()));
+        assert!(status.authenticated);
+        assert_eq!(status.auth_method, Some("gemini-api-key".to_string()));
+        assert_eq!(status.auth_source, Some("GEMINI_API_KEY".to_string()));
+        assert_eq!(status.error, None);
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_gemini_status_successful_no_auth() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Clean environment variables
+        let _gemini_guard = EnvVarGuard::remove("GEMINI_API_KEY");
+        let _google_guard = EnvVarGuard::remove("GOOGLE_API_KEY");
+
+        let mock_agent = MockGeminiAgent::new().with_version("2.0.0");
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("2.0.0".to_string()));
+        assert!(!status.authenticated);
+        assert_eq!(status.auth_method, None);
+        assert_eq!(status.auth_source, None);
+        assert_eq!(status.error, None);
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_gemini_status_with_vertex_ai_auth() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        let settings_content = serde_json::json!({
+            "security": {
+                "auth": {
+                    "selectedType": "vertex-ai"
+                }
+            }
+        });
+        let settings_path = gemini_dir.join("settings.json");
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings_content).unwrap(),
+        )
+        .unwrap();
+
+        let _google_api_key_guard = EnvVarGuard::set("GOOGLE_API_KEY", "test-google-key");
+
+        let mock_agent = MockGeminiAgent::new().with_version("0.5.0");
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("0.5.0".to_string()));
+        assert!(status.authenticated);
+        assert_eq!(status.auth_method, Some("vertex-ai".to_string()));
+        assert_eq!(status.auth_source, Some("GOOGLE_API_KEY".to_string()));
+        assert_eq!(status.error, None);
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_gemini_status_with_oauth_auth() {
+        use crate::test_support::EnvVarGuard;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let home_dir = temp_dir.path();
+        let _home_guard = EnvVarGuard::set("HOME", home_dir);
+
+        // Clean environment variables
+        let _gemini_guard = EnvVarGuard::remove("GEMINI_API_KEY");
+        let _google_guard = EnvVarGuard::remove("GOOGLE_API_KEY");
+
+        let gemini_dir = home_dir.join(".gemini");
+        std::fs::create_dir_all(&gemini_dir).unwrap();
+
+        // Create oauth_creds.json file
+        let oauth_creds_path = gemini_dir.join("oauth_creds.json");
+        std::fs::write(&oauth_creds_path, r#"{"token": "test"}"#).unwrap();
+
+        let mock_agent = MockGeminiAgent::new().with_version("1.5.0");
+        let status = mock_agent.get_gemini_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("1.5.0".to_string()));
+        assert!(status.authenticated);
+        assert_eq!(status.auth_method, Some("oauth-personal".to_string()));
+        assert_eq!(
+            status.auth_source,
+            Some(oauth_creds_path.to_string_lossy().to_string())
+        );
+        assert_eq!(status.error, None);
     }
 }
