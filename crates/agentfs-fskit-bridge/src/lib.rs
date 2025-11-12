@@ -6,8 +6,19 @@
 //! This crate provides a higher-level interface for the Swift FSKit extension
 //! to communicate with the Rust AgentFS core, handling memory management and
 //! type conversions.
+//!
+//! # Safety
+//! All FFI functions in this module require that:
+//! - All pointer arguments are valid, properly aligned, and point to initialized memory (or null where documented).
+//! - String pointers (`*const c_char`) point to valid null-terminated C strings.
+//! - Output pointers (`*mut`) point to writable memory of the expected size.
+//! - The `core` handle passed to functions must have been obtained from `agentfs_bridge_core_create` and not yet destroyed.
+//!
+//! Violating these preconditions results in undefined behavior.
 
-use libc::{c_char, size_t, ssize_t};
+#![allow(clippy::missing_safety_doc)] // Safety documented at module level above
+
+use libc::c_char;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use thiserror::Error;
@@ -292,6 +303,7 @@ pub struct FsAttributes {
 }
 
 impl FsAttributes {
+    #[allow(dead_code)]
     fn from_c(attrs: AgentFsAttributes) -> Self {
         Self {
             file_id: attrs.file_id,
@@ -491,9 +503,7 @@ pub unsafe extern "C" fn agentfs_bridge_open(
 
     let core_handle = unsafe { (*core).handle };
 
-    let result = unsafe { af_open(core_handle, path, options_json, out_handle) };
-
-    result
+    unsafe { af_open(core_handle, path, options_json, out_handle) }
 }
 
 /// Read from file (Swift-callable)
@@ -512,9 +522,7 @@ pub unsafe extern "C" fn agentfs_bridge_read(
 
     let core_handle = unsafe { (*core).handle };
 
-    let result = unsafe { af_read(core_handle, handle, offset, buffer, length, out_read) };
-
-    result
+    unsafe { af_read(core_handle, handle, offset, buffer, length, out_read) }
 }
 
 /// Write to file (Swift-callable)
@@ -533,9 +541,7 @@ pub unsafe extern "C" fn agentfs_bridge_write(
 
     let core_handle = unsafe { (*core).handle };
 
-    let result = unsafe { af_write(core_handle, handle, offset, buffer, length, out_written) };
-
-    result
+    unsafe { af_write(core_handle, handle, offset, buffer, length, out_written) }
 }
 
 /// Close file (Swift-callable)
@@ -547,9 +553,7 @@ pub unsafe extern "C" fn agentfs_bridge_close(core: *mut FsCore, handle: u64) ->
 
     let core_handle = unsafe { (*core).handle };
 
-    let result = unsafe { af_close(core_handle, handle) };
-
-    result
+    unsafe { af_close(core_handle, handle) }
 }
 
 /// Control request (Swift-callable)
@@ -566,7 +570,7 @@ pub unsafe extern "C" fn agentfs_bridge_control_request(
         return -1;
     }
 
-    let result = unsafe {
+    unsafe {
         af_control_request(
             fs,
             request_data,
@@ -575,9 +579,7 @@ pub unsafe extern "C" fn agentfs_bridge_control_request(
             response_max_len,
             response_actual_len,
         )
-    };
-
-    result
+    }
 }
 
 /// Get file statistics (Swift-callable)
@@ -702,9 +704,8 @@ pub unsafe extern "C" fn agentfs_bridge_getattr(
     }
 
     let core_handle = unsafe { (*core).handle };
-    let result = unsafe { af_getattr(core_handle, path, buffer as *mut u8, buffer_size) };
 
-    result
+    unsafe { af_getattr(core_handle, path, buffer as *mut u8, buffer_size) }
 }
 
 /// Create symlink (Swift-callable)
@@ -719,9 +720,8 @@ pub unsafe extern "C" fn agentfs_bridge_symlink(
     }
 
     let core_handle = unsafe { (*core).handle };
-    let result = unsafe { af_symlink(core_handle, target, linkpath) };
 
-    result
+    unsafe { af_symlink(core_handle, target, linkpath) }
 }
 
 /// Read symlink (Swift-callable)
@@ -737,9 +737,8 @@ pub unsafe extern "C" fn agentfs_bridge_readlink(
     }
 
     let core_handle = unsafe { (*core).handle };
-    let result = unsafe { af_readlink(core_handle, path, buffer, buffer_size) };
 
-    result
+    unsafe { af_readlink(core_handle, path, buffer, buffer_size) }
 }
 
 /// Rename/move file (Swift-callable)
@@ -761,9 +760,8 @@ pub unsafe extern "C" fn agentfs_bridge_rmdir(core: *mut FsCore, path: *const c_
     }
 
     let core_handle = unsafe { (*core).handle };
-    let result = unsafe { af_rmdir(core_handle, path) };
 
-    result
+    unsafe { af_rmdir(core_handle, path) }
 }
 
 /// Unlink file (Swift-callable)
@@ -774,9 +772,8 @@ pub unsafe extern "C" fn agentfs_bridge_unlink(core: *mut FsCore, path: *const c
     }
 
     let core_handle = unsafe { (*core).handle };
-    let result = unsafe { af_unlink(core_handle, path) };
 
-    result
+    unsafe { af_unlink(core_handle, path) }
 }
 
 /// Get error message from last operation (Swift-callable)
