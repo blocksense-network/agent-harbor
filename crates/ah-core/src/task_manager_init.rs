@@ -114,6 +114,7 @@ pub enum MultiplexerPreference {
 }
 
 /// Detect the appropriate multiplexer for the current environment
+#[allow(dead_code)]
 fn detect_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, String> {
     // Detect the current terminal environment stack
     let terminal_envs = ah_mux::detection::detect_terminal_environments();

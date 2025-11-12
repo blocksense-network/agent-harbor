@@ -13,7 +13,7 @@ use futures::{Stream, StreamExt};
 use std::pin::Pin;
 use tokio::sync::broadcast;
 
-use crate::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager, agent_types::AgentType};
+use crate::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 use ah_domain_types::{LogLevel, ToolStatus};
 
 /// Trait for REST API clients that can be used with RestTaskManager
@@ -118,7 +118,7 @@ where
     fn convert_session_event(event: ah_rest_api_contract::SessionEvent) -> TaskEvent {
         // Convert u64 timestamp to DateTime<Utc)
         let datetime_ts = chrono::DateTime::from_timestamp(event.timestamp() as i64, 0)
-            .unwrap_or_else(|| chrono::Utc::now());
+            .unwrap_or_else(chrono::Utc::now);
 
         match event {
             ah_rest_api_contract::SessionEvent::Status(event) => {
@@ -508,6 +508,7 @@ impl RestApiClient for ah_rest_client::RestClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_types::AgentType;
     use ah_domain_types::SelectedModel;
 
     #[tokio::test]
