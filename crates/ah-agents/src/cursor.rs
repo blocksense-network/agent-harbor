@@ -6,9 +6,27 @@ use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
+
+/// Status information for the Cursor CLI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CursorStatus {
+    /// Whether the CLI is installed and available
+    pub available: bool,
+    /// Version information if available
+    pub version: Option<String>,
+    /// Whether the user is authenticated
+    pub authenticated: bool,
+    /// Authentication method used (e.g., "Session Token", "API Key", "OAuth")
+    pub auth_method: Option<String>,
+    /// Source of authentication (config file path, environment variable name, etc.)
+    pub auth_source: Option<String>,
+    /// Any error that occurred during status check
+    pub error: Option<String>,
+}
 
 /// Cursor CLI agent executor
 pub struct CursorAgent {
@@ -135,6 +153,136 @@ impl CursorAgent {
 
         debug!("Cursor CLI authentication configuration completed");
         Ok(())
+    }
+
+    /// Get structured Cursor CLI status information
+    ///
+    /// This function returns comprehensive status information in a structured format
+    /// that can be easily consumed by health checkers and other tools.
+    ///
+    /// Returns CursorStatus with detailed information about:
+    /// - CLI availability and version
+    /// - Authentication status and method
+    /// - Session token information (masked for security)
+    /// - Any errors encountered
+    pub async fn get_cursor_status(&self) -> CursorStatus {
+        // Check CLI availability by detecting version with timeout
+        let version_result = tokio::time::timeout(
+            std::time::Duration::from_millis(1500),
+            self.detect_version(),
+        )
+        .await;
+
+        debug!("Cursor version detection result: {:?}", version_result);
+
+        let (available, version, mut error) = match version_result {
+            Ok(Ok(version_info)) => {
+                debug!("Version detected successfully: {}", version_info.version);
+                (true, Some(version_info.version), None)
+            }
+            Ok(Err(AgentError::AgentNotFound(_))) => {
+                debug!("Cursor agent not found in PATH");
+                (
+                    false,
+                    None,
+                    Some("cursor-agent not found in PATH".to_string()),
+                )
+            }
+            Ok(Err(e)) => {
+                debug!("Version detection failed with error: {:?}", e);
+                (
+                    false,
+                    None,
+                    Some(format!("Version detection failed: {}", e)),
+                )
+            }
+            Err(_) => {
+                debug!("Version detection timed out");
+                (false, None, Some("Version detection timed out".to_string()))
+            }
+        };
+
+        if !available {
+            return CursorStatus {
+                available: false,
+                version: None,
+                authenticated: false,
+                auth_method: None,
+                auth_source: None,
+                error,
+            };
+        }
+
+        // Check authentication status by looking for tokens in the database
+        match self.check_cursor_login_status() {
+            Ok(Some(_token)) => {
+                // Determine authentication method and source
+                let (auth_method, auth_source) = self.detect_cursor_auth_details();
+
+                CursorStatus {
+                    available,
+                    version,
+                    authenticated: true,
+                    auth_method: Some(auth_method),
+                    auth_source: Some(auth_source),
+                    error,
+                }
+            }
+            Ok(None) => CursorStatus {
+                available,
+                version,
+                authenticated: false,
+                auth_method: None,
+                auth_source: None,
+                error,
+            },
+            Err(e) => {
+                error = Some(format!("Authentication check failed: {}", e));
+                CursorStatus {
+                    available,
+                    version,
+                    authenticated: false,
+                    auth_method: None,
+                    auth_source: None,
+                    error,
+                }
+            }
+        }
+    }
+
+    /// Detect authentication method and source details for Cursor CLI
+    fn detect_cursor_auth_details(&self) -> (String, String) {
+        // Determine the correct database path based on platform
+        let db_path = if cfg!(target_os = "macos") {
+            std::env::var("HOME").map(|home| {
+                PathBuf::from(home)
+                    .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+            })
+        } else if cfg!(target_os = "windows") {
+            std::env::var("APPDATA").map(|app_data| {
+                PathBuf::from(app_data).join("Cursor\\User\\globalStorage\\state.vscdb")
+            })
+        } else {
+            // linux and others
+            std::env::var("HOME").map(|home| {
+                PathBuf::from(home).join(".config/Cursor/User/globalStorage/state.vscdb")
+            })
+        };
+
+        let db_path = match db_path {
+            Ok(path) => path,
+            Err(_) => return ("Unknown".to_string(), "Unknown".to_string()),
+        };
+
+        if !db_path.exists() {
+            return ("Unknown".to_string(), "Database not found".to_string());
+        }
+
+        // For Cursor, we know it uses session tokens stored in the database
+        let auth_method = "Session Token".to_string();
+        let auth_source = db_path.to_string_lossy().to_string();
+
+        (auth_method, auth_source)
     }
 }
 
@@ -517,6 +665,15 @@ mod tests {
         assert!(result.is_ok());
         let version = result.unwrap();
         assert_eq!(version.version, "2025.09.18-39624ef");
+    }
+
+    #[test]
+    fn test_parse_version_current_format() {
+        let output = "2025.10.02-bd871ac";
+        let result = CursorAgent::parse_version(output);
+        assert!(result.is_ok(), "Failed to parse version: {:?}", result);
+        let version = result.unwrap();
+        assert_eq!(version.version, "2025.10.02-bd871ac");
     }
 
     #[tokio::test]
