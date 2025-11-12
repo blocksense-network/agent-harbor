@@ -346,6 +346,10 @@ The TUI provides comprehensive mouse support alongside keyboard navigation:
   - **Card Selection**: Click on any task card to select it
   - **Button Activation**: Click on buttons (Repository, Branch, Model, Go) to activate them
   - **Text Area Focus**: Click in draft text areas to focus and position cursor
+  - **Single Click Inside Text Area**: Moves the caret to the precise character closest to the pointer location, honoring horizontal padding and wide glyph widths
+  - **Double Click Inside Text Area**: Selects the word under the caret using the same token boundaries as keyboard shortcuts
+  - **Triple Click Inside Text Area**: Selects the entire logical line containing the caret
+  - **Quadruple Click Inside Text Area**: Selects the entire textarea contents; timing thresholds ensure slow sequential clicks fall back to single-click behavior
   - **Menu Selection**: Click on items in popup menus to select them
   - **Scrollbar Interaction**: Click and drag scrollbars when visible
 
