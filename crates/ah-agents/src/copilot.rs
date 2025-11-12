@@ -670,7 +670,6 @@ impl AgentExecutor for CopilotAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
     use std::fs;
 
     #[test]
@@ -755,56 +754,50 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial(env)]
     async fn test_get_user_api_key_sources() {
+        use crate::test_support::EnvVarGuard;
+
         let agent = CopilotAgent::new();
 
-        // Save previous env to restore at the end
-        let prev_home = env::var_os("HOME");
-        let prev_gh_token = env::var_os("GH_TOKEN");
-        let prev_github_token = env::var_os("GITHUB_TOKEN");
-        let prev_gh_token_file = env::var_os("GH_TOKEN_FILE");
-        let prev_github_token_file = env::var_os("GITHUB_TOKEN_FILE");
-
         let temp_home = tempfile::TempDir::new().unwrap();
-        env::set_var("HOME", temp_home.path());
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
 
-        // Ensure clean env
-        env::remove_var("GH_TOKEN");
-        env::remove_var("GITHUB_TOKEN");
-        env::remove_var("GH_TOKEN_FILE");
-        env::remove_var("GITHUB_TOKEN_FILE");
-
-        // 0) No tokens anywhere
+        // 0) No tokens anywhere (clean env by default)
         let token = agent.get_user_api_key().await.unwrap();
         assert_eq!(token, None);
 
         // 1) GH_TOKEN takes precedence
-        env::set_var("GH_TOKEN", "token_env1");
-        let token = agent.get_user_api_key().await.unwrap();
-        assert_eq!(token.as_deref(), Some("token_env1"));
-        env::remove_var("GH_TOKEN");
+        {
+            let _gh_token_guard = EnvVarGuard::set("GH_TOKEN", "token_env1");
+            let token = agent.get_user_api_key().await.unwrap();
+            assert_eq!(token.as_deref(), Some("token_env1"));
+        } // _gh_token_guard dropped, GH_TOKEN restored
 
         // 2) GITHUB_TOKEN
-        env::set_var("GITHUB_TOKEN", "token_env2");
-        let token = agent.get_user_api_key().await.unwrap();
-        assert_eq!(token.as_deref(), Some("token_env2"));
-        env::remove_var("GITHUB_TOKEN");
+        {
+            let _github_token_guard = EnvVarGuard::set("GITHUB_TOKEN", "token_env2");
+            let token = agent.get_user_api_key().await.unwrap();
+            assert_eq!(token.as_deref(), Some("token_env2"));
+        } // _github_token_guard dropped, GITHUB_TOKEN restored
 
         // 3) GH_TOKEN_FILE
-        let token_file1 = temp_home.path().join("gh_token_file.txt");
-        fs::write(&token_file1, "filetoken1\n").unwrap();
-        env::set_var("GH_TOKEN_FILE", &token_file1);
-        let token = agent.get_user_api_key().await.unwrap();
-        assert_eq!(token.as_deref(), Some("filetoken1"));
-        env::remove_var("GH_TOKEN_FILE");
+        {
+            let token_file1 = temp_home.path().join("gh_token_file.txt");
+            fs::write(&token_file1, "filetoken1\n").unwrap();
+            let _gh_token_file_guard = EnvVarGuard::set("GH_TOKEN_FILE", &token_file1);
+            let token = agent.get_user_api_key().await.unwrap();
+            assert_eq!(token.as_deref(), Some("filetoken1"));
+        } // _gh_token_file_guard dropped, GH_TOKEN_FILE restored
 
         // 4) GITHUB_TOKEN_FILE
-        let token_file2 = temp_home.path().join("github_token_file.txt");
-        fs::write(&token_file2, "filetoken2").unwrap();
-        env::set_var("GITHUB_TOKEN_FILE", &token_file2);
-        let token = agent.get_user_api_key().await.unwrap();
-        assert_eq!(token.as_deref(), Some("filetoken2"));
-        env::remove_var("GITHUB_TOKEN_FILE");
+        {
+            let token_file2 = temp_home.path().join("github_token_file.txt");
+            fs::write(&token_file2, "filetoken2").unwrap();
+            let _github_token_file_guard = EnvVarGuard::set("GITHUB_TOKEN_FILE", &token_file2);
+            let token = agent.get_user_api_key().await.unwrap();
+            assert_eq!(token.as_deref(), Some("filetoken2"));
+        } // _github_token_file_guard dropped, GITHUB_TOKEN_FILE restored
 
         // 5) gh hosts.yml oauth_token
         let gh_dir = temp_home.path().join(".config/gh");
@@ -843,27 +836,528 @@ mod tests {
         fs::write(&cfg_path, serde_json::to_string_pretty(&cfg2).unwrap()).unwrap();
         let token = agent.get_user_api_key().await.unwrap();
         assert_eq!(token.as_deref(), Some("token_bob"));
+    }
 
-        // Restore env
-        match prev_home {
-            Some(v) => env::set_var("HOME", v),
-            None => env::remove_var("HOME"),
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_copilot_status_agent_not_found() {
+        use crate::test_support::EnvVarGuard;
+
+        // Clean environment variables to ensure consistent test results
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Create an agent with a non-existent binary path
+        let agent = CopilotAgent {
+            binary_path: "nonexistent-copilot-agent".to_string(),
+        };
+
+        let status = agent.get_copilot_status().await;
+
+        assert!(!status.available);
+        assert!(status.version.is_none());
+        assert!(!status.authenticated);
+        assert!(status.auth_method.is_none());
+        assert!(status.auth_source.is_none());
+        assert!(status.error.is_some());
+        assert!(status.error.unwrap().contains("Copilot CLI not found"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_copilot_status_successful_with_auth() {
+        // Create a test agent that mocks successful version detection and authentication
+        struct TestCopilotAgent {}
+
+        impl TestCopilotAgent {
+            async fn detect_version(&self) -> AgentResult<AgentVersion> {
+                Ok(AgentVersion {
+                    version: "0.0.341".to_string(),
+                    commit: Some("5725358".to_string()),
+                    release_date: None,
+                })
+            }
+
+            async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
+                Ok(Some("ghp_mock_api_key_12345".to_string()))
+            }
+
+            async fn detect_auth_method(&self) -> String {
+                "GH_TOKEN environment variable".to_string()
+            }
+
+            async fn detect_auth_source(&self) -> String {
+                "GH_TOKEN".to_string()
+            }
+
+            async fn get_copilot_status(&self) -> CopilotStatus {
+                // Simplified version of the real implementation
+                let version_result = self.detect_version().await;
+
+                let (available, version, error) = match version_result {
+                    Ok(version_info) => (true, Some(version_info.version), None),
+                    Err(AgentError::AgentNotFound(_)) => (
+                        false,
+                        None,
+                        Some("Copilot CLI not found in PATH".to_string()),
+                    ),
+                    Err(e) => (
+                        false,
+                        None,
+                        Some(format!("Version detection failed: {}", e)),
+                    ),
+                };
+
+                if !available {
+                    return CopilotStatus {
+                        available: false,
+                        version: None,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    };
+                }
+
+                match self.get_user_api_key().await {
+                    Ok(Some(_api_key)) => {
+                        let method = self.detect_auth_method().await;
+                        let source = self.detect_auth_source().await;
+                        CopilotStatus {
+                            available,
+                            version,
+                            authenticated: true,
+                            auth_method: Some(method),
+                            auth_source: Some(source),
+                            error,
+                        }
+                    }
+                    _ => CopilotStatus {
+                        available,
+                        version,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    },
+                }
+            }
         }
-        match prev_gh_token {
-            Some(v) => env::set_var("GH_TOKEN", v),
-            None => env::remove_var("GH_TOKEN"),
+
+        let test_agent = TestCopilotAgent {};
+
+        let status = test_agent.get_copilot_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("0.0.341".to_string()));
+        assert!(status.authenticated);
+        assert_eq!(
+            status.auth_method,
+            Some("GH_TOKEN environment variable".to_string())
+        );
+        assert_eq!(status.auth_source, Some("GH_TOKEN".to_string()));
+        assert!(status.error.is_none());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_get_copilot_status_no_auth() {
+        struct TestCopilotAgentNoAuth;
+
+        impl TestCopilotAgentNoAuth {
+            async fn detect_version(&self) -> AgentResult<AgentVersion> {
+                Ok(AgentVersion {
+                    version: "0.0.341".to_string(),
+                    commit: Some("5725358".to_string()),
+                    release_date: None,
+                })
+            }
+
+            async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
+                Ok(None) // No API key found
+            }
+
+            async fn get_copilot_status(&self) -> CopilotStatus {
+                let version_result = self.detect_version().await;
+
+                let (available, version, error) = match version_result {
+                    Ok(version_info) => (true, Some(version_info.version), None),
+                    Err(AgentError::AgentNotFound(_)) => (
+                        false,
+                        None,
+                        Some("Copilot CLI not found in PATH".to_string()),
+                    ),
+                    Err(e) => (
+                        false,
+                        None,
+                        Some(format!("Version detection failed: {}", e)),
+                    ),
+                };
+
+                if !available {
+                    return CopilotStatus {
+                        available: false,
+                        version: None,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    };
+                }
+
+                match self.get_user_api_key().await {
+                    Ok(Some(_api_key)) => CopilotStatus {
+                        available,
+                        version,
+                        authenticated: true,
+                        auth_method: Some("mock".to_string()),
+                        auth_source: Some("mock".to_string()),
+                        error,
+                    },
+                    _ => CopilotStatus {
+                        available,
+                        version,
+                        authenticated: false,
+                        auth_method: None,
+                        auth_source: None,
+                        error,
+                    },
+                }
+            }
         }
-        match prev_github_token {
-            Some(v) => env::set_var("GITHUB_TOKEN", v),
-            None => env::remove_var("GITHUB_TOKEN"),
-        }
-        match prev_gh_token_file {
-            Some(v) => env::set_var("GH_TOKEN_FILE", v),
-            None => env::remove_var("GH_TOKEN_FILE"),
-        }
-        match prev_github_token_file {
-            Some(v) => env::set_var("GITHUB_TOKEN_FILE", v),
-            None => env::remove_var("GITHUB_TOKEN_FILE"),
-        }
+
+        let test_agent = TestCopilotAgentNoAuth;
+        let status = test_agent.get_copilot_status().await;
+
+        assert!(status.available);
+        assert_eq!(status.version, Some("0.0.341".to_string()));
+        assert!(!status.authenticated);
+        assert!(status.auth_method.is_none());
+        assert!(status.auth_source.is_none());
+        assert!(status.error.is_none());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_gh_token() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars first
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Set GH_TOKEN and verify it's detected
+        let _gh_token_guard = EnvVarGuard::set("GH_TOKEN", "test-token");
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "GH_TOKEN environment variable");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_github_token() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Set GITHUB_TOKEN and verify it's detected
+        let _github_token_guard = EnvVarGuard::set("GITHUB_TOKEN", "test-token");
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "GITHUB_TOKEN environment variable");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_gh_token_file() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Set GH_TOKEN_FILE and verify it's detected
+        let token_file = temp_home.path().join("token.txt");
+        fs::write(&token_file, "test-token").unwrap();
+        let _gh_token_file_guard = EnvVarGuard::set("GH_TOKEN_FILE", &token_file);
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "GH_TOKEN_FILE");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_github_token_file() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+
+        // Set GITHUB_TOKEN_FILE and verify it's detected
+        let token_file = temp_home.path().join("token.txt");
+        fs::write(&token_file, "test-token").unwrap();
+        let _github_token_file_guard = EnvVarGuard::set("GITHUB_TOKEN_FILE", &token_file);
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "GITHUB_TOKEN_FILE");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_gh_hosts_yml() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean all env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Create gh hosts.yml file
+        let gh_dir = temp_home.path().join(".config/gh");
+        fs::create_dir_all(&gh_dir).unwrap();
+        let hosts_yml = gh_dir.join("hosts.yml");
+        let hosts_content = "github.com:\n  oauth_token: ghp_yaml_token_123\n";
+        fs::write(&hosts_yml, hosts_content).unwrap();
+
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "GitHub CLI hosts.yml");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_copilot_config() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean all env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Create copilot config.json file
+        let copilot_dir = temp_home.path().join(".copilot");
+        fs::create_dir_all(&copilot_dir).unwrap();
+        let cfg_path = copilot_dir.join("config.json");
+        let cfg = serde_json::json!({
+            "last_logged_in_user": "alice",
+            "copilot_tokens": {
+                "https://github.com:alice": "token_alice"
+            }
+        });
+        fs::write(&cfg_path, serde_json::to_string_pretty(&cfg).unwrap()).unwrap();
+
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "Copilot CLI config.json");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_method_unknown() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean all env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        let auth_method = agent.detect_auth_method().await;
+        assert_eq!(auth_method, "Unknown");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_gh_token() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Set GH_TOKEN and verify source is detected
+        let _gh_token_guard = EnvVarGuard::set("GH_TOKEN", "test-token");
+        let auth_source = agent.detect_auth_source().await;
+        assert_eq!(auth_source, "GH_TOKEN");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_github_token() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Set GITHUB_TOKEN and verify source is detected
+        let _github_token_guard = EnvVarGuard::set("GITHUB_TOKEN", "test-token");
+        let auth_source = agent.detect_auth_source().await;
+        assert_eq!(auth_source, "GITHUB_TOKEN");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_gh_token_file() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Set GH_TOKEN_FILE and verify source includes path
+        let token_file = temp_home.path().join("token.txt");
+        fs::write(&token_file, "test-token").unwrap();
+        let _gh_token_file_guard = EnvVarGuard::set("GH_TOKEN_FILE", &token_file);
+        let auth_source = agent.detect_auth_source().await;
+        assert!(auth_source.starts_with("GH_TOKEN_FILE ("));
+        assert!(auth_source.contains("token.txt"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_github_token_file() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean other env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+
+        // Set GITHUB_TOKEN_FILE and verify source includes path
+        let token_file = temp_home.path().join("token.txt");
+        fs::write(&token_file, "test-token").unwrap();
+        let _github_token_file_guard = EnvVarGuard::set("GITHUB_TOKEN_FILE", &token_file);
+        let auth_source = agent.detect_auth_source().await;
+        assert!(auth_source.starts_with("GITHUB_TOKEN_FILE ("));
+        assert!(auth_source.contains("token.txt"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_gh_hosts_yml() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean all env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Create gh hosts.yml file
+        let gh_dir = temp_home.path().join(".config/gh");
+        fs::create_dir_all(&gh_dir).unwrap();
+        let hosts_yml = gh_dir.join("hosts.yml");
+        let hosts_content = "github.com:\n  oauth_token: ghp_yaml_token_123\n";
+        fs::write(&hosts_yml, hosts_content).unwrap();
+
+        let auth_source = agent.detect_auth_source().await;
+        assert!(auth_source.contains(".config/gh/hosts.yml"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_copilot_config() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean all env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        // Create copilot config.json file
+        let copilot_dir = temp_home.path().join(".copilot");
+        fs::create_dir_all(&copilot_dir).unwrap();
+        let cfg_path = copilot_dir.join("config.json");
+        let cfg = serde_json::json!({
+            "last_logged_in_user": "alice",
+            "copilot_tokens": {
+                "https://github.com:alice": "token_alice"
+            }
+        });
+        fs::write(&cfg_path, serde_json::to_string_pretty(&cfg).unwrap()).unwrap();
+
+        let auth_source = agent.detect_auth_source().await;
+        assert!(auth_source.contains(".copilot/config.json"));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(env)]
+    async fn test_detect_auth_source_unknown() {
+        use crate::test_support::EnvVarGuard;
+
+        let agent = CopilotAgent::new();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        let _home_guard = EnvVarGuard::set("HOME", temp_home.path());
+
+        // Clean all env vars
+        let _gh_token_guard = EnvVarGuard::remove("GH_TOKEN");
+        let _github_token_guard = EnvVarGuard::remove("GITHUB_TOKEN");
+        let _gh_token_file_guard = EnvVarGuard::remove("GH_TOKEN_FILE");
+        let _github_token_file_guard = EnvVarGuard::remove("GITHUB_TOKEN_FILE");
+
+        let auth_source = agent.detect_auth_source().await;
+        assert_eq!(auth_source, "Unknown");
     }
 }

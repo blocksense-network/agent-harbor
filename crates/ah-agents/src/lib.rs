@@ -84,10 +84,10 @@ pub use traits::{
 };
 
 // Re-export agent-specific types
-#[cfg(feature = "copilot-cli")]
-pub use copilot::CopilotStatus;
 #[cfg(feature = "claude")]
 pub use claude::ClaudeStatus;
+#[cfg(feature = "copilot-cli")]
+pub use copilot::CopilotStatus;
 #[cfg(feature = "cursor-cli")]
 pub use cursor::CursorStatus;
 #[cfg(feature = "gemini")]
@@ -99,6 +99,10 @@ pub use ah_core::agent_types::AgentType;
 
 // Test utilities
 pub mod test_utils;
+
+// Test support utilities
+#[cfg(test)]
+pub mod test_support;
 
 // Convenience constructors for each agent
 #[cfg(feature = "claude")]
