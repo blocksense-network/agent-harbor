@@ -4,13 +4,11 @@
 use std::ffi::{CStr, CString};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, mpsc};
+use std::path::Path;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::{decode_ssz_message, encode_ssz_message};
-use agentfs_proto::messages::{self, Response};
 use core_foundation::{
     array::CFArray,
     base::{CFGetTypeID, CFRelease, CFType, CFTypeRef, TCFType, kCFAllocatorDefault},
@@ -35,7 +33,8 @@ use core_foundation_sys::{
     },
 };
 use fsevent_sys::*;
-use ssz::{Decode as _, Encode as _};
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicPtr, Ordering};
 use unicode_normalization::UnicodeNormalization;
 
 pub fn test_kqueue_doorbell(_args: &[String]) {
@@ -90,7 +89,7 @@ pub fn test_collision_hygiene(args: &[String]) {
         libc::usleep(200000); // 200ms
 
         // Step 2: Query the current doorbell ident from the daemon
-        let pid = std::process::id() as u32;
+        let pid = std::process::id();
         let query_request = agentfs_proto::messages::Request::query_doorbell_ident(pid);
 
         // Send the query request to daemon
@@ -278,7 +277,7 @@ pub fn test_collision_hygiene(args: &[String]) {
             udata: std::ptr::null_mut(),
         }; 10];
 
-        let mut timeout = libc::timespec {
+        let timeout = libc::timespec {
             tv_sec: 0,
             tv_nsec: 500000000, // 500ms
         };
@@ -289,14 +288,12 @@ pub fn test_collision_hygiene(args: &[String]) {
             0,
             events.as_mut_ptr(),
             events.len() as i32,
-            &mut timeout,
+            &timeout,
         );
         println!("Received {} events", event_count);
 
         if event_count > 0 {
-            for i in 0..event_count {
-                // Copy values from packed struct to avoid alignment issues
-                let event = &events[i as usize];
+            for (i, event) in events.iter().enumerate().take(event_count as usize) {
                 let ident = event.ident;
                 let filter = event.filter;
                 let flags = event.flags;
@@ -334,7 +331,7 @@ pub fn test_collision_hygiene(args: &[String]) {
 // ===== DIRFD RESOLUTION TEST FUNCTIONS =====
 
 pub fn test_t25_1_basic_dirfd_mapping(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-1 <test_base_dir>");
         std::process::exit(1);
     }
@@ -507,7 +504,7 @@ pub fn test_t25_2_at_fdcwd_special_case(args: &[String]) {
 }
 
 pub fn test_t25_3_file_descriptor_duplication(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-3 <test_base_dir>");
         std::process::exit(1);
     }
@@ -599,7 +596,7 @@ pub fn test_t25_3_file_descriptor_duplication(args: &[String]) {
 }
 
 pub fn test_t25_4_path_resolution_edge_cases(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-4 <test_base_dir>");
         std::process::exit(1);
     }
@@ -677,7 +674,7 @@ pub fn test_t25_4_path_resolution_edge_cases(args: &[String]) {
 }
 
 pub fn test_t25_5_directory_operations_with_dirfd(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-5 <test_base_dir>");
         std::process::exit(1);
     }
@@ -732,7 +729,7 @@ pub fn test_t25_5_directory_operations_with_dirfd(args: &[String]) {
 }
 
 pub fn test_t25_6_rename_operations_with_dirfd(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-6 <test_base_dir>");
         std::process::exit(1);
     }
@@ -769,7 +766,7 @@ pub fn test_t25_6_rename_operations_with_dirfd(args: &[String]) {
 }
 
 pub fn test_t25_7_link_operations_with_dirfd(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-7 <test_base_dir>");
         std::process::exit(1);
     }
@@ -810,7 +807,7 @@ pub fn test_t25_7_link_operations_with_dirfd(args: &[String]) {
 }
 
 pub fn test_t25_9_invalid_dirfd_handling(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-9 <test_base_dir>");
         std::process::exit(1);
     }
@@ -849,7 +846,7 @@ pub fn test_t25_9_invalid_dirfd_handling(args: &[String]) {
 }
 
 pub fn test_t25_8_concurrent_access_thread_safety(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-8 <test_base_dir>");
         std::process::exit(1);
     }
@@ -998,7 +995,7 @@ pub fn test_t25_8_concurrent_access_thread_safety(args: &[String]) {
 }
 
 pub fn test_t25_10_performance_regression_tests(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-10 <test_base_dir>");
         std::process::exit(1);
     }
@@ -1229,7 +1226,7 @@ pub fn test_t25_12_process_isolation(args: &[String]) {
         println!("DEBUG: arg[{}] = '{}'", i, arg);
     }
 
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-12 <test_base_dir>");
         std::process::exit(1);
     }
@@ -1392,7 +1389,7 @@ pub fn test_t25_12_process_isolation(args: &[String]) {
 }
 
 pub fn test_t25_14_memory_leak_prevention(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-14 <test_base_dir>");
         std::process::exit(1);
     }
@@ -1477,7 +1474,7 @@ pub fn test_t25_14_memory_leak_prevention(args: &[String]) {
 }
 
 pub fn test_t25_13_cross_process_fd_sharing(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-13 <test_base_dir>");
         std::process::exit(1);
     }
@@ -1665,7 +1662,7 @@ pub fn send_fd(socket: libc::c_int, fd: libc::c_int) -> bool {
     msg.msg_controllen = cmsg_buffer.len() as u32;
 
     // Set up control message in the buffer
-    let cmsg = unsafe { libc::CMSG_FIRSTHDR(&mut msg) };
+    let cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
     if cmsg.is_null() {
         return false;
     }
@@ -1728,7 +1725,7 @@ pub fn receive_fd(socket: libc::c_int) -> libc::c_int {
 }
 
 pub fn test_t25_15_error_code_consistency(args: &[String]) {
-    if args.len() < 1 {
+    if args.is_empty() {
         eprintln!("Usage: --test-t25-15 <test_base_dir>");
         std::process::exit(1);
     }
@@ -2307,7 +2304,7 @@ pub fn test_getattrlist_operations(args: &[String]) {
         // Define a basic attrlist structure for testing
         // This is a simplified version - real code would use proper macOS attrlist structures
         let mut attr_list = std::mem::MaybeUninit::<libc::c_void>::uninit();
-        let attr_list_ptr = attr_list.as_mut_ptr() as *mut libc::c_void;
+        let attr_list_ptr = attr_list.as_mut_ptr();
 
         // Initialize with some basic attributes
         // In real code, this would be properly structured
@@ -2318,7 +2315,7 @@ pub fn test_getattrlist_operations(args: &[String]) {
         println!("Testing getattrlist...");
         let result = getattrlist(
             c_filename.as_ptr(),
-            attr_list_ptr as *mut libc::c_void,
+            attr_list_ptr,
             attr_buf.as_mut_ptr() as *mut libc::c_void,
             attr_buf.len(),
             0, // options
@@ -2333,7 +2330,7 @@ pub fn test_getattrlist_operations(args: &[String]) {
         println!("Testing setattrlist...");
         let result = setattrlist(
             c_filename.as_ptr(),
-            attr_list_ptr as *mut libc::c_void,
+            attr_list_ptr,
             attr_buf.as_ptr() as *mut libc::c_void,
             64, // some data size
             0,  // options
@@ -2351,7 +2348,7 @@ pub fn test_getattrlist_operations(args: &[String]) {
         if fd >= 0 {
             let result = getattrlistbulk(
                 fd,
-                attr_list_ptr as *mut libc::c_void,
+                attr_list_ptr,
                 attr_buf.as_mut_ptr() as *mut libc::c_void,
                 attr_buf.len(),
                 0, // options
@@ -2547,7 +2544,7 @@ pub fn test_kevent_hook_injectable_queue(_args: &[String]) {
                 udata: std::ptr::null_mut(),
             }; 10];
 
-            let mut timeout = libc::timespec {
+            let timeout = libc::timespec {
                 tv_sec: 5, // 5 second timeout
                 tv_nsec: 0,
             };
@@ -2558,7 +2555,7 @@ pub fn test_kevent_hook_injectable_queue(_args: &[String]) {
                 0,
                 events.as_mut_ptr(),
                 events.len() as i32,
-                &mut timeout,
+                &timeout,
             );
 
             println!("Received {} events", event_count);
@@ -2566,8 +2563,7 @@ pub fn test_kevent_hook_injectable_queue(_args: &[String]) {
             let mut saw_synthesized_event = false;
             let mut saw_unrelated_event = false;
 
-            for i in 0..event_count as usize {
-                let event = &events[i];
+            for (i, event) in events.iter().enumerate().take(event_count as usize) {
                 let ident = event.ident;
                 let filter = event.filter;
                 let flags = event.flags;
@@ -2579,13 +2575,13 @@ pub fn test_kevent_hook_injectable_queue(_args: &[String]) {
                 );
 
                 // Check for synthesized EVFILT_VNODE event
-                if filter == EVFILT_VNODE as i16 && ident == file_fd as usize {
+                if filter == EVFILT_VNODE && ident == file_fd as usize {
                     println!("EVENT_RECEIVED");
                     saw_synthesized_event = true;
                 }
 
                 // Check for unrelated EVFILT_USER event passing through
-                if filter == EVFILT_USER as i16 && ident == 12345 {
+                if filter == EVFILT_USER && ident == 12345 {
                     println!("UNRELATED_FILTER_PASSED");
                     saw_unrelated_event = true;
                 }
@@ -2679,20 +2675,27 @@ pub fn send_request_to_daemon(
 }
 
 // Type definitions (these should match the interpose shim definitions)
+#[allow(non_camel_case_types)]
 type acl_type_t = u32;
+#[allow(non_camel_case_types)]
 type acl_t = *mut libc::c_void;
+#[allow(non_camel_case_types)]
 type copyfile_state_t = *mut libc::c_void;
+#[allow(non_camel_case_types)]
 type copyfile_flags_t = u32;
+#[allow(non_camel_case_types)]
 type u_long = usize;
+#[allow(non_camel_case_types)]
 type u_int64_t = u64;
 
 // Static reference for FSEvents callback data
-static mut FSEVENTS_CALLBACK_COUNT: std::sync::atomic::AtomicUsize =
+static FSEVENTS_CALLBACK_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
 // Filesystem operation types for testing
 #[derive(Debug, Clone)]
-enum FsOperation {
+#[allow(dead_code)]
+pub enum FsOperation {
     CreateFile(String),
     ModifyFile(String, String),
     DeleteFile(String),
@@ -2705,14 +2708,14 @@ enum FsOperation {
     Chmod(String, u32),
 }
 
-// Global storage for actual events received
-static mut RECEIVED_EVENTS: std::sync::Mutex<Vec<(String, u32, u64)>> =
-    std::sync::Mutex::new(Vec::new());
+// Global storage for actual events received (converted from static mut to Lazy<Mutex<_>>)
+static RECEIVED_EVENTS: Lazy<std::sync::Mutex<Vec<(String, u32, u64)>>> =
+    Lazy::new(|| std::sync::Mutex::new(Vec::new()));
 
-// Add after the existing static mut RECEIVED_EVENTS around line 3685
+// Global storage for the active FSEvents stream reference (AtomicPtr is Send+Sync)
+static FSEVENTS_STREAM_REF: AtomicPtr<libc::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
-static mut FSEVENTS_STREAM_REF: Option<FSEventStreamRef> = None;
-
+#[allow(dead_code)]
 unsafe fn dictionary_get_value(dict: CFDictionaryRef, key: &str) -> Option<CFTypeRef> {
     let c_key = CString::new(key).ok()?;
     let cf_key =
@@ -2729,6 +2732,7 @@ unsafe fn dictionary_get_value(dict: CFDictionaryRef, key: &str) -> Option<CFTyp
     }
 }
 
+#[allow(dead_code)]
 unsafe fn dictionary_get_array(dict: CFDictionaryRef, key: &str) -> Option<CFArrayRef> {
     let value = dictionary_get_value(dict, key)?;
     if CFGetTypeID(value) == CFArray::<CFType>::type_id() {
@@ -2738,6 +2742,7 @@ unsafe fn dictionary_get_array(dict: CFDictionaryRef, key: &str) -> Option<CFArr
     }
 }
 
+#[allow(dead_code)]
 unsafe fn dictionary_get_number(dict: CFDictionaryRef, key: &str) -> Option<CFNumberRef> {
     let value = dictionary_get_value(dict, key)?;
     if CFGetTypeID(value) == CFNumber::type_id() {
@@ -2747,6 +2752,7 @@ unsafe fn dictionary_get_number(dict: CFDictionaryRef, key: &str) -> Option<CFNu
     }
 }
 
+#[allow(dead_code)]
 unsafe fn cf_number_to_u64(number_ref: CFNumberRef) -> Option<u64> {
     let mut value: u64 = 0;
     let success = CFNumberGetValue(
@@ -2757,6 +2763,7 @@ unsafe fn cf_number_to_u64(number_ref: CFNumberRef) -> Option<u64> {
     if !success { None } else { Some(value) }
 }
 
+#[allow(dead_code)]
 unsafe fn cf_number_to_u32(number_ref: CFNumberRef) -> Option<u32> {
     let mut value: u32 = 0;
     let success = CFNumberGetValue(
@@ -2767,6 +2774,7 @@ unsafe fn cf_number_to_u32(number_ref: CFNumberRef) -> Option<u32> {
     if !success { None } else { Some(value) }
 }
 
+#[allow(dead_code)]
 extern "C" fn message_port_callback(
     _port: CFMessagePortRef,
     msgid: SInt32,
@@ -2924,13 +2932,14 @@ extern "C" fn message_port_callback(
 
         println!("Received FSEvents batch with {} events", num_events);
 
-        if let Some(stream) = FSEVENTS_STREAM_REF {
+        let stream_ptr = FSEVENTS_STREAM_REF.load(Ordering::SeqCst) as FSEventStreamRef;
+        if !stream_ptr.is_null() {
             let paths_ptr = paths_array as *const _ as *mut libc::c_void;
             let flags_ptr = flags_vec.as_ptr();
             let ids_ptr = event_ids_vec.as_ptr();
 
             test_fsevents_callback(
-                stream,
+                stream_ptr,
                 std::ptr::null_mut(),
                 num_events as libc::size_t,
                 paths_ptr,
@@ -2945,6 +2954,7 @@ extern "C" fn message_port_callback(
     }
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn cf_string_to_utf8_path(cf_str: CFStringRef) -> Result<String, String> {
     unsafe {
         if cf_str.is_null() {
@@ -3085,17 +3095,26 @@ extern "C" fn test_fsevents_callback(
     }
 }
 
-// FSEvents stream creation flags
+// FSEvents stream creation flags (preserve Apple naming; allow non_upper_case_globals)
+#[allow(non_upper_case_globals)]
 const kFSEventStreamCreateFlagUseCFTypes: u32 = 0x00000001;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamCreateFlagFileEvents: u32 = 0x00000010;
 
-// FSEvents event flag constants (using proper constant names)
+// FSEvents event flag constants (preserve Apple naming; allow non_upper_case_globals)
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemCreated: u32 = 0x00000100;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemRemoved: u32 = 0x00000200;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemModified: u32 = 0x00001000;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemRenamed: u32 = 0x00000800;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemIsFile: u32 = 0x00010000;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemIsDir: u32 = 0x00020000;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemIsSymlink: u32 = 0x00040000;
 
 #[cfg(target_os = "macos")]
@@ -3173,10 +3192,8 @@ pub fn test_fsevents_interposition(args: &[String]) {
     let (tx, rx) = mpsc::channel();
 
     // Reset callback count and received events
-    unsafe {
-        FSEVENTS_CALLBACK_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
-        RECEIVED_EVENTS.lock().unwrap().clear();
-    }
+    FSEVENTS_CALLBACK_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
+    RECEIVED_EVENTS.lock().unwrap().clear();
 
     let (start_tx, start_rx) = mpsc::channel();
 
@@ -3378,9 +3395,10 @@ pub fn test_fsevents_interposition(args: &[String]) {
                                     link_path, e
                                 );
                                 false
-                            } else if let Err(e) =
-                                std::os::unix::fs::symlink(&test_dir_clone.join(target), &link_path)
-                            {
+                            } else if let Err(e) = {
+                                let tp = test_dir_clone.join(target);
+                                std::os::unix::fs::symlink(&tp, &link_path)
+                            } {
                                 println!(
                                     "❌ Failed to create symlink {:?} -> {}: {}",
                                     link_path, target, e
@@ -3390,9 +3408,10 @@ pub fn test_fsevents_interposition(args: &[String]) {
                                 println!("🔗 Created symlink: {:?} -> {:?}", link_path, target);
                                 true
                             }
-                        } else if let Err(e) =
-                            std::os::unix::fs::symlink(&test_dir_clone.join(target), &link_path)
-                        {
+                        } else if let Err(e) = {
+                            let tp = test_dir_clone.join(target);
+                            std::os::unix::fs::symlink(&tp, &link_path)
+                        } {
                             println!(
                                 "❌ Failed to create symlink {:?} -> {}: {}",
                                 link_path, target, e
@@ -3484,6 +3503,8 @@ pub fn test_fsevents_interposition(args: &[String]) {
         }
 
         println!("✅ Created FSEvents stream for test directory");
+        // Store stream in global for callback path that expects it
+        FSEVENTS_STREAM_REF.store(stream, Ordering::SeqCst);
 
         // Get current run loop using core-foundation
         let run_loop = CFRunLoop::get_current();
@@ -3599,6 +3620,8 @@ pub fn test_fsevents_interposition(args: &[String]) {
         FSEventStreamStop(stream);
         FSEventStreamInvalidate(stream);
         FSEventStreamRelease(stream);
+        // Clear global stream reference
+        FSEVENTS_STREAM_REF.store(std::ptr::null_mut(), Ordering::SeqCst);
 
         println!("✅ Cleaned up FSEvents stream");
 
@@ -3618,7 +3641,7 @@ pub fn test_fsevents_interposition(args: &[String]) {
             generate_expected_events(&operations[..operations_completed], &test_dir);
 
         // Get actual events received
-        let actual_events = unsafe { RECEIVED_EVENTS.lock().unwrap().clone() };
+        let actual_events = RECEIVED_EVENTS.lock().unwrap().clone();
 
         println!("📊 Test Results:");
         println!("   - Total operations defined: {}", operations.len());

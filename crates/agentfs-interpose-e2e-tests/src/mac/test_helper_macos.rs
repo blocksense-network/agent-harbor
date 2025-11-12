@@ -4,43 +4,10 @@
 #[cfg(target_os = "macos")]
 use agentfs_interpose_e2e_tests::macos;
 
-use std::ffi::{CStr, CString};
 use std::fs;
-use std::io::{Read, Write};
-use std::path::Path;
-use std::sync::mpsc;
-use std::thread;
-use std::time::{Duration, Instant};
-
-extern crate agentfs_proto;
-extern crate libc;
-extern crate ssz;
-
-use core_foundation::{
-    array::CFArray,
-    base::{CFGetTypeID, CFRelease, CFType, CFTypeRef, TCFType, kCFAllocatorDefault},
-    number::CFNumber,
-    runloop::{CFRunLoop, kCFRunLoopDefaultMode},
-    string::CFString,
-};
-use core_foundation_sys::{
-    array::{CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef},
-    base::{CFIndex, CFOptionFlags, SInt32},
-    data::{CFDataGetBytePtr, CFDataGetLength, CFDataRef},
-    dictionary::{CFDictionaryGetTypeID, CFDictionaryGetValue, CFDictionaryRef},
-    error::CFErrorRef,
-    messageport::CFMessagePortRef,
-    number::{CFNumberGetValue, CFNumberRef, kCFNumberSInt32Type, kCFNumberSInt64Type},
-    propertylist::{
-        CFPropertyListCreateWithData, CFPropertyListFormat, kCFPropertyListBinaryFormat_v1_0,
-    },
-    string::{
-        CFStringCreateWithCString, CFStringGetCString, CFStringGetFileSystemRepresentation,
-        CFStringGetLength, CFStringGetMaximumSizeForEncoding, CFStringRef, kCFStringEncodingUTF8,
-    },
-};
-use fsevent_sys::*;
-use unicode_normalization::UnicodeNormalization;
+use std::io::Read; // Write is unused in this helper
+// These are exercised inside the macos::tests module that we call indirectly.
+extern crate libc; // Needed for raw FFI calls below
 
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -293,8 +260,8 @@ fn test_large_file(args: &[String]) {
         println!("Successfully read {} bytes", bytes_read);
         // Verify content pattern (sequential bytes)
         let mut all_correct = true;
-        for i in 0..(bytes_read as usize) {
-            if buffer[i] != (i % 256) as u8 {
+        for (i, b) in buffer.iter().take(bytes_read as usize).enumerate() {
+            if *b != (i % 256) as u8 {
                 all_correct = false;
                 break;
             }
@@ -324,41 +291,36 @@ fn test_multiple_files(args: &[String]) {
     match fs::read_dir(dirname) {
         Ok(entries) => {
             let mut opened_count = 0;
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.is_file() {
-                        unsafe {
-                            let c_path =
-                                std::ffi::CString::new(path.to_string_lossy().as_ref()).unwrap();
-                            let fd = libc::open(c_path.as_ptr(), libc::O_RDONLY, 0);
-                            if fd < 0 {
-                                let err = std::io::Error::last_os_error();
-                                eprintln!("  Open failed for {}: {}", path.display(), err);
-                                std::process::exit(1);
-                            }
-
-                            let mut buffer = [0u8; 10];
-                            let n = libc::read(
-                                fd,
-                                buffer.as_mut_ptr() as *mut libc::c_void,
-                                buffer.len(),
-                            );
-                            if n < 0 {
-                                let err = std::io::Error::last_os_error();
-                                eprintln!("  Read failed for {}: {}", path.display(), err);
-                                libc::close(fd);
-                                std::process::exit(1);
-                            }
-
-                            println!(
-                                "  Successfully opened and read {} bytes from {}",
-                                n,
-                                path.display()
-                            );
-                            opened_count += 1;
-                            libc::close(fd);
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    unsafe {
+                        let c_path =
+                            std::ffi::CString::new(path.to_string_lossy().as_ref()).unwrap();
+                        let fd = libc::open(c_path.as_ptr(), libc::O_RDONLY, 0);
+                        if fd < 0 {
+                            let err = std::io::Error::last_os_error();
+                            eprintln!("  Open failed for {}: {}", path.display(), err);
+                            std::process::exit(1);
                         }
+
+                        let mut buffer = [0u8; 10];
+                        let n =
+                            libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len());
+                        if n < 0 {
+                            let err = std::io::Error::last_os_error();
+                            eprintln!("  Read failed for {}: {}", path.display(), err);
+                            libc::close(fd);
+                            std::process::exit(1);
+                        }
+
+                        println!(
+                            "  Successfully opened and read {} bytes from {}",
+                            n,
+                            path.display()
+                        );
+                        opened_count += 1;
+                        libc::close(fd);
                     }
                 }
             }
@@ -907,7 +869,8 @@ fn test_namespace_operations(args: &[String]) {
         let subdir_renamed_path = format!("{}/subdir_renamed", test_dir);
 
         let c_file1 = std::ffi::CString::new(file1_path.as_str()).unwrap();
-        let c_file2 = std::ffi::CString::new(file2_path.as_str()).unwrap();
+        // file2 is created only to exercise link/rename operations; its CString is unused directly
+        let _c_file2 = std::ffi::CString::new(file2_path.as_str()).unwrap();
         let c_link = std::ffi::CString::new(link_path.as_str()).unwrap();
         let c_symlink = std::ffi::CString::new(symlink_path.as_str()).unwrap();
         let c_renamed = std::ffi::CString::new(renamed_path.as_str()).unwrap();
