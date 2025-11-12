@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_cli::{AgentCommands, Cli, Commands, Parser, health};
+use ah_cli::{AgentCommands, Cli, Commands, Parser};
 use ah_tui::view::TuiDependencies;
 use anyhow::{Context, Result};
 use std::fs;
