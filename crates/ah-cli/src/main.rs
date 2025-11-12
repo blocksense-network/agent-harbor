@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_cli::{AgentCommands, Cli, Commands, Parser, health};
+use ah_cli::{AgentCommands, Cli, Commands, Parser};
 use ah_domain_types::CliLogLevel;
 use ah_logging::{Level, LogFormat, init_to_standard_file};
 use ah_tui::view::TuiDependencies;
