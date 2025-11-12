@@ -47,7 +47,18 @@ jobs:
         run: nix develop -c pre-commit run --all-files
 
   build-and-cache-devshell:
-    runs-on: [self-hosted, nixos, x86-64-v3]
+    strategy:
+      matrix:
+        include:
+          - name: x86_64-linux (NixOS, self-hosted)
+            runner: [self-hosted, nixos, x86-64-v3]
+            system: x86_64-linux
+          - name: aarch64-darwin (macOS, GitHub-hosted)
+            runner: macos-latest
+            system: aarch64-darwin
+
+    name: Build devshell | ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v5
@@ -63,7 +74,7 @@ jobs:
           substituters: ${{ vars.SUBSTITUTERS }}
 
       - name: Build & activate the Nix Dev Shell
-        run: nix build -L --json .#devShells.x86_64-linux.default
+        run: nix build -L --json .#devShells.${{ matrix.system }}.default
 
   test:
     strategy:
