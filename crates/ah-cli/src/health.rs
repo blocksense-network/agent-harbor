@@ -3,12 +3,12 @@
 
 //! Health check commands
 
+use ah_agents::traits::AgentExecutor;
 use ah_mux::TmuxMultiplexer;
 use ah_mux::detection::detect_terminal_environments;
 use ah_mux_core::Multiplexer;
 use clap::Args;
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 /// Arguments for the health command
 #[derive(Args)]
@@ -154,6 +154,12 @@ impl HealthArgs {
         // Check Cursor CLI status
         self.print_cursor_health().await?;
 
+        // Check Gemini CLI status
+        self.print_gemini_health().await?;
+
+        // Check Copilot CLI status
+        self.print_copilot_health().await?;
+
         Ok(())
     }
 
@@ -213,12 +219,151 @@ impl HealthArgs {
         }
     }
 
+    /// Print Gemini CLI health information
+    async fn print_gemini_health(&self) -> anyhow::Result<()> {
+        println!("Gemini CLI:");
+
+        let gemini_agent = ah_agents::gemini();
+
+        // Use the structured status function with timeout for consistency
+        let status_result = tokio::time::timeout(
+            std::time::Duration::from_millis(1000),
+            gemini_agent.get_gemini_status(),
+        )
+        .await;
+
+        match status_result {
+            Ok(status) => {
+                if !status.available {
+                    if let Some(error) = &status.error {
+                        println!("  ❌ {}", error);
+                    } else {
+                        println!("  ❌ gemini not available");
+                    }
+                    return Ok(());
+                }
+
+                // Display availability and version
+                if let Some(version) = &status.version {
+                    println!("  ✅ gemini available (v{})", version);
+                } else {
+                    println!("  ✅ gemini available");
+                }
+
+                // Display authentication status
+                if status.authenticated {
+                    if let Some(auth_method) = &status.auth_method {
+                        println!("  ✅ Authenticated via {}", auth_method);
+                    } else {
+                        println!("  ✅ Authenticated");
+                    }
+
+                    if let Some(auth_source) = &status.auth_source {
+                        if self.with_credentials {
+                            println!("  ✅ Authentication source: {}", auth_source);
+                        } else {
+                            println!(
+                                "  ✅ Authentication source found (use --with-credentials to display details)"
+                            );
+                        }
+                    }
+                } else {
+                    println!("  ⚠️  Not authenticated");
+                    if let Some(error) = &status.error {
+                        if error.contains("Authentication") {
+                            println!("  ❌ Authentication error: {}", error);
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                println!("  ❌ gemini status check timed out");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Print Copilot CLI health information
+    async fn print_copilot_health(&self) -> anyhow::Result<()> {
+        println!("Copilot CLI:");
+
+        let copilot_agent = ah_agents::copilot_cli();
+
+        // Use the structured status function with timeout for consistency
+        let status_result = tokio::time::timeout(
+            std::time::Duration::from_millis(1000),
+            copilot_agent.get_copilot_status(),
+        )
+        .await;
+
+        match status_result {
+            Ok(status) => {
+                if !status.available {
+                    if let Some(error) = &status.error {
+                        println!("  ❌ {}", error);
+                    } else {
+                        println!("  ❌ copilot not available");
+                    }
+                    return Ok(());
+                }
+
+                // Display availability and version
+                if let Some(version) = &status.version {
+                    println!("  ✅ copilot available (v{})", version);
+                } else {
+                    println!("  ✅ copilot available");
+                }
+
+                // Display authentication status
+                if status.authenticated {
+                    if let Some(auth_method) = &status.auth_method {
+                        println!("  ✅ Authenticated via {}", auth_method);
+                    } else {
+                        println!("  ✅ Authenticated");
+                    }
+
+                    if let Some(auth_source) = &status.auth_source {
+                        if self.with_credentials {
+                            println!("  ✅ Authentication source: {}", auth_source);
+                        } else {
+                            println!(
+                                "  ✅ Authentication source found (use --with-credentials to display details)"
+                            );
+                        }
+                    }
+                } else {
+                    println!("  ⚠️  Not authenticated (no API key found)");
+                    println!("  💡 Try setting GH_TOKEN or GITHUB_TOKEN environment variable");
+                }
+
+                // Display any authentication errors
+                if let Some(error) = &status.error {
+                    if status.authenticated {
+                        println!("  ⚠️  Note: {}", error);
+                    } else {
+                        println!("  ❌ Authentication error: {}", error);
+                    }
+                }
+            }
+            Err(_) => {
+                println!("  ❌ copilot status check timed out");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get agent health information as JSON
     async fn get_agent_health_json(&self) -> anyhow::Result<serde_json::Value> {
         let cursor_status = self.get_cursor_health_json().await?;
+        let gemini_status = self.get_gemini_health_json().await?;
+        let copilot_status = self.get_copilot_health_json().await?;
 
         Ok(serde_json::json!({
-            "cursor_cli": cursor_status
+            "cursor_cli": cursor_status,
+            "gemini_cli": gemini_status,
+            "copilot_cli": copilot_status
         }))
     }
 
@@ -253,5 +398,98 @@ impl HealthArgs {
         }
 
         Ok(cursor_info)
+    }
+
+    /// Get Gemini CLI health information as JSON
+    async fn get_gemini_health_json(&self) -> anyhow::Result<serde_json::Value> {
+        let gemini_agent = ah_agents::gemini();
+
+        // Use the structured status function to get comprehensive information
+        let status = match tokio::time::timeout(
+            std::time::Duration::from_millis(1000),
+            gemini_agent.get_gemini_status(),
+        )
+        .await
+        {
+            Ok(status) => status,
+            Err(_) => {
+                // Return timeout error status
+                return Ok(serde_json::json!({
+                    "available": false,
+                    "authenticated": false,
+                    "timeout_error": "Status check timed out"
+                }));
+            }
+        };
+
+        let mut gemini_info = serde_json::json!({
+            "available": status.available,
+            "authenticated": status.authenticated
+        });
+
+        if let Some(version) = &status.version {
+            gemini_info["version"] = serde_json::Value::String(version.clone());
+        }
+
+        if let Some(auth_method) = &status.auth_method {
+            gemini_info["auth_method"] = serde_json::Value::String(auth_method.clone());
+        }
+
+        if let Some(auth_source) = &status.auth_source {
+            if self.with_credentials {
+                gemini_info["auth_source"] = serde_json::Value::String(auth_source.clone());
+            } else {
+                gemini_info["auth_source_available"] = serde_json::Value::Bool(true);
+            }
+        }
+
+        if let Some(error) = &status.error {
+            if status.available {
+                gemini_info["auth_error"] = serde_json::Value::String(error.clone());
+            } else {
+                gemini_info["version_error"] = serde_json::Value::String(error.clone());
+            }
+        }
+
+        Ok(gemini_info)
+    }
+
+    /// Get Copilot CLI health information as JSON
+    async fn get_copilot_health_json(&self) -> anyhow::Result<serde_json::Value> {
+        let copilot_agent = ah_agents::copilot_cli();
+
+        // Use the structured status function to get comprehensive information
+        let status = copilot_agent.get_copilot_status().await;
+
+        let mut copilot_info = serde_json::json!({
+            "available": status.available,
+            "authenticated": status.authenticated
+        });
+
+        if let Some(version) = &status.version {
+            copilot_info["version"] = serde_json::Value::String(version.clone());
+        }
+
+        if let Some(auth_method) = &status.auth_method {
+            copilot_info["auth_method"] = serde_json::Value::String(auth_method.clone());
+        }
+
+        if let Some(auth_source) = &status.auth_source {
+            if self.with_credentials {
+                copilot_info["auth_source"] = serde_json::Value::String(auth_source.clone());
+            } else {
+                copilot_info["auth_source_available"] = serde_json::Value::Bool(true);
+            }
+        }
+
+        if let Some(error) = &status.error {
+            if status.available {
+                copilot_info["auth_error"] = serde_json::Value::String(error.clone());
+            } else {
+                copilot_info["version_error"] = serde_json::Value::String(error.clone());
+            }
+        }
+
+        Ok(copilot_info)
     }
 }
