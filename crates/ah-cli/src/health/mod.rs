@@ -196,36 +196,41 @@ impl HealthArgs {
 
     /// Get Cursor CLI health status
     async fn get_cursor_health_status(&self) -> Option<AgentHealthStatus> {
-        let mut status = AgentHealthStatus::new("Cursor CLI");
+        let cursor_agent = ah_agents::cursor_cli();
 
-        // Check if cursor-agent is available
-        let cursor_available =
-            std::process::Command::new("cursor-agent").arg("--version").output().is_ok();
+        // Use structured status function with timeout for consistency
+        // Note: get_cursor_status has internal timeout of 1500ms, so we use 2000ms here
+        let status_result = tokio::time::timeout(
+            std::time::Duration::from_millis(2000),
+            cursor_agent.get_cursor_status(),
+        )
+        .await;
 
-        if !cursor_available {
-            return Some(status.with_error("cursor-agent not found in PATH"));
+        match status_result {
+            Ok(cursor_status) => {
+                let mut status = AgentHealthStatus::new("Cursor CLI")
+                    .with_availability(cursor_status.available, cursor_status.version)
+                    .with_auth(
+                        cursor_status.authenticated,
+                        cursor_status.auth_method,
+                        cursor_status.auth_source,
+                    );
+
+                if let Some(error) = cursor_status.error {
+                    status = status.with_error(error);
+                }
+
+                if cursor_status.authenticated {
+                    status = status
+                        .with_note("This is a session token, not necessarily a Cursor API key");
+                } else if cursor_status.available {
+                    status = status.with_note("Not logged in (no access token found)");
+                }
+
+                Some(status)
+            }
+            Err(_) => Some(AgentHealthStatus::new("Cursor CLI").with_timeout()),
         }
-
-        status = status.with_availability(true, None);
-
-        // Check for database and extract token
-        match self.check_cursor_login_status() {
-            Ok(Some(token)) => {
-                status =
-                    status.with_auth(true, Some("Session Token".to_string()), Some(token.clone()));
-                status =
-                    status.with_note("This is a session token, not necessarily a Cursor API key");
-            }
-            Ok(None) => {
-                status = status.with_auth(false, None, None);
-                status = status.with_note("Not logged in (no access token found)");
-            }
-            Err(e) => {
-                status = status.with_error(format!("Failed to check login status: {}", e));
-            }
-        }
-
-        Some(status)
     }
 
     /// Get Gemini CLI health status
@@ -364,19 +369,6 @@ impl HealthArgs {
                 Some(status)
             }
             Err(_) => Some(AgentHealthStatus::new("Claude CLI").with_timeout()),
-        }
-    }
-
-    /// Check Cursor CLI login status and extract access token
-    fn check_cursor_login_status(&self) -> anyhow::Result<Option<String>> {
-        // Use the cursor agent to check login status
-        let cursor_agent = ah_agents::cursor_cli();
-        match cursor_agent.check_cursor_login_status() {
-            Ok(result) => Ok(result),
-            Err(e) => Err(anyhow::anyhow!(
-                "Failed to check cursor login status: {}",
-                e
-            )),
         }
     }
 }

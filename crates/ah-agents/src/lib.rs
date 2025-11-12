@@ -88,6 +88,8 @@ pub use traits::{
 pub use copilot::CopilotStatus;
 #[cfg(feature = "claude")]
 pub use claude::ClaudeStatus;
+#[cfg(feature = "cursor-cli")]
+pub use cursor::CursorStatus;
 #[cfg(feature = "gemini")]
 pub use gemini::GeminiStatus;
 
