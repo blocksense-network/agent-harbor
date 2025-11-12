@@ -5,10 +5,28 @@ use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
+
+/// Structured status information for Copilot CLI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopilotStatus {
+    /// Whether the CLI is installed and available
+    pub available: bool,
+    /// Version information if available
+    pub version: Option<String>,
+    /// Whether the user is authenticated
+    pub authenticated: bool,
+    /// Authentication method used (e.g., "GH_TOKEN", "hosts.yml", "copilot_config")
+    pub auth_method: Option<String>,
+    /// Source of authentication (config file path, environment variable name, etc.)
+    pub auth_source: Option<String>,
+    /// Any error that occurred during status check
+    pub error: Option<String>,
+}
 
 pub struct CopilotAgent {
     binary_path: String,
@@ -144,6 +162,155 @@ impl CopilotAgent {
 
         debug!("Created/updated Copilot configuration at {:?}", cfg_path);
         Ok(())
+    }
+
+    /// Get structured Copilot CLI status information
+    ///
+    /// This function returns comprehensive status information in a structured format
+    /// that can be easily consumed by health checkers and other tools.
+    ///
+    /// Returns CopilotStatus with detailed information about:
+    /// - CLI availability and version
+    /// - Authentication status and method
+    /// - API key information (masked for security)
+    /// - Any errors encountered
+    pub async fn get_copilot_status(&self) -> CopilotStatus {
+        // Check CLI availability by detecting version
+        let (available, version, mut error) = match self.detect_version().await {
+            Ok(version_info) => (true, Some(version_info.version), None),
+            Err(AgentError::AgentNotFound(_)) => (
+                false,
+                None,
+                Some("Copilot CLI not found in PATH".to_string()),
+            ),
+            Err(e) => (
+                false,
+                None,
+                Some(format!("Version detection failed: {}", e)),
+            ),
+        };
+
+        if !available {
+            return CopilotStatus {
+                available: false,
+                version: None,
+                authenticated: false,
+                auth_method: None,
+                auth_source: None,
+                error,
+            };
+        }
+
+        // Check authentication status
+        let (authenticated, auth_method, auth_source) = match self.get_user_api_key().await {
+            Ok(Some(_api_key)) => {
+                let method = self.detect_auth_method().await;
+                let source = self.detect_auth_source().await;
+                (true, Some(method), Some(source))
+            }
+            Ok(None) => (false, None, None),
+            Err(e) => {
+                error = Some(format!("Authentication check failed: {}", e));
+                (false, None, None)
+            }
+        };
+
+        CopilotStatus {
+            available,
+            version,
+            authenticated,
+            auth_method,
+            auth_source,
+            error,
+        }
+    }
+
+    /// Detect which authentication method is being used
+    async fn detect_auth_method(&self) -> String {
+        // Check in order of precedence to determine which method is being used
+        if std::env::var("GH_TOKEN").is_ok() {
+            return "GH_TOKEN environment variable".to_string();
+        }
+        if std::env::var("GITHUB_TOKEN").is_ok() {
+            return "GITHUB_TOKEN environment variable".to_string();
+        }
+        if std::env::var("GH_TOKEN_FILE").is_ok() {
+            return "GH_TOKEN_FILE".to_string();
+        }
+        if std::env::var("GITHUB_TOKEN_FILE").is_ok() {
+            return "GITHUB_TOKEN_FILE".to_string();
+        }
+
+        // Check credential files using credential_paths()
+        if let Some(home_dir) = dirs::home_dir() {
+            for credential_path in self.credential_paths() {
+                let full_path = home_dir.join(&credential_path);
+
+                if !full_path.exists() {
+                    continue;
+                }
+
+                // Check for gh hosts.yml
+                if credential_path.file_name() == Some(std::ffi::OsStr::new("hosts.yml")) {
+                    if let Ok(contents) = std::fs::read_to_string(&full_path) {
+                        if Self::extract_token_from_gh_hosts_yaml(&contents).is_some() {
+                            return "GitHub CLI hosts.yml".to_string();
+                        }
+                    }
+                }
+
+                // Check for copilot config.json
+                if credential_path.file_name() == Some(std::ffi::OsStr::new("config.json")) {
+                    return "Copilot CLI config.json".to_string();
+                }
+            }
+        }
+
+        "Unknown".to_string()
+    }
+
+    /// Detect the specific source of authentication (file path, env var name, etc.)
+    async fn detect_auth_source(&self) -> String {
+        // Check in order of precedence to determine the specific source
+        if std::env::var("GH_TOKEN").is_ok() {
+            return "GH_TOKEN".to_string();
+        }
+        if std::env::var("GITHUB_TOKEN").is_ok() {
+            return "GITHUB_TOKEN".to_string();
+        }
+        if let Ok(path) = std::env::var("GH_TOKEN_FILE") {
+            return format!("GH_TOKEN_FILE ({})", path);
+        }
+        if let Ok(path) = std::env::var("GITHUB_TOKEN_FILE") {
+            return format!("GITHUB_TOKEN_FILE ({})", path);
+        }
+
+        // Check credential files using credential_paths()
+        if let Some(home_dir) = dirs::home_dir() {
+            for credential_path in self.credential_paths() {
+                let full_path = home_dir.join(&credential_path);
+
+                if !full_path.exists() {
+                    continue;
+                }
+
+                // Check for gh hosts.yml
+                if credential_path.file_name() == Some(std::ffi::OsStr::new("hosts.yml")) {
+                    if let Ok(contents) = std::fs::read_to_string(&full_path) {
+                        if Self::extract_token_from_gh_hosts_yaml(&contents).is_some() {
+                            return full_path.to_string_lossy().to_string();
+                        }
+                    }
+                }
+
+                // Check for copilot config.json
+                if credential_path.file_name() == Some(std::ffi::OsStr::new("config.json")) {
+                    return full_path.to_string_lossy().to_string();
+                }
+            }
+        }
+
+        "Unknown".to_string()
     }
 }
 
