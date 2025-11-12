@@ -400,6 +400,9 @@ manual-test-ah-agent-record *args:
     ./scripts/manual-test-agent-start.py --record {{args}}
 
 # Launch manual TUI test script for testing TUI functionality
+# Usage: just manual-test-tui [--repo NAME] [--fs TYPE]
+#   --repo NAME: Repository name to create (default: example-repo)
+#   --fs TYPE: Filesystem type - zfs, btrfs, apfs, or tmp (default: zfs)
 manual-test-tui *args:
     ./scripts/manual-test-tui.py {{args}}
 

@@ -1,103 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap');
+
 @import 'tailwindcss';
 
-/* TOM Select base styles - imported dynamically */
-@import 'tom-select/dist/css/tom-select.bootstrap5.css';
+@import './styles/tom-select.css';
 
 @theme {
   --font-manrope: Manrope, sans-serif;
 }
 
-:root {
-  --background-rgb: 214, 219, 220;
-  --foreground-rgb: 0, 0, 0;
-}
-
-.dark {
-  --background-rgb: 0, 0, 0;
-  --foreground-rgb: 255, 255, 255;
-}
-
 body {
-  background: rgb(var(--background-rgb));
-  color: rgb(var(--foreground-rgb));
-
   font-family: var(--font-manrope);
-}
-
-/* Custom TOM Select theming */
-.ts-wrapper .ts-control {
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-}
-
-.dark .ts-wrapper .ts-control {
-  border-color: #374151;
-  background-color: #1f2937;
-  color: #f9fafb;
-}
-
-.ts-wrapper.focus .ts-control {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px #3b82f6;
-}
-
-.dark .ts-wrapper.focus .ts-control {
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 2px #60a5fa;
-}
-
-.ts-dropdown {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.375rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  margin-top: 0.25rem;
-  background-color: #ffffff;
-}
-
-.dark .ts-dropdown {
-  border-color: #374151;
-  background-color: #1f2937;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-}
-
-.ts-dropdown .option {
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  color: #374151;
-  cursor: pointer;
-}
-
-.dark .ts-dropdown .option {
-  color: #f9fafb;
-}
-
-.ts-dropdown .option:hover {
-  background-color: #eff6ff;
-}
-
-.dark .ts-dropdown .option:hover {
-  background-color: #374151;
-}
-
-.ts-dropdown .option.active {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.dark .ts-dropdown .option.active {
-  background-color: #1e3a8a;
-  color: #dbeafe;
-}
-
-.ts-dropdown .option.selected {
-  background-color: #eff6ff;
-  font-weight: 500;
-}
-
-.dark .ts-dropdown .option.selected {
-  background-color: #374151;
-  color: #dbeafe;
 }
