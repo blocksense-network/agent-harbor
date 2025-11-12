@@ -32,6 +32,11 @@ pub struct WatchService {
     /// Pending synthesized events for each kqueue: (pid, kq_fd) -> Vec<SynthesizedKevent>
     pending_events: Mutex<HashMap<(u32, u32), VecDeque<SynthesizedKevent>>>,
 }
+impl Default for WatchService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Registration information for a kqueue watch
 pub struct KqueueWatchRegistration {
@@ -72,6 +77,7 @@ impl WatchService {
     }
 
     /// Register a kqueue watch
+    #[allow(clippy::too_many_arguments)] // Parameters map directly to watch fields; refactor into a config struct later if needed.
     pub fn register_kqueue_watch(
         &self,
         pid: u32,
@@ -326,7 +332,7 @@ impl WatchService {
     pub fn enqueue_event(&self, pid: u32, kq_fd: u32, event: SynthesizedKevent) {
         let mut pending = self.pending_events.lock().unwrap();
         let key = (pid, kq_fd);
-        let queue = pending.entry(key).or_insert_with(VecDeque::new);
+        let queue = pending.entry(key).or_default();
 
         // Check if there's already an event for this fd - coalesce flags
         if let Some(existing) = queue.iter_mut().find(|e| e.ident == event.ident) {
@@ -543,7 +549,6 @@ impl WatchServiceEventSink {
                     // - Child paths (directory contents changes)
                     watch.path == *affected_path
                         || affected_path.starts_with(&(watch.path.clone() + "/"))
-                        || (*affected_path == watch.path)
                 } else {
                     // File watchers are only interested in exact path matches
                     watch.path == *affected_path
@@ -846,7 +851,7 @@ mod tests {
         assert_eq!(watches[0].fd, 10);
         assert_eq!(watches[0].path, "/tmp/test.txt");
         assert_eq!(watches[0].fflags, 0x123);
-        assert_eq!(watches[0].is_directory, false);
+        assert!(!watches[0].is_directory);
     }
 
     #[test]

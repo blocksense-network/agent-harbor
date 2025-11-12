@@ -92,17 +92,14 @@
 //! - Watch service uses separate locks for different watch types
 //! - Event delivery is asynchronous and doesn't block client operations
 
+use libc;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
-
-use libc;
 
 // AgentFS core imports
 use agentfs_core::{
@@ -117,9 +114,7 @@ use agentfs_proto::*;
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
     DaemonStateFilesystemRequest, DaemonStateProcessesRequest, DaemonStateResponse,
-    DaemonStateResponseWrapper, DaemonStateStatsRequest, DirCloseRequest, DirEntry, DirReadRequest,
-    FdDupRequest, FilesystemQuery, FilesystemState, FsStats, PathOpRequest, ProcessInfo, StatData,
-    StatfsData, TimespecData,
+    DaemonStateResponseWrapper, DaemonStateStatsRequest, DirEntry,
 };
 
 // Use handshake types and functions from this crate
@@ -135,9 +130,10 @@ use crate::macos::interposition::{
 use crate::macos::kqueue::SInt32;
 
 /// Helper function to get PID for client operations (avoids nested locking issues)
+#[allow(dead_code)]
 fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) -> PID {
     let daemon_guard = daemon.lock().unwrap();
-    daemon_guard.processes[&client_pid].clone()
+    daemon_guard.processes[&client_pid]
 }
 
 /// Real AgentFS daemon using the core filesystem
@@ -161,7 +157,7 @@ impl AgentFsDaemon {
     /// Create a new daemon instance with overlay configuration
     pub fn new_with_overlay(
         lower_dir: Option<PathBuf>,
-        upper_dir: Option<PathBuf>,
+        _upper_dir: Option<PathBuf>,
         _work_dir: Option<PathBuf>,
     ) -> FsResult<Self> {
         // Configure FsCore based on overlay settings
@@ -225,7 +221,7 @@ impl AgentFsDaemon {
             ));
 
             // Lock the core temporarily to subscribe to events
-            let mut core_guard = core_clone.lock().unwrap();
+            let core_guard = core_clone.lock().unwrap();
             core_guard
                 .subscribe_events(sink)
                 .expect("Failed to subscribe watch service to events");
@@ -243,7 +239,7 @@ impl AgentFsDaemon {
     /// Create a new daemon instance with backstore configuration
     pub fn new_with_backstore(
         lower_dir: Option<PathBuf>,
-        upper_dir: Option<PathBuf>,
+        _upper_dir: Option<PathBuf>,
         _work_dir: Option<PathBuf>,
         backstore_mode: agentfs_core::config::BackstoreMode,
     ) -> FsResult<Self> {
@@ -312,7 +308,7 @@ impl AgentFsDaemon {
             ));
 
             // Lock the core temporarily to subscribe to events
-            let mut core_guard = core_clone.lock().unwrap();
+            let core_guard = core_clone.lock().unwrap();
             core_guard
                 .subscribe_events(sink)
                 .expect("Failed to subscribe watch service to events");
@@ -330,7 +326,7 @@ impl AgentFsDaemon {
     /// Register a process with the daemon
     pub fn register_process(&mut self, pid: u32, ppid: u32, uid: u32, gid: u32) -> FsResult<PID> {
         let registered_pid = self.core.lock().unwrap().register_process(pid, ppid, uid, gid);
-        self.processes.insert(pid, registered_pid.clone());
+        self.processes.insert(pid, registered_pid);
         Ok(registered_pid)
     }
 
@@ -378,7 +374,7 @@ impl AgentFsDaemon {
             let mut stream = stream_mutex
                 .lock()
                 .map_err(|e| format!("Failed to lock stream for pid {}: {}", pid, e))?;
-            send_response(&mut *stream, &response);
+            send_response(&mut stream, &response);
             Ok(())
         } else {
             Err(format!("No connection registered for pid {}", pid))
@@ -393,6 +389,13 @@ impl AgentFsDaemon {
 
     /// Send an FSEvents batch to a process via CFMessagePort
     #[cfg(target_os = "macos")]
+    /// # Safety
+    /// Caller must ensure:
+    /// * `data` is a valid CFDataRef obtained from CoreFoundation and not freed until after the call.
+    /// * `pid` has a registered CFMessagePort in `fsevents_ports`.
+    /// * `msgid` matches the receiving shim's expected protocol.
+    /// * No concurrent mutation invalidates the CFMessagePort while sending.
+    ///   Failure to uphold these invariants may lead to undefined behaviour in CoreFoundation.
     pub unsafe fn send_fsevents_batch(
         &self,
         pid: u32,
@@ -444,6 +447,7 @@ impl AgentFsDaemon {
         &self.watch_service
     }
 
+    #[allow(dead_code)]
     fn get_process_pid(&self, os_pid: u32) -> Option<&PID> {
         self.processes.get(&os_pid)
     }
@@ -497,7 +501,7 @@ impl AgentFsDaemon {
                 );
                 // Track the directory access for filesystem state verification
                 *self.opened_dirs.entry(path.clone()).or_insert(0) += 1;
-                Ok(handle_id.0 as u64) // Return FsCore handle ID
+                Ok(handle_id.0) // Return FsCore handle ID
             }
             Err(e) => {
                 println!("AgentFsDaemon: FsCore opendir failed for {}: {:?}", path, e);
@@ -545,7 +549,7 @@ impl AgentFsDaemon {
 
         // Use FsCore to read from the directory handle
         let pid = agentfs_core::PID::new(client_pid);
-        let handle_id = agentfs_core::HandleId(handle as u64);
+        let handle_id = agentfs_core::HandleId(handle);
 
         match self.core.lock().unwrap().readdir(&pid, handle_id) {
             Ok(Some(entry)) => {
@@ -586,7 +590,7 @@ impl AgentFsDaemon {
 
         // Use FsCore to close the directory handle
         let pid = agentfs_core::PID::new(client_pid);
-        let handle_id = agentfs_core::HandleId(handle as u64);
+        let handle_id = agentfs_core::HandleId(handle);
 
         match self.core.lock().unwrap().closedir(&pid, handle_id) {
             Ok(()) => {
@@ -615,7 +619,7 @@ impl AgentFsDaemon {
         &mut self,
         path: String,
         operation: String,
-        args: Option<Vec<u8>>,
+        _args: Option<Vec<u8>>,
         client_pid: u32,
     ) -> Result<Option<String>, String> {
         println!(
@@ -630,7 +634,7 @@ impl AgentFsDaemon {
         match operation.as_str() {
             "stat" => {
                 match self.core.lock().unwrap().getattr(&pid, path_obj) {
-                    Ok(attrs) => {
+                    Ok(_attrs) => {
                         // For testing, return a simple stat result
                         // In a real implementation, we'd serialize the full stat structure
                         println!("AgentFsDaemon: path_op stat succeeded");
@@ -710,20 +714,20 @@ impl AgentFsDaemon {
     pub fn handle_request(
         &mut self,
         request: Request,
-        client_pid: u32,
+        _client_pid: u32,
     ) -> Result<Response, String> {
         match request {
             Request::DaemonStateProcesses(_) => {
-                self.get_daemon_state_processes().map(|wrapper| Response::DaemonState(wrapper))
+                self.get_daemon_state_processes().map(Response::DaemonState)
             }
             Request::DaemonStateStats(_) => {
-                self.get_daemon_state_stats().map(|wrapper| Response::DaemonState(wrapper))
+                self.get_daemon_state_stats().map(Response::DaemonState)
             }
-            Request::DaemonStateFilesystem(req) => self
-                .get_daemon_state_filesystem(&req.query)
-                .map(|wrapper| Response::DaemonState(wrapper)),
+            Request::DaemonStateFilesystem(req) => {
+                self.get_daemon_state_filesystem(&req.query).map(Response::DaemonState)
+            }
             Request::DaemonStateBackstore(_) => {
-                self.get_daemon_state_backstore().map(|wrapper| Response::DaemonState(wrapper))
+                self.get_daemon_state_backstore().map(Response::DaemonState)
             }
             _ => Err(format!("Request type not implemented: {:?}", request)),
         }
@@ -831,6 +835,7 @@ impl AgentFsDaemon {
     }
 
     /// Capture overlay entries recursively (legacy method, kept for compatibility)
+    #[allow(dead_code)]
     fn capture_overlay_entries(
         &self,
         pid: &agentfs_core::PID,
@@ -933,6 +938,7 @@ impl AgentFsDaemon {
     }
 
     /// Capture directory structure from the real filesystem (for testing)
+    #[allow(dead_code)]
     fn capture_directory_from_filesystem(
         &self,
         dir_path: &str,
@@ -958,6 +964,7 @@ impl AgentFsDaemon {
     }
 
     /// Recursively walk a directory and add entries
+    #[allow(clippy::only_used_in_recursion)]
     fn walk_directory_recursive(
         &self,
         full_path: &std::path::Path,
@@ -972,67 +979,65 @@ impl AgentFsDaemon {
 
         match std::fs::read_dir(full_path) {
             Ok(dir_entries) => {
-                for entry in dir_entries {
-                    if let Ok(entry) = entry {
-                        let entry_path = entry.path();
-                        let entry_name_owned = entry.file_name().to_string_lossy().to_string();
-                        let entry_relative_path = if relative_path == "/" {
-                            format!("/{}", entry_name_owned)
-                        } else {
-                            format!(
-                                "{}/{}",
-                                relative_path.trim_end_matches('/'),
-                                entry_name_owned
-                            )
-                        };
+                for entry in dir_entries.flatten() {
+                    let entry_path = entry.path();
+                    let entry_name_owned = entry.file_name().to_string_lossy().to_string();
+                    let entry_relative_path = if relative_path == "/" {
+                        format!("/{}", entry_name_owned)
+                    } else {
+                        format!(
+                            "{}/{}",
+                            relative_path.trim_end_matches('/'),
+                            entry_name_owned
+                        )
+                    };
 
-                        if entry_path.is_dir() {
-                            // Add subdirectory
+                    if entry_path.is_dir() {
+                        // Add subdirectory
+                        entries.push(FilesystemEntry {
+                            path: entry_relative_path.as_bytes().to_vec(),
+                            kind: FileKind { discriminant: 1 }, // Directory
+                            size: 0,
+                            content: None,
+                            target: None,
+                        });
+
+                        // Recurse into subdirectory
+                        self.walk_directory_recursive(
+                            &entry_path,
+                            &entry_relative_path,
+                            query,
+                            depth + 1,
+                            entries,
+                        )?;
+                    } else if entry_path.is_file() {
+                        // Add file with content if small enough
+                        if let Ok(metadata) = entry_path.metadata() {
+                            let size = metadata.len();
+                            let content = if size <= query.max_file_size as u64 {
+                                std::fs::read(&entry_path).ok()
+                            } else {
+                                None
+                            };
+
                             entries.push(FilesystemEntry {
                                 path: entry_relative_path.as_bytes().to_vec(),
-                                kind: FileKind { discriminant: 1 }, // Directory
-                                size: 0,
-                                content: None,
+                                kind: FileKind { discriminant: 0 }, // File
+                                size,
+                                content,
                                 target: None,
                             });
-
-                            // Recurse into subdirectory
-                            self.walk_directory_recursive(
-                                &entry_path,
-                                &entry_relative_path,
-                                query,
-                                depth + 1,
-                                entries,
-                            )?;
-                        } else if entry_path.is_file() {
-                            // Add file with content if small enough
-                            if let Ok(metadata) = entry_path.metadata() {
-                                let size = metadata.len();
-                                let content = if size <= query.max_file_size as u64 {
-                                    std::fs::read(&entry_path).ok()
-                                } else {
-                                    None
-                                };
-
-                                entries.push(FilesystemEntry {
-                                    path: entry_relative_path.as_bytes().to_vec(),
-                                    kind: FileKind { discriminant: 0 }, // File
-                                    size,
-                                    content,
-                                    target: None,
-                                });
-                            }
-                        } else if entry_path.is_symlink() {
-                            // Add symlink
-                            if let Ok(target) = std::fs::read_link(&entry_path) {
-                                entries.push(FilesystemEntry {
-                                    path: entry_relative_path.as_bytes().to_vec(),
-                                    kind: FileKind { discriminant: 2 }, // Symlink
-                                    size: 0,
-                                    content: None,
-                                    target: Some(target.to_string_lossy().as_bytes().to_vec()),
-                                });
-                            }
+                        }
+                    } else if entry_path.is_symlink() {
+                        // Add symlink
+                        if let Ok(target) = std::fs::read_link(&entry_path) {
+                            entries.push(FilesystemEntry {
+                                path: entry_relative_path.as_bytes().to_vec(),
+                                kind: FileKind { discriminant: 2 }, // Symlink
+                                size: 0,
+                                content: None,
+                                target: Some(target.to_string_lossy().as_bytes().to_vec()),
+                            });
                         }
                     }
                 }
@@ -1043,6 +1048,7 @@ impl AgentFsDaemon {
     }
 
     /// Scan temp directory for test directories and files (for testing)
+    #[allow(dead_code)]
     fn scan_for_test_dirs_and_files(
         &self,
         temp_path: &std::path::Path,
@@ -1053,45 +1059,43 @@ impl AgentFsDaemon {
         match std::fs::read_dir(temp_path) {
             Ok(dir_entries) => {
                 let mut found_dirs = 0;
-                for entry in dir_entries {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        if path.is_dir() {
-                            found_dirs += 1;
-                            // Check if this looks like a test directory
-                            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                for entry in dir_entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        found_dirs += 1;
+                        // Check if this looks like a test directory
+                        let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        eprintln!(
+                            "AgentFsDaemon: found dir: {} (len: {})",
+                            dir_name,
+                            dir_name.len()
+                        );
+                        let starts_with_tmp = dir_name.starts_with(".tmp");
+                        let len_check = dir_name.len() >= 10;
+                        let is_test_dir = dir_name == "agentfs_readlink_test";
+                        eprintln!(
+                            "AgentFsDaemon: starts_with .tmp: {}, len >= 10: {}, is_test_dir: {}",
+                            starts_with_tmp, len_check, is_test_dir
+                        );
+                        if (starts_with_tmp && len_check) || is_test_dir {
+                            // This looks like a temp directory created by the test
                             eprintln!(
-                                "AgentFsDaemon: found dir: {} (len: {})",
-                                dir_name,
-                                dir_name.len()
+                                "AgentFsDaemon: CONDITION MET - scanning test temp dir: {}",
+                                dir_name
                             );
-                            let starts_with_tmp = dir_name.starts_with(".tmp");
-                            let len_check = dir_name.len() >= 10;
-                            let is_test_dir = dir_name == "agentfs_readlink_test";
                             eprintln!(
-                                "AgentFsDaemon: starts_with .tmp: {}, len >= 10: {}, is_test_dir: {}",
-                                starts_with_tmp, len_check, is_test_dir
+                                "AgentFsDaemon: about to call scan_test_directory for path: {:?}",
+                                path
                             );
-                            if (starts_with_tmp && len_check) || is_test_dir {
-                                // This looks like a temp directory created by the test
-                                eprintln!(
-                                    "AgentFsDaemon: CONDITION MET - scanning test temp dir: {}",
+                            match self.scan_test_directory(&path, query, entries) {
+                                Ok(_) => eprintln!(
+                                    "AgentFsDaemon: scan_test_directory succeeded for {}",
                                     dir_name
-                                );
-                                eprintln!(
-                                    "AgentFsDaemon: about to call scan_test_directory for path: {:?}",
-                                    path
-                                );
-                                match self.scan_test_directory(&path, query, entries) {
-                                    Ok(_) => eprintln!(
-                                        "AgentFsDaemon: scan_test_directory succeeded for {}",
-                                        dir_name
-                                    ),
-                                    Err(e) => eprintln!(
-                                        "AgentFsDaemon: scan_test_directory failed for {}: {}",
-                                        dir_name, e
-                                    ),
-                                }
+                                ),
+                                Err(e) => eprintln!(
+                                    "AgentFsDaemon: scan_test_directory failed for {}: {}",
+                                    dir_name, e
+                                ),
                             }
                         }
                     }
@@ -1110,6 +1114,7 @@ impl AgentFsDaemon {
     }
 
     /// Scan a test directory for files and subdirectories
+    #[allow(dead_code)]
     fn scan_test_directory(
         &self,
         dir_path: &std::path::Path,
@@ -1147,67 +1152,62 @@ impl AgentFsDaemon {
                     eprintln!("AgentFsDaemon: entry {}: {:?}", i, entry);
                 }
 
-                for entry in all_entries {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                        let entry_path_str = path.to_string_lossy().to_string();
+                for entry in all_entries.into_iter().flatten() {
+                    let path = entry.path();
+                    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let entry_path_str = path.to_string_lossy().to_string();
 
-                        if path.is_dir() {
-                            if file_name == "test_dir" || file_name == "test_files" {
-                                // This is a test directory we want to capture
-                                println!(
-                                    "AgentFsDaemon: found test dir {}, capturing it",
-                                    file_name
-                                );
-                                self.capture_directory_from_filesystem(
-                                    &entry_path_str,
-                                    query,
-                                    entries,
-                                )?;
+                    if path.is_dir() {
+                        if file_name == "test_dir" || file_name == "test_files" {
+                            // This is a test directory we want to capture
+                            println!("AgentFsDaemon: found test dir {}, capturing it", file_name);
+                            self.capture_directory_from_filesystem(
+                                &entry_path_str,
+                                query,
+                                entries,
+                            )?;
+                        } else {
+                            // Add the directory itself
+                            entries.push(FilesystemEntry {
+                                path: entry_path_str.as_bytes().to_vec(),
+                                kind: FileKind { discriminant: 1 }, // Directory
+                                size: 0,
+                                content: None,
+                                target: None,
+                            });
+                        }
+                    } else if path.is_symlink() {
+                        // Add symlinks (check this before is_file since symlinks can return true for is_file)
+                        found_symlinks += 1;
+                        eprintln!("AgentFsDaemon: found symlink: {}", entry_path_str);
+                        if let Ok(target) = std::fs::read_link(&path) {
+                            eprintln!("AgentFsDaemon: symlink target: {}", target.display());
+                            entries.push(FilesystemEntry {
+                                path: entry_path_str.as_bytes().to_vec(),
+                                kind: FileKind { discriminant: 2 }, // Symlink
+                                size: 0,
+                                content: None,
+                                target: Some(target.to_string_lossy().as_bytes().to_vec()),
+                            });
+                        }
+                    } else if path.is_file() {
+                        // Add regular files
+                        found_files += 1;
+                        eprintln!("AgentFsDaemon: found file: {}", entry_path_str);
+                        if let Ok(metadata) = path.metadata() {
+                            let size = metadata.len();
+                            let content = if size <= query.max_file_size as u64 {
+                                std::fs::read(&path).ok()
                             } else {
-                                // Add the directory itself
-                                entries.push(FilesystemEntry {
-                                    path: entry_path_str.as_bytes().to_vec(),
-                                    kind: FileKind { discriminant: 1 }, // Directory
-                                    size: 0,
-                                    content: None,
-                                    target: None,
-                                });
-                            }
-                        } else if path.is_symlink() {
-                            // Add symlinks (check this before is_file since symlinks can return true for is_file)
-                            found_symlinks += 1;
-                            eprintln!("AgentFsDaemon: found symlink: {}", entry_path_str);
-                            if let Ok(target) = std::fs::read_link(&path) {
-                                eprintln!("AgentFsDaemon: symlink target: {}", target.display());
-                                entries.push(FilesystemEntry {
-                                    path: entry_path_str.as_bytes().to_vec(),
-                                    kind: FileKind { discriminant: 2 }, // Symlink
-                                    size: 0,
-                                    content: None,
-                                    target: Some(target.to_string_lossy().as_bytes().to_vec()),
-                                });
-                            }
-                        } else if path.is_file() {
-                            // Add regular files
-                            found_files += 1;
-                            eprintln!("AgentFsDaemon: found file: {}", entry_path_str);
-                            if let Ok(metadata) = path.metadata() {
-                                let size = metadata.len();
-                                let content = if size <= query.max_file_size as u64 {
-                                    std::fs::read(&path).ok()
-                                } else {
-                                    None
-                                };
-                                entries.push(FilesystemEntry {
-                                    path: entry_path_str.as_bytes().to_vec(),
-                                    kind: FileKind { discriminant: 0 }, // File
-                                    size,
-                                    content,
-                                    target: None,
-                                });
-                            }
+                                None
+                            };
+                            entries.push(FilesystemEntry {
+                                path: entry_path_str.as_bytes().to_vec(),
+                                kind: FileKind { discriminant: 0 }, // File
+                                size,
+                                content,
+                                target: None,
+                            });
                         }
                     }
                 }
@@ -1230,6 +1230,7 @@ impl AgentFsDaemon {
         }
     }
 
+    #[allow(dead_code)]
     fn handle_dirfd_open_dir(&mut self, pid: u32, path: String, fd: i32) -> Result<(), String> {
         println!(
             "AgentFsDaemon: dirfd_open_dir(pid={}, path={}, fd={})",
@@ -1250,6 +1251,7 @@ impl AgentFsDaemon {
             .map_err(|e| format!("Failed to register dirfd: {}", e))
     }
 
+    #[allow(dead_code)]
     fn handle_dirfd_close_fd(&mut self, pid: u32, fd: i32) -> Result<(), String> {
         println!("AgentFsDaemon: dirfd_close_fd(pid={}, fd={})", pid, fd);
 
@@ -1260,6 +1262,7 @@ impl AgentFsDaemon {
             .map_err(|e| format!("Failed to close dirfd: {}", e))
     }
 
+    #[allow(dead_code)]
     fn handle_dirfd_dup_fd(&mut self, pid: u32, old_fd: i32, new_fd: i32) -> Result<(), String> {
         println!(
             "AgentFsDaemon: dirfd_dup_fd(pid={}, old_fd={}, new_fd={})",
@@ -1277,6 +1280,7 @@ impl AgentFsDaemon {
             .map_err(|e| format!("Failed to dup dirfd: {}", e))
     }
 
+    #[allow(dead_code)]
     fn handle_dirfd_set_cwd(&mut self, pid: u32, cwd: String) -> Result<(), String> {
         println!("AgentFsDaemon: dirfd_set_cwd(pid={}, cwd={})", pid, cwd);
 
@@ -1287,6 +1291,7 @@ impl AgentFsDaemon {
             .map_err(|e| format!("Failed to set cwd: {}", e))
     }
 
+    #[allow(dead_code)]
     fn handle_dirfd_resolve_path(
         &mut self,
         pid: u32,
@@ -1309,11 +1314,16 @@ impl AgentFsDaemon {
     }
 }
 
+#[allow(dead_code)]
 fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, client_pid: u32) {
     // Register the process with the daemon
     {
         let mut daemon = daemon.lock().unwrap();
-        if let Err(e) = daemon.register_process(client_pid, 0, 0, 0) {
+        if let Err(err) = daemon.register_process(client_pid, 0, 0, 0) {
+            eprintln!(
+                "AgentFsDaemon: register_process failed for pid {}: {}",
+                client_pid, err
+            );
             return;
         }
         // Register the connection for sending unsolicited messages
@@ -1346,7 +1356,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         return;
     }
 
-    if let Ok(handshake) = decode_ssz_message::<HandshakeMessage>(&msg_buf) {
+    if let Ok(_handshake) = decode_ssz_message::<HandshakeMessage>(&msg_buf) {
         // Send back a simple text acknowledgment
         let ack = b"OK\n";
         let _ = stream.write_all(ack);
@@ -1374,7 +1384,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     match decode_ssz_message::<Request>(&msg_buf) {
         Ok(request) => {
             match request {
-                Request::FdOpen((version, fd_open_req)) => {
+                Request::FdOpen((_version, fd_open_req)) => {
                     let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
                     let mut daemon = daemon.lock().unwrap();
                     match daemon.handle_fd_open(
@@ -1400,7 +1410,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirOpen((version, dir_open_req)) => {
+                Request::DirOpen((_version, dir_open_req)) => {
                     let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
                     let mut daemon = daemon.lock().unwrap();
                     match daemon.handle_dir_open(path, client_pid) {
@@ -1415,8 +1425,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: version }) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
+                Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: _version }) => {
                     match daemon.lock().unwrap().get_daemon_state_processes() {
                         Ok(response) => {
                             let response = Response::DaemonState(response);
@@ -1431,8 +1440,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DaemonStateStats(DaemonStateStatsRequest { data: version }) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
+                Request::DaemonStateStats(DaemonStateStatsRequest { data: _version }) => {
                     match daemon.lock().unwrap().get_daemon_state_stats() {
                         Ok(response) => {
                             let response = Response::DaemonState(response);
@@ -1447,7 +1455,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Readlink((version, readlink_req)) => {
+                Request::Readlink((_version, readlink_req)) => {
                     let path = String::from_utf8_lossy(&readlink_req.path).to_string();
                     println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
                     let mut daemon = daemon.lock().unwrap();
@@ -1465,7 +1473,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirRead((version, dir_read_req)) => {
+                Request::DirRead((_version, dir_read_req)) => {
                     let handle = dir_read_req.handle;
                     println!("AgentFsDaemon: dir_read(handle={})", handle);
                     let mut daemon = daemon.lock().unwrap();
@@ -1486,7 +1494,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirClose((version, dir_close_req)) => {
+                Request::DirClose((_version, dir_close_req)) => {
                     let handle = dir_close_req.handle;
                     println!("AgentFsDaemon: dir_close(handle={})", handle);
                     let mut daemon = daemon.lock().unwrap();
@@ -1504,7 +1512,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::FdDup((version, fd_dup_req)) => {
+                Request::FdDup((_version, fd_dup_req)) => {
                     let fd = fd_dup_req.fd;
                     println!("AgentFsDaemon: fd_dup(fd={})", fd);
                     let mut daemon = daemon.lock().unwrap();
@@ -1522,7 +1530,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::PathOp((version, path_op_req)) => {
+                Request::PathOp((_version, path_op_req)) => {
                     let path = String::from_utf8_lossy(&path_op_req.path).to_string();
                     let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
                     println!("AgentFsDaemon: path_op(path={}, op={})", path, operation);
@@ -1546,7 +1554,6 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         "AgentFsDaemon: processing filesystem state query with max_depth={}, include_overlay={}, max_file_size={}",
                         query.max_depth, query.include_overlay, query.max_file_size
                     );
-                    let pid = get_client_pid_helper(&daemon, client_pid);
                     match daemon.lock().unwrap().get_daemon_state_filesystem(&query) {
                         Ok(response) => {
                             let entry_count = match &response.response {
@@ -1573,7 +1580,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     }
                 }
                 // Metadata operations
-                Request::Stat((version, stat_req)) => {
+                Request::Stat((_version, stat_req)) => {
                     let path = String::from_utf8_lossy(&stat_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     match daemon.lock().unwrap().core.lock().unwrap().stat(&pid, path.as_ref()) {
@@ -1587,7 +1594,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Lstat((version, lstat_req)) => {
+                Request::Lstat((_version, lstat_req)) => {
                     let path = String::from_utf8_lossy(&lstat_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     match daemon.lock().unwrap().core.lock().unwrap().lstat(&pid, path.as_ref()) {
@@ -1601,7 +1608,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fstat((version, fstat_req)) => {
+                Request::Fstat((_version, fstat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(fstat_req.fd as u64);
                     match daemon.lock().unwrap().core.lock().unwrap().fstat(&pid, handle_id) {
@@ -1615,7 +1622,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fstatat((version, fstatat_req)) => {
+                Request::Fstatat((_version, fstatat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
                     match daemon.lock().unwrap().core.lock().unwrap().fstatat(
@@ -1634,7 +1641,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Chmod((version, chmod_req)) => {
+                Request::Chmod((_version, chmod_req)) => {
                     let path = String::from_utf8_lossy(&chmod_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     match daemon.lock().unwrap().core.lock().unwrap().set_mode(
@@ -1652,7 +1659,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fchmod((version, fchmod_req)) => {
+                Request::Fchmod((_version, fchmod_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(fchmod_req.fd as u64);
                     match daemon.lock().unwrap().core.lock().unwrap().fchmod(
@@ -1671,7 +1678,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fchmodat((version, fchmodat_req)) => {
+                Request::Fchmodat((_version, fchmodat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
                     match daemon.lock().unwrap().core.lock().unwrap().fchmodat(
@@ -1691,7 +1698,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Chown((version, chown_req)) => {
+                Request::Chown((_version, chown_req)) => {
                     let path = String::from_utf8_lossy(&chown_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     match daemon.lock().unwrap().core.lock().unwrap().set_owner(
@@ -1710,7 +1717,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Lchown((version, lchown_req)) => {
+                Request::Lchown((_version, lchown_req)) => {
                     let path = String::from_utf8_lossy(&lchown_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     // For now, use regular chown (lchown would be different for symlinks)
@@ -1731,7 +1738,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fchown((version, fchown_req)) => {
+                Request::Fchown((_version, fchown_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(fchown_req.fd as u64);
                     match daemon.lock().unwrap().core.lock().unwrap().fchown(
@@ -1751,7 +1758,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fchownat((version, fchownat_req)) => {
+                Request::Fchownat((_version, fchownat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
                     match daemon.lock().unwrap().core.lock().unwrap().fchownat(
@@ -1772,7 +1779,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Utimes((version, utimes_req)) => {
+                Request::Utimes((_version, utimes_req)) => {
                     let path = String::from_utf8_lossy(&utimes_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     // For path-based utimes, we need to open the file first
@@ -1835,7 +1842,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Futimes((version, futimes_req)) => {
+                Request::Futimes((_version, futimes_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(futimes_req.fd as u64);
                     let times = futimes_req.times.map(|t| (t.0, t.1));
@@ -1858,7 +1865,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Utimensat((version, utimensat_req)) => {
+                Request::Utimensat((_version, utimensat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let path = String::from_utf8_lossy(&utimensat_req.path).to_string();
                     match daemon.lock().unwrap().core.lock().unwrap().utimensat(
@@ -1878,7 +1885,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Linkat((version, linkat_req)) => {
+                Request::Linkat((_version, linkat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let old_path = String::from_utf8_lossy(&linkat_req.old_path).to_string();
                     let new_path = String::from_utf8_lossy(&linkat_req.new_path).to_string();
@@ -1899,7 +1906,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Symlinkat((version, symlinkat_req)) => {
+                Request::Symlinkat((_version, symlinkat_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let target = String::from_utf8_lossy(&symlinkat_req.target).to_string();
                     let linkpath = String::from_utf8_lossy(&symlinkat_req.linkpath).to_string();
@@ -1919,7 +1926,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Futimens((version, futimens_req)) => {
+                Request::Futimens((_version, futimens_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(futimens_req.fd as u64);
                     let times = futimens_req.times.map(|t| (t.0, t.1));
@@ -1942,7 +1949,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Truncate((version, truncate_req)) => {
+                Request::Truncate((_version, truncate_req)) => {
                     let path = String::from_utf8_lossy(&truncate_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     // For path-based truncate, we need to open the file first
@@ -2001,7 +2008,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Ftruncate((version, ftruncate_req)) => {
+                Request::Ftruncate((_version, ftruncate_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(ftruncate_req.fd as u64);
                     match daemon.lock().unwrap().core.lock().unwrap().ftruncate(
@@ -2020,7 +2027,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Statfs((version, statfs_req)) => {
+                Request::Statfs((_version, statfs_req)) => {
                     let path = String::from_utf8_lossy(&statfs_req.path).to_string();
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     match daemon.lock().unwrap().core.lock().unwrap().statfs(&pid, path.as_ref()) {
@@ -2035,7 +2042,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::Fstatfs((version, fstatfs_req)) => {
+                Request::Fstatfs((_version, fstatfs_req)) => {
                     let pid = get_client_pid_helper(&daemon, client_pid);
                     let handle_id = HandleId(fstatfs_req.fd as u64);
                     match daemon.lock().unwrap().core.lock().unwrap().fstatfs(&pid, handle_id) {
@@ -2050,7 +2057,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirfdOpenDir((version, dirfd_open_dir_req)) => {
+                Request::DirfdOpenDir((_version, dirfd_open_dir_req)) => {
                     let path = String::from_utf8_lossy(&dirfd_open_dir_req.path).to_string();
                     let mut daemon = daemon.lock().unwrap();
                     match daemon.handle_dirfd_open_dir(
@@ -2069,7 +2076,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirfdCloseFd((version, dirfd_close_fd_req)) => {
+                Request::DirfdCloseFd((_version, dirfd_close_fd_req)) => {
                     let mut daemon = daemon.lock().unwrap();
                     match daemon.handle_dirfd_close_fd(
                         dirfd_close_fd_req.pid,
@@ -2086,7 +2093,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirfdDupFd((version, dirfd_dup_fd_req)) => {
+                Request::DirfdDupFd((_version, dirfd_dup_fd_req)) => {
                     let mut daemon = daemon.lock().unwrap();
                     match daemon.handle_dirfd_dup_fd(
                         dirfd_dup_fd_req.pid,
@@ -2104,7 +2111,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirfdSetCwd((version, dirfd_set_cwd_req)) => {
+                Request::DirfdSetCwd((_version, dirfd_set_cwd_req)) => {
                     let cwd = String::from_utf8_lossy(&dirfd_set_cwd_req.cwd).to_string();
                     let mut daemon = daemon.lock().unwrap();
                     match daemon.handle_dirfd_set_cwd(dirfd_set_cwd_req.pid, cwd) {
@@ -2119,7 +2126,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::DirfdResolvePath((version, dirfd_resolve_path_req)) => {
+                Request::DirfdResolvePath((_version, dirfd_resolve_path_req)) => {
                     let relative_path =
                         String::from_utf8_lossy(&dirfd_resolve_path_req.relative_path).to_string();
                     let mut daemon = daemon.lock().unwrap();
@@ -2141,7 +2148,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                 }
-                Request::WatchRegisterFSEventsPort((version, port_req)) => {
+                Request::WatchRegisterFSEventsPort((_version, port_req)) => {
                     #[cfg(target_os = "macos")]
                     {
                         let port_name_str =
@@ -2179,18 +2186,16 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 }
             }
         }
-        Err(e) => {}
+        Err(_e) => {}
     }
 
     // Cleanup: unregister the connection
     cleanup();
 }
 
+#[allow(dead_code)]
 fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
-    use libc::{
-        CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET, c_int, cmsghdr,
-        iovec, msghdr,
-    };
+    use libc::{iovec, msghdr};
 
     // Create a dummy message (we're only sending the fd)
     let dummy_data = [0u8; 1];
@@ -2254,6 +2259,3 @@ fn send_response(stream: &mut UnixStream, response: &Response) {
     let _ = stream.write_all(&encoded);
     let _ = stream.flush();
 }
-
-#[cfg(target_os = "macos")]
-const kCFStringEncodingUTF8: u32 = 0x08000100;
