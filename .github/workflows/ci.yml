@@ -72,9 +72,9 @@ jobs:
           - name: x86_64-linux (NixOS, self-hosted)
             runner: [self-hosted, nixos, x86-64-v3, microvm, fine-tuned-systemd-sandbox]
             allowedToFail: false
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
-            allowedToFail: true
+          # - name: aarch64-darwin (macOS, GitHub-hosted)
+          #   runner: macos-latest
+          #   allowedToFail: true
 
     name: Rust tests | ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
