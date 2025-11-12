@@ -136,7 +136,8 @@ impl Multiplexer for ZellijMultiplexer {
         // Zellij doesn't return pane IDs in a parseable way from CLI.
         // We'll return a placeholder ID that won't be usable for targeting.
         // In practice, AH workflows should use layouts instead of individual splits.
-        Ok(format!("zellij-pane-{:?}", window))
+        let window_str = window.map(|w| w.as_str()).unwrap_or("default");
+        Ok(format!("zellij-pane-{}", window_str))
     }
 
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {

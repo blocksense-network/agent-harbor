@@ -20,7 +20,16 @@ tempfile = "3.0"
 crossterm = { workspace = true }
 
 [features]
-default = ["tmux"]
+default = [
+  "tmux",
+  "kitty",
+  "neovim",
+  "emacs",
+  "screen",
+  "vim",
+  "wezterm",
+  "zellij",
+]
 tmux = []
 kitty = []
 wezterm = []

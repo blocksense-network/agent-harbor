@@ -87,19 +87,22 @@ impl Multiplexer for ScreenMultiplexer {
         // Screen uses regions, not panes in the same way as modern multiplexers
         // We need to split the current region and create a new window in it
 
+        // Get the session name from window parameter or use default
+        let session_name = window.map(|w| w.as_str()).unwrap_or("default");
+
         // First split the region
         let split_cmd = match dir {
             SplitDirection::Horizontal => "split",
             SplitDirection::Vertical => "split -v",
         };
 
-        let session = match window {
+        let _session = match window {
             Some(w) => w,
             None => return Err(MuxError::NotFound),
         };
 
         let mut split_command = Command::new("screen");
-        split_command.arg("-S").arg(session).arg("-X").arg(split_cmd);
+        split_command.arg("-S").arg(session_name).arg("-X").arg(split_cmd);
 
         let output = split_command
             .output()
@@ -120,7 +123,7 @@ impl Multiplexer for ScreenMultiplexer {
         };
 
         let mut focus_command = Command::new("screen");
-        focus_command.arg("-S").arg(session).arg("-X").arg(focus_dir);
+        focus_command.arg("-S").arg(session_name).arg("-X").arg(focus_dir);
 
         let output = focus_command
             .output()
@@ -136,7 +139,7 @@ impl Multiplexer for ScreenMultiplexer {
 
         // Create a new window in the new region
         let mut screen_command = Command::new("screen");
-        screen_command.arg("-S").arg(session).arg("-X").arg("screen");
+        screen_command.arg("-S").arg(session_name).arg("-X").arg("screen");
 
         if let Some(cwd) = opts.cwd {
             // Screen doesn't support setting CWD directly, so we use bash -lc with cd
@@ -166,8 +169,7 @@ impl Multiplexer for ScreenMultiplexer {
 
         // Screen doesn't provide pane IDs in a programmatic way
         // We'll return a placeholder ID
-        let win_str = session.as_str();
-        Ok(format!("screen-region-{}", win_str))
+        Ok(format!("screen-region-{}", session_name))
     }
 
     fn run_command(
