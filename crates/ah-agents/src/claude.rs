@@ -36,6 +36,23 @@ pub struct ClaudeAiOauth {
     pub subscription_type: Option<String>,
 }
 
+/// Structured status information for Claude Code CLI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeStatus {
+    /// Whether the CLI is installed and available
+    pub available: bool,
+    /// Version information if available
+    pub version: Option<String>,
+    /// Whether the user is authenticated
+    pub authenticated: bool,
+    /// Authentication method used (e.g., "ANTHROPIC_API_KEY", "OAuth", "Credentials File")
+    pub auth_method: Option<String>,
+    /// Source of authentication (config file path, environment variable name, etc.)
+    pub auth_source: Option<String>,
+    /// Any error that occurred during status check
+    pub error: Option<String>,
+}
+
 impl ClaudeAgent {
     pub fn new() -> Self {
         Self {
@@ -282,6 +299,117 @@ impl ClaudeAgent {
 
         debug!("Created Claude configuration at {:?}", config_path);
         Ok(())
+    }
+
+    /// Get structured Claude CLI status information
+    ///
+    /// This function returns comprehensive status information in a structured format
+    /// that can be easily consumed by health checkers and other tools.
+    ///
+    /// Returns ClaudeStatus with detailed information about:
+    /// - CLI availability and version
+    /// - Authentication status and method
+    /// - API key information (masked for security)
+    /// - Any errors encountered
+    pub async fn get_claude_status(&self) -> ClaudeStatus {
+        // Check CLI availability by detecting version
+        let (available, version, mut error) = match self.detect_version().await {
+            Ok(version_info) => (true, Some(version_info.version), None),
+            Err(AgentError::AgentNotFound(_)) => (
+                false,
+                None,
+                Some("Claude CLI not found in PATH".to_string()),
+            ),
+            Err(e) => (
+                false,
+                None,
+                Some(format!("Version detection failed: {}", e)),
+            ),
+        };
+
+        if !available {
+            return ClaudeStatus {
+                available: false,
+                version: None,
+                authenticated: false,
+                auth_method: None,
+                auth_source: None,
+                error,
+            };
+        }
+
+        // Check authentication status
+        let (authenticated, auth_method, auth_source) = match self.get_user_api_key().await {
+            Ok(Some(_api_key)) => {
+                let method = self.detect_auth_method().await;
+                let source = self.detect_auth_source().await;
+                (true, Some(method), Some(source))
+            }
+            Ok(None) => (false, None, None),
+            Err(e) => {
+                error = Some(format!("Authentication check failed: {}", e));
+                (false, None, None)
+            }
+        };
+
+        ClaudeStatus {
+            available,
+            version,
+            authenticated,
+            auth_method,
+            auth_source,
+            error,
+        }
+    }
+
+    /// Detect which authentication method is being used
+    async fn detect_auth_method(&self) -> String {
+        // Check in order of precedence to determine which method is being used
+        if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            return "ANTHROPIC_API_KEY environment variable".to_string();
+        }
+        if std::env::var("ANTHROPIC_API_KEY_FILE").is_ok() {
+            return "ANTHROPIC_API_KEY_FILE".to_string();
+        }
+
+        // Check for Claude Code OAuth credentials
+        if self.retrieve_credentials(None).await.unwrap_or(None).is_some() {
+            return "Claude Code OAuth".to_string();
+        }
+
+        "Unknown".to_string()
+    }
+
+    /// Detect the specific source of authentication (file path, env var name, etc.)
+    async fn detect_auth_source(&self) -> String {
+        // Check in order of precedence to determine the specific source
+        if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            return "ANTHROPIC_API_KEY".to_string();
+        }
+        if let Ok(path) = std::env::var("ANTHROPIC_API_KEY_FILE") {
+            return format!("ANTHROPIC_API_KEY_FILE ({})", path);
+        }
+
+        // Check for Claude Code OAuth credentials
+        if self.retrieve_credentials(None).await.unwrap_or(None).is_some() {
+            #[cfg(target_os = "macos")]
+            {
+                return "macOS Keychain (Claude Code-credentials)".to_string();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(home_dir) = dirs::home_dir() {
+                    let credentials_path = home_dir.join(".claude").join(".credentials.json");
+                    return credentials_path.to_string_lossy().to_string();
+                }
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+            {
+                return "Platform-specific credential store".to_string();
+            }
+        }
+
+        "Unknown".to_string()
     }
 }
 
@@ -899,6 +1027,125 @@ mod tests {
                 assert!(msg.contains("Run 'claude setup-token'"));
             }
             _ => panic!("Expected CredentialCopyFailed error, got: {:?}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_claude_status_not_available() {
+        let agent = ClaudeAgent {
+            binary_path: "non-existent-claude".to_string(),
+        };
+        let status = agent.get_claude_status().await;
+        assert!(!status.available);
+        assert!(status.version.is_none());
+        assert!(!status.authenticated);
+        assert!(status.auth_method.is_none());
+        assert!(status.auth_source.is_none());
+        assert!(status.error.is_some());
+        assert!(status.error.as_ref().unwrap().contains("Claude CLI not found"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_anthropic_api_key() {
+        let agent = ClaudeAgent::new();
+
+        // Save current env vars
+        let prev_env_key = std::env::var("ANTHROPIC_API_KEY").ok();
+        let prev_env_file = std::env::var("ANTHROPIC_API_KEY_FILE").ok();
+
+        // Ensure clean state and set test env var
+        std::env::remove_var("ANTHROPIC_API_KEY_FILE");
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-key");
+
+        let method = agent.detect_auth_method().await;
+        assert_eq!(method, "ANTHROPIC_API_KEY environment variable");
+
+        // Restore env
+        match prev_env_key {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_env_file {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY_FILE", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY_FILE"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_method_anthropic_api_key_file() {
+        let agent = ClaudeAgent::new();
+
+        // Save current env vars
+        let prev_env_key = std::env::var("ANTHROPIC_API_KEY").ok();
+        let prev_env_file = std::env::var("ANTHROPIC_API_KEY_FILE").ok();
+
+        // Remove key env var and set file env var
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::set_var("ANTHROPIC_API_KEY_FILE", "/path/to/key/file");
+
+        let method = agent.detect_auth_method().await;
+        assert_eq!(method, "ANTHROPIC_API_KEY_FILE");
+
+        // Restore env
+        match prev_env_key {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_env_file {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY_FILE", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY_FILE"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_anthropic_api_key() {
+        let agent = ClaudeAgent::new();
+
+        // Save current env vars
+        let prev_env_key = std::env::var("ANTHROPIC_API_KEY").ok();
+        let prev_env_file = std::env::var("ANTHROPIC_API_KEY_FILE").ok();
+
+        // Ensure clean state and set test env var
+        std::env::remove_var("ANTHROPIC_API_KEY_FILE");
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-key");
+
+        let source = agent.detect_auth_source().await;
+        assert_eq!(source, "ANTHROPIC_API_KEY");
+
+        // Restore env
+        match prev_env_key {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_env_file {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY_FILE", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY_FILE"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_auth_source_anthropic_api_key_file() {
+        let agent = ClaudeAgent::new();
+
+        // Save current env vars
+        let prev_env_key = std::env::var("ANTHROPIC_API_KEY").ok();
+        let prev_env_file = std::env::var("ANTHROPIC_API_KEY_FILE").ok();
+
+        // Remove key env var and set file env var
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::set_var("ANTHROPIC_API_KEY_FILE", "/path/to/key/file");
+
+        let source = agent.detect_auth_source().await;
+        assert_eq!(source, "ANTHROPIC_API_KEY_FILE (/path/to/key/file)");
+
+        // Restore env
+        match prev_env_key {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY"),
+        }
+        match prev_env_file {
+            Some(val) => std::env::set_var("ANTHROPIC_API_KEY_FILE", val),
+            None => std::env::remove_var("ANTHROPIC_API_KEY_FILE"),
         }
     }
 }
