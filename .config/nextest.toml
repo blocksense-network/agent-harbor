@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 [profile.default]
+fail-fast = false
+
 # Don't show output for passing tests
 status-level = "leak"
 
