@@ -31,6 +31,7 @@ extern "C" {
         reply_mode: CFStringRef,
         return_data: *mut CFDataRef,
     ) -> i32; // SInt32, 0 on success
+    #[allow(dead_code)]
     fn CFMessagePortInvalidate(port: CFMessagePortRef);
 }
 
@@ -71,6 +72,12 @@ pub fn register_fsevents_port(
     ports.insert(pid, port);
 }
 
+/// # Safety
+/// * `ports` must not be mutated concurrently in a way that invalidates existing port entries.
+/// * `data` must be a valid CoreFoundation CFDataRef for the duration of the call.
+/// * The provided `pid` must have a registered port, otherwise we return an error.
+/// * `msgid` must correspond to the protocol understood by the remote shim.
+///   Violating these preconditions could lead to undefined behaviour inside CoreFoundation APIs.
 pub unsafe fn send_fsevents_batch(
     ports: &HashMap<u32, CFMessagePortWrapper>,
     pid: u32,

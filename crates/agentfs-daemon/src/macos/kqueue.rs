@@ -171,7 +171,7 @@ pub fn trigger_user_event(
     doorbell_ident: u64,
     payload_id: u64,
 ) -> Result<(), String> {
-    let mut kev = libc::kevent {
+    let kev = libc::kevent {
         ident: doorbell_ident as usize,
         filter: EVFILT_USER,
         flags: 0, // trigger existing registration
@@ -185,7 +185,7 @@ pub fn trigger_user_event(
         tv_nsec: 0,
     };
 
-    let result = unsafe { libc_kevent(kqueue_fd, &mut kev, 1, std::ptr::null_mut(), 0, &timeout) };
+    let result = unsafe { libc_kevent(kqueue_fd, &kev, 1, std::ptr::null_mut(), 0, &timeout) };
     if result == -1 {
         Err(format!(
             "kevent doorbell failed: {}",
@@ -253,14 +253,11 @@ pub fn send_fsevents_batch_via_port(
         if paths_array_raw.is_null() {
             return Err("Failed to create paths CFArray".to_string());
         }
-        let mut paths_array = OwnedCFRef::new(paths_array_raw as *mut std::ffi::c_void);
+        let paths_array = OwnedCFRef::new(paths_array_raw);
 
         for path in &job.paths {
             let cf_string = CFString::new(path);
-            CFArrayAppendValue(
-                paths_array_raw,
-                cf_string.as_CFTypeRef() as *const std::ffi::c_void,
-            );
+            CFArrayAppendValue(paths_array_raw, cf_string.as_CFTypeRef());
         }
 
         // Create CFArray for flags (CFNumber)
@@ -272,14 +269,11 @@ pub fn send_fsevents_batch_via_port(
         if flags_array_raw.is_null() {
             return Err("Failed to create flags CFArray".to_string());
         }
-        let mut flags_array = OwnedCFRef::new(flags_array_raw as *mut std::ffi::c_void);
+        let flags_array = OwnedCFRef::new(flags_array_raw);
 
         for &flag in &job.flags {
             let flag_number = CFNumber::from(flag as i32);
-            CFArrayAppendValue(
-                flags_array_raw,
-                flag_number.as_CFTypeRef() as *const std::ffi::c_void,
-            );
+            CFArrayAppendValue(flags_array_raw, flag_number.as_CFTypeRef());
         }
 
         // Create CFArray for eventIds (CFNumber)
@@ -291,14 +285,11 @@ pub fn send_fsevents_batch_via_port(
         if event_ids_array_raw.is_null() {
             return Err("Failed to create eventIds CFArray".to_string());
         }
-        let mut event_ids_array = OwnedCFRef::new(event_ids_array_raw as *mut std::ffi::c_void);
+        let event_ids_array = OwnedCFRef::new(event_ids_array_raw);
 
         for event_id in &event_ids {
             let id_number = CFNumber::from(*event_id as i64);
-            CFArrayAppendValue(
-                event_ids_array_raw,
-                id_number.as_CFTypeRef() as *const std::ffi::c_void,
-            );
+            CFArrayAppendValue(event_ids_array_raw, id_number.as_CFTypeRef());
         }
 
         // Build dictionary payload
@@ -311,60 +302,40 @@ pub fn send_fsevents_batch_via_port(
         if dict_raw.is_null() {
             return Err("Failed to create CFDictionary".to_string());
         }
-        let mut dict = OwnedCFRef::new(dict_raw as *mut std::ffi::c_void);
+        let dict = OwnedCFRef::new(dict_raw);
 
         let paths_key = CFString::new("paths");
-        CFDictionarySetValue(
-            dict_raw,
-            paths_key.as_CFTypeRef() as *const std::ffi::c_void,
-            paths_array.release(),
-        );
+        CFDictionarySetValue(dict_raw, paths_key.as_CFTypeRef(), paths_array.release());
 
         let flags_key = CFString::new("flags");
-        CFDictionarySetValue(
-            dict_raw,
-            flags_key.as_CFTypeRef() as *const std::ffi::c_void,
-            flags_array.release(),
-        );
+        CFDictionarySetValue(dict_raw, flags_key.as_CFTypeRef(), flags_array.release());
 
         let ids_key = CFString::new("eventIds");
-        CFDictionarySetValue(
-            dict_raw,
-            ids_key.as_CFTypeRef() as *const std::ffi::c_void,
-            event_ids_array.release(),
-        );
+        CFDictionarySetValue(dict_raw, ids_key.as_CFTypeRef(), event_ids_array.release());
 
         let stream_key = CFString::new("streamId");
         let stream_value = CFNumber::from(job.stream_id as i64);
         CFDictionarySetValue(
             dict_raw,
-            stream_key.as_CFTypeRef() as *const std::ffi::c_void,
-            stream_value.as_CFTypeRef() as *const std::ffi::c_void,
+            stream_key.as_CFTypeRef(),
+            stream_value.as_CFTypeRef(),
         );
 
         let start_key = CFString::new("startEventId");
         let start_value = CFNumber::from(job.start_event_id as i64);
         CFDictionarySetValue(
             dict_raw,
-            start_key.as_CFTypeRef() as *const std::ffi::c_void,
-            start_value.as_CFTypeRef() as *const std::ffi::c_void,
+            start_key.as_CFTypeRef(),
+            start_value.as_CFTypeRef(),
         );
 
         let next_key = CFString::new("reservedNextEventId");
         let next_value = CFNumber::from(job.reserved_next_event_id as i64);
-        CFDictionarySetValue(
-            dict_raw,
-            next_key.as_CFTypeRef() as *const std::ffi::c_void,
-            next_value.as_CFTypeRef() as *const std::ffi::c_void,
-        );
+        CFDictionarySetValue(dict_raw, next_key.as_CFTypeRef(), next_value.as_CFTypeRef());
 
         let root_key = CFString::new("root");
         let root_str = CFString::new(&job.root);
-        CFDictionarySetValue(
-            dict_raw,
-            root_key.as_CFTypeRef() as *const std::ffi::c_void,
-            root_str.as_CFTypeRef() as *const std::ffi::c_void,
-        );
+        CFDictionarySetValue(dict_raw, root_key.as_CFTypeRef(), root_str.as_CFTypeRef());
 
         // Serialise dictionary to binary property list
         let mut error: CFErrorRef = std::ptr::null_mut();
@@ -377,7 +348,7 @@ pub fn send_fsevents_batch_via_port(
         );
 
         if !error.is_null() {
-            let _error = OwnedCFRef::new(error as *mut std::ffi::c_void);
+            let _error = OwnedCFRef::new(error);
             return Err("Failed to serialize property list".to_string());
         }
 
@@ -385,9 +356,8 @@ pub fn send_fsevents_batch_via_port(
             return Err("Failed to create CFData from property list".to_string());
         }
 
-        let cf_data = OwnedCFRef::new(cf_data_raw as *mut std::ffi::c_void);
-        let result =
-            unsafe { daemon.send_fsevents_batch(job.pid, AGENTFS_MSG_FSEVENTS_BATCH, cf_data_raw) };
+        let cf_data = OwnedCFRef::new(cf_data_raw);
+        let result = daemon.send_fsevents_batch(job.pid, AGENTFS_MSG_FSEVENTS_BATCH, cf_data_raw);
         drop(cf_data); // ensure property list is released after send attempt
         result
     }
