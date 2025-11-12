@@ -2,13 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! C API definitions for AgentFS FFI
+//!
+//! # Safety
+//! All FFI functions in this module require that:
+//! - All pointer arguments are valid, properly aligned, and point to initialized memory (or null where documented).
+//! - String pointers (`*const c_char`) point to valid null-terminated C strings.
+//! - Output pointers (`*mut`) point to writable memory of the expected size.
+//! - The `fs` handle passed to functions must have been obtained from `af_fs_create` and not yet destroyed.
+//!
+//! Violating these preconditions results in undefined behavior.
+
+#![allow(clippy::missing_safety_doc)] // Safety documented at module level above
 
 use agentfs_core::{
     CachePolicy, CaseSensitivity, FsConfig, FsCore, FsLimits, MemoryPolicy, OpenOptions,
 };
 use std::collections::HashMap;
 use std::ffi::CStr;
-// use std::ffi::c_void; // not needed currently
 use std::os::raw::c_char;
 use std::path::Path;
 use std::ptr;
@@ -256,7 +266,7 @@ pub unsafe extern "C" fn af_control_request(
     }
 
     let instances = FS_INSTANCES.lock().unwrap();
-    let _core = match instances.get(&fs) {
+    match instances.get(&fs) {
         Some(_) => {} // Core exists, continue
         None => return AfResult::AfErrInval,
     };
