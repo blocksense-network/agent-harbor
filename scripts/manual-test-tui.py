@@ -21,19 +21,20 @@ Supported filesystem types:
 import argparse
 import logging
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 # Import shared utilities
 from test_utils import (
-    setup_script_logging,
+    ensure_ah_binary,
     find_project_root,
     find_zfs_mount_point,
-    print_dry_run_header,
+    initialize_example_git_repo,
     print_command_info,
-    print_filesystem_info
+    print_dry_run_header,
+    print_filesystem_info,
+    setup_script_logging,
 )
 
 
@@ -75,46 +76,6 @@ def find_filesystem_mount_point(fs_type):
     else:
         raise ValueError(f"Unknown filesystem type: {fs_type}")
 
-
-
-
-def setup_example_repository(repo_dir, repo_name):
-    """Set up an example git repository by copying from the example-repos directory."""
-    logging.info(f"Setting up example repository: {repo_dir}")
-
-    # Clean up existing repo if it exists
-    if repo_dir.exists():
-        logging.info(f"Cleaning up existing repository: {repo_dir}")
-        print(f"Cleaning up existing repository: {repo_dir}")
-        shutil.rmtree(repo_dir)
-
-    # Find the example repository source
-    script_dir = Path(__file__).parent
-    example_repo_src = script_dir.parent / "tests" / "example-repos" / repo_name
-
-    if not example_repo_src.exists():
-        raise FileNotFoundError(f"Example repository not found: {example_repo_src}")
-
-    # Copy the example repository
-    shutil.copytree(example_repo_src, repo_dir)
-
-    # Initialize git repository
-    subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
-
-    # Disable GPG signing for commits in test repo
-    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo_dir, check=True)
-
-    # Create initial commit
-    subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit: Add example repository structure"], cwd=repo_dir, check=True)
-
-    # Count files (excluding .git directory)
-    file_count = sum(1 for _ in repo_dir.rglob('*') if _.is_file() and '.git' not in str(_.relative_to(repo_dir)))
-
-    logging.info("Example repository setup complete")
-    print(f"Created example repository with {file_count} files")
 
 
 def main():
@@ -212,8 +173,14 @@ Examples:
 
     # Set up repository
     repo_dir = working_dir / args.repo
-    setup_example_repository(repo_dir, "python-hello-world")
+    file_count = initialize_example_git_repo(
+        repo_dir,
+        user_name="Test User",
+        user_email="test@example.com",
+        commit_message="Initial commit: Add example repository structure",
+    )
 
+    print(f"Created example repository with {file_count} files")
     print(f"Generated test repository: {repo_dir}")
     print(f"Working directory: {working_dir}")
     print(f"User home: {user_home_dir}")
@@ -221,10 +188,8 @@ Examples:
 
     # Build ah tui command
     project_root = find_project_root()
-    ah_cmd = [
-        str(project_root / "target" / "debug" / "ah"),
-        "tui"
-    ]
+    ah_binary = ensure_ah_binary(project_root, release=False)
+    ah_cmd = [str(ah_binary), "tui"]
 
     # Build command as string
     ah_command = " ".join(f"'{arg}'" if "'" not in arg and " " in arg else f'"{arg}"' if " " in arg else arg for arg in ah_cmd)

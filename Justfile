@@ -414,6 +414,18 @@ manual-test-ah-agent-record *args:
 manual-test-tui *args:
     ./scripts/manual-test-tui.py {{args}}
 
+# Launch remote-mode TUI manual testing workflow (REST or mock server)
+manual-test-tui-remote *args:
+    ./scripts/manual-test-remote.py {{args}}
+
+# Convenience wrapper for mock server remote testing (loads default scenario)
+manual-test-tui-remote-mock *args:
+    ./scripts/manual-test-remote.py --mode mock {{args}}
+
+# Automated smoke test used by CI to validate remote manual-test harness
+test-manual-remote-smoke:
+    ./scripts/manual-test-remote.py --mode mock --smoke
+
 # Run WebUI E2E tests in headed mode (visible browser)
 webui-test-headed:
     yarn workspace ah-webui-e2e-tests run test:headed

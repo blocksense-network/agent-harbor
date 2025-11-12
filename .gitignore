@@ -11,6 +11,7 @@ legacy/ruby/test/logs/
 
 # Test run artifacts
 test-runs/
+manual-tests/
 
 # Debugger temp files
 .rdbgrc.breakpoints
