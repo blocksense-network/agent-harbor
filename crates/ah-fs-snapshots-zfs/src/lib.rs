@@ -3,15 +3,15 @@
 
 //! ZFS snapshot provider implementation for Agent Harbor.
 
-use ah_fs_snapshots_daemon::client::{DaemonClient, DaemonError};
+use ah_fs_snapshots_daemon::client::DaemonClient;
 use ah_fs_snapshots_traits::{
-    FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotInfo,
-    SnapshotProviderKind, SnapshotRef, WorkingCopyMode,
+    FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotProviderKind,
+    SnapshotRef, WorkingCopyMode,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tokio::process::Command;
+// use tokio::process::Command; // Not currently used; retain comment for future async exec consideration.
 
 /// ZFS snapshot provider implementation.
 pub struct ZfsProvider {
@@ -217,6 +217,12 @@ impl ZfsProvider {
         } else {
             None
         }
+    }
+}
+
+impl Default for ZfsProvider {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

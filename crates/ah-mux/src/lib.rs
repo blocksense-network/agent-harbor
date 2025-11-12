@@ -31,43 +31,11 @@ pub mod windows_terminal;
 #[cfg(feature = "zellij")]
 pub mod zellij;
 
-pub use iterm2::ITerm2Multiplexer;
-#[cfg(feature = "kitty")]
-pub use kitty::KittyMultiplexer;
-#[cfg(feature = "screen")]
-pub use screen::ScreenMultiplexer;
-#[cfg(all(feature = "tilix", target_os = "linux"))]
-pub use tilix::TilixMultiplexer;
-pub use tmux::TmuxMultiplexer;
-#[cfg(feature = "wezterm")]
-pub use wezterm::WezTermMultiplexer;
-#[cfg(feature = "windows-terminal")]
-pub use windows_terminal::WindowsTerminalMultiplexer;
-#[cfg(feature = "zellij")]
-pub use zellij::ZellijMultiplexer;
-#[cfg(feature = "ghostty")]
-pub mod ghostty;
-#[cfg(feature = "kitty")]
-pub mod kitty;
-#[cfg(feature = "neovim")]
-pub mod neovim;
-#[cfg(feature = "screen")]
-pub mod screen;
-#[cfg(all(feature = "tilix", target_os = "linux"))]
-pub mod tilix;
-#[cfg(feature = "vim")]
-pub mod vim;
-#[cfg(feature = "wezterm")]
-pub mod wezterm;
-#[cfg(feature = "windows-terminal")]
-pub mod windows_terminal;
-#[cfg(feature = "zellij")]
-pub mod zellij;
-
 #[cfg(feature = "emacs")]
 pub use emacs::EmacsMultiplexer;
 #[cfg(feature = "ghostty")]
 pub use ghostty::GhosttyMultiplexer;
+pub use iterm2::ITerm2Multiplexer;
 #[cfg(feature = "kitty")]
 pub use kitty::KittyMultiplexer;
 #[cfg(feature = "neovim")]
@@ -76,6 +44,7 @@ pub use neovim::NeovimMultiplexer;
 pub use screen::ScreenMultiplexer;
 #[cfg(all(feature = "tilix", target_os = "linux"))]
 pub use tilix::TilixMultiplexer;
+pub use tmux::TmuxMultiplexer;
 #[cfg(feature = "vim")]
 pub use vim::VimMultiplexer;
 #[cfg(feature = "wezterm")]

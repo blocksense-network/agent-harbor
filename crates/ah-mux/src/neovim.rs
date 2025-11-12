@@ -56,9 +56,8 @@ impl NeovimMultiplexer {
     /// Execute Lua code in Neovim
     fn execute_lua(&self, lua_code: &str) -> Result<(), MuxError> {
         let lua_cmd = format!("lua {}", lua_code);
-        let args = vec!["--headless", "-c", &lua_cmd, "-c", "quit"];
-        let args_str: Vec<&str> = args.iter().map(|s| *s).collect();
-        self.run_nvim_command(&args_str)?;
+        let args = ["--headless", "-c", &lua_cmd, "-c", "quit"];
+        self.run_nvim_command(&args)?;
         Ok(())
     }
 }

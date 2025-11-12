@@ -41,7 +41,7 @@ pub struct Scenario {
 }
 
 impl Scenario {
-    pub fn from_str(json: &str) -> anyhow::Result<Self> {
+    pub fn from_json_str(json: &str) -> anyhow::Result<Self> {
         Ok(serde_json::from_str(json)?)
     }
 }
