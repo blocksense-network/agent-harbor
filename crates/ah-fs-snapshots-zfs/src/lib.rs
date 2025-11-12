@@ -295,6 +295,7 @@ impl FsSnapshotProvider for ZfsProvider {
                 let clone_name = format!("{}-ah_clone_{}", dataset, unique_id);
 
                 // Create snapshot via daemon
+                tracing::debug!("Requesting ZFS snapshot {} -> {}", dataset, snapshot_name);
                 self.daemon_client.snapshot_zfs(&dataset, &snapshot_name).map_err(|e| {
                     ah_fs_snapshots_traits::Error::provider(format!(
                         "Failed to create ZFS snapshot: {}",
@@ -303,6 +304,7 @@ impl FsSnapshotProvider for ZfsProvider {
                 })?;
 
                 // Create clone via daemon
+                tracing::debug!("Requesting ZFS clone {} -> {}", snapshot_name, clone_name);
                 let mountpoint =
                     self.daemon_client.clone_zfs(&snapshot_name, &clone_name).map_err(|e| {
                         ah_fs_snapshots_traits::Error::provider(format!(
@@ -310,6 +312,7 @@ impl FsSnapshotProvider for ZfsProvider {
                             e
                         ))
                     })?;
+                tracing::debug!("Clone mountpoint result: {:?}", mountpoint);
 
                 let exec_path = match mountpoint {
                     Some(path) if path != "none" && path != "legacy" => PathBuf::from(path),
