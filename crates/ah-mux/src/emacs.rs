@@ -194,7 +194,7 @@ impl Multiplexer for EmacsMultiplexer {
             filter_elisp
         );
 
-        let result = self.execute_elisp(&elisp)?;
+        self.execute_elisp(&elisp)?;
         // Parse the result - this would be a Lisp list that we need to parse
         // For simplicity, we'll return an empty list for now
         Ok(vec![])

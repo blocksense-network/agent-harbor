@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
             ..
         } => {
             let data = std::fs::read_to_string(&scenario_path)?;
-            let scenario = Scenario::from_str(&data)?;
+            let scenario = Scenario::from_json_str(&data)?;
 
             // Create mock client
             let client = Arc::new(MockClient::from_scenario_name(&scenario.name));
@@ -105,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
             trace,
         } => {
             let data = std::fs::read_to_string(&scenario_path)?;
-            let scenario = Scenario::from_str(&data)?;
+            let scenario = Scenario::from_json_str(&data)?;
 
             // Create mock client
             let client = Arc::new(MockClient::from_scenario_name(&scenario.name));

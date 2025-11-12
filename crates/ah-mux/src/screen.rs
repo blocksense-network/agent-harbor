@@ -49,10 +49,7 @@ impl Multiplexer for ScreenMultiplexer {
         let session_name = opts.title.unwrap_or("ah-session");
 
         // Check if session already exists
-        if self
-            .list_windows(Some(session_name))
-            .map_or(false, |windows| !windows.is_empty())
-        {
+        if self.list_windows(Some(session_name)).is_ok_and(|windows| !windows.is_empty()) {
             return Ok(session_name.to_string());
         }
 
@@ -83,7 +80,7 @@ impl Multiplexer for ScreenMultiplexer {
         window: Option<&WindowId>,
         _target: Option<&PaneId>,
         dir: SplitDirection,
-        percent: Option<u8>,
+        _percent: Option<u8>,
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
@@ -96,8 +93,13 @@ impl Multiplexer for ScreenMultiplexer {
             SplitDirection::Vertical => "split -v",
         };
 
+        let session = match window {
+            Some(w) => w,
+            None => return Err(MuxError::NotFound),
+        };
+
         let mut split_command = Command::new("screen");
-        split_command.arg("-S").arg(window).arg("-X").arg(split_cmd);
+        split_command.arg("-S").arg(session).arg("-X").arg(split_cmd);
 
         let output = split_command
             .output()
@@ -118,7 +120,7 @@ impl Multiplexer for ScreenMultiplexer {
         };
 
         let mut focus_command = Command::new("screen");
-        focus_command.arg("-S").arg(window).arg("-X").arg(focus_dir);
+        focus_command.arg("-S").arg(session).arg("-X").arg(focus_dir);
 
         let output = focus_command
             .output()
@@ -134,7 +136,7 @@ impl Multiplexer for ScreenMultiplexer {
 
         // Create a new window in the new region
         let mut screen_command = Command::new("screen");
-        screen_command.arg("-S").arg(window).arg("-X").arg("screen");
+        screen_command.arg("-S").arg(session).arg("-X").arg("screen");
 
         if let Some(cwd) = opts.cwd {
             // Screen doesn't support setting CWD directly, so we use bash -lc with cd
@@ -164,15 +166,21 @@ impl Multiplexer for ScreenMultiplexer {
 
         // Screen doesn't provide pane IDs in a programmatic way
         // We'll return a placeholder ID
-        Ok(format!("screen-region-{}", window))
+        let win_str = session.as_str();
+        Ok(format!("screen-region-{}", win_str))
     }
 
-    fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
+    fn run_command(
+        &self,
+        pane: &PaneId,
+        cmd: &str,
+        _opts: &CommandOptions,
+    ) -> Result<(), MuxError> {
         // Extract session name from pane ID
-        let session_name = pane.strip_prefix("screen-region-").ok_or_else(|| MuxError::NotFound)?;
+        let session_name = pane.strip_prefix("screen-region-").ok_or(MuxError::NotFound)?;
 
         // Send the command as text input to the focused window
-        let mut stuff_command = format!("{}\n", cmd);
+        let stuff_command = format!("{}\n", cmd);
 
         let mut command = Command::new("screen");
         command.arg("-S").arg(session_name).arg("-X").arg("stuff").arg(stuff_command);
@@ -194,7 +202,7 @@ impl Multiplexer for ScreenMultiplexer {
 
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         // Extract session name from pane ID
-        let session_name = pane.strip_prefix("screen-region-").ok_or_else(|| MuxError::NotFound)?;
+        let session_name = pane.strip_prefix("screen-region-").ok_or(MuxError::NotFound)?;
 
         // Use screen's stuff command to send text
         let mut command = Command::new("screen");

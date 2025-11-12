@@ -79,7 +79,7 @@ impl Multiplexer for WezTermMultiplexer {
 
     fn split_pane(
         &self,
-        window: Option<&WindowId>,
+        _window: Option<&WindowId>,
         _target: Option<&PaneId>,
         dir: SplitDirection,
         percent: Option<u8>,

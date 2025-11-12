@@ -215,6 +215,7 @@ impl GitProvider {
     }
 
     /// Generate a unique identifier for resources.
+    #[allow(dead_code)]
     fn generate_unique_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
@@ -352,6 +353,12 @@ impl GitProvider {
         }
 
         Ok(String::from_utf8_lossy(&commit_output.stdout).trim().to_string())
+    }
+}
+
+impl Default for GitProvider {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

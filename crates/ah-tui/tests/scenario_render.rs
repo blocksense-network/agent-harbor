@@ -24,7 +24,7 @@ fn test_initial_render_from_minimal_scenario() -> anyhow::Result<()> {
         "steps": []
     }"#;
 
-    let scenario = Scenario::from_str(json)?;
+    let scenario = Scenario::from_json_str(json)?;
     let (w, h) = scenario
         .terminal
         .map(|t| (t.width.unwrap_or(80), t.height.unwrap_or(24)))

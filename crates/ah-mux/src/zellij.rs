@@ -6,8 +6,6 @@
 //! Zellij is a terminal workspace that uses KDL layout files for defining
 //! complex pane arrangements and CLI commands for session management.
 
-use std::collections::HashMap;
-use std::path::Path;
 use std::process::Command;
 
 use ah_mux_core::*;
@@ -55,10 +53,7 @@ impl Multiplexer for ZellijMultiplexer {
         let session_name = opts.title.unwrap_or("ah-session");
 
         // Check if session already exists
-        if self
-            .list_windows(Some(session_name))
-            .map_or(false, |windows| !windows.is_empty())
-        {
+        if self.list_windows(Some(session_name)).is_ok_and(|windows| !windows.is_empty()) {
             return Ok(session_name.to_string());
         }
 
@@ -92,8 +87,8 @@ impl Multiplexer for ZellijMultiplexer {
         &self,
         window: Option<&WindowId>,
         _target: Option<&PaneId>,
-        dir: SplitDirection,
-        percent: Option<u8>,
+        _dir: SplitDirection,
+        _percent: Option<u8>,
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
@@ -141,7 +136,7 @@ impl Multiplexer for ZellijMultiplexer {
         // Zellij doesn't return pane IDs in a parseable way from CLI.
         // We'll return a placeholder ID that won't be usable for targeting.
         // In practice, AH workflows should use layouts instead of individual splits.
-        Ok(format!("zellij-pane-{}", window))
+        Ok(format!("zellij-pane-{:?}", window))
     }
 
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
@@ -149,7 +144,7 @@ impl Multiplexer for ZellijMultiplexer {
         // The best we can do is create a new pane with the command.
         // This is a limitation of Zellij's CLI interface.
 
-        let session_name = pane.strip_prefix("zellij-pane-").ok_or_else(|| MuxError::NotFound)?;
+        let session_name = pane.strip_prefix("zellij-pane-").ok_or(MuxError::NotFound)?;
 
         let mut zellij_cmd = Command::new("zellij");
         zellij_cmd.arg("--session").arg(session_name);
