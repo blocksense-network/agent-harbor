@@ -74,7 +74,7 @@ jobs:
           substituters: ${{ vars.SUBSTITUTERS }}
 
       - name: Build & activate the Nix Dev Shell
-        run: nix build -L --json .#devShells.${{ matrix.system }}.default
+        run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#devShells.${{ matrix.system }}.default
 
   test:
     strategy:
