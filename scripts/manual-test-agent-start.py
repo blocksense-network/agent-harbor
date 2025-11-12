@@ -31,10 +31,6 @@ import threading
 import time
 from pathlib import Path
 
-# Import shared utilities
-import sys
-from pathlib import Path
-
 # Add scripts directory to path so we can import test_utils
 script_dir = Path(__file__).parent
 sys.path.insert(0, str(script_dir))
@@ -141,20 +137,6 @@ class MockServerManager:
         self.monitoring = False
         if self.monitor_thread and self.monitor_thread.is_alive():
             self.monitor_thread.join(timeout=5)
-
-
-def find_project_root():
-    """Find the project root directory."""
-    current = Path(__file__).resolve()
-    # Start from the script's directory and go up until we find Cargo.toml
-    while current.parent != current:
-        if (current / "Cargo.toml").exists():
-            return current
-        current = current.parent
-    # Fallback to parent of script if Cargo.toml not found
-    return Path(__file__).resolve().parent
-
-
 def determine_core_command(args, repo_dir, user_home_dir, prompt=None):
     """Determine the core agent command (before any recording wrapper)."""
     project_root = find_project_root()

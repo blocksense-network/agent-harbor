@@ -10,9 +10,12 @@ to reduce code duplication and maintain consistency.
 """
 
 import logging
+import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Dict, Optional, Sequence
 
 
 def setup_script_logging(user_home_dir):
@@ -109,3 +112,122 @@ def print_filesystem_info(working_dir, repo_dir=None):
     if repo_dir:
         print(f"Repository: {repo_dir}")
         print(f"Repository Contents: {list(repo_dir.glob('**/*'))}")
+
+
+def run_command(
+    cmd: Sequence[str],
+    *,
+    cwd: Optional[Path] = None,
+    env: Optional[Dict[str, str]] = None,
+) -> subprocess.CompletedProcess:
+    """Run a subprocess command with logging and error handling."""
+    cmd_list = [str(part) for part in cmd]
+    logging.debug("Running command: %s", " ".join(cmd_list))
+    return subprocess.run(
+        cmd_list,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        check=True,
+    )
+
+
+def ensure_ah_binary(project_root: Path, *, release: bool = False) -> Path:
+    """Ensure the `ah` CLI binary is built and return its path."""
+    profile = "release" if release else "debug"
+    binary = project_root / "target" / profile / "ah"
+    if binary.exists():
+        return binary
+
+    cmd = ["cargo", "build", "-p", "ah-cli"]
+    if release:
+        cmd.append("--release")
+    run_command(cmd, cwd=project_root)
+
+    if not binary.exists():
+        raise RuntimeError(f"Failed to build ah binary at {binary}")
+    return binary
+
+
+def initialize_example_git_repo(
+    repo_path: Path,
+    *,
+    example_name: str = "python-hello-world",
+    user_name: str = "Agent Harbor Demo",
+    user_email: str = "demo@example.com",
+    commit_message: str = "Initial commit",
+) -> int:
+    """
+    Copy an example repository and initialise it as a git repository.
+
+    Returns the number of files (excluding .git metadata) present in the repository.
+    """
+    project_root = find_project_root()
+    example_src = project_root / "tests" / "example-repos" / example_name
+    if not example_src.exists():
+        raise FileNotFoundError(f"Example repository missing at {example_src}")
+
+    if repo_path.exists():
+        shutil.rmtree(repo_path)
+    repo_path.parent.mkdir(parents=True, exist_ok=True)
+
+    shutil.copytree(example_src, repo_path)
+
+    run_command(["git", "init"], cwd=repo_path)
+    run_command(["git", "config", "user.name", user_name], cwd=repo_path)
+    run_command(["git", "config", "user.email", user_email], cwd=repo_path)
+    run_command(["git", "config", "commit.gpgsign", "false"], cwd=repo_path)
+    run_command(["git", "add", "."], cwd=repo_path)
+    run_command(["git", "commit", "-m", commit_message], cwd=repo_path)
+
+    file_count = sum(
+        1
+        for path in repo_path.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo_path).parts
+    )
+    logging.debug(
+        "Initialised example repository at %s with %d files", repo_path, file_count
+    )
+    return file_count
+
+
+def resolve_scenario_path(project_root: Path, name: str) -> Path:
+    """Resolve a scenario path relative to standard scenario directories."""
+    candidate = Path(name)
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
+
+    search_roots = [
+        project_root / "tests" / "tools" / "mock-agent" / "scenarios",
+        project_root / "tests" / "tools" / "mock-agent" / "examples",
+        project_root / "specs" / "Public",
+        project_root / "test_scenarios",
+    ]
+    for root in search_roots:
+        candidate = root / name
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Unable to locate scenario file '{name}' in known paths")
+
+
+def isoformat_utc(dt: datetime) -> str:
+    """Format a datetime as an ISO-8601 UTC string."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def create_timestamped_run_id(
+    prefix: str,
+    mode: Optional[str] = None,
+    tag: Optional[str] = None,
+) -> str:
+    """Create a timestamped identifier suitable for manual test runs."""
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    parts = [prefix]
+    if mode:
+        parts.append(mode)
+    parts.append(timestamp)
+    if tag:
+        parts.append(Path(tag).stem if tag else tag)
+    sanitised = [str(part).replace(" ", "_") for part in parts if part]
+    return "-".join(sanitised)
