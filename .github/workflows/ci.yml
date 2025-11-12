@@ -99,12 +99,8 @@ jobs:
 
       - name: Build & activate the Nix Dev Shell
         run: |
-          nix print-dev-env --accept-flake-config --impure .#devShells.x86_64-linux.default > dev-env.sh || exit 1
-          source dev-env.sh
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
-          echo "NIX_PATH=$NIX_PATH" >> "$GITHUB_ENV"
-          echo "NIX_PROFILES=$NIX_PROFILES" >> "$GITHUB_ENV"
-          echo "NIX_REMOTE=$NIX_REMOTE" >> "$GITHUB_ENV"
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
 
       # FIXME: Integrate clippy in pre-commit and move to `lint` job
       # - name: Check code with clippy
@@ -144,12 +140,8 @@ jobs:
 
       - name: Build & activate the Nix Dev Shell
         run: |
-          nix print-dev-env --accept-flake-config --impure .#devShells.x86_64-linux.default > dev-env.sh || exit 1
-          source dev-env.sh
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
-          echo "NIX_PATH=$NIX_PATH" >> "$GITHUB_ENV"
-          echo "NIX_PROFILES=$NIX_PROFILES" >> "$GITHUB_ENV"
-          echo "NIX_REMOTE=$NIX_REMOTE" >> "$GITHUB_ENV"
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
 
       - name: Install JS deps
         run: yarn install
