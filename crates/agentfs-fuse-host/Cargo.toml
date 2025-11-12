@@ -15,8 +15,6 @@ tracing = { workspace = true }
 clap = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# FUSE dependencies (Linux/macOS) - optional for cross-platform builds
-fuser = { version = "0.16", optional = true }
 serde_json = { workspace = true }
 libc = "0.2"
 # SSZ serialization (matching agentfs-proto)
@@ -25,8 +23,13 @@ ethereum_ssz_derive = "0.8"
 
 [features]
 default = []
-fuse = ["fuser"]
+# Enable Linux FUSE support by turning on the optional, Linux-only `fuser` dep
+fuse = ["dep:fuser"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { version = "1.0", features = ["rt", "macros"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# FUSE dependency is Linux-only and optional; enabled via the `fuse` feature
+fuser = { version = "0.16", optional = true }

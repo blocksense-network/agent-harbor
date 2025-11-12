@@ -431,7 +431,8 @@ mod tests {
                 stderr.contains("Failed to prepare sandbox workspace")
                     || stderr.contains("No filesystem snapshot provider")
                     || stderr.contains("permission denied")
-                    || stderr.contains("Operation not permitted"),
+                    || stderr.contains("Operation not permitted")
+                    || stderr.contains("Sandbox functionality is only available on Linux"),
                 "Unexpected failure: stdout={}, stderr={}",
                 stdout,
                 stderr

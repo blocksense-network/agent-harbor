@@ -11,6 +11,7 @@ use clap::{Args, ValueEnum};
 use reqwest::Client;
 use serde_json::json;
 use std::path::PathBuf;
+use std::process as stdprocess;
 use std::process::Stdio;
 use uuid;
 
@@ -223,6 +224,32 @@ fn parse_bool(s: &str) -> Result<bool, String> {
 }
 
 impl AgentStartArgs {
+    /// Resolve a usable Python interpreter name.
+    /// Prefer `python`, fall back to `python3`. Honor `PYTHON` if set.
+    fn resolve_python_interpreter() -> anyhow::Result<String> {
+        if let Ok(py) = std::env::var("PYTHON") {
+            if !py.trim().is_empty() {
+                return Ok(py);
+            }
+        }
+
+        for candidate in ["python", "python3"] {
+            let ok = stdprocess::Command::new(candidate)
+                .arg("--version")
+                .stdout(stdprocess::Stdio::null())
+                .stderr(stdprocess::Stdio::null())
+                .status();
+            if let Ok(status) = ok {
+                if status.success() {
+                    return Ok(candidate.to_string());
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "No Python interpreter found. Install Python or set $PYTHON"
+        ))
+    }
     /// Run the agent start command
     pub async fn run(self) -> anyhow::Result<()> {
         // Convert CLI agent type to core agent type
@@ -574,7 +601,8 @@ impl AgentStartArgs {
         }
 
         // Build the command to run the mock agent
-        let mut cmd = Command::new("python");
+        let python = Self::resolve_python_interpreter()?;
+        let mut cmd = Command::new(python);
         cmd.arg("-m")
             .arg("src.cli")
             .current_dir(&actual_cwd)
@@ -670,7 +698,7 @@ impl AgentStartArgs {
 
             // Configure the process to run the mock agent
             let mut agent_cmd = vec![
-                "python".to_string(),
+                Self::resolve_python_interpreter()?,
                 "-m".to_string(),
                 "src.cli".to_string(),
             ];

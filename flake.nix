@@ -379,6 +379,7 @@
         pkgs.bundler
         pkgs.rubocop
         pkgs.git
+        pkgs.lazygit
         pkgs.fossil
         pkgs.mercurial
         pkgs.nodejs # for npx-based docson helper
