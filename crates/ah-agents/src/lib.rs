@@ -83,6 +83,10 @@ pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
 };
 
+// Re-export agent-specific types
+#[cfg(feature = "gemini")]
+pub use gemini::GeminiStatus;
+
 // Re-export core agent types
 pub use ah_core::agent_binary::AgentBinary;
 pub use ah_core::agent_types::AgentType;

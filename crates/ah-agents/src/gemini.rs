@@ -5,9 +5,27 @@ use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{debug, info, warn};
+
+/// Status information for the Gemini CLI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiStatus {
+    /// Whether the CLI is installed and available
+    pub available: bool,
+    /// Version information if available
+    pub version: Option<String>,
+    /// Whether the user is authenticated
+    pub authenticated: bool,
+    /// Authentication method used (e.g., "gemini-api-key", "vertex-ai", "oauth-personal")
+    pub auth_method: Option<String>,
+    /// Source of authentication (config file path, environment variable name, etc.)
+    pub auth_source: Option<String>,
+    /// Any error that occurred during status check
+    pub error: Option<String>,
+}
 
 pub struct GeminiAgent {
     binary_path: String,
@@ -77,6 +95,83 @@ impl GeminiAgent {
             auth_type
         );
         Ok(auth_type)
+    }
+
+    /// Detect authentication method and source details synchronously
+    ///
+    /// Returns a tuple of (auth_method, auth_source) providing information about
+    /// the authentication mechanism being used. This is a synchronous method
+    /// to avoid hanging in status checks.
+    fn detect_auth_details_sync(&self) -> (String, String) {
+        let home_dir = if let Ok(home) = std::env::var("HOME") {
+            PathBuf::from(home)
+        } else {
+            return ("Unknown".to_string(), "Unknown".to_string());
+        };
+
+        // Try to read authentication type from settings.json synchronously
+        let config_dir = self.config_dir(&home_dir);
+        let settings_path = config_dir.join("settings.json");
+
+        let auth_type = if settings_path.exists() {
+            match std::fs::read_to_string(&settings_path) {
+                Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(settings) => settings
+                        .get("security")
+                        .and_then(|s| s.get("auth"))
+                        .and_then(|a| a.get("selectedType"))
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string()),
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        // Check authentication based on configured type or fallback to env vars
+        if let Some(auth_type) = auth_type {
+            match auth_type.as_str() {
+                "gemini-api-key" => {
+                    if std::env::var("GEMINI_API_KEY").is_ok() {
+                        return (auth_type, "GEMINI_API_KEY".to_string());
+                    }
+                }
+                "vertex-ai" => {
+                    if std::env::var("GOOGLE_API_KEY").is_ok() {
+                        return (auth_type, "GOOGLE_API_KEY".to_string());
+                    }
+                }
+                "oauth-personal" => {
+                    let oauth_creds_path = config_dir.join("oauth_creds.json");
+                    if oauth_creds_path.exists() {
+                        return (auth_type, oauth_creds_path.to_string_lossy().to_string());
+                    }
+                }
+                _ => {}
+            }
+            return (auth_type, "configured but invalid".to_string());
+        }
+
+        // Fall back to checking environment variables without configuration
+        if std::env::var("GEMINI_API_KEY").is_ok() {
+            return ("gemini-api-key".to_string(), "GEMINI_API_KEY".to_string());
+        }
+        if std::env::var("GOOGLE_API_KEY").is_ok() {
+            return ("vertex-ai".to_string(), "GOOGLE_API_KEY".to_string());
+        }
+
+        // Check for OAuth credentials
+        let oauth_creds_path = config_dir.join("oauth_creds.json");
+        if oauth_creds_path.exists() {
+            return (
+                "oauth-personal".to_string(),
+                oauth_creds_path.to_string_lossy().to_string(),
+            );
+        }
+
+        ("Unknown".to_string(), "Unknown".to_string())
     }
 
     /// Set up Gemini configuration to skip onboarding prompts
@@ -162,6 +257,74 @@ impl GeminiAgent {
             settings_path
         );
         Ok(())
+    }
+
+    /// Get structured Gemini CLI status information
+    ///
+    /// This function returns comprehensive status information in a structured format
+    /// that can be easily consumed by health checkers and other tools.
+    ///
+    /// Returns GeminiStatus with detailed information about:
+    /// - CLI availability and version
+    /// - Authentication status and method
+    /// - Authentication source information
+    /// - Any errors encountered
+    pub async fn get_gemini_status(&self) -> GeminiStatus {
+        // Check CLI availability by detecting version with timeout
+        let (available, version, mut error) = match tokio::time::timeout(
+            std::time::Duration::from_millis(1500),
+            self.detect_version(),
+        )
+        .await
+        {
+            Ok(Ok(version_info)) => (true, Some(version_info.version), None),
+            Ok(Err(AgentError::AgentNotFound(_))) => (
+                false,
+                None,
+                Some("Gemini CLI not found in PATH".to_string()),
+            ),
+            Ok(Err(e)) => (
+                false,
+                None,
+                Some(format!("Version detection failed: {}", e)),
+            ),
+            Err(_) => (false, None, Some("Version detection timed out".to_string())),
+        };
+
+        if !available {
+            return GeminiStatus {
+                available: false,
+                version: None,
+                authenticated: false,
+                auth_method: None,
+                auth_source: None,
+                error,
+            };
+        }
+
+        // Check authentication status using synchronous method to avoid hanging
+        let (auth_method, auth_source) = self.detect_auth_details_sync();
+        let authenticated = match (&auth_method, &auth_source) {
+            (method, source) if method != "Unknown" && source != "Unknown" => true,
+            _ => false,
+        };
+
+        GeminiStatus {
+            available,
+            version,
+            authenticated,
+            auth_method: if authenticated {
+                Some(auth_method)
+            } else {
+                None
+            },
+            auth_source: if authenticated {
+                Some(auth_source)
+            } else {
+                None
+            },
+            error,
+        }
     }
 }
 
