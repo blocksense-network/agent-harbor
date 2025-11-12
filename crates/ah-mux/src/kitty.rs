@@ -298,7 +298,7 @@ mod tests {
 
                     // Now try to split it
                     let split_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id), // In kitty, panes are windows, so use window_id as pane_id
                         SplitDirection::Horizontal,
                         Some(60),
@@ -367,7 +367,7 @@ mod tests {
                     assert!(kitty.window_exists(&window_id).unwrap_or(false));
 
                     let split_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id),
                         SplitDirection::Vertical,
                         Some(70),
@@ -426,7 +426,7 @@ mod tests {
                 Ok(window_id) => {
                     // Split with initial command that should keep the pane alive
                     let split_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id),
                         SplitDirection::Horizontal,
                         None,
@@ -797,7 +797,7 @@ mod tests {
 
                     // Create agent pane (top-right of main window)
                     let agent_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id),
                         SplitDirection::Horizontal,
                         Some(70), // 70% for editor (main window)
@@ -813,7 +813,7 @@ mod tests {
 
                             // Create logs pane (bottom-right, split from agent pane)
                             let logs_result = kitty.split_pane(
-                                &window_id,
+                                Some(&window_id),
                                 Some(&agent_pane),
                                 SplitDirection::Vertical,
                                 Some(60), // 60% for agent, 40% for logs
