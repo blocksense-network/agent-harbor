@@ -10,7 +10,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::process::Command;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 /// Working copy mode for agent execution
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +62,7 @@ impl AgentExecutor {
     /// This follows the pattern where core traits provide commands to be executed,
     /// and thin wrappers handle the execution in different contexts (direct spawn,
     /// multiplexer, SSH, etc.).
+    #[allow(clippy::too_many_arguments)]
     pub fn get_agent_command(
         &self,
         session_id: &str,
@@ -159,6 +160,7 @@ impl AgentExecutor {
     ///
     /// Returns the full command line string that should be executed to run the agent.
     /// This is a convenience method that wraps get_agent_command and joins the arguments.
+    #[allow(clippy::too_many_arguments)]
     pub fn get_agent_command_string(
         &self,
         session_id: &str,
@@ -209,6 +211,7 @@ impl AgentExecutor {
     /// This method is kept for backward compatibility but is deprecated in favor
     /// of the pattern where core traits provide command lines and thin wrappers
     /// handle execution in different contexts.
+    #[allow(clippy::too_many_arguments)]
     pub async fn spawn_agent_process(
         &self,
         session_id: &str,

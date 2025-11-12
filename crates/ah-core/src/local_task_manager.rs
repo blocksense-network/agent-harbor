@@ -19,14 +19,12 @@ use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
 use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig};
 use async_trait::async_trait;
-use futures::stream::Stream;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixListener;
 use tokio::net::UnixStream;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 
 /// Generic Local task manager implementation that executes tasks through a multiplexer
 ///
@@ -145,7 +143,7 @@ where
             // Clone the listener Arc so we can use it without holding the lock
             let listener_opt = {
                 let guard = shared_listener.lock().unwrap();
-                guard.as_ref().map(|arc| Arc::clone(arc))
+                guard.as_ref().map(Arc::clone)
             };
 
             let stream_result = if let Some(listener) = listener_opt {
@@ -385,7 +383,7 @@ impl<M> TaskManager for GenericLocalTaskManager<M>
 where
     M: Multiplexer + Send + Sync + 'static,
 {
-    async fn launch_task(&self, mut params: TaskLaunchParams) -> TaskLaunchResult {
+    async fn launch_task(&self, params: TaskLaunchParams) -> TaskLaunchResult {
         tracing::info!(
             "Starting task launch for description: {} with {} model(s)",
             params.description(),
@@ -665,7 +663,7 @@ fn session_event_to_task_event(
 
     // Convert u64 timestamp to DateTime<Utc)
     let datetime_ts = chrono::DateTime::from_timestamp(session_event.timestamp() as i64, 0)
-        .unwrap_or_else(|| chrono::Utc::now());
+        .unwrap_or_else(chrono::Utc::now);
 
     match session_event {
         SessionEvent::Status(event) => {
