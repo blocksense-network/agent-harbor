@@ -218,6 +218,10 @@ pub struct TaskEntryViewModel {
     pub description: tui_textarea::TextArea<'static>, // TextArea stores content, cursor, and placeholder
     pub focus_element: CardFocusElement,              // Current focus within this card
     pub auto_save_timer: Option<std::time::Instant>,  // Timer for auto-save functionality
+    pub dirty_generation: u64,                        // Monotonically increasing edit generation
+    pub last_saved_generation: u64,                   // Last generation that completed a save
+    pub pending_save_request_id: Option<u64>,         // Request id for in-flight save, if any
+    pub pending_save_invalidated: bool, // Indicates content changed since request started
 
     // Optional enumerators (None for agent record/replay scenarios)
     pub repositories_enumerator: Option<Arc<dyn ah_core::RepositoriesEnumerator>>,
@@ -228,6 +232,25 @@ pub struct TaskEntryViewModel {
 }
 
 impl TaskEntryViewModel {
+    fn update_selection_for_motion(&mut self, shift_pressed: bool, needs_redraw: &mut bool) {
+        if shift_pressed {
+            if self.description.selection_range().is_none() {
+                self.description.start_selection();
+                *needs_redraw = true;
+            }
+        } else if self.description.selection_range().is_some() {
+            self.description.cancel_selection();
+            *needs_redraw = true;
+        }
+    }
+
+    pub fn on_content_changed(&mut self) {
+        self.dirty_generation = self.dirty_generation.wrapping_add(1);
+        self.save_state = DraftSaveState::Unsaved;
+        self.auto_save_timer = Some(std::time::Instant::now());
+        self.pending_save_invalidated = self.pending_save_request_id.is_some();
+    }
+
     /// Compute the height of the input textarea area
     pub fn input_height(&self) -> u16 {
         self.description.lines().len().max(5) as u16 // MIN_TEXTAREA_VISIBLE_LINES = 5
@@ -310,22 +333,12 @@ impl TaskEntryViewModel {
 
                 // Handle shift+arrow selection (CUA style)
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
-                if shift_pressed {
-                    // Start selection if not already active
-                    if self.description.selection_range().is_none() {
-                        self.description.start_selection();
-                    }
-                } else {
-                    // Clear any existing selection when moving without shift
-                    if self.description.selection_range().is_some() {
-                        self.description.cancel_selection();
-                    }
-                }
+                self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::Forward);
 
                 if self.description.cursor() != before {
-                    // TODO: redraw handling
+                    *needs_redraw = true;
                 }
                 KeyboardOperationResult::Handled
             }
@@ -336,22 +349,12 @@ impl TaskEntryViewModel {
 
                 // Handle shift+arrow selection (CUA style)
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
-                if shift_pressed {
-                    // Start selection if not already active
-                    if self.description.selection_range().is_none() {
-                        self.description.start_selection();
-                    }
-                } else {
-                    // Clear any existing selection when moving without shift
-                    if self.description.selection_range().is_some() {
-                        self.description.cancel_selection();
-                    }
-                }
+                self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::Back);
 
                 if self.description.cursor() != before {
-                    // TODO: redraw handling
+                    *needs_redraw = true;
                 }
                 KeyboardOperationResult::Handled
             }
@@ -362,17 +365,7 @@ impl TaskEntryViewModel {
 
                 // Handle shift+ctrl+arrow selection (CUA style)
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
-                if shift_pressed {
-                    // Start selection if not already active
-                    if self.description.selection_range().is_none() {
-                        self.description.start_selection();
-                    }
-                } else {
-                    // Clear any existing selection when moving without shift
-                    if self.description.selection_range().is_some() {
-                        self.description.cancel_selection();
-                    }
-                }
+                self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::WordForward);
 
@@ -388,17 +381,7 @@ impl TaskEntryViewModel {
 
                 // Handle shift+ctrl+arrow selection (CUA style)
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
-                if shift_pressed {
-                    // Start selection if not already active
-                    if self.description.selection_range().is_none() {
-                        self.description.start_selection();
-                    }
-                } else {
-                    // Clear any existing selection when moving without shift
-                    if self.description.selection_range().is_some() {
-                        self.description.cancel_selection();
-                    }
-                }
+                self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::WordBack);
 
@@ -413,6 +396,7 @@ impl TaskEntryViewModel {
                 self.description.delete_next_word();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -423,6 +407,7 @@ impl TaskEntryViewModel {
                 self.description.delete_word();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -434,29 +419,24 @@ impl TaskEntryViewModel {
 
                 // Handle shift+arrow selection (CUA style)
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
-                if shift_pressed {
-                    // Start selection if not already active
-                    if self.description.selection_range().is_none() {
-                        self.description.start_selection();
-                    }
-                } else {
-                    // Clear any existing selection when moving without shift
-                    if self.description.selection_range().is_some() {
-                        self.description.cancel_selection();
-                    }
-                }
+                self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::Up);
                 let mut new_cursor = self.description.cursor();
                 if new_cursor != old_cursor {
+                    *needs_redraw = true;
                     KeyboardOperationResult::Handled
                 } else if old_cursor.0 == 0 {
                     // Already at the first line; if not at column 0, move to start
                     if old_cursor.1 > 0 {
                         // Move to start of the first line
                         self.description.move_cursor(CursorMove::Head);
+                        *needs_redraw = true;
                         KeyboardOperationResult::Handled
                     } else {
+                        if shift_pressed {
+                            return KeyboardOperationResult::Handled;
+                        }
                         // Already at column 0 of first line – bubble up
                         KeyboardOperationResult::Bubble {
                             operation: KeyboardOperation::MoveToPreviousLine,
@@ -474,21 +454,12 @@ impl TaskEntryViewModel {
 
                 // Handle shift+arrow selection (CUA style)
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
-                if shift_pressed {
-                    // Start selection if not already active
-                    if self.description.selection_range().is_none() {
-                        self.description.start_selection();
-                    }
-                } else {
-                    // Clear any existing selection when moving without shift
-                    if self.description.selection_range().is_some() {
-                        self.description.cancel_selection();
-                    }
-                }
+                self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::Down);
                 let new_cursor = self.description.cursor();
                 if new_cursor.0 > old_cursor.0 {
+                    *needs_redraw = true;
                     KeyboardOperationResult::Handled
                 } else {
                     // We're on the last line; if not at end, move to end
@@ -501,8 +472,12 @@ impl TaskEntryViewModel {
 
                     if old_cursor.1 < last_line_len {
                         self.description.move_cursor(CursorMove::End);
+                        *needs_redraw = true;
                         KeyboardOperationResult::Handled
                     } else {
+                        if shift_pressed {
+                            return KeyboardOperationResult::Handled;
+                        }
                         KeyboardOperationResult::Bubble {
                             operation: KeyboardOperation::MoveToNextLine,
                         }
@@ -517,6 +492,7 @@ impl TaskEntryViewModel {
                 self.description.input(key_event);
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -529,6 +505,7 @@ impl TaskEntryViewModel {
                 self.description.input(key_event);
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -538,6 +515,7 @@ impl TaskEntryViewModel {
                 use ratatui::crossterm::event::{KeyCode, KeyEvent};
                 let key_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
                 self.description.input(key_event);
+                self.on_content_changed();
                 self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 KeyboardOperationResult::Handled
             }
@@ -547,6 +525,7 @@ impl TaskEntryViewModel {
                 self.description.cut();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -562,6 +541,7 @@ impl TaskEntryViewModel {
                 self.description.paste();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -572,6 +552,7 @@ impl TaskEntryViewModel {
                 self.description.undo();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -582,6 +563,7 @@ impl TaskEntryViewModel {
                 self.description.redo();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -592,6 +574,7 @@ impl TaskEntryViewModel {
                 self.description.delete_line_by_end();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -602,6 +585,7 @@ impl TaskEntryViewModel {
                 self.description.delete_line_by_head();
                 let after_text = self.description.lines().join("\\n");
                 if before_text != after_text {
+                    self.on_content_changed();
                     self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
@@ -806,12 +790,14 @@ impl TaskEntryViewModel {
                 // Scroll viewport down one screen (PageDown)
                 use tui_textarea::Scrolling;
                 self.description.scroll(Scrolling::PageDown);
+                *needs_redraw = true;
                 KeyboardOperationResult::Handled
             }
             KeyboardOperation::ScrollUpOneScreen => {
                 // Scroll viewport up one screen (PageUp)
                 use tui_textarea::Scrolling;
                 self.description.scroll(Scrolling::PageUp);
+                *needs_redraw = true;
                 KeyboardOperationResult::Handled
             }
             KeyboardOperation::RecenterScreenOnCursor => {

@@ -8,7 +8,7 @@
 //! Dependencies are injected, making this module independent of specific service implementations.
 
 use crossbeam_channel as chan;
-use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::{
@@ -17,17 +17,14 @@ use std::{
     thread,
     time::Duration,
 };
-use tracing::{debug, trace};
+use tracing::debug;
 
 use crate::{
-    Theme, ViewCache, WorkspaceFilesEnumerator,
-    settings::Settings,
+    Theme, ViewCache,
     terminal::{self, TerminalConfig},
     view::{self, HitTestRegistry, TuiDependencies, header, modals},
     view_model::{MouseAction, Msg as ViewModelMsg, ViewModel},
 };
-use ah_core::TaskManager;
-use ah_workflows::WorkspaceWorkflowsEnumerator;
 
 /// Run the dashboard application with injected dependencies
 pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::error::Error>> {
@@ -39,6 +36,8 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
 
     // Initialize MVVM components with injected dependencies
+    let (tx_ui, rx_ui) = chan::unbounded::<ViewModelMsg>();
+
     let mut view_model = ViewModel::new_with_background_loading_and_current_repo(
         deps.workspace_files,
         deps.workspace_workflows,
@@ -47,6 +46,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
         deps.branches_enumerator,
         deps.settings,
         deps.current_repository,
+        tx_ui.clone(),
     );
 
     // Start background loading of workspace data
@@ -86,6 +86,22 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
 
         // Use biased select to prefer input events over ticks
         chan::select_biased! {
+            recv(rx_ui) -> msg => {
+                let msg = match msg {
+                    Ok(m) => m,
+                    Err(_) => break,
+                };
+
+                if let Err(error) = view_model.update(msg) {
+                    eprintln!("Error handling UI message: {}", error);
+                }
+
+                if view_model.take_exit_request() {
+                    break;
+                }
+
+                refresh_ui(&mut view_model, &mut terminal, &mut view_cache, &mut hit_registry, &theme)?;
+            }
             recv(rx_ev) -> msg => {
                 let event = match msg {
                     Ok(e) => e,
@@ -94,7 +110,6 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
 
                 match event {
                     Event::Key(key) => {
-                        // Debug logging for key events
                         debug!(
                             key_code = ?key.code,
                             modifiers = ?key.modifiers,
@@ -103,93 +118,101 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                             "Key event received in dashboard"
                         );
 
-                        // Send key event to ViewModel via message system
-                        let msg = ViewModelMsg::Key(key);
-                        if let Err(error) = view_model.update(msg) {
+                        if let Err(error) = view_model.update(ViewModelMsg::Key(key)) {
                             eprintln!("Error handling key event: {}", error);
                         }
+
                         if view_model.take_exit_request() {
                             break;
                         }
+
+                        refresh_ui(&mut view_model, &mut terminal, &mut view_cache, &mut hit_registry, &theme)?;
                     }
                     Event::Mouse(mouse_event) => {
+                        let mut handled = false;
                         match mouse_event.kind {
                             MouseEventKind::Down(MouseButton::Left) => {
                                 if let Some(hit) = hit_registry.hit_test(mouse_event.column, mouse_event.row) {
-                                    let msg = ViewModelMsg::MouseClick {
+                                    if let Err(error) = view_model.update(ViewModelMsg::MouseClick {
                                         action: hit.action,
                                         column: mouse_event.column,
                                         row: mouse_event.row,
                                         bounds: hit.rect,
-                                    };
-                                    if let Err(error) = view_model.update(msg) {
+                                    }) {
                                         eprintln!("Error handling mouse click: {}", error);
                                     }
+                                    handled = true;
                                 }
                             }
                             MouseEventKind::ScrollUp => {
-                                let _ = view_model.update(ViewModelMsg::MouseScrollUp);
+                                if let Err(error) = view_model.update(ViewModelMsg::MouseScrollUp) {
+                                    eprintln!("Error handling mouse scroll up: {}", error);
+                                }
+                                handled = true;
                             }
                             MouseEventKind::ScrollDown => {
-                                let _ = view_model.update(ViewModelMsg::MouseScrollDown);
+                                if let Err(error) = view_model.update(ViewModelMsg::MouseScrollDown) {
+                                    eprintln!("Error handling mouse scroll down: {}", error);
+                                }
+                                handled = true;
                             }
                             _ => {}
                         }
 
-                        if view_model.take_exit_request() {
-                            break;
+                        if handled {
+                            if view_model.take_exit_request() {
+                                break;
+                            }
+
+                            refresh_ui(&mut view_model, &mut terminal, &mut view_cache, &mut hit_registry, &theme)?;
                         }
                     }
                     Event::Resize(_width, _height) => {
-                        // Handle resize events if needed
                         let _ = terminal.autoresize();
-                        view_model.needs_redraw = true; // Force redraw on resize
+                        view_model.needs_redraw = true;
+                        refresh_ui(&mut view_model, &mut terminal, &mut view_cache, &mut hit_registry, &theme)?;
                     }
                     _ => {}
                 }
-
-                // Process any pending task events
-                view_model.process_pending_task_events();
-
-                // After handling an event, update footer and redraw if needed
-                view_model.update_footer();
-                if view_model.needs_redraw {
-                    terminal.draw(|frame| {
-                        let size = frame.area();
-                        // Use full render for production
-                        view::render(frame, &mut view_model, &mut view_cache, &mut hit_registry);
-
-                        // Render modals on top of main UI
-                        modals::render_modals(frame, &view_model, size, &theme);
-                    })?;
-
-                    view_model.needs_redraw = false;
-                }
             }
             recv(rx_tick) -> _ => {
-                // Handle tick events (activity simulation)
-                let msg = ViewModelMsg::Tick;
-                let _ = view_model.update(msg);
-
-                // Only redraw if tick actually changed something
-                if view_model.needs_redraw {
-                    view_model.update_footer();
-                    terminal.draw(|frame| {
-                        let size = frame.area();
-                        // Use full render for production
-                        view::render(frame, &mut view_model, &mut view_cache, &mut hit_registry);
-
-                        // Render modals on top of main UI
-                        modals::render_modals(frame, &view_model, size, &theme);
-                    })?;
-                    view_model.needs_redraw = false;
+                if let Err(error) = view_model.update(ViewModelMsg::Tick) {
+                    eprintln!("Error handling tick event: {}", error);
                 }
+
+                if view_model.take_exit_request() {
+                    break;
+                }
+
+                refresh_ui(&mut view_model, &mut terminal, &mut view_cache, &mut hit_registry, &theme)?;
             }
         }
     }
 
     // Ensure cleanup happens
     terminal::cleanup_terminal();
+
+    Ok(())
+}
+
+fn refresh_ui(
+    view_model: &mut ViewModel,
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    view_cache: &mut ViewCache,
+    hit_registry: &mut HitTestRegistry<MouseAction>,
+    theme: &Theme,
+) -> Result<(), Box<dyn std::error::Error>> {
+    view_model.process_pending_task_events();
+    view_model.update_footer();
+
+    if view_model.needs_redraw {
+        terminal.draw(|frame| {
+            let size = frame.area();
+            view::render(frame, view_model, view_cache, hit_registry);
+            modals::render_modals(frame, view_model, size, theme);
+        })?;
+        view_model.needs_redraw = false;
+    }
 
     Ok(())
 }
