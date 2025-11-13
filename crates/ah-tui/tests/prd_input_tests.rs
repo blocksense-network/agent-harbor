@@ -49,6 +49,7 @@ fn new_view_model() -> ViewModel {
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
     let settings = Settings::default();
+    let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
     ViewModel::new(
         workspace_files,
@@ -57,6 +58,7 @@ fn new_view_model() -> ViewModel {
         repositories_enumerator,
         branches_enumerator,
         settings,
+        ui_tx,
     )
 }
 
@@ -121,7 +123,6 @@ mod keyboard {
     }
 
     #[test]
-    #[ignore = "Pending implementation of caret-to-focus transition per PRD"]
     fn textarea_down_moves_caret_then_leaves_task() {
         let mut vm = new_view_model();
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -157,6 +158,56 @@ mod keyboard {
 
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextLine, &down_event);
         assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
+    }
+
+    #[test]
+    fn shift_up_keeps_selection_inside_textarea() {
+        let mut vm = new_view_model();
+
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description.insert_str("Line one\nLine two\nLine three");
+            card.description.move_cursor(tui_textarea::CursorMove::Bottom);
+            card.description.move_cursor(tui_textarea::CursorMove::Head);
+            card.description.move_cursor(tui_textarea::CursorMove::Forward);
+            card.description.move_cursor(tui_textarea::CursorMove::Forward);
+            card.description.move_cursor(tui_textarea::CursorMove::Forward);
+            card.description.move_cursor(tui_textarea::CursorMove::Forward);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+
+        let shift_up = KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT);
+        assert!(vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &shift_up));
+
+        if let Some(card) = vm.draft_cards.first() {
+            assert_eq!(card.description.cursor(), (1, 4));
+            assert!(card.description.selection_range().is_some());
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
+        }
+
+        assert!(vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &shift_up));
+        if let Some(card) = vm.draft_cards.first() {
+            assert_eq!(card.description.cursor(), (0, 4));
+            assert!(card.description.selection_range().is_some());
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
+        }
+
+        let up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
+        let stayed = vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &up);
+        assert!(
+            stayed,
+            "first non-shift Up should move caret to column 0 before bubbling"
+        );
+        if let Some(card) = vm.draft_cards.first() {
+            assert_eq!(card.description.cursor(), (0, 0));
+        }
+
+        let bubbled = vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &up);
+        assert!(!bubbled, "second non-shift Up should bubble to dashboard");
+        assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_none());
+        }
     }
 
     #[test]
@@ -658,9 +709,43 @@ mod mouse {
     }
 
     #[test]
+    fn mouse_scroll_over_textarea_scrolls_content() {
+        let mut vm = new_view_model();
+
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::new(
+                (0..40).map(|i| format!("line {}", i)).collect::<Vec<_>>(),
+            );
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let initial = vm.draft_cards[0].description.viewport_origin().0;
+        vm.update(Msg::MouseScrollDown).unwrap();
+        let after_down = vm.draft_cards[0].description.viewport_origin().0;
+        assert!(
+            after_down >= initial,
+            "scroll down should move viewport downward"
+        );
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+
+        vm.update(Msg::MouseScrollUp).unwrap();
+        let after_up = vm.draft_cards[0].description.viewport_origin().0;
+        assert!(
+            after_up <= after_down,
+            "scroll up should move viewport upward or stay put"
+        );
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+    }
+
+    #[test]
     fn scroll_events_navigate_hierarchy() {
         let mut vm = new_view_model();
         vm.focus_element = DashboardFocusState::DraftTask(0);
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.focus_element = CardFocusElement::RepositorySelector;
+        }
 
         vm.update(Msg::MouseScrollUp).unwrap();
         assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);

@@ -8,20 +8,29 @@
 
 use std::io::Write;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
+use ah_core::{
+    BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator,
+    task_manager::SaveDraftResult,
+};
 use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::KeyboardOperation;
 use ah_tui::view_model::task_entry::CardFocusElement;
-use ah_tui::view_model::{DashboardFocusState, DraftSaveState, ModalState, ViewModel};
+use ah_tui::view_model::{DashboardFocusState, DraftSaveState, ModalState, Msg, ViewModel};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Helper function to create a test ViewModel with mock dependencies
+
 fn create_test_view_model() -> ViewModel {
+    let (vm, _rx) = create_test_view_model_with_channel();
+    vm
+}
+
+fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Receiver<Msg>) {
     let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
         Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
@@ -35,14 +44,19 @@ fn create_test_view_model() -> ViewModel {
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
     let settings = ah_tui::settings::Settings::default();
+    let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
 
-    ViewModel::new(
-        workspace_files,
-        workspace_workflows,
-        task_manager,
-        repositories_enumerator,
-        branches_enumerator,
-        settings,
+    (
+        ViewModel::new(
+            workspace_files,
+            workspace_workflows,
+            task_manager,
+            repositories_enumerator,
+            branches_enumerator,
+            settings,
+            ui_tx,
+        ),
+        ui_rx,
     )
 }
 
@@ -501,6 +515,9 @@ mod viewmodel_tests {
         if let Some(card) = vm.draft_cards.get(0) {
             assert!(card.auto_save_timer.is_some());
             assert_eq!(card.save_state, DraftSaveState::Unsaved);
+            assert_eq!(card.dirty_generation, 4);
+            assert_eq!(card.last_saved_generation, 0);
+            assert!(card.pending_save_request_id.is_none());
         } else {
             panic!("Expected draft card");
         }
@@ -509,7 +526,12 @@ mod viewmodel_tests {
     #[test]
     fn viewmodel_auto_save_timer_expires_after_delay() {
         // Test PRD requirement: Auto-save timer expiration
-        let mut vm = create_test_view_model();
+        let (mut vm, ui_rx) = create_test_view_model_with_channel();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+        let _guard = runtime.enter();
 
         // Start with draft task focused and type something to set the timer
         vm.focus_element = DashboardFocusState::DraftTask(0);
@@ -524,11 +546,148 @@ mod viewmodel_tests {
         // Handle tick should mark as saved
         assert!(vm.handle_tick());
 
+        // Allow the spawned auto-save task to run and deliver its completion
+        runtime.block_on(async { tokio::task::yield_now().await });
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        loop {
+            runtime.block_on(async { tokio::task::yield_now().await });
+            if let Ok(msg) = ui_rx.try_recv() {
+                vm.update(msg).expect("apply auto-save completion");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("Expected auto-save completion message");
+            }
+        }
+
         // Check the first draft card
         if let Some(card) = vm.draft_cards.get(0) {
             assert_eq!(card.save_state, DraftSaveState::Saved);
             assert!(card.auto_save_timer.is_none());
+            assert_eq!(card.dirty_generation, card.last_saved_generation);
+            assert!(card.pending_save_request_id.is_none());
         }
+    }
+
+    #[test]
+    fn auto_save_completion_updates_saved_state_for_matching_generation() {
+        let (mut vm, _rx) = create_test_view_model_with_channel();
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.dirty_generation = 3;
+            card.last_saved_generation = 1;
+            card.pending_save_request_id = Some(7);
+            card.save_state = DraftSaveState::Saving;
+            card.pending_save_invalidated = true;
+        }
+
+        let msg = Msg::DraftSaveCompleted {
+            draft_id: vm.draft_cards[0].id.clone(),
+            request_id: 7,
+            generation: 3,
+            result: SaveDraftResult::Success,
+        };
+        vm.needs_redraw = false;
+        vm.update(msg).expect("update succeeds");
+
+        let card = &vm.draft_cards[0];
+        assert_eq!(card.save_state, DraftSaveState::Saved);
+        assert_eq!(card.last_saved_generation, 3);
+        assert!(card.pending_save_request_id.is_none());
+        assert!(!card.pending_save_invalidated);
+        assert!(vm.needs_redraw);
+    }
+
+    #[test]
+    fn auto_save_completion_is_ignored_when_request_id_mismatch() {
+        let (mut vm, _rx) = create_test_view_model_with_channel();
+
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.dirty_generation = 4;
+            card.last_saved_generation = 2;
+            card.pending_save_request_id = Some(9);
+            card.save_state = DraftSaveState::Saving;
+        }
+
+        let msg = Msg::DraftSaveCompleted {
+            draft_id: vm.draft_cards[0].id.clone(),
+            request_id: 8,
+            generation: 4,
+            result: SaveDraftResult::Success,
+        };
+        vm.needs_redraw = false;
+        vm.update(msg).expect("update succeeds");
+
+        let card = &vm.draft_cards[0];
+        assert_eq!(card.save_state, DraftSaveState::Saving);
+        assert_eq!(card.pending_save_request_id, Some(9));
+        assert_eq!(card.last_saved_generation, 2);
+        // No redraw should be scheduled when we ignore the completion
+        assert!(!vm.needs_redraw);
+    }
+
+    #[test]
+    fn auto_save_completion_sets_error_state_on_failure() {
+        let (mut vm, _rx) = create_test_view_model_with_channel();
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.dirty_generation = 5;
+            card.last_saved_generation = 3;
+            card.pending_save_request_id = Some(11);
+            card.save_state = DraftSaveState::Saving;
+        }
+
+        let msg = Msg::DraftSaveCompleted {
+            draft_id: vm.draft_cards[0].id.clone(),
+            request_id: 11,
+            generation: 5,
+            result: SaveDraftResult::Failure {
+                error: "network timeout".to_string(),
+            },
+        };
+        vm.needs_redraw = false;
+        vm.update(msg).expect("update succeeds");
+
+        let card = &vm.draft_cards[0];
+        assert_eq!(card.save_state, DraftSaveState::Error);
+        assert!(card.pending_save_request_id.is_none());
+        assert!(
+            vm.status_bar
+                .error_message
+                .as_ref()
+                .map(|msg| msg.contains("network timeout"))
+                .unwrap_or(false)
+        );
+        assert!(vm.needs_redraw);
+    }
+
+    #[test]
+    fn auto_save_completion_leaves_unsaved_when_generation_has_advanced() {
+        let (mut vm, _rx) = create_test_view_model_with_channel();
+
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.dirty_generation = 6;
+            card.last_saved_generation = 3;
+            card.pending_save_request_id = Some(12);
+            card.save_state = DraftSaveState::Saving;
+        }
+
+        let msg = Msg::DraftSaveCompleted {
+            draft_id: vm.draft_cards[0].id.clone(),
+            request_id: 12,
+            generation: 4,
+            result: SaveDraftResult::Success,
+        };
+        vm.needs_redraw = false;
+        vm.update(msg).expect("update succeeds");
+
+        let card = &vm.draft_cards[0];
+        assert_eq!(card.save_state, DraftSaveState::Unsaved);
+        assert!(card.pending_save_request_id.is_none());
+        assert_eq!(card.last_saved_generation, 4);
+        assert!(vm.needs_redraw);
     }
 
     #[test]
