@@ -78,10 +78,16 @@ pub mod copilot;
 #[cfg(feature = "gemini")]
 pub mod gemini;
 
+// Common types module
+pub mod common;
+
 // Re-export core types
 pub use traits::{
     AgentError, AgentEvent, AgentExecutor, AgentLaunchConfig, AgentResult, AgentVersion,
 };
+
+// Re-export common types
+pub use common::AgentStatus;
 
 // Re-export core agent types
 pub use ah_core::agent_binary::AgentBinary;
@@ -89,6 +95,9 @@ pub use ah_core::agent_types::AgentType;
 
 // Test utilities
 pub mod test_utils;
+
+// Test support utilities
+pub mod test_support;
 
 // Convenience constructors for each agent
 #[cfg(feature = "claude")]
