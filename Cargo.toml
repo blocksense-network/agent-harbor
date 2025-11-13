@@ -71,6 +71,7 @@ members = [
   "tests/container-enforcement",
   "tests/vm-enforcement",
   "tests/agentfs-daemon-backstore-integration",
+  "tests/tools/mock-tui-dashboard",
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",
