@@ -5,10 +5,11 @@
 
 #[allow(unused_imports)]
 use ah_core::{
-    LocalBranchesEnumerator, LocalRepositoriesEnumerator, RemoteBranchesEnumerator,
-    RemoteRepositoriesEnumerator, RemoteWorkspaceFilesEnumerator, WorkspaceFilesEnumerator,
+    CliMultiplexerType, LocalBranchesEnumerator, LocalRepositoriesEnumerator, MultiplexerChoice,
+    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, RemoteWorkspaceFilesEnumerator,
+    WorkspaceFilesEnumerator, determine_multiplexer_choice,
 };
-use ah_mux::{ITerm2Multiplexer, TmuxMultiplexer, detection};
+use ah_mux::detection;
 use ah_mux_core::{Multiplexer, WindowOptions};
 use ah_repo::VcsRepo;
 use ah_rest_client::AuthConfig;
@@ -20,9 +21,9 @@ use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
 use std::sync::Arc;
 
-/// Multiplexer types supported by the CLI
+/// Multiplexer types supported by the CLI (wrapper around core type with Auto variant)
 #[derive(Clone, Debug, PartialEq, ValueEnum)]
-pub enum CliMultiplexerType {
+pub enum CliMultiplexerArg {
     /// Auto-detect the best available multiplexer
     Auto,
     /// tmux terminal multiplexer
@@ -51,17 +52,6 @@ pub enum CliMultiplexerType {
     Emacs,
 }
 
-/// Result of terminal environment analysis for multiplexer choice
-#[derive(Debug, Clone)]
-enum MultiplexerChoice {
-    /// Currently running inside a supported multiplexer (use inner-most one)
-    InSupportedMultiplexer(CliMultiplexerType),
-    /// Currently running in a supported terminal but no multiplexer
-    InSupportedTerminal,
-    /// Not in any supported terminal/multiplexer environment
-    UnsupportedEnvironment,
-}
-
 /// Filesystem snapshot provider type
 #[derive(Clone, Debug, clap::ValueEnum)]
 pub enum FsSnapshotsType {
@@ -85,25 +75,50 @@ impl Default for FsSnapshotsType {
     }
 }
 
-impl CliMultiplexerType {
+impl CliMultiplexerArg {
     /// Get a human-readable display name for the multiplexer type
     pub fn display_name(&self) -> &'static str {
         match self {
-            CliMultiplexerType::Auto => "auto-detected",
-            CliMultiplexerType::Tmux => "Tmux",
-            CliMultiplexerType::Kitty => "Kitty",
-            CliMultiplexerType::ITerm2 => "iTerm2",
-            CliMultiplexerType::Wezterm => "WezTerm",
-            CliMultiplexerType::Zellij => "Zellij",
-            CliMultiplexerType::Screen => "GNU Screen",
-            CliMultiplexerType::Tilix => "Tilix",
-            CliMultiplexerType::WindowsTerminal => "Windows Terminal",
-            CliMultiplexerType::Ghostty => "Ghostty",
-            CliMultiplexerType::Neovim => "Neovim",
-            CliMultiplexerType::Vim => "Vim",
-            CliMultiplexerType::Emacs => "Emacs",
+            CliMultiplexerArg::Auto => "auto-detected",
+            CliMultiplexerArg::Tmux => "Tmux",
+            CliMultiplexerArg::Kitty => "Kitty",
+            CliMultiplexerArg::ITerm2 => "iTerm2",
+            CliMultiplexerArg::Wezterm => "WezTerm",
+            CliMultiplexerArg::Zellij => "Zellij",
+            CliMultiplexerArg::Screen => "GNU Screen",
+            CliMultiplexerArg::Tilix => "Tilix",
+            CliMultiplexerArg::WindowsTerminal => "Windows Terminal",
+            CliMultiplexerArg::Ghostty => "Ghostty",
+            CliMultiplexerArg::Neovim => "Neovim",
+            CliMultiplexerArg::Vim => "Vim",
+            CliMultiplexerArg::Emacs => "Emacs",
         }
     }
+
+    /// Convert CLI argument to core multiplexer type
+    /// Returns None for Auto variant as it needs runtime detection
+    pub fn to_core_type(&self) -> Option<CliMultiplexerType> {
+        match self {
+            CliMultiplexerArg::Auto => None,
+            CliMultiplexerArg::Tmux => Some(CliMultiplexerType::Tmux),
+            CliMultiplexerArg::Kitty => Some(CliMultiplexerType::Kitty),
+            CliMultiplexerArg::ITerm2 => Some(CliMultiplexerType::ITerm2),
+            CliMultiplexerArg::Wezterm => Some(CliMultiplexerType::WezTerm),
+            CliMultiplexerArg::Zellij => Some(CliMultiplexerType::Zellij),
+            CliMultiplexerArg::Screen => Some(CliMultiplexerType::Screen),
+            CliMultiplexerArg::Tilix => Some(CliMultiplexerType::Tilix),
+            CliMultiplexerArg::WindowsTerminal => Some(CliMultiplexerType::WindowsTerminal),
+            CliMultiplexerArg::Ghostty => Some(CliMultiplexerType::Ghostty),
+            CliMultiplexerArg::Neovim => Some(CliMultiplexerType::Neovim),
+            CliMultiplexerArg::Vim => Some(CliMultiplexerType::Vim),
+            CliMultiplexerArg::Emacs => Some(CliMultiplexerType::Emacs),
+        }
+    }
+}
+
+/// Helper to get display name for core CliMultiplexerType
+fn multiplexer_display_name(mux_type: &CliMultiplexerType) -> &'static str {
+    mux_type.display_name()
 }
 
 /// Arguments for the TUI command
@@ -126,7 +141,7 @@ pub struct TuiArgs {
 
     /// Which multiplexer to use
     #[arg(long, help = "Multiplexer to use for session management")]
-    multiplexer: Option<CliMultiplexerType>,
+    multiplexer: Option<CliMultiplexerArg>,
 
     #[command(subcommand)]
     pub subcommand: Option<TuiSubcommands>,
@@ -186,18 +201,18 @@ impl TuiArgs {
         let terminal_envs = detection::detect_terminal_environments();
 
         // Determine which multiplexer to use based on terminal environment detection
-        let multiplexer_choice = Self::determine_multiplexer_choice(&terminal_envs)?;
+        let multiplexer_choice = determine_multiplexer_choice(&terminal_envs);
 
         match (&self.multiplexer, multiplexer_choice) {
             // Auto mode: detect terminal environment and choose appropriate action
             (
-                Some(CliMultiplexerType::Auto),
+                Some(CliMultiplexerArg::Auto),
                 MultiplexerChoice::InSupportedMultiplexer(multiplexer_type),
             )
             | (None, MultiplexerChoice::InSupportedMultiplexer(multiplexer_type)) => {
                 println!(
                     "Detected {} multiplexer environment, launching dashboard directly...",
-                    multiplexer_type.display_name()
+                    multiplexer_display_name(&multiplexer_type)
                 );
                 // Use the detected multiplexer for task management
                 let multiplexer_type = Some(multiplexer_type.clone());
@@ -210,7 +225,7 @@ impl TuiArgs {
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
-            (Some(CliMultiplexerType::Auto), MultiplexerChoice::InSupportedTerminal)
+            (Some(CliMultiplexerArg::Auto), MultiplexerChoice::InSupportedTerminal)
             | (None, MultiplexerChoice::InSupportedTerminal) => {
                 println!(
                     "Detected supported terminal environment, launching dashboard directly..."
@@ -219,12 +234,12 @@ impl TuiArgs {
                     self.remote_server.clone(),
                     self.api_key.clone(),
                     self.bearer_token.clone(),
-                    self.multiplexer.clone(),
+                    self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
                     fs_snapshots,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
-            (Some(CliMultiplexerType::Auto), MultiplexerChoice::UnsupportedEnvironment)
+            (Some(CliMultiplexerArg::Auto), MultiplexerChoice::UnsupportedEnvironment)
             | (None, MultiplexerChoice::UnsupportedEnvironment) => {
                 // Not in a supported environment, create a multiplexer session
                 let multiplexer = self.create_multiplexer()?;
@@ -238,95 +253,52 @@ impl TuiArgs {
         }
     }
 
-    /// Determine the multiplexer choice based on detected terminal environments
-    fn determine_multiplexer_choice(
-        terminal_envs: &[ah_mux::detection::TerminalEnvironment],
-    ) -> Result<MultiplexerChoice> {
-        // Check for supported multiplexers (inner-most first, as per spec)
-        // terminal_envs is in wrapping order (outermost to innermost), so rev() gives us innermost first
-        for env in terminal_envs.iter().rev() {
-            match env {
-                ah_mux::detection::TerminalEnvironment::Tmux => {
-                    // Tmux is supported
-                    return Ok(MultiplexerChoice::InSupportedMultiplexer(
-                        CliMultiplexerType::Tmux,
-                    ));
-                }
-                #[cfg(target_os = "macos")]
-                ah_mux::detection::TerminalEnvironment::ITerm2 => {
-                    // iTerm2 is a terminal emulator, not a multiplexer, but we can run dashboard directly
-                    return Ok(MultiplexerChoice::InSupportedTerminal);
-                }
-                // Other supported terminal environments - we can run dashboard directly
-                ah_mux::detection::TerminalEnvironment::Kitty
-                | ah_mux::detection::TerminalEnvironment::WezTerm
-                | ah_mux::detection::TerminalEnvironment::Tilix
-                | ah_mux::detection::TerminalEnvironment::WindowsTerminal
-                | ah_mux::detection::TerminalEnvironment::Ghostty => {
-                    return Ok(MultiplexerChoice::InSupportedTerminal);
-                }
-                // Other multiplexers/editors - not supported yet, continue checking
-                ah_mux::detection::TerminalEnvironment::Zellij
-                | ah_mux::detection::TerminalEnvironment::Screen
-                | ah_mux::detection::TerminalEnvironment::Neovim
-                | ah_mux::detection::TerminalEnvironment::Vim
-                | ah_mux::detection::TerminalEnvironment::Emacs => {} // Continue checking
-                // Catch any other variants (e.g., platform-specific ones)
-                #[allow(unreachable_patterns)]
-                _ => {} // Continue checking
-            }
-        }
-
-        // No supported environments detected
-        Ok(MultiplexerChoice::UnsupportedEnvironment)
-    }
-
     /// Create the appropriate multiplexer instance based on configuration
     fn create_multiplexer(&self) -> Result<Box<dyn Multiplexer>> {
         match self.multiplexer {
-            Some(CliMultiplexerType::Auto) | None => {
+            Some(CliMultiplexerArg::Auto) | None => {
                 // For auto/none, use the default multiplexer (which prioritizes tmux)
                 Ok(Box::new(ah_mux::TmuxMultiplexer::default()))
             }
-            Some(CliMultiplexerType::Tmux) => Ok(Box::new(ah_mux::TmuxMultiplexer::default())),
-            Some(CliMultiplexerType::Kitty) => {
+            Some(CliMultiplexerArg::Tmux) => Ok(Box::new(ah_mux::TmuxMultiplexer::default())),
+            Some(CliMultiplexerArg::Kitty) => {
                 // TODO: Implement KittyMultiplexer
                 anyhow::bail!("Kitty multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::ITerm2) => Ok(Box::new(ah_mux::ITerm2Multiplexer::new()?)),
-            Some(CliMultiplexerType::Wezterm) => {
+            Some(CliMultiplexerArg::ITerm2) => Ok(Box::new(ah_mux::ITerm2Multiplexer::new()?)),
+            Some(CliMultiplexerArg::Wezterm) => {
                 // TODO: Implement WezTermMultiplexer
                 anyhow::bail!("WezTerm multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Zellij) => {
+            Some(CliMultiplexerArg::Zellij) => {
                 // TODO: Implement ZellijMultiplexer
                 anyhow::bail!("Zellij multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Screen) => {
+            Some(CliMultiplexerArg::Screen) => {
                 // TODO: Implement ScreenMultiplexer
                 anyhow::bail!("Screen multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Tilix) => {
+            Some(CliMultiplexerArg::Tilix) => {
                 // TODO: Implement TilixMultiplexer
                 anyhow::bail!("Tilix multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::WindowsTerminal) => {
+            Some(CliMultiplexerArg::WindowsTerminal) => {
                 // TODO: Implement WindowsTerminalMultiplexer
                 anyhow::bail!("Windows Terminal multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Ghostty) => {
+            Some(CliMultiplexerArg::Ghostty) => {
                 // TODO: Implement GhosttyMultiplexer
                 anyhow::bail!("Ghostty multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Neovim) => {
+            Some(CliMultiplexerArg::Neovim) => {
                 // TODO: Implement NeovimMultiplexer
                 anyhow::bail!("Neovim multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Vim) => {
+            Some(CliMultiplexerArg::Vim) => {
                 // TODO: Implement VimMultiplexer
                 anyhow::bail!("Vim multiplexer is not yet supported");
             }
-            Some(CliMultiplexerType::Emacs) => {
+            Some(CliMultiplexerArg::Emacs) => {
                 // TODO: Implement EmacsMultiplexer
                 anyhow::bail!("Emacs multiplexer is not yet supported");
             }
@@ -379,7 +351,7 @@ impl TuiArgs {
             self.remote_server.clone(),
             self.api_key.clone(),
             self.bearer_token.clone(),
-            self.multiplexer.clone(),
+            self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
             fs_snapshots,
         )?;
         run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
@@ -406,19 +378,19 @@ impl TuiArgs {
 
         if let Some(ref multiplexer) = self.multiplexer {
             let multiplexer_str = match multiplexer {
-                CliMultiplexerType::Auto => "auto",
-                CliMultiplexerType::Tmux => "tmux",
-                CliMultiplexerType::Zellij => "zellij",
-                CliMultiplexerType::Screen => "screen",
-                CliMultiplexerType::ITerm2 => "iterm2",
-                CliMultiplexerType::Kitty => "kitty",
-                CliMultiplexerType::Wezterm => "wezterm",
-                CliMultiplexerType::Tilix => "tilix",
-                CliMultiplexerType::WindowsTerminal => "windows-terminal",
-                CliMultiplexerType::Ghostty => "ghostty",
-                CliMultiplexerType::Neovim => "neovim",
-                CliMultiplexerType::Vim => "vim",
-                CliMultiplexerType::Emacs => "emacs",
+                CliMultiplexerArg::Auto => "auto",
+                CliMultiplexerArg::Tmux => "tmux",
+                CliMultiplexerArg::Zellij => "zellij",
+                CliMultiplexerArg::Screen => "screen",
+                CliMultiplexerArg::ITerm2 => "iterm2",
+                CliMultiplexerArg::Kitty => "kitty",
+                CliMultiplexerArg::Wezterm => "wezterm",
+                CliMultiplexerArg::Tilix => "tilix",
+                CliMultiplexerArg::WindowsTerminal => "windows-terminal",
+                CliMultiplexerArg::Ghostty => "ghostty",
+                CliMultiplexerArg::Neovim => "neovim",
+                CliMultiplexerArg::Vim => "vim",
+                CliMultiplexerArg::Emacs => "emacs",
             };
             cmd.push_str(&format!(" --multiplexer {}", multiplexer_str));
         }
@@ -539,13 +511,12 @@ impl TuiArgs {
 
             // Use shared task manager initialization
             let recording_disabled = matches!(fs_snapshots, FsSnapshotsType::Disable);
-            let multiplexer_value = multiplexer.unwrap_or(CliMultiplexerType::Auto);
-            let multiplexer_preference = match multiplexer_value {
-                CliMultiplexerType::ITerm2 => ah_core::MultiplexerPreference::ITerm2,
-                CliMultiplexerType::Tmux => ah_core::MultiplexerPreference::Tmux,
-                CliMultiplexerType::Auto => ah_core::MultiplexerPreference::Auto,
+            let multiplexer_preference = match multiplexer {
+                Some(CliMultiplexerType::ITerm2) => ah_core::MultiplexerPreference::ITerm2,
+                Some(CliMultiplexerType::Tmux) => ah_core::MultiplexerPreference::Tmux,
+                None => ah_core::MultiplexerPreference::Auto,
                 // For unsupported multiplexers, fall back to auto-detection
-                unsupported => {
+                Some(unsupported) => {
                     eprintln!(
                         "Warning: Multiplexer {:?} not yet supported for task manager, using auto-detection",
                         unsupported
