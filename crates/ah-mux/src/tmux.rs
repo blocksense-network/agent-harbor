@@ -365,7 +365,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_session_ensure_creates_session() {
         let tmux = TmuxMultiplexer::with_session_name("test-session-create".to_string());
         if tmux.is_available() {
@@ -389,7 +388,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_session_ensure_idempotent() {
         let tmux = TmuxMultiplexer::with_session_name("test-session-idempotent".to_string());
         if tmux.is_available() {
@@ -412,7 +410,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_open_window_with_title_and_cwd() {
         let tmux = TmuxMultiplexer::with_session_name("test-win-create-001".to_string());
         if tmux.is_available() {
@@ -440,7 +437,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_open_window_focus() {
         let tmux = TmuxMultiplexer::with_session_name("test-win-focus-002".to_string());
         if tmux.is_available() {
@@ -468,7 +464,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_horizontal() {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -555,7 +550,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_vertical() {
         let tmux = TmuxMultiplexer::with_session_name("test-split-v-004".to_string());
         if tmux.is_available() {
@@ -597,7 +591,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_with_initial_command() {
         let tmux = TmuxMultiplexer::with_session_name("test-split-cmd".to_string());
         if tmux.is_available() {
@@ -640,7 +633,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_run_command_and_send_text() {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -698,7 +690,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_focus_window_and_pane() {
         let tmux = TmuxMultiplexer::with_session_name("test-focus-005".to_string());
         if tmux.is_available() {
@@ -758,7 +749,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_list_windows_filtering() {
         let tmux = TmuxMultiplexer::with_session_name("test-list-win-006".to_string());
         if tmux.is_available() {
@@ -825,7 +815,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_error_handling_invalid_pane() {
         let tmux = TmuxMultiplexer::with_session_name("test-error-pane".to_string());
         if tmux.is_available() {
@@ -855,7 +844,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_complex_layout_creation() {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -959,7 +947,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_session_isolation() {
         let tmux1 = TmuxMultiplexer::with_session_name("session1-007".to_string());
         let tmux2 = TmuxMultiplexer::with_session_name("session2-007".to_string());
