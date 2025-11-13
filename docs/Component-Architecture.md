@@ -20,6 +20,7 @@ This document provides an overview of the major components in the Agent Harbor s
 
 - `just run-mock-tui-dashboard` - Run the TUI dashboard with fully synthetic data, produced by a mock task manager.
 - `just manual-test-tui [--repo NAME] [--fs TYPE]` - Run a manual test of the full TUI launched over the selected example repo, placed in the test filesystem.
+- `just manual-test-tui-remote [--mode {rest,mock}] [--scenario NAME]` - Launch the remote-mode harness that boots a REST or mock server, seeds demo data, and attaches the dashboard via `ah tui --remote-server ...`. Mock mode now reuses the Rust REST server with an embedded dataset that includes active/running sessions, so the TUI always has live activity to display. Any `--scenario` flag is copied alongside the run for reference, but the curated dataset is available out of the box. Copy `manual-tests/env.remote-example` to `.env` to pre-populate sample API keys and tenant metadata if you need authentication flags.
 
 **Log Files:** See the [Log Files and Debugging](#log-files-and-debugging) section above for comprehensive logging information.
 
@@ -295,6 +296,13 @@ All Agent Harbor components write logs to help with debugging and monitoring. He
 
 - **Script logs:** Written to `working-directory/user-home/script.log` where `working-directory` is auto-generated based on test parameters (`--fs` and `--repo`)
 - **Request/response logs:** Written to `working-directory/user-home/session.log` (when logging is enabled)
+- **Remote harness logs:** The remote orchestration script stores structured artifacts under `manual-tests/runs/<run-id>/` and `manual-tests/logs/<run-id>/`. Server stdout/stderr is captured in `manual-tests/logs/<run-id>/rest-server.log` for both REST and mock modes, making it easy to inspect API interactions post-run.
+
+### Remote Manual Mode Troubleshooting
+
+- **Ports already in use:** Both the REST and mock servers default to `127.0.0.1:38080`/`38180`. Use `just manual-test-tui-remote --port 39080` when another process occupies the default sockets.
+- **Missing dependencies:** The harness delegates to `cargo run -p ah-rest-server` (or the prebuilt binary when `--no-build` is set). Run `nix develop` before invoking the script so the Rust toolchain and target binaries are available.
+- **Multiplexer focus issues:** When launching inside an existing tmux/zellij session, the dashboard may detect and reuse the parent multiplexer. Pass extra arguments after `--`, e.g. `just manual-test-tui-remote -- --multiplexer tmux`, to force a fresh tmux window and avoid stealing focus from the controlling pane.
 
 ### Mock TUI Dashboard
 

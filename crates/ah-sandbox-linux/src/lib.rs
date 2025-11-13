@@ -5,7 +5,6 @@
 
 use ah_sandbox::{Result, SandboxConfig, SandboxProvider, SandboxResult};
 use async_trait::async_trait;
-use std::os::unix::process::CommandExt;
 use tokio::process::Command;
 
 /// Linux sandbox provider using namespaces.

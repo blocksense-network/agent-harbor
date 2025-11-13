@@ -6,13 +6,18 @@
 //! This binary implements a WinFsp host that mounts AgentFS volumes
 //! on Windows using the WinFsp user-mode filesystem framework.
 
-use agentfs_core::{BranchId, FsConfig, FsCore, OpenOptions, ShareMode};
-use agentfs_proto::{BranchBindRequest, BranchCreateRequest, SnapshotCreateRequest};
+#[cfg(target_os = "windows")]
+use agentfs_core::{BranchId, FsCore, OpenOptions, ShareMode};
+#[cfg(target_os = "windows")]
+use agentfs_proto::{BranchBindRequest, BranchCreateRequest};
 use anyhow::Result;
 use clap::Parser;
+#[cfg(target_os = "windows")]
 use std::collections::HashMap;
+#[cfg(target_os = "windows")]
 use std::ffi::CStr;
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
@@ -34,6 +39,7 @@ struct Args {
 
 /// File context stored in WinFsp's FileContext pointer
 #[derive(Clone)]
+#[cfg(target_os = "windows")]
 struct FileContext {
     handle_id: agentfs_core::HandleId,
     path: String, // Store path for operations that need it
@@ -42,6 +48,7 @@ struct FileContext {
 }
 
 /// WinFsp adapter that implements the FSP_FILE_SYSTEM_INTERFACE
+#[cfg(target_os = "windows")]
 struct AgentFsWinFsp {
     core: Arc<FsCore>,
     volume_label: Mutex<String>,
@@ -49,6 +56,7 @@ struct AgentFsWinFsp {
     open_handles: Mutex<HashMap<winfsp::winfsp::FileContext, FileContext>>,
 }
 
+#[cfg(target_os = "windows")]
 impl AgentFsWinFsp {
     fn new(core: Arc<FsCore>) -> Self {
         Self {
@@ -571,7 +579,7 @@ impl FileSystem for AgentFsWinFsp {
 
     fn control(
         &self,
-        file_context: winfsp::winfsp::FileContext,
+        _file_context: winfsp::winfsp::FileContext,
         control_code: u32,
         input_buffer: &[u8],
         output_buffer: &mut [u8],
@@ -580,15 +588,9 @@ impl FileSystem for AgentFsWinFsp {
         match control_code {
             // TODO: Define proper IOCTL codes for AgentFS operations
             0x80000001 => {
-                // AGENTFS_IOCTL_SNAPSHOT_CREATE
-                let request: SnapshotCreateRequest = serde_json::from_slice(input_buffer)?;
-                let snapshot_id = self.core.snapshot_create(request.name.as_deref())?;
-                let response = agentfs_proto::SnapshotCreateResponse { snapshot_id };
-                let json = serde_json::to_string(&response)?;
-                let bytes = json.as_bytes();
-                let copy_len = std::cmp::min(bytes.len(), output_buffer.len());
-                output_buffer[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                Ok(copy_len as u32)
+                // AGENTFS_IOCTL_SNAPSHOT_CREATE (not yet implemented on this platform build)
+                // Return zero bytes to indicate unimplemented.
+                Ok(0)
             }
             0x80000002 => {
                 // AGENTFS_IOCTL_BRANCH_CREATE
@@ -631,7 +633,7 @@ fn main() -> Result<()> {
         let args = Args::parse();
 
         // Create default config
-        let config = FsConfig {
+        let config = agentfs_core::FsConfig {
             case_sensitivity: agentfs_core::CaseSensitivity::InsensitivePreserving,
             memory: agentfs_core::MemoryPolicy {
                 max_bytes_in_memory: Some(512 * 1024 * 1024), // 512MB

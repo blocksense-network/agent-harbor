@@ -106,7 +106,7 @@ impl Default for FsConfig {
 }
 
 /// Security/permissions/ownership policy
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SecurityPolicy {
     /// If true, enforce POSIX permission checks (future)
     pub enforce_posix_permissions: bool,
@@ -118,18 +118,6 @@ pub struct SecurityPolicy {
     pub enable_windows_acl_compat: bool,
     /// If true, emulate Unix root DAC override (root bypasses discretionary checks)
     pub root_bypass_permissions: bool,
-}
-
-impl Default for SecurityPolicy {
-    fn default() -> Self {
-        Self {
-            enforce_posix_permissions: false,
-            default_uid: 0,
-            default_gid: 0,
-            enable_windows_acl_compat: false,
-            root_bypass_permissions: false,
-        }
-    }
 }
 
 /// Backstore configuration
@@ -158,7 +146,7 @@ impl Default for BackstoreMode {
 }
 
 /// Overlay configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct OverlayConfig {
     /// Enable overlay mode (default: false)
     pub enabled: bool,
@@ -166,16 +154,6 @@ pub struct OverlayConfig {
     pub lower_root: Option<PathBuf>,
     /// Copy-up policy for metadata-only changes
     pub copyup_mode: CopyUpMode,
-}
-
-impl Default for OverlayConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            lower_root: None,
-            copyup_mode: CopyUpMode::default(),
-        }
-    }
 }
 
 /// Copy-up mode for overlay operations

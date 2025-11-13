@@ -83,14 +83,13 @@ impl VimMultiplexer {
         fs::write(temp_path, script).map_err(|e| MuxError::Other(e.to_string()))?;
 
         let temp_path_str = temp_path.to_string_lossy().to_string();
-        let args = if self.use_neovim {
-            vec!["--headless", "-S", &temp_path_str, "-c", "quit"]
+        if self.use_neovim {
+            let args = ["--headless", "-S", &temp_path_str, "-c", "quit"];
+            self.run_vim_command(&args)?;
         } else {
-            vec!["-S", &temp_path_str, "-c", "quit"]
-        };
-
-        let args_str: Vec<&str> = args.iter().map(|s| *s).collect();
-        self.run_vim_command(&args_str)?;
+            let args = ["-S", &temp_path_str, "-c", "quit"];
+            self.run_vim_command(&args)?;
+        }
         Ok(())
     }
 }

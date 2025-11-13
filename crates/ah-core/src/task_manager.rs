@@ -61,9 +61,8 @@ use ah_local_db::models::DraftRecord;
 use ah_mux_core::SplitMode;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use std::{fmt, pin::Pin};
+use std::fmt;
 use tracing::debug;
 
 /// Result of a draft task save operation
@@ -191,11 +190,7 @@ impl TaskLaunchParams {
             .map_err(|e| format!("Invalid models JSON in draft: {}", e))?;
 
         // Use the first model as the primary model
-        let model = models
-            .first()
-            .ok_or_else(|| "No models found in draft".to_string())?
-            .name
-            .clone();
+        let _model = models.first().ok_or_else(|| "No models found in draft".to_string())?;
 
         let starting_point = StartingPoint::RepositoryBranch {
             repository: draft.repository.clone(),
@@ -419,6 +414,12 @@ impl TaskLaunchParamsBuilder {
             record,
             task_id,
         })
+    }
+}
+
+impl Default for TaskLaunchParamsBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

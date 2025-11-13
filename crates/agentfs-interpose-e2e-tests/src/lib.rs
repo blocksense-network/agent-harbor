@@ -36,18 +36,14 @@ pub fn find_daemon_path() -> std::path::PathBuf {
     daemon_path
 }
 
+#[cfg(all(test, target_os = "macos"))]
+use once_cell::sync::Lazy;
 #[cfg(target_os = "macos")]
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 #[cfg(target_os = "macos")]
-use std::collections::HashMap;
+use std::ffi::OsStr;
 #[cfg(target_os = "macos")]
-use std::ffi::{CStr, OsStr};
-#[cfg(target_os = "macos")]
-use std::io::{BufRead, Read, Write};
-#[cfg(target_os = "macos")]
-use std::os::fd::AsRawFd;
-#[cfg(target_os = "macos")]
-use std::os::unix::io::RawFd;
+use std::io::{Read, Write};
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -55,15 +51,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(target_os = "macos")]
 use std::sync::{Arc, Mutex};
-#[cfg(target_os = "macos")]
-use std::time::Duration;
-#[cfg(target_os = "macos")]
-use std::{fs, thread};
 
-#[cfg(target_os = "macos")]
-use agentfs_core::EventSink;
-#[cfg(target_os = "macos")]
-use agentfs_daemon::watch_service::WatchServiceEventSink;
 #[cfg(target_os = "macos")]
 use agentfs_daemon::*;
 #[cfg(target_os = "macos")]
@@ -71,18 +59,18 @@ use agentfs_proto::*;
 #[cfg(not(target_os = "macos"))]
 use agentfs_proto::{Request, Response};
 
-// For dlsym to get original function pointers
 #[cfg(target_os = "macos")]
-use libc::{RTLD_NEXT, dlsym};
-
-#[cfg(target_os = "macos")]
+#[allow(dead_code)]
 const LOG_PREFIX: &str = "[agentfs-interpose-e2e]";
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 const DEFAULT_BANNER: &str = "AgentFS interpose shim loaded";
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 static INIT_GUARD: OnceCell<()> = OnceCell::new();
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 static STREAM: Mutex<Option<Arc<Mutex<UnixStream>>>> = Mutex::new(None);
 
 #[cfg(all(test, target_os = "macos"))]
@@ -95,6 +83,7 @@ fn set_env_var(key: &str, value: &str) {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn remove_env_var(key: &str) {
     unsafe { std::env::remove_var(key) };
 }
@@ -110,6 +99,7 @@ fn remove_env_var(key: &str) {
 /// The test_helper binary itself contains rich assertions and will exit with
 /// non-zero status if AgentFS behavior doesn't match expectations.
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     command: &str,
@@ -138,7 +128,7 @@ fn execute_test_scenario(
         cmd.arg(arg);
     }
 
-    let output = cmd.output().expect(&format!("failed to run {} test", command));
+    let output = cmd.output().unwrap_or_else(|_| panic!("failed to run {} test", command));
 
     println!("Test stdout: {}", String::from_utf8_lossy(&output.stdout));
     println!("Test stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -166,6 +156,7 @@ fn execute_test_scenario(
 /// This function connects to the daemon and queries its internal state
 /// using structured SSZ types for integration test verification.
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: agentfs_proto::Request,
@@ -245,6 +236,7 @@ fn query_daemon_state_structured(
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 fn query_daemon_state_structured(
     socket_path: &std::path::Path,
     request: Request,
@@ -254,16 +246,19 @@ fn query_daemon_state_structured(
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn log_message(msg: &str) {
     eprintln!("{} {}", LOG_PREFIX, msg);
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn encode_ssz<T: Encode>(value: &T) -> Vec<u8> {
     value.as_ssz_bytes()
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn decode_ssz<T: Decode>(bytes: &[u8]) -> Result<T, ssz::DecodeError> {
     T::from_ssz_bytes(bytes)
 }
@@ -354,8 +349,11 @@ mod tests {
     use std::fs;
     use std::io::{BufReader, Read, Write};
     use std::os::unix::net::UnixListener;
+    use std::path::Path;
     use std::process::Command;
     use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
     use tempfile::tempdir;
 
     #[test]
@@ -373,7 +371,7 @@ mod tests {
         let socket_path = dir.path().join("agentfs.sock");
         let listener = UnixListener::bind(&socket_path).unwrap();
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, _rx) = mpsc::channel();
 
         thread::spawn({
             let tx = tx.clone();
@@ -516,7 +514,7 @@ mod tests {
         set_env_var("AGENTFS_INTERPOSE_SOCKET", socket_path.to_str().unwrap());
         set_env_var("AGENTFS_INTERPOSE_LOG", "1");
 
-        let status = Command::new(&helper)
+        let _status = Command::new(&helper)
             .env("DYLD_INSERT_LIBRARIES", find_dylib_path())
             .env("AGENTFS_INTERPOSE_SOCKET", &socket_path)
             .env("AGENTFS_INTERPOSE_ALLOWLIST", "some-other-binary")
@@ -709,9 +707,9 @@ mod tests {
         thread::sleep(Duration::from_millis(500));
 
         // Execute the test scenario - the helper binary contains rich assertions
-        let file1 = test_dir.join("file1.txt");
-        let file2 = test_dir.join("file2.txt");
-        let file3 = test_dir.join("file3.txt");
+        let _file1 = test_dir.join("file1.txt");
+        let _file2 = test_dir.join("file2.txt");
+        let _file3 = test_dir.join("file3.txt");
         let status =
             execute_test_scenario(&socket_path, "directory-ops", &[test_dir.to_str().unwrap()]);
 
@@ -812,9 +810,9 @@ mod tests {
         };
 
         // Create a symlink for testing in FsCore
-        let test_pid = agentfs_core::PID::new(12345);
-        let test_file_path = std::path::Path::new("/target.txt");
-        let symlink_path = std::path::Path::new("/link.txt");
+        let _test_pid = agentfs_core::PID::new(12345);
+        let _test_file_path = std::path::Path::new("/target.txt");
+        let _symlink_path = std::path::Path::new("/link.txt");
 
         // Note: Files are created through the shim's interposition, not directly here
         // The test helper will create the files via the shim
@@ -2301,7 +2299,6 @@ mod tests {
     /// Thread 2: Monitors the event routing results
     #[test]
     fn test_milestone_2_watch_service_event_fanout_integration() {
-        use agentfs_core::config::BackstoreMode;
         use agentfs_core::*;
         use agentfs_daemon::*;
         use std::sync::mpsc;
@@ -2319,7 +2316,7 @@ mod tests {
 
         // Get references to the core and watch service
         let core = daemon.core().clone();
-        let watch_service = daemon.watch_service().clone();
+        let _watch_service = daemon.watch_service().clone();
 
         // Register some test watches
         let kq_reg_id = daemon.register_kqueue_watch(
@@ -2361,7 +2358,7 @@ mod tests {
             let path = std::path::Path::new("/tmp/test.txt");
 
             // Lock the core to perform operations
-            let mut core_guard = core_clone.lock().unwrap();
+            let core_guard = core_clone.lock().unwrap();
             let result = core_guard.create(
                 &pid,
                 path,
@@ -2482,7 +2479,6 @@ mod tests {
 
     #[test]
     fn test_milestone_6_fsevents_interposition() {
-        use std::io::Write;
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
@@ -2691,7 +2687,6 @@ mod tests {
     }
 
     fn test_milestone_4_kevent_hook_injectable_queue() {
-        use std::io::Write;
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
@@ -2826,7 +2821,7 @@ mod tests {
         let mut event_received = false;
         let mut unrelated_filter_passed = false;
         let mut operations_complete = false;
-        let mut helper_output = String::new();
+        let mut _helper_output = String::new();
         let mut timeout_occurred = false;
 
         // Wait for all signals with timeout
@@ -2842,7 +2837,7 @@ mod tests {
                     "event_received" => event_received = true,
                     "unrelated_filter_passed" => unrelated_filter_passed = true,
                     s if s.starts_with("helper_output:") => {
-                        helper_output = s[14..].to_string();
+                        _helper_output = s[14..].to_string();
                     }
                     _ => println!("Received message from thread 1: {}", msg),
                 }
@@ -2896,7 +2891,6 @@ mod tests {
     }
 
     fn test_milestone_7_fd_close_lifecycle() {
-        use std::io::Write;
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
@@ -2955,7 +2949,7 @@ mod tests {
         let tx_thread1 = tx_main.clone();
         let test_helper_path_clone = test_helper_path.clone();
         let test_file_clone = test_file.clone();
-        let test_helper_handle = thread::spawn(move || {
+        let _test_helper_handle = thread::spawn(move || {
             println!("Thread 1: Starting FD close lifecycle test helper...");
 
             let mut test_cmd = Command::new(&test_helper_path_clone)
@@ -3077,7 +3071,6 @@ mod tests {
     }
 
     fn test_milestone_7_process_exit_lifecycle() {
-        use std::io::Write;
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
@@ -3136,7 +3129,7 @@ mod tests {
         let tx_thread1 = tx_main.clone();
         let test_helper_path_clone = test_helper_path.clone();
         let test_file_clone = test_file.clone();
-        let test_helper_handle = thread::spawn(move || {
+        let _test_helper_handle = thread::spawn(move || {
             println!("Thread 1: Starting process exit lifecycle test helper...");
 
             let mut test_cmd = Command::new(&test_helper_path_clone)
@@ -3259,7 +3252,6 @@ mod tests {
     }
 
     fn test_milestone_7_daemon_restart_recovery() {
-        use std::io::Write;
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
@@ -3319,7 +3311,7 @@ mod tests {
         let tx_thread1 = tx_main.clone();
         let test_helper_path_clone = test_helper_path.clone();
         let test_file_clone = test_file.clone();
-        let test_helper_handle = thread::spawn(move || {
+        let _test_helper_handle = thread::spawn(move || {
             println!("Thread 1: Starting daemon restart recovery test helper...");
 
             let mut test_cmd = Command::new(&test_helper_path_clone)
@@ -3422,7 +3414,7 @@ mod tests {
             thread::sleep(Duration::from_millis(200));
 
             // Restart daemon
-            let mut daemon_cmd2 = Command::new(&daemon_path)
+            let daemon_cmd2 = Command::new(&daemon_path)
                 .arg(socket_path)
                 .arg("--lower-dir")
                 .arg(&lower_dir)

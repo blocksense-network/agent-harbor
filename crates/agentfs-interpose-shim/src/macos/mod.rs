@@ -1,15 +1,19 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#![allow(non_snake_case)]
+#![allow(unused_doc_comments)]
+#![allow(clippy::empty_line_after_doc_comments)]
+
 use libc::{c_int, c_void};
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, OsStr};
-use std::io::{BufRead, Read, Write};
+use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, atomic::AtomicU64};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use core_foundation::{base::TCFType, declare_TCFType, impl_TCFType};
@@ -26,13 +30,13 @@ use agentfs_proto::messages::{
     FchflagsRequest, FclonefileatRequest, FcopyfileRequest, FgetxattrRequest, FlistxattrRequest,
     FremovexattrRequest, FsEventBroadcastRequest, FsetxattrRequest, GetattrlistRequest,
     GetattrlistbulkRequest, GetxattrRequest, LchflagsRequest, LgetxattrRequest, ListxattrRequest,
-    LlistxattrRequest, LremovexattrRequest, LsetxattrRequest, RemovexattrRequest,
-    SetattrlistRequest, SetxattrRequest, StatData, StatfsData, SynthesizedKevent, TimespecData,
-    WatchRegisterFSEventsPortRequest, WatchRegisterFSEventsRequest,
+    LlistxattrRequest, LremovexattrRequest, LsetxattrRequest, RemovexattrRequest, Request,
+    Response, SetattrlistRequest, SetxattrRequest, StatData, StatfsData, SynthesizedKevent,
+    TimespecData, WatchRegisterFSEventsRequest,
 };
-use agentfs_proto::*;
 
 // Error codes for interpose forwarding failures
+#[allow(dead_code)]
 const FORWARDING_UNAVAILABLE: u32 = 1;
 
 use std::os::unix::net::UnixStream;
@@ -45,11 +49,17 @@ type FSEventStreamEventFlags = u32;
 type FSEventStreamRef = *mut libc::c_void;
 
 // FSEvents flag constants
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemCreated: FSEventStreamEventFlags = 0x00000100;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemRemoved: FSEventStreamEventFlags = 0x00000200;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemModified: FSEventStreamEventFlags = 0x00001000;
+#[allow(non_upper_case_globals)]
 const kFSEventStreamEventFlagItemRenamed: FSEventStreamEventFlags = 0x00000800;
+#[allow(non_upper_case_globals, dead_code)]
 const kFSEventStreamEventFlagItemIsFile: FSEventStreamEventFlags = 0x00010000;
+#[allow(non_upper_case_globals, dead_code)]
 const kFSEventStreamEventFlagItemIsDir: FSEventStreamEventFlags = 0x00020000;
 type FSEventStreamCallback = extern "C" fn(
     stream_ref: FSEventStreamRef,
@@ -75,10 +85,13 @@ type CFDataRef = *mut libc::c_void;
 type CFIndex = isize;
 type SInt32 = i32;
 type Boolean = u8;
-type dev_t = u32;
+#[allow(non_camel_case_types)]
+type dev_t = u32; // macOS style typedef
 
 // Wrapper types for thread-safe CF objects
+#[allow(dead_code)]
 struct CFMessagePortWrapper(CFMessagePortRef);
+#[allow(dead_code)]
 struct CFRunLoopSourceWrapper(CFRunLoopSourceRef);
 #[derive(Hash, Eq, PartialEq)]
 struct CFRunLoopSourceKey(CFRunLoopRef, CFStringRef);
@@ -103,6 +116,7 @@ impl OwnedCFRef {
     }
 
     // Transfer ownership out (like auto_ptr.release())
+    #[allow(dead_code)]
     fn release(mut self) -> *mut libc::c_void {
         self.ptr.take().expect("CF object already released")
     }
@@ -135,7 +149,7 @@ impl OwnedCFString {
 impl Drop for OwnedCFString {
     fn drop(&mut self) {
         if !self.0.is_null() {
-            unsafe { CFRelease(self.0 as *mut libc::c_void) };
+            unsafe { CFRelease(self.0) };
         }
     }
 }
@@ -179,7 +193,6 @@ unsafe impl Sync for CFRunLoopSourceKey {}
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     static kCFAllocatorDefault: CFAllocatorRef;
-    static kCFRunLoopCommonModes: CFStringRef;
     static kCFStringEncodingUTF8: u32;
 
     fn CFMessagePortCreateRunLoopSource(
@@ -190,11 +203,6 @@ extern "C" {
 
     fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
     fn CFRunLoopRemoveSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
-    fn CFRunLoopContainsSource(
-        rl: CFRunLoopRef,
-        source: CFRunLoopSourceRef,
-        mode: CFStringRef,
-    ) -> bool;
     fn CFMessagePortInvalidate(port: CFMessagePortRef);
     fn CFMessagePortGetTypeID() -> u64;
     fn CFRelease(cf: *mut std::ffi::c_void);
@@ -210,8 +218,6 @@ extern "C" {
         num_values: CFIndex,
         callbacks: *const libc::c_void,
     ) -> CFArrayRef;
-    fn CFDataGetLength(data: CFDataRef) -> CFIndex;
-    fn CFDataGetBytePtr(data: CFDataRef) -> *const u8;
 
     fn CFMessagePortCreateLocal(
         allocator: CFAllocatorRef,
@@ -220,8 +226,6 @@ extern "C" {
         context: *const CFMessagePortContext,
         should_free_info: *mut Boolean,
     ) -> CFMessagePortRef;
-
-    fn CFRunLoopGetCurrent() -> CFRunLoopRef;
 
     // CFArray functions for extracting paths
     fn CFArrayGetCount(array: CFArrayRef) -> CFIndex;
@@ -291,6 +295,7 @@ const EV_ADD: u16 = 0x0001; // add event to kq (implies enable)
 const EV_DELETE: u16 = 0x0002; // delete event from kq
 const EV_ENABLE: u16 = 0x0004; // enable event
 const EV_CLEAR: u16 = 0x0020; // disable event after reporting
+#[allow(dead_code)]
 const NOTE_TRIGGER: u32 = 0x01000000; // trigger the event
 
 /// Wrapper for storing original FSEvents callback information
@@ -372,7 +377,8 @@ fn generate_doorbell_ident() -> u64 {
 }
 
 /// Translate FSEvents paths from overlay to backstore paths
-fn translate_fsevent_paths(paths_to_watch: CFArrayRef) -> Result<Vec<Vec<u8>>, String> {
+#[allow(dead_code)]
+fn translate_fsevent_paths(_paths_to_watch: CFArrayRef) -> Result<Vec<Vec<u8>>, String> {
     // TODO: Implement CoreFoundation array manipulation to extract paths from CFArray
     // For now, we can't extract the paths from the CFArray, but we can at least
     // attempt to send a translation request with empty paths to test the protocol
@@ -395,7 +401,7 @@ fn translate_fsevent_paths(paths_to_watch: CFArrayRef) -> Result<Vec<Vec<u8>>, S
 /// Replacement FSEvents callback that intercepts and modifies events
 extern "C" fn fsevents_replacement_callback(
     stream_ref: FSEventStreamRef,
-    client_callback_info: *mut libc::c_void,
+    _client_callback_info: *mut libc::c_void,
     num_events: libc::size_t,
     event_paths: CFArrayRef,
     event_flags: *const FSEventStreamEventFlags,
@@ -439,7 +445,7 @@ extern "C" fn fsevents_replacement_callback(
                 synthetic_paths.push(OwnedCFString::new(cf_path));
 
                 // Convert event kind to FSEvents flags
-                let mut flags = match broadcast.event_kind {
+                let flags = match broadcast.event_kind {
                     0 => kFSEventStreamEventFlagItemCreated,  // Created
                     1 => kFSEventStreamEventFlagItemRemoved,  // Removed
                     2 => kFSEventStreamEventFlagItemModified, // Modified
@@ -483,23 +489,24 @@ extern "C" fn fsevents_replacement_callback(
                         std::ptr::null(),
                     )
                 };
-                Some(OwnedCFRef::new(array as *mut libc::c_void))
+                Some(OwnedCFRef::new(array))
             } else {
                 None
             };
 
             // Call original callback with synthetic events
             if !synthetic_paths.is_empty() && cf_paths_array_wrapper.is_some() {
-                let cf_paths_array =
-                    cf_paths_array_wrapper.as_ref().unwrap().ptr.unwrap() as CFArrayRef;
-                (callback_info.original_callback)(
-                    stream_ref,
-                    callback_info.original_context as *mut libc::c_void,
-                    synthetic_paths.len(),
-                    cf_paths_array,
-                    synthetic_flags.as_ptr(),
-                    synthetic_event_ids.as_ptr(),
-                );
+                if let Some(wrapper) = cf_paths_array_wrapper.as_ref() {
+                    let cf_paths_array = wrapper.ptr.unwrap() as CFArrayRef;
+                    (callback_info.original_callback)(
+                        stream_ref,
+                        callback_info.original_context as *mut libc::c_void,
+                        synthetic_paths.len(),
+                        cf_paths_array,
+                        synthetic_flags.as_ptr(),
+                        synthetic_event_ids.as_ptr(),
+                    );
+                }
             }
 
             // CFString objects and CFArray will be cleaned up automatically by RAII
@@ -527,9 +534,10 @@ extern "C" fn fsevents_replacement_callback(
 }
 
 /// Queue an FSEvents broadcast for injection into the callback
+#[allow(dead_code)]
 fn queue_fsevents_broadcast(stream_id: u64, broadcast: FsEventBroadcastRequest) {
     let mut queue = FSEVENTS_QUEUE.lock().unwrap();
-    queue.entry(stream_id).or_insert_with(Vec::new).push(broadcast);
+    queue.entry(stream_id).or_default().push(broadcast);
 }
 
 /// Get and clear queued FSEvents broadcasts for a stream
@@ -602,7 +610,7 @@ fn fsevents_message_port_callback_impl(
         }
 
         // Wrap plist in RAII wrapper
-        let mut plist = OwnedCFRef::new(plist_raw as *mut libc::c_void);
+        let _plist = OwnedCFRef::new(plist_raw);
 
         // Validate it's a dictionary
         let dict_type_id = CFDictionaryGetTypeID();
@@ -734,8 +742,8 @@ fn fsevents_message_port_callback_impl(
             if CFGetTypeID(item) == string_type_id {
                 let cf_string = item as CFStringRef;
                 // Retain the string since we'll release it after the callback
-                CFRetain(cf_string as *mut std::ffi::c_void);
-                paths.push(OwnedCFRef::new(cf_string as *mut std::ffi::c_void));
+                CFRetain(cf_string);
+                paths.push(OwnedCFRef::new(cf_string));
             } else {
                 log_message(&format!("FSEvents port: paths[{}] is not a string", i));
                 return std::ptr::null_mut();
@@ -866,7 +874,7 @@ fn fsevents_message_port_callback_impl(
                 log_message("Failed to create CFArray for paths");
                 return std::ptr::null_mut();
             }
-            Some(OwnedCFRef::new(array as *mut libc::c_void))
+            Some(OwnedCFRef::new(array))
         } else {
             None
         };
@@ -874,23 +882,37 @@ fn fsevents_message_port_callback_impl(
         // Find the callback for this stream and deliver events
         let callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
         if let Some(callback_info) = callbacks.values().find(|info| info.stream_id == stream_id) {
-            if !paths.is_empty() && cf_paths_array_wrapper.is_some() {
-                log_message(&format!(
-                    "Delivering {} events to stream {}",
-                    paths.len(),
-                    stream_id
-                ));
+            if !paths.is_empty() {
+                if let Some(wrapper) = cf_paths_array_wrapper.as_ref() {
+                    log_message(&format!(
+                        "Delivering {} events to stream {}",
+                        paths.len(),
+                        stream_id
+                    ));
 
-                // Call the original FSEvents callback
-                let cf_paths_array = cf_paths_array_wrapper.as_ref().unwrap().ptr.unwrap();
-                (callback_info.original_callback)(
-                    callback_info.stream_id as FSEventStreamRef,
-                    callback_info.original_context as *mut libc::c_void,
-                    paths.len(),
-                    cf_paths_array,
-                    flags.as_ptr(),
-                    event_ids.as_ptr(),
-                );
+                    // Call the original FSEvents callback
+                    if let Some(cf_paths_array) = wrapper.ptr {
+                        (callback_info.original_callback)(
+                            callback_info.stream_id as FSEventStreamRef,
+                            callback_info.original_context as *mut libc::c_void,
+                            paths.len(),
+                            cf_paths_array,
+                            flags.as_ptr(),
+                            event_ids.as_ptr(),
+                        );
+                    } else {
+                        log_message(&format!(
+                            "Paths array wrapper missing CFArray ptr for stream {}",
+                            stream_id
+                        ));
+                    }
+                } else {
+                    log_message(&format!(
+                        "No CF paths array to deliver {} events for stream {}",
+                        paths.len(),
+                        stream_id
+                    ));
+                }
             } else {
                 log_message(&format!(
                     "No valid events to deliver for stream {}",
@@ -919,7 +941,7 @@ fn create_fsevents_message_port() -> Result<(), String> {
     let cf_string = core_foundation::string::CFString::new(port_name);
 
     // Create message port context
-    let mut context = CFMessagePortContext {
+    let context = CFMessagePortContext {
         version: 0,
         info: std::ptr::null_mut(),
         retain: None,
@@ -955,8 +977,7 @@ fn create_fsevents_message_port() -> Result<(), String> {
 
 /// Send the message port name to the daemon
 fn send_port_name_to_daemon(port_name: &str) -> Result<(), String> {
-    use agentfs_proto::messages::*;
-    use agentfs_proto::*;
+    use agentfs_proto::messages::{Response, WatchRegisterFSEventsPortRequest};
 
     let request = Request::WatchRegisterFSEventsPort((
         vec![], // version
@@ -1000,7 +1021,7 @@ fn add_port_to_run_loop(run_loop: CFRunLoopRef, mode: CFStringRef) -> Result<(),
     // Ensure we remove the source from run loop if we fail later
     let _cleanup = guard((run_loop, source, mode), |(rl, src, md)| unsafe {
         CFRunLoopRemoveSource(rl, src, md);
-        CFRelease(src as *mut c_void);
+        CFRelease(src);
     });
 
     // Add source to run loop
@@ -1068,9 +1089,7 @@ where
     let mut global_map = DIRFD_MAPPING.lock().unwrap();
 
     // Initialize mapping for this process if it doesn't exist
-    if !global_map.contains_key(&pid) {
-        global_map.insert(pid, DirfdMapping::new());
-    }
+    global_map.entry(pid).or_insert_with(DirfdMapping::new);
 
     // Get mutable reference to the mapping and execute the closure
     let mapping = global_map.get_mut(&pid).unwrap();
@@ -1248,9 +1267,9 @@ fn initialize() {
             // Check if we should fail fast
             let fail_fast = std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
             if fail_fast {
-                log_message(&format!(
-                    "AGENTFS_INTERPOSE_FAIL_FAST=1 set, terminating program due to handshake failure"
-                ));
+                log_message(
+                    "AGENTFS_INTERPOSE_FAIL_FAST=1 set, terminating program due to handshake failure",
+                );
                 std::process::exit(1);
             }
         }
@@ -1273,9 +1292,10 @@ fn is_enabled() -> bool {
 }
 
 fn log_message(message: &str) {
-    if std::env::var_os(ENV_LOG_LEVEL).as_deref().map_or(false, |v| {
-        matches!(v.to_str(), Some("0" | "false" | "FALSE" | "False"))
-    }) {
+    if std::env::var_os(ENV_LOG_LEVEL)
+        .as_deref()
+        .is_some_and(|v| matches!(v.to_str(), Some("0" | "false" | "FALSE" | "False")))
+    {
         return;
     }
     let pid = std::process::id();
@@ -1415,9 +1435,9 @@ where
                     let fail_fast =
                         std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
+                        log_message(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                        );
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original function");
@@ -1590,7 +1610,7 @@ fn try_reconnect_to_daemon() -> Result<(), String> {
 fn re_register_all_watches() -> Result<(), String> {
     log_message("Re-registering all active watches");
 
-    let pid = std::process::id() as u32;
+    let pid = std::process::id();
 
     // Re-register kqueue watches
     {
@@ -1600,7 +1620,7 @@ fn re_register_all_watches() -> Result<(), String> {
                 pid,
                 *kq_fd as u32,
                 0, // watch_id - daemon will assign
-                *fd as u32,
+                *fd,
                 *fflags,
             );
 
@@ -1795,7 +1815,9 @@ mod interpose {
     use super::EVFILT_VNODE;
 
     // ACL types - these may need to be defined manually for macOS
+    #[allow(non_camel_case_types)]
     type acl_type_t = u32;
+    #[allow(non_camel_case_types)]
     type acl_t = *mut c_void;
 
     // attrlist types for getattrlist operations
@@ -1811,15 +1833,18 @@ mod interpose {
     }
 
     // copyfile types for copyfile operations
+    #[allow(non_camel_case_types)]
     type copyfile_state_t = *mut c_void;
+    #[allow(non_camel_case_types)]
     type copyfile_flags_t = u32;
 
     // Additional type aliases for macOS
+    #[allow(non_camel_case_types)]
     type u_long = usize;
+    #[allow(non_camel_case_types)]
     type u_int64_t = u64;
     use std::io::Read;
     use std::mem;
-    use std::os::unix::io::FromRawFd;
 
     /// Generic function to send a request and receive a response
 
@@ -1840,9 +1865,9 @@ mod interpose {
                     let fail_fast =
                         std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
+                        log_message(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                        );
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original opendir");
@@ -1917,9 +1942,9 @@ mod interpose {
                     let fail_fast =
                         std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
+                        log_message(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                        );
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original readdir");
@@ -1994,9 +2019,9 @@ mod interpose {
                     let fail_fast =
                         std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
+                        log_message(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                        );
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original closedir");
@@ -2067,9 +2092,9 @@ mod interpose {
                     let fail_fast =
                         std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
+                        log_message(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                        );
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original readlink");
@@ -2151,9 +2176,9 @@ mod interpose {
                     let fail_fast =
                         std::env::var_os(ENV_FAIL_FAST).map(|s| s == "1").unwrap_or(false);
                     if fail_fast {
-                        log_message(&format!(
-                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program"
-                        ));
+                        log_message(
+                            "STREAM not set but AGENTFS_INTERPOSE_FAIL_FAST=1; terminating program",
+                        );
                         std::process::exit(1);
                     } else {
                         log_message("STREAM not set, falling back to original open");
@@ -2230,6 +2255,7 @@ mod interpose {
     }
 
     /// Send file descriptor via SCM_RIGHTS (for testing/debugging)
+    #[allow(dead_code)]
     fn send_fd_response(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
         let response = Response::fd_open(fd as u32);
 
@@ -2237,8 +2263,9 @@ mod interpose {
         let ssz_len = ssz_bytes.len() as u32;
 
         // Send response with file descriptor via SCM_RIGHTS
+        let len_bytes = ssz_len.to_le_bytes();
         let mut iov = iovec {
-            iov_base: ssz_len.to_le_bytes().as_ptr() as *mut libc::c_void,
+            iov_base: len_bytes.as_ptr() as *mut libc::c_void,
             iov_len: 4,
         };
 
@@ -4225,7 +4252,7 @@ mod interpose {
 
                 if is_kqueue {
                     // This is a kqueue being closed - clean up all its watches
-                    let pid = std::process::id() as u32;
+                                let pid = std::process::id();
                     let request = Request::watch_unregister_kqueue(pid, fd as u32);
 
                     if let Err(e) = send_request(request, |_| None::<()>) {
@@ -4256,7 +4283,7 @@ mod interpose {
 
                     for kq_fd in watching_kqueues {
                         // Send unregister message to daemon
-                        let pid = std::process::id() as u32;
+                        let pid = std::process::id();
                         let request = Request::watch_unregister_fd(pid, fd as u32);
 
                         if let Err(e) = send_request(request, |_| None::<()>) {
@@ -5576,7 +5603,7 @@ mod interpose {
                                 log_message(&format!("Detected doorbell collision: app trying to register ident {:#x} which conflicts with our doorbell", requested_ident));
 
                                 // Delete the current doorbell
-                                let mut delete_kev = libc::kevent {
+                                let delete_kev = libc::kevent {
                                     ident: current_doorbell_ident as usize,
                                     filter: EVFILT_USER,
                                     flags: EV_DELETE,
@@ -5593,7 +5620,7 @@ mod interpose {
                                 let new_doorbell_ident = generate_doorbell_ident();
 
                                 // Register new doorbell
-                                let mut add_kev = libc::kevent {
+                                let add_kev = libc::kevent {
                                     ident: new_doorbell_ident as usize,
                                     filter: EVFILT_USER,
                                     flags: EV_ADD | EV_ENABLE | EV_CLEAR,
@@ -5610,7 +5637,7 @@ mod interpose {
                                     DOORBELL_IDENTS.lock().unwrap().insert(kq, new_doorbell_ident);
 
                                     // Notify daemon about the ident change
-                                    let pid = std::process::id() as u32;
+                                    let pid = std::process::id();
                                     let update_request = Request::update_doorbell_ident(pid, current_doorbell_ident, new_doorbell_ident);
                                     if let Err(e) = send_request(update_request, |_| Some(())) {
                                         log_message(&format!("Failed to notify daemon about doorbell ident change: {}", e));
@@ -5661,7 +5688,7 @@ mod interpose {
                     let event = &*eventlist.offset(i as isize);
                     if event.filter == EVFILT_USER && event.ident == current_doorbell_ident as usize {
                         has_doorbell = true;
-                        log_message(&format!("Received doorbell event, requesting pending events"));
+                        log_message("Received doorbell event, requesting pending events");
                         break;
                     }
                 }
@@ -5681,9 +5708,8 @@ mod interpose {
                     let available_space = nevents as usize - result as usize;
                     let events_to_inject = synthesized_events.len().min(available_space);
 
-                    for i in 0..events_to_inject {
+                    for (i, synthesized) in synthesized_events.iter().enumerate().take(events_to_inject) {
                         let target_idx = (result as usize + i) as isize;
-                        let synthesized = &synthesized_events[i];
 
                         // Convert SynthesizedKevent to libc::kevent
                         let injected_event = libc::kevent {
@@ -5727,7 +5753,7 @@ mod interpose {
             log_message(&format!("kqueue doorbell: fd={}, ident={:#x}", kq_fd, doorbell_ident));
 
             // Register the doorbell EVFILT_USER event on this kqueue
-            let mut kev = libc::kevent {
+            let kev = libc::kevent {
                 ident: doorbell_ident as usize,
                 filter: EVFILT_USER,
                 flags: EV_ADD | EV_ENABLE | EV_CLEAR,
@@ -5736,7 +5762,7 @@ mod interpose {
                 udata: std::ptr::null_mut(),
             };
 
-            let result = redhook::real!(kevent)(kq_fd, &mut kev as *mut _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+            let result = redhook::real!(kevent)(kq_fd, &kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
             if result == -1 {
                 log_message(&format!("failed to register doorbell on kqueue fd {}", kq_fd));
                 // Continue anyway - the kqueue is still valid
@@ -5750,7 +5776,7 @@ mod interpose {
             KQUEUE_FDS.lock().unwrap().insert(kq_fd);
 
             // Send WatchDoorbell message to daemon with kqueue FD via SCM_RIGHTS
-            let pid = std::process::id() as u32;
+            let pid = std::process::id();
             let request = Request::watch_doorbell(pid, kq_fd as u32, doorbell_ident);
 
             // Send the request with FD passing
@@ -5783,8 +5809,9 @@ mod interpose {
         let ssz_len = ssz_bytes.len() as u32;
 
         // Prepare message with ancillary data for FD passing
+        let len_bytes = ssz_len.to_le_bytes();
         let mut iov = iovec {
-            iov_base: ssz_len.to_le_bytes().as_ptr() as *mut c_void,
+            iov_base: len_bytes.as_ptr() as *mut c_void,
             iov_len: 4,
         };
 
@@ -5843,7 +5870,7 @@ mod interpose {
     /// Request pending synthesized events from the daemon for a specific kqueue
 
     fn request_pending_events(kq_fd: c_int) -> Vec<SynthesizedKevent> {
-        let pid = std::process::id() as u32;
+        let pid = std::process::id();
 
         // Create the request
         let request = Request::watch_drain_events(pid, kq_fd as u32, 64); // Request up to 64 events

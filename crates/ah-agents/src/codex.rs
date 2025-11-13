@@ -6,9 +6,7 @@ use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
 

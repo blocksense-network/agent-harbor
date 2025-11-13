@@ -29,13 +29,12 @@
 ///
 /// For actual file operations, scenarios with agent-specific tool names are defined in @Scenario-Format.md.
 // Unused imports removed - tests use direct Command execution for fine-grained control
-use ah_agents::test_utils::{start_mock_llm_api_server, wait_for_mock_server};
+use ah_agents::test_utils::start_mock_llm_api_server;
 use ah_agents::{AgentLaunchConfig, agent_by_name};
 use ah_core::agent_binary::AgentBinary;
 use ah_core::agent_types::AgentType;
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::{fs, thread, time};
 use tempfile::TempDir;
 

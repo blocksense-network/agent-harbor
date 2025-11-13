@@ -3,7 +3,6 @@
 
 //! Handshake structures for AgentFS interpose communication
 
-use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
 
 // Handshake structures for interpose communication
@@ -39,17 +38,9 @@ pub struct ProcessInfo {
     pub exe_name: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, Default)]
 pub struct AllowlistInfo {
     pub matched_entry: Option<Vec<u8>>,
     pub configured_entries: Option<Vec<Vec<u8>>>,
 }
-
-impl Default for AllowlistInfo {
-    fn default() -> Self {
-        Self {
-            matched_entry: None,
-            configured_entries: None,
-        }
-    }
-}
+// Default is auto-derived: both fields are Option and default to None

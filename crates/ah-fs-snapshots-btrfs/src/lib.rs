@@ -10,7 +10,6 @@ use ah_fs_snapshots_traits::{
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tokio::process::Command;
 
 /// Btrfs snapshot provider implementation.
 #[derive(Default)]

@@ -5,8 +5,7 @@
 
 use super::{FsKitAdapter, FsKitConfig};
 use agentfs_core::error::FsResult;
-use agentfs_core::{Attributes, DirEntry, HandleId, OpenOptions};
-use std::collections::HashMap;
+use agentfs_core::{Attributes, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -22,6 +21,7 @@ use std::sync::Arc;
 /// FSKit item types (placeholder for future implementation)
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 enum FSItemType {
     Unknown = 0,
     File = 1,
@@ -30,10 +30,12 @@ enum FSItemType {
 }
 
 /// FSKit file name wrapper (placeholder)
+#[allow(dead_code)]
 struct FsFileName {
     name: String,
 }
 
+#[allow(dead_code)]
 impl FsFileName {
     fn from_string(s: &str) -> Self {
         Self {
@@ -47,12 +49,14 @@ impl FsFileName {
 }
 
 /// FSKit item representation (simplified)
+#[allow(dead_code)]
 struct FsItem {
     adapter: Arc<FsKitAdapter>,
     path: String,
     attributes: Attributes,
 }
 
+#[allow(dead_code)]
 impl FsItem {
     fn new(adapter: Arc<FsKitAdapter>, path: String, attributes: Attributes) -> Self {
         Self {
@@ -64,7 +68,8 @@ impl FsItem {
 }
 
 /// FSKit volume implementation (simplified)
-struct FsVolume {
+pub struct FsVolume {
+    #[allow(dead_code)]
     adapter: Arc<FsKitAdapter>,
 }
 
@@ -74,6 +79,7 @@ impl FsVolume {
     }
 
     /// Basic file operations for testing
+    #[allow(dead_code)]
     fn create_file(&self, path: &str) -> FsResult<()> {
         let opts = OpenOptions {
             read: true,
@@ -90,6 +96,7 @@ impl FsVolume {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn write_file(&self, path: &str, data: &str) -> FsResult<()> {
         let opts = OpenOptions {
             read: false,
@@ -108,6 +115,7 @@ impl FsVolume {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn read_file(&self, path: &str) -> FsResult<String> {
         let opts = OpenOptions {
             read: true,
