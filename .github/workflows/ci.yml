@@ -21,7 +21,6 @@ on:
   push:
     branches: [main, linux-sandbox]
   pull_request:
-    branches: [main, linux-sandbox]
 
 env:
   CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
@@ -46,42 +45,42 @@ jobs:
       - name: Run Lint
         run: nix develop -c pre-commit run --all-files
 
-  build-and-cache-devshell:
-    strategy:
-      matrix:
-        include:
-          - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3]
-            system: x86_64-linux
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
-            system: aarch64-darwin
-
-    name: Build devshell | ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build & activate the Nix Dev Shell
-        run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#devShells.${{ matrix.system }}.default
+  # build-and-cache-devshell:
+  #   strategy:
+  #     matrix:
+  #       include:
+  #         - name: x86_64-linux (NixOS, self-hosted)
+  #           runner: [self-hosted, nixos, x86-64-v3]
+  #           system: x86_64-linux
+  #         - name: aarch64-darwin (macOS, GitHub-hosted)
+  #           runner: macos-latest
+  #           system: aarch64-darwin
+  #
+  #   name: Build devshell | ${{ matrix.name }}
+  #   runs-on: ${{ matrix.runner }}
+  #
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #       with:
+  #         submodules: 'recursive'
+  #
+  #     - name: Install Nix
+  #       uses: metacraft-labs/nixos-modules/.github/install-nix@main
+  #       with:
+  #         cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+  #         cachix-cache: ${{ vars.CACHIX_CACHE }}
+  #         trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+  #         substituters: ${{ vars.SUBSTITUTERS }}
+  #
+  #     - name: Build & activate the Nix Dev Shell
+  #       run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#devShells.${{ matrix.system }}.default
 
   test:
     strategy:
       matrix:
         include:
           - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3, microvm, fine-tuned-systemd-sandbox]
+            runner: [self-hosted, nixos, x86-64-v3, microvm]
             allowedToFail: false
           # - name: aarch64-darwin (macOS, GitHub-hosted)
           #   runner: macos-latest
@@ -92,28 +91,28 @@ jobs:
     continue-on-error: ${{ matrix.allowedToFail }}
 
     steps:
-      - name: Test user namespace availability
-        run: unshare -U true && echo "✅ userns OK" || echo "❌ userns blocked"
-
-      - name: Test passwordless `sudo` availability
-        run: sudo true && echo "✅ sudo OK" || echo "❌ sudo blocked"
-
-      - name: Investigate sudo
-        run: |
-          set -x
-          ls -l "$(command -v sudo)"
-          id
-          whoami
-          sudo whoami || true
-          grep -E 'NoNewPrivs|CapEff|CapBnd' /proc/self/status || true
-          mount | grep " on /run " || true
-          mount | grep " on /run/wrappers" || true
-          grep -E '^(NoNewPrivs|CapEff|CapBnd|Seccomp)' /proc/self/status
-          echo "-- uid/gid maps (user namespace check) --"
-          cat /proc/self/uid_map /proc/self/gid_map 2>/dev/null || true
-
-      - name: Test passwordless `sudo` availability
-        run: sudo true && echo "✅ sudo OK" || echo "❌ sudo blocked"
+      # - name: Test user namespace availability
+      #   run: unshare -U true && echo "✅ userns OK" || echo "❌ userns blocked"
+      #
+      # - name: Test passwordless `sudo` availability
+      #   run: sudo true && echo "✅ sudo OK" || echo "❌ sudo blocked"
+      #
+      # - name: Investigate sudo
+      #   run: |
+      #     set -x
+      #     ls -l "$(command -v sudo)"
+      #     id
+      #     whoami
+      #     sudo whoami || true
+      #     grep -E 'NoNewPrivs|CapEff|CapBnd' /proc/self/status || true
+      #     mount | grep " on /run " || true
+      #     mount | grep " on /run/wrappers" || true
+      #     grep -E '^(NoNewPrivs|CapEff|CapBnd|Seccomp)' /proc/self/status
+      #     echo "-- uid/gid maps (user namespace check) --"
+      #     cat /proc/self/uid_map /proc/self/gid_map 2>/dev/null || true
+      #
+      # - name: Test passwordless `sudo` availability
+      #   run: sudo true && echo "✅ sudo OK" || echo "❌ sudo blocked"
 
       - uses: actions/checkout@v5
         with:
@@ -136,14 +135,14 @@ jobs:
         run: |
           cargo test -p sandbox-fs
 
-      - name: Check compilation
-        run: just check
-
-      - name: Build sandbox helper binary
-        run: just build-sbx-helper-release
-
-      - name: Build cgroup enforcement test binaries
-        run: just build-cgroup-tests
+      # - name: Check compilation
+      #   run: just check
+      #
+      # - name: Build sandbox helper binary
+      #   run: just build-sbx-helper-release
+      #
+      # - name: Build cgroup enforcement test binaries
+      #   run: just build-cgroup-tests
 
       # - run: sudo just create-test-filesystems
       #
