@@ -65,9 +65,10 @@ pub use task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManage
 
 /// Task manager initialization utilities.
 pub use task_manager_init::{
-    MultiplexerPreference, TaskManagerConfig, create_dashboard_task_manager,
-    create_local_task_manager, create_local_task_manager_with_multiplexer,
-    create_session_viewer_task_manager, create_task_manager_no_recording,
+    CliMultiplexerType, MultiplexerChoice, MultiplexerPreference, TaskManagerConfig,
+    create_dashboard_task_manager, create_local_task_manager,
+    create_local_task_manager_with_multiplexer, create_session_viewer_task_manager,
+    create_task_manager_no_recording, determine_multiplexer_choice,
 };
 
 /// Local task manager for direct execution on the local machine.
