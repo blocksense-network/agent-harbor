@@ -46,7 +46,8 @@ impl ClaudeAgent {
     /// Retrieve Claude Code credentials from platform-specific sources
     ///
     /// On macOS: executes `security find-generic-password -s "Claude Code-credentials" -w`
-    /// On Linux: reads from `~/.claude/.credentials.json`
+    /// On Linux: attempts multiple locations (e.g., `~/.claude/.credentials.json`,
+    /// `~/.config/claude/.credentials.json`, `~/.config/claude-code/.credentials.json`)
     async fn retrieve_credentials(&self) -> AgentResult<Option<String>> {
         #[cfg(target_os = "macos")]
         {
@@ -81,22 +82,29 @@ impl ClaudeAgent {
 
         #[cfg(target_os = "linux")]
         {
-            debug!("Retrieving Claude credentials from Linux credentials file");
+            debug!("Retrieving Claude credentials from Linux credential locations");
             if let Some(home_dir) = dirs::home_dir() {
-                let credentials_path = home_dir.join(".claude").join(".credentials.json");
-                match tokio::fs::read_to_string(&credentials_path).await {
-                    Ok(json_str) => {
-                        debug!("Retrieved credentials from file: {:?}", credentials_path);
-                        Ok(Some(json_str))
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to read credentials file {:?}: {}",
-                            credentials_path, e
-                        );
-                        Ok(None)
+                // Candidate locations observed across distributions and versions
+                let candidates = vec![
+                    home_dir.join(".claude").join(".credentials.json"),
+                    home_dir.join(".config").join("claude").join(".credentials.json"),
+                    home_dir.join(".config").join("claude-code").join(".credentials.json"),
+                ];
+
+                for path in candidates.iter() {
+                    match tokio::fs::read_to_string(path).await {
+                        Ok(json_str) => {
+                            debug!("Retrieved credentials from file: {:?}", path);
+                            return Ok(Some(json_str));
+                        }
+                        Err(e) => {
+                            // Best-effort: continue searching other candidates
+                            debug!("Credential file not usable at {:?}: {}", path, e);
+                        }
                     }
                 }
+                warn!("No Claude credential file found in standard Linux locations");
+                Ok(None)
             } else {
                 warn!("Could not determine home directory for Linux credentials");
                 Ok(None)
@@ -268,6 +276,109 @@ impl ClaudeAgent {
         debug!("Created Claude configuration at {:?}", config_path);
         Ok(())
     }
+
+    /// Ensure a settings.json with default preferences exists in ~/.claude (macOS fallback)
+    ///
+    /// This prevents first-run prompts by pre-seeding theme, login, and terminal settings.
+    /// If a snapshot hook is configured, it is included as well.
+    #[cfg(target_os = "macos")]
+    async fn ensure_settings_json_with_defaults(
+        &self,
+        home_dir: &Path,
+        snapshot_cmd: Option<&String>,
+        api_key: Option<&str>,
+        auth_token: Option<&str>,
+    ) -> AgentResult<()> {
+        let claude_dir = home_dir.join(".claude");
+        tokio::fs::create_dir_all(&claude_dir).await.map_err(|e| {
+            AgentError::ConfigCreationFailed(format!(
+                "Failed to create Claude settings dir {:?}: {}",
+                claude_dir, e
+            ))
+        })?;
+
+        let settings_path = claude_dir.join("settings.json");
+
+        // If settings.json already exists, do not overwrite
+        if tokio::fs::metadata(&settings_path).await.is_ok() {
+            debug!(
+                "Claude settings.json already exists at {:?}, not overwriting",
+                settings_path
+            );
+            return Ok(());
+        }
+
+        // Determine login settings based on available credentials
+        let login_settings = if let Some(key) = api_key {
+            serde_json::json!({
+                "method": "apiKey",
+                "apiKey": key,
+            })
+        } else if let Some(token) = auth_token {
+            serde_json::json!({
+                "method": "oauthToken",
+                "accessToken": token,
+            })
+        } else {
+            serde_json::json!({
+                "method": "none"
+            })
+        };
+
+        // Terminal setup to avoid interactive prompts
+        let terminal_settings = serde_json::json!({
+            "shell": "zsh",
+            "integrated": true,
+            "setupCompleted": true
+        });
+
+        // Base settings
+        let mut settings = serde_json::json!({
+            "appearance": { "theme": "dark" },
+            "login": login_settings,
+            "terminal": terminal_settings
+        });
+
+        // Optionally include snapshot hooks
+        if let Some(snap) = snapshot_cmd {
+            let full_snapshot_cmd = crate::snapshot::build_snapshot_command(snap);
+            let hooks = serde_json::json!({
+                "hooks": {
+                    "PostToolUse": [
+                        {
+                            "matcher": ".*",
+                            "hooks": [
+                                { "type": "command", "command": full_snapshot_cmd, "timeout": 30 }
+                            ]
+                        }
+                    ]
+                }
+            });
+
+            // Merge hooks into settings root object
+            if let (Some(obj_settings), Some(obj_hooks)) =
+                (settings.as_object_mut(), hooks.as_object())
+            {
+                for (k, v) in obj_hooks {
+                    obj_settings.insert(k.clone(), v.clone());
+                }
+            }
+        }
+
+        let settings_json = serde_json::to_string_pretty(&settings).map_err(|e| {
+            AgentError::ConfigCreationFailed(format!("Failed to serialize Claude settings.json: {}", e))
+        })?;
+
+        tokio::fs::write(&settings_path, settings_json).await.map_err(|e| {
+            AgentError::ConfigCreationFailed(format!(
+                "Failed to write Claude settings.json {:?}: {}",
+                settings_path, e
+            ))
+        })?;
+
+        debug!("Created Claude settings.json at {:?}", settings_path);
+        Ok(())
+    }
 }
 
 impl Default for ClaudeAgent {
@@ -340,54 +451,8 @@ impl AgentExecutor for ClaudeAgent {
         }
 
         // If snapshot hook is requested, install a Claude-style PostToolUse hook
-        // by writing ~/.claude/settings.json in the selected HOME. This mirrors
-        // tests/tools/mock-agent behavior: install a PostToolUse command hook that
-        // executes after file ops. We keep it scoped to the provided HOME to avoid
-        // touching the user's real ~/.claude.
-        if let Some(snapshot_cmd) = &config.snapshot_cmd {
-            let claude_dir = config.home_dir.join(".claude");
-            tokio::fs::create_dir_all(&claude_dir).await.map_err(|e| {
-                AgentError::ConfigCreationFailed(format!(
-                    "Failed to create Claude settings dir {:?}: {}",
-                    claude_dir, e
-                ))
-            })?;
-
-            // Build the snapshot command with recorder socket parameter if available
-            let full_snapshot_cmd = crate::snapshot::build_snapshot_command(snapshot_cmd);
-
-            // Minimal hooks settings structure matching Claude Code hooks format
-            let settings = serde_json::json!({
-                "hooks": {
-                    "PostToolUse": [
-                        {
-                            "matcher": ".*",
-                            "hooks": [
-                                {
-                                    "type": "command",
-                                    "command": full_snapshot_cmd,
-                                    "timeout": 30
-                                }
-                            ]
-                        }
-                    ]
-                }
-            });
-
-            let settings_path = claude_dir.join("settings.json");
-            let settings_json = serde_json::to_string_pretty(&settings).map_err(|e| {
-                AgentError::ConfigCreationFailed(format!(
-                    "Failed to serialize Claude settings.json: {}",
-                    e
-                ))
-            })?;
-            tokio::fs::write(&settings_path, settings_json).await.map_err(|e| {
-                AgentError::ConfigCreationFailed(format!(
-                    "Failed to write Claude settings.json {:?}: {}",
-                    settings_path, e
-                ))
-            })?;
-        }
+        // by ensuring ~/.claude/settings.json contains default preferences and hooks (macOS).
+        // We scope it to the provided HOME to avoid touching the user's real ~/.claude.
 
         // Copy credentials if requested and using custom HOME
         if config.copy_credentials && using_custom_home {
@@ -414,17 +479,68 @@ impl AgentExecutor for ClaudeAgent {
             cmd.env("ANTHROPIC_BASE_URL", api_server);
         }
 
-        // Add API key if specified
+        // Add API credentials (prefer explicit API key, otherwise use OAuth token from Keychain)
+        let mut captured_api_key: Option<String> = None;
+        let mut captured_auth_token: Option<String> = None;
+        let mut have_auth = false;
         if let Some(api_key) = &config.api_key {
             cmd.env("ANTHROPIC_API_KEY", api_key);
+            captured_api_key = Some(api_key.clone());
+            have_auth = true;
         } else {
-            // Set CLAUDE_CODE_OAUTH_TOKEN if we can retrieve credentials
-            if let Some(credentials_json) = self.retrieve_credentials().await? {
-                if let Some(access_token) = self.extract_access_token(&credentials_json)? {
-                    debug!("Setting CLAUDE_CODE_OAUTH_TOKEN environment variable");
-                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", access_token);
+            // Inherit ANTHROPIC_API_KEY from parent env if present
+            if let Ok(parent_api_key) = std::env::var("ANTHROPIC_API_KEY") {
+                if !parent_api_key.trim().is_empty() {
+                    debug!("Using ANTHROPIC_API_KEY from parent environment");
+                    captured_api_key = Some(parent_api_key);
+                    have_auth = true; // Inherited by default; no need to re-set
                 }
             }
+            // Try to retrieve OAuth access token and set ANTHROPIC_AUTH_TOKEN for Claude Code
+            if !have_auth {
+                if let Some(credentials_json) = self.retrieve_credentials().await? {
+                    if let Some(access_token) = self.extract_access_token(&credentials_json)? {
+                        debug!("Setting ANTHROPIC_AUTH_TOKEN environment variable");
+                        cmd.env("ANTHROPIC_AUTH_TOKEN", &access_token);
+                        captured_auth_token = Some(access_token);
+                        have_auth = true;
+                    }
+                }
+            }
+            // Inherit ANTHROPIC_AUTH_TOKEN from parent env if present
+            if !have_auth {
+                if let Ok(parent_auth_token) = std::env::var("ANTHROPIC_AUTH_TOKEN") {
+                    if !parent_auth_token.trim().is_empty() {
+                        debug!("Using ANTHROPIC_AUTH_TOKEN from parent environment");
+                        captured_auth_token = Some(parent_auth_token);
+                        have_auth = true; // Inherited by default
+                    }
+                }
+            }
+        }
+
+        // Ensure default settings.json exists with dark theme, login, terminal (macOS)
+        #[cfg(target_os = "macos")]
+        if using_custom_home {
+            self.ensure_settings_json_with_defaults(
+                &config.home_dir,
+                config.snapshot_cmd.as_ref(),
+                captured_api_key.as_deref(),
+                captured_auth_token.as_deref(),
+            )
+            .await?;
+        }
+
+        // For isolated HOME (sandboxed), fail fast with guidance if we have no credentials
+        if using_custom_home && !have_auth {
+            return Err(AgentError::ConfigurationError(
+                "No Anthropic credentials found for Claude.\n\
+                 Provide credentials before launching in an isolated HOME (Keychain is not available):\n\
+                 - Export ANTHROPIC_API_KEY=<key> or ANTHROPIC_AUTH_TOKEN=<token>\n\
+                 - Or pass --llm-api-key via CLI\n\
+                 - Or run 'claude setup-token' and re-run without sandbox/isolated HOME"
+                    .to_string(),
+            ));
         }
 
         // Add additional environment variables
@@ -503,6 +619,32 @@ impl AgentExecutor for ClaudeAgent {
         {
             // On other platforms (Linux, etc.), credentials may be stored in files
             vec![PathBuf::from(".claude/.credentials.json")]
+        }
+    }
+
+    /// Copy credentials into sandboxed HOME (override to support Linux directory copies)
+    async fn copy_credentials(&self, src_home: &Path, dst_home: &Path) -> AgentResult<()> {
+        #[cfg(target_os = "macos")]
+        {
+            // macOS uses Keychain; we inject tokens via environment instead of copying files
+            let _ = (src_home, dst_home);
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            // Copy known file-based credentials
+            let files = vec![PathBuf::from(".claude/.credentials.json")];
+            crate::credentials::copy_files(&files, src_home, dst_home).await?;
+
+            // Copy Claude Code configuration/state directories if present
+            for dir in [".config/claude-code", ".local/share/claude-code"] {
+                let src = src_home.join(dir);
+                let dst = dst_home.join(dir);
+                crate::credentials::copy_directory(&src, &dst).await?;
+            }
+
+            Ok(())
         }
     }
 
