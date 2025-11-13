@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /// Claude Code agent implementation
+use crate::common::AgentStatus;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
@@ -34,23 +35,6 @@ pub struct ClaudeAiOauth {
     pub scopes: Vec<String>,
     #[serde(rename = "subscriptionType")]
     pub subscription_type: Option<String>,
-}
-
-/// Structured status information for Claude Code CLI
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudeStatus {
-    /// Whether the CLI is installed and available
-    pub available: bool,
-    /// Version information if available
-    pub version: Option<String>,
-    /// Whether the user is authenticated
-    pub authenticated: bool,
-    /// Authentication method used (e.g., "ANTHROPIC_API_KEY", "OAuth", "Credentials File")
-    pub auth_method: Option<String>,
-    /// Source of authentication (config file path, environment variable name, etc.)
-    pub auth_source: Option<String>,
-    /// Any error that occurred during status check
-    pub error: Option<String>,
 }
 
 impl ClaudeAgent {
@@ -291,12 +275,12 @@ impl ClaudeAgent {
     /// This function returns comprehensive status information in a structured format
     /// that can be easily consumed by health checkers and other tools.
     ///
-    /// Returns ClaudeStatus with detailed information about:
+    /// Returns AgentStatus with detailed information about:
     /// - CLI availability and version
     /// - Authentication status and method
     /// - API key information (masked for security)
     /// - Any errors encountered
-    pub async fn get_claude_status(&self) -> ClaudeStatus {
+    pub async fn get_claude_status(&self) -> AgentStatus {
         // Check CLI availability by detecting version
         let (available, version, mut error) = match self.detect_version().await {
             Ok(version_info) => (true, Some(version_info.version), None),
@@ -313,14 +297,8 @@ impl ClaudeAgent {
         };
 
         if !available {
-            return ClaudeStatus {
-                available: false,
-                version: None,
-                authenticated: false,
-                auth_method: None,
-                auth_source: None,
-                error,
-            };
+            return AgentStatus::new()
+                .with_error(error.unwrap_or_else(|| "Binary not available".to_string()));
         }
 
         // Check authentication status
@@ -337,14 +315,29 @@ impl ClaudeAgent {
             }
         };
 
-        ClaudeStatus {
-            available,
-            version,
-            authenticated,
-            auth_method,
-            auth_source,
-            error,
+        let mut status = AgentStatus::new().with_available(available);
+
+        if let Some(v) = version {
+            status = status.with_version(v);
         }
+
+        if authenticated {
+            status = status.with_authenticated(authenticated);
+        }
+
+        if let Some(method) = auth_method {
+            status = status.with_auth_method(method);
+        }
+
+        if let Some(source) = auth_source {
+            status = status.with_auth_source(source);
+        }
+
+        if let Some(err) = error {
+            status = status.with_error(err);
+        }
+
+        status
     }
 
     /// Detect which authentication method is being used
@@ -852,7 +845,7 @@ mod tests {
                 })
             }
 
-            async fn get_claude_status_with_timeout(&self) -> ClaudeStatus {
+            async fn get_claude_status_with_timeout(&self) -> AgentStatus {
                 // Similar to the real implementation but with timeout
                 let version_result = tokio::time::timeout(
                     Duration::from_millis(100), // Very short timeout to force timeout
@@ -875,14 +868,17 @@ mod tests {
                     Err(_) => (false, None, Some("Version detection timed out".to_string())),
                 };
 
-                ClaudeStatus {
-                    available,
-                    version,
-                    authenticated: false,
-                    auth_method: None,
-                    auth_source: None,
-                    error,
+                let mut status = AgentStatus::new().with_available(available);
+
+                if let Some(v) = version {
+                    status = status.with_version(v);
                 }
+
+                if let Some(err) = error {
+                    status = status.with_error(err);
+                }
+
+                status
             }
         }
 
@@ -1129,7 +1125,7 @@ mod tests {
                 "ANTHROPIC_API_KEY".to_string()
             }
 
-            async fn get_claude_status(&self) -> ClaudeStatus {
+            async fn get_claude_status(&self) -> AgentStatus {
                 // Simplified version of the real implementation
                 let version_result = self.detect_version().await;
 
@@ -1148,7 +1144,7 @@ mod tests {
                 };
 
                 if !available {
-                    return ClaudeStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -1162,7 +1158,7 @@ mod tests {
                     Ok(Some(_api_key)) => {
                         let method = self.detect_auth_method().await;
                         let source = self.detect_auth_source().await;
-                        ClaudeStatus {
+                        AgentStatus {
                             available,
                             version,
                             authenticated: true,
@@ -1171,7 +1167,7 @@ mod tests {
                             error,
                         }
                     }
-                    _ => ClaudeStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
@@ -1215,7 +1211,7 @@ mod tests {
                 Ok(None) // No API key found
             }
 
-            async fn get_claude_status(&self) -> ClaudeStatus {
+            async fn get_claude_status(&self) -> AgentStatus {
                 let version_result = self.detect_version().await;
 
                 let (available, version, error) = match version_result {
@@ -1233,7 +1229,7 @@ mod tests {
                 };
 
                 if !available {
-                    return ClaudeStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -1244,7 +1240,7 @@ mod tests {
                 }
 
                 match self.get_user_api_key().await {
-                    Ok(Some(_api_key)) => ClaudeStatus {
+                    Ok(Some(_api_key)) => AgentStatus {
                         available,
                         version,
                         authenticated: true,
@@ -1252,7 +1248,7 @@ mod tests {
                         auth_source: Some("mock".to_string()),
                         error,
                     },
-                    _ => ClaudeStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
@@ -1294,7 +1290,7 @@ mod tests {
                 ))
             }
 
-            async fn get_claude_status(&self) -> ClaudeStatus {
+            async fn get_claude_status(&self) -> AgentStatus {
                 let version_result = self.detect_version().await;
 
                 let (available, version, mut error) = match version_result {
@@ -1312,7 +1308,7 @@ mod tests {
                 };
 
                 if !available {
-                    return ClaudeStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -1334,7 +1330,7 @@ mod tests {
                     }
                 };
 
-                ClaudeStatus {
+                AgentStatus {
                     available,
                     version,
                     authenticated,

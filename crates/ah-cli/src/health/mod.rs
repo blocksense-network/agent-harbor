@@ -5,7 +5,6 @@
 
 mod types;
 
-use ah_agents::traits::AgentExecutor;
 use ah_mux::TmuxMultiplexer;
 use ah_mux::detection::detect_terminal_environments;
 use ah_mux_core::Multiplexer;
@@ -33,10 +32,10 @@ pub struct HealthArgs {
     #[arg(long, help = "Suppress warnings, only show errors")]
     quiet: bool,
 
-    /// Include sensitive credential information in output
+    /// Show credential paths and related info in output (does NOT expose actual tokens/secrets yet)
     #[arg(
         long,
-        help = "Include sensitive credential information in output (WARNING: exposes tokens/secrets)"
+        help = "Show credential paths and related info in output (does NOT expose actual tokens/secrets yet; planned for future)"
     )]
     with_credentials: bool,
 }
@@ -198,177 +197,131 @@ impl HealthArgs {
     async fn get_cursor_health_status(&self) -> Option<AgentHealthStatus> {
         let cursor_agent = ah_agents::cursor_cli();
 
-        // Use structured status function with timeout for consistency
-        // Note: get_cursor_status has internal timeout of 1500ms, so we use 2000ms here
-        let status_result = tokio::time::timeout(
-            std::time::Duration::from_millis(2000),
-            cursor_agent.get_cursor_status(),
-        )
-        .await;
+        // Use structured status function; get_cursor_status has internal timeout of 1500ms
+        let cursor_status = cursor_agent.get_cursor_status().await;
 
-        match status_result {
-            Ok(cursor_status) => {
-                let mut status = AgentHealthStatus::new("Cursor CLI")
-                    .with_availability(cursor_status.available, cursor_status.version)
-                    .with_auth(
-                        cursor_status.authenticated,
-                        cursor_status.auth_method,
-                        cursor_status.auth_source,
-                    );
+        let mut status = AgentHealthStatus::new("Cursor CLI")
+            .with_availability(cursor_status.available, cursor_status.version)
+            .with_auth(
+                cursor_status.authenticated,
+                cursor_status.auth_method,
+                cursor_status.auth_source,
+            );
 
-                if let Some(error) = cursor_status.error {
-                    status = status.with_error(error);
-                }
-
-                if cursor_status.authenticated {
-                    status = status
-                        .with_note("This is a session token, not necessarily a Cursor API key");
-                } else if cursor_status.available {
-                    status = status.with_note("Not logged in (no access token found)");
-                }
-
-                Some(status)
-            }
-            Err(_) => Some(AgentHealthStatus::new("Cursor CLI").with_timeout()),
+        if let Some(error) = cursor_status.error {
+            status = status.with_error(error);
         }
+
+        if cursor_status.authenticated {
+            status = status.with_note("This is a session token, not necessarily a Cursor API key");
+        } else if cursor_status.available {
+            status = status.with_note("Not logged in (no access token found)");
+        }
+
+        Some(status)
     }
 
     /// Get Gemini CLI health status
     async fn get_gemini_health_status(&self) -> Option<AgentHealthStatus> {
         let gemini_agent = ah_agents::gemini();
 
-        // Use structured status function with timeout for consistency
-        let status_result = tokio::time::timeout(
-            std::time::Duration::from_millis(1000),
-            gemini_agent.get_gemini_status(),
-        )
-        .await;
+        // Use structured status function
+        let gemini_status = gemini_agent.get_gemini_status().await;
 
-        match status_result {
-            Ok(gemini_status) => {
-                let mut status = AgentHealthStatus::new("Gemini CLI")
-                    .with_availability(gemini_status.available, gemini_status.version)
-                    .with_auth(
-                        gemini_status.authenticated,
-                        gemini_status.auth_method,
-                        gemini_status.auth_source,
-                    );
+        let mut status = AgentHealthStatus::new("Gemini CLI")
+            .with_availability(gemini_status.available, gemini_status.version)
+            .with_auth(
+                gemini_status.authenticated,
+                gemini_status.auth_method,
+                gemini_status.auth_source,
+            );
 
-                if let Some(error) = gemini_status.error {
-                    status = status.with_error(error);
-                }
-
-                Some(status)
-            }
-            Err(_) => Some(AgentHealthStatus::new("Gemini CLI").with_timeout()),
+        if let Some(error) = gemini_status.error {
+            status = status.with_error(error);
         }
+
+        Some(status)
     }
 
     /// Get Copilot CLI health status
     async fn get_copilot_health_status(&self) -> Option<AgentHealthStatus> {
         let copilot_agent = ah_agents::copilot_cli();
 
-        // Use structured status function with timeout for consistency
-        let status_result = tokio::time::timeout(
-            std::time::Duration::from_millis(1000),
-            copilot_agent.get_copilot_status(),
-        )
-        .await;
+        // Use structured status function
+        let copilot_status = copilot_agent.get_copilot_status().await;
 
-        match status_result {
-            Ok(copilot_status) => {
-                let mut status = AgentHealthStatus::new("Copilot CLI")
-                    .with_availability(copilot_status.available, copilot_status.version)
-                    .with_auth(
-                        copilot_status.authenticated,
-                        copilot_status.auth_method,
-                        copilot_status.auth_source,
-                    );
+        let mut status = AgentHealthStatus::new("Copilot CLI")
+            .with_availability(copilot_status.available, copilot_status.version)
+            .with_auth(
+                copilot_status.authenticated,
+                copilot_status.auth_method,
+                copilot_status.auth_source,
+            );
 
-                if let Some(error) = copilot_status.error {
-                    status = status.with_error(error);
-                }
-
-                if !copilot_status.authenticated && copilot_status.available {
-                    status = status
-                        .with_note("Try setting GH_TOKEN or GITHUB_TOKEN environment variable");
-                }
-
-                Some(status)
-            }
-            Err(_) => Some(AgentHealthStatus::new("Copilot CLI").with_timeout()),
+        if let Some(error) = copilot_status.error {
+            status = status.with_error(error);
         }
+
+        if !copilot_status.authenticated && copilot_status.available {
+            status = status.with_note("Try setting GH_TOKEN or GITHUB_TOKEN environment variable");
+        }
+
+        Some(status)
     }
 
     /// Get Codex health status
     async fn get_codex_health_status(&self) -> Option<AgentHealthStatus> {
         let codex_agent = ah_agents::codex();
 
-        // Use structured status function with timeout for consistency
-        let status_result = tokio::time::timeout(
-            std::time::Duration::from_millis(1000),
-            codex_agent.get_codex_status(),
-        )
-        .await;
+        // Use structured status function
+        let codex_status = codex_agent.get_codex_status().await;
 
-        match status_result {
-            Ok(codex_status) => {
-                let mut status = AgentHealthStatus::new("Codex CLI")
-                    .with_availability(codex_status.available, codex_status.version)
-                    .with_auth(
-                        codex_status.authenticated,
-                        codex_status.auth_method,
-                        codex_status.auth_source,
-                    );
+        let mut status = AgentHealthStatus::new("Codex CLI")
+            .with_availability(codex_status.available, codex_status.version)
+            .with_auth(
+                codex_status.authenticated,
+                codex_status.auth_method,
+                codex_status.auth_source,
+            );
 
-                if let Some(error) = codex_status.error {
-                    status = status.with_error(error);
-                }
-
-                if !codex_status.authenticated && codex_status.available {
-                    status = status
-                        .with_note("Try setting OPENAI_API_KEY environment variable or logging in with Codex auth");
-                }
-
-                Some(status)
-            }
-            Err(_) => Some(AgentHealthStatus::new("Codex CLI").with_timeout()),
+        if let Some(error) = codex_status.error {
+            status = status.with_error(error);
         }
+
+        if !codex_status.authenticated && codex_status.available {
+            status = status.with_note(
+                "Try setting OPENAI_API_KEY environment variable or logging in with Codex auth",
+            );
+        }
+
+        Some(status)
     }
 
     /// Get Claude health status
     async fn get_claude_health_status(&self) -> Option<AgentHealthStatus> {
         let claude_agent = ah_agents::claude();
 
-        // Use structured status function with timeout for consistency
-        let status_result = tokio::time::timeout(
-            std::time::Duration::from_millis(1000),
-            claude_agent.get_claude_status(),
-        )
-        .await;
+        // Use structured status function
+        let claude_status = claude_agent.get_claude_status().await;
 
-        match status_result {
-            Ok(claude_status) => {
-                let mut status = AgentHealthStatus::new("Claude CLI")
-                    .with_availability(claude_status.available, claude_status.version)
-                    .with_auth(
-                        claude_status.authenticated,
-                        claude_status.auth_method,
-                        claude_status.auth_source,
-                    );
+        let mut status = AgentHealthStatus::new("Claude CLI")
+            .with_availability(claude_status.available, claude_status.version)
+            .with_auth(
+                claude_status.authenticated,
+                claude_status.auth_method,
+                claude_status.auth_source,
+            );
 
-                if let Some(error) = claude_status.error {
-                    status = status.with_error(error);
-                }
-
-                if !claude_status.authenticated && claude_status.available {
-                    status = status
-                        .with_note("Try setting ANTHROPIC_API_KEY environment variable or logging in with Claude Code");
-                }
-
-                Some(status)
-            }
-            Err(_) => Some(AgentHealthStatus::new("Claude CLI").with_timeout()),
+        if let Some(error) = claude_status.error {
+            status = status.with_error(error);
         }
+
+        if !claude_status.authenticated && claude_status.available {
+            status = status.with_note(
+                "Try setting ANTHROPIC_API_KEY environment variable or logging in with Claude Code",
+            );
+        }
+
+        Some(status)
     }
 }
