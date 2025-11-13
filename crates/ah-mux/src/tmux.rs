@@ -365,8 +365,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_session_ensure_creates_session() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-session-create".to_string());
         if tmux.is_available() {
             // Clean up any existing session first
@@ -389,8 +394,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_session_ensure_idempotent() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-session-idempotent".to_string());
         if tmux.is_available() {
             // Clean up
@@ -412,8 +422,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_open_window_with_title_and_cwd() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-win-create-001".to_string());
         if tmux.is_available() {
             // Clean up any existing session
@@ -440,8 +455,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_open_window_focus() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-win-focus-002".to_string());
         if tmux.is_available() {
             // Clean up
@@ -468,8 +488,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_horizontal() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -555,8 +580,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_vertical() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-split-v-004".to_string());
         if tmux.is_available() {
             // Clean up
@@ -597,8 +627,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_split_pane_with_initial_command() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-split-cmd".to_string());
         if tmux.is_available() {
             // Clean up
@@ -640,8 +675,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_run_command_and_send_text() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -698,8 +738,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_focus_window_and_pane() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-focus-005".to_string());
         if tmux.is_available() {
             // Clean up
@@ -758,8 +803,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_list_windows_filtering() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-list-win-006".to_string());
         if tmux.is_available() {
             // Aggressive cleanup - kill any existing session and all windows
@@ -825,8 +875,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_error_handling_invalid_pane() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux = TmuxMultiplexer::with_session_name("test-error-pane".to_string());
         if tmux.is_available() {
             // Clean up
@@ -855,8 +910,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_complex_layout_creation() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -959,8 +1019,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_session_isolation() {
+        // Skip tmux tests in CI environments where tmux is not available
+        if std::env::var("CI").is_ok() {
+            println!("⚠️  Skipping tmux test in CI environment");
+            return;
+        }
+
         let tmux1 = TmuxMultiplexer::with_session_name("session1-007".to_string());
         let tmux2 = TmuxMultiplexer::with_session_name("session2-007".to_string());
 
