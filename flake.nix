@@ -186,6 +186,7 @@
                     lockFile = ./Cargo.lock;
                     outputHashes = {
                       "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -213,6 +214,7 @@
                     lockFile = ./Cargo.lock;
                     outputHashes = {
                       "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
