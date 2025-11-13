@@ -58,9 +58,9 @@ use crate::Settings;
 use crate::WorkspaceFilesEnumerator;
 use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
 use crate::view_model::autocomplete::InlineAutocomplete;
-use crate::view_model::input::{InputResult, InputState, InputStateStack};
+use crate::view_model::input::{InputMinorMode, InputResult};
 use crate::view_model::task_entry::{
-    CardFocusElement, KeyboardOperationResult, TEXTAREA_INPUT_OPERATIONS,
+    CardFocusElement, DRAFT_TEXT_EDITING_MODE, KeyboardOperationResult,
 };
 use crate::view_model::{
     AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
@@ -91,7 +91,118 @@ use uuid;
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
 const AUTO_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 
-const DASHBOARD_INPUT_OPERATIONS: &[KeyboardOperation] = &[
+// Minor mode for modal dialogs (navigation, text editing, and model selection)
+static MODAL_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::MoveToNextField,
+    KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::DismissOverlay,
+    // Text editing operations for modal input fields
+    KeyboardOperation::MoveToBeginningOfLine,
+    KeyboardOperation::MoveToEndOfLine,
+    KeyboardOperation::MoveForwardOneCharacter,
+    KeyboardOperation::MoveBackwardOneCharacter,
+    KeyboardOperation::MoveForwardOneWord,
+    KeyboardOperation::MoveBackwardOneWord,
+    KeyboardOperation::DeleteCharacterForward,
+    KeyboardOperation::DeleteCharacterBackward,
+    KeyboardOperation::DeleteWordForward,
+    KeyboardOperation::DeleteWordBackward,
+    KeyboardOperation::DeleteToEndOfLine,
+    KeyboardOperation::DeleteToBeginningOfLine,
+    // Clipboard operations
+    KeyboardOperation::Cut,
+    KeyboardOperation::Copy,
+    KeyboardOperation::Paste,
+    KeyboardOperation::CycleThroughClipboard,
+    // Model selection specific
+    KeyboardOperation::IncrementValue,
+    KeyboardOperation::DecrementValue,
+]);
+
+// Minor mode for model selection dialogs (navigation, count adjustment, and text input)
+static MODEL_SELECTION_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::IncrementValue,
+    KeyboardOperation::DecrementValue,
+    KeyboardOperation::DismissOverlay,
+    // Text editing operations for the filter input
+    KeyboardOperation::MoveToBeginningOfLine,
+    KeyboardOperation::MoveToEndOfLine,
+    KeyboardOperation::MoveForwardOneCharacter,
+    KeyboardOperation::MoveBackwardOneCharacter,
+    KeyboardOperation::MoveForwardOneWord,
+    KeyboardOperation::MoveBackwardOneWord,
+    KeyboardOperation::DeleteCharacterForward,
+    KeyboardOperation::DeleteCharacterBackward,
+    KeyboardOperation::DeleteWordForward,
+    KeyboardOperation::DeleteWordBackward,
+    KeyboardOperation::DeleteToEndOfLine,
+    KeyboardOperation::DeleteToBeginningOfLine,
+]);
+
+// Minor mode for transitioning from draft textarea to buttons (Tab/Shift+Tab)
+static DRAFT_TEXTAREA_TO_BUTTONS_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextField,
+    KeyboardOperation::MoveToPreviousField,
+]);
+
+// Minor mode for navigating draft card buttons (Repository, Branch, Model, Go)
+static DRAFT_BUTTON_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextField,
+    KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::MoveForwardOneCharacter,
+    KeyboardOperation::MoveBackwardOneCharacter,
+    KeyboardOperation::ActivateCurrentItem,
+]);
+
+// Minor mode for navigating matched items in selection dialogs
+static SELECTION_DIALOG_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::IncrementValue,
+    KeyboardOperation::DecrementValue,
+    KeyboardOperation::DismissOverlay,
+]);
+
+// Minor mode for active task cards
+static ACTIVE_TASK_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::MoveToNextField,
+    KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::PreviousSnapshot,
+    KeyboardOperation::NextSnapshot,
+]);
+
+// Minor mode for settings dialog navigation
+static SETTINGS_DIALOG_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToNextLine,
+    KeyboardOperation::MoveToPreviousLine,
+    KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::DismissOverlay,
+]);
+
+// Minor mode for settings field editing
+static SETTINGS_FIELD_EDITING_MODE: InputMinorMode = InputMinorMode::new(&[
+    KeyboardOperation::MoveToBeginningOfLine,
+    KeyboardOperation::MoveToEndOfLine,
+    KeyboardOperation::MoveForwardOneCharacter,
+    KeyboardOperation::MoveBackwardOneCharacter,
+    KeyboardOperation::DeleteCharacterForward,
+    KeyboardOperation::DeleteCharacterBackward,
+    KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::DismissOverlay,
+]);
+
+// Minor mode for general dashboard navigation (global navigation between cards and UI elements)
+static DASHBOARD_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextLine,
     KeyboardOperation::MoveToPreviousLine,
     KeyboardOperation::MoveToNextField,
@@ -100,17 +211,16 @@ const DASHBOARD_INPUT_OPERATIONS: &[KeyboardOperation] = &[
     KeyboardOperation::MoveBackwardOneCharacter,
     KeyboardOperation::DismissOverlay,
     KeyboardOperation::NewDraft,
-    KeyboardOperation::IndentOrComplete,
-];
+    KeyboardOperation::ActivateCurrentItem,
+]);
 
-const MODAL_INPUT_OPERATIONS: &[KeyboardOperation] = &[
+// Minor mode for task card selection and navigation (when cards are focused)
+static TASK_CARD_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextLine,
     KeyboardOperation::MoveToPreviousLine,
-    KeyboardOperation::MoveToNextField,
-    KeyboardOperation::MoveToPreviousField,
-    KeyboardOperation::IndentOrComplete,
+    KeyboardOperation::ActivateCurrentItem,
     KeyboardOperation::DismissOverlay,
-];
+]);
 
 #[derive(Clone)]
 struct AutoSaveRequestPayload {
@@ -130,6 +240,15 @@ pub struct ModelInfo {
     pub display_name: String,
     /// The model name/alias that agents expect (e.g., "sonnet", "gpt-5")
     pub agent_model_name: String,
+}
+
+/// Represents different types of items in a filtered options list
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilteredOption {
+    /// A selectable option with text and selection state
+    Option { text: String, selected: bool },
+    /// A separator with an optional label
+    Separator { label: Option<String> },
 }
 
 /// Focus states specific to the dashboard interface
@@ -194,6 +313,15 @@ impl ViewModel {
 
     fn handle_dismiss_overlay(&mut self) -> bool {
         if self.modal_state != ModalState::None {
+            // For model selection modals, focus should return to the model picker button
+            if let Some(modal) = &self.active_modal {
+                if matches!(modal.modal_type, ModalType::ModelSelection { .. }) {
+                    self.focus_element = DashboardFocusState::DraftTask(0);
+                    if let Some(card) = self.draft_cards.get_mut(0) {
+                        card.focus_element = CardFocusElement::ModelSelector;
+                    }
+                }
+            }
             self.close_modal();
             return true;
         }
@@ -229,6 +357,214 @@ impl ViewModel {
         true
     }
 
+    pub fn focus_previous_control(&mut self) -> bool {
+        // Implement reverse tab navigation for draft cards
+        match self.focus_element {
+            DashboardFocusState::DraftTask(idx) => {
+                // Handle shift+tab navigation within the draft card
+                if let Some(card) = self.draft_cards.get_mut(idx) {
+                    match card.focus_element {
+                        CardFocusElement::TaskDescription => {
+                            card.focus_element = CardFocusElement::GoButton;
+                        }
+                        CardFocusElement::GoButton => {
+                            card.focus_element = CardFocusElement::ModelSelector;
+                        }
+                        CardFocusElement::ModelSelector => {
+                            card.focus_element = CardFocusElement::BranchSelector;
+                        }
+                        CardFocusElement::BranchSelector => {
+                            card.focus_element = CardFocusElement::RepositorySelector;
+                        }
+                        CardFocusElement::RepositorySelector => {
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+                    }
+                    self.needs_redraw = true;
+                    true
+                } else {
+                    false
+                }
+            }
+            // For other global focus elements, handle normally
+            DashboardFocusState::SettingsButton => {
+                if !self.draft_cards.is_empty() {
+                    self.focus_element = DashboardFocusState::DraftTask(0);
+                    self.needs_redraw = true;
+                    true
+                } else if !self.task_cards.is_empty() {
+                    self.focus_element = DashboardFocusState::FilterBarSeparator;
+                    self.needs_redraw = true;
+                    true
+                } else {
+                    false // Stay on settings if nothing else
+                }
+            }
+            _ => {
+                self.focus_element = DashboardFocusState::SettingsButton;
+                self.needs_redraw = true;
+                true
+            }
+        }
+    }
+
+    fn handle_increment_decrement_value(&mut self, increment: bool) -> bool {
+        if let Some(modal) = self.active_modal.as_mut() {
+            if let ModalType::ModelSelection { options } = &mut modal.modal_type {
+                // Find the currently selected filtered option
+                let selected_filtered_option = modal.filtered_options.get(modal.selected_index);
+
+                if let Some(FilteredOption::Option { text, .. }) = selected_filtered_option {
+                    // Parse the model name from the text (format: "Model Name (xCOUNT)")
+                    if let Some(model_name) = text.split(" (x").next().map(|s| s.trim()) {
+                        // Find the model in options and increment/decrement its count
+                        for option in options.iter_mut() {
+                            if option.name == model_name {
+                                if increment {
+                                    option.count = option.count.saturating_add(1);
+                                } else {
+                                    option.count = option.count.saturating_sub(1);
+                                }
+                                option.is_selected = option.count > 0;
+
+                                // Update the filtered options to reflect the new count, preserving the current filter
+                                Self::update_model_selection_filtered_options(modal);
+
+                                self.needs_redraw = true;
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Update filtered options for search modals (repository/branch search)
+    fn update_search_modal_filtered_options(&mut self, modal: &mut ModalViewModel) {
+        let all_options: &[String] = match self.modal_state {
+            ModalState::RepositorySearch => &self.available_repositories,
+            ModalState::BranchSearch => &self.available_branches,
+            ModalState::ModelSearch => {
+                // For model search, we need to convert ModelInfo to display names
+                self.model_display_names_cache.get_or_insert_with(|| {
+                    self.available_models.iter().map(|m| m.display_name.clone()).collect()
+                });
+                self.model_display_names_cache.as_ref().unwrap()
+            }
+            _ => &[],
+        };
+
+        let query = modal.input_value.to_lowercase();
+        let mut filtered: Vec<FilteredOption> = all_options
+            .iter()
+            .filter(|option| {
+                if query.is_empty() {
+                    true // Show all options when no query
+                } else {
+                    option.to_lowercase().contains(&query)
+                }
+            })
+            .cloned()
+            .map(|opt| FilteredOption::Option {
+                text: opt,
+                selected: false,
+            })
+            .collect();
+
+        // Reset selected index if it's out of bounds
+        if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+            modal.selected_index = 0;
+        }
+
+        // Mark the selected option
+        if !filtered.is_empty() && modal.selected_index < filtered.len() {
+            if let FilteredOption::Option { selected, .. } = &mut filtered[modal.selected_index] {
+                *selected = true;
+            }
+        }
+
+        modal.filtered_options = filtered;
+    }
+
+    /// Update filtered options for model selection, preserving the current filter
+    fn update_model_selection_filtered_options(modal: &mut ModalViewModel) {
+        if let ModalType::ModelSelection { options } = &modal.modal_type {
+            let query = modal.input_value.to_lowercase();
+            let mut filtered: Vec<FilteredOption> = Vec::new();
+
+            // First, add models that match the filter
+            let matching_count = options
+                .iter()
+                .filter(|option| {
+                    if query.is_empty() {
+                        true // Show all options when no query
+                    } else {
+                        option.name.to_lowercase().contains(&query)
+                    }
+                })
+                .count();
+
+            let matching_options: Vec<FilteredOption> = options
+                .iter()
+                .filter(|option| {
+                    if query.is_empty() {
+                        true // Show all options when no query
+                    } else {
+                        option.name.to_lowercase().contains(&query)
+                    }
+                })
+                .map(|opt| FilteredOption::Option {
+                    text: format!("{} (x{})", opt.name, opt.count),
+                    selected: false,
+                })
+                .collect();
+
+            filtered.extend(matching_options);
+
+            // Then, add models that don't match but have non-zero counts
+            if !query.is_empty() {
+                let already_selected: Vec<FilteredOption> = options
+                    .iter()
+                    .filter(|option| {
+                        !option.name.to_lowercase().contains(&query) && option.count > 0
+                    })
+                    .map(|opt| FilteredOption::Option {
+                        text: format!("{} (x{})", opt.name, opt.count),
+                        selected: false,
+                    })
+                    .collect();
+
+                if !already_selected.is_empty() && matching_count > 0 {
+                    // Add separator only if there are matching options above
+                    filtered.push(FilteredOption::Separator {
+                        label: Some("Already Selected".to_string()),
+                    });
+                    filtered.extend(already_selected);
+                } else if !already_selected.is_empty() {
+                    // If no matching options, just add the already selected ones without separator
+                    filtered.extend(already_selected);
+                }
+            }
+
+            // Reset selected index if it's out of bounds
+            if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                modal.selected_index = 0;
+            }
+
+            // Mark the selected option
+            if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                if let FilteredOption::Option { selected, .. } = &mut filtered[modal.selected_index]
+                {
+                    *selected = true;
+                }
+            }
+
+            modal.filtered_options = filtered;
+        }
+    }
+
     fn handle_modal_navigation(&mut self, direction: NavigationDirection) -> bool {
         if self.modal_state == ModalState::None {
             return false;
@@ -257,7 +593,9 @@ impl ViewModel {
                     }
                 }
                 for (idx, option) in modal.filtered_options.iter_mut().enumerate() {
-                    option.1 = idx == modal.selected_index;
+                    if let FilteredOption::Option { selected, .. } = option {
+                        *selected = idx == modal.selected_index;
+                    }
                 }
                 self.needs_redraw = true;
                 true
@@ -359,7 +697,7 @@ impl ViewModel {
 
                 // Filter options based on input value (case-insensitive fuzzy match)
                 let query = modal.input_value.to_lowercase();
-                let mut filtered: Vec<(String, bool)> = all_options
+                let mut filtered: Vec<FilteredOption> = all_options
                     .iter()
                     .filter(|option| {
                         if query.is_empty() {
@@ -369,7 +707,10 @@ impl ViewModel {
                         }
                     })
                     .cloned()
-                    .map(|opt| (opt, false))
+                    .map(|opt| FilteredOption::Option {
+                        text: opt,
+                        selected: false,
+                    })
                     .collect();
 
                 // Reset selected index if it's out of bounds
@@ -379,7 +720,11 @@ impl ViewModel {
 
                 // Mark the selected option
                 if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                    filtered[modal.selected_index].1 = true;
+                    if let FilteredOption::Option { selected, .. } =
+                        &mut filtered[modal.selected_index]
+                    {
+                        *selected = true;
+                    }
                 }
 
                 modal.filtered_options = filtered;
@@ -387,7 +732,7 @@ impl ViewModel {
             ModalType::ModelSelection { options } => {
                 // For model selection, filter the available model options
                 let query = modal.input_value.to_lowercase();
-                let mut filtered: Vec<(String, bool)> = options
+                let mut filtered: Vec<FilteredOption> = options
                     .iter()
                     .filter(|option| {
                         if query.is_empty() {
@@ -396,7 +741,10 @@ impl ViewModel {
                             option.name.to_lowercase().contains(&query)
                         }
                     })
-                    .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
+                    .map(|opt| FilteredOption::Option {
+                        text: format!("{} (x{})", opt.name, opt.count),
+                        selected: false,
+                    })
                     .collect();
 
                 // Reset selected index if it's out of bounds
@@ -406,7 +754,11 @@ impl ViewModel {
 
                 // Mark the selected option
                 if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                    filtered[modal.selected_index].1 = true;
+                    if let FilteredOption::Option { selected, .. } =
+                        &mut filtered[modal.selected_index]
+                    {
+                        *selected = true;
+                    }
                 }
 
                 modal.filtered_options = filtered;
@@ -428,11 +780,11 @@ impl ViewModel {
                         CardFocusElement::TaskDescription => {
                             card.focus_element = CardFocusElement::RepositorySelector;
                         }
-                        CardFocusElement::RepositorySelector => {
-                            card.focus_element = CardFocusElement::BranchSelector;
-                        }
                         CardFocusElement::BranchSelector => {
                             card.focus_element = CardFocusElement::ModelSelector;
+                        }
+                        CardFocusElement::RepositorySelector => {
+                            card.focus_element = CardFocusElement::BranchSelector;
                         }
                         CardFocusElement::ModelSelector => {
                             card.focus_element = CardFocusElement::GoButton;
@@ -441,6 +793,7 @@ impl ViewModel {
                             card.focus_element = CardFocusElement::TaskDescription;
                         }
                     }
+                    self.needs_redraw = true;
                     true
                 } else {
                     false
@@ -450,9 +803,11 @@ impl ViewModel {
             DashboardFocusState::SettingsButton => {
                 if !self.draft_cards.is_empty() {
                     self.focus_element = DashboardFocusState::DraftTask(0);
+                    self.needs_redraw = true;
                     true
                 } else if !self.task_cards.is_empty() {
                     self.focus_element = DashboardFocusState::FilterBarSeparator;
+                    self.needs_redraw = true;
                     true
                 } else {
                     false // Stay on settings if nothing else
@@ -460,55 +815,7 @@ impl ViewModel {
             }
             _ => {
                 self.focus_element = DashboardFocusState::SettingsButton;
-                true
-            }
-        }
-    }
-
-    /// Navigate to the previous focusable control
-    pub fn focus_previous_control(&mut self) -> bool {
-        // Implement PRD-compliant shift+tab navigation for draft cards (reverse order)
-        match self.focus_element {
-            DashboardFocusState::DraftTask(idx) => {
-                // Handle shift+tab navigation within the draft card (reverse order)
-                if let Some(card) = self.draft_cards.get_mut(idx) {
-                    match card.focus_element {
-                        CardFocusElement::TaskDescription => {
-                            card.focus_element = CardFocusElement::GoButton;
-                        }
-                        CardFocusElement::GoButton => {
-                            card.focus_element = CardFocusElement::ModelSelector;
-                        }
-                        CardFocusElement::ModelSelector => {
-                            card.focus_element = CardFocusElement::BranchSelector;
-                        }
-                        CardFocusElement::BranchSelector => {
-                            card.focus_element = CardFocusElement::RepositorySelector;
-                        }
-                        CardFocusElement::RepositorySelector => {
-                            card.focus_element = CardFocusElement::TaskDescription;
-                        }
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-            // For other global focus elements, handle normally
-            DashboardFocusState::SettingsButton => {
-                if !self.task_cards.is_empty() {
-                    self.focus_element =
-                        DashboardFocusState::ExistingTask(self.task_cards.len() - 1);
-                    true
-                } else if !self.draft_cards.is_empty() {
-                    self.focus_element = DashboardFocusState::DraftTask(self.draft_cards.len() - 1);
-                    true
-                } else {
-                    false // Stay on settings if nothing else
-                }
-            }
-            _ => {
-                self.focus_element = DashboardFocusState::SettingsButton;
+                self.needs_redraw = true;
                 true
             }
         }
@@ -541,7 +848,7 @@ impl ViewModel {
                     };
 
                     let query = modal.input_value.to_lowercase();
-                    let mut filtered: Vec<(String, bool)> = all_options
+                    let mut filtered: Vec<FilteredOption> = all_options
                         .iter()
                         .filter(|option| {
                             if query.is_empty() {
@@ -551,7 +858,10 @@ impl ViewModel {
                             }
                         })
                         .cloned()
-                        .map(|opt| (opt, false))
+                        .map(|opt| FilteredOption::Option {
+                            text: opt,
+                            selected: false,
+                        })
                         .collect();
 
                     // Reset selected index if it's out of bounds
@@ -561,7 +871,11 @@ impl ViewModel {
 
                     // Mark the selected option
                     if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                        filtered[modal.selected_index].1 = true;
+                        if let FilteredOption::Option { selected, .. } =
+                            &mut filtered[modal.selected_index]
+                        {
+                            *selected = true;
+                        }
                     }
 
                     modal.filtered_options = filtered;
@@ -574,9 +888,12 @@ impl ViewModel {
 
                     // Inline filtering logic to avoid double borrow
                     let query = modal.input_value.to_lowercase();
-                    let mut filtered: Vec<(String, bool)> =
+                    let mut filtered: Vec<FilteredOption> =
                         if let ModalType::ModelSelection { options } = &modal.modal_type {
-                            options
+                            let mut result = Vec::new();
+
+                            // First, add models that match the filter
+                            let matching_options: Vec<FilteredOption> = options
                                 .iter()
                                 .filter(|option| {
                                     if query.is_empty() {
@@ -585,8 +902,32 @@ impl ViewModel {
                                         option.name.to_lowercase().contains(&query)
                                     }
                                 })
-                                .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
-                                .collect()
+                                .map(|opt| FilteredOption::Option {
+                                    text: format!("{} (x{})", opt.name, opt.count),
+                                    selected: false,
+                                })
+                                .collect();
+
+                            result.extend(matching_options.clone());
+
+                            // Then, add models that don't match but have non-zero counts
+                            if !query.is_empty() {
+                                let already_selected: Vec<FilteredOption> = options
+                                    .iter()
+                                    .filter(|option| {
+                                        !option.name.to_lowercase().contains(&query)
+                                            && option.count > 0
+                                    })
+                                    .map(|opt| FilteredOption::Option {
+                                        text: format!("{} (x{})", opt.name, opt.count),
+                                        selected: false,
+                                    })
+                                    .collect();
+
+                                result.extend(already_selected);
+                            }
+
+                            result
                         } else {
                             Vec::new()
                         };
@@ -596,9 +937,16 @@ impl ViewModel {
                         modal.selected_index = 0;
                     }
 
-                    // Mark the selected option
-                    if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                        filtered[modal.selected_index].1 = true;
+                    // Mark the selected option (skip separators)
+                    let mut selectable_index = 0;
+                    for item in filtered.iter_mut() {
+                        if let FilteredOption::Option { selected, .. } = item {
+                            if selectable_index == modal.selected_index {
+                                *selected = true;
+                                break;
+                            }
+                            selectable_index += 1;
+                        }
                     }
 
                     modal.filtered_options = filtered;
@@ -677,7 +1025,7 @@ impl ViewModel {
                         };
 
                         let query = modal.input_value.to_lowercase();
-                        let mut filtered: Vec<(String, bool)> = all_options
+                        let mut filtered: Vec<FilteredOption> = all_options
                             .iter()
                             .filter(|option| {
                                 if query.is_empty() {
@@ -687,7 +1035,10 @@ impl ViewModel {
                                 }
                             })
                             .cloned()
-                            .map(|opt| (opt, false))
+                            .map(|opt| FilteredOption::Option {
+                                text: opt,
+                                selected: false,
+                            })
                             .collect();
 
                         // Reset selected index if it's out of bounds
@@ -697,7 +1048,11 @@ impl ViewModel {
 
                         // Mark the selected option
                         if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                            filtered[modal.selected_index].1 = true;
+                            if let FilteredOption::Option { selected, .. } =
+                                &mut filtered[modal.selected_index]
+                            {
+                                *selected = true;
+                            }
                         }
 
                         modal.filtered_options = filtered;
@@ -709,37 +1064,7 @@ impl ViewModel {
                     // For model selection modals, remove last character from input value
                     if !modal.input_value.is_empty() {
                         modal.input_value.pop();
-
-                        // Inline filtering logic to avoid double borrow
-                        let query = modal.input_value.to_lowercase();
-                        let mut filtered: Vec<(String, bool)> =
-                            if let ModalType::ModelSelection { options } = &modal.modal_type {
-                                options
-                                    .iter()
-                                    .filter(|option| {
-                                        if query.is_empty() {
-                                            true // Show all options when no query
-                                        } else {
-                                            option.name.to_lowercase().contains(&query)
-                                        }
-                                    })
-                                    .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
-                                    .collect()
-                            } else {
-                                Vec::new()
-                            };
-
-                        // Reset selected index if it's out of bounds
-                        if modal.selected_index >= filtered.len() && !filtered.is_empty() {
-                            modal.selected_index = 0;
-                        }
-
-                        // Mark the selected option
-                        if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                            filtered[modal.selected_index].1 = true;
-                        }
-
-                        modal.filtered_options = filtered;
+                        Self::update_model_selection_filtered_options(modal);
                         self.needs_redraw = true;
                         return true;
                     }
@@ -762,7 +1087,7 @@ impl ViewModel {
                             KeyboardOperation::DeleteCharacterBackward,
                             &key_event
                         ),
-                        InputResult::Handled
+                        KeyboardOperationResult::Handled
                     );
                 }
             }
@@ -798,7 +1123,7 @@ impl ViewModel {
                         };
 
                         let query = modal.input_value.to_lowercase();
-                        let mut filtered: Vec<(String, bool)> = all_options
+                        let mut filtered: Vec<FilteredOption> = all_options
                             .iter()
                             .filter(|option| {
                                 if query.is_empty() {
@@ -808,7 +1133,10 @@ impl ViewModel {
                                 }
                             })
                             .cloned()
-                            .map(|opt| (opt, false))
+                            .map(|opt| FilteredOption::Option {
+                                text: opt,
+                                selected: false,
+                            })
                             .collect();
 
                         // Reset selected index if it's out of bounds
@@ -818,7 +1146,11 @@ impl ViewModel {
 
                         // Mark the selected option
                         if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                            filtered[modal.selected_index].1 = true;
+                            if let FilteredOption::Option { selected, .. } =
+                                &mut filtered[modal.selected_index]
+                            {
+                                *selected = true;
+                            }
                         }
 
                         modal.filtered_options = filtered;
@@ -829,37 +1161,7 @@ impl ViewModel {
                 ModalType::ModelSelection { .. } => {
                     // Model selection modals use search input similar to search modals
                     modal.input_value.pop();
-
-                    // Inline filtering logic to avoid double borrow
-                    let query = modal.input_value.to_lowercase();
-                    let mut filtered: Vec<(String, bool)> =
-                        if let ModalType::ModelSelection { options } = &modal.modal_type {
-                            options
-                                .iter()
-                                .filter(|option| {
-                                    if query.is_empty() {
-                                        true // Show all options when no query
-                                    } else {
-                                        option.name.to_lowercase().contains(&query)
-                                    }
-                                })
-                                .map(|opt| (format!("{} (x{})", opt.name, opt.count), false))
-                                .collect()
-                        } else {
-                            Vec::new()
-                        };
-
-                    // Reset selected index if it's out of bounds
-                    if modal.selected_index >= filtered.len() && !filtered.is_empty() {
-                        modal.selected_index = 0;
-                    }
-
-                    // Mark the selected option
-                    if !filtered.is_empty() && modal.selected_index < filtered.len() {
-                        filtered[modal.selected_index].1 = true;
-                    }
-
-                    modal.filtered_options = filtered;
+                    Self::update_model_selection_filtered_options(modal);
                     self.needs_redraw = true;
                     return true;
                 }
@@ -1199,7 +1501,24 @@ impl ViewModel {
                 }
                 _ => {} // Other modal types don't need selection handling
             },
-            _ => {} // Non-search modals don't need selection handling
+            ModalType::ModelSelection { options } => {
+                // Apply all selected models with their counts to the current draft card
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        // Convert ModelOptionViewModel to SelectedModel, filtering out models with count 0
+                        card.models = options
+                            .into_iter()
+                            .filter(|opt| opt.count > 0)
+                            .map(|opt| SelectedModel {
+                                name: opt.name,
+                                count: opt.count,
+                            })
+                            .collect();
+                        card.focus_element = CardFocusElement::TaskDescription;
+                    }
+                }
+            }
+            _ => {} // Other modal types don't need selection handling
         }
 
         // Close the modal and return focus to task description
@@ -1415,7 +1734,7 @@ enum NavigationDirection {
 pub struct ModalViewModel {
     pub title: String,
     pub input_value: String,
-    pub filtered_options: Vec<(String, bool)>, // (option, is_selected)
+    pub filtered_options: Vec<FilteredOption>,
     pub selected_index: usize,
     pub modal_type: ModalType,
 }
@@ -1559,7 +1878,6 @@ pub struct ViewModel {
 
     pub needs_redraw: bool, // Flag to indicate when UI needs to be redrawn
 
-    pub input_stack: InputStateStack,
     pending_bubbled_operation: Option<KeyboardOperation>,
     bubbled_operation_consumed: bool,
 }
@@ -1830,7 +2148,6 @@ impl ViewModel {
             },
 
             needs_redraw: true,
-            input_stack: InputStateStack::new(),
             pending_bubbled_operation: None,
             bubbled_operation_consumed: false,
         };
@@ -1917,41 +2234,18 @@ impl ViewModel {
         }
     }
 
-    fn rebuild_input_stack(&mut self) {
-        self.input_stack.clear();
-
-        let base_ptr = self as *mut ViewModel;
-        self.input_stack.push(InputState::with_prominent_operations(
-            DASHBOARD_INPUT_OPERATIONS,
-            crate::view_model::input::operations::prominent::NAVIGATION,
-            move |operation, key_event| unsafe {
-                let vm = &mut *base_ptr;
-                vm.handle_dashboard_operation(operation, key_event)
-            },
-        ));
-
-        if let Some(idx) = self.focused_textarea_index() {
-            let text_ptr = self as *mut ViewModel;
-            self.input_stack.push(InputState::with_prominent_operations(
-                TEXTAREA_INPUT_OPERATIONS,
-                crate::view_model::input::operations::prominent::NAVIGATION,
-                move |operation, key_event| unsafe {
-                    let vm = &mut *text_ptr;
-                    vm.handle_task_entry_operation(idx, operation, key_event)
-                },
-            ));
-        }
-
-        if self.modal_state != ModalState::None {
-            let modal_ptr = self as *mut ViewModel;
-            self.input_stack.push(InputState::with_prominent_operations(
-                MODAL_INPUT_OPERATIONS,
-                crate::view_model::input::operations::prominent::ACTIONS,
-                move |operation, key_event| unsafe {
-                    let vm = &mut *modal_ptr;
-                    vm.handle_modal_operation(operation, key_event)
-                },
-            ));
+    fn focused_draft_buttons_index(&self) -> Option<usize> {
+        match self.focus_element {
+            DashboardFocusState::DraftTask(idx) => {
+                self.draft_cards.get(idx).and_then(|card| match card.focus_element {
+                    CardFocusElement::RepositorySelector
+                    | CardFocusElement::BranchSelector
+                    | CardFocusElement::ModelSelector
+                    | CardFocusElement::GoButton => Some(idx),
+                    _ => None,
+                })
+            }
+            _ => None,
         }
     }
 
@@ -1960,21 +2254,110 @@ impl ViewModel {
         draft_index: usize,
         operation: KeyboardOperation,
         key_event: &KeyEvent,
-    ) -> InputResult {
+    ) -> KeyboardOperationResult {
         if let Some(card) = self.draft_cards.get_mut(draft_index) {
             match card.handle_keyboard_operation(operation, key_event, &mut self.needs_redraw) {
-                KeyboardOperationResult::Handled => {
-                    if matches!(self.focus_element, DashboardFocusState::DraftTask(idx) if idx == draft_index)
-                    {
-                        self.focus_element = DashboardFocusState::DraftTask(draft_index);
-                        self.update_footer();
+                KeyboardOperationResult::Handled => KeyboardOperationResult::Handled,
+                KeyboardOperationResult::NotHandled => {
+                    // Handle button activation that wasn't handled by the card
+                    if matches!(operation, KeyboardOperation::ActivateCurrentItem) {
+                        match card.focus_element {
+                            CardFocusElement::RepositorySelector => {
+                                self.open_modal(ModalState::RepositorySearch);
+                                KeyboardOperationResult::Handled
+                            }
+                            CardFocusElement::BranchSelector => {
+                                self.open_modal(ModalState::BranchSearch);
+                                KeyboardOperationResult::Handled
+                            }
+                            CardFocusElement::ModelSelector => {
+                                self.open_modal(ModalState::ModelSearch);
+                                KeyboardOperationResult::Handled
+                            }
+                            CardFocusElement::GoButton => {
+                                // Launch the task
+                                if self.launch_task(
+                                    draft_index,
+                                    ah_core::SplitMode::None,
+                                    false,
+                                    None,
+                                    None,
+                                ) {
+                                    KeyboardOperationResult::Handled
+                                } else {
+                                    KeyboardOperationResult::NotHandled
+                                }
+                            }
+                            CardFocusElement::TaskDescription => {
+                                // This should have been handled by the card
+                                KeyboardOperationResult::NotHandled
+                            }
+                        }
+                    } else {
+                        // Handle operations that should fall back to dashboard level
+                        match operation {
+                            KeyboardOperation::MoveToNextField => {
+                                if self.focus_next_control() {
+                                    KeyboardOperationResult::Handled
+                                } else {
+                                    KeyboardOperationResult::NotHandled
+                                }
+                            }
+                            KeyboardOperation::MoveToPreviousField => {
+                                if self.focus_previous_control() {
+                                    KeyboardOperationResult::Handled
+                                } else {
+                                    KeyboardOperationResult::NotHandled
+                                }
+                            }
+                            KeyboardOperation::MoveForwardOneCharacter => {
+                                // Handle right arrow for draft card navigation
+                                if self.focus_next_control() {
+                                    KeyboardOperationResult::Handled
+                                } else {
+                                    KeyboardOperationResult::NotHandled
+                                }
+                            }
+                            KeyboardOperation::MoveBackwardOneCharacter => {
+                                // Handle left arrow for draft card navigation
+                                if self.focus_previous_control() {
+                                    KeyboardOperationResult::Handled
+                                } else {
+                                    KeyboardOperationResult::NotHandled
+                                }
+                            }
+                            _ => KeyboardOperationResult::NotHandled,
+                        }
                     }
-                    InputResult::Handled
                 }
-                KeyboardOperationResult::NotHandled => InputResult::NotHandled,
-                KeyboardOperationResult::Bubble { operation } => {
-                    self.pending_bubbled_operation = Some(operation);
-                    InputResult::Bubble(operation)
+                KeyboardOperationResult::Bubble {
+                    operation: bubbled_operation,
+                } => {
+                    match bubbled_operation {
+                        KeyboardOperation::ActivateCurrentItem => {
+                            // Handle bubbled activation from textarea or Go button
+                            if card.focus_element == CardFocusElement::TaskDescription
+                                || card.focus_element == CardFocusElement::GoButton
+                            {
+                                if self.launch_task(
+                                    draft_index,
+                                    ah_core::SplitMode::None,
+                                    false,
+                                    None,
+                                    None,
+                                ) {
+                                    KeyboardOperationResult::Handled
+                                } else {
+                                    KeyboardOperationResult::NotHandled
+                                }
+                            } else {
+                                KeyboardOperationResult::NotHandled
+                            }
+                        }
+                        _ => KeyboardOperationResult::Bubble {
+                            operation: bubbled_operation,
+                        },
+                    }
                 }
                 KeyboardOperationResult::TaskLaunched {
                     split_mode,
@@ -1989,65 +2372,201 @@ impl ViewModel {
                         starting_point,
                         working_copy_mode,
                     ) {
-                        InputResult::Handled
+                        KeyboardOperationResult::Handled
                     } else {
-                        InputResult::NotHandled
+                        KeyboardOperationResult::NotHandled
                     }
                 }
             }
         } else {
-            InputResult::NotHandled
+            KeyboardOperationResult::NotHandled
         }
+    }
+
+    fn handle_bubbled_operation(
+        &mut self,
+        bubbled_operation: KeyboardOperation,
+        key_event: &KeyEvent,
+    ) -> bool {
+        self.handle_dashboard_operation(bubbled_operation, key_event)
     }
 
     fn handle_modal_operation(
         &mut self,
         operation: KeyboardOperation,
         key_event: &KeyEvent,
-    ) -> InputResult {
+    ) -> bool {
         if self.modal_state == ModalState::None {
-            return InputResult::NotHandled;
+            return false;
         }
 
         match operation {
             KeyboardOperation::MoveToNextLine | KeyboardOperation::MoveToNextField => {
                 if self.handle_modal_navigation(NavigationDirection::Next) {
-                    InputResult::Handled
+                    true
                 } else {
-                    InputResult::NotHandled
+                    false
                 }
             }
             KeyboardOperation::MoveToPreviousLine | KeyboardOperation::MoveToPreviousField => {
                 if self.handle_modal_navigation(NavigationDirection::Previous) {
-                    InputResult::Handled
+                    true
                 } else {
-                    InputResult::NotHandled
+                    false
                 }
             }
-            KeyboardOperation::IndentOrComplete => {
-                let selection = self.active_modal.as_ref().and_then(|modal| {
-                    modal
-                        .filtered_options
-                        .iter()
-                        .find(|(_, selected)| *selected)
-                        .map(|(option, _)| (modal.modal_type.clone(), option.clone()))
-                });
+            KeyboardOperation::ActivateCurrentItem => {
+                if let Some(modal) = self.active_modal.as_mut() {
+                    match &mut modal.modal_type {
+                        ModalType::ModelSelection { options } => {
+                            // Get the currently selected option
+                            let selected_filtered_option =
+                                modal.filtered_options.get(modal.selected_index);
 
-                if let Some((modal_type, selected_option)) = selection {
-                    self.apply_modal_selection(modal_type, selected_option);
-                    InputResult::Handled
+                            if let Some(FilteredOption::Option { text, .. }) =
+                                selected_filtered_option
+                            {
+                                // Parse the model name from the text (format: "Model Name (xCOUNT)")
+                                if let Some(selected_model_name) =
+                                    text.split(" (x").next().map(|s| s.trim())
+                                {
+                                    // Parse the current count
+                                    let current_count = text
+                                        .split(" (x")
+                                        .nth(1)
+                                        .and_then(|s| s.trim_end_matches(')').parse::<u32>().ok())
+                                        .unwrap_or(0);
+
+                                    if current_count == 0 {
+                                        // If current row has 0 count: select only this model with count 1, remove all others
+                                        for option in options.iter_mut() {
+                                            if option.name == selected_model_name {
+                                                option.count = 1;
+                                                option.is_selected = true;
+                                            } else {
+                                                option.count = 0;
+                                                option.is_selected = false;
+                                            }
+                                        }
+                                    } else {
+                                        // If current row has non-zero count: keep all current non-zero count models with their current counts
+                                        // (They already have the correct counts, just ensure they are marked as selected)
+                                        for option in options.iter_mut() {
+                                            option.is_selected = option.count > 0;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Apply all current selections and close modal
+                            let modal_type = modal.modal_type.clone();
+                            self.apply_modal_selection(modal_type, String::new());
+                            // Focus should return to the model picker button
+                            self.focus_element = DashboardFocusState::DraftTask(0);
+                            if let Some(card) = self.draft_cards.get_mut(0) {
+                                card.focus_element = CardFocusElement::ModelSelector;
+                            }
+                            true
+                        }
+                        _ => {
+                            // For other modals, use the selected option from filtered_options
+                            let selection = modal
+                                .filtered_options
+                                .iter()
+                                .find(|opt| {
+                                    matches!(opt, FilteredOption::Option { selected: true, .. })
+                                })
+                                .and_then(|opt| {
+                                    if let FilteredOption::Option { text, .. } = opt {
+                                        Some((modal.modal_type.clone(), text.clone()))
+                                    } else {
+                                        None
+                                    }
+                                });
+
+                            if let Some((modal_type, selected_option)) = selection {
+                                self.apply_modal_selection(modal_type, selected_option);
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
                 } else {
-                    InputResult::NotHandled
+                    false
                 }
             }
             KeyboardOperation::DismissOverlay => {
                 if self.handle_dismiss_overlay() {
-                    InputResult::Handled
+                    true
                 } else {
-                    InputResult::NotHandled
+                    false
                 }
             }
-            _ => InputResult::NotHandled,
+            KeyboardOperation::IncrementValue => {
+                if self.handle_increment_decrement_value(true) {
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardOperation::DecrementValue => {
+                if self.handle_increment_decrement_value(false) {
+                    true
+                } else {
+                    false
+                }
+            }
+            // Text editing operations for modal input
+            KeyboardOperation::DeleteCharacterBackward => {
+                if self.handle_delete() {
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardOperation::DeleteToEndOfLine => {
+                if let Some(modal) = self.active_modal.as_mut() {
+                    modal.input_value.clear();
+                    // Inline update logic for ModelSelection
+                    if let ModalType::ModelSelection { options } = &modal.modal_type {
+                        let mut filtered: Vec<FilteredOption> = options
+                            .iter()
+                            .map(|opt| FilteredOption::Option {
+                                text: format!("{} (x{})", opt.name, opt.count),
+                                selected: false,
+                            })
+                            .collect();
+
+                        if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                            modal.selected_index = 0;
+                        }
+
+                        if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                            if let FilteredOption::Option { selected, .. } =
+                                &mut filtered[modal.selected_index]
+                            {
+                                *selected = true;
+                            }
+                        }
+
+                        modal.filtered_options = filtered;
+                    }
+                    self.needs_redraw = true;
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardOperation::MoveToBeginningOfLine => {
+                // For simple string input, beginning is already the start
+                true
+            }
+            KeyboardOperation::MoveToEndOfLine => {
+                // For simple string input, end is already the end
+                true
+            }
+            _ => false,
         }
     }
 
@@ -2055,72 +2574,206 @@ impl ViewModel {
         &mut self,
         operation: KeyboardOperation,
         key_event: &KeyEvent,
-    ) -> InputResult {
-        let bubbled = self
-            .pending_bubbled_operation
-            .as_ref()
-            .map(|pending| pending == &operation)
-            .unwrap_or(false);
-
-        let handled = self.process_dashboard_operation(operation, key_event);
-
-        if bubbled {
-            self.pending_bubbled_operation = None;
-            if handled {
-                self.bubbled_operation_consumed = true;
-            }
-        }
-
-        if handled {
-            InputResult::Handled
+    ) -> bool {
+        if self.process_dashboard_operation(operation, key_event) {
+            true
         } else {
-            InputResult::NotHandled
+            false
         }
     }
 
     /// Handle keyboard events by translating to KeyboardOperation and dispatching
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
-        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+        use ratatui::crossterm::event::KeyCode;
 
-        if !matches!(key.code, KeyCode::Esc) {
-            self.clear_exit_confirmation();
-        }
+        // Try handlers in priority order (like the original input stack)
+        // Modal > Draft buttons > Textarea > Dashboard
 
-        let previously_focused_draft = match self.focus_element {
-            DashboardFocusState::DraftTask(idx) => Some(idx),
-            _ => None,
-        };
+        // Try modal operations first (highest priority)
+        if self.modal_state != ModalState::None {
+            // Choose the appropriate input mode based on modal type
+            let mode = if let Some(modal) = self.active_modal.as_ref() {
+                match modal.modal_type {
+                    ModalType::ModelSelection { .. } => &MODEL_SELECTION_MODE,
+                    _ => &MODAL_NAVIGATION_MODE,
+                }
+            } else {
+                &MODAL_NAVIGATION_MODE
+            };
 
-        self.rebuild_input_stack();
-        let handled = self.input_stack.handle_key_event(&key, &self.settings);
+            if let Some(operation) = mode.resolve_key_to_operation(&key, &self.settings) {
+                let handled = self.handle_modal_operation(operation, &key);
+                if handled {
+                    if operation != KeyboardOperation::DismissOverlay {
+                        self.clear_exit_confirmation();
+                    }
+                }
+                return handled;
+            }
 
-        if handled {
-            let keymap = self.settings.keymap();
-            let is_shift_vertical = key.modifiers.contains(KeyModifiers::SHIFT)
-                && (keymap.matches(KeyboardOperation::MoveToPreviousLine, &key)
-                    || keymap.matches(KeyboardOperation::MoveToNextLine, &key));
-            if is_shift_vertical {
-                if let Some(idx) = previously_focused_draft {
-                    self.focus_element = DashboardFocusState::DraftTask(idx);
-                    self.update_footer();
+            // Handle character input for modal input fields
+            if let Some(modal) = self.active_modal.as_mut() {
+                if let KeyCode::Char(c) = key.code {
+                    // Only allow character input for certain modal types
+                    match &modal.modal_type {
+                        ModalType::Search { .. } => {
+                            modal.input_value.push(c);
+
+                            // Inline filtering logic for search modals
+                            let all_options: &[String] = match self.modal_state {
+                                ModalState::RepositorySearch => &self.available_repositories,
+                                ModalState::BranchSearch => &self.available_branches,
+                                ModalState::ModelSearch => {
+                                    // For model search, we need to convert ModelInfo to display names
+                                    self.model_display_names_cache.get_or_insert_with(|| {
+                                        self.available_models
+                                            .iter()
+                                            .map(|m| m.display_name.clone())
+                                            .collect()
+                                    });
+                                    self.model_display_names_cache.as_ref().unwrap()
+                                }
+                                _ => &[],
+                            };
+
+                            let query = modal.input_value.to_lowercase();
+                            let mut filtered: Vec<FilteredOption> = all_options
+                                .iter()
+                                .filter(|option| {
+                                    if query.is_empty() {
+                                        true // Show all options when no query
+                                    } else {
+                                        option.to_lowercase().contains(&query)
+                                    }
+                                })
+                                .cloned()
+                                .map(|opt| FilteredOption::Option {
+                                    text: opt,
+                                    selected: false,
+                                })
+                                .collect();
+
+                            // Reset selected index if it's out of bounds
+                            if modal.selected_index >= filtered.len() && !filtered.is_empty() {
+                                modal.selected_index = 0;
+                            }
+
+                            // Mark the selected option
+                            if !filtered.is_empty() && modal.selected_index < filtered.len() {
+                                if let FilteredOption::Option { selected, .. } =
+                                    &mut filtered[modal.selected_index]
+                                {
+                                    *selected = true;
+                                }
+                            }
+
+                            modal.filtered_options = filtered;
+                            self.needs_redraw = true;
+                            return true;
+                        }
+                        ModalType::ModelSelection { .. } => {
+                            modal.input_value.push(c);
+                            Self::update_model_selection_filtered_options(modal);
+                            self.needs_redraw = true;
+                            return true;
+                        }
+                        _ => {}
+                    }
                 }
             }
-            return true;
         }
 
-        // Handle special key codes directly
-        match key.code {
-            KeyCode::Enter => {
-                return self.handle_enter(
-                    key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT),
+        // Try draft button operations
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+            if let Some(operation) =
+                DRAFT_BUTTON_NAVIGATION_MODE.resolve_key_to_operation(&key, &self.settings)
+            {
+                let handled = matches!(
+                    self.handle_task_entry_operation(idx, operation, &key),
+                    KeyboardOperationResult::Handled
                 );
+                if handled {
+                    if operation != KeyboardOperation::DismissOverlay {
+                        self.clear_exit_confirmation();
+                    }
+                }
+                return handled;
             }
-            _ => {}
+        }
+
+        // Try textarea operations
+        if let Some(idx) = self.focused_textarea_index() {
+            if let Some(operation) =
+                DRAFT_TEXT_EDITING_MODE.resolve_key_to_operation(&key, &self.settings)
+            {
+                match self.handle_task_entry_operation(idx, operation, &key) {
+                    KeyboardOperationResult::Handled => {
+                        if operation != KeyboardOperation::DismissOverlay {
+                            self.clear_exit_confirmation();
+                        }
+                        return true;
+                    }
+                    KeyboardOperationResult::NotHandled => return false,
+                    KeyboardOperationResult::Bubble { operation: bubbled } => {
+                        let bubbled_handled = self.handle_bubbled_operation(bubbled, &key);
+                        if bubbled_handled {
+                            if bubbled != KeyboardOperation::DismissOverlay {
+                                self.clear_exit_confirmation();
+                            }
+                        }
+                        return bubbled_handled;
+                    }
+                    KeyboardOperationResult::TaskLaunched { .. } => {
+                        if operation != KeyboardOperation::DismissOverlay {
+                            self.clear_exit_confirmation();
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Try draft navigation operations (textarea to buttons, or button navigation)
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+            if let Some(card) = self.draft_cards.get(idx) {
+                let mode = if card.focus_element == CardFocusElement::TaskDescription {
+                    &DRAFT_TEXTAREA_TO_BUTTONS_MODE
+                } else {
+                    &DRAFT_BUTTON_NAVIGATION_MODE
+                };
+
+                if let Some(operation) = mode.resolve_key_to_operation(&key, &self.settings) {
+                    let handled = self.handle_dashboard_operation(operation, &key);
+                    if handled {
+                        if operation != KeyboardOperation::DismissOverlay {
+                            self.clear_exit_confirmation();
+                        }
+                    }
+                    return handled;
+                }
+            }
+        }
+
+        // Try dashboard operations (lowest priority)
+        if let Some(operation) =
+            DASHBOARD_NAVIGATION_MODE.resolve_key_to_operation(&key, &self.settings)
+        {
+            let handled = self.handle_dashboard_operation(operation, &key);
+            if handled {
+                if operation != KeyboardOperation::DismissOverlay {
+                    self.clear_exit_confirmation();
+                }
+            }
+            return handled;
         }
 
         // Handle character input directly if it's not a recognized operation
         if let KeyCode::Char(ch) = key.code {
-            return self.handle_char_input(ch);
+            let handled = self.handle_char_input(ch);
+            if handled {
+                self.clear_exit_confirmation();
+            }
+            return handled;
         }
 
         // If no operation matched and it's not character input, the key is not handled
@@ -2137,33 +2790,44 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
-        let previously_focused_draft = match self.focus_element {
-            DashboardFocusState::DraftTask(idx) => Some(idx),
-            _ => None,
-        };
+        // Try handlers in priority order (like the original input stack)
+        // Modal > Draft buttons > Textarea > Dashboard
 
-        self.pending_bubbled_operation = None;
-        self.bubbled_operation_consumed = false;
-        self.rebuild_input_stack();
-        let handled = self.input_stack.dispatch_operation(operation, key);
-        let bubbled_consumed = self.bubbled_operation_consumed;
-        self.bubbled_operation_consumed = false;
-        self.pending_bubbled_operation = None;
+        // Simulate the input stack by prioritizing active UI contexts
+        // Modal > Draft buttons > Textarea > Dashboard
 
-        if handled
-            && key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT)
-            && matches!(
-                operation,
-                KeyboardOperation::MoveToPreviousLine | KeyboardOperation::MoveToNextLine
-            )
-        {
-            if let Some(idx) = previously_focused_draft {
-                self.focus_element = DashboardFocusState::DraftTask(idx);
-                self.update_footer();
+        // Try modal operations first (highest priority) - if modal is active, it gets first chance
+        if self.modal_state != ModalState::None {
+            return self.handle_modal_operation(operation, key);
+        }
+
+        // Try draft button operations - if draft buttons are focused, they get priority
+        if let Some(idx) = self.focused_draft_buttons_index() {
+            match self.handle_task_entry_operation(idx, operation, key) {
+                KeyboardOperationResult::Handled => return true,
+                KeyboardOperationResult::NotHandled => { /* fall through to lower priority handlers */
+                }
+                KeyboardOperationResult::Bubble { operation: bubbled } => {
+                    return self.handle_bubbled_operation(bubbled, key);
+                }
+                KeyboardOperationResult::TaskLaunched { .. } => return true,
             }
         }
 
-        if bubbled_consumed { false } else { handled }
+        // Try textarea operations - if textarea is focused, it gets priority
+        if let Some(idx) = self.focused_textarea_index() {
+            match self.handle_task_entry_operation(idx, operation, key) {
+                KeyboardOperationResult::Handled => return true,
+                KeyboardOperationResult::NotHandled => return false,
+                KeyboardOperationResult::Bubble { operation: bubbled } => {
+                    return self.handle_bubbled_operation(bubbled, key);
+                }
+                KeyboardOperationResult::TaskLaunched { .. } => return true,
+            }
+        }
+
+        // Try dashboard operations (lowest priority) - fallback for any operation
+        self.handle_dashboard_operation(operation, key)
     }
 
     pub fn take_exit_request(&mut self) -> bool {
@@ -2206,14 +2870,20 @@ impl ViewModel {
 
         // Handle modal selection with Enter when a modal is active
         if let Some(modal) = self.active_modal.as_ref() {
-            if operation == KeyboardOperation::IndentOrComplete {
+            if operation == KeyboardOperation::ActivateCurrentItem {
                 // Select the currently highlighted option in the modal
                 // Get the selected option first to avoid borrowing issues
                 let selected_option = modal
                     .filtered_options
                     .iter()
-                    .find(|(_, selected)| *selected)
-                    .map(|(option, _)| option.clone());
+                    .find(|opt| matches!(opt, FilteredOption::Option { selected: true, .. }))
+                    .and_then(|opt| {
+                        if let FilteredOption::Option { text, .. } = opt {
+                            Some(text.clone())
+                        } else {
+                            None
+                        }
+                    });
 
                 if let Some(selected_option) = selected_option {
                     self.apply_modal_selection(modal.modal_type.clone(), selected_option);
@@ -2238,7 +2908,7 @@ impl ViewModel {
                 self.focus_previous_control()
             }
             KeyboardOperation::MoveForwardOneCharacter => {
-                // Right arrow: handle filter navigation
+                // Right arrow: handle filter navigation or draft card navigation
 
                 // Handle filter navigation
                 match self.focus_element {
@@ -2257,13 +2927,17 @@ impl ViewModel {
                         self.focus_element = DashboardFocusState::Filter(next);
                         return true;
                     }
+                    DashboardFocusState::DraftTask(_) => {
+                        // Right arrow in draft card: same as Tab
+                        return self.focus_next_control();
+                    }
                     _ => {}
                 }
 
                 false
             }
             KeyboardOperation::MoveBackwardOneCharacter => {
-                // Left arrow: handle filter navigation or move cursor backward in text area
+                // Left arrow: handle filter navigation or draft card navigation
 
                 // Handle filter navigation
                 match self.focus_element {
@@ -2281,6 +2955,40 @@ impl ViewModel {
                         };
                         self.focus_element = DashboardFocusState::Filter(next);
                         return true;
+                    }
+                    DashboardFocusState::DraftTask(_) => {
+                        // Left arrow in draft card: same as Shift+Tab
+                        return self.focus_previous_control();
+                    }
+                    _ => {}
+                }
+
+                // Task entry handling is now done by early delegation
+                false
+            }
+            KeyboardOperation::DecrementValue => {
+                // Left arrow: handle filter navigation (same as MoveBackwardOneCharacter)
+
+                // Handle filter navigation
+                match self.focus_element {
+                    DashboardFocusState::FilterBarLine => {
+                        // Move from separator line to first filter control
+                        self.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
+                        return true;
+                    }
+                    DashboardFocusState::Filter(control) => {
+                        // Navigate backwards through filter controls
+                        let next = match control {
+                            FilterControl::Repository => FilterControl::Creator, // Wrap backwards
+                            FilterControl::Status => FilterControl::Repository,
+                            FilterControl::Creator => FilterControl::Status,
+                        };
+                        self.focus_element = DashboardFocusState::Filter(next);
+                        return true;
+                    }
+                    DashboardFocusState::DraftTask(_) => {
+                        // Left arrow in draft card: same as Shift+Tab
+                        return self.focus_previous_control();
                     }
                     _ => {}
                 }
@@ -2303,15 +3011,6 @@ impl ViewModel {
                 self.navigate_up_hierarchy()
             }
             KeyboardOperation::MoveToNextLine => {
-                if self.handle_overlay_navigation(NavigationDirection::Next) {
-                    return true;
-                }
-                if key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT) {
-                    if let Some(idx) = self.focused_textarea_index() {
-                        self.focus_element = DashboardFocusState::DraftTask(idx);
-                        return true;
-                    }
-                }
                 // Task entry handling is done by early delegation
                 // If we reach here, navigate down hierarchy
                 self.navigate_down_hierarchy()
@@ -2327,6 +3026,10 @@ impl ViewModel {
             KeyboardOperation::OpenNewLine => {
                 // Shift+Enter
                 self.handle_enter(true)
+            }
+            KeyboardOperation::ActivateCurrentItem => {
+                // Enter key - activate current item (task, button, etc.)
+                self.handle_enter(false)
             }
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
             KeyboardOperation::NewDraft => self.handle_ctrl_n(),
@@ -2383,6 +3086,30 @@ impl ViewModel {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
                             if card.focus_element == CardFocusElement::TaskDescription {
                                 card.description.select_all();
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
+                                return true;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                false
+            }
+            KeyboardOperation::Bold => {
+                // Insert bold markdown markers
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == CardFocusElement::TaskDescription {
+                                // Insert **** at cursor for bold markdown
+                                card.description.insert_str("****");
+                                // Move cursor back 2 positions to be between the markers
+                                use tui_textarea::CursorMove;
+                                card.description.move_cursor(CursorMove::Back);
+                                card.description.move_cursor(CursorMove::Back);
                                 self.autocomplete.after_textarea_change(
                                     &card.description,
                                     &mut self.needs_redraw,
@@ -4774,21 +5501,45 @@ fn create_modal_view_model(
             })
         }
         ModalState::ModelSearch => {
-            let selected_model = current_draft
-                .as_ref()
-                .and_then(|draft| draft.models.first())
-                .map(|model| model.name.as_str());
-            let model_display_names: Vec<String> =
-                available_models.iter().map(|model| model.display_name.clone()).collect();
-            let (options, selected_index) =
-                build_modal_options(&model_display_names, selected_model);
+            // Create model options from available models, with counts from current draft
+            let mut model_options: Vec<ModelOptionViewModel> = available_models
+                .iter()
+                .map(|model_info| {
+                    let count = current_draft
+                        .as_ref()
+                        .and_then(|draft| {
+                            draft.models.iter().find(|m| m.name == model_info.display_name)
+                        })
+                        .map(|m| m.count)
+                        .unwrap_or(0);
+                    ModelOptionViewModel {
+                        name: model_info.display_name.clone(),
+                        count,
+                        is_selected: count > 0,
+                    }
+                })
+                .collect();
+
+            // Find selected index (first model with count > 0, or 0 if none)
+            let selected_index = model_options.iter().position(|opt| opt.is_selected).unwrap_or(0);
+
+            // Create initial filtered options (all models with their counts)
+            let filtered_options: Vec<FilteredOption> = model_options
+                .iter()
+                .enumerate()
+                .map(|(i, opt)| FilteredOption::Option {
+                    text: format!("{} (x{})", opt.name, opt.count),
+                    selected: i == selected_index as usize,
+                })
+                .collect();
+
             Some(ModalViewModel {
-                title: "Select model".to_string(),
+                title: "Select models".to_string(),
                 input_value: String::new(),
-                filtered_options: options,
+                filtered_options,
                 selected_index,
-                modal_type: ModalType::Search {
-                    placeholder: "Filter models...".to_string(),
+                modal_type: ModalType::ModelSelection {
+                    options: model_options,
                 },
             })
         }
@@ -4848,7 +5599,7 @@ fn create_modal_view_model(
 fn build_modal_options(
     options: &[String],
     selected_value: Option<&str>,
-) -> (Vec<(String, bool)>, usize) {
+) -> (Vec<FilteredOption>, usize) {
     if options.is_empty() {
         return (Vec::new(), 0);
     }
@@ -4861,13 +5612,17 @@ fn build_modal_options(
             if selected_value == Some(value.as_str()) {
                 selected_index = idx;
             }
-            (value.clone(), false)
+            FilteredOption::Option {
+                text: value.clone(),
+                selected: false,
+            }
         })
         .collect::<Vec<_>>();
 
     let mut filtered_options = filtered_options;
-    if let Some(option) = filtered_options.get_mut(selected_index) {
-        option.1 = true;
+    if let Some(FilteredOption::Option { selected, .. }) = filtered_options.get_mut(selected_index)
+    {
+        *selected = true;
     }
 
     (filtered_options, selected_index)
@@ -4904,7 +5659,7 @@ fn create_footer_view_model(
                 )],
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::IndentOrComplete,
+                KeyboardOperation::ActivateCurrentItem,
                 vec![KeyMatcher::new(
                     KeyCode::Enter,
                     KeyModifiers::empty(),
@@ -4934,7 +5689,7 @@ fn create_footer_view_model(
                 )],
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::IndentOrComplete,
+                KeyboardOperation::ActivateCurrentItem,
                 vec![KeyMatcher::new(
                     KeyCode::Enter,
                     KeyModifiers::empty(),
@@ -4994,7 +5749,7 @@ fn create_footer_view_model(
                 )],
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::IndentOrComplete,
+                KeyboardOperation::ActivateCurrentItem,
                 vec![KeyMatcher::new(
                     KeyCode::Enter,
                     KeyModifiers::empty(),
@@ -5015,7 +5770,7 @@ fn create_footer_view_model(
                 )],
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::IndentOrComplete,
+                KeyboardOperation::ActivateCurrentItem,
                 vec![KeyMatcher::new(
                     KeyCode::Enter,
                     KeyModifiers::empty(),

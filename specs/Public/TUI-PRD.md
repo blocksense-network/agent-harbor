@@ -139,6 +139,9 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
 - Single line of compact controls below the text area:
   - Left side: Repository Selector, Branch Selector, Model Selector (horizontally laid out)
   - Right side: "⏎ Go" button (right-aligned)
+- **Model Selector Button Display**: Shows selected models as comma-separated list with instance counts
+  - Format: "🤖 model1, model2 x2, model3 x3" (shows "xN" only when count > 1)
+  - Falls back to "🤖 Models" when no models are selected
 - **Modal Selection Dialogs**: When buttons are activated (Tab/Enter), display overlay dialog windows
   - Repository Selector: Fuzzy search through available repositories
   - Branch Selector: Fuzzy search through repository branches
@@ -184,9 +187,12 @@ The model selection dialog provides advanced agent configuration:
 - **Keyboard Controls**:
   - `↑↓`: Navigate between sections and items
   - `Mouse Wheel`: Scroll through model selection menu
-  - `+/-` or `Left/Right`: Adjust instance counts
-  - `Enter`: Close the dialog with the current model and count selections. If enter is pressed while the focus is within the selection menu and the currently selected model has count zero, assume that the user wants count = 1 for this particular model. Other counts stay as they are.
-  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place.
+  - `Shift+=` or `Right`: Increment instance count
+  - `-` or `Left`: Decrement instance count
+  - `Enter`: Close the dialog with the current model and count selections:
+    - If the currently selected model has count zero: select ONLY this model with count 1, remove all other model selections
+    - If the currently selected model has non-zero count: keep all current non-zero count models with their counts
+  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button in both cases.
 
 ##### Activity Display for Active Tasks
 
@@ -407,7 +413,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 - **↑↓**: Navigate through options in fuzzy search
 - **Enter**: Select current item
 - **Esc**: Close modal
-- **Left/Right** or **+/-**: Adjust model instance counts in model selection
+- **Left/Right** or **Shift+= / -**: Adjust model instance counts in model selection
 
 ### Real-Time Behavior
 

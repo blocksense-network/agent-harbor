@@ -142,9 +142,7 @@ eventsource-client = "0.13"
 # Terminal UI
 ratatui = "0.29"
 crossterm = "0.28"
-tui-textarea = { git = "https://github.com/blocksense-network/tui-textarea", branch = "agent-harbor", features = [
-  "search",
-] }
+tui-textarea = { path = "vendor/tui-textarea", features = ["search"] }
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }

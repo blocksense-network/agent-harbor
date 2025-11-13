@@ -11,7 +11,8 @@ use crate::settings::KeyboardOperation;
 
 // Keyboard operations used in session viewer
 use crate::view_model::autocomplete::{AutocompleteDependencies, InlineAutocomplete};
-use crate::view_model::input::key_event_to_operation;
+use crate::view_model::input::minor_modes;
+use crate::view_model::task_entry::DRAFT_TEXT_EDITING_MODE;
 use crate::view_model::task_entry::{
     AutocompleteManager, KeyboardOperationResult, TaskEntryControlsViewModel, TaskEntryViewModel,
 };
@@ -24,6 +25,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{debug, trace};
+
+// Minor mode for session viewer navigation (for viewing terminal sessions and navigating snapshots)
+pub static SESSION_VIEWER_MODE: crate::view_model::input::InputMinorMode =
+    crate::view_model::input::InputMinorMode::new(&[
+        KeyboardOperation::MoveToNextLine,
+        KeyboardOperation::MoveToPreviousLine,
+        KeyboardOperation::MoveToNextField,
+        KeyboardOperation::MoveToPreviousField,
+        KeyboardOperation::PreviousSnapshot,
+        KeyboardOperation::NextSnapshot,
+    ]);
 
 /// Mouse actions for the SessionViewer interface
 #[derive(Debug, Clone)]
@@ -370,14 +382,31 @@ impl SessionViewerViewModel {
         }
 
         // First try to translate the key event to a keyboard operation
+        // Check navigation operations first (most common)
         if let Some(operation) =
-            crate::view_model::input::key_event_to_operation(&key, &Default::default())
+            SESSION_VIEWER_MODE.resolve_key_to_operation(&key, &Default::default())
         {
-            tracing::debug!("key_event_to_operation: {:?} -> {:?}", key, operation);
+            tracing::debug!(
+                "resolve_key_to_operation (SESSION_VIEWER): {:?} -> {:?}",
+                key,
+                operation
+            );
             return self.handle_keyboard_operation(operation, &key);
-        } else {
-            tracing::debug!("key_event_to_operation: {:?} -> None", key);
         }
+
+        // Then check selection operations
+        if let Some(operation) =
+            minor_modes::SELECTION_MODE.resolve_key_to_operation(&key, &Default::default())
+        {
+            tracing::debug!(
+                "resolve_key_to_operation (SELECTION): {:?} -> {:?}",
+                key,
+                operation
+            );
+            return self.handle_keyboard_operation(operation, &key);
+        }
+
+        tracing::debug!("resolve_key_to_operation: {:?} -> None", key);
 
         // Handle special key codes directly
         match key.code {
@@ -451,7 +480,7 @@ impl SessionViewerViewModel {
         // When the TaskEntry is focused, delegate handled keyboard operations to it
         if self.focus_element == SessionViewerFocusState::TaskEntry {
             // Check if this operation is handled by the task entry
-            if matches!(operation, crate::HandledKeyboardOperations!()) {
+            if DRAFT_TEXT_EDITING_MODE.handles_operation(&operation) {
                 struct AutocompleteManagerImpl<'a> {
                     autocomplete: &'a mut InlineAutocomplete,
                     needs_redraw: &'a mut bool,
@@ -1093,12 +1122,18 @@ impl SessionViewerViewModel {
 
         let settings = crate::Settings::default();
 
-        if let Some(operation) = key_event_to_operation(key, &settings) {
+        // Check for selection operations (includes DismissOverlay)
+        if let Some(operation) =
+            minor_modes::SELECTION_MODE.resolve_key_to_operation(key, &settings)
+        {
             if matches!(operation, KeyboardOperation::DismissOverlay) {
                 self.clear_task_entry_overlay();
                 return true;
             }
+        }
 
+        // Check for navigation operations (includes Previous/NextSnapshot)
+        if let Some(operation) = SESSION_VIEWER_MODE.resolve_key_to_operation(key, &settings) {
             // Handle Previous Snapshot key
             if matches!(operation, KeyboardOperation::PreviousSnapshot) {
                 self.navigate_to_previous_snapshot();

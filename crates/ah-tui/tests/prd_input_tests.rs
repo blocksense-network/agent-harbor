@@ -12,8 +12,8 @@ use ah_tui::settings::{KeyboardOperation, Settings};
 use ah_tui::view_model::DashboardFocusState;
 use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
-    FilterControl, MouseAction, Msg, TaskCardType, TaskExecutionFocusState, TaskExecutionViewModel,
-    TaskMetadataViewModel, ViewModel,
+    FilterControl, ModalState, ModalType, MouseAction, Msg, TaskCardType, TaskExecutionFocusState,
+    TaskExecutionViewModel, TaskMetadataViewModel, ViewModel, dashboard_model::FilteredOption,
 };
 use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
 use async_trait::async_trait;
@@ -80,6 +80,30 @@ fn click(vm: &mut ViewModel, action: MouseAction, bounds: Rect, column: u16, row
         bounds,
     })
     .expect("mouse update ok");
+}
+
+/// Helper function that verifies screen redraw occurs during a test operation.
+/// Sets needs_redraw to false, runs the provided closure, verifies needs_redraw
+/// was set to true, and resets it back to false for the next test.
+fn expect_screen_redraw<F>(vm: &mut ViewModel, operation_description: &str, operation: F)
+where
+    F: FnOnce(&mut ViewModel),
+{
+    // Reset redraw flag
+    vm.needs_redraw = false;
+
+    // Run the operation
+    operation(vm);
+
+    // Verify that redraw was requested
+    assert!(
+        vm.needs_redraw,
+        "Expected screen redraw after {}, but needs_redraw is still false",
+        operation_description
+    );
+
+    // Reset for next test
+    vm.needs_redraw = false;
 }
 
 mod keyboard {
@@ -149,10 +173,8 @@ mod keyboard {
         vm.handle_keyboard_operation(KeyboardOperation::MoveToNextLine, &down_event);
 
         if let Some(card) = vm.draft_cards.first() {
-            let last_index = card.description.lines().len() - 1;
-            let last_len =
-                card.description.lines().last().map(|line| line.chars().count()).unwrap_or(0);
-            assert_eq!(card.description.cursor(), (last_index, last_len));
+            // Cursor should be at the end of the last line
+            assert_eq!(card.description.cursor(), (1, 5));
         }
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
@@ -177,7 +199,7 @@ mod keyboard {
         }
 
         let shift_up = KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT);
-        assert!(vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &shift_up));
+        assert!(vm.handle_key_event(shift_up.clone()));
 
         if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.cursor(), (1, 4));
@@ -185,7 +207,7 @@ mod keyboard {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
-        assert!(vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &shift_up));
+        assert!(vm.handle_key_event(shift_up.clone()));
         if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.cursor(), (0, 4));
             assert!(card.description.selection_range().is_some());
@@ -193,7 +215,7 @@ mod keyboard {
         }
 
         let up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
-        let stayed = vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &up);
+        let stayed = vm.handle_key_event(up.clone());
         assert!(
             stayed,
             "first non-shift Up should move caret to column 0 before bubbling"
@@ -202,8 +224,11 @@ mod keyboard {
             assert_eq!(card.description.cursor(), (0, 0));
         }
 
-        let bubbled = vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousLine, &up);
-        assert!(!bubbled, "second non-shift Up should bubble to dashboard");
+        let bubbled = vm.handle_key_event(up.clone());
+        assert!(
+            bubbled,
+            "second non-shift Up should bubble to dashboard and be handled"
+        );
         assert_eq!(vm.focus_element, DashboardFocusState::SettingsButton);
         if let Some(card) = vm.draft_cards.first() {
             assert!(card.description.selection_range().is_none());
@@ -216,23 +241,244 @@ mod keyboard {
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
         let tab_event = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
-        vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
+        vm.handle_key_event(tab_event);
         assert_eq!(
             vm.draft_cards[0].focus_element,
             CardFocusElement::RepositorySelector
         );
 
-        vm.handle_keyboard_operation(KeyboardOperation::MoveToNextField, &tab_event);
+        let tab_event2 = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
+        vm.handle_key_event(tab_event2);
         assert_eq!(
             vm.draft_cards[0].focus_element,
             CardFocusElement::BranchSelector
         );
 
         let back_tab_event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
-        vm.handle_keyboard_operation(KeyboardOperation::MoveToPreviousField, &back_tab_event);
+        vm.handle_key_event(back_tab_event);
         assert_eq!(
             vm.draft_cards[0].focus_element,
             CardFocusElement::RepositorySelector
+        );
+    }
+
+    #[test]
+    fn draft_card_navigation_comprehensive() {
+        let mut vm = new_view_model();
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::TaskDescription
+        );
+
+        // Test TAB navigation from textarea through all buttons
+        // Initial state: TaskDescription (textarea)
+        let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
+
+        // Tab 1: RepositorySelector
+        expect_screen_redraw(&mut vm, "pressing Tab to focus RepositorySelector", |vm| {
+            assert!(vm.handle_key_event(tab.clone()));
+        });
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::RepositorySelector
+        );
+
+        // Tab 2: BranchSelector
+        expect_screen_redraw(&mut vm, "pressing Tab to focus BranchSelector", |vm| {
+            assert!(vm.handle_key_event(tab.clone()));
+        });
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::BranchSelector
+        );
+
+        // Tab 3: ModelSelector
+        expect_screen_redraw(&mut vm, "pressing Tab to focus ModelSelector", |vm| {
+            assert!(vm.handle_key_event(tab.clone()));
+        });
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::ModelSelector
+        );
+
+        // Tab 4: GoButton
+        expect_screen_redraw(&mut vm, "pressing Tab to focus GoButton", |vm| {
+            assert!(vm.handle_key_event(tab.clone()));
+        });
+        assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
+
+        // Tab 5: Wrap around to TaskDescription
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Tab to wrap around to TaskDescription",
+            |vm| {
+                assert!(vm.handle_key_event(tab.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::TaskDescription
+        );
+
+        // Test Shift+TAB navigation (backwards)
+        let shift_tab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
+
+        // Currently at TaskDescription, Shift+Tab should go to GoButton
+        expect_screen_redraw(&mut vm, "pressing Shift+Tab to focus GoButton", |vm| {
+            assert!(vm.handle_key_event(shift_tab.clone()));
+        });
+        assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
+
+        // Shift+Tab: ModelSelector
+        expect_screen_redraw(&mut vm, "pressing Shift+Tab to focus ModelSelector", |vm| {
+            assert!(vm.handle_key_event(shift_tab.clone()));
+        });
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::ModelSelector
+        );
+
+        // Shift+Tab: BranchSelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Shift+Tab to focus BranchSelector",
+            |vm| {
+                assert!(vm.handle_key_event(shift_tab.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::BranchSelector
+        );
+
+        // Shift+Tab: RepositorySelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Shift+Tab to focus RepositorySelector",
+            |vm| {
+                assert!(vm.handle_key_event(shift_tab.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::RepositorySelector
+        );
+
+        // Shift+Tab: Wrap around to TaskDescription
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Shift+Tab to wrap around to TaskDescription",
+            |vm| {
+                assert!(vm.handle_key_event(shift_tab.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::TaskDescription
+        );
+
+        // Test RIGHT arrow navigation (same as TAB)
+        let right_arrow = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
+
+        // Currently at TaskDescription, Right arrow should go to RepositorySelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Tab arrow to focus RepositorySelector",
+            |vm| {
+                assert!(vm.handle_key_event(right_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::RepositorySelector
+        );
+
+        // Right arrow: BranchSelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Right arrow to focus BranchSelector",
+            |vm| {
+                assert!(vm.handle_key_event(right_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::BranchSelector
+        );
+
+        // Right arrow: ModelSelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Right arrow to focus ModelSelector",
+            |vm| {
+                assert!(vm.handle_key_event(right_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::ModelSelector
+        );
+
+        // Right arrow: GoButton
+        expect_screen_redraw(&mut vm, "pressing Right arrow to focus GoButton", |vm| {
+            assert!(vm.handle_key_event(right_arrow.clone()));
+        });
+        assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
+
+        // Test LEFT arrow navigation (same as Shift+TAB)
+        let left_arrow = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
+
+        // Currently at GoButton, Left arrow should go to ModelSelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Left arrow to focus ModelSelector",
+            |vm| {
+                assert!(vm.handle_key_event(left_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::ModelSelector
+        );
+
+        // Left arrow: BranchSelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Left arrow to focus BranchSelector",
+            |vm| {
+                assert!(vm.handle_key_event(left_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::BranchSelector
+        );
+
+        // Left arrow: RepositorySelector
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Left arrow to focus RepositorySelector",
+            |vm| {
+                assert!(vm.handle_key_event(left_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::RepositorySelector
+        );
+
+        // Left arrow: Wrap around to GoButton
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Left arrow to go back to TaskDescription",
+            |vm| {
+                assert!(vm.handle_key_event(left_arrow.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::TaskDescription
         );
     }
 
@@ -242,25 +488,25 @@ mod keyboard {
         vm.focus_element = DashboardFocusState::FilterBarLine;
 
         let right_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
-        vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
+        vm.handle_key_event(right_event.clone());
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Repository)
         );
 
-        vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
+        vm.handle_key_event(right_event.clone());
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Status)
         );
 
-        vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
+        vm.handle_key_event(right_event.clone());
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Creator)
         );
 
-        vm.handle_keyboard_operation(KeyboardOperation::MoveForwardOneCharacter, &right_event);
+        vm.handle_key_event(right_event.clone());
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Repository)
@@ -273,13 +519,13 @@ mod keyboard {
         vm.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
 
         let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
-        vm.handle_keyboard_operation(KeyboardOperation::MoveBackwardOneCharacter, &left_event);
+        vm.handle_key_event(left_event.clone());
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Creator)
         );
 
-        vm.handle_keyboard_operation(KeyboardOperation::MoveBackwardOneCharacter, &left_event);
+        vm.handle_key_event(left_event.clone());
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Status)
@@ -1970,6 +2216,392 @@ mod mouse {
         if let Some(_card) = vm.draft_cards.first() {
             // Basic check that the operation executed (cursor may or may not move depending on search results)
             assert!(true, "Find next operation should execute without error");
+        }
+    }
+
+    #[test]
+    fn model_selection_increment_decrement_count() {
+        let mut vm = new_view_model();
+
+        // Modify the existing draft task to have no models
+        if let Some(draft) = vm.draft_cards.first_mut() {
+            draft.models.clear();
+        }
+
+        // Open model selection modal
+        vm.open_modal(ModalState::ModelSearch);
+        assert!(vm.active_modal.is_some());
+
+        // Verify we have a model selection modal
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    // Should have some options
+                    assert!(!options.is_empty());
+
+                    // All models should have count 0 since we cleared the draft's models
+                    for opt in options.iter() {
+                        assert_eq!(opt.count, 0);
+                        assert!(!opt.is_selected);
+                    }
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Navigate to the first model option (should be selected by default)
+        // The first filtered option should be selected
+        assert!(vm.active_modal.as_ref().unwrap().selected_index == 0);
+
+        // Press Right arrow to increment count
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Right arrow to increment model count",
+            |vm| {
+                let right_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
+                assert!(vm.handle_key_event(right_event));
+            },
+        );
+
+        // Verify the count was incremented
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 1);
+                    assert!(first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Press Right arrow again to increment to 2
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Right arrow again to increment to 2",
+            |vm| {
+                let right_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
+                assert!(vm.handle_key_event(right_event));
+            },
+        );
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 2);
+                    assert!(first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Press Left arrow to decrement back to 1
+        expect_screen_redraw(&mut vm, "pressing Left arrow to decrement to 1", |vm| {
+            let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
+            assert!(vm.handle_key_event(left_event));
+        });
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 1);
+                    assert!(first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Press Left arrow again to decrement to 0
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Left arrow again to decrement to 0",
+            |vm| {
+                let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
+                assert!(vm.handle_key_event(left_event));
+            },
+        );
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 0);
+                    assert!(!first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+    }
+
+    #[test]
+    fn model_selection_left_right_with_search_query() {
+        let mut vm = new_view_model();
+
+        // Open model selection modal
+        vm.open_modal(ModalState::ModelSearch);
+        assert!(vm.active_modal.is_some());
+
+        // Type "claude" to filter models
+        let c_key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::empty());
+        let l_key = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::empty());
+        let a_key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty());
+        let u_key = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::empty());
+        let d_key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty());
+        let e_key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
+
+        vm.handle_key_event(c_key);
+        vm.handle_key_event(l_key);
+        vm.handle_key_event(a_key);
+        vm.handle_key_event(u_key);
+        vm.handle_key_event(d_key);
+        vm.handle_key_event(e_key);
+
+        // Verify that the filter is applied and only Claude models are shown
+        if let Some(modal) = &vm.active_modal {
+            assert_eq!(modal.input_value, "claude");
+            // Should show matching models + already selected models with non-zero counts
+            let matching_count = modal
+                .filtered_options
+                .iter()
+                .filter(|opt| matches!(opt, FilteredOption::Option { .. }))
+                .count();
+            assert!(
+                matching_count > 0,
+                "Should show at least one matching model"
+            );
+        }
+
+        // Now test that Left and Right arrows work for incrementing/decrementing counts
+        // First select a model with Enter
+        let enter_key = KeyEvent::new(KeyCode::Enter, KeyModifiers::empty());
+        vm.handle_key_event(enter_key);
+
+        // The modal should be closed now
+        assert!(vm.active_modal.is_none());
+
+        // Now reopen the modal to test increment/decrement
+        vm.open_modal(ModalState::ModelSearch);
+
+        // Increment the count using Right arrow
+        let right_key = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
+        vm.handle_key_event(right_key);
+
+        // Decrement the count using Left arrow
+        let left_key = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
+        vm.handle_key_event(left_key);
+
+        // The count should be back to its original value (incremented then decremented)
+        if let Some(card) = vm.draft_cards.get(0) {
+            if let Some(selected_model) = card.models.first() {
+                // Count should be 1 (was incremented from 0 to 1, then decremented from 1 to 0,
+                // but since we selected it with Enter, it should be 1)
+                assert_eq!(
+                    selected_model.count, 1,
+                    "Count should be 1 after increment/decrement cycle"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn model_selection_plus_minus_keys() {
+        let mut vm = new_view_model();
+
+        // Modify the existing draft task to have no models
+        if let Some(draft) = vm.draft_cards.first_mut() {
+            draft.models.clear();
+        }
+
+        // Open model selection modal
+        vm.open_modal(ModalState::ModelSearch);
+        assert!(vm.active_modal.is_some());
+
+        // Navigate to the first model option (should be selected by default)
+        assert!(vm.active_modal.as_ref().unwrap().selected_index == 0);
+
+        // Press Shift+= to increment count
+        expect_screen_redraw(&mut vm, "pressing Shift+= to increment model count", |vm| {
+            let plus_event = KeyEvent::new(KeyCode::Char('='), KeyModifiers::SHIFT);
+            assert!(vm.handle_key_event(plus_event));
+        });
+
+        // Verify the count was incremented
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 1);
+                    assert!(first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Press Shift+= again to increment to 2
+        expect_screen_redraw(&mut vm, "pressing Shift+= again to increment to 2", |vm| {
+            let plus_event = KeyEvent::new(KeyCode::Char('='), KeyModifiers::SHIFT);
+            assert!(vm.handle_key_event(plus_event));
+        });
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 2);
+                    assert!(first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Press Left arrow to decrement back to 1
+        expect_screen_redraw(&mut vm, "pressing Left arrow to decrement to 1", |vm| {
+            let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
+            assert!(vm.handle_key_event(left_event));
+        });
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 1);
+                    assert!(first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+
+        // Press Left arrow again to decrement to 0
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Left arrow again to decrement to 0",
+            |vm| {
+                let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
+                assert!(vm.handle_key_event(left_event));
+            },
+        );
+        if let Some(modal) = &vm.active_modal {
+            match &modal.modal_type {
+                ModalType::ModelSelection { options } => {
+                    let first_model =
+                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    assert_eq!(first_model.count, 0);
+                    assert!(!first_model.is_selected);
+                }
+                _ => panic!("Expected ModelSelection modal"),
+            }
+        }
+    }
+
+    #[test]
+    fn model_selection_filtering_with_count_changes() {
+        let mut vm = new_view_model();
+
+        // Open model selection modal
+        vm.open_modal(ModalState::ModelSearch);
+        assert!(vm.active_modal.is_some());
+
+        // Type "claude" to filter models
+        let c_key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::empty());
+        let l_key = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::empty());
+        let a_key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty());
+        let u_key = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::empty());
+        let d_key = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty());
+        let e_key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::empty());
+
+        expect_screen_redraw(&mut vm, "typing 'c'", |vm| {
+            assert!(vm.handle_key_event(c_key));
+        });
+        expect_screen_redraw(&mut vm, "typing 'l'", |vm| {
+            assert!(vm.handle_key_event(l_key));
+        });
+        expect_screen_redraw(&mut vm, "typing 'a'", |vm| {
+            assert!(vm.handle_key_event(a_key));
+        });
+        expect_screen_redraw(&mut vm, "typing 'u'", |vm| {
+            assert!(vm.handle_key_event(u_key));
+        });
+        expect_screen_redraw(&mut vm, "typing 'd'", |vm| {
+            assert!(vm.handle_key_event(d_key));
+        });
+        expect_screen_redraw(&mut vm, "typing 'e'", |vm| {
+            assert!(vm.handle_key_event(e_key));
+        });
+
+        // Verify that input_value is "claude"
+        assert_eq!(vm.active_modal.as_ref().unwrap().input_value, "claude");
+
+        // Verify that filtered options only contain Claude models
+        if let Some(modal) = &vm.active_modal {
+            let claude_options: Vec<&FilteredOption> = modal
+                .filtered_options
+                .iter()
+                .filter(|opt| matches!(opt, FilteredOption::Option { .. }))
+                .collect();
+            assert!(claude_options.len() >= 2); // Should have at least Claude Sonnet and Claude Opus
+
+            // Check that all visible options contain "claude" (case insensitive)
+            for option in &claude_options {
+                if let FilteredOption::Option { text, .. } = option {
+                    assert!(
+                        text.to_lowercase().contains("claude"),
+                        "Option '{}' should contain 'claude'",
+                        text
+                    );
+                }
+            }
+        }
+
+        // Now press Shift+= to increment the count of the first visible model
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Shift+= to increment count while filtered",
+            |vm| {
+                let plus_event = KeyEvent::new(KeyCode::Char('='), KeyModifiers::SHIFT);
+                assert!(vm.handle_key_event(plus_event));
+            },
+        );
+
+        // Verify that the count was incremented and filtering is preserved
+        if let Some(modal) = &vm.active_modal {
+            assert_eq!(modal.input_value, "claude"); // Filter should still be active
+
+            // Find the first option and check its count
+            let first_option = modal
+                .filtered_options
+                .iter()
+                .find(|opt| matches!(opt, FilteredOption::Option { .. }));
+            if let Some(FilteredOption::Option { text, .. }) = first_option {
+                assert!(
+                    text.contains("(x2)"),
+                    "First option should have count 2, got: {}",
+                    text
+                );
+            } else {
+                panic!("Should have at least one option");
+            }
+
+            // Verify that non-Clade models are still filtered out
+            let all_options_count = modal.filtered_options.len();
+            let claude_options_count = modal
+                .filtered_options
+                .iter()
+                .filter(|opt| {
+                    if let FilteredOption::Option { text, .. } = opt {
+                        text.to_lowercase().contains("claude")
+                    } else {
+                        false
+                    }
+                })
+                .count();
+            assert_eq!(
+                all_options_count, claude_options_count,
+                "All options should still be Claude models"
+            );
         }
     }
 }

@@ -180,7 +180,18 @@ pub fn render_draft_card_content(
     let models_button_text = if card.models.is_empty() {
         "🤖 Models".to_string()
     } else {
-        format!("🤖 {} model(s)", card.models.len())
+        let model_parts: Vec<String> = card
+            .models
+            .iter()
+            .map(|model| {
+                if model.count > 1 {
+                    format!("{} x{}", model.name, model.count)
+                } else {
+                    model.name.clone()
+                }
+            })
+            .collect();
+        format!("🤖 {}", model_parts.join(", "))
     };
 
     // Calculate button positions: left buttons take available space, Go button to the right
