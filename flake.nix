@@ -57,8 +57,9 @@
     pjdfstest-src,
     ...
   }: let
+    inherit (nixpkgs) lib;
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
-    forAllSystems = nixpkgs.lib.genAttrs systems;
+    forAllSystems = lib.genAttrs systems;
 
     # AI coding agent packages (shared between packages and devShells)
     aiCodingAgentsForSystem = system: let
@@ -488,10 +489,55 @@
         pkgs.google-chrome
       ];
 
+      # NOTE: Not upstreamed (yet), using PR branch from https://github.com/NixOS/nixpkgs/pull/456210
+      inherit ((builtins.getFlake "github:mrcjkb/nixpkgs/28a58119302fd0818700b3f4947ee60e01f30424").outputs.legacyPackages.${system}) lspmux;
+
+      codiumWithLspmuxPackages = [
+        lspmux
+        (pkgs.vscode-with-extensions.override {
+          vscode = pkgs.vscodium;
+          vscodeExtensions = [
+            (lib.pipe pkgs.vscode-extensions.rust-lang.rust-analyzer [
+              (p: p.override {
+                setDefaultServerPath = false;
+              })
+              (p: p.overrideAttrs (oldAttrs: {
+                preInstall = ''
+                  ${oldAttrs.preInstall or ""}
+
+                  jq=${lib.getExe pkgs.jq}
+                  sponge=${lib.getExe' pkgs.moreutils "sponge"}
+                  lspmux=${lib.getExe lspmux}
+                  rust_analyzer=${lib.getExe pkgs.rust-analyzer}
+
+                  package_json="./package.json"
+
+                  $jq '(.contributes.configuration[] | select(.title == "Server"))
+                       |= (
+                         # `rust-analyzer.server.path`
+                           .properties."rust-analyzer.server.path".default = $lspmux
+                         | .properties."rust-analyzer.server.path".description = "Path to the lspmux shim (default: \($lspmux))"
+                         | .properties."rust-analyzer.server.path".markdownDescription = "**Path to the lspmux shim** — replaces the default rust-analyzer executable (default: `\($lspmux)`)."
+
+                         # `rust-analyzer.server.extraEnv`
+                         | .properties."rust-analyzer.server.extraEnv".default = {"RA_MUX_SERVER": $rust_analyzer}
+                         | .properties."rust-analyzer.server.extraEnv".description = "Environment variables for lspmux; RA_MUX_SERVER points to the rust-analyzer binary (\($rust_analyzer))."
+                         | .properties."rust-analyzer.server.extraEnv".markdownDescription = "**Extra environment variables for lspmux** — sets `RA_MUX_SERVER` to the rust-analyzer binary (`\($rust_analyzer)`). Useful for debugging or shared-server setups."
+                       )' \
+                    --arg lspmux "$lspmux" \
+                    --arg rust_analyzer "$rust_analyzer" \
+                    "$package_json" | $sponge "$package_json"
+                '';
+              }))
+            ])
+          ];
+        })
+      ];
+
       # All packages combined
       allPackages = commonPackages ++ linuxPackages ++ darwinPackages ++
                     self.checks.${system}.pre-commit-check.enabledPackages
-                    ++ ah-mux-test-tools;
+                    ++ ah-mux-test-tools ++ codiumWithLspmuxPackages;
 
       # Platform-specific shell hook additions
       exportLinuxEnvVars = if isLinux then ''
