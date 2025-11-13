@@ -107,6 +107,8 @@ pub enum KeyboardOperation {
     DeleteToBeginningOfLine,
     DismissOverlay,
     ToggleInsertMode,
+    IncrementValue,
+    DecrementValue,
 
     // Text Transformation
     UppercaseWord,
@@ -152,6 +154,7 @@ pub enum KeyboardOperation {
     CreateInSplitViewAndFocus,
     CreateInHorizontalSplit,
     CreateInVerticalSplit,
+    ActivateCurrentItem,
 }
 
 impl KeyboardOperation {
@@ -203,6 +206,8 @@ impl KeyboardOperation {
             KeyboardOperation::DeleteToBeginningOfLine => "shortcut-delete-to-beginning-of-line",
             KeyboardOperation::DismissOverlay => "shortcut-dismiss-overlay",
             KeyboardOperation::ToggleInsertMode => "shortcut-toggle-insert-mode",
+            KeyboardOperation::IncrementValue => "shortcut-increment-value",
+            KeyboardOperation::DecrementValue => "shortcut-decrement-value",
             KeyboardOperation::UppercaseWord => "shortcut-uppercase-word",
             KeyboardOperation::LowercaseWord => "shortcut-lowercase-word",
             KeyboardOperation::CapitalizeWord => "shortcut-capitalize-word",
@@ -236,6 +241,7 @@ impl KeyboardOperation {
             }
             KeyboardOperation::CreateInHorizontalSplit => "shortcut-create-in-horizontal-split",
             KeyboardOperation::CreateInVerticalSplit => "shortcut-create-in-vertical-split",
+            KeyboardOperation::ActivateCurrentItem => "shortcut-activate-current-item",
         }
     }
 
@@ -283,6 +289,8 @@ impl KeyboardOperation {
             KeyboardOperation::DeleteToBeginningOfLine => "Delete to beginning of line",
             KeyboardOperation::DismissOverlay => "Dismiss modal or quit",
             KeyboardOperation::ToggleInsertMode => "Toggle insert/overwrite mode",
+            KeyboardOperation::IncrementValue => "Increment value",
+            KeyboardOperation::DecrementValue => "Decrement value",
             KeyboardOperation::UppercaseWord => "Uppercase word",
             KeyboardOperation::LowercaseWord => "Lowercase word",
             KeyboardOperation::CapitalizeWord => "Capitalize word",
@@ -314,6 +322,7 @@ impl KeyboardOperation {
             KeyboardOperation::CreateInSplitViewAndFocus => "Create task in split view and focus",
             KeyboardOperation::CreateInHorizontalSplit => "Create task in horizontal split",
             KeyboardOperation::CreateInVerticalSplit => "Create task in vertical split",
+            KeyboardOperation::ActivateCurrentItem => "Activate current item",
         }
     }
 }
@@ -445,6 +454,9 @@ impl KeyMatcher {
                     actual == expected
                 }
             }
+            // Special handling: Tab matches both Tab and BackTab
+            (KeyCode::Tab, KeyCode::Tab | KeyCode::BackTab) => true,
+            (KeyCode::BackTab, KeyCode::Tab | KeyCode::BackTab) => true,
             _ => self.code == *code,
         }
     }
@@ -758,6 +770,14 @@ impl KeymapConfig {
                 vec!["Insert".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::IncrementValue,
+                vec!["Shift+=".to_string(), "Right".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::DecrementValue,
+                vec!["-".to_string(), "Left".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToPreviousLine,
                 vec!["Up".to_string(), "Ctrl+P".to_string()],
             ),
@@ -1046,6 +1066,10 @@ impl KeymapConfig {
                 KeyboardOperation::CreateInVerticalSplit,
                 vec!["Ctrl+Shift+Alt+Enter".to_string()],
             ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::ActivateCurrentItem,
+                vec!["Enter".to_string()],
+            ),
             // Session Viewer Task Entry
             KeyboardOperationDefinition::new(
                 KeyboardOperation::NextSnapshot,
@@ -1080,6 +1104,7 @@ impl KeymapConfig {
             KeyboardOperation::CreateInSplitViewAndFocus => &self.create_in_split_view_and_focus,
             KeyboardOperation::CreateInHorizontalSplit => &self.create_in_horizontal_split,
             KeyboardOperation::CreateInVerticalSplit => &self.create_in_vertical_split,
+            KeyboardOperation::ActivateCurrentItem => &self.activate_current_item,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
             KeyboardOperation::MoveBackwardOneWord => &self.move_backward_one_word,
@@ -1135,6 +1160,8 @@ impl KeymapConfig {
             KeyboardOperation::FindPrevious => &self.find_previous,
             KeyboardOperation::SetMark => &self.set_mark,
             KeyboardOperation::SelectAll => &self.select_all,
+            KeyboardOperation::IncrementValue => &self.increment_value,
+            KeyboardOperation::DecrementValue => &self.decrement_value,
         };
 
         if let Some(bindings) = bindings {
@@ -1189,6 +1216,9 @@ impl KeymapConfig {
             }
             KeyboardOperation::CreateInVerticalSplit => {
                 self.create_in_vertical_split.clone().unwrap_or_default()
+            }
+            KeyboardOperation::ActivateCurrentItem => {
+                self.activate_current_item.clone().unwrap_or_default()
             }
             KeyboardOperation::MoveToPreviousLine => {
                 self.move_to_previous_line.clone().unwrap_or_default()
@@ -1303,6 +1333,8 @@ impl KeymapConfig {
             KeyboardOperation::FindPrevious => self.find_previous.clone().unwrap_or_default(),
             KeyboardOperation::SetMark => self.set_mark.clone().unwrap_or_default(),
             KeyboardOperation::SelectAll => self.select_all.clone().unwrap_or_default(),
+            KeyboardOperation::IncrementValue => self.increment_value.clone().unwrap_or_default(),
+            KeyboardOperation::DecrementValue => self.decrement_value.clone().unwrap_or_default(),
         }
     }
 }
@@ -1393,12 +1425,15 @@ impl Default for KeymapConfig {
             find_previous: None,
             set_mark: None,
             select_all: None,
+            increment_value: None,
+            decrement_value: None,
             new_draft: None,
             create_and_focus: None,
             create_in_split_view: None,
             create_in_split_view_and_focus: None,
             create_in_horizontal_split: None,
             create_in_vertical_split: None,
+            activate_current_item: None,
         };
 
         // Populate the config with parsed default bindings
@@ -1452,6 +1487,9 @@ impl Default for KeymapConfig {
                     }
                     KeyboardOperation::CreateInVerticalSplit => {
                         config.create_in_vertical_split = Some(matchers)
+                    }
+                    KeyboardOperation::ActivateCurrentItem => {
+                        config.activate_current_item = Some(matchers)
                     }
                     KeyboardOperation::MoveToPreviousLine => {
                         config.move_to_previous_line = Some(matchers)
@@ -1566,6 +1604,8 @@ impl Default for KeymapConfig {
                     KeyboardOperation::FindPrevious => config.find_previous = Some(matchers),
                     KeyboardOperation::SetMark => config.set_mark = Some(matchers),
                     KeyboardOperation::SelectAll => config.select_all = Some(matchers),
+                    KeyboardOperation::IncrementValue => config.increment_value = Some(matchers),
+                    KeyboardOperation::DecrementValue => config.decrement_value = Some(matchers),
                 }
             }
         }
@@ -1658,6 +1698,8 @@ pub struct KeymapConfig {
     // Mark and Region
     pub set_mark: Option<Vec<KeyMatcher>>,
     pub select_all: Option<Vec<KeyMatcher>>,
+    pub increment_value: Option<Vec<KeyMatcher>>,
+    pub decrement_value: Option<Vec<KeyMatcher>>,
 
     // Application Actions
     pub new_draft: Option<Vec<KeyMatcher>>,
@@ -1666,6 +1708,7 @@ pub struct KeymapConfig {
     pub create_in_split_view_and_focus: Option<Vec<KeyMatcher>>,
     pub create_in_horizontal_split: Option<Vec<KeyMatcher>>,
     pub create_in_vertical_split: Option<Vec<KeyMatcher>>,
+    pub activate_current_item: Option<Vec<KeyMatcher>>,
 }
 
 /// Main settings configuration structure

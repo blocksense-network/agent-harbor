@@ -38,6 +38,70 @@ use ah_domain_types::SelectedModel;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
 use std::sync::Arc;
 
+// Minor mode for draft task text area editing (full text editing capabilities)
+pub static DRAFT_TEXT_EDITING_MODE: crate::view_model::input::InputMinorMode =
+    crate::view_model::input::InputMinorMode::new(&[
+        KeyboardOperation::MoveToBeginningOfLine,
+        KeyboardOperation::MoveToEndOfLine,
+        KeyboardOperation::MoveForwardOneCharacter,
+        KeyboardOperation::MoveBackwardOneCharacter,
+        KeyboardOperation::MoveForwardOneWord,
+        KeyboardOperation::MoveBackwardOneWord,
+        KeyboardOperation::DeleteWordForward,
+        KeyboardOperation::DeleteWordBackward,
+        KeyboardOperation::MoveToPreviousLine,
+        KeyboardOperation::MoveToNextLine,
+        KeyboardOperation::DeleteCharacterBackward,
+        KeyboardOperation::DuplicateLineSelection,
+        KeyboardOperation::DeleteCharacterForward,
+        KeyboardOperation::OpenNewLine,
+        KeyboardOperation::Cut,
+        KeyboardOperation::Copy,
+        KeyboardOperation::Paste,
+        KeyboardOperation::Undo,
+        KeyboardOperation::Redo,
+        KeyboardOperation::DeleteToEndOfLine,
+        KeyboardOperation::DeleteToBeginningOfLine,
+        KeyboardOperation::ToggleInsertMode,
+        KeyboardOperation::SelectAll,
+        KeyboardOperation::MoveToBeginningOfSentence,
+        KeyboardOperation::MoveToEndOfSentence,
+        KeyboardOperation::MoveToBeginningOfDocument,
+        KeyboardOperation::MoveToEndOfDocument,
+        KeyboardOperation::MoveToBeginningOfParagraph,
+        KeyboardOperation::MoveToEndOfParagraph,
+        KeyboardOperation::SelectWordUnderCursor,
+        KeyboardOperation::SetMark,
+        KeyboardOperation::ScrollDownOneScreen,
+        KeyboardOperation::ScrollUpOneScreen,
+        KeyboardOperation::RecenterScreenOnCursor,
+        KeyboardOperation::ToggleComment,
+        KeyboardOperation::MoveLineUp,
+        KeyboardOperation::MoveLineDown,
+        KeyboardOperation::IndentRegion,
+        KeyboardOperation::DedentRegion,
+        KeyboardOperation::UppercaseWord,
+        KeyboardOperation::LowercaseWord,
+        KeyboardOperation::CapitalizeWord,
+        KeyboardOperation::JoinLines,
+        KeyboardOperation::Bold,
+        KeyboardOperation::Italic,
+        KeyboardOperation::Underline,
+        KeyboardOperation::CycleThroughClipboard,
+        KeyboardOperation::TransposeCharacters,
+        KeyboardOperation::TransposeWords,
+        KeyboardOperation::IncrementalSearchForward,
+        KeyboardOperation::IncrementalSearchBackward,
+        KeyboardOperation::FindNext,
+        KeyboardOperation::FindPrevious,
+        KeyboardOperation::IndentOrComplete,
+        KeyboardOperation::CreateAndFocus,
+        KeyboardOperation::CreateInSplitView,
+        KeyboardOperation::CreateInSplitViewAndFocus,
+        KeyboardOperation::CreateInHorizontalSplit,
+        KeyboardOperation::CreateInVerticalSplit,
+    ]);
+
 /// Focus elements within a draft card
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardFocusElement {
@@ -47,137 +111,6 @@ pub enum CardFocusElement {
     ModelSelector,
     GoButton,
 }
-
-/// Macro that generates a list of all keyboard operations handled by the task entry module.
-/// This is used by dashboard_model.rs to determine which operations should be delegated
-/// to the task entry's handle_keyboard_operation method.
-#[macro_export]
-macro_rules! HandledKeyboardOperations {
-    () => {
-        crate::settings::KeyboardOperation::MoveToBeginningOfLine
-            | crate::settings::KeyboardOperation::MoveToEndOfLine
-            | crate::settings::KeyboardOperation::MoveForwardOneCharacter
-            | crate::settings::KeyboardOperation::MoveBackwardOneCharacter
-            | crate::settings::KeyboardOperation::MoveForwardOneWord
-            | crate::settings::KeyboardOperation::MoveBackwardOneWord
-            | crate::settings::KeyboardOperation::DeleteWordForward
-            | crate::settings::KeyboardOperation::DeleteWordBackward
-            | crate::settings::KeyboardOperation::MoveToPreviousLine
-            | crate::settings::KeyboardOperation::MoveToNextLine
-            | crate::settings::KeyboardOperation::DeleteCharacterBackward
-            | crate::settings::KeyboardOperation::DeleteCharacterForward
-            | crate::settings::KeyboardOperation::OpenNewLine
-            | crate::settings::KeyboardOperation::Cut
-            | crate::settings::KeyboardOperation::Copy
-            | crate::settings::KeyboardOperation::Paste
-            | crate::settings::KeyboardOperation::Undo
-            | crate::settings::KeyboardOperation::Redo
-            | crate::settings::KeyboardOperation::DeleteToEndOfLine
-            | crate::settings::KeyboardOperation::DeleteToBeginningOfLine
-            | crate::settings::KeyboardOperation::ToggleInsertMode
-            | crate::settings::KeyboardOperation::SelectAll
-            | crate::settings::KeyboardOperation::MoveToBeginningOfSentence
-            | crate::settings::KeyboardOperation::MoveToEndOfSentence
-            | crate::settings::KeyboardOperation::MoveToBeginningOfDocument
-            | crate::settings::KeyboardOperation::MoveToEndOfDocument
-            | crate::settings::KeyboardOperation::MoveToBeginningOfParagraph
-            | crate::settings::KeyboardOperation::MoveToEndOfParagraph
-            | crate::settings::KeyboardOperation::SelectWordUnderCursor
-            | crate::settings::KeyboardOperation::SetMark
-            | crate::settings::KeyboardOperation::ScrollDownOneScreen
-            | crate::settings::KeyboardOperation::ScrollUpOneScreen
-            | crate::settings::KeyboardOperation::RecenterScreenOnCursor
-            | crate::settings::KeyboardOperation::DuplicateLineSelection
-            | crate::settings::KeyboardOperation::ToggleComment
-            | crate::settings::KeyboardOperation::MoveLineUp
-            | crate::settings::KeyboardOperation::MoveLineDown
-            | crate::settings::KeyboardOperation::IndentRegion
-            | crate::settings::KeyboardOperation::DedentRegion
-            | crate::settings::KeyboardOperation::UppercaseWord
-            | crate::settings::KeyboardOperation::LowercaseWord
-            | crate::settings::KeyboardOperation::CapitalizeWord
-            | crate::settings::KeyboardOperation::JoinLines
-            | crate::settings::KeyboardOperation::Bold
-            | crate::settings::KeyboardOperation::Italic
-            | crate::settings::KeyboardOperation::Underline
-            | crate::settings::KeyboardOperation::CycleThroughClipboard
-            | crate::settings::KeyboardOperation::TransposeCharacters
-            | crate::settings::KeyboardOperation::TransposeWords
-            | crate::settings::KeyboardOperation::IncrementalSearchForward
-            | crate::settings::KeyboardOperation::IncrementalSearchBackward
-            | crate::settings::KeyboardOperation::FindNext
-            | crate::settings::KeyboardOperation::FindPrevious
-            | crate::settings::KeyboardOperation::IndentOrComplete
-            | crate::settings::KeyboardOperation::CreateAndFocus
-            | crate::settings::KeyboardOperation::CreateInSplitView
-            | crate::settings::KeyboardOperation::CreateInSplitViewAndFocus
-            | crate::settings::KeyboardOperation::CreateInHorizontalSplit
-            | crate::settings::KeyboardOperation::CreateInVerticalSplit
-    };
-}
-
-/// List of keyboard operations handled by the task entry input state.
-pub const TEXTAREA_INPUT_OPERATIONS: &[KeyboardOperation] = &[
-    KeyboardOperation::MoveToBeginningOfLine,
-    KeyboardOperation::MoveToEndOfLine,
-    KeyboardOperation::MoveForwardOneCharacter,
-    KeyboardOperation::MoveBackwardOneCharacter,
-    KeyboardOperation::MoveForwardOneWord,
-    KeyboardOperation::MoveBackwardOneWord,
-    KeyboardOperation::DeleteWordForward,
-    KeyboardOperation::DeleteWordBackward,
-    KeyboardOperation::MoveToPreviousLine,
-    KeyboardOperation::MoveToNextLine,
-    KeyboardOperation::DeleteCharacterBackward,
-    KeyboardOperation::DuplicateLineSelection,
-    KeyboardOperation::DeleteCharacterForward,
-    KeyboardOperation::OpenNewLine,
-    KeyboardOperation::Cut,
-    KeyboardOperation::Copy,
-    KeyboardOperation::Paste,
-    KeyboardOperation::Undo,
-    KeyboardOperation::Redo,
-    KeyboardOperation::DeleteToEndOfLine,
-    KeyboardOperation::DeleteToBeginningOfLine,
-    KeyboardOperation::ToggleInsertMode,
-    KeyboardOperation::SelectAll,
-    KeyboardOperation::MoveToBeginningOfSentence,
-    KeyboardOperation::MoveToEndOfSentence,
-    KeyboardOperation::MoveToBeginningOfDocument,
-    KeyboardOperation::MoveToEndOfDocument,
-    KeyboardOperation::MoveToBeginningOfParagraph,
-    KeyboardOperation::MoveToEndOfParagraph,
-    KeyboardOperation::SelectWordUnderCursor,
-    KeyboardOperation::SetMark,
-    KeyboardOperation::ScrollDownOneScreen,
-    KeyboardOperation::ScrollUpOneScreen,
-    KeyboardOperation::RecenterScreenOnCursor,
-    KeyboardOperation::ToggleComment,
-    KeyboardOperation::MoveLineUp,
-    KeyboardOperation::MoveLineDown,
-    KeyboardOperation::IndentRegion,
-    KeyboardOperation::DedentRegion,
-    KeyboardOperation::UppercaseWord,
-    KeyboardOperation::LowercaseWord,
-    KeyboardOperation::CapitalizeWord,
-    KeyboardOperation::JoinLines,
-    KeyboardOperation::Bold,
-    KeyboardOperation::Italic,
-    KeyboardOperation::Underline,
-    KeyboardOperation::CycleThroughClipboard,
-    KeyboardOperation::TransposeCharacters,
-    KeyboardOperation::TransposeWords,
-    KeyboardOperation::IncrementalSearchForward,
-    KeyboardOperation::IncrementalSearchBackward,
-    KeyboardOperation::FindNext,
-    KeyboardOperation::FindPrevious,
-    KeyboardOperation::IndentOrComplete,
-    KeyboardOperation::CreateAndFocus,
-    KeyboardOperation::CreateInSplitView,
-    KeyboardOperation::CreateInSplitViewAndFocus,
-    KeyboardOperation::CreateInHorizontalSplit,
-    KeyboardOperation::CreateInVerticalSplit,
-];
 
 /// Trait for managing autocomplete functionality and card interactions in the task entry.
 /// This allows the task entry to interact with autocomplete and the broader UI without
@@ -270,7 +203,37 @@ impl TaskEntryViewModel {
         key: &KeyEvent,
         needs_redraw: &mut bool,
     ) -> KeyboardOperationResult {
-        // Only handle operations when focused on the task description
+        // Handle button activation when buttons are focused
+        if matches!(operation, KeyboardOperation::ActivateCurrentItem) {
+            match self.focus_element {
+                CardFocusElement::RepositorySelector => {
+                    // This should be handled at the dashboard level by opening the repository modal
+                    return KeyboardOperationResult::NotHandled;
+                }
+                CardFocusElement::BranchSelector => {
+                    // This should be handled at the dashboard level by opening the branch modal
+                    return KeyboardOperationResult::NotHandled;
+                }
+                CardFocusElement::ModelSelector => {
+                    // This should be handled at the dashboard level by opening the model modal
+                    return KeyboardOperationResult::NotHandled;
+                }
+                CardFocusElement::GoButton => {
+                    // Launch the task - this should bubble up to dashboard level
+                    return KeyboardOperationResult::Bubble {
+                        operation: KeyboardOperation::ActivateCurrentItem,
+                    };
+                }
+                CardFocusElement::TaskDescription => {
+                    // Enter in textarea launches the task
+                    return KeyboardOperationResult::Bubble {
+                        operation: KeyboardOperation::ActivateCurrentItem,
+                    };
+                }
+            }
+        }
+
+        // Only handle text editing operations when focused on the task description
         if self.focus_element != CardFocusElement::TaskDescription {
             return KeyboardOperationResult::NotHandled;
         }

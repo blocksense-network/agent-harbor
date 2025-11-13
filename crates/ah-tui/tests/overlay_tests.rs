@@ -73,7 +73,7 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
 
     let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());
     assert!(
-        vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key),
+        vm.handle_key_event(esc_key.clone()),
         "ESC should dismiss settings modal (log: {log_hint})"
     );
     writeln!(
@@ -123,7 +123,7 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
         "menu should be open before ESC (log: {log_hint})"
     );
     assert!(
-        vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key),
+        vm.handle_key_event(esc_key.clone()),
         "ESC should close autocomplete first (log: {log_hint})"
     );
     assert!(
@@ -137,7 +137,7 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
 
     // First ESC should arm exit state
     assert!(
-        vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key),
+        vm.handle_key_event(esc_key.clone()),
         "ESC should arm exit when nothing else is open (log: {log_hint})"
     );
     assert!(
@@ -160,12 +160,12 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
     );
 
     // Arm again and confirm second ESC requests exit
-    vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key);
+    vm.handle_key_event(esc_key.clone());
     assert!(
         vm.exit_confirmation_armed,
         "exit re-armed (log: {log_hint})"
     );
-    vm.handle_keyboard_operation(KeyboardOperation::DismissOverlay, &esc_key);
+    vm.handle_key_event(esc_key.clone());
     writeln!(
         log,
         "After second ESC -> armed {} requested {}",

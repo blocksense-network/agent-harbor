@@ -562,7 +562,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
- "tui-textarea",
+ "tui-textarea 0.7.0",
  "vt100",
 ]
 
@@ -789,7 +789,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-testing",
- "tui-textarea",
+ "tui-textarea 0.7.0",
  "unic-langid",
  "unicode-segmentation",
  "unicode-width 0.2.0",
@@ -4964,7 +4964,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-input",
- "tui-textarea",
+ "tui-textarea 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "unic-langid",
  "unicode-segmentation",
  "unicode-width 0.1.14",
@@ -8419,7 +8419,18 @@ dependencies = [
 [[package]]
 name = "tui-textarea"
 version = "0.7.0"
-source = "git+https://github.com/blocksense-network/tui-textarea?branch=agent-harbor#26b6dfdd733e7e585513a908cd7e1c5261da95fc"
+dependencies = [
+ "crossterm 0.28.1",
+ "ratatui 0.29.0",
+ "regex",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "tui-textarea"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a5318dd619ed73c52a9417ad19046724effc1287fb75cdcc4eca1d6ac1acbae"
 dependencies = [
  "crossterm 0.28.1",
  "ratatui 0.29.0",

@@ -16,8 +16,8 @@ use crate::view::Theme;
 use crate::view::session_viewer::render_session_viewer;
 use crate::view_model::autocomplete::AutocompleteDependencies;
 use crate::view_model::session_viewer_model::{
-    GutterConfig, GutterPosition, SessionViewerMode, SessionViewerMouseAction, SessionViewerMsg,
-    SessionViewerViewModel,
+    GutterConfig, GutterPosition, SESSION_VIEWER_MODE, SessionViewerMode, SessionViewerMouseAction,
+    SessionViewerMsg, SessionViewerViewModel,
 };
 use ah_core::TaskManager;
 use ah_recorder::TerminalState;
@@ -369,7 +369,7 @@ impl ViewerEventLoop {
         // Check if this is a PreviousSnapshot or NextSnapshot operation that should be handled
         // by the session viewer model even when task entry is visible
         if let Some(operation) =
-            crate::view_model::input::key_event_to_operation(&key, &Default::default())
+            SESSION_VIEWER_MODE.resolve_key_to_operation(&key, &Default::default())
         {
             if matches!(
                 operation,

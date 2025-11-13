@@ -138,7 +138,13 @@ pub fn render_settings_dialog(frame: &mut Frame, modal_area: Rect, theme: &Theme
 }
 
 /// Render fuzzy search modal
-pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rect, theme: &Theme) {
+pub fn render_fuzzy_modal(
+    frame: &mut Frame,
+    modal: &FuzzySearchModal,
+    area: Rect,
+    theme: &Theme,
+    input_height: u16,
+) {
     // Calculate modal dimensions
     let modal_width = 60.min(area.width - 4);
     let modal_height = 15.min(area.height - 4);
@@ -182,8 +188,8 @@ pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rec
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Input area
-            Constraint::Min(0),    // Options area
+            Constraint::Length(input_height), // Input area
+            Constraint::Min(0),               // Options area
         ])
         .split(inner_area);
 
@@ -193,9 +199,9 @@ pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rec
         .border_style(Style::default().fg(theme.border));
     frame.render_widget(input_block, layout[0]);
 
-    // Input area (smaller)
+    // Input area (inside the input block, leaving space for the bottom border)
     let input_area = Rect {
-        x: layout[0].x + 1,
+        x: layout[0].x,
         y: layout[0].y + 1,
         width: layout[0].width.saturating_sub(2),
         height: 1,
@@ -218,12 +224,13 @@ pub fn render_fuzzy_modal(frame: &mut Frame, modal: &FuzzySearchModal, area: Rec
 
     for (i, (global_idx, option)) in visible_options.into_iter().enumerate() {
         let y = options_area.y + i as u16;
+
+        // Render option text
         let style = if global_idx == modal.selected_index {
             Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme.text)
         };
-
         let line = Line::from(vec![Span::styled(option.clone(), style)]);
         let rect = Rect {
             x: options_area.x,
