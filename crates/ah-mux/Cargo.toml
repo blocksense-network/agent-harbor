@@ -29,11 +29,16 @@ default = [
   "vim",
   "wezterm",
   "zellij",
+  "iterm2",
+  "ghostty",
+  "tilix",
+  "windows-terminal",
 ]
 tmux = []
 kitty = []
 wezterm = []
 zellij = []
+iterm2 = []
 screen = []
 ghostty = []
 tilix = []
