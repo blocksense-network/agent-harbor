@@ -36,9 +36,9 @@ fs-snapshots-test-harness = { path = "../../tests/fs-snapshots-test-harness", de
 
 [features]
 default = ["zfs", "btrfs", "git"]
-zfs = ["dep:ah-fs-snapshots-zfs"]
-btrfs = ["dep:ah-fs-snapshots-btrfs"]
-git = ["dep:ah-fs-snapshots-git"]
+zfs = ["ah-fs-snapshots-zfs"]
+btrfs = ["ah-fs-snapshots-btrfs"]
+git = ["ah-fs-snapshots-git"]
 agentfs = [
   "dep:agentfs-daemon",
   "dep:agentfs-proto",
