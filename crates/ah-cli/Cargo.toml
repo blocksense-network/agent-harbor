@@ -77,7 +77,7 @@ ethereum_ssz_derive = "0.8"
 
 # Agent recording dependencies
 ah-recorder = { path = "../ah-recorder" }
-vt100 = { path = "../../vendor/vt100" }
+vt100 = { workspace = true }
 crossterm = { workspace = true }
 tempfile = { workspace = true }
 dirs = "5.0"

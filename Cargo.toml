@@ -150,6 +150,8 @@ tui-textarea = { git = "https://github.com/blocksense-network/tui-textarea", bra
   "search",
 ] }
 
+vt100 = { git = "https://github.com/blocksense-network/vt100-rust", branch = "agent-harbor" }
+
 # Validation
 validator = { version = "0.20", features = ["derive"] }
 
