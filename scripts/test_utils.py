@@ -13,7 +13,7 @@ import logging
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
@@ -212,8 +212,8 @@ def resolve_scenario_path(project_root: Path, name: str) -> Path:
 def isoformat_utc(dt: datetime) -> str:
     """Format a datetime as an ISO-8601 UTC string."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def create_timestamped_run_id(
@@ -222,7 +222,7 @@ def create_timestamped_run_id(
     tag: Optional[str] = None,
 ) -> str:
     """Create a timestamped identifier suitable for manual test runs."""
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     parts = [prefix]
     if mode:
         parts.append(mode)

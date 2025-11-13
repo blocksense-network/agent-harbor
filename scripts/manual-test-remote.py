@@ -29,7 +29,7 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import suppress
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -219,7 +219,7 @@ def seed_rest_database(
 ) -> None:
     """Insert demo catalog entries into the REST server database."""
     logging.info("Seeding REST database with demo records: %s", db_path)
-    created_at = isoformat_utc(datetime.now(UTC))
+    created_at = isoformat_utc(datetime.now(timezone.utc))
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
 
@@ -261,7 +261,7 @@ def seed_mock_sessions(db_path: Path, run_dir: Path) -> None:
     """Populate the REST database with a curated set of mock sessions."""
     logging.info("Seeding mock REST dataset with active sessions: %s", db_path)
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     dataset = [
         {
             "id": "01HVZ6K9T1N8S6M3V3Q3F0X4",
