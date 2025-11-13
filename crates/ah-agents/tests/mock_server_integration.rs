@@ -34,17 +34,9 @@ use ah_agents::{AgentLaunchConfig, agent_by_name};
 use ah_core::agent_binary::AgentBinary;
 use ah_core::agent_types::AgentType;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::Path;
 use std::{fs, thread, time};
 use tempfile::TempDir;
-
-// Rust proxy imports for new tests
-#[cfg(feature = "rust-proxy-tests")]
-use llm_api_proxy::{LlmApiProxy, config::ProxyConfig};
-#[cfg(feature = "rust-proxy-tests")]
-use std::sync::Arc;
-#[cfg(feature = "rust-proxy-tests")]
-use tokio::sync::RwLock;
 
 use tokio::io::AsyncReadExt;
 
@@ -72,7 +64,7 @@ fn find_free_port() -> u16 {
 
 /// Create minimal Codex config to bypass onboarding
 /// Codex setup is handled here because CodexAgent doesn't implement automatic onboarding skip yet
-fn setup_codex_config(home_dir: &PathBuf, api_key: &str) {
+fn setup_codex_config(home_dir: &Path, api_key: &str) {
     let codex_dir = home_dir.join(".config").join("codex");
     fs::create_dir_all(&codex_dir).expect("Failed to create .config/codex directory");
 
@@ -139,6 +131,7 @@ async fn test_claude_with_mock_server() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../tests/tools/mock-agent/scenarios/basic_timeline_scenario.yaml"
     );
+    #[allow(clippy::zombie_processes)]
     let mut server = start_mock_llm_api_server(port, &agent_binary, scenario_path)
         .expect("Failed to start mock server");
 
@@ -274,6 +267,7 @@ async fn test_codex_with_mock_server() {
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests/tools/mock-agent/scenarios/basic_timeline_scenario.yaml"
         );
+        #[allow(clippy::zombie_processes)]
         let mut server = start_mock_llm_api_server(port, &agent_binary, scenario_path)
             .expect("Failed to start mock server");
 
