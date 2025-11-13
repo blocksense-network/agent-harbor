@@ -10,7 +10,7 @@ Claude Code stores session data in a comprehensive JSONL (JSON Lines) format tha
 ~/.claude/projects/<encoded-project-path>/<session-uuid>.jsonl
 ```
 
-- Project paths are encoded by replacing `/` with `-` (e.g., `/Users/zahary/project` becomes `-Users-zahary-project`)
+- Project paths are encoded by replacing `/` with `-` (e.g., `/home/user/my-project` becomes `-home-user-my-project`)
 - Each session gets a unique UUID-based filename
 - Files are stored in project-specific subdirectories for organization
 
@@ -23,7 +23,7 @@ Each line in a Claude session file is a JSON object representing a single conver
   "parentUuid": "c3be33fc-f78a-44e9-8a59-505d86d17429",
   "isSidechain": false,
   "userType": "external",
-  "cwd": "/Users/zahary/blocksense/agent-harbor",
+  "cwd": "/home/user/projects/my-app",
   "sessionId": "8f9e1698-672b-40ee-af6d-ec906d4910c0",
   "version": "1.0.98",
   "gitBranch": "main",
@@ -264,7 +264,7 @@ Tool execution results are stored in both the message content and a separate `to
   "toolUseResult": {
     "type": "text",
     "file": {
-      "filePath": "/Users/zahary/project/file.py",
+      "filePath": "/home/user/my-project/src/main.py",
       "content": "print('Hello, World!')\n",
       "numLines": 1,
       "startLine": 1,
@@ -335,7 +335,7 @@ Each entry captures git repository state:
 ```json
 {
   "gitBranch": "main",
-  "cwd": "/Users/zahary/blocksense/agent-harbor"
+  "cwd": "/home/user/projects/my-app"
 }
 ```
 

@@ -390,8 +390,7 @@ mod tests {
         use std::process::Command;
 
         // Build path to the ah binary (similar to the task integration tests)
-        let cargo_manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .unwrap_or_else(|_| "/Users/zahary/blocksense/agent-harbor/cli".to_string());
+        let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
         let binary_path = if cargo_manifest_dir.contains("/crates/") {
             std::path::Path::new(&cargo_manifest_dir).join("../../target/debug/ah")
         } else {
