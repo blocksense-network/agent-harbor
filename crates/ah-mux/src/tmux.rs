@@ -7,6 +7,7 @@
 //! Based on the tmux integration guide in specs/Public/Terminal-Multiplexers/tmux.md
 
 use ah_mux_core::*;
+use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -142,8 +143,28 @@ impl Multiplexer for TmuxMultiplexer {
             args.extend_from_slice(&["-c".to_string(), cwd.to_string_lossy().to_string()]);
         }
 
-        // Target the session
-        args.extend_from_slice(&["-t".to_string(), self.session_name.clone()]);
+        // Target the session, ensuring we select a free window index to avoid collisions
+        let list_output =
+            self.run_tmux_command(&["list-windows", "-t", &self.session_name, "-F", "#I"])?;
+
+        let mut used_indexes = BTreeSet::new();
+        for line in list_output.lines() {
+            if let Ok(idx) = line.trim().parse::<u32>() {
+                used_indexes.insert(idx);
+            }
+        }
+
+        let mut next_index = 0;
+        for idx in &used_indexes {
+            if *idx == next_index {
+                next_index += 1;
+            } else {
+                break;
+            }
+        }
+
+        let target_window = format!("{}:{}", self.session_name, next_index);
+        args.extend_from_slice(&["-t".to_string(), target_window]);
 
         // Convert to slice of &str for the command
         let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();

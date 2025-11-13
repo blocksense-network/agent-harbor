@@ -361,13 +361,16 @@ impl TuiArgs {
 
         let window_id = multiplexer.open_window(&window_opts)?;
 
+        // Grab the first pane in the new window so we can target commands reliably.
+        let pane_id = multiplexer
+            .list_panes(&window_id)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Multiplexer window has no panes"))?;
+
         // Run the dashboard command in the new window
         let dashboard_cmd = self.build_dashboard_command();
-        multiplexer.run_command(
-            &format!("{}-1", window_id),
-            &dashboard_cmd,
-            &Default::default(),
-        )?;
+        multiplexer.run_command(&pane_id, &dashboard_cmd, &Default::default())?;
 
         // For now, we'll run the dashboard locally instead of trying to exec into multiplexer
         // TODO: Implement proper session attachment
