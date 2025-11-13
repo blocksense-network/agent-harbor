@@ -1180,8 +1180,7 @@ exit {}
         }
 
         // Build command
-        let cargo_manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .unwrap_or_else(|_| "/home/zahary/blocksense/agent-harbor/cli".to_string());
+        let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
         // CARGO_MANIFEST_DIR is the crate directory when running individual crate tests,
         // but workspace root when running --workspace
         let binary_path = if cargo_manifest_dir.contains("/crates/") {
