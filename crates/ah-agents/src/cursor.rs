@@ -2,31 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /// Cursor CLI agent implementation
+use crate::common::AgentStatus;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
-
-/// Status information for the Cursor CLI
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CursorStatus {
-    /// Whether the CLI is installed and available
-    pub available: bool,
-    /// Version information if available
-    pub version: Option<String>,
-    /// Whether the user is authenticated
-    pub authenticated: bool,
-    /// Authentication method used (e.g., "Session Token", "API Key", "OAuth")
-    pub auth_method: Option<String>,
-    /// Source of authentication (config file path, environment variable name, etc.)
-    pub auth_source: Option<String>,
-    /// Any error that occurred during status check
-    pub error: Option<String>,
-}
 
 /// Cursor CLI agent executor
 pub struct CursorAgent {
@@ -160,12 +143,12 @@ impl CursorAgent {
     /// This function returns comprehensive status information in a structured format
     /// that can be easily consumed by health checkers and other tools.
     ///
-    /// Returns CursorStatus with detailed information about:
+    /// Returns AgentStatus with detailed information about:
     /// - CLI availability and version
     /// - Authentication status and method
     /// - Session token information (masked for security)
     /// - Any errors encountered
-    pub async fn get_cursor_status(&self) -> CursorStatus {
+    pub async fn get_cursor_status(&self) -> AgentStatus {
         // Check CLI availability by detecting version with timeout
         let version_result = tokio::time::timeout(
             std::time::Duration::from_millis(1500),
@@ -203,7 +186,7 @@ impl CursorAgent {
         };
 
         if !available {
-            return CursorStatus {
+            return AgentStatus {
                 available: false,
                 version: None,
                 authenticated: false,
@@ -219,7 +202,7 @@ impl CursorAgent {
                 // Determine authentication method and source
                 let (auth_method, auth_source) = self.detect_cursor_auth_details();
 
-                CursorStatus {
+                AgentStatus {
                     available,
                     version,
                     authenticated: true,
@@ -228,7 +211,7 @@ impl CursorAgent {
                     error,
                 }
             }
-            Ok(None) => CursorStatus {
+            Ok(None) => AgentStatus {
                 available,
                 version,
                 authenticated: false,
@@ -238,7 +221,7 @@ impl CursorAgent {
             },
             Err(e) => {
                 error = Some(format!("Authentication check failed: {}", e));
-                CursorStatus {
+                AgentStatus {
                     available,
                     version,
                     authenticated: false,
@@ -727,7 +710,7 @@ mod tests {
                 })
             }
 
-            async fn get_cursor_status_with_timeout(&self) -> CursorStatus {
+            async fn get_cursor_status_with_timeout(&self) -> AgentStatus {
                 // Similar to the real implementation but with timeout
                 let version_result = tokio::time::timeout(
                     Duration::from_millis(100), // Very short timeout to force timeout
@@ -750,7 +733,7 @@ mod tests {
                     Err(_) => (false, None, Some("Version detection timed out".to_string())),
                 };
 
-                CursorStatus {
+                AgentStatus {
                     available,
                     version,
                     authenticated: false,
@@ -810,9 +793,8 @@ mod tests {
 
         let agent = CursorAgent::new();
 
-        // Temporarily remove HOME environment variable using a custom value that doesn't exist
-        let _home_guard = EnvVarGuard::set("HOME", "/nonexistent/remove/home");
-        std::env::remove_var("HOME"); // Remove after setting to simulate no HOME
+        // Temporarily remove HOME environment variable to simulate no HOME
+        let _home_guard = EnvVarGuard::remove("HOME");
 
         let (auth_method, auth_source) = agent.detect_cursor_auth_details();
 
@@ -896,7 +878,7 @@ mod tests {
                 )
             }
 
-            async fn get_cursor_status(&self) -> CursorStatus {
+            async fn get_cursor_status(&self) -> AgentStatus {
                 // Simplified version of the real implementation
                 let version_result = self.detect_version().await;
 
@@ -910,7 +892,7 @@ mod tests {
                 };
 
                 if !available {
-                    return CursorStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -923,7 +905,7 @@ mod tests {
                 match self.check_cursor_login_status() {
                     Ok(Some(_token)) => {
                         let (auth_method, auth_source) = self.detect_cursor_auth_details();
-                        CursorStatus {
+                        AgentStatus {
                             available,
                             version,
                             authenticated: true,
@@ -932,7 +914,7 @@ mod tests {
                             error,
                         }
                     }
-                    _ => CursorStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
@@ -976,7 +958,7 @@ mod tests {
                 Ok(None) // No authentication token found
             }
 
-            async fn get_cursor_status(&self) -> CursorStatus {
+            async fn get_cursor_status(&self) -> AgentStatus {
                 let version_result = self.detect_version().await;
 
                 let (available, version, error) = match version_result {
@@ -989,7 +971,7 @@ mod tests {
                 };
 
                 if !available {
-                    return CursorStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -1000,7 +982,7 @@ mod tests {
                 }
 
                 match self.check_cursor_login_status() {
-                    Ok(Some(_token)) => CursorStatus {
+                    Ok(Some(_token)) => AgentStatus {
                         available,
                         version,
                         authenticated: true,
@@ -1008,7 +990,7 @@ mod tests {
                         auth_source: Some("mock_source".to_string()),
                         error,
                     },
-                    _ => CursorStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,

@@ -2,31 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /// Codex CLI agent implementation
+use crate::common::AgentStatus;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
-
-/// Status information for the Codex CLI
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodexStatus {
-    /// Whether the CLI is installed and available
-    pub available: bool,
-    /// Version information if available
-    pub version: Option<String>,
-    /// Whether the user is authenticated
-    pub authenticated: bool,
-    /// Authentication method used (e.g., "OPENAI_API_KEY", "CODEX_API_KEY", "OAuth Token Exchange")
-    pub auth_method: Option<String>,
-    /// Source of authentication (config file path, environment variable name, etc.)
-    pub auth_source: Option<String>,
-    /// Any error that occurred during status check
-    pub error: Option<String>,
-}
 
 /// Codex CLI agent executor
 pub struct CodexAgent {
@@ -64,12 +47,12 @@ impl CodexAgent {
 
     /// Get comprehensive status information for Codex CLI
     ///
-    /// Returns CodexStatus with detailed information about:
+    /// Returns AgentStatus with detailed information about:
     /// - CLI availability and version
     /// - Authentication status and method
     /// - API key information source
     /// - Any errors encountered
-    pub async fn get_codex_status(&self) -> CodexStatus {
+    pub async fn get_codex_status(&self) -> AgentStatus {
         // Check CLI availability by detecting version with timeout
         let (available, version, mut error) = match tokio::time::timeout(
             std::time::Duration::from_millis(1500),
@@ -90,7 +73,7 @@ impl CodexAgent {
         };
 
         if !available {
-            return CodexStatus {
+            return AgentStatus {
                 available: false,
                 version: None,
                 authenticated: false,
@@ -114,7 +97,7 @@ impl CodexAgent {
             }
         };
 
-        CodexStatus {
+        AgentStatus {
             available,
             version,
             authenticated,
@@ -547,7 +530,7 @@ mod tests {
                 })
             }
 
-            async fn get_codex_status_with_timeout(&self) -> CodexStatus {
+            async fn get_codex_status_with_timeout(&self) -> AgentStatus {
                 // Similar to the real implementation but with timeout
                 let version_result = tokio::time::timeout(
                     Duration::from_millis(100), // Very short timeout to force timeout
@@ -568,7 +551,7 @@ mod tests {
                     Err(_) => (false, None, Some("Version detection timed out".to_string())),
                 };
 
-                CodexStatus {
+                AgentStatus {
                     available,
                     version,
                     authenticated: false,
@@ -869,7 +852,7 @@ mod tests {
                 "OPENAI_API_KEY".to_string()
             }
 
-            async fn get_codex_status(&self) -> CodexStatus {
+            async fn get_codex_status(&self) -> AgentStatus {
                 // Simplified version of the real implementation
                 let version_result = self.detect_version().await;
 
@@ -883,7 +866,7 @@ mod tests {
                 };
 
                 if !available {
-                    return CodexStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -897,7 +880,7 @@ mod tests {
                     Ok(Some(_api_key)) => {
                         let method = self.detect_auth_method().await;
                         let source = self.detect_auth_source().await;
-                        CodexStatus {
+                        AgentStatus {
                             available,
                             version,
                             authenticated: true,
@@ -906,7 +889,7 @@ mod tests {
                             error,
                         }
                     }
-                    _ => CodexStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
@@ -950,7 +933,7 @@ mod tests {
                 Ok(None) // No API key found
             }
 
-            async fn get_codex_status(&self) -> CodexStatus {
+            async fn get_codex_status(&self) -> AgentStatus {
                 let version_result = self.detect_version().await;
 
                 let (available, version, error) = match version_result {
@@ -963,7 +946,7 @@ mod tests {
                 };
 
                 if !available {
-                    return CodexStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -974,7 +957,7 @@ mod tests {
                 }
 
                 match self.get_user_api_key().await {
-                    Ok(Some(_api_key)) => CodexStatus {
+                    Ok(Some(_api_key)) => AgentStatus {
                         available,
                         version,
                         authenticated: true,
@@ -982,7 +965,7 @@ mod tests {
                         auth_source: Some("mock".to_string()),
                         error,
                     },
-                    _ => CodexStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
