@@ -47,9 +47,9 @@
 
 **Deliverables:**
 
-- [ ] Extend `ah-core::create_local_task_manager_with_multiplexer` to construct every backend exported from `ah_mux` (tmux, kitty, wezterm, zellij, screen, tilix, windows-terminal, ghostty, vim, neovim, emacs) and reject selections that are unavailable instead of silently falling back.
-- [ ] Expand `determine_multiplexer_choice` so that environment detection maps nested terminals/multiplexers to the corresponding `CliMultiplexerType`, preserving the innermost supported multiplexer when both a terminal and multiplexer are detected.
-- [ ] Refactor `ah-cli::tui::determine_multiplexer_choice` to use the shared implementation from `ah-core`, eliminating code duplication.
+- [ x ] Extend `ah-core::create_local_task_manager_with_multiplexer` to construct every backend exported from `ah_mux` (tmux, kitty, wezterm, zellij, screen, tilix, windows-terminal, ghostty, vim, neovim, emacs) and reject selections that are unavailable instead of silently falling back.
+- [ x ] Expand `determine_multiplexer_choice` so that environment detection maps nested terminals/multiplexers to the corresponding `CliMultiplexerType`, preserving the innermost supported multiplexer when both a terminal and multiplexer are detected.
+- [ x ] Refactor `ah-cli::tui::determine_multiplexer_choice` to use the shared implementation from `ah-core`, eliminating code duplication.
 - [ ] Promote the additional backends to the default feature set (with `cfg(target_os)` guards where required) and update the Nix flake + CI images to install the matching binaries so the code compiles and runs on all supported platforms.
 - [ ] Teach the CLI to surface availability diagnostics (`ah health`) covering binary discovery, version checks, and user guidance when a backend is missing or misconfigured.
 - [ ] Update developer documentation (`specs/Public/Terminal-Multiplexers/*.md`) to reference the new automated checks and any OS-specific prerequisites introduced by the releases.
