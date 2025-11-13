@@ -1159,7 +1159,7 @@ OPTIONS:
 
 BEHAVIOR:
 
-The `ah agent sandbox` command provides a seamless workflow for launching the TUI dashboard within a sandboxed environment with automatic filesystem snapshot management.
+The `ah agent sandbox` command provides a seamless workflow for launching a process (e.g. a shell) within a sandboxed environment with automatic filesystem snapshot management.
 
 **Filesystem Detection and Snapshot Strategy:**
 

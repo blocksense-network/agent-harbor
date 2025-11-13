@@ -24,7 +24,7 @@ Below we outline the key file-watching mechanisms on macOS and how to hook them 
 
 **Behavior:** The FSEvents hook must **not block or alter real events** unless necessary for AgentFS consistency (e.g., filtering whiteouts). Genuine file events are passed through, potentially path-translated. Custom AgentFS events (e.g., reflecting CoW operations or branch-specific changes) are inserted seamlessly into the stream, formatted as valid FSEventStreamEvent entries. The application sees a coherent stream of events reflecting its virtual AgentFS view.
 
-**Note:** FSEvents is a high-level API abstracting /dev/fsevents[^1][^2]. Hooking its public API (FSEventStream\*) is sufficient for AgentFS interpose; no private hooks are needed.
+**Note:** FSEvents is a high-level API abstracting /dev/fsevents[^1][^2]. Hooking its public API (`FSEventStream*`) is sufficient for AgentFS interpose; no private hooks are needed.
 
 ## **BSD kqueue/kevent (File Descriptor Monitoring)**
 
@@ -66,7 +66,7 @@ A critical goal for AgentFS interpose is **transparency**. Hooks must preserve t
 
 For AgentFS interpose mode, **hooking the public APIs (FSEvents, kqueue/kevent, and potentially legacy Carbon/Cocoa) is sufficient**. These cover the documented ways applications monitor file changes.
 
-- **Private FSEvents Internals:** We do **not** need to hook communication with fseventsd or /dev/fsevents[^2]. Intercepting at the FSEventStream\* API level is adequate.
+- **Private FSEvents Internals:** We do **not** need to hook communication with fseventsd or /dev/fsevents[^2]. Intercepting at the `FSEventStream*` API level is adequate.
 - **Kqueue:** As a system call interface, kevent is the primary entry point. No private alternatives exist for this type of monitoring.
 - **Spotlight/Notifyd:** These are not general file monitoring APIs and are not targeted.
 
@@ -76,7 +76,7 @@ Focusing on public APIs aligns with the user-space interposition model and provi
 
 The described hooking strategy supports various application types running under AgentFS interpose:
 
-- **Modern 64-bit apps (Cocoa):** Typically use FSEvents or GCD dispatch sources, covered by FSEventStream\* and kevent hooks.
+- **Modern 64-bit apps (Cocoa):** Typically use FSEvents or GCD dispatch sources, covered by `FSEventStream*` and kevent hooks.
 - **Command-line/POSIX tools:** Often use kevent directly, captured by our hook. Cross-platform libraries (like Qt) using FSEvents on macOS are also covered. Polling-based tools are unaffected as they don't use event APIs.
 - **Legacy Carbon apps:** Covered by FNSubscribe hooks if needed.
 
@@ -88,7 +88,7 @@ This ensures that applications, regardless of their file monitoring approach, re
 
 [^2]: At the kernel level, file system events are delivered through the fseventsd daemon and /dev/fsevents device
 
-[^3]: FSEvents API - Advanced Mac OS X Programming: The Big Nerd Ranch Guide [https://www.oreilly.com/library/view/advanced-mac-os/9780321706560/ch16s14.html](https://www.oreilly.com/library/view/advanced-mac-os/9780321706560/ch16s14.html)
+[^3]: File System Events Programming Guide [https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/UsingtheFSEventsFramework/UsingtheFSEventsFramework.html#//apple_ref/doc/uid/TP40005289-CH4-SW6](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/UsingtheFSEventsFramework/UsingtheFSEventsFramework.html#//apple_ref/doc/uid/TP40005289-CH4-SW6)
 
 [^4]: The kernel queues API provides event notification facilities [https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/KernelQueues/KernelQueues.html](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/FSEvents_ProgGuide/KernelQueues/KernelQueues.html)
 

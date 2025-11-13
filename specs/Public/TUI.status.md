@@ -410,39 +410,7 @@ The TUI implementation provides these core capabilities:
 
 ## New/Refined Milestones to Reach Full PRD
 
-> All milestones below include **automated verification** (unit + integration + golden/snapshot tests). Test names are suggestions; feel free to adopt your naming convention.
-
-### T3.4 Static Dashboard Rendering (Style Development)
-
-**Deliverables**
-
-- Complete static rendering of the task-centric dashboard UI with Agent Harbor branding and header
-- Task feed showing sample chronological list of draft, active, and completed tasks with proper card layouts
-- Draft task creation card with static repository/branch/agent/model selector examples
-- Static footer showing context-sensitive shortcuts
-- Focus on visual design, spacing, colors, and typography to establish the dashboard aesthetic
-- No interactive functionality - purely static rendering for style iteration
-- Implementation completed in PoC phase and code has been removed (styles finalized in ah-tui crate)
-
-**Manual Tests**
-
-- Visual review of dashboard layout on different terminal sizes (80x24, 120x40)
-- Assessment of card spacing, padding, and visual hierarchy
-- Evaluation of color scheme and readability
-- Review of Agent Harbor branding integration
-- Terminal compatibility testing across different emulators
-- Font style symbol rendering verification (Unicode, Nerd Font, ASCII fallbacks)
-
-**Verification Criteria**
-
-- Dashboard renders cleanly without layout artifacts or overlapping elements
-- Visual design matches the aesthetic described in TUI-PRD.md
-- Text is readable and properly spaced
-- Branding elements display correctly with terminal image support detection
-- Layout adapts appropriately to different terminal widths
-- Color scheme provides good contrast and visual separation
-
-### T3.5 Task-Centric Dashboard Implementation
+### T3.4 Task-Centric Dashboard Implementation
 
 **Deliverables**
 
@@ -481,7 +449,7 @@ The TUI implementation provides these core capabilities:
 - **Testing Strategy 1**: Dashboard correctly displays data loaded from Mock API Server
 - **Testing Strategy 2**: UI components render correctly with mock session data
 
-### T3.6 Task Creation and Multiplexer Launch
+### T3.5 Task Creation and Multiplexer Launch
 
 **Deliverables**
 
@@ -516,7 +484,7 @@ The TUI implementation provides these core capabilities:
 - **Testing Strategy 1**: Remote mode task creation validated against Mock API Server endpoints
 - **Testing Strategy 2**: Local mode task creation and multiplexer integration tested with Mock Agent execution
 
-### T3.7 Real-Time Session Monitoring (SSE)
+### T3.6 Real-Time Session Monitoring (SSE)
 
 **Deliverables**
 
@@ -546,7 +514,7 @@ The TUI implementation provides these core capabilities:
 - **Testing Strategy 1**: SSE event streams and session updates validated against Mock API Server
 - **Testing Strategy 2**: Agent activity display and event formatting tested with Mock Agent execution
 
-### T3.8 Full Multiplexer Support (Multi-Mux Parity) ✅ **COMPLETED** (October 18, 2025)
+### T3.7 Full Multiplexer Support (Multi-Mux Parity) ✅ **COMPLETED** (October 18, 2025)
 
 **Deliverables**
 
@@ -622,7 +590,7 @@ The TUI implementation provides these core capabilities:
 
 **Test Coverage**: 70 tests passing including 2 comprehensive integration tests that verify real multiplexer functionality across all 11 backends
 
-### T3.9 Error/Status Bar Hardening
+### T3.8 Error/Status Bar Hardening
 
 **Deliverables**
 
@@ -643,7 +611,7 @@ The TUI implementation provides these core capabilities:
 - Validation and ephemeral notifications covered with deterministic fake time.
 - Multiplexer status updates correctly with connection state changes.
 
-### T3.10 Persistence (Selections & Theme)
+### T3.9 Persistence (Selections & Theme)
 
 **Deliverables**
 

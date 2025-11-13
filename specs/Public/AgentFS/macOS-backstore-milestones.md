@@ -363,8 +363,8 @@ Enable `agentfs-daemon` to consume and manage files from different backstore con
 - [x] Integration: `daemon_with_ramdisk_backstore()` creates and cleans up ramdisk.
 - [x] Unit: `backstore_status_api()` reports backstore type and capacity.
 - [x] Stress: `daemon_ramdisk_lifecycle()` survives daemon restart cycles.
-- [x] Integration: `test_comprehensive_filesystem_operations_inmemory()` validates end-to-end file operations.
-- [x] Persistence: `test_backstore_persistence_inmemory()` and `test_backstore_persistence_hostfs()` validate data persistence behavior.
+- [x] Integration: `test_comprehensive_filesystem_operations_in_memory()` validates end-to-end file operations.
+- [x] Persistence: `test_backstore_persistence_in_memory()` and `test_backstore_persistence_hostfs()` validate data persistence behavior.
 - [x] Error handling: `test_backstore_configuration_validation()` and `test_ramdisk_error_handling()` validate error conditions.
 
 **Implementation Details**

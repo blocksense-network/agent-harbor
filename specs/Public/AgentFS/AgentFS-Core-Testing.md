@@ -205,7 +205,7 @@ Prerequisite: FSKit extension built and signed; XPC client available.
 - Case sensitivity: Sensitive vs Insensitive‑preserving (macOS/Windows default) trees; conflicting names ("Readme" vs "README").
 - Streams & xattrs: presence/absence; large values; list ordering; Unicode names.
 - Locks: POSIX record locks (overlapping ranges), BSD flock; Windows share modes and mandatory locks.
-- Paths: deep hierarchies; long names; illegal name rejection on Windows (<>:"|?\* and reserved names); Unicode normalization.
+- Paths: deep hierarchies; long names; illegal name rejection on Windows (`<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, and `*` and reserved names); Unicode normalization.
 - Symlinks & hardlinks: creation, traversal, unlink of one link preserving data when other exists.
 - Concurrency: parallel readdir with concurrent creates/renames; lock contention; mixed readers/writers.
 - Snapshots/branches:

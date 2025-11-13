@@ -33,7 +33,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 futures = { workspace = true }
 unicode-width = "=0.2.0"
 clap = { workspace = true, features = ["derive"] }
-tui-textarea = { path = "../../vendor/tui-textarea", features = ["search"] }
+tui-textarea = { workspace = true }
 similar = "2.5"
 ratatui-image = { version = "8", features = ["crossterm"] }
 image = { version = "0.25", default-features = false, features = ["png"] }

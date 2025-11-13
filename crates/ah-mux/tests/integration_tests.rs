@@ -6,20 +6,13 @@
 //! These tests verify that multiplexer implementations work correctly
 //! by creating real windows/panes and measuring terminal dimensions.
 
-use std::env;
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
 use ah_mux::available_multiplexers;
 use ah_mux_core::{CommandOptions, Multiplexer, SplitDirection, WindowOptions};
 
-/// Terminal dimensions returned by our test binary
-#[derive(Debug, Clone)]
-struct TerminalSize {
-    cols: u16,
-    rows: u16,
-}
+mod common;
 
 /// Border characteristics for different multiplexers
 #[derive(Debug)]
@@ -58,65 +51,6 @@ impl BorderInfo {
                 horizontal_border_rows: 0,
             },
         }
-    }
-}
-
-/// Run the terminal size measurement binary and parse output
-fn measure_terminal_size() -> Result<TerminalSize, Box<dyn std::error::Error>> {
-    fn parse_env_var(name: &str) -> Option<u16> {
-        env::var(name).ok()?.trim().parse().ok()
-    }
-
-    fn run_tput(cap: &str) -> Option<u16> {
-        Command::new("tput")
-            .arg(cap)
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .and_then(|output| String::from_utf8(output.stdout).ok())
-            .and_then(|value| value.trim().parse().ok())
-    }
-
-    fn run_tput_with_term(term: &str, cap: &str) -> Option<u16> {
-        Command::new("tput")
-            .args(["-T", term, cap])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .and_then(|output| String::from_utf8(output.stdout).ok())
-            .and_then(|value| value.trim().parse().ok())
-    }
-
-    let mut cols = run_tput("cols");
-    let mut rows = run_tput("lines");
-
-    let fallback_terms = ["xterm-256color", "xterm", "vt100"];
-    if cols.is_none() || rows.is_none() {
-        for term in fallback_terms {
-            if cols.is_none() {
-                cols = run_tput_with_term(term, "cols");
-            }
-            if rows.is_none() {
-                rows = run_tput_with_term(term, "lines");
-            }
-            if cols.is_some() && rows.is_some() {
-                break;
-            }
-        }
-    }
-
-    if cols.is_none() || rows.is_none() {
-        if cols.is_none() {
-            cols = parse_env_var("COLUMNS");
-        }
-        if rows.is_none() {
-            rows = parse_env_var("LINES");
-        }
-    }
-
-    match (cols, rows) {
-        (Some(cols), Some(rows)) => Ok(TerminalSize { cols, rows }),
-        _ => Err("Failed to determine terminal size".into()),
     }
 }
 
@@ -321,10 +255,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
     fn test_measure_terminal_size() {
         // This test just verifies the measurement function works
         // It doesn't test the actual multiplexer functionality
-        let size = measure_terminal_size().unwrap();
+        let size = common::measure_terminal_size().unwrap();
         assert!(size.cols > 0);
         assert!(size.rows > 0);
     }
@@ -351,7 +286,7 @@ mod tests {
             println!("Testing pane sizing for {}", name);
 
             // 1. Create window and get baseline size
-            let _baseline = measure_terminal_size().unwrap();
+            let _baseline = common::measure_terminal_size().unwrap();
 
             // 2. Create window
             let _window_id = mux

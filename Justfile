@@ -10,7 +10,7 @@
 #   if [ -n "$IN_NIX_SHELL" ]; then echo "missing <tool>; fix flake.nix" >&2; exit 127; fi
 # This keeps `nix develop` fully reproducible and prevents hidden network variability.
 
-# Run the test suite
+root-dir := justfile_directory()
 
 set shell := ["./scripts/nix-env.sh", "-c"]
 
@@ -20,6 +20,20 @@ REPOMIX_OUT_DIR := env('REPOMIX_OUT_DIR', 'repomix')
 # IMPORTANT: Never use long scripts in Justfile recipes!
 # Long scripts set a custom shell, overriding our nix-env.sh setting.
 # Move complex scripts to the scripts/ folder instead.
+
+# List all available Just tasks
+default:
+  @just --list
+
+[doc('Run a command to clean the repository of untracked files')]
+clean:
+  git clean -fdx \
+    -e .jj \
+    -e .env \
+    -e .direnv \
+    -e .vscode \
+    -e .pre-commit-config.yaml \
+    -- {{root-dir}}
 
 # Check Rust code for compilation errors
 check:
@@ -165,6 +179,11 @@ md-links:
 # Spell-check Markdown with cspell (uses default dictionaries unless configured)
 md-spell:
     cspell "specs/**/*.md"
+
+# Add words to the shared cspell allow-list
+allow-words *words:
+    ./scripts/allow_words.py {{words}}
+    @git add .cspell.json
 
 # Create reusable file-backed filesystems for testing ZFS and Btrfs providers
 # This sets up persistent test environments in ~/.cache/agent-harbor
@@ -313,17 +332,6 @@ test-cgroups:
 
 # WebUI Development Targets
 # ========================
-
-# Install dependencies for mock server only
-mock-server-install:
-    yarn workspace ah-webui-mock-server install
-
-# Install dependencies for all WebUI projects
-webui-install:
-    yarn workspace shared install
-    yarn workspace ah-webui-ssr-sidecar install
-    just mock-server-install
-    yarn workspace ah-webui-e2e-tests install
 
 # Build WebUI application (SSR mode - default for development/testing)
 webui-build:
