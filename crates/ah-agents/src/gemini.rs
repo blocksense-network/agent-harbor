@@ -1,31 +1,14 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use crate::common::AgentStatus;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{debug, info, warn};
-
-/// Status information for the Gemini CLI
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiStatus {
-    /// Whether the CLI is installed and available
-    pub available: bool,
-    /// Version information if available
-    pub version: Option<String>,
-    /// Whether the user is authenticated
-    pub authenticated: bool,
-    /// Authentication method used (e.g., "gemini-api-key", "vertex-ai", "oauth-personal")
-    pub auth_method: Option<String>,
-    /// Source of authentication (config file path, environment variable name, etc.)
-    pub auth_source: Option<String>,
-    /// Any error that occurred during status check
-    pub error: Option<String>,
-}
 
 pub struct GeminiAgent {
     binary_path: String,
@@ -264,12 +247,12 @@ impl GeminiAgent {
     /// This function returns comprehensive status information in a structured format
     /// that can be easily consumed by health checkers and other tools.
     ///
-    /// Returns GeminiStatus with detailed information about:
+    /// Returns AgentStatus with detailed information about:
     /// - CLI availability and version
     /// - Authentication status and method
     /// - Authentication source information
     /// - Any errors encountered
-    pub async fn get_gemini_status(&self) -> GeminiStatus {
+    pub async fn get_gemini_status(&self) -> AgentStatus {
         // Check CLI availability by detecting version with timeout
         let (available, version, error) = match tokio::time::timeout(
             std::time::Duration::from_millis(1500),
@@ -292,7 +275,7 @@ impl GeminiAgent {
         };
 
         if !available {
-            return GeminiStatus {
+            return AgentStatus {
                 available: false,
                 version: None,
                 authenticated: false,
@@ -304,9 +287,9 @@ impl GeminiAgent {
 
         // Check authentication status using synchronous method to avoid hanging
         let (auth_method, auth_source) = self.detect_auth_details_sync();
-        let authenticated = matches!((&auth_method, &auth_source), (method, source) if method != "Unknown" && source != "Unknown");
+        let authenticated = auth_method != "Unknown" && auth_source != "Unknown";
 
-        GeminiStatus {
+        AgentStatus {
             available,
             version,
             authenticated,
@@ -1111,7 +1094,7 @@ mod tests {
             agent.detect_auth_details_sync()
         }
 
-        async fn get_gemini_status(&self) -> GeminiStatus {
+        async fn get_gemini_status(&self) -> AgentStatus {
             // Check CLI availability by detecting version with timeout
             let (available, version, error) = match tokio::time::timeout(
                 std::time::Duration::from_millis(1500),
@@ -1125,12 +1108,12 @@ mod tests {
                     None,
                     Some("Gemini CLI not found in PATH".to_string()),
                 ),
-                Ok(Err(e)) => (false, None, Some(format!("{}", e))),
+                Ok(Err(e)) => (false, None, Some(e.to_string())),
                 Err(_) => (false, None, Some("Version detection timed out".to_string())),
             };
 
             if !available {
-                return GeminiStatus {
+                return AgentStatus {
                     available: false,
                     version: None,
                     authenticated: false,
@@ -1142,9 +1125,9 @@ mod tests {
 
             // Check authentication status using synchronous method to avoid hanging
             let (auth_method, auth_source) = self.detect_auth_details_sync();
-            let authenticated = matches!((&auth_method, &auth_source), (method, source) if method != "Unknown" && source != "Unknown");
+            let authenticated = auth_method != "Unknown" && auth_source != "Unknown";
 
-            GeminiStatus {
+            AgentStatus {
                 available,
                 version,
                 authenticated,

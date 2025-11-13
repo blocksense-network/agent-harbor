@@ -1,32 +1,15 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use crate::common::AgentStatus;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
-
-/// Structured status information for Copilot CLI
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotStatus {
-    /// Whether the CLI is installed and available
-    pub available: bool,
-    /// Version information if available
-    pub version: Option<String>,
-    /// Whether the user is authenticated
-    pub authenticated: bool,
-    /// Authentication method used (e.g., "GH_TOKEN", "hosts.yml", "copilot_config")
-    pub auth_method: Option<String>,
-    /// Source of authentication (config file path, environment variable name, etc.)
-    pub auth_source: Option<String>,
-    /// Any error that occurred during status check
-    pub error: Option<String>,
-}
 
 pub struct CopilotAgent {
     binary_path: String,
@@ -169,12 +152,12 @@ impl CopilotAgent {
     /// This function returns comprehensive status information in a structured format
     /// that can be easily consumed by health checkers and other tools.
     ///
-    /// Returns CopilotStatus with detailed information about:
+    /// Returns AgentStatus with detailed information about:
     /// - CLI availability and version
     /// - Authentication status and method
     /// - API key information (masked for security)
     /// - Any errors encountered
-    pub async fn get_copilot_status(&self) -> CopilotStatus {
+    pub async fn get_copilot_status(&self) -> AgentStatus {
         // Check CLI availability by detecting version
         let (available, version, mut error) = match self.detect_version().await {
             Ok(version_info) => (true, Some(version_info.version), None),
@@ -191,7 +174,7 @@ impl CopilotAgent {
         };
 
         if !available {
-            return CopilotStatus {
+            return AgentStatus {
                 available: false,
                 version: None,
                 authenticated: false,
@@ -215,7 +198,7 @@ impl CopilotAgent {
             }
         };
 
-        CopilotStatus {
+        AgentStatus {
             available,
             version,
             authenticated,
@@ -892,7 +875,7 @@ mod tests {
                 "GH_TOKEN".to_string()
             }
 
-            async fn get_copilot_status(&self) -> CopilotStatus {
+            async fn get_copilot_status(&self) -> AgentStatus {
                 // Simplified version of the real implementation
                 let version_result = self.detect_version().await;
 
@@ -911,7 +894,7 @@ mod tests {
                 };
 
                 if !available {
-                    return CopilotStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -925,7 +908,7 @@ mod tests {
                     Ok(Some(_api_key)) => {
                         let method = self.detect_auth_method().await;
                         let source = self.detect_auth_source().await;
-                        CopilotStatus {
+                        AgentStatus {
                             available,
                             version,
                             authenticated: true,
@@ -934,7 +917,7 @@ mod tests {
                             error,
                         }
                     }
-                    _ => CopilotStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
@@ -979,7 +962,7 @@ mod tests {
                 Ok(None) // No API key found
             }
 
-            async fn get_copilot_status(&self) -> CopilotStatus {
+            async fn get_copilot_status(&self) -> AgentStatus {
                 let version_result = self.detect_version().await;
 
                 let (available, version, error) = match version_result {
@@ -997,7 +980,7 @@ mod tests {
                 };
 
                 if !available {
-                    return CopilotStatus {
+                    return AgentStatus {
                         available: false,
                         version: None,
                         authenticated: false,
@@ -1008,7 +991,7 @@ mod tests {
                 }
 
                 match self.get_user_api_key().await {
-                    Ok(Some(_api_key)) => CopilotStatus {
+                    Ok(Some(_api_key)) => AgentStatus {
                         available,
                         version,
                         authenticated: true,
@@ -1016,7 +999,7 @@ mod tests {
                         auth_source: Some("mock".to_string()),
                         error,
                     },
-                    _ => CopilotStatus {
+                    _ => AgentStatus {
                         available,
                         version,
                         authenticated: false,
