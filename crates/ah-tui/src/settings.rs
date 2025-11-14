@@ -104,6 +104,7 @@ pub enum KeyboardOperation {
     IndentOrComplete,
     MoveToNextField,
     MoveToPreviousField,
+    AcceptAutocomplete,
     DeleteToBeginningOfLine,
     DismissOverlay,
     ToggleInsertMode,
@@ -203,6 +204,7 @@ impl KeyboardOperation {
             KeyboardOperation::IndentOrComplete => "shortcut-indent-or-complete",
             KeyboardOperation::MoveToNextField => "shortcut-move-to-next-field",
             KeyboardOperation::MoveToPreviousField => "shortcut-move-to-previous-field",
+            KeyboardOperation::AcceptAutocomplete => "shortcut-accept-autocomplete",
             KeyboardOperation::DeleteToBeginningOfLine => "shortcut-delete-to-beginning-of-line",
             KeyboardOperation::DismissOverlay => "shortcut-dismiss-overlay",
             KeyboardOperation::ToggleInsertMode => "shortcut-toggle-insert-mode",
@@ -322,6 +324,7 @@ impl KeyboardOperation {
             KeyboardOperation::CreateInSplitViewAndFocus => "Create task in split view and focus",
             KeyboardOperation::CreateInHorizontalSplit => "Create task in horizontal split",
             KeyboardOperation::CreateInVerticalSplit => "Create task in vertical split",
+            KeyboardOperation::AcceptAutocomplete => "Accept active autocomplete suggestion",
             KeyboardOperation::ActivateCurrentItem => "Activate current item",
         }
     }
@@ -762,6 +765,10 @@ impl KeymapConfig {
                 vec!["Shift+Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::AcceptAutocomplete,
+                vec!["Tab".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::DismissOverlay,
                 vec!["Esc".to_string()],
             ),
@@ -1096,6 +1103,7 @@ impl KeymapConfig {
             KeyboardOperation::MoveToNextLine => &self.move_to_next_line,
             KeyboardOperation::MoveToNextField => &self.move_to_next_field,
             KeyboardOperation::MoveToPreviousField => &self.move_to_previous_field,
+            KeyboardOperation::AcceptAutocomplete => &self.accept_autocomplete,
             KeyboardOperation::DismissOverlay => &self.dismiss_overlay,
             KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
             KeyboardOperation::NewDraft => &self.new_draft,
@@ -1198,6 +1206,9 @@ impl KeymapConfig {
             }
             KeyboardOperation::MoveToPreviousField => {
                 self.move_to_previous_field.clone().unwrap_or_default()
+            }
+            KeyboardOperation::AcceptAutocomplete => {
+                self.accept_autocomplete.clone().unwrap_or_default()
             }
             KeyboardOperation::DismissOverlay => self.dismiss_overlay.clone().unwrap_or_default(),
             KeyboardOperation::SelectWordUnderCursor => {
@@ -1368,6 +1379,7 @@ impl Default for KeymapConfig {
             move_to_next_line: None,
             move_to_next_field: None,
             move_to_previous_field: None,
+            accept_autocomplete: None,
             dismiss_overlay: None,
             select_word_under_cursor: None,
             move_to_previous_line: None,
@@ -1469,6 +1481,9 @@ impl Default for KeymapConfig {
                     }
                     KeyboardOperation::MoveToPreviousField => {
                         config.move_to_previous_field = Some(matchers)
+                    }
+                    KeyboardOperation::AcceptAutocomplete => {
+                        config.accept_autocomplete = Some(matchers)
                     }
                     KeyboardOperation::DismissOverlay => config.dismiss_overlay = Some(matchers),
                     KeyboardOperation::SelectWordUnderCursor => {
@@ -1627,6 +1642,7 @@ pub struct KeymapConfig {
     pub move_to_next_line: Option<Vec<KeyMatcher>>,
     pub move_to_next_field: Option<Vec<KeyMatcher>>,
     pub move_to_previous_field: Option<Vec<KeyMatcher>>,
+    pub accept_autocomplete: Option<Vec<KeyMatcher>>,
     pub dismiss_overlay: Option<Vec<KeyMatcher>>,
     pub select_word_under_cursor: Option<Vec<KeyMatcher>>,
     pub move_to_previous_line: Option<Vec<KeyMatcher>>,
@@ -1726,6 +1742,9 @@ pub struct Settings {
     /// Whether to show borders on autocomplete menus (default: true)
     pub autocomplete_show_border: Option<bool>,
 
+    /// Whether inline workspace term completions should also open the suggestions menu (default: true)
+    pub workspace_terms_menu: Option<bool>,
+
     /// Keyboard shortcuts configuration
     pub keymap: Option<KeymapConfig>,
 
@@ -1740,6 +1759,7 @@ impl Default for Settings {
             font_style: Some(FontStyle::Unicode),
             selection_dialog_style: Some(SelectionDialogStyle::Default),
             autocomplete_show_border: Some(true),
+            workspace_terms_menu: Some(true),
             keymap: Some(KeymapConfig::default()),
             default_agents: None,
         }
@@ -1787,6 +1807,11 @@ impl Settings {
     /// Get whether to show borders on autocomplete menus, with default fallback
     pub fn autocomplete_show_border(&self) -> bool {
         self.autocomplete_show_border.unwrap_or(true)
+    }
+
+    /// Whether inline workspace terms show a popup menu (default true)
+    pub fn workspace_terms_menu(&self) -> bool {
+        self.workspace_terms_menu.unwrap_or(true)
     }
 
     /// Get the keymap configuration, with default fallback

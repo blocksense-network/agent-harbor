@@ -142,9 +142,13 @@ fn create_test_view_model(
     let settings = ah_tui::settings::Settings::from_config()
         .unwrap_or_else(|_| ah_tui::settings::Settings::default());
 
+    let workspace_terms: Arc<dyn ah_core::WorkspaceTermsEnumerator> = Arc::new(
+        ah_core::DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+    );
     let autocomplete_deps = Arc::new(AutocompleteDependencies {
         workspace_files,
         workspace_workflows,
+        workspace_terms,
         settings,
     });
 

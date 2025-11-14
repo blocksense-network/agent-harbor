@@ -330,6 +330,12 @@ pub mod minor_modes {
         KeyboardOperation::NewDraft,
         KeyboardOperation::SelectAll,
     ]);
+
+    /// Autocomplete accept mode (shown when inline suggestions are available)
+    pub static AUTOCOMPLETE_ACTIVE_MODE: InputMinorMode = InputMinorMode::with_prominent_operations(
+        &[KeyboardOperation::AcceptAutocomplete],
+        &[KeyboardOperation::AcceptAutocomplete],
+    );
 }
 
 /// Input minor mode defining a set of keyboard operations for a UI context

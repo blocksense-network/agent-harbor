@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ah_core::{
-    BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator,
-    task_manager::SaveDraftResult,
+    BranchesEnumerator, DefaultWorkspaceTermsEnumerator, RepositoriesEnumerator, TaskManager,
+    WorkspaceFilesEnumerator, WorkspaceTermsEnumerator, task_manager::SaveDraftResult,
 };
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, DraftTask, TaskExecution,
@@ -41,6 +41,9 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
         Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
         Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+    let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+        DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+    );
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
     let mock_client = MockRestClient::new();
     let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
@@ -57,6 +60,7 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
         ViewModel::new(
             workspace_files,
             workspace_workflows,
+            workspace_terms,
             task_manager,
             repositories_enumerator,
             branches_enumerator,

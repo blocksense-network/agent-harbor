@@ -260,7 +260,7 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::Head);
                 if self.description.cursor() != before {
-                    // TODO: redraw handling
+                    self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
             }
@@ -285,7 +285,7 @@ impl TaskEntryViewModel {
 
                 self.description.move_cursor(CursorMove::End);
                 if self.description.cursor() != before {
-                    // TODO: redraw handling
+                    self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 }
                 KeyboardOperationResult::Handled
             }
@@ -301,6 +301,7 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::Forward);
 
                 if self.description.cursor() != before {
+                    self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                     *needs_redraw = true;
                 }
                 KeyboardOperationResult::Handled
@@ -317,6 +318,7 @@ impl TaskEntryViewModel {
                 self.description.move_cursor(CursorMove::Back);
 
                 if self.description.cursor() != before {
+                    self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                     *needs_redraw = true;
                 }
                 KeyboardOperationResult::Handled

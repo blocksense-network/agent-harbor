@@ -354,6 +354,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     let autocomplete_dependencies = Arc::new(AutocompleteDependencies {
         workspace_files: deps.workspace_files.clone(),
         workspace_workflows: deps.workspace_workflows.clone(),
+        workspace_terms: deps.workspace_terms.clone(),
         settings: deps.settings.clone(),
     });
 

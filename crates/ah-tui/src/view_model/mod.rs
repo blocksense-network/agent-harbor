@@ -63,7 +63,7 @@ pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
-pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, Trigger};
+pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, MenuContext, Trigger};
 pub use dashboard_model::{
     DashboardFocusState, FooterAction, ModalType, ModalViewModel, ModelOptionViewModel,
     MouseAction, Msg, SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo,

@@ -5,9 +5,10 @@
 
 #[allow(unused_imports)]
 use ah_core::{
-    CliMultiplexerType, LocalBranchesEnumerator, LocalRepositoriesEnumerator, MultiplexerChoice,
-    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, RemoteWorkspaceFilesEnumerator,
-    WorkspaceFilesEnumerator, determine_multiplexer_choice,
+    CliMultiplexerType, DefaultWorkspaceTermsEnumerator, LocalBranchesEnumerator,
+    LocalRepositoriesEnumerator, MultiplexerChoice, RemoteBranchesEnumerator,
+    RemoteRepositoriesEnumerator, RemoteWorkspaceFilesEnumerator, WorkspaceFilesEnumerator,
+    WorkspaceTermsEnumerator, determine_multiplexer_choice,
 };
 use ah_mux::detection;
 use ah_mux_core::{Multiplexer, WindowOptions};
@@ -469,6 +470,9 @@ impl TuiArgs {
                 ));
             let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
                 Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+            let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+                DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+            );
 
             // Create remote enumerators for remote mode
             let repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator> = Arc::new(
@@ -480,6 +484,7 @@ impl TuiArgs {
             Ok(TuiDependencies {
                 workspace_files,
                 workspace_workflows,
+                workspace_terms,
                 task_manager,
                 repositories_enumerator,
                 branches_enumerator,
@@ -510,6 +515,9 @@ impl TuiArgs {
             let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(
                 WorkflowProcessor::for_repo(config, &workspace_dir)
                     .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default())),
+            );
+            let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+                DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
             );
 
             // Use shared task manager initialization
@@ -547,6 +555,7 @@ impl TuiArgs {
             Ok(TuiDependencies {
                 workspace_files,
                 workspace_workflows,
+                workspace_terms,
                 task_manager,
                 repositories_enumerator,
                 branches_enumerator,
