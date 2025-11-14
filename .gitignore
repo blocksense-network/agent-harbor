@@ -165,3 +165,6 @@ webui/e2e-tests/browsers/
 webui/app/.vite/
 webui/mock-server/dist/
 webui/shared/dist/
+
+# Next.js build output
+.next
