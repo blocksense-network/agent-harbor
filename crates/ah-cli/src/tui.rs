@@ -211,8 +211,8 @@ impl TuiArgs {
             )
             | (None, MultiplexerChoice::InSupportedMultiplexer(multiplexer_type)) => {
                 tracing::info!(
-                    multiplexer_type = ?multiplexer_type,
-                    "Detected multiplexer environment, launching dashboard directly"
+                   multiplexer_type = ?multiplexer_type,
+                   "Detected multiplexer environment, launching dashboard directly"
                 );
                 // Use the detected multiplexer for task management
                 let multiplexer_type = Some(multiplexer_type.clone());
