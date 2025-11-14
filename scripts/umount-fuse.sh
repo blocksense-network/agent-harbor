@@ -20,9 +20,20 @@ fi
 
 echo "🔌 Unmounting FUSE filesystem from $mountpoint..."
 
+kill_fuse_host() {
+  if pgrep -f agentfs-fuse-host >/dev/null 2>&1; then
+    echo "⚠️  Killing lingering agentfs-fuse-host processes"
+    pkill -f agentfs-fuse-host >/dev/null 2>&1 || true
+    sleep 1
+  fi
+}
+
 # Try fusermount first (Linux), then umount
 if command -v fusermount >/dev/null 2>&1; then
-  fusermount -u "$mountpoint" 2>/dev/null || true
+  if ! fusermount -u "$mountpoint" 2>/dev/null; then
+    kill_fuse_host
+    fusermount -u "$mountpoint" 2>/dev/null || true
+  fi
 elif command -v umount >/dev/null 2>&1; then
   umount "$mountpoint" 2>/dev/null || true
 else

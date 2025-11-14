@@ -69,15 +69,14 @@ mod tests {
         let pid1 = core.register_process(pid_value, pid_value, 1000, 1000);
         assert_eq!(pid1.0, pid_value);
 
-        // Second registration with same PID should return same token
-        let pid2 = core.register_process(pid_value, pid_value, 2000, 2000); // Different uid/gid
+        // Second registration with same PID but new identity updates credentials
+        let pid2 = core.register_process(pid_value, pid_value, 2000, 2000);
         assert_eq!(pid2.0, pid_value);
         assert_eq!(pid1, pid2);
 
-        // Verify the original identity is preserved (not overwritten)
         let user = core.user_for_process(&PID::new(pid_value)).unwrap();
-        assert_eq!(user.uid, 1000);
-        assert_eq!(user.gid, 1000);
+        assert_eq!(user.uid, 2000);
+        assert_eq!(user.gid, 2000);
     }
     #[test]
     fn test_error_display() {

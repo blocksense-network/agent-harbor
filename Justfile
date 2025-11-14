@@ -330,6 +330,11 @@ setup-pjdfstest-suite:
 run-pjdfstest mountpoint:
     ./scripts/run-pjdfstest.sh "{{mountpoint}}"
 
+# Run a small pjdfstest subset (requires the mount to exist and sudo)
+# Usage: sudo -E just test-pjdfs-subset /tmp/agentfs
+test-pjdfs-subset mountpoint:
+    ./scripts/run-pjdfstest-subset.sh "{{mountpoint}}"
+
 # Build all TUI test binaries needed for TUI testing
 build-tui-tests: build-tui-test-binaries
 
