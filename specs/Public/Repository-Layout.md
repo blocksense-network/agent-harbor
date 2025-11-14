@@ -96,10 +96,12 @@ agent-harbor/
 │  ├─ agentfs-winfsp/          # WinFsp host packaging (Windows)
 │  └─ sbx-helper/              # Sandbox helper packaging
 ├─ crates/                     # All Rust crates
-│  ├─ ah-cli/                  # Bin: `ah` (Clap subcommands; TUI glue)
+│  ├─ ah-cli/                  # Bin: `ah` (Clap subcommands; TUI glue, logging integration)
 │  ├─ ah-tui/                  # TUI widgets/flows (Ratatui)
 │  ├─ tui-testing/             # TUI testing framework with ZeroMQ IPC
 │  ├─ ah-core/                 # Task/session lifecycle orchestration
+│  ├─ ah-domain-types/         # Shared domain types (CLI args, task states, enums)
+│  ├─ ah-logging/              # Centralized logging utilities with format selection and platform paths
 │  ├─ ah-mux-core/             # Low-level, AH-agnostic multiplexer trait + shared types
 │  ├─ ah-mux/                  # Monolith crate: AH adapter + all backends as feature-gated modules
 │  ├─ config-core/             # Generic config engine (schema/validation/merging)
@@ -203,7 +205,7 @@ The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host 
 
 ### Crate mapping (selected)
 
-- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agents`, `ah-agent-claude`, `ah-agent-codex`, `ah-schemas`.
+- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `ah-domain-types`, `ah-logging`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agents`, `ah-agent-claude`, `ah-agent-codex`, `ah-schemas`.
 - GUI (Electron native addons): `ah-gui-core`, `ah-gui-webui-manager`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.

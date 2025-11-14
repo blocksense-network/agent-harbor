@@ -26,6 +26,8 @@ ratatui = "0.29"
 
 # AH core dependencies
 ah-core = { path = "../ah-core" }
+ah-domain-types = { path = "../ah-domain-types" }
+ah-logging = { path = "../ah-logging" }
 ah-repo = { path = "../ah-repo" }
 ah-local-db = { path = "../ah-local-db" }
 config-core = { path = "../config-core" }

@@ -11,11 +11,13 @@
 //! UI-agnostic, reusable across different contexts.
 
 pub mod agent;
+pub mod cli;
 pub mod repository;
 pub mod task;
 
 // Re-export commonly used types
 pub use agent::*;
+pub use cli::*;
 pub use repository::*;
 pub use task::*;
 

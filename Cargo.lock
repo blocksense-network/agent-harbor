@@ -274,11 +274,13 @@ dependencies = [
  "ah-agents",
  "ah-config-types",
  "ah-core",
+ "ah-domain-types",
  "ah-fs-snapshots",
  "ah-fs-snapshots-btrfs",
  "ah-fs-snapshots-git",
  "ah-fs-snapshots-zfs",
  "ah-local-db",
+ "ah-logging",
  "ah-mux",
  "ah-mux-core",
  "ah-recorder",
@@ -373,7 +375,9 @@ name = "ah-domain-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "clap",
  "serde",
+ "tracing",
  "utoipa",
 ]
 
@@ -498,6 +502,19 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "ah-logging"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -659,8 +676,10 @@ name = "ah-rest-server"
 version = "0.1.0"
 dependencies = [
  "ah-core",
+ "ah-domain-types",
  "ah-fs-snapshots",
  "ah-local-db",
+ "ah-logging",
  "ah-repo",
  "ah-rest-api-contract",
  "anyhow",

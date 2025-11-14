@@ -3,10 +3,11 @@
 
 //! Agent Harbor REST API server binary
 
+use ah_domain_types::CliLogLevel;
+use ah_logging::{Level, LogFormat, init};
 use ah_rest_server::{Server, ServerConfig};
 use clap::Parser;
 use std::net::SocketAddr;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -29,21 +30,16 @@ struct Args {
 
     /// Log level
     #[arg(short, long, default_value = "info")]
-    log_level: String,
+    log_level: CliLogLevel,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_env("AH_LOG")
-                .unwrap_or_else(|_| format!("ah_rest_server={}", args.log_level).into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logging
+    let default_level: Level = args.log_level.into();
+    init("ah-rest-server", default_level, LogFormat::Plaintext)?;
 
     tracing::info!("Starting Agent Harbor REST API server");
 

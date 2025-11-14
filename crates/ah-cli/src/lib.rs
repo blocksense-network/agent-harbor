@@ -13,7 +13,10 @@ pub mod transport;
 pub mod tui;
 
 // Re-export CLI types for testing
-pub use clap::{Parser, Subcommand};
+pub use clap::{Parser, Subcommand, ValueEnum};
+
+// Re-export domain types
+pub use ah_domain_types::CliLogLevel;
 
 // Re-export agent types for backward compatibility
 pub use agent::start::CliAgentType as AgentType;
@@ -32,11 +35,10 @@ pub struct Cli {
     #[arg(long, help = "Additional configuration file to load")]
     pub config: Option<String>,
 
-    /// Set the log level (debug, info, warn, error)
+    /// Set the log level
     #[arg(long, help = "Set the log level")]
     #[arg(default_value = if cfg!(debug_assertions) { "debug" } else { "info" })]
-    #[arg(value_parser = clap::builder::PossibleValuesParser::new(["debug", "info", "warn", "error"]))]
-    pub log_level: String,
+    pub log_level: CliLogLevel,
 
     /// Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AH auto-detects a VCS root by walking parent directories and checking all supported VCS.
     #[arg(long)]

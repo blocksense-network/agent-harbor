@@ -1,0 +1,24 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-logging"
+version = "0.1.0"
+edition = "2021"
+description = "Centralized logging utilities for Agent Harbor"
+license = "AGPL-3.0-only"
+authors = ["Agent Harbor Team"]
+
+[dependencies]
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, optional = true }
+dirs = "5.0"
+
+[features]
+default = []
+json = []
+tokio = ["dep:tokio"]
