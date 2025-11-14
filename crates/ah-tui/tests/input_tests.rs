@@ -21,6 +21,18 @@ fn create_mock_settings() -> ah_tui::Settings {
         KeyModifiers::NONE,
         None,
     );
+    let ctrl_s_matcher = KeyMatcher::new(
+        KeyCode::Char('s'),
+        KeyModifiers::CONTROL,
+        KeyModifiers::NONE,
+        None,
+    );
+    let ctrl_n_matcher = KeyMatcher::new(
+        KeyCode::Char('n'),
+        KeyModifiers::CONTROL,
+        KeyModifiers::NONE,
+        None,
+    );
 
     // Create keymap with bindings
     let mut keymap = KeymapConfig::default();
@@ -28,6 +40,8 @@ fn create_mock_settings() -> ah_tui::Settings {
     keymap.move_to_previous_line = Some(vec![up_matcher]);
     keymap.dismiss_overlay = Some(vec![esc_matcher]);
     keymap.select_all = Some(vec![ctrl_a_matcher]);
+    keymap.incremental_search_forward = Some(vec![ctrl_s_matcher]);
+    keymap.new_draft = Some(vec![ctrl_n_matcher]);
 
     ah_tui::Settings {
         keymap: Some(keymap),
@@ -42,8 +56,10 @@ mod tests {
     #[test]
     fn test_input_minor_mode_creation() {
         let mode = &SESSION_VIEWER_MODE;
-        assert!(mode.handles_operation(&KeyboardOperation::MoveToNextLine));
-        assert!(mode.handles_operation(&KeyboardOperation::MoveToPreviousLine));
+        assert!(mode.handles_operation(&KeyboardOperation::MoveToNextField));
+        assert!(mode.handles_operation(&KeyboardOperation::MoveToPreviousField));
+        assert!(mode.handles_operation(&KeyboardOperation::DismissOverlay));
+        assert!(mode.handles_operation(&KeyboardOperation::NewDraft));
         assert!(!mode.handles_operation(&KeyboardOperation::SelectAll));
     }
 
@@ -63,17 +79,18 @@ mod tests {
     fn test_resolve_key_to_operation() {
         let settings = create_mock_settings();
 
-        // Test navigation operations
+        // Test navigation operations (moved to TERMINAL_NAVIGATION_MODE)
         let down_event = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
         let up_event = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
 
+        // SESSION_VIEWER_MODE no longer has navigation operations
         assert_eq!(
             SESSION_VIEWER_MODE.resolve_key_to_operation(&down_event, &settings),
-            Some(KeyboardOperation::MoveToNextLine)
+            None
         );
         assert_eq!(
             SESSION_VIEWER_MODE.resolve_key_to_operation(&up_event, &settings),
-            Some(KeyboardOperation::MoveToPreviousLine)
+            None
         );
 
         // Test that operations not in the mode are not resolved
@@ -148,15 +165,15 @@ mod tests {
     fn test_resolve_key_outside_mode() {
         let settings = create_mock_settings();
 
-        // ESC is bound but not in SESSION_VIEWER_MODE mode
+        // ESC is bound in SESSION_VIEWER_MODE
         let esc_event = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 
         assert_eq!(
             SESSION_VIEWER_MODE.resolve_key_to_operation(&esc_event, &settings),
-            None
+            Some(KeyboardOperation::DismissOverlay)
         );
 
-        // But it should work in SELECTION mode
+        // And it should also work in SELECTION mode
         assert_eq!(
             minor_modes::SELECTION_MODE.resolve_key_to_operation(&esc_event, &settings),
             Some(KeyboardOperation::DismissOverlay)

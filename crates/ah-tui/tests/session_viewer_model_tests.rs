@@ -16,14 +16,46 @@ use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ah_recorder::{AhrSnapshot, ColumnIndex, LineIndex, Snapshot, TerminalState};
+use ah_tui::Msg;
 use ah_tui::settings::KeyboardOperation;
 use ah_tui::view_model::autocomplete::AutocompleteDependencies;
 use ah_tui::view_model::session_viewer_model::{
-    DisplayItem, DisplayStructure, GutterConfig, SessionViewerMode, SessionViewerMsg,
-    SessionViewerViewModel,
+    DisplayItem, DisplayStructure, GutterConfig, SESSION_VIEWER_MODE, SessionViewerFocusState,
+    SessionViewerMode, SessionViewerMsg, SessionViewerViewModel,
 };
 use ah_tui::view_model::task_entry::TaskEntryViewModel;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+/// Test helper to create a mock settings object with minimal key bindings
+fn create_mock_settings() -> ah_tui::Settings {
+    use ah_tui::settings::KeyMatcher;
+
+    // Create KeyMatchers for our test bindings
+    let esc_matcher = KeyMatcher::new(KeyCode::Esc, KeyModifiers::NONE, KeyModifiers::NONE, None);
+    let ctrl_s_matcher = KeyMatcher::new(
+        KeyCode::Char('s'),
+        KeyModifiers::CONTROL,
+        KeyModifiers::NONE,
+        None,
+    );
+    let ctrl_n_matcher = KeyMatcher::new(
+        KeyCode::Char('n'),
+        KeyModifiers::CONTROL,
+        KeyModifiers::NONE,
+        None,
+    );
+
+    // Create keymap with bindings
+    let mut keymap = ah_tui::settings::KeymapConfig::default();
+    keymap.dismiss_overlay = Some(vec![esc_matcher]);
+    keymap.incremental_search_forward = Some(vec![ctrl_s_matcher]);
+    keymap.new_draft = Some(vec![ctrl_n_matcher]);
+
+    ah_tui::Settings {
+        keymap: Some(keymap),
+        ..Default::default()
+    }
+}
 
 // Named constants for key events used in testing
 static PREVIOUS_SNAPSHOT_KEY: LazyLock<KeyEvent> =
@@ -1002,4 +1034,223 @@ fn test_manual_scrolling_moves_task_entry_with_snapshot() {
             "Snapshot line should be the first line of after_task_entry after scrolling"
         );
     }
+}
+
+/// Test DismissOverlay operation (Esc key handling)
+#[test]
+fn test_dismiss_overlay_operation() {
+    let mut view_model = create_test_view_model(80, 24, 1000);
+
+    // Initially no task entry visible
+    assert!(!view_model.task_entry_visible);
+    assert!(!view_model.exit_confirmation_armed);
+
+    // First Esc should arm exit confirmation
+    let esc_key = key_event(KeyCode::Esc, KeyModifiers::empty());
+    let result = view_model.update(SessionViewerMsg::Key(esc_key));
+    assert!(!view_model.task_entry_visible);
+    assert!(view_model.exit_confirmation_armed);
+    assert_eq!(
+        view_model.status_bar.exit_confirmation_message,
+        Some("Press Esc again to quit".to_string())
+    );
+    assert!(result.is_empty()); // No quit message yet
+
+    // Second Esc should quit
+    let result = view_model.update(SessionViewerMsg::Key(esc_key));
+    assert!(view_model.exit_requested);
+    assert!(matches!(result.as_slice(), [Msg::Quit]));
+
+    // Reset for next test
+    view_model.exit_requested = false;
+    view_model.exit_confirmation_armed = false;
+    view_model.status_bar.exit_confirmation_message = None;
+
+    // Test with task entry visible - Esc should dismiss overlay
+    // First add a snapshot so NewDraft has something to work with
+    feed_lines(&mut view_model, &["Initial content"]);
+    record_snapshot(&mut view_model, "test_snapshot");
+
+    // Show task entry by using NewDraft operation (Ctrl+N)
+    let ctrl_n_key = key_event(KeyCode::Char('n'), KeyModifiers::CONTROL);
+    let _ = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
+    assert!(view_model.task_entry_visible);
+    assert!(!view_model.exit_confirmation_armed);
+
+    // Esc should dismiss the task entry
+    let result = view_model.update(SessionViewerMsg::Key(esc_key));
+    assert!(!view_model.task_entry_visible);
+    assert!(!view_model.exit_confirmation_armed);
+    assert!(result.is_empty());
+}
+
+/// Test NewDraft operation (Ctrl+N key for inserting instruction)
+#[test]
+fn test_new_draft_operation() {
+    let mut view_model = create_test_view_model(80, 24, 1000);
+
+    // Create some snapshots
+    for i in 0..5 {
+        feed_lines(&mut view_model, &[&format!("Line {}", i)]);
+        record_snapshot(&mut view_model, &format!("snapshot_{}", i));
+    }
+
+    // Initially no task entry visible
+    assert!(!view_model.task_entry_visible);
+
+    // Press 'Ctrl+N' should show task entry at latest snapshot
+    let ctrl_n_key = key_event(KeyCode::Char('n'), KeyModifiers::CONTROL);
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
+    assert!(view_model.task_entry_visible);
+    assert_eq!(view_model.current_snapshot_index, Some(4)); // Latest snapshot
+    assert!(result.is_empty());
+
+    // Pressing 'Ctrl+N' again should not create another task entry (already visible)
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
+    assert!(view_model.task_entry_visible);
+    assert_eq!(view_model.current_snapshot_index, Some(4));
+    assert!(result.is_empty());
+}
+
+/// Test IncrementalSearchForward operation (Ctrl+S key)
+#[test]
+fn test_incremental_search_operation() {
+    let mut view_model = create_test_view_model(80, 24, 1000);
+
+    // Initially no search active
+    assert!(view_model.search_state.is_none());
+
+    // Set focus to terminal for search operations
+    view_model.focus_element = SessionViewerFocusState::Terminal;
+
+    // Press 'Ctrl+S' should start search
+    let ctrl_s_key = key_event(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_s_key));
+    assert!(view_model.search_state.is_some());
+    assert_eq!(view_model.search_state.as_ref().unwrap().query, "");
+    assert_eq!(view_model.search_state.as_ref().unwrap().cursor_pos, 0);
+    assert!(result.is_empty());
+}
+
+/// Test scrolling operations (Home, End, PageUp, PageDown)
+#[test]
+fn test_scrolling_operations() {
+    let mut view_model = create_test_view_model(80, 24, 1000);
+
+    // Fill with more content than viewport
+    for i in 0..50 {
+        feed_lines(&mut view_model, &[&format!("Line {}", i)]);
+    }
+
+    // Initially auto-following (should be at bottom)
+    assert!(view_model.auto_follow);
+    let viewport_height = view_model.display_rows() as usize;
+    let total_lines = view_model.total_rows();
+    assert_eq!(
+        view_model.scroll_offset.as_usize(),
+        total_lines.saturating_sub(viewport_height)
+    );
+
+    // Change focus to terminal for scrolling operations
+    view_model.focus_element = SessionViewerFocusState::Terminal;
+
+    // Test MoveToBeginningOfDocument (Ctrl+Home)
+    let home_key = key_event(KeyCode::Home, KeyModifiers::CONTROL);
+    let result = view_model.update(SessionViewerMsg::Key(home_key));
+    assert_eq!(view_model.scroll_offset.as_usize(), 0);
+    assert!(!view_model.auto_follow);
+    assert!(result.is_empty());
+
+    // Test MoveToEndOfDocument (Ctrl+End)
+    let end_key = key_event(KeyCode::End, KeyModifiers::CONTROL);
+    let result = view_model.update(SessionViewerMsg::Key(end_key));
+    assert_eq!(
+        view_model.scroll_offset.as_usize(),
+        total_lines.saturating_sub(viewport_height)
+    );
+    assert!(view_model.auto_follow);
+    assert!(result.is_empty());
+
+    // Test ScrollUpOneScreen (PageUp key)
+    view_model.scroll_offset = LineIndex(30); // Scroll to middle (past viewport height)
+    view_model.auto_follow = false;
+    let page_up_key = key_event(KeyCode::PageUp, KeyModifiers::empty());
+    let settings = ah_tui::Settings::default();
+    let operation = SESSION_VIEWER_MODE.resolve_key_to_operation(&page_up_key, &settings);
+    println!("PageUp operation: {:?}", operation);
+    let result = view_model.update(SessionViewerMsg::Key(page_up_key));
+    println!(
+        "Scroll offset after PageUp: {}",
+        view_model.scroll_offset.as_usize()
+    );
+    assert_eq!(view_model.scroll_offset.as_usize(), 30 - viewport_height);
+    assert!(!view_model.auto_follow);
+    assert!(result.is_empty());
+
+    // Test ScrollDownOneScreen (PageDown key)
+    let page_down_key = key_event(KeyCode::PageDown, KeyModifiers::empty());
+    let result = view_model.update(SessionViewerMsg::Key(page_down_key));
+    let current_scroll = 30 - viewport_height;
+    let expected_scroll = current_scroll + viewport_height;
+    let max_scroll = total_lines.saturating_sub(viewport_height);
+    if expected_scroll >= max_scroll {
+        assert_eq!(view_model.scroll_offset.as_usize(), max_scroll);
+        assert!(view_model.auto_follow);
+    } else {
+        assert_eq!(view_model.scroll_offset.as_usize(), expected_scroll);
+        assert!(!view_model.auto_follow);
+    }
+    assert!(result.is_empty());
+}
+
+/// Test integration of key handling with SessionViewer state changes
+#[test]
+fn test_minor_mode_integration() {
+    let mut view_model = create_test_view_model(80, 24, 1000);
+
+    // Create some content and snapshots
+    for i in 0..10 {
+        feed_lines(&mut view_model, &[&format!("Line {}", i)]);
+        record_snapshot(&mut view_model, &format!("snapshot_{}", i));
+    }
+
+    // Test DismissOverlay (Esc) - should arm exit confirmation
+    let esc_key = key_event(KeyCode::Esc, KeyModifiers::empty());
+    let result = view_model.update(SessionViewerMsg::Key(esc_key));
+    assert!(view_model.exit_confirmation_armed);
+    assert!(result.is_empty());
+
+    // Reset exit confirmation
+    view_model.exit_confirmation_armed = false;
+    view_model.status_bar.exit_confirmation_message = None;
+
+    // Test NewDraft (Ctrl+N) - should show task entry
+    let ctrl_n_key = key_event(KeyCode::Char('n'), KeyModifiers::CONTROL);
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
+    assert!(view_model.task_entry_visible);
+    assert_eq!(view_model.current_snapshot_index, Some(9)); // Latest snapshot
+    assert!(result.is_empty());
+
+    // Reset task entry state
+    view_model.task_entry_visible = false;
+    view_model.current_snapshot_index = None;
+    view_model.focus_element = SessionViewerFocusState::Terminal;
+
+    // Test IncrementalSearchForward (Ctrl+S) - should start search (works in TERMINAL_NAVIGATION_MODE)
+    let ctrl_s_key = key_event(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_s_key));
+    assert!(view_model.search_state.is_some());
+    assert!(result.is_empty());
+
+    // Test that IncrementalSearchForward works even when task entry is focused
+    view_model.search_state = None; // Reset search state
+
+    // Show task entry first
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
+    assert!(view_model.task_entry_visible);
+
+    // Now Ctrl+S should still start search (because it's in TERMINAL_NAVIGATION_MODE)
+    let result = view_model.update(SessionViewerMsg::Key(ctrl_s_key));
+    assert!(view_model.search_state.is_some());
+    assert!(result.is_empty());
 }
