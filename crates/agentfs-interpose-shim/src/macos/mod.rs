@@ -20,6 +20,7 @@ use core_foundation::{base::TCFType, declare_TCFType, impl_TCFType};
 use scopeguard::guard;
 
 // SSZ imports
+use agentfs_client::{AgentFsClient, AllowlistConfig, ClientConfig, ProcessConfig};
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode, Encode};
 
@@ -1302,6 +1303,16 @@ fn log_message(message: &str) {
     eprintln!("{LOG_PREFIX} [pid={pid}] {message}");
 }
 
+#[no_mangle]
+pub extern "C" fn agentfs_interpose_force_reconnect() {
+    if let Err(err) = try_reconnect_to_daemon() {
+        log_message(&format!(
+            "agentfs_interpose_force_reconnect failed: {}",
+            err
+        ));
+    }
+}
+
 #[derive(Debug)]
 struct AllowDecision {
     allowed: bool,
@@ -1359,44 +1370,6 @@ impl AllowDecision {
             raw_entries: Some(entries),
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-#[ssz(enum_behaviour = "union")]
-enum HandshakeMessage {
-    Handshake(HandshakeData),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-struct HandshakeData {
-    version: Vec<u8>,
-    shim: ShimInfo,
-    process: ProcessInfo,
-    allowlist: AllowlistInfo,
-    timestamp: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-struct ShimInfo {
-    name: Vec<u8>,
-    crate_version: Vec<u8>,
-    features: Vec<Vec<u8>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-struct ProcessInfo {
-    pid: u32,
-    ppid: u32,
-    uid: u32,
-    gid: u32,
-    exe_path: Vec<u8>,
-    exe_name: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-struct AllowlistInfo {
-    matched_entry: Option<Vec<u8>>,
-    configured_entries: Option<Vec<Vec<u8>>>,
 }
 
 // SSZ encoding/decoding functions for interpose communication
@@ -1654,23 +1627,7 @@ fn attempt_handshake(
     exe: &Path,
     allow: &AllowDecision,
 ) -> Result<UnixStream, String> {
-    use std::os::unix::net::UnixStream as StdUnixStream;
-
     let socket_display = socket_path.display();
-    let mut stream = StdUnixStream::connect(socket_path).map_err(|err| {
-        format!(
-            "failed to connect to AgentFS control socket '{}': {}",
-            socket_display, err
-        )
-    })?;
-
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .map_err(|err| format!("failed to set read timeout: {err}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(2)))
-        .map_err(|err| format!("failed to set write timeout: {err}"))?;
-
     let pid = std::process::id();
     let ppid = unsafe { libc::getppid() as u32 };
     let uid = unsafe { libc::geteuid() as u32 };
@@ -1679,70 +1636,50 @@ fn attempt_handshake(
     let exe_path_owned = exe.to_string_lossy().into_owned();
     let exe_name_owned = exe_name.to_string();
 
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or_default();
+    let process_config = ProcessConfig::new(
+        pid,
+        ppid,
+        uid,
+        gid,
+        exe_path_owned.clone(),
+        exe_name_owned.clone(),
+    );
 
-    let message = HandshakeMessage::Handshake(HandshakeData {
-        version: b"1".to_vec(),
-        shim: ShimInfo {
-            name: b"agentfs-interpose-shim".to_vec(),
-            crate_version: env!("CARGO_PKG_VERSION").as_bytes().to_vec(),
-            features: vec![b"handshake".to_vec(), b"allowlist".to_vec()],
-        },
-        process: ProcessInfo {
-            pid,
-            ppid,
-            uid,
-            gid,
-            exe_path: exe_path_owned.into_bytes(),
-            exe_name: exe_name_owned.into_bytes(),
-        },
-        allowlist: AllowlistInfo {
-            matched_entry: allow.matched_entry.as_ref().map(|s| s.clone().into_bytes()),
-            configured_entries: allow
-                .raw_entries
-                .as_ref()
-                .map(|entries| entries.iter().map(|s| s.clone().into_bytes()).collect()),
-        },
-        timestamp: format!("{timestamp}").into_bytes(),
-    });
+    let mut builder = ClientConfig::builder("agentfs-interpose-shim", env!("CARGO_PKG_VERSION"))
+        .feature("handshake")
+        .feature("allowlist")
+        .process(process_config)
+        .read_timeout(Duration::from_secs(2))
+        .write_timeout(Duration::from_secs(2));
 
-    let ssz_bytes = encode_ssz(&message);
-    let ssz_len = ssz_bytes.len() as u32;
-
-    stream
-        .write_all(&ssz_len.to_le_bytes())
-        .and_then(|_| stream.write_all(&ssz_bytes))
-        .map_err(|err| format!("failed to send handshake: {err}"))?;
-
-    // Read acknowledgement
-    let mut response_buf = [0u8; 1024];
-    match stream.read(&mut response_buf) {
-        Ok(0) => {
-            return Err(format!(
-                "control socket closed without acknowledgement from {}",
-                socket_display
-            ));
-        }
-        Ok(n) => {
-            let response = String::from_utf8_lossy(&response_buf[..n]);
-            log_message(&format!(
-                "handshake acknowledged by {socket_display}: {response}"
-            ));
-        }
-        Err(err) => {
-            return Err(format!("failed to read handshake acknowledgement: {err}"));
-        }
+    if allow.matched_entry.is_some() || allow.raw_entries.is_some() {
+        builder = builder.allowlist(AllowlistConfig::new(
+            allow.matched_entry.clone(),
+            allow.raw_entries.clone(),
+        ));
     }
 
+    let config = builder
+        .build()
+        .map_err(|err| format!("failed to build AgentFS client configuration: {err}"))?;
+
+    let client = AgentFsClient::connect(socket_path, &config).map_err(|err| {
+        format!(
+            "failed to connect to AgentFS control socket '{}': {}",
+            socket_display, err
+        )
+    })?;
+
+    let acknowledgement = String::from_utf8_lossy(client.handshake_ack()).into_owned();
+    log_message(&format!(
+        "handshake acknowledged by {socket_display}: {acknowledgement}"
+    ));
     log_message(&format!(
         "handshake completed with AgentFS control socket: {}",
         socket_display
     ));
 
-    Ok(stream)
+    Ok(client.into_stream())
 }
 
 #[cfg(test)]

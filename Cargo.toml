@@ -39,6 +39,7 @@ members = [
   # AgentFS crates
   "crates/agentfs-core",
   "crates/agentfs-proto",
+  "crates/agentfs-client",
   "crates/agentfs-fuse-host",
   "crates/agentfs-winfsp-host",
   "crates/agentfs-fskit-host",
@@ -73,6 +74,7 @@ members = [
   "tests/vm-enforcement",
   "tests/agentfs-daemon-backstore-integration",
   "tests/tools/mock-tui-dashboard",
+  "tests/fs-snapshots-test-harness",
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",

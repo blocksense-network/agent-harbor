@@ -15,6 +15,8 @@ use ssz_derive::{Decode, Encode};
 pub enum Request {
     SnapshotCreate((Vec<u8>, SnapshotCreateRequest)), // (version, request)
     SnapshotList(Vec<u8>),                            // version
+    SnapshotExport((Vec<u8>, SnapshotExportRequest)), // (version, request)
+    SnapshotExportRelease((Vec<u8>, SnapshotExportReleaseRequest)), // (version, request)
     BranchCreate((Vec<u8>, BranchCreateRequest)),     // (version, request)
     BranchBind((Vec<u8>, BranchBindRequest)),         // (version, request)
     FdOpen((Vec<u8>, FdOpenRequest)),                 // (version, request)
@@ -112,6 +114,8 @@ pub enum Request {
 pub enum Response {
     SnapshotCreate(SnapshotCreateResponse),
     SnapshotList(SnapshotListResponse),
+    SnapshotExport(SnapshotExportResponse),
+    SnapshotExportRelease(SnapshotExportReleaseResponse),
     BranchCreate(BranchCreateResponse),
     BranchBind(BranchBindResponse),
     FdOpen(FdOpenResponse),
@@ -228,6 +232,31 @@ pub struct SnapshotListRequest {}
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct SnapshotListResponse {
     pub snapshots: Vec<SnapshotInfo>,
+}
+
+/// Snapshot export request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SnapshotExportRequest {
+    pub snapshot: Vec<u8>,
+}
+
+/// Snapshot export response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SnapshotExportResponse {
+    pub path: Vec<u8>,
+    pub cleanup_token: Vec<u8>,
+}
+
+/// Snapshot export release request payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SnapshotExportReleaseRequest {
+    pub cleanup_token: Vec<u8>,
+}
+
+/// Snapshot export release response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct SnapshotExportReleaseResponse {
+    pub cleanup_token: Vec<u8>,
 }
 
 /// Snapshot information
@@ -1444,6 +1473,24 @@ impl Request {
         Self::SnapshotList(b"1".to_vec())
     }
 
+    pub fn snapshot_export(snapshot: String) -> Self {
+        Self::SnapshotExport((
+            b"1".to_vec(),
+            SnapshotExportRequest {
+                snapshot: snapshot.into_bytes(),
+            },
+        ))
+    }
+
+    pub fn snapshot_export_release(cleanup_token: String) -> Self {
+        Self::SnapshotExportRelease((
+            b"1".to_vec(),
+            SnapshotExportReleaseRequest {
+                cleanup_token: cleanup_token.into_bytes(),
+            },
+        ))
+    }
+
     pub fn branch_create(from: String, name: Option<String>) -> Self {
         Self::BranchCreate((
             b"1".to_vec(),
@@ -2000,6 +2047,19 @@ impl Response {
 
     pub fn snapshot_list(snapshots: Vec<SnapshotInfo>) -> Self {
         Self::SnapshotList(SnapshotListResponse { snapshots })
+    }
+
+    pub fn snapshot_export(path: String, cleanup_token: String) -> Self {
+        Self::SnapshotExport(SnapshotExportResponse {
+            path: path.into_bytes(),
+            cleanup_token: cleanup_token.into_bytes(),
+        })
+    }
+
+    pub fn snapshot_export_release(cleanup_token: String) -> Self {
+        Self::SnapshotExportRelease(SnapshotExportReleaseResponse {
+            cleanup_token: cleanup_token.into_bytes(),
+        })
     }
 
     pub fn branch_create(branch: BranchInfo) -> Self {

@@ -92,18 +92,20 @@
 //! - Watch service uses separate locks for different watch types
 //! - Event delivery is asynchronous and doesn't block client operations
 
-use libc;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+
+use tempfile::TempDir;
 
 // AgentFS core imports
 use agentfs_core::{
-    FsCore, HandleId, OpenOptions, PID,
+    BranchId, FsCore, HandleId, OpenOptions, PID, SnapshotId,
     config::{FsConfig, InterposeConfig},
     error::FsResult,
 };
@@ -113,8 +115,11 @@ use agentfs_proto::*;
 
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
-    DaemonStateFilesystemRequest, DaemonStateProcessesRequest, DaemonStateResponse,
-    DaemonStateResponseWrapper, DaemonStateStatsRequest, DirEntry,
+    BranchInfo as ProtoBranchInfo, DaemonStateFilesystemRequest, DaemonStateProcessesRequest,
+    DaemonStateResponse, DaemonStateResponseWrapper, DaemonStateStatsRequest, DirCloseRequest,
+    DirEntry, DirReadRequest, FdDupRequest, FilesystemQuery, FilesystemState, FsStats,
+    PathOpRequest, ProcessInfo, SnapshotInfo as ProtoSnapshotInfo, StatData, StatfsData,
+    TimespecData,
 };
 
 // Use handshake types and functions from this crate
@@ -133,7 +138,37 @@ use crate::macos::kqueue::SInt32;
 #[allow(dead_code)]
 fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) -> PID {
     let daemon_guard = daemon.lock().unwrap();
-    daemon_guard.processes[&client_pid]
+    daemon_guard.registered_pid(client_pid).unwrap_or_else(|| PID::new(client_pid))
+}
+
+fn decode_string(bytes: &[u8]) -> Result<String, String> {
+    std::str::from_utf8(bytes)
+        .map(|s| s.to_string())
+        .map_err(|err| format!("invalid UTF-8 sequence: {}", err))
+}
+
+fn snapshot_id_to_vec(id: SnapshotId) -> Vec<u8> {
+    id.to_string().into_bytes()
+}
+
+fn branch_id_to_vec(id: BranchId) -> Vec<u8> {
+    id.to_string().into_bytes()
+}
+
+fn parse_snapshot_id_bytes(bytes: &[u8]) -> Result<SnapshotId, String> {
+    let id_str = decode_string(bytes)?;
+    SnapshotId::from_str(&id_str).map_err(|err| format!("invalid snapshot id: {}", err))
+}
+
+fn parse_branch_id_bytes(bytes: &[u8]) -> Result<BranchId, String> {
+    let id_str = decode_string(bytes)?;
+    BranchId::from_str(&id_str).map_err(|err| format!("invalid branch id: {}", err))
+}
+
+struct ReadonlyExport {
+    temp_dir: TempDir,
+    path: PathBuf,
+    snapshot_id: SnapshotId,
 }
 
 /// Real AgentFS daemon using the core filesystem
@@ -146,6 +181,8 @@ pub struct AgentFsDaemon {
     connections: HashMap<u32, std::sync::Mutex<std::os::unix::net::UnixStream>>, // pid -> connection stream
     #[cfg(target_os = "macos")]
     fsevents_ports: HashMap<u32, CFMessagePortWrapper>, // pid -> CFMessagePort for FSEvents
+    readonly_exports: HashMap<String, ReadonlyExport>,
+    export_counter: u64,
 }
 
 impl AgentFsDaemon {
@@ -207,6 +244,8 @@ impl AgentFsDaemon {
             connections: HashMap::new(),
             #[cfg(target_os = "macos")]
             fsevents_ports: HashMap::new(),
+            readonly_exports: HashMap::new(),
+            export_counter: 0,
         };
 
         // Subscribe the watch service to FsCore events
@@ -294,6 +333,8 @@ impl AgentFsDaemon {
             connections: HashMap::new(),
             #[cfg(target_os = "macos")]
             fsevents_ports: HashMap::new(),
+            readonly_exports: HashMap::new(),
+            export_counter: 0,
         };
 
         // Subscribe the watch service to FsCore events
@@ -447,9 +488,8 @@ impl AgentFsDaemon {
         &self.watch_service
     }
 
-    #[allow(dead_code)]
-    fn get_process_pid(&self, os_pid: u32) -> Option<&PID> {
-        self.processes.get(&os_pid)
+    pub fn registered_pid(&self, os_pid: u32) -> Option<PID> {
+        self.processes.get(&os_pid).cloned()
     }
 
     /// Handle an fd_open request
@@ -728,6 +768,17 @@ impl AgentFsDaemon {
             }
             Request::DaemonStateBackstore(_) => {
                 self.get_daemon_state_backstore().map(Response::DaemonState)
+            }
+            Request::SnapshotExport((_, export_req)) => {
+                let snapshot_id = parse_snapshot_id_bytes(&export_req.snapshot)?;
+                self.handle_snapshot_export(snapshot_id).map(|(path, token)| {
+                    Response::snapshot_export(path.to_string_lossy().to_string(), token)
+                })
+            }
+            Request::SnapshotExportRelease((_, release_req)) => {
+                let token = decode_string(&release_req.cleanup_token)?;
+                self.handle_snapshot_export_release(token.clone())
+                    .map(|_| Response::snapshot_export_release(token))
             }
             _ => Err(format!("Request type not implemented: {:?}", request)),
         }
@@ -1312,6 +1363,123 @@ impl AgentFsDaemon {
 
         Ok(resolved_path.to_string_lossy().to_string())
     }
+
+    pub fn handle_snapshot_create(
+        &mut self,
+        pid: u32,
+        name: Option<String>,
+    ) -> Result<ProtoSnapshotInfo, String> {
+        let pid = PID::new(pid);
+        let name_bytes = name.as_ref().map(|s| s.as_bytes().to_vec());
+
+        let snapshot_id = self
+            .core
+            .lock()
+            .unwrap()
+            .snapshot_create_for_pid(&pid, name.as_deref())
+            .map_err(|e| format!("snapshot_create failed: {:?}", e))?;
+
+        println!(
+            "AgentFS Daemon: snapshot_create pid={} -> {}",
+            pid.as_u32(),
+            snapshot_id
+        );
+
+        Ok(ProtoSnapshotInfo {
+            id: snapshot_id_to_vec(snapshot_id),
+            name: name_bytes,
+        })
+    }
+
+    pub fn handle_snapshot_list(&self) -> Result<Vec<ProtoSnapshotInfo>, String> {
+        let snapshots = self.core.lock().unwrap().snapshot_list();
+        Ok(snapshots
+            .into_iter()
+            .map(|(id, name)| ProtoSnapshotInfo {
+                id: snapshot_id_to_vec(id),
+                name: name.map(|s| s.into_bytes()),
+            })
+            .collect())
+    }
+
+    pub fn handle_branch_create(
+        &mut self,
+        snapshot_id: SnapshotId,
+        name: Option<String>,
+    ) -> Result<ProtoBranchInfo, String> {
+        let name_bytes = name.as_ref().map(|s| s.as_bytes().to_vec());
+
+        let branch_id = self
+            .core
+            .lock()
+            .unwrap()
+            .branch_create_from_snapshot(snapshot_id, name.as_deref())
+            .map_err(|e| format!("branch_create failed: {:?}", e))?;
+
+        println!(
+            "AgentFS Daemon: branch_create from {} -> {}",
+            snapshot_id, branch_id
+        );
+
+        Ok(ProtoBranchInfo {
+            id: branch_id_to_vec(branch_id),
+            name: name_bytes,
+            parent: snapshot_id_to_vec(snapshot_id),
+        })
+    }
+
+    pub fn handle_branch_bind(&mut self, branch_id: BranchId, pid: u32) -> Result<(), String> {
+        self.core
+            .lock()
+            .unwrap()
+            .bind_process_to_branch_with_pid(branch_id, pid)
+            .map_err(|e| format!("branch_bind failed: {:?}", e))
+    }
+
+    fn next_export_token(&mut self) -> String {
+        self.export_counter = self.export_counter.wrapping_add(1);
+        format!("agentfs-export-{}", self.export_counter)
+    }
+
+    pub fn handle_snapshot_export(
+        &mut self,
+        snapshot_id: SnapshotId,
+    ) -> Result<(PathBuf, String), String> {
+        let temp_dir = tempfile::Builder::new()
+            .prefix("agentfs_ro_")
+            .tempdir()
+            .map_err(|e| format!("failed to create export directory: {}", e))?;
+        let export_path = temp_dir.path().to_path_buf();
+
+        {
+            let mut core = self.core.lock().unwrap();
+            core.export_snapshot(snapshot_id, &export_path)
+                .map_err(|e| format!("snapshot_export failed: {:?}", e))?;
+        }
+
+        let token = self.next_export_token();
+        self.readonly_exports.insert(
+            token.clone(),
+            ReadonlyExport {
+                temp_dir,
+                path: export_path.clone(),
+                snapshot_id,
+            },
+        );
+
+        Ok((export_path, token))
+    }
+
+    pub fn handle_snapshot_export_release(&mut self, cleanup_token: String) -> Result<(), String> {
+        if self.readonly_exports.remove(&cleanup_token).is_some() {
+            Ok(())
+        } else {
+            Err(format!(
+                "snapshot_export_release failed: unknown token {}",
+                cleanup_token
+            ))
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -1366,833 +1534,1023 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         return;
     }
 
-    // Handle one request
-    let mut len_buf = [0u8; 4];
-    if stream.read_exact(&mut len_buf).is_err() {
-        cleanup();
-        return;
-    }
+    loop {
+        let mut len_buf = [0u8; 4];
+        match stream.read_exact(&mut len_buf) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+                break;
+            }
+            Err(_) => {
+                cleanup();
+                return;
+            }
+        }
 
-    let msg_len = u32::from_le_bytes(len_buf) as usize;
+        let msg_len = u32::from_le_bytes(len_buf) as usize;
 
-    let mut msg_buf = vec![0u8; msg_len];
-    if stream.read_exact(&mut msg_buf).is_err() {
-        return;
-    }
+        let mut msg_buf = vec![0u8; msg_len];
+        if stream.read_exact(&mut msg_buf).is_err() {
+            break;
+        }
 
-    // Try to decode as regular request
-    match decode_ssz_message::<Request>(&msg_buf) {
-        Ok(request) => {
-            match request {
-                Request::FdOpen((_version, fd_open_req)) => {
-                    let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_fd_open(
-                        path,
-                        fd_open_req.flags,
-                        fd_open_req.mode,
-                        client_pid,
-                    ) {
-                        Ok(fd) => {
-                            // For now, send a simple success response with the fd number
-                            // TODO: Implement proper SCM_RIGHTS
-                            let response = Response::fd_open(fd as u32);
-                            send_response(&mut stream, &response);
-                            // Close our copy of the fd
-                            unsafe {
-                                libc::close(fd);
-                            }
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fd_open failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirOpen((_version, dir_open_req)) => {
-                    let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dir_open(path, client_pid) {
-                        Ok(handle) => {
-                            let response = Response::dir_open(handle);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("dir_open failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DaemonStateProcesses(DaemonStateProcessesRequest { data: _version }) => {
-                    match daemon.lock().unwrap().get_daemon_state_processes() {
-                        Ok(response) => {
-                            let response = Response::DaemonState(response);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(
-                                format!("daemon_state_processes failed: {}", e),
-                                Some(4),
-                            );
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DaemonStateStats(DaemonStateStatsRequest { data: _version }) => {
-                    match daemon.lock().unwrap().get_daemon_state_stats() {
-                        Ok(response) => {
-                            let response = Response::DaemonState(response);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(
-                                format!("daemon_state_stats failed: {}", e),
-                                Some(4),
-                            );
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Readlink((_version, readlink_req)) => {
-                    let path = String::from_utf8_lossy(&readlink_req.path).to_string();
-                    println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_readlink(path, client_pid) {
-                        Ok(target) => {
-                            println!("AgentFsDaemon: readlink succeeded, target: {}", target);
-                            let response = Response::readlink(target);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            println!("AgentFsDaemon: readlink failed: {}", e);
-                            let response =
-                                Response::error(format!("readlink failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirRead((_version, dir_read_req)) => {
-                    let handle = dir_read_req.handle;
-                    println!("AgentFsDaemon: dir_read(handle={})", handle);
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dir_read(handle, client_pid) {
-                        Ok(entries) => {
-                            println!(
-                                "AgentFsDaemon: dir_read succeeded, {} entries",
-                                entries.len()
-                            );
-                            let response = Response::dir_read(entries);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            println!("AgentFsDaemon: dir_read failed: {}", e);
-                            let response =
-                                Response::error(format!("dir_read failed: {}", e), Some(3));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirClose((_version, dir_close_req)) => {
-                    let handle = dir_close_req.handle;
-                    println!("AgentFsDaemon: dir_close(handle={})", handle);
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dir_close(handle, client_pid) {
-                        Ok(()) => {
-                            println!("AgentFsDaemon: dir_close succeeded");
-                            let response = Response::dir_close();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            println!("AgentFsDaemon: dir_close failed: {}", e);
-                            let response =
-                                Response::error(format!("dir_close failed: {}", e), Some(3));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::FdDup((_version, fd_dup_req)) => {
-                    let fd = fd_dup_req.fd;
-                    println!("AgentFsDaemon: fd_dup(fd={})", fd);
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_fd_dup(fd, client_pid) {
-                        Ok(duped_fd) => {
-                            println!("AgentFsDaemon: fd_dup succeeded, new fd: {}", duped_fd);
-                            let response = Response::fd_dup(duped_fd);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            println!("AgentFsDaemon: fd_dup failed: {}", e);
-                            let response =
-                                Response::error(format!("fd_dup failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::PathOp((_version, path_op_req)) => {
-                    let path = String::from_utf8_lossy(&path_op_req.path).to_string();
-                    let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
-                    println!("AgentFsDaemon: path_op(path={}, op={})", path, operation);
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_path_op(path, operation, path_op_req.args, client_pid) {
-                        Ok(result) => {
-                            println!("AgentFsDaemon: path_op succeeded");
-                            let response = Response::path_op(result);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            println!("AgentFsDaemon: path_op failed: {}", e);
-                            let response =
-                                Response::error(format!("path_op failed: {}", e), Some(4));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DaemonStateFilesystem(DaemonStateFilesystemRequest { query }) => {
-                    println!(
-                        "AgentFsDaemon: processing filesystem state query with max_depth={}, include_overlay={}, max_file_size={}",
-                        query.max_depth, query.include_overlay, query.max_file_size
-                    );
-                    match daemon.lock().unwrap().get_daemon_state_filesystem(&query) {
-                        Ok(response) => {
-                            let entry_count = match &response.response {
-                                DaemonStateResponse::FilesystemState(filesystem_state) => {
-                                    filesystem_state.entries.len()
-                                }
-                                _ => 0,
-                            };
-                            println!(
-                                "AgentFsDaemon: filesystem state query successful, {} entries",
-                                entry_count
-                            );
-                            let response = Response::DaemonState(response);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            println!("AgentFsDaemon: filesystem state query failed: {}", e);
-                            let response = Response::error(
-                                format!("daemon_state_filesystem failed: {}", e),
-                                Some(4),
-                            );
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                // Metadata operations
-                Request::Stat((_version, stat_req)) => {
-                    let path = String::from_utf8_lossy(&stat_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    match daemon.lock().unwrap().core.lock().unwrap().stat(&pid, path.as_ref()) {
-                        Ok(stat_data) => {
-                            let response = Response::stat(stat_data);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(format!("stat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Lstat((_version, lstat_req)) => {
-                    let path = String::from_utf8_lossy(&lstat_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    match daemon.lock().unwrap().core.lock().unwrap().lstat(&pid, path.as_ref()) {
-                        Ok(stat_data) => {
-                            let response = Response::lstat(stat_data);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(format!("lstat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fstat((_version, fstat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(fstat_req.fd as u64);
-                    match daemon.lock().unwrap().core.lock().unwrap().fstat(&pid, handle_id) {
-                        Ok(stat_data) => {
-                            let response = Response::fstat(stat_data);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(format!("fstat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fstatat((_version, fstatat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
-                    match daemon.lock().unwrap().core.lock().unwrap().fstatat(
-                        &pid,
-                        path.as_ref(),
-                        fstatat_req.flags,
-                    ) {
-                        Ok(stat_data) => {
-                            let response = Response::fstatat(stat_data);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fstatat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Chmod((_version, chmod_req)) => {
-                    let path = String::from_utf8_lossy(&chmod_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    match daemon.lock().unwrap().core.lock().unwrap().set_mode(
-                        &pid,
-                        path.as_ref(),
-                        chmod_req.mode,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::chmod();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(format!("chmod failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fchmod((_version, fchmod_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(fchmod_req.fd as u64);
-                    match daemon.lock().unwrap().core.lock().unwrap().fchmod(
-                        &pid,
-                        handle_id,
-                        fchmod_req.mode,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::fchmod();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fchmod failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fchmodat((_version, fchmodat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
-                    match daemon.lock().unwrap().core.lock().unwrap().fchmodat(
-                        &pid,
-                        path.as_ref(),
-                        fchmodat_req.mode,
-                        fchmodat_req.flags,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::fchmodat();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fchmodat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Chown((_version, chown_req)) => {
-                    let path = String::from_utf8_lossy(&chown_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    match daemon.lock().unwrap().core.lock().unwrap().set_owner(
-                        &pid,
-                        path.as_ref(),
-                        chown_req.uid,
-                        chown_req.gid,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::chown();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(format!("chown failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Lchown((_version, lchown_req)) => {
-                    let path = String::from_utf8_lossy(&lchown_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    // For now, use regular chown (lchown would be different for symlinks)
-                    match daemon.lock().unwrap().core.lock().unwrap().set_owner(
-                        &pid,
-                        path.as_ref(),
-                        lchown_req.uid,
-                        lchown_req.gid,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::lchown();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("lchown failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fchown((_version, fchown_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(fchown_req.fd as u64);
-                    match daemon.lock().unwrap().core.lock().unwrap().fchown(
-                        &pid,
-                        handle_id,
-                        fchown_req.uid,
-                        fchown_req.gid,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::fchown();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fchown failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fchownat((_version, fchownat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
-                    match daemon.lock().unwrap().core.lock().unwrap().fchownat(
-                        &pid,
-                        path.as_ref(),
-                        fchownat_req.uid,
-                        fchownat_req.gid,
-                        fchownat_req.flags,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::fchownat();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fchownat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Utimes((_version, utimes_req)) => {
-                    let path = String::from_utf8_lossy(&utimes_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    // For path-based utimes, we need to open the file first
-                    match daemon.lock().unwrap().core.lock().unwrap().create(
-                        &pid,
-                        path.as_ref(),
-                        &OpenOptions {
-                            read: true,
-                            write: false,
-                            create: false,
-                            truncate: false,
-                            append: false,
-                            share: vec![],
-                            stream: None,
-                        },
-                    ) {
-                        Ok(handle) => {
-                            let times = utimes_req.times.map(|t| (t.0, t.1));
-                            match daemon
-                                .lock()
-                                .unwrap()
-                                .core
-                                .lock()
-                                .unwrap()
-                                .futimes(&pid, handle, times)
-                            {
-                                Ok(()) => {
-                                    daemon
-                                        .lock()
-                                        .unwrap()
-                                        .core
-                                        .lock()
-                                        .unwrap()
-                                        .close(&pid, handle)
-                                        .ok();
-                                    let response = Response::utimes();
-                                    send_response(&mut stream, &response);
-                                }
-                                Err(e) => {
-                                    daemon
-                                        .lock()
-                                        .unwrap()
-                                        .core
-                                        .lock()
-                                        .unwrap()
-                                        .close(&pid, handle)
-                                        .ok();
-                                    let response =
-                                        Response::error(format!("utimes failed: {}", e), Some(2));
-                                    send_response(&mut stream, &response);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let response = Response::error(
-                                format!("utimes failed to open file: {}", e),
-                                Some(2),
-                            );
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Futimes((_version, futimes_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(futimes_req.fd as u64);
-                    let times = futimes_req.times.map(|t| (t.0, t.1));
-                    match daemon
-                        .lock()
-                        .unwrap()
-                        .core
-                        .lock()
-                        .unwrap()
-                        .futimes(&pid, handle_id, times)
-                    {
-                        Ok(()) => {
-                            let response = Response::futimes();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("futimes failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Utimensat((_version, utimensat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let path = String::from_utf8_lossy(&utimensat_req.path).to_string();
-                    match daemon.lock().unwrap().core.lock().unwrap().utimensat(
-                        &pid,
-                        path.as_ref(),
-                        utimensat_req.times,
-                        utimensat_req.flags,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::utimensat();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("utimensat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Linkat((_version, linkat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let old_path = String::from_utf8_lossy(&linkat_req.old_path).to_string();
-                    let new_path = String::from_utf8_lossy(&linkat_req.new_path).to_string();
-                    match daemon.lock().unwrap().core.lock().unwrap().linkat(
-                        &pid,
-                        old_path.as_ref(),
-                        new_path.as_ref(),
-                        linkat_req.flags,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::linkat();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("linkat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Symlinkat((_version, symlinkat_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let target = String::from_utf8_lossy(&symlinkat_req.target).to_string();
-                    let linkpath = String::from_utf8_lossy(&symlinkat_req.linkpath).to_string();
-                    match daemon.lock().unwrap().core.lock().unwrap().symlinkat(
-                        &pid,
-                        &target,
-                        linkpath.as_ref(),
-                    ) {
-                        Ok(()) => {
-                            let response = Response::symlinkat();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("symlinkat failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Futimens((_version, futimens_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(futimens_req.fd as u64);
-                    let times = futimens_req.times.map(|t| (t.0, t.1));
-                    match daemon
-                        .lock()
-                        .unwrap()
-                        .core
-                        .lock()
-                        .unwrap()
-                        .futimens(&pid, handle_id, times)
-                    {
-                        Ok(()) => {
-                            let response = Response::futimens();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("futimens failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Truncate((_version, truncate_req)) => {
-                    let path = String::from_utf8_lossy(&truncate_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    // For path-based truncate, we need to open the file first
-                    match daemon.lock().unwrap().core.lock().unwrap().create(
-                        &pid,
-                        path.as_ref(),
-                        &OpenOptions {
-                            read: true,
-                            write: true,
-                            create: false,
-                            truncate: false,
-                            append: false,
-                            share: vec![],
-                            stream: None,
-                        },
-                    ) {
-                        Ok(handle) => {
-                            match daemon.lock().unwrap().core.lock().unwrap().ftruncate(
-                                &pid,
-                                handle,
-                                truncate_req.length,
-                            ) {
-                                Ok(()) => {
-                                    daemon
-                                        .lock()
-                                        .unwrap()
-                                        .core
-                                        .lock()
-                                        .unwrap()
-                                        .close(&pid, handle)
-                                        .ok();
-                                    let response = Response::truncate();
-                                    send_response(&mut stream, &response);
-                                }
-                                Err(e) => {
-                                    daemon
-                                        .lock()
-                                        .unwrap()
-                                        .core
-                                        .lock()
-                                        .unwrap()
-                                        .close(&pid, handle)
-                                        .ok();
-                                    let response =
-                                        Response::error(format!("truncate failed: {}", e), Some(2));
-                                    send_response(&mut stream, &response);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let response = Response::error(
-                                format!("truncate failed to open file: {}", e),
-                                Some(2),
-                            );
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Ftruncate((_version, ftruncate_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(ftruncate_req.fd as u64);
-                    match daemon.lock().unwrap().core.lock().unwrap().ftruncate(
-                        &pid,
-                        handle_id,
-                        ftruncate_req.length,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::ftruncate();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("ftruncate failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Statfs((_version, statfs_req)) => {
-                    let path = String::from_utf8_lossy(&statfs_req.path).to_string();
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    match daemon.lock().unwrap().core.lock().unwrap().statfs(&pid, path.as_ref()) {
-                        Ok(statfs_data) => {
-                            let response = Response::statfs(statfs_data);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("statfs failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::Fstatfs((_version, fstatfs_req)) => {
-                    let pid = get_client_pid_helper(&daemon, client_pid);
-                    let handle_id = HandleId(fstatfs_req.fd as u64);
-                    match daemon.lock().unwrap().core.lock().unwrap().fstatfs(&pid, handle_id) {
-                        Ok(statfs_data) => {
-                            let response = Response::fstatfs(statfs_data);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("fstatfs failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirfdOpenDir((_version, dirfd_open_dir_req)) => {
-                    let path = String::from_utf8_lossy(&dirfd_open_dir_req.path).to_string();
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dirfd_open_dir(
-                        dirfd_open_dir_req.pid,
-                        path,
-                        dirfd_open_dir_req.fd as std::os::fd::RawFd,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::dirfd_open_dir();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("dirfd_open_dir failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirfdCloseFd((_version, dirfd_close_fd_req)) => {
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dirfd_close_fd(
-                        dirfd_close_fd_req.pid,
-                        dirfd_close_fd_req.fd as std::os::fd::RawFd,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::dirfd_close_fd();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("dirfd_close_fd failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirfdDupFd((_version, dirfd_dup_fd_req)) => {
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dirfd_dup_fd(
-                        dirfd_dup_fd_req.pid,
-                        dirfd_dup_fd_req.old_fd as std::os::fd::RawFd,
-                        dirfd_dup_fd_req.new_fd as std::os::fd::RawFd,
-                    ) {
-                        Ok(()) => {
-                            let response = Response::dirfd_dup_fd();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("dirfd_dup_fd failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirfdSetCwd((_version, dirfd_set_cwd_req)) => {
-                    let cwd = String::from_utf8_lossy(&dirfd_set_cwd_req.cwd).to_string();
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dirfd_set_cwd(dirfd_set_cwd_req.pid, cwd) {
-                        Ok(()) => {
-                            let response = Response::dirfd_set_cwd();
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response =
-                                Response::error(format!("dirfd_set_cwd failed: {}", e), Some(2));
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::DirfdResolvePath((_version, dirfd_resolve_path_req)) => {
-                    let relative_path =
-                        String::from_utf8_lossy(&dirfd_resolve_path_req.relative_path).to_string();
-                    let mut daemon = daemon.lock().unwrap();
-                    match daemon.handle_dirfd_resolve_path(
-                        dirfd_resolve_path_req.pid,
-                        dirfd_resolve_path_req.dirfd as std::os::fd::RawFd,
-                        relative_path,
-                    ) {
-                        Ok(resolved_path) => {
-                            let response = Response::dirfd_resolve_path(resolved_path);
-                            send_response(&mut stream, &response);
-                        }
-                        Err(e) => {
-                            let response = Response::error(
-                                format!("dirfd_resolve_path failed: {}", e),
-                                Some(2),
-                            );
-                            send_response(&mut stream, &response);
-                        }
-                    }
-                }
-                Request::WatchRegisterFSEventsPort((_version, port_req)) => {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let port_name_str =
-                            String::from_utf8_lossy(&port_req.port_name).to_string();
-                        if std::ffi::CString::new(port_name_str.as_str()).is_err() {
-                            let response =
-                                Response::error("Invalid port name encoding".to_string(), Some(22));
-                            send_response(&mut stream, &response);
-                            cleanup();
-                            return;
-                        }
-                        let port = match create_remote_port(&port_name_str) {
-                            Ok(port) => port,
+        // Try to decode as regular request
+        match decode_ssz_message::<Request>(&msg_buf) {
+            Ok(request) => {
+                println!("AgentFS Daemon (lib): received request: {:?}", request);
+                match request {
+                    Request::SnapshotExport((_, export_req)) => {
+                        let snapshot_id = match parse_snapshot_id_bytes(&export_req.snapshot) {
+                            Ok(id) => id,
                             Err(err) => {
-                                let response = Response::error(err, Some(22));
+                                let response = Response::error(
+                                    format!("invalid snapshot id: {}", err),
+                                    Some(22),
+                                );
+                                send_response(&mut stream, &response);
+                                continue;
+                            }
+                        };
+
+                        match daemon.lock().unwrap().handle_snapshot_export(snapshot_id) {
+                            Ok((path, token)) => {
+                                let response = Response::snapshot_export(
+                                    path.to_string_lossy().to_string(),
+                                    token,
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                            Err(err) => {
+                                println!("AgentFS Daemon: snapshot_export error: {}", err);
+                                let response = Response::error(err, Some(5));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::SnapshotExportRelease((_, release_req)) => {
+                        let token = match decode_string(&release_req.cleanup_token) {
+                            Ok(token) => token,
+                            Err(err) => {
+                                let response = Response::error(
+                                    format!("invalid cleanup token: {}", err),
+                                    Some(22),
+                                );
+                                send_response(&mut stream, &response);
+                                continue;
+                            }
+                        };
+
+                        match daemon.lock().unwrap().handle_snapshot_export_release(token.clone()) {
+                            Ok(()) => {
+                                let response = Response::snapshot_export_release(token);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(err) => {
+                                println!("AgentFS Daemon: snapshot_export_release error: {}", err);
+                                let response = Response::error(err, Some(5));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::SnapshotCreate((_version, snapshot_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let name = match snapshot_req.name {
+                            Some(name_bytes) => match decode_string(&name_bytes) {
+                                Ok(s) => Some(s),
+                                Err(err) => {
+                                    let response = Response::error(
+                                        format!("invalid snapshot name: {}", err),
+                                        Some(22),
+                                    );
+                                    send_response(&mut stream, &response);
+                                    return;
+                                }
+                            },
+                            None => None,
+                        };
+
+                        match daemon.lock().unwrap().handle_snapshot_create(pid.as_u32(), name) {
+                            Ok(snapshot_info) => {
+                                let response = Response::snapshot_create(snapshot_info);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(err) => {
+                                println!("AgentFS Daemon: snapshot_create error: {}", err);
+                                let response = Response::error(err, Some(5));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::FdOpen((version, fd_open_req)) => {
+                        let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_fd_open(
+                            path,
+                            fd_open_req.flags,
+                            fd_open_req.mode,
+                            client_pid,
+                        ) {
+                            Ok(fd) => {
+                                // For now, send a simple success response with the fd number
+                                // TODO: Implement proper SCM_RIGHTS
+                                let response = Response::fd_open(fd as u32);
+                                send_response(&mut stream, &response);
+                                // Close our copy of the fd
+                                unsafe {
+                                    libc::close(fd);
+                                }
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fd_open failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirOpen((version, dir_open_req)) => {
+                        let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dir_open(path, client_pid) {
+                            Ok(handle) => {
+                                let response = Response::dir_open(handle);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("dir_open failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DaemonStateProcesses(DaemonStateProcessesRequest {
+                        data: version,
+                    }) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().get_daemon_state_processes() {
+                            Ok(response) => {
+                                let response = Response::DaemonState(response);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("daemon_state_processes failed: {}", e),
+                                    Some(4),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DaemonStateStats(DaemonStateStatsRequest { data: version }) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().get_daemon_state_stats() {
+                            Ok(response) => {
+                                let response = Response::DaemonState(response);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("daemon_state_stats failed: {}", e),
+                                    Some(4),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Readlink((version, readlink_req)) => {
+                        let path = String::from_utf8_lossy(&readlink_req.path).to_string();
+                        println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_readlink(path, client_pid) {
+                            Ok(target) => {
+                                println!("AgentFsDaemon: readlink succeeded, target: {}", target);
+                                let response = Response::readlink(target);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                println!("AgentFsDaemon: readlink failed: {}", e);
+                                let response =
+                                    Response::error(format!("readlink failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirRead((version, dir_read_req)) => {
+                        let handle = dir_read_req.handle;
+                        println!("AgentFsDaemon: dir_read(handle={})", handle);
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dir_read(handle, client_pid) {
+                            Ok(entries) => {
+                                println!(
+                                    "AgentFsDaemon: dir_read succeeded, {} entries",
+                                    entries.len()
+                                );
+                                let response = Response::dir_read(entries);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                println!("AgentFsDaemon: dir_read failed: {}", e);
+                                let response =
+                                    Response::error(format!("dir_read failed: {}", e), Some(3));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirClose((version, dir_close_req)) => {
+                        let handle = dir_close_req.handle;
+                        println!("AgentFsDaemon: dir_close(handle={})", handle);
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dir_close(handle, client_pid) {
+                            Ok(()) => {
+                                println!("AgentFsDaemon: dir_close succeeded");
+                                let response = Response::dir_close();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                println!("AgentFsDaemon: dir_close failed: {}", e);
+                                let response =
+                                    Response::error(format!("dir_close failed: {}", e), Some(3));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::FdDup((version, fd_dup_req)) => {
+                        let fd = fd_dup_req.fd;
+                        println!("AgentFsDaemon: fd_dup(fd={})", fd);
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_fd_dup(fd, client_pid) {
+                            Ok(duped_fd) => {
+                                println!("AgentFsDaemon: fd_dup succeeded, new fd: {}", duped_fd);
+                                let response = Response::fd_dup(duped_fd);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                println!("AgentFsDaemon: fd_dup failed: {}", e);
+                                let response =
+                                    Response::error(format!("fd_dup failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::PathOp((version, path_op_req)) => {
+                        let path = String::from_utf8_lossy(&path_op_req.path).to_string();
+                        let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
+                        println!("AgentFsDaemon: path_op(path={}, op={})", path, operation);
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_path_op(path, operation, path_op_req.args, client_pid) {
+                            Ok(result) => {
+                                println!("AgentFsDaemon: path_op succeeded");
+                                let response = Response::path_op(result);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                println!("AgentFsDaemon: path_op failed: {}", e);
+                                let response =
+                                    Response::error(format!("path_op failed: {}", e), Some(4));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DaemonStateFilesystem(DaemonStateFilesystemRequest { query }) => {
+                        println!(
+                            "AgentFsDaemon: processing filesystem state query with max_depth={}, include_overlay={}, max_file_size={}",
+                            query.max_depth, query.include_overlay, query.max_file_size
+                        );
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().get_daemon_state_filesystem(&query) {
+                            Ok(response) => {
+                                let entry_count = match &response.response {
+                                    DaemonStateResponse::FilesystemState(filesystem_state) => {
+                                        filesystem_state.entries.len()
+                                    }
+                                    _ => 0,
+                                };
+                                println!(
+                                    "AgentFsDaemon: filesystem state query successful, {} entries",
+                                    entry_count
+                                );
+                                let response = Response::DaemonState(response);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                println!("AgentFsDaemon: filesystem state query failed: {}", e);
+                                let response = Response::error(
+                                    format!("daemon_state_filesystem failed: {}", e),
+                                    Some(4),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    // Metadata operations
+                    Request::Stat((version, stat_req)) => {
+                        let path = String::from_utf8_lossy(&stat_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().core.lock().unwrap().stat(&pid, path.as_ref())
+                        {
+                            Ok(stat_data) => {
+                                let response = Response::stat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("stat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Lstat((version, lstat_req)) => {
+                        let path = String::from_utf8_lossy(&lstat_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().core.lock().unwrap().lstat(&pid, path.as_ref())
+                        {
+                            Ok(stat_data) => {
+                                let response = Response::lstat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("lstat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fstat((version, fstat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(fstat_req.fd as u64);
+                        match daemon.lock().unwrap().core.lock().unwrap().fstat(&pid, handle_id) {
+                            Ok(stat_data) => {
+                                let response = Response::fstat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fstat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fstatat((version, fstatat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
+                        match daemon.lock().unwrap().core.lock().unwrap().fstatat(
+                            &pid,
+                            path.as_ref(),
+                            fstatat_req.flags,
+                        ) {
+                            Ok(stat_data) => {
+                                let response = Response::fstatat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fstatat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Chmod((version, chmod_req)) => {
+                        let path = String::from_utf8_lossy(&chmod_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().core.lock().unwrap().set_mode(
+                            &pid,
+                            path.as_ref(),
+                            chmod_req.mode,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::chmod();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("chmod failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fchmod((version, fchmod_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(fchmod_req.fd as u64);
+                        match daemon.lock().unwrap().core.lock().unwrap().fchmod(
+                            &pid,
+                            handle_id,
+                            fchmod_req.mode,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::fchmod();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fchmod failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fchmodat((version, fchmodat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
+                        match daemon.lock().unwrap().core.lock().unwrap().fchmodat(
+                            &pid,
+                            path.as_ref(),
+                            fchmodat_req.mode,
+                            fchmodat_req.flags,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::fchmodat();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fchmodat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Chown((version, chown_req)) => {
+                        let path = String::from_utf8_lossy(&chown_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon.lock().unwrap().core.lock().unwrap().set_owner(
+                            &pid,
+                            path.as_ref(),
+                            chown_req.uid,
+                            chown_req.gid,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::chown();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("chown failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Lchown((version, lchown_req)) => {
+                        let path = String::from_utf8_lossy(&lchown_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        // For now, use regular chown (lchown would be different for symlinks)
+                        match daemon.lock().unwrap().core.lock().unwrap().set_owner(
+                            &pid,
+                            path.as_ref(),
+                            lchown_req.uid,
+                            lchown_req.gid,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::lchown();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("lchown failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fchown((version, fchown_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(fchown_req.fd as u64);
+                        match daemon.lock().unwrap().core.lock().unwrap().fchown(
+                            &pid,
+                            handle_id,
+                            fchown_req.uid,
+                            fchown_req.gid,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::fchown();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fchown failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fchownat((version, fchownat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
+                        match daemon.lock().unwrap().core.lock().unwrap().fchownat(
+                            &pid,
+                            path.as_ref(),
+                            fchownat_req.uid,
+                            fchownat_req.gid,
+                            fchownat_req.flags,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::fchownat();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fchownat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Utimes((version, utimes_req)) => {
+                        let path = String::from_utf8_lossy(&utimes_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        // For path-based utimes, we need to open the file first
+                        match daemon.lock().unwrap().core.lock().unwrap().create(
+                            &pid,
+                            path.as_ref(),
+                            &OpenOptions {
+                                read: true,
+                                write: false,
+                                create: false,
+                                truncate: false,
+                                append: false,
+                                share: vec![],
+                                stream: None,
+                            },
+                        ) {
+                            Ok(handle) => {
+                                let times = utimes_req.times.map(|t| (t.0, t.1));
+                                match daemon
+                                    .lock()
+                                    .unwrap()
+                                    .core
+                                    .lock()
+                                    .unwrap()
+                                    .futimes(&pid, handle, times)
+                                {
+                                    Ok(()) => {
+                                        daemon
+                                            .lock()
+                                            .unwrap()
+                                            .core
+                                            .lock()
+                                            .unwrap()
+                                            .close(&pid, handle)
+                                            .ok();
+                                        let response = Response::utimes();
+                                        send_response(&mut stream, &response);
+                                    }
+                                    Err(e) => {
+                                        daemon
+                                            .lock()
+                                            .unwrap()
+                                            .core
+                                            .lock()
+                                            .unwrap()
+                                            .close(&pid, handle)
+                                            .ok();
+                                        let response = Response::error(
+                                            format!("utimes failed: {}", e),
+                                            Some(2),
+                                        );
+                                        send_response(&mut stream, &response);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("utimes failed to open file: {}", e),
+                                    Some(2),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Futimes((version, futimes_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(futimes_req.fd as u64);
+                        let times = futimes_req.times.map(|t| (t.0, t.1));
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core
+                            .lock()
+                            .unwrap()
+                            .futimes(&pid, handle_id, times)
+                        {
+                            Ok(()) => {
+                                let response = Response::futimes();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("futimes failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Utimensat((version, utimensat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let path = String::from_utf8_lossy(&utimensat_req.path).to_string();
+                        match daemon.lock().unwrap().core.lock().unwrap().utimensat(
+                            &pid,
+                            path.as_ref(),
+                            utimensat_req.times,
+                            utimensat_req.flags,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::utimensat();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("utimensat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Linkat((version, linkat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let old_path = String::from_utf8_lossy(&linkat_req.old_path).to_string();
+                        let new_path = String::from_utf8_lossy(&linkat_req.new_path).to_string();
+                        match daemon.lock().unwrap().core.lock().unwrap().linkat(
+                            &pid,
+                            old_path.as_ref(),
+                            new_path.as_ref(),
+                            linkat_req.flags,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::linkat();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("linkat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Symlinkat((version, symlinkat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let target = String::from_utf8_lossy(&symlinkat_req.target).to_string();
+                        let linkpath = String::from_utf8_lossy(&symlinkat_req.linkpath).to_string();
+                        match daemon.lock().unwrap().core.lock().unwrap().symlinkat(
+                            &pid,
+                            &target,
+                            linkpath.as_ref(),
+                        ) {
+                            Ok(()) => {
+                                let response = Response::symlinkat();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("symlinkat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Futimens((version, futimens_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(futimens_req.fd as u64);
+                        let times = futimens_req.times.map(|t| (t.0, t.1));
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core
+                            .lock()
+                            .unwrap()
+                            .futimens(&pid, handle_id, times)
+                        {
+                            Ok(()) => {
+                                let response = Response::futimens();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("futimens failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Truncate((version, truncate_req)) => {
+                        let path = String::from_utf8_lossy(&truncate_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        // For path-based truncate, we need to open the file first
+                        match daemon.lock().unwrap().core.lock().unwrap().create(
+                            &pid,
+                            path.as_ref(),
+                            &OpenOptions {
+                                read: true,
+                                write: true,
+                                create: false,
+                                truncate: false,
+                                append: false,
+                                share: vec![],
+                                stream: None,
+                            },
+                        ) {
+                            Ok(handle) => {
+                                match daemon.lock().unwrap().core.lock().unwrap().ftruncate(
+                                    &pid,
+                                    handle,
+                                    truncate_req.length,
+                                ) {
+                                    Ok(()) => {
+                                        daemon
+                                            .lock()
+                                            .unwrap()
+                                            .core
+                                            .lock()
+                                            .unwrap()
+                                            .close(&pid, handle)
+                                            .ok();
+                                        let response = Response::truncate();
+                                        send_response(&mut stream, &response);
+                                    }
+                                    Err(e) => {
+                                        daemon
+                                            .lock()
+                                            .unwrap()
+                                            .core
+                                            .lock()
+                                            .unwrap()
+                                            .close(&pid, handle)
+                                            .ok();
+                                        let response = Response::error(
+                                            format!("truncate failed: {}", e),
+                                            Some(2),
+                                        );
+                                        send_response(&mut stream, &response);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("truncate failed to open file: {}", e),
+                                    Some(2),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Ftruncate((version, ftruncate_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(ftruncate_req.fd as u64);
+                        match daemon.lock().unwrap().core.lock().unwrap().ftruncate(
+                            &pid,
+                            handle_id,
+                            ftruncate_req.length,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::ftruncate();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("ftruncate failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Statfs((version, statfs_req)) => {
+                        let path = String::from_utf8_lossy(&statfs_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core
+                            .lock()
+                            .unwrap()
+                            .statfs(&pid, path.as_ref())
+                        {
+                            Ok(statfs_data) => {
+                                let response = Response::statfs(statfs_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("statfs failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fstatfs((version, fstatfs_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = HandleId(fstatfs_req.fd as u64);
+                        match daemon.lock().unwrap().core.lock().unwrap().fstatfs(&pid, handle_id) {
+                            Ok(statfs_data) => {
+                                let response = Response::fstatfs(statfs_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fstatfs failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirfdOpenDir((version, dirfd_open_dir_req)) => {
+                        let path = String::from_utf8_lossy(&dirfd_open_dir_req.path).to_string();
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dirfd_open_dir(
+                            dirfd_open_dir_req.pid,
+                            path,
+                            dirfd_open_dir_req.fd as std::os::fd::RawFd,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::dirfd_open_dir();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("dirfd_open_dir failed: {}", e),
+                                    Some(2),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirfdCloseFd((version, dirfd_close_fd_req)) => {
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dirfd_close_fd(
+                            dirfd_close_fd_req.pid,
+                            dirfd_close_fd_req.fd as std::os::fd::RawFd,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::dirfd_close_fd();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("dirfd_close_fd failed: {}", e),
+                                    Some(2),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirfdDupFd((version, dirfd_dup_fd_req)) => {
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dirfd_dup_fd(
+                            dirfd_dup_fd_req.pid,
+                            dirfd_dup_fd_req.old_fd as std::os::fd::RawFd,
+                            dirfd_dup_fd_req.new_fd as std::os::fd::RawFd,
+                        ) {
+                            Ok(()) => {
+                                let response = Response::dirfd_dup_fd();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("dirfd_dup_fd failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirfdSetCwd((version, dirfd_set_cwd_req)) => {
+                        let cwd = String::from_utf8_lossy(&dirfd_set_cwd_req.cwd).to_string();
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dirfd_set_cwd(dirfd_set_cwd_req.pid, cwd) {
+                            Ok(()) => {
+                                let response = Response::dirfd_set_cwd();
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("dirfd_set_cwd failed: {}", e),
+                                    Some(2),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::DirfdResolvePath((version, dirfd_resolve_path_req)) => {
+                        let relative_path =
+                            String::from_utf8_lossy(&dirfd_resolve_path_req.relative_path)
+                                .to_string();
+                        let mut daemon = daemon.lock().unwrap();
+                        match daemon.handle_dirfd_resolve_path(
+                            dirfd_resolve_path_req.pid,
+                            dirfd_resolve_path_req.dirfd as std::os::fd::RawFd,
+                            relative_path,
+                        ) {
+                            Ok(resolved_path) => {
+                                let response = Response::dirfd_resolve_path(resolved_path);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response = Response::error(
+                                    format!("dirfd_resolve_path failed: {}", e),
+                                    Some(2),
+                                );
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::WatchRegisterFSEventsPort((version, port_req)) => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let port_name_str =
+                                String::from_utf8_lossy(&port_req.port_name).to_string();
+                            if std::ffi::CString::new(port_name_str.as_str()).is_err() {
+                                let response = Response::error(
+                                    "Invalid port name encoding".to_string(),
+                                    Some(22),
+                                );
                                 send_response(&mut stream, &response);
                                 cleanup();
                                 return;
                             }
+                            let port = match create_remote_port(&port_name_str) {
+                                Ok(port) => port,
+                                Err(err) => {
+                                    let response = Response::error(err, Some(22));
+                                    send_response(&mut stream, &response);
+                                    cleanup();
+                                    return;
+                                }
+                            };
+                            let mut daemon_guard = daemon.lock().unwrap();
+                            daemon_guard.register_fsevents_port(port_req.pid, port);
+                            let response = Response::watch_register_fsevents_port();
+                            send_response(&mut stream, &response);
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            let response = Response::watch_register_fsevents_port();
+                            send_response(&mut stream, &response);
+                        }
+                    }
+                    Request::BranchCreate((_version, branch_req)) => {
+                        let snapshot_id = match parse_snapshot_id_bytes(&branch_req.from) {
+                            Ok(id) => id,
+                            Err(err) => {
+                                let response = Response::error(err, Some(22));
+                                send_response(&mut stream, &response);
+                                return;
+                            }
                         };
-                        let mut daemon_guard = daemon.lock().unwrap();
-                        daemon_guard.register_fsevents_port(port_req.pid, port);
-                        let response = Response::watch_register_fsevents_port();
+
+                        let name = match branch_req.name {
+                            Some(name_bytes) => match decode_string(&name_bytes) {
+                                Ok(s) => Some(s),
+                                Err(err) => {
+                                    let response = Response::error(
+                                        format!("invalid branch name: {}", err),
+                                        Some(22),
+                                    );
+                                    send_response(&mut stream, &response);
+                                    return;
+                                }
+                            },
+                            None => None,
+                        };
+
+                        match daemon.lock().unwrap().handle_branch_create(snapshot_id, name) {
+                            Ok(branch_info) => {
+                                let response = Response::branch_create(branch_info);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(err) => {
+                                println!("AgentFS Daemon: branch_create error: {}", err);
+                                let response = Response::error(err, Some(5));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::BranchBind((_version, branch_req)) => {
+                        let branch_id = match parse_branch_id_bytes(&branch_req.branch) {
+                            Ok(id) => id,
+                            Err(err) => {
+                                let response = Response::error(err, Some(22));
+                                send_response(&mut stream, &response);
+                                return;
+                            }
+                        };
+
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let target_pid = branch_req.pid.unwrap_or(pid.as_u32());
+
+                        match daemon.lock().unwrap().handle_branch_bind(branch_id, target_pid) {
+                            Ok(()) => {
+                                let response =
+                                    Response::branch_bind(branch_id_to_vec(branch_id), target_pid);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(err) => {
+                                println!("AgentFS Daemon: branch_bind error: {}", err);
+                                let response = Response::error(err, Some(5));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    _ => {
+                        let response =
+                            Response::error("unsupported request (lib)".to_string(), Some(3));
                         send_response(&mut stream, &response);
                     }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        let response = Response::watch_register_fsevents_port();
-                        send_response(&mut stream, &response);
-                    }
-                }
-                _ => {
-                    let response = Response::error("unsupported request".to_string(), Some(3));
-                    send_response(&mut stream, &response);
                 }
             }
+            Err(e) => {
+                eprintln!("Failed to decode request: {:?}", e);
+                break;
+            }
         }
-        Err(_e) => {}
     }
 
     // Cleanup: unregister the connection
     cleanup();
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[allow(dead_code)]
 fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
     use libc::{iovec, msghdr};
@@ -2249,6 +2607,12 @@ fn send_fd_via_scmsg(stream: &UnixStream, fd: RawFd) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[allow(dead_code)]
+fn send_fd_via_scmsg(_stream: &UnixStream, _fd: RawFd) -> Result<(), String> {
+    Err("send_fd_via_scmsg is not supported on this platform".to_string())
 }
 
 fn send_response(stream: &mut UnixStream, response: &Response) {

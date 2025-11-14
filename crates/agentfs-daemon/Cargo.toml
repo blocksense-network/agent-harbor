@@ -31,6 +31,7 @@ tokio = { version = "1.0", features = [
 ] }
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
+tempfile = "3.0"
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -40,4 +41,5 @@ core-foundation-sys = "0.8"
 scopeguard = "1.2"
 
 [dev-dependencies]
-tempfile = "3.0"
+agentfs-client = { path = "../agentfs-client" }
+agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests" }

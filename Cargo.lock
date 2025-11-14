@@ -31,6 +31,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentfs-client"
+version = "0.1.0"
+dependencies = [
+ "agentfs-daemon",
+ "agentfs-proto",
+ "anyhow",
+ "libc",
+]
+
+[[package]]
 name = "agentfs-core"
 version = "0.1.0"
 dependencies = [
@@ -51,7 +61,9 @@ name = "agentfs-daemon"
 version = "0.1.0"
 dependencies = [
  "agentfs-backstore-macos",
+ "agentfs-client",
  "agentfs-core",
+ "agentfs-interpose-e2e-tests",
  "agentfs-proto",
  "ah-logging",
  "anyhow",
@@ -192,6 +204,7 @@ dependencies = [
 name = "agentfs-interpose-shim"
 version = "0.1.0"
 dependencies = [
+ "agentfs-client",
  "agentfs-core",
  "agentfs-proto",
  "core-foundation 0.10.1",
@@ -291,6 +304,7 @@ dependencies = [
  "ah-tui",
  "ah-workflows",
  "anyhow",
+ "assert_cmd",
  "chrono",
  "clap",
  "config-core",
@@ -386,6 +400,10 @@ dependencies = [
 name = "ah-fs-snapshots"
 version = "0.1.0"
 dependencies = [
+ "agentfs-client",
+ "agentfs-daemon",
+ "agentfs-interpose-e2e-tests",
+ "agentfs-proto",
  "ah-core",
  "ah-fs-snapshots-btrfs",
  "ah-fs-snapshots-git",
@@ -394,6 +412,7 @@ dependencies = [
  "ah-repo",
  "anyhow",
  "async-trait",
+ "fs-snapshots-test-harness",
  "libc",
  "regex",
  "serde",
@@ -1264,6 +1283,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "assert_cmd"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bcbb6924530aa9e0432442af08bbcafdad182db80d2e560da42a6d442535bf85"
+dependencies = [
+ "anstyle",
+ "bstr",
+ "libc",
+ "predicates",
+ "predicates-core",
+ "predicates-tree",
+ "wait-timeout",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1881,6 +1915,17 @@ checksum = "a334ef7c9e23abf0ce748e8cd309037da93e606ad52eb372e4ce327a0dcfbdfd"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
+]
+
+[[package]]
+name = "bstr"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
+dependencies = [
+ "memchr",
+ "regex-automata",
+ "serde",
 ]
 
 [[package]]
@@ -2764,6 +2809,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
+name = "difflib"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3476,6 +3527,30 @@ name = "fragile"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dd6caf6059519a65843af8fe2a3ae298b14b80179855aeb4adc2c1934ee619"
+
+[[package]]
+name = "fs-snapshots-test-harness"
+version = "0.1.0"
+dependencies = [
+ "agentfs-daemon",
+ "agentfs-interpose-e2e-tests",
+ "agentfs-interpose-shim",
+ "ah-fs-snapshots",
+ "ah-fs-snapshots-btrfs",
+ "ah-fs-snapshots-git",
+ "ah-fs-snapshots-traits",
+ "ah-fs-snapshots-zfs",
+ "ah-repo",
+ "anyhow",
+ "assert_cmd",
+ "clap",
+ "libc",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "fsevent-sys"
@@ -6014,6 +6089,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5d19ee57562043d37e82899fade9a22ebab7be9cef5026b07fda9cdd4293573"
 dependencies = [
  "anstyle",
+ "difflib",
  "predicates-core",
 ]
 

@@ -6,29 +6,47 @@ use crate::transport::{
     send_control_request,
 };
 use agentfs_proto::Response;
-use ah_fs_snapshots::{
-    FsSnapshotProvider, ProviderCapabilities, SnapshotProviderKind, provider_for,
-};
+#[cfg(feature = "agentfs")]
+use ah_fs_snapshots::{AgentFsProvider, FsSnapshotProvider};
+use ah_fs_snapshots::{ProviderCapabilities, provider_for};
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::debug;
 /// JSON output for filesystem status
-#[derive(Serialize, Deserialize)]
-struct FsStatusJson {
-    path: String,
-    filesystem_type: String,
-    mount_point: Option<String>,
-    provider: String,
+#[derive(Serialize, Deserialize, Clone)]
+struct FsCapabilitiesJson {
+    score: u8,
+    supports_cow_overlay: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct ProviderStatusJson {
+    name: String,
     capabilities: FsCapabilitiesJson,
     detection_notes: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct FsCapabilitiesJson {
-    score: u8,
-    supports_cow_overlay: bool,
+#[derive(Serialize, Deserialize, Clone)]
+struct FsStatusJson {
+    path: String,
+    filesystem_type: String,
+    mount_point: Option<String>,
+    selected: ProviderStatusJson,
+    #[cfg(feature = "agentfs")]
+    agentfs: Option<ProviderStatusJson>,
+}
+
+fn build_provider_status(caps: &ProviderCapabilities) -> ProviderStatusJson {
+    ProviderStatusJson {
+        name: format!("{:?}", caps.kind),
+        capabilities: FsCapabilitiesJson {
+            score: caps.score,
+            supports_cow_overlay: caps.supports_cow_overlay,
+        },
+        detection_notes: caps.notes.clone(),
+    }
 }
 
 #[derive(Args, Clone)]
@@ -195,24 +213,27 @@ impl AgentFsCommands {
     async fn status(opts: StatusOptions) -> Result<()> {
         let path = opts.path.unwrap_or_else(|| std::env::current_dir().unwrap());
 
-        // Detect filesystem capabilities
         let provider = provider_for(&path)?;
         let capabilities = provider.detect_capabilities(&path);
+        let selected_status = build_provider_status(&capabilities);
+        #[cfg(feature = "agentfs")]
+        let selected_is_agentfs = selected_status.name == "AgentFs";
+
+        #[cfg(feature = "agentfs")]
+        let agentfs_status = {
+            let caps = AgentFsProvider::new().detect_capabilities(&path);
+            Some(build_provider_status(&caps))
+        };
 
         if opts.detect_only {
-            // Only show detection results
-            #[allow(clippy::disallowed_methods)]
             if opts.json {
                 let json = FsStatusJson {
                     path: path.display().to_string(),
                     filesystem_type: Self::detect_filesystem_type(&path),
                     mount_point: Self::detect_mount_point(&path),
-                    provider: format!("{:?}", capabilities.kind),
-                    capabilities: FsCapabilitiesJson {
-                        score: capabilities.score,
-                        supports_cow_overlay: capabilities.supports_cow_overlay,
-                    },
-                    detection_notes: capabilities.notes,
+                    selected: selected_status.clone(),
+                    #[cfg(feature = "agentfs")]
+                    agentfs: agentfs_status.clone(),
                 };
                 println!("{}", serde_json::to_string_pretty(&json)?);
             } else {
@@ -221,58 +242,68 @@ impl AgentFsCommands {
                 if let Some(mount) = Self::detect_mount_point(&path) {
                     println!("Mount point: {}", mount);
                 }
-                println!("Provider: {:?}", capabilities.kind);
-                println!("Capability score: {}", capabilities.score);
-                if capabilities.supports_cow_overlay {
-                    println!("Supports CoW overlay: yes");
-                } else {
-                    println!("Supports CoW overlay: no");
-                }
-                if !capabilities.notes.is_empty() {
-                    println!("Detection notes:");
-                    for note in &capabilities.notes {
-                        println!("  - {}", note);
-                    }
+                Self::print_provider_status("Selected provider", &selected_status, opts.verbose);
+                #[cfg(feature = "agentfs")]
+                if let Some(agentfs) = &agentfs_status {
+                    println!();
+                    Self::print_provider_status("AgentFS provider (experimental)", agentfs, true);
                 }
             }
-        } else {
-            // Full provider selection
-            if opts.json {
-                let json = FsStatusJson {
-                    path: path.display().to_string(),
-                    filesystem_type: Self::detect_filesystem_type(&path),
-                    mount_point: Self::detect_mount_point(&path),
-                    provider: format!("{:?}", capabilities.kind),
-                    capabilities: FsCapabilitiesJson {
-                        score: capabilities.score,
-                        supports_cow_overlay: capabilities.supports_cow_overlay,
-                    },
-                    detection_notes: capabilities.notes,
-                };
-                println!("{}", serde_json::to_string_pretty(&json)?);
-            } else {
-                println!("Filesystem status for: {}", path.display());
-                println!("Filesystem type: {}", Self::detect_filesystem_type(&path));
-                if let Some(mount) = Self::detect_mount_point(&path) {
-                    println!("Mount point: {}", mount);
-                }
-                println!("Selected provider: {:?}", capabilities.kind);
-                println!("Capability score: {}", capabilities.score);
-                if capabilities.supports_cow_overlay {
-                    println!("Supports CoW overlay: yes");
-                } else {
-                    println!("Supports CoW overlay: no");
-                }
-                if opts.verbose && !capabilities.notes.is_empty() {
-                    println!("Detection notes:");
-                    for note in &capabilities.notes {
-                        println!("  - {}", note);
-                    }
-                }
+            return Ok(());
+        }
+
+        if opts.json {
+            let json = FsStatusJson {
+                path: path.display().to_string(),
+                filesystem_type: Self::detect_filesystem_type(&path),
+                mount_point: Self::detect_mount_point(&path),
+                selected: selected_status.clone(),
+                #[cfg(feature = "agentfs")]
+                agentfs: agentfs_status.clone(),
+            };
+            println!("{}", serde_json::to_string_pretty(&json)?);
+            return Ok(());
+        }
+
+        println!("Filesystem status for: {}", path.display());
+        println!("Filesystem type: {}", Self::detect_filesystem_type(&path));
+        if let Some(mount) = Self::detect_mount_point(&path) {
+            println!("Mount point: {}", mount);
+        }
+
+        Self::print_provider_status("Selected provider", &selected_status, opts.verbose);
+
+        #[cfg(feature = "agentfs")]
+        if let Some(agentfs) = &agentfs_status {
+            if !selected_is_agentfs {
+                println!();
+                Self::print_provider_status("AgentFS provider (experimental)", agentfs, true);
             }
         }
 
         Ok(())
+    }
+
+    fn print_provider_status(title: &str, provider: &ProviderStatusJson, verbose: bool) {
+        println!("{title}: {}", provider.name);
+        println!("Capability score: {}", provider.capabilities.score);
+        println!(
+            "Supports CoW overlay: {}",
+            if provider.capabilities.supports_cow_overlay {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+
+        if verbose || title.contains("AgentFS") {
+            if !provider.detection_notes.is_empty() {
+                println!("Notes:");
+                for note in &provider.detection_notes {
+                    println!("  - {}", note);
+                }
+            }
+        }
     }
 
     fn detect_filesystem_type(_path: &PathBuf) -> String {

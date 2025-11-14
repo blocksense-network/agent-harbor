@@ -15,18 +15,35 @@ tracing.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait = "0.1"
+tempfile.workspace = true
+libc = "0.2"
+
+agentfs-daemon = { path = "../agentfs-daemon", optional = true }
+agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests", optional = true }
+agentfs-proto = { path = "../agentfs-proto", optional = true }
+agentfs-client = { path = "../agentfs-client" }
 
 [dev-dependencies]
-tempfile = "3.8"
 regex = "1.10"
 libc = "0.2"
 ah-repo = { path = "../ah-repo" }
+fs-snapshots-test-harness = { path = "../../tests/fs-snapshots-test-harness", default-features = false, features = [
+  "git",
+  "zfs",
+  "btrfs",
+  "agentfs",
+] }
 
 [features]
 default = ["zfs", "btrfs", "git"]
 zfs = ["dep:ah-fs-snapshots-zfs"]
 btrfs = ["dep:ah-fs-snapshots-btrfs"]
 git = ["dep:ah-fs-snapshots-git"]
+agentfs = [
+  "dep:agentfs-daemon",
+  "dep:agentfs-proto",
+  "dep:agentfs-interpose-e2e-tests",
+]
 
 [dependencies.ah-fs-snapshots-btrfs]
 path = "../ah-fs-snapshots-btrfs"
