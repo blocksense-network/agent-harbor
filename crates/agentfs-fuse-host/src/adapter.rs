@@ -12,6 +12,7 @@ use agentfs_core::{
     Attributes, DirEntry, FileTimes, FsConfig, FsCore, FsError, HandleId, LockRange, OpenOptions,
     ShareMode, error::FsResult, vfs::PID,
 };
+use agentfs_proto::messages::TimespecData;
 use agentfs_proto::*;
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
@@ -19,8 +20,8 @@ use fuser::{
     TimeOrNow,
 };
 use libc::{
-    EACCES, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ENAMETOOLONG, ENOENT, ENOTDIR, ENOTEMPTY, ENOTSUP,
-    c_int,
+    EACCES, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOTDIR, ENOTEMPTY,
+    ENOTSUP, c_int,
 };
 use ssz::{Decode, Encode};
 use std::collections::HashMap;
@@ -40,6 +41,9 @@ const CONTROL_FILE_INO: u64 = FUSE_ROOT_ID + 2;
 
 /// IOCTL command for AgentFS control operations
 const AGENTFS_IOCTL_CMD: u32 = 0x8000_4146; // 'AF' in hex with 0x8000 bit set
+
+/// Maximum single path component length to guard against overly long names
+const NAME_MAX: usize = 255;
 
 /// AgentFS FUSE filesystem adapter
 pub struct AgentFsFuse {
@@ -522,12 +526,47 @@ impl fuser::Filesystem for AgentFsFuse {
         let options = self.fuse_flags_to_options(flags);
         let client_pid = self.get_client_pid(req);
 
+        // Enforce O_NOFOLLOW semantics: fail if target is a symlink
+        #[allow(non_upper_case_globals)]
+        {
+            use libc::O_NOFOLLOW;
+            if flags & O_NOFOLLOW != 0 {
+                if let Ok(stat) = self.core.lstat(&client_pid, path) {
+                    let mode = stat.st_mode;
+                    if (mode & libc::S_IFMT as u32) == libc::S_IFLNK as u32 {
+                        reply.error(ELOOP);
+                        return;
+                    }
+                }
+            }
+        }
+
         match self.core.open(&client_pid, path, &options) {
             Ok(handle_id) => {
                 reply.opened(handle_id.0, 0);
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(_) => reply.error(EIO),
+        }
+    }
+
+    fn readlink(&mut self, req: &Request, ino: u64, reply: ReplyData) {
+        // Only valid for symlinks
+        let path_bytes = match self.inode_to_path(ino) {
+            Some(p) => p,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+
+        let path = self.path_from_bytes(path_bytes);
+        let client_pid = self.get_client_pid(req);
+        match self.core.readlink(&client_pid, path) {
+            Ok(target) => reply.data(target.as_bytes()),
+            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(FsError::InvalidArgument) => reply.error(EINVAL),
             Err(_) => reply.error(EIO),
         }
     }
@@ -690,6 +729,11 @@ impl fuser::Filesystem for AgentFsFuse {
         flags: i32,
         reply: ReplyCreate,
     ) {
+        // Guard component length
+        if name.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
         let parent_path = match self.inode_to_path(parent) {
             Some(p) => p,
             None => {
@@ -739,6 +783,11 @@ impl fuser::Filesystem for AgentFsFuse {
         _umask: u32,
         reply: ReplyEntry,
     ) {
+        // Guard component length
+        if name.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
         let parent_path = match self.inode_to_path(parent) {
             Some(p) => p,
             None => {
@@ -773,6 +822,11 @@ impl fuser::Filesystem for AgentFsFuse {
     }
 
     fn unlink(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        // Guard component length
+        if name.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
         let parent_path = match self.inode_to_path(parent) {
             Some(p) => p,
             None => {
@@ -805,6 +859,11 @@ impl fuser::Filesystem for AgentFsFuse {
     }
 
     fn rmdir(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        // Guard component length
+        if name.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
         let parent_path = match self.inode_to_path(parent) {
             Some(p) => p,
             None => {
@@ -847,6 +906,11 @@ impl fuser::Filesystem for AgentFsFuse {
         _flags: u32,
         reply: ReplyEmpty,
     ) {
+        // Guard component length
+        if name.as_bytes().len() > NAME_MAX || newname.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
         let parent_path = match self.inode_to_path(parent) {
             Some(p) => p,
             None => {
@@ -892,6 +956,109 @@ impl fuser::Filesystem for AgentFsFuse {
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::AlreadyExists) => reply.error(EEXIST),
+            Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(_) => reply.error(EIO),
+        }
+    }
+
+    fn symlink(
+        &mut self,
+        req: &Request,
+        parent: u64,
+        name: &OsStr,
+        link: &std::path::Path,
+        reply: ReplyEntry,
+    ) {
+        // Guard component length
+        if name.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
+
+        let parent_path = match self.inode_to_path(parent) {
+            Some(p) => p,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+
+        // Construct link path (where the symlink will live)
+        let mut linkpath = parent_path.to_vec();
+        if !linkpath.ends_with(b"/") {
+            linkpath.push(b'/');
+        }
+        linkpath.extend_from_slice(name.as_bytes());
+        let linkpath_obj = self.path_from_bytes(&linkpath);
+
+        let client_pid = self.get_client_pid(req);
+        match self.core.symlink(&client_pid, &link.to_string_lossy(), linkpath_obj) {
+            Ok(()) => match self.core.getattr(&client_pid, linkpath_obj) {
+                Ok(attr) => {
+                    let ino = self.get_or_alloc_inode(&linkpath);
+                    let fuse_attr = self.attr_to_fuse(&attr, ino);
+                    reply.entry(&Duration::from_secs(1), &fuse_attr, 0);
+                }
+                Err(_) => reply.error(EIO),
+            },
+            Err(FsError::AlreadyExists) => reply.error(EEXIST),
+            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(FsError::NotADirectory) => reply.error(ENOTDIR),
+            Err(_) => reply.error(EIO),
+        }
+    }
+
+    fn link(
+        &mut self,
+        req: &Request,
+        ino: u64,
+        newparent: u64,
+        newname: &OsStr,
+        reply: ReplyEntry,
+    ) {
+        // Guard component length
+        if newname.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
+
+        let old_path_bytes = match self.inode_to_path(ino) {
+            Some(p) => p,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let newparent_path = match self.inode_to_path(newparent) {
+            Some(p) => p,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+
+        let mut new_path = newparent_path.to_vec();
+        if !new_path.ends_with(b"/") {
+            new_path.push(b'/');
+        }
+        new_path.extend_from_slice(newname.as_bytes());
+
+        let old_path = self.path_from_bytes(old_path_bytes);
+        let new_path_obj = self.path_from_bytes(&new_path);
+        let client_pid = self.get_client_pid(req);
+
+        match self.core.link(&client_pid, old_path, new_path_obj) {
+            Ok(()) => match self.core.getattr(&client_pid, new_path_obj) {
+                Ok(attr) => {
+                    let ino = self.get_or_alloc_inode(&new_path);
+                    let fuse_attr = self.attr_to_fuse(&attr, ino);
+                    reply.entry(&Duration::from_secs(1), &fuse_attr, 0);
+                }
+                Err(_) => reply.error(EIO),
+            },
+            Err(FsError::AlreadyExists) => reply.error(EEXIST),
+            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(FsError::IsADirectory) => reply.error(EISDIR),
             Err(FsError::AccessDenied) => reply.error(EACCES),
             Err(_) => reply.error(EIO),
         }
@@ -1139,5 +1306,194 @@ impl fuser::Filesystem for AgentFsFuse {
 
         // For now, we don't implement copy_file_range - return ENOTSUP
         reply.error(libc::ENOTSUP);
+    }
+
+    fn setattr(
+        &mut self,
+        req: &Request,
+        ino: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        atime: Option<TimeOrNow>,
+        mtime: Option<TimeOrNow>,
+        _ctime: Option<SystemTime>,
+        fh: Option<u64>,
+        _crtime: Option<SystemTime>,
+        _chgtime: Option<SystemTime>,
+        _bkuptime: Option<SystemTime>,
+        flags: Option<u32>,
+        reply: ReplyAttr,
+    ) {
+        // Resolve path for inode
+        let path_bytes = match self.inode_to_path(ino) {
+            Some(p) => p,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let path = self.path_from_bytes(path_bytes);
+        let client_pid = self.get_client_pid(req);
+
+        // Helper: get current times for UTIME_OMIT behavior
+        let current_times = match self.core.getattr(&client_pid, path) {
+            Ok(attr) => Some(attr.times),
+            Err(_) => None,
+        };
+
+        // Apply size (truncate)
+        if let Some(new_size) = size {
+            if let Some(fh_val) = fh {
+                let h = HandleId(fh_val);
+                if let Err(e) = self.core.ftruncate(&client_pid, h, new_size) {
+                    reply.error(match e {
+                        FsError::NotFound => ENOENT,
+                        FsError::AccessDenied => EACCES,
+                        FsError::Unsupported => libc::ENOTSUP,
+                        _ => EIO,
+                    });
+                    return;
+                }
+            } else {
+                // Path-based truncate: open for write, then ftruncate
+                let mut opts = OpenOptions::default();
+                opts.write = true;
+                match self.core.open(&client_pid, path, &opts) {
+                    Ok(h) => {
+                        if let Err(e) = self.core.ftruncate(&client_pid, h, new_size) {
+                            reply.error(match e {
+                                FsError::NotFound => ENOENT,
+                                FsError::AccessDenied => EACCES,
+                                FsError::Unsupported => libc::ENOTSUP,
+                                _ => EIO,
+                            });
+                            return;
+                        }
+                        let _ = self.core.close(&client_pid, h);
+                    }
+                    Err(e) => {
+                        reply.error(match e {
+                            FsError::NotFound => ENOENT,
+                            FsError::AccessDenied => EACCES,
+                            _ => EIO,
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Apply mode (chmod)
+        if let Some(new_mode) = mode {
+            if let Some(fh_val) = fh {
+                if let Err(e) = self.core.fchmod(&client_pid, HandleId(fh_val), new_mode) {
+                    reply.error(match e {
+                        FsError::NotFound => ENOENT,
+                        FsError::AccessDenied => EACCES,
+                        _ => EIO,
+                    });
+                    return;
+                }
+            } else if let Err(e) = self.core.fchmodat(&client_pid, path, new_mode, 0) {
+                reply.error(match e {
+                    FsError::NotFound => ENOENT,
+                    FsError::AccessDenied => EACCES,
+                    _ => EIO,
+                });
+                return;
+            }
+        }
+
+        // Apply ownership (chown)
+        if uid.is_some() || gid.is_some() {
+            let new_uid = uid.unwrap_or(u32::MAX);
+            let new_gid = gid.unwrap_or(u32::MAX);
+            if let Some(fh_val) = fh {
+                if let Err(e) = self.core.fchown(&client_pid, HandleId(fh_val), new_uid, new_gid) {
+                    reply.error(match e {
+                        FsError::NotFound => ENOENT,
+                        FsError::AccessDenied => EACCES,
+                        _ => EIO,
+                    });
+                    return;
+                }
+            } else if let Err(e) = self.core.fchownat(&client_pid, path, new_uid, new_gid, 0) {
+                reply.error(match e {
+                    FsError::NotFound => ENOENT,
+                    FsError::AccessDenied => EACCES,
+                    _ => EIO,
+                });
+                return;
+            }
+        }
+
+        // Apply timestamps (utimens)
+        if atime.is_some() || mtime.is_some() {
+            let (cur_at, cur_mt) = if let Some(t) = &current_times {
+                (t.atime as u64, t.mtime as u64)
+            } else {
+                let now =
+                    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                (now, now)
+            };
+
+            let to_ts = |tor: Option<TimeOrNow>, cur: u64| -> TimespecData {
+                match tor {
+                    Some(TimeOrNow::Now) => {
+                        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+                        TimespecData {
+                            tv_sec: now.as_secs(),
+                            tv_nsec: now.subsec_nanos(),
+                        }
+                    }
+                    Some(TimeOrNow::SpecificTime(t)) => {
+                        let dur = t.duration_since(UNIX_EPOCH).unwrap_or_default();
+                        TimespecData {
+                            tv_sec: dur.as_secs(),
+                            tv_nsec: dur.subsec_nanos(),
+                        }
+                    }
+                    None => TimespecData {
+                        tv_sec: cur,
+                        tv_nsec: 0,
+                    },
+                }
+            };
+
+            let a_ts = to_ts(atime, cur_at);
+            let m_ts = to_ts(mtime, cur_mt);
+
+            if let Some(fh_val) = fh {
+                if let Err(e) =
+                    self.core.futimens(&client_pid, HandleId(fh_val), Some((a_ts, m_ts)))
+                {
+                    reply.error(match e {
+                        FsError::NotFound => ENOENT,
+                        FsError::AccessDenied => EACCES,
+                        _ => EIO,
+                    });
+                    return;
+                }
+            } else if let Err(e) = self.core.utimensat(&client_pid, path, Some((a_ts, m_ts)), 0) {
+                reply.error(match e {
+                    FsError::NotFound => ENOENT,
+                    FsError::AccessDenied => EACCES,
+                    _ => EIO,
+                });
+                return;
+            }
+        }
+
+        // Return updated attributes
+        match self.core.getattr(&client_pid, path) {
+            Ok(attr) => {
+                let fuse_attr = self.attr_to_fuse(&attr, ino);
+                reply.attr(&Duration::from_secs(1), &fuse_attr);
+            }
+            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(_) => reply.error(EIO),
+        }
     }
 }
