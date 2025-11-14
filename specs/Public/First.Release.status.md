@@ -340,7 +340,7 @@
 
 ## R10. Investigate Claude credential regression
 
-**Status:** Not started — Claude sessions intermittently fail because the agent cannot find credentials. Multiple pathways (Keychain, `.claude/.credentials.json`, `ANTHROPIC_API_KEY`) exist, but the current implementation does not reliably discover or copy them into the sandboxed HOME.
+**Status:** In progress — core credential discovery and copying logic has been implemented and unit-tested for macOS and Linux, but some higher-level CLI/integration tests remain to be added.
 
 **Context:**
 
@@ -350,19 +350,19 @@
 
 **Deliverables:**
 
-- [ ] Audit the Claude credential discovery flow:
+- [x] Audit the Claude credential discovery flow:
   - Enumerate all supported storage locations (Keychain, `~/.config/claude`, `.claude/.credentials.json`, environment variables) and document precedence.
   - Implement platform-specific accessors with detailed error reporting and telemetry (debug logs, user guidance).
-- [ ] Fix credential copying:
+- [x] Fix credential copying:
   - Ensure sandbox HOME contains all required files (config, cache, OAuth tokens) with correct permissions.
   - Add opt-in redaction logging to confirm which credential schemes were used (without leaking secrets).
-- [ ] Surface clear diagnostics when credentials are missing or malformed (CLI exit code, TUI banner, REST task failure message).
-- [ ] Update documentation (`specs/Public/3rd-Party-Agents/Claude.md` or equivalent) to describe how credentials are detected and how users can remediate failures.
-- [ ] Publish a manual troubleshooting checklist (`just manual-test-claude-credentials`) covering platform-specific verification steps.
+- [x] Surface clear diagnostics when credentials are missing or malformed (CLI exit code, TUI banner, REST task failure message).
+- [x] Update documentation (`specs/Public/3rd-Party-Agents/Claude.md` or equivalent) to describe how credentials are detected and how users can remediate failures.
+- [x] Publish a manual troubleshooting checklist (`just manual-test-claude-credentials`) covering platform-specific verification steps.
 
 **Verification (automated):**
 
-- [ ] Unit tests for each credential discovery path (Keychain mocked, file paths, environment variables).
+- [x] Unit tests for each credential discovery path (Keychain mocked, file paths, environment variables).
 - [ ] Integration test running the mock Claude agent with a sandboxed HOME verifying credentials are copied and the agent launches successfully.
 - [ ] CLI regression test asserting `ah agent start --agent claude` fails fast with a clear error when credentials are absent.
 
