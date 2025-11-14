@@ -37,7 +37,7 @@ Earlier drafts described PID‑like JSON session records and a local daemon. The
 
 This schema models repositories, workspaces, tasks, sessions, runtimes, agents, events, and access point executor state. Filesystem snapshots are provider‑authoritative (ZFS/Btrfs/Git/AgentFS) and are not duplicated in SQLite; the CLI may record minimal references in session events for convenience.
 
-```sql
+````sql
 -- Schema versioning (incremented to 2 for access point executor tables)
 PRAGMA user_version = 2;
 
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS drafts (
   description  TEXT NOT NULL,                  -- user-provided task description
   repository   TEXT NOT NULL,                  -- repository identifier (ID or URL)
   branch       TEXT,                           -- target branch name
-  models       TEXT NOT NULL,                  -- JSON array of selected models
+  agents       TEXT NOT NULL,                  -- JSON array of selected agents with counts
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
@@ -143,7 +143,31 @@ CREATE TABLE IF NOT EXISTS kv (
   v            TEXT,
   PRIMARY KEY (scope, k)
 );
-```
+
+-- Example kv entries for TUI state persistence:
+-- scope='user', k='tui.last_agents', v='[{"name":"claude-code","count":1}]'  -- Last selected agents
+-- scope='repo-user', k='tui.last_branch', v='"main"'                        -- Last selected branch per repo
+
+## TUI State Persistence
+
+The TUI maintains user selections and preferences across sessions using the local database. This ensures a consistent experience and reduces repetitive configuration.
+
+### Agent Selector State
+
+The Agent Selector maintains the last selected agents/models across TUI sessions:
+
+- **Storage**: Persisted in the `kv` table with scope `user` and key `tui.last_agents`
+- **Format**: JSON array of selected agents with counts: `[{"name":"claude-code","count":1},{"name":"gpt-4","count":2}]`
+- **Usage**: Used as default values when creating new draft task cards
+- **Updates**: Automatically updated whenever a user confirms agent selection in the modal
+
+### Repository and Branch Selections
+
+Repository and branch selections are persisted per repository scope:
+
+- **Repository**: Last selected repository stored with key `tui.last_repository`
+- **Branch**: Last selected branch per repository stored with scope `repo-user` and key `tui.last_branch`
+- **Scope**: Uses `repo-user` scope to maintain separate preferences per repository
 
 ## Access Point Executor State
 
@@ -206,7 +230,7 @@ CREATE TABLE IF NOT EXISTS executor_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_executor_history_executor_ts ON executor_history(executor_id, event_timestamp);
-```
+````
 
 **Persistence Rules:**
 

@@ -3,7 +3,7 @@
 
 //! API contract types for the agent-harbor REST service
 
-use ah_domain_types::LogLevel;
+use ah_domain_types::{AgentChoice, LogLevel};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -197,22 +197,6 @@ pub struct WorkspaceConfig {
     pub execution_host_id: Option<String>,
 }
 
-/// Agent configuration
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct AgentConfig {
-    #[serde(rename = "type")]
-    pub agent_type: String,
-    #[serde(default = "default_version")]
-    pub version: String,
-    #[serde(skip_serializing_if = "HashMap::is_empty", default)]
-    pub settings: HashMap<String, serde_json::Value>,
-}
-
-fn default_version() -> String {
-    "latest".to_string()
-}
-
 /// Delivery configuration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -238,8 +222,8 @@ pub struct CreateTaskRequest {
     pub runtime: RuntimeConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceConfig>,
-    #[validate(nested)]
-    pub agent: AgentConfig,
+    #[validate(length(min = 1, message = "At least one agent must be specified"))]
+    pub agents: Vec<AgentChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<DeliveryConfig>,
     #[serde(skip_serializing_if = "HashMap::is_empty", default)]
@@ -286,7 +270,7 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
     pub task: TaskInfo,
-    pub agent: AgentConfig,
+    pub agent: AgentChoice,
     pub runtime: RuntimeConfig,
     pub workspace: WorkspaceInfo,
     pub vcs: VcsInfo,

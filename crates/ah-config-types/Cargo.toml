@@ -9,5 +9,6 @@ description = "Distributed, strongly-typed configuration structs for Agent Harbo
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+ah-domain-types = { path = "../ah-domain-types" }
 serde.workspace = true
 schemars = { version = "0.8", features = ["preserve_order"] }

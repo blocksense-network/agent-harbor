@@ -14,7 +14,7 @@ use crate::db::DatabaseManager;
 use crate::task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
-use ah_domain_types::{LogLevel, SelectedModel, TaskExecution, TaskInfo, TaskState, ToolStatus};
+use ah_domain_types::{AgentChoice, LogLevel, TaskExecution, TaskInfo, TaskState, ToolStatus};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
 use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig};
@@ -428,112 +428,130 @@ where
             }
         };
 
-        // Launch a task for each model
+        // Launch a task for each model instance (respecting count)
         let mut launched_task_ids = Vec::new();
         let mut errors = Vec::new();
+        let mut global_instance_index = 0;
 
         for (model_index, model) in params.models().iter().enumerate() {
-            // Generate unique session ID for this model
-            let session_id = if params.models().len() == 1 {
-                base_task_id.clone()
-            } else {
-                format!("{}-{}", base_task_id, model_index)
-            };
+            for instance_index in 0..model.count {
+                // Generate unique session ID for this model instance
+                let session_id = if params.models().len() == 1 && model.count == 1 {
+                    // Single model, single instance - use base task ID
+                    base_task_id.clone()
+                } else if model.count == 1 {
+                    // Single instance per model - use model index
+                    format!("{}-{}", base_task_id, model_index)
+                } else {
+                    // Multiple instances - use global instance index
+                    format!("{}-{}", base_task_id, global_instance_index)
+                };
 
-            tracing::info!(
-                "Launching task for model '{}' with session ID: {}",
-                model.name,
-                session_id
-            );
+                tracing::info!(
+                    "Launching task for agent '{:?}' with version '{}' and model '{}' (instance {}/{}) with session ID: {}",
+                    model.agent.software,
+                    model.agent.version,
+                    model.model,
+                    instance_index + 1,
+                    model.count,
+                    session_id
+                );
 
-            // For recording, ensure the shared socket listener is set up
-            let task_manager_socket_path = if params.record() {
-                let name = task_manager_socket_path().to_string_lossy().to_string();
-                tracing::debug!("Using task manager socket: {}", name);
+                global_instance_index += 1;
 
-                // Ensure the shared listener is created and accept loop is running
-                if let Err(e) = self.ensure_shared_listener() {
-                    errors.push(format!(
-                        "Failed to setup shared listener for {}: {}",
-                        session_id, e
-                    ));
-                    continue;
-                }
+                // For recording, ensure the shared socket listener is set up
+                let task_manager_socket_path = if params.record() {
+                    let name = task_manager_socket_path().to_string_lossy().to_string();
+                    tracing::debug!("Using task manager socket: {}", name);
 
-                // Create broadcast channel for this task's events
-                {
-                    let mut event_senders = self.event_senders.lock().unwrap();
-                    let (tx, _rx) = broadcast::channel(100); // Buffer size of 100 events
-                    event_senders.insert(session_id.clone(), tx);
-                }
-
-                Some(name)
-            } else {
-                None
-            };
-
-            // Get the agent command line from the executor
-            let agent_cmd_inner = match self.agent_executor.get_agent_command_string(
-                &session_id,
-                &params.agent_type().to_string(),
-                &model.name,
-                params.description(),
-                working_copy_mode,
-                Some(&current_dir),
-                snapshot_id.clone(),
-                params.record(),                     // Pass recording flag
-                task_manager_socket_path.as_deref(), // Pass task manager socket path
-            ) {
-                Ok(cmd) => cmd,
-                Err(e) => {
-                    tracing::error!("Failed to generate agent command for {}: {}", session_id, e);
-                    // Clean up broadcast channel if it was created
-                    if params.record() {
-                        let mut event_senders = self.event_senders.lock().unwrap();
-                        event_senders.remove(&session_id);
+                    // Ensure the shared listener is created and accept loop is running
+                    if let Err(e) = self.ensure_shared_listener() {
+                        errors.push(format!(
+                            "Failed to setup shared listener for {}: {}",
+                            session_id, e
+                        ));
+                        continue;
                     }
-                    errors.push(format!(
-                        "Failed to generate agent command for {}: {}",
-                        session_id, e
-                    ));
-                    continue;
-                }
-            };
 
-            tracing::info!(
-                "Generated agent command for {}: {}",
-                session_id,
-                agent_cmd_inner
-            );
-
-            // Create a multiplexer layout for the task
-            let layout_config = LayoutConfig {
-                task_id: &session_id,
-                working_dir: &current_dir,
-                editor_cmd: Some("lazygit"), // Launch lazygit in the editor pane
-                agent_cmd: &agent_cmd_inner,
-                log_cmd: None, // No separate log command for now
-                split_mode: *params.split_mode(),
-                focus: params.focus(),
-            };
-
-            match self.multiplexer.create_task_layout(&layout_config) {
-                Ok(_layout_handle) => {
-                    // Task layout created successfully in multiplexer
-                    tracing::info!("Task launched successfully with ID: {}", session_id);
-                    launched_task_ids.push(session_id);
-                }
-                Err(e) => {
-                    // Clean up broadcast channel if it was created
-                    if params.record() {
+                    // Create broadcast channel for this task's events
+                    {
                         let mut event_senders = self.event_senders.lock().unwrap();
-                        event_senders.remove(&session_id);
+                        let (tx, _rx) = broadcast::channel(100); // Buffer size of 100 events
+                        event_senders.insert(session_id.clone(), tx);
                     }
-                    tracing::error!("Task launch failed for {}: {}", session_id, e);
-                    errors.push(format!(
-                        "Failed to create task layout for {}: {}",
-                        session_id, e
-                    ));
+
+                    Some(name)
+                } else {
+                    None
+                };
+
+                // Get the agent command line from the executor
+                let agent_cmd_inner = match self.agent_executor.get_agent_command_string(
+                    &session_id,
+                    &format!("{:?}", model.agent.software),
+                    &model.model,
+                    params.description(),
+                    working_copy_mode,
+                    Some(&current_dir),
+                    snapshot_id.clone(),
+                    params.record(),                     // Pass recording flag
+                    task_manager_socket_path.as_deref(), // Pass task manager socket path
+                ) {
+                    Ok(cmd) => cmd,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to generate agent command for {}: {}",
+                            session_id,
+                            e
+                        );
+                        // Clean up broadcast channel if it was created
+                        if params.record() {
+                            let mut event_senders = self.event_senders.lock().unwrap();
+                            event_senders.remove(&session_id);
+                        }
+                        errors.push(format!(
+                            "Failed to generate agent command for {}: {}",
+                            session_id, e
+                        ));
+                        continue;
+                    }
+                };
+
+                tracing::info!(
+                    "Generated agent command for {}: {}",
+                    session_id,
+                    agent_cmd_inner
+                );
+
+                // Create a multiplexer layout for the task
+                let layout_config = LayoutConfig {
+                    task_id: &session_id,
+                    working_dir: &current_dir,
+                    editor_cmd: Some("lazygit"), // Launch lazygit in the editor pane
+                    agent_cmd: &agent_cmd_inner,
+                    log_cmd: None, // No separate log command for now
+                    split_mode: *params.split_mode(),
+                    focus: params.focus(),
+                };
+
+                match self.multiplexer.create_task_layout(&layout_config) {
+                    Ok(_layout_handle) => {
+                        // Task layout created successfully in multiplexer
+                        tracing::info!("Task launched successfully with ID: {}", session_id);
+                        launched_task_ids.push(session_id);
+                    }
+                    Err(e) => {
+                        // Clean up broadcast channel if it was created
+                        if params.record() {
+                            let mut event_senders = self.event_senders.lock().unwrap();
+                            event_senders.remove(&session_id);
+                        }
+                        tracing::error!("Task launch failed for {}: {}", session_id, e);
+                        errors.push(format!(
+                            "Failed to create task layout for {}: {}",
+                            session_id, e
+                        ));
+                    }
                 }
             }
         }
@@ -584,10 +602,10 @@ where
                         .map(|draft| {
                             // Parse models JSON
                             let models = match serde_json::from_str::<
-                                Vec<ah_domain_types::SelectedModel>,
+                                Vec<ah_domain_types::AgentChoice>,
                             >(&draft.models)
                             {
-                                Ok(models) => models.iter().map(|m| m.name.clone()).collect(),
+                                Ok(models) => models,
                                 Err(_) => Vec::new(),
                             };
 
@@ -619,7 +637,7 @@ where
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[SelectedModel],
+        models: &[AgentChoice],
     ) -> SaveDraftResult {
         // Convert models to JSON string
         let models_json = match serde_json::to_string(models) {

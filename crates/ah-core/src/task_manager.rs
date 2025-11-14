@@ -56,7 +56,7 @@
 //! into domain messages for the Model.
 
 use crate::agent_types::AgentType;
-use ah_domain_types::{LogLevel, SelectedModel, TaskExecution, TaskInfo, TaskState, ToolStatus};
+use ah_domain_types::{AgentChoice, LogLevel, TaskExecution, TaskInfo, TaskState, ToolStatus};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::SplitMode;
 use async_trait::async_trait;
@@ -91,7 +91,7 @@ pub struct TaskLaunchParams {
     starting_point: StartingPoint,
     working_copy_mode: crate::WorkingCopyMode,
     description: String,
-    models: Vec<SelectedModel>,
+    models: Vec<AgentChoice>,
     agent_type: AgentType,
     split_mode: SplitMode,
     focus: bool,
@@ -105,7 +105,7 @@ pub struct TaskLaunchParamsBuilder {
     starting_point: Option<StartingPoint>,
     working_copy_mode: Option<crate::WorkingCopyMode>,
     description: Option<String>,
-    models: Option<Vec<SelectedModel>>,
+    models: Option<Vec<AgentChoice>>,
     agent_type: Option<AgentType>,
     split_mode: Option<SplitMode>,
     focus: Option<bool>,
@@ -153,7 +153,7 @@ impl TaskLaunchParams {
     }
 
     /// Get the models
-    pub fn models(&self) -> &[SelectedModel] {
+    pub fn models(&self) -> &[AgentChoice] {
         &self.models
     }
 
@@ -186,7 +186,7 @@ impl TaskLaunchParams {
     ///
     /// This is useful for resuming draft tasks.
     pub fn from_draft(draft: &DraftRecord) -> Result<Self, String> {
-        let models: Vec<SelectedModel> = serde_json::from_str(&draft.models)
+        let models: Vec<AgentChoice> = serde_json::from_str(&draft.models)
             .map_err(|e| format!("Invalid models JSON in draft: {}", e))?;
 
         // Use the first model as the primary model
@@ -200,7 +200,7 @@ impl TaskLaunchParams {
         Self::builder()
             .starting_point(starting_point)
             .description(draft.description.clone())
-            .models(models)
+            .agents(models)
             .agent_type(AgentType::Codex) // Default agent type for drafts
             .task_id(draft.id.clone()) // Use the draft's existing ID
             .build()
@@ -270,7 +270,7 @@ impl TaskLaunchParamsBuilder {
     }
 
     /// Set the models
-    pub fn models(mut self, models: Vec<SelectedModel>) -> Self {
+    pub fn agents(mut self, models: Vec<AgentChoice>) -> Self {
         self.models = Some(models);
         self
     }
@@ -565,7 +565,7 @@ pub trait TaskManager: Send + Sync {
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[SelectedModel],
+        models: &[AgentChoice],
     ) -> SaveDraftResult;
 
     /// Get a human-readable description of this task manager

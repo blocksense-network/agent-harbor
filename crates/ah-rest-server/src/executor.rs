@@ -260,7 +260,7 @@ impl TaskExecutor {
             .agent_executor
             .spawn_agent_process(
                 session_id,
-                &internal_session.session.agent.agent_type,
+                &format!("{:?}", internal_session.session.agent.agent.software),
                 "sonnet", // Default model for REST server
                 &internal_session.session.task.prompt,
                 ah_core::WorkingCopyMode::Snapshots, // Server uses snapshot mode

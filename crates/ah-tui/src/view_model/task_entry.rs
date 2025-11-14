@@ -34,7 +34,7 @@ use ah_core::{
     SplitMode, branches_enumerator::BranchesEnumerator,
     repositories_enumerator::RepositoriesEnumerator,
 };
-use ah_domain_types::SelectedModel;
+use ah_domain_types::AgentChoice;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
 use std::sync::Arc;
 
@@ -140,11 +140,11 @@ pub struct TaskEntryControlsViewModel {
 /// ViewModel for draft/editable task entries
 #[derive(Clone)] // Debug and PartialEq removed due to TextArea
 pub struct TaskEntryViewModel {
-    pub id: String,                 // Unique identifier for the task entry
-    pub repository: String,         // Repository name
-    pub branch: String,             // Branch name
-    pub models: Vec<SelectedModel>, // Selected models
-    pub created_at: String,         // Creation timestamp
+    pub id: String,                        // Unique identifier for the task entry
+    pub repository: String,                // Repository name
+    pub branch: String,                    // Branch name
+    pub selected_agents: Vec<AgentChoice>, // Selected agents
+    pub created_at: String,                // Creation timestamp
     pub height: u16,
     pub controls: TaskEntryControlsViewModel,
     pub save_state: DraftSaveState,

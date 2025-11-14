@@ -11,7 +11,7 @@ pub mod error;
 pub mod types;
 pub mod validation;
 
-pub use ah_domain_types::LogLevel;
+pub use ah_domain_types::{AgentChoice, LogLevel};
 pub use error::*;
 pub use types::*;
 
@@ -34,7 +34,7 @@ pub fn openapi_schema() -> utoipa::openapi::OpenApi {
             RuntimeConfig,
             ResourceLimits,
             WorkspaceConfig,
-            AgentConfig,
+            AgentChoice,
             DeliveryConfig,
             CreateTaskRequest,
             WebhookConfig,

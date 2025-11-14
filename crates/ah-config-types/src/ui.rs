@@ -3,6 +3,7 @@
 
 //! UI-related configuration types
 
+use ah_domain_types::AgentChoice;
 use serde::{Deserialize, Serialize};
 
 /// Root-level UI configuration that gets flattened into the main config.
@@ -38,6 +39,8 @@ pub struct UiRoot {
     pub editor: Option<String>,
     /// WebUI service base URL
     pub service_base_url: Option<String>,
+    /// Default agent selections for task creation
+    pub default_agents: Option<Vec<AgentChoice>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, PartialEq)]

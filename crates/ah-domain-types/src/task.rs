@@ -6,7 +6,7 @@
 //! These types represent tasks, their states, and related business entities
 //! that are shared across the Agent Harbor system.
 
-use crate::agent::SelectedModel;
+use crate::AgentChoice;
 use serde::{Deserialize, Serialize};
 
 /// Task state - shared between REST API and local task management
@@ -91,7 +91,7 @@ pub struct DraftTask {
     pub description: String,
     pub repository: String,
     pub branch: String,
-    pub models: Vec<SelectedModel>,
+    pub selected_agents: Vec<AgentChoice>,
     pub created_at: String,
 }
 
@@ -101,7 +101,7 @@ pub struct TaskExecution {
     pub id: String,
     pub repository: String,
     pub branch: String,
-    pub agents: Vec<SelectedModel>,
+    pub agents: Vec<AgentChoice>,
     pub state: TaskState,
     pub timestamp: String,
     pub activity: Vec<String>,                // For active tasks
@@ -124,7 +124,7 @@ pub struct TaskInfo {
     pub repository: String,
     pub branch: String,
     pub created_at: String,
-    pub models: Vec<String>,
+    pub models: Vec<AgentChoice>,
 }
 
 impl TaskExecution {

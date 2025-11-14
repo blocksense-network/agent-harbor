@@ -142,10 +142,10 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
 - **Model Selector Button Display**: Shows selected models as comma-separated list with instance counts
   - Format: "🤖 model1, model2 x2, model3 x3" (shows "xN" only when count > 1)
   - Falls back to "🤖 Models" when no models are selected
-- **Modal Selection Dialogs**: When buttons are activated (Tab/Enter), display overlay dialog windows
+- **Agent Selection Dialogs**: When buttons are activated (Tab/Enter), display overlay dialog windows
   - Repository Selector: Fuzzy search through available repositories
   - Branch Selector: Fuzzy search through repository branches
-  - Model Multi-Selector: Multi-select interface with instance counts and +/- controls
+  - Agent Multi-Selector: Multi-select interface with instance counts and +/- controls
   - **Characteristics**: Full-screen overlay, dedicated input box, ESC to cancel, Enter to confirm
 - TAB navigation between controls
 - Multiple draft tasks supported - users can create several draft tasks in progress
@@ -171,11 +171,11 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - Enter key launches the task (calls Go button action)
   - Shift+Enter creates a new line in the text area
 
-#### Model Multi-Selector Modal
+#### Agent Multi-Selector Modal
 
-The model selection dialog provides advanced agent configuration:
+The agent selection dialog provides advanced agent configuration:
 
-- **Multi-Select Interface**: Select multiple AI models for a single task
+- **Multi-Select Interface**: Select multiple AI agent/model pairs for a single task
 - **Instance Counts**: Configure instance counts for each selected model
 - **Visual Layout**:
   - At the top of the dialog, there is the same tui-input box as in the repository and branch selection dialogs
@@ -194,7 +194,32 @@ The model selection dialog provides advanced agent configuration:
     - If the currently selected model has non-zero count: keep all current non-zero count models with their counts
   - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button in both cases.
 
-##### Activity Display for Active Tasks
+### Multi-Agent Task Launching
+
+When a user selects multiple agents with instance counts in the draft task card, the system creates separate multiplexer windows/panes for each agent instance:
+
+- **Local Mode**: Each agent instance gets a unique session ID (e.g., `task-$agent-1`, `task-$agent-2` for two instances of the same agent, or `task-$agent` for different agents)
+- **Remote Mode**: Multiple sessions are created via the REST API, with each session corresponding to one agent instance
+- **Session ID Generation**: Uses global instance indexing to ensure unique IDs across all launched agent instances
+- **Persistence**: Draft tasks store the complete `SelectedModel` vector with counts, allowing restoration of multi-agent selections across sessions
+
+### Configuration
+
+Default agent selections are loaded from configuration files following the standard [Agent Harbor configuration hierarchy](./Configuration.md):
+
+```toml
+default-agents = [
+  { software = "claude", model = "sonnet", count = 1 },
+  { software = "codex", model = "gpt-5", count = 2 }
+]
+```
+
+Configuration supports:
+
+- **Global defaults**: Agents applied to all repositories
+- **Instance counts**: Number of instances to launch for each agent
+
+### Activity Display for Active Tasks
 
 Active task cards show live streaming of agent activity with exactly 3 fixed-height rows displaying the most recent events:
 
@@ -436,8 +461,25 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 ### Persistence
 
-- Last selections (project, agent, branch) are remembered per repo/user scope via the configuration layer.
-- Selected theme preference is persisted across sessions.
+The TUI maintains user selections and preferences across sessions using multiple storage mechanisms:
+
+#### Database-Persisted State
+
+The local database stores session-specific selections that change frequently:
+
+- **Agent Selector State**: Last selected agents with counts, used as defaults for new draft task cards
+- **Repository and Branch Selections**: Per-repository preferences for branch and repository choices
+- **Draft Task Persistence**: Complete draft states with auto-save and restoration across sessions
+
+For detailed technical information about storage mechanisms, database schemas, and persistence implementation, see [State-Persistence.md](./State-Persistence.md).
+
+#### Configuration-Persisted State
+
+User configuration files store preferences that are set less frequently:
+
+- **Theme Preferences**: Selected theme preference is persisted in the user home configuration.
+
+For detailed information about configuration file locations, precedence rules, and available configuration options, see [Configuration.md](./Configuration.md).
 
 ### Visual Design & Theming
 

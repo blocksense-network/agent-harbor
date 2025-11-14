@@ -1220,7 +1220,7 @@ impl SessionViewerViewModel {
             id: format!("instruction-{}", id_suffix),
             repository: String::new(),
             branch: String::new(),
-            models: vec![],
+            selected_agents: vec![],
             created_at: Utc::now().to_rfc3339(),
             height,
             controls: TaskEntryControlsViewModel {

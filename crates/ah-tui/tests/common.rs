@@ -120,7 +120,7 @@ pub fn build_view_model() -> ViewModel {
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
-    let settings = Settings::default();
+    let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
     ViewModel::new(

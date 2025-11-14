@@ -74,7 +74,8 @@ use ah_core::task_manager::SaveDraftResult;
 use ah_core::task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 use ah_domain_types::task::ToolStatus;
 use ah_domain_types::{
-    DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskInfo, TaskState,
+    AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, DraftTask, TaskExecution,
+    TaskInfo, TaskState,
 };
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 use chrono;
@@ -230,16 +231,7 @@ struct AutoSaveRequestPayload {
     description: String,
     repository: String,
     branch: String,
-    models: Vec<SelectedModel>,
-}
-
-/// Information about an AI model available for selection
-#[derive(Debug, Clone)]
-pub struct ModelInfo {
-    /// The display name shown to users in the UI
-    pub display_name: String,
-    /// The model name/alias that agents expect (e.g., "sonnet", "gpt-5")
-    pub agent_model_name: String,
+    models: Vec<AgentChoice>,
 }
 
 /// Represents different types of items in a filtered options list
@@ -294,8 +286,8 @@ impl ViewModel {
     pub fn get_agent_model_name(&self, display_model_name: &str) -> String {
         self.available_models
             .iter()
-            .find(|model| model.display_name == display_model_name)
-            .map(|model| model.agent_model_name.clone())
+            .find(|model| model.display_name() == display_model_name)
+            .map(|model| model.agent.version.clone())
             .unwrap_or_else(|| display_model_name.to_string()) // Fallback to original name
     }
 
@@ -449,7 +441,7 @@ impl ViewModel {
             ModalState::ModelSearch => {
                 // For model search, we need to convert ModelInfo to display names
                 self.model_display_names_cache.get_or_insert_with(|| {
-                    self.available_models.iter().map(|m| m.display_name.clone()).collect()
+                    self.available_models.iter().map(|m| m.display_name()).collect()
                 });
                 self.model_display_names_cache.as_ref().unwrap()
             }
@@ -688,7 +680,7 @@ impl ViewModel {
                         // For model search, we need to convert ModelInfo to display names
                         // This is a temporary allocation - in the future we might want to cache this
                         self.model_display_names_cache.get_or_insert_with(|| {
-                            self.available_models.iter().map(|m| m.display_name.clone()).collect()
+                            self.available_models.iter().map(|m| m.display_name()).collect()
                         });
                         self.model_display_names_cache.as_ref().unwrap()
                     }
@@ -837,10 +829,7 @@ impl ViewModel {
                         ModalState::ModelSearch => {
                             // For model search, we need to convert ModelInfo to display names
                             self.model_display_names_cache.get_or_insert_with(|| {
-                                self.available_models
-                                    .iter()
-                                    .map(|m| m.display_name.clone())
-                                    .collect()
+                                self.available_models.iter().map(|m| m.display_name()).collect()
                             });
                             self.model_display_names_cache.as_ref().unwrap()
                         }
@@ -1014,10 +1003,7 @@ impl ViewModel {
                             ModalState::ModelSearch => {
                                 // For model search, we need to convert ModelInfo to display names
                                 self.model_display_names_cache.get_or_insert_with(|| {
-                                    self.available_models
-                                        .iter()
-                                        .map(|m| m.display_name.clone())
-                                        .collect()
+                                    self.available_models.iter().map(|m| m.display_name()).collect()
                                 });
                                 self.model_display_names_cache.as_ref().unwrap()
                             }
@@ -1112,10 +1098,7 @@ impl ViewModel {
                             ModalState::ModelSearch => {
                                 // For model search, we need to convert ModelInfo to display names
                                 self.model_display_names_cache.get_or_insert_with(|| {
-                                    self.available_models
-                                        .iter()
-                                        .map(|m| m.display_name.clone())
-                                        .collect()
+                                    self.available_models.iter().map(|m| m.display_name()).collect()
                                 });
                                 self.model_display_names_cache.as_ref().unwrap()
                             }
@@ -1251,21 +1234,30 @@ impl ViewModel {
                 self.status_bar.error_message = Some("Task description is required".to_string());
                 return false; // Validation failed
             }
-            if card.models.is_empty() {
+            if card.selected_agents.is_empty() {
                 self.status_bar.error_message =
                     Some("At least one AI model must be selected".to_string());
                 return false; // Validation failed
             }
 
             // Determine agent type and model name
-            let selected_model = card.models.first().unwrap(); // We validated it's not empty
-            let agent_type = Self::get_agent_type_for_model(&selected_model.name);
-            let model_name = self.get_agent_model_name(&selected_model.name);
+            let selected_agent = card.selected_agents.first().unwrap(); // We validated it's not empty
+            let agent_type = match selected_agent.agent.software {
+                AgentSoftware::Claude => ah_core::agent_types::AgentType::Claude,
+                AgentSoftware::Codex => ah_core::agent_types::AgentType::Codex,
+                AgentSoftware::Copilot => ah_core::agent_types::AgentType::Copilot,
+                AgentSoftware::Gemini => ah_core::agent_types::AgentType::Gemini,
+                AgentSoftware::Opencode => ah_core::agent_types::AgentType::Opencode,
+                AgentSoftware::Qwen => ah_core::agent_types::AgentType::Qwen,
+                AgentSoftware::CursorCli => ah_core::agent_types::AgentType::CursorCli,
+                AgentSoftware::Goose => ah_core::agent_types::AgentType::Goose,
+            };
+            let model_name = selected_agent.model.clone();
 
             // Extract card data before removing it
             let card_repository = card.repository.clone();
             let card_branch = card.branch.clone();
-            let card_models = card.models.clone();
+            let card_agents = card.selected_agents.clone();
 
             // Launch the task via task_manager
             let task_manager = self.task_manager.clone();
@@ -1280,7 +1272,7 @@ impl ViewModel {
                 .starting_point(starting_point)
                 .working_copy_mode(working_copy_mode)
                 .description(description.clone())
-                .models(card_models.clone())
+                .agents(card_agents.clone())
                 .agent_type(agent_type)
                 .split_mode(split_mode)
                 .focus(focus)
@@ -1300,7 +1292,7 @@ impl ViewModel {
                 id: format!("task_{}", chrono::Utc::now().timestamp()), // Temporary ID, will be updated when launch completes
                 repository: card_repository.clone(),
                 branch: card_branch.clone(),
-                agents: card_models.clone(),
+                agents: card_agents.clone(),
                 state: TaskState::Queued,
                 timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 activity: vec![],
@@ -1433,7 +1425,7 @@ impl ViewModel {
                     description: String::new(),
                     repository: card_repository, // Keep the same repo/branch for convenience
                     branch: card_branch,
-                    models: card_models, // Keep the same models
+                    selected_agents: card_agents, // Keep the same models
                     created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 };
                 let new_card = create_draft_card_from_task(
@@ -1482,18 +1474,21 @@ impl ViewModel {
                     // Apply selected model to the current draft card
                     if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                         if let Some(card) = self.draft_cards.get_mut(idx) {
-                            // Find the ModelInfo that matches this display name
-                            if let Some(model_info) = self
+                            // Find the AgentChoice that matches this display name
+                            if let Some(model) = self
                                 .available_models
                                 .iter()
-                                .find(|model| model.display_name == selected_option)
+                                .find(|model| model.display_name() == selected_option)
                             {
                                 // Add the model to the card's model list
-                                let selected_model = SelectedModel {
-                                    name: model_info.display_name.clone(),
+                                let selected_agent = AgentChoice {
+                                    agent: model.agent.clone(),
+                                    model: model.model.clone(),
                                     count: 1,
+                                    settings: model.settings.clone(),
+                                    display_name: model.display_name.clone(),
                                 };
-                                card.models = vec![selected_model];
+                                card.selected_agents = vec![selected_agent];
                                 card.focus_element = CardFocusElement::TaskDescription;
                             }
                         }
@@ -1505,13 +1500,21 @@ impl ViewModel {
                 // Apply all selected models with their counts to the current draft card
                 if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        // Convert ModelOptionViewModel to SelectedModel, filtering out models with count 0
-                        card.models = options
+                        // Convert ModelOptionViewModel to AgentChoice, filtering out models with count 0
+                        card.selected_agents = options
                             .into_iter()
                             .filter(|opt| opt.count > 0)
-                            .map(|opt| SelectedModel {
-                                name: opt.name,
-                                count: opt.count,
+                            .filter_map(|opt| {
+                                self.available_models
+                                    .iter()
+                                    .find(|model| model.display_name() == opt.name)
+                                    .map(|model| AgentChoice {
+                                        agent: model.agent.clone(),
+                                        model: model.model.clone(),
+                                        count: opt.count,
+                                        settings: model.settings.clone(),
+                                        display_name: model.display_name.clone(),
+                                    })
                             })
                             .collect();
                         card.focus_element = CardFocusElement::TaskDescription;
@@ -1543,7 +1546,7 @@ impl ViewModel {
                     String::new(), // empty description
                     current_card.repository.clone(),
                     current_card.branch.clone(),
-                    current_card.models.clone(),
+                    current_card.selected_agents.clone(),
                     CardFocusElement::TaskDescription,
                 );
                 // Note: create_draft_task uses the ViewModel's workspace_files/workspace_workflows
@@ -1562,7 +1565,7 @@ impl ViewModel {
         description: String,
         repository: String,
         branch: String,
-        models: Vec<SelectedModel>,
+        models: Vec<AgentChoice>,
         focus_element: CardFocusElement,
     ) -> TaskEntryViewModel {
         Self::create_draft_task_internal(
@@ -1585,7 +1588,7 @@ impl ViewModel {
         description: String,
         repository: String,
         branch: String,
-        models: Vec<SelectedModel>,
+        models: Vec<AgentChoice>,
         focus_element: CardFocusElement,
         repositories_enumerator: Option<Arc<dyn RepositoriesEnumerator>>,
         branches_enumerator: Option<Arc<dyn BranchesEnumerator>>,
@@ -1595,7 +1598,7 @@ impl ViewModel {
             description,
             repository,
             branch,
-            models,
+            selected_agents: models,
             created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         };
 
@@ -1841,7 +1844,7 @@ pub struct ViewModel {
     // Domain state - available options
     pub available_repositories: Vec<String>,
     pub available_branches: Vec<String>,
-    pub available_models: Vec<ModelInfo>,
+    pub available_models: Vec<AgentChoice>,
 
     // Cache for model display names (to avoid repeated allocations)
     model_display_names_cache: Option<Vec<String>>,
@@ -1946,29 +1949,65 @@ impl ViewModel {
         let available_repositories = vec![];
         let available_branches = vec![];
         let available_models = vec![
-            ModelInfo {
-                display_name: "Claude Sonnet 4.5".to_string(),
-                agent_model_name: "sonnet".to_string(),
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("Claude Sonnet 4.5".to_string()),
             },
-            ModelInfo {
-                display_name: "Claude Opus 4.1".to_string(),
-                agent_model_name: "opus".to_string(),
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "opus".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("Claude Opus 4.1".to_string()),
             },
-            ModelInfo {
-                display_name: "GPT-5-Codex".to_string(),
-                agent_model_name: "gpt-5-codex".to_string(),
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5-codex".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5-Codex".to_string()),
             },
-            ModelInfo {
-                display_name: "GPT-5 pro".to_string(),
-                agent_model_name: "gpt-5-pro".to_string(),
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5-pro".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5 pro".to_string()),
             },
-            ModelInfo {
-                display_name: "GPT-5".to_string(),
-                agent_model_name: "gpt-5".to_string(),
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5".to_string()),
             },
-            ModelInfo {
-                display_name: "GPT-5 mini".to_string(),
-                agent_model_name: "gpt-5-mini".to_string(),
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5-mini".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5 mini".to_string()),
             },
         ];
 
@@ -2014,16 +2053,25 @@ impl ViewModel {
         let initial_card_focus = CardFocusElement::TaskDescription; // Initially focus the text area within the card
 
         // Create initial draft card
+        let default_agents = settings.default_agents.clone().unwrap_or_else(|| {
+            vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("Claude Sonnet".to_string()),
+            }]
+        });
         let draft_cards = vec![Self::create_draft_task_internal(
             Arc::clone(&workspace_files),
             Arc::clone(&workspace_workflows),
             String::new(), // empty description
             current_repository.unwrap_or_else(|| "blocksense/agent-harbor".to_string()),
             "main".to_string(),
-            vec![SelectedModel {
-                name: "Claude Sonnet 4.5".to_string(),
-                count: 1,
-            }],
+            default_agents,
             initial_card_focus,
             Some(Arc::clone(&repositories_enumerator)),
             Some(Arc::clone(&branches_enumerator)),
@@ -2036,7 +2084,7 @@ impl ViewModel {
             description: draft_cards[0].description.lines().join("\n"),
             repository: draft_cards[0].repository.clone(),
             branch: draft_cards[0].branch.clone(),
-            models: draft_cards[0].models.clone(),
+            selected_agents: draft_cards[0].selected_agents.clone(),
             created_at: draft_cards[0].created_at.clone(),
         };
         let active_modal = create_modal_view_model(
@@ -2628,7 +2676,7 @@ impl ViewModel {
                                     self.model_display_names_cache.get_or_insert_with(|| {
                                         self.available_models
                                             .iter()
-                                            .map(|m| m.display_name.clone())
+                                            .map(|m| m.display_name())
                                             .collect()
                                     });
                                     self.model_display_names_cache.as_ref().unwrap()
@@ -4292,7 +4340,7 @@ impl ViewModel {
             description: card.description.lines().join("\n"),
             repository: card.repository.clone(),
             branch: card.branch.clone(),
-            models: card.models.clone(),
+            models: card.selected_agents.clone(),
         };
 
         card.pending_save_request_id = Some(request_id);
@@ -4506,7 +4554,7 @@ impl ViewModel {
             description: card.description.lines().join("\n"),
             repository: card.repository.clone(),
             branch: card.branch.clone(),
-            models: card.models.clone(),
+            selected_agents: card.selected_agents.clone(),
             created_at: card.created_at.clone(),
         });
         self.footer = create_footer_view_model(
@@ -4532,7 +4580,7 @@ impl ViewModel {
                 description: card.description.lines().join("\n"),
                 repository: card.repository.clone(),
                 branch: card.branch.clone(),
-                models: card.models.clone(),
+                selected_agents: card.selected_agents.clone(),
                 created_at: card.created_at.clone(),
             }),
             self.settings.activity_rows(),
@@ -4592,10 +4640,23 @@ impl ViewModel {
         let mut update_footer_needed = false;
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-                let new_models: Vec<SelectedModel> =
-                    model_names.into_iter().map(|name| SelectedModel { name, count: 1 }).collect();
-                if draft_card.models != new_models {
-                    draft_card.models = new_models;
+                let new_models: Vec<AgentChoice> = model_names
+                    .into_iter()
+                    .filter_map(|display_name| {
+                        self.available_models
+                            .iter()
+                            .find(|model| model.display_name() == display_name)
+                            .map(|model| AgentChoice {
+                                agent: model.agent.clone(),
+                                model: model.model.clone(),
+                                count: 1,
+                                settings: model.settings.clone(),
+                                display_name: model.display_name.clone(),
+                            })
+                    })
+                    .collect();
+                if draft_card.selected_agents != new_models {
+                    draft_card.selected_agents = new_models;
                     draft_card.on_content_changed();
                     update_footer_needed = true;
                 }
@@ -4720,10 +4781,20 @@ impl ViewModel {
                     description: draft_info.title, // Use title as initial description
                     repository: draft_info.repository,
                     branch: draft_info.branch,
-                    models: vec![SelectedModel {
-                        name: "Claude Sonnet 4.5".to_string(),
-                        count: 1,
-                    }], // Default model
+                    selected_agents: if draft_info.models.is_empty() {
+                        vec![AgentChoice {
+                            agent: AgentSoftwareBuild {
+                                software: AgentSoftware::Claude,
+                                version: "latest".to_string(),
+                            },
+                            model: "sonnet".to_string(),
+                            count: 1,
+                            settings: std::collections::HashMap::new(),
+                            display_name: Some("Claude Sonnet".to_string()),
+                        }] // Default model if none saved
+                    } else {
+                        draft_info.models.clone()
+                    },
                     created_at: draft_info.created_at,
                 };
                 let draft_card = create_draft_card_from_task(
@@ -4782,7 +4853,7 @@ impl ViewModel {
         let description = card.description.lines().join("\n");
         let repository = card.repository.clone();
         let branch = card.branch.clone();
-        let models = card.models.clone();
+        let models = card.selected_agents.clone();
 
         // Find and update the draft card in the view model to show "Saving" state
         // Note: We search by ID, not by current focus, since focus might change during await
@@ -4896,10 +4967,23 @@ impl ViewModel {
     /// Set draft model names
     pub fn set_draft_model_names(&mut self, model_names: Vec<String>, draft_id: &str) {
         if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
-            let new_models: Vec<SelectedModel> =
-                model_names.into_iter().map(|name| SelectedModel { name, count: 1 }).collect();
-            if card.models != new_models {
-                card.models = new_models;
+            let new_models: Vec<AgentChoice> = model_names
+                .into_iter()
+                .filter_map(|display_name| {
+                    self.available_models
+                        .iter()
+                        .find(|model| model.display_name() == display_name)
+                        .map(|model| AgentChoice {
+                            agent: model.agent.clone(),
+                            model: model.model.clone(),
+                            count: 1,
+                            settings: model.settings.clone(),
+                            display_name: model.display_name.clone(),
+                        })
+                })
+                .collect();
+            if card.selected_agents != new_models {
+                card.selected_agents = new_models;
                 card.on_content_changed();
             }
         }
@@ -4945,28 +5029,37 @@ impl ViewModel {
     }
 
     pub fn handle_models_loaded(&mut self, models: Vec<String>) {
-        // Convert string models to ModelInfo structs
+        // Convert string models to AgentChoice structs
         // For now, assume all models are Claude models - this may need refinement
         self.available_models = models
             .into_iter()
             .map(|display_name| {
-                // Extract agent type from display name pattern
-                let agent_model_name = if display_name.starts_with("Claude") {
-                    if display_name.contains("Sonnet") {
+                // Extract software and model from display name pattern
+                let (software, model) = if display_name.starts_with("Claude") {
+                    let model_name = if display_name.contains("Sonnet") {
                         "sonnet".to_string()
                     } else if display_name.contains("Opus") {
                         "opus".to_string()
                     } else {
                         display_name.to_lowercase().replace(" ", "")
-                    }
+                    };
+                    (AgentSoftware::Claude, model_name)
                 } else if display_name.starts_with("GPT-5") {
-                    display_name.to_lowercase().replace(" ", "").replace("gpt-5", "gpt-5")
+                    let model_name =
+                        display_name.to_lowercase().replace(" ", "").replace("gpt-5", "gpt-5");
+                    (AgentSoftware::Codex, model_name)
                 } else {
-                    display_name.to_string()
+                    (AgentSoftware::Claude, display_name.to_string())
                 };
-                ModelInfo {
-                    display_name,
-                    agent_model_name,
+                AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software,
+                        version: "latest".to_string(),
+                    },
+                    model,
+                    count: 1,
+                    settings: std::collections::HashMap::new(),
+                    display_name: Some(display_name),
                 }
             })
             .collect();
@@ -5167,9 +5260,9 @@ pub fn create_draft_card_from_task(
         },
         model_button: ButtonViewModel {
             text: task
-                .models
+                .selected_agents
                 .first()
-                .map(|m| m.name.clone())
+                .map(|m| format!("{:?} {}", m.agent.software, m.agent.version))
                 .unwrap_or_else(|| "Select model".to_string()),
             is_focused: false,
             style: ButtonStyle::Normal,
@@ -5199,7 +5292,7 @@ pub fn create_draft_card_from_task(
         id: task.id,
         repository: task.repository,
         branch: task.branch,
-        models: task.models,
+        selected_agents: task.selected_agents,
         created_at: task.created_at,
         height,
         controls,
@@ -5316,9 +5409,9 @@ fn create_draft_card_view_models(
                 },
                 model_button: ButtonViewModel {
                     text: draft
-                        .models
+                        .selected_agents
                         .first()
-                        .map(|m| m.name.clone())
+                        .map(|m| format!("{:?} {}", m.agent.software, m.agent.version))
                         .unwrap_or_else(|| "Select model".to_string()),
                     is_focused: false,
                     style: ButtonStyle::Normal,
@@ -5339,7 +5432,7 @@ fn create_draft_card_view_models(
                 id: draft.id.clone(),
                 repository: draft.repository.clone(),
                 branch: draft.branch.clone(),
-                models: draft.models.clone(),
+                selected_agents: draft.selected_agents.clone(),
                 created_at: draft.created_at.clone(),
                 height,
                 controls,
@@ -5464,7 +5557,7 @@ fn create_modal_view_model(
     modal_state: ModalState,
     available_repositories: &[String],
     available_branches: &[String],
-    available_models: &[ModelInfo],
+    available_models: &[AgentChoice],
     current_draft: &Option<DraftTask>,
     activity_lines_count: usize,
     word_wrap_enabled: bool,
@@ -5508,12 +5601,15 @@ fn create_modal_view_model(
                     let count = current_draft
                         .as_ref()
                         .and_then(|draft| {
-                            draft.models.iter().find(|m| m.name == model_info.display_name)
+                            draft.selected_agents.iter().find(|m| {
+                                m.agent.software == model_info.agent.software
+                                    && m.agent.version == model_info.agent.version
+                            })
                         })
                         .map(|m| m.count)
                         .unwrap_or(0);
                     ModelOptionViewModel {
-                        name: model_info.display_name.clone(),
+                        name: model_info.display_name(),
                         count,
                         is_selected: count > 0,
                     }

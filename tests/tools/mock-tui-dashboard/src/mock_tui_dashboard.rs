@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default())),
     );
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::with_mock_data());
-    let settings = Settings::default();
+    let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
 
     // Create dashboard dependencies
     let mock_client = MockRestClient::with_mock_data();

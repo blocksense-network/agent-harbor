@@ -14,7 +14,10 @@ use ah_core::{
     BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator,
     task_manager::SaveDraftResult,
 };
-use ah_domain_types::{DeliveryStatus, DraftTask, SelectedModel, TaskExecution, TaskState};
+use ah_domain_types::{
+    AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, DraftTask, TaskExecution,
+    TaskState,
+};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::KeyboardOperation;
@@ -46,7 +49,8 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
-    let settings = ah_tui::settings::Settings::default();
+    let settings = ah_tui::settings::Settings::from_config()
+        .unwrap_or_else(|_| ah_tui::settings::Settings::default());
     let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
 
     (
@@ -461,7 +465,7 @@ mod viewmodel_tests {
 
         // Clear the models to make validation fail
         if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.models.clear();
+            card.selected_agents.clear();
         }
 
         vm.focus_element = DashboardFocusState::DraftTask(0);
@@ -742,14 +746,14 @@ mod viewmodel_tests {
         // Verify that the selected model was applied to the card
         if let Some(card) = vm.draft_cards.get(0) {
             // Should have at least one model selected
-            assert!(!card.models.is_empty());
+            assert!(!card.selected_agents.is_empty());
             // The first model should be the one that was selected
-            if let Some(selected_model) = card.models.first() {
+            if let Some(selected_model) = card.selected_agents.first() {
                 // Should be one of the available models
                 let model_exists = vm
                     .available_models
                     .iter()
-                    .any(|model| model.display_name == selected_model.name);
+                    .any(|model| model.display_name() == selected_model.display_name());
                 assert!(model_exists);
             }
         }
@@ -846,9 +850,15 @@ mod viewmodel_tests {
             "Test task".to_string(),
             "test-repo".to_string(),
             "main".to_string(),
-            vec![SelectedModel {
-                name: "Claude Sonnet 4.5".to_string(),
+            vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("Claude Latest".to_string()),
             }],
             CardFocusElement::TaskDescription,
         );

@@ -251,20 +251,16 @@ impl RestClient {
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[ah_domain_types::SelectedModel],
+        models: &[ah_domain_types::AgentChoice],
     ) -> RestClientResult<()> {
-        // Convert selected models to agent config
-        let agent = if let Some(first_model) = models.first() {
-            AgentConfig {
-                agent_type: first_model.name.clone(),
-                version: "latest".to_string(),
-                settings: std::collections::HashMap::new(),
-            }
-        } else {
+        // Use selected agents directly
+        if models.is_empty() {
             return Err(RestClientError::UnexpectedResponse(
                 "No model selected".to_string(),
             ));
-        };
+        }
+
+        let agents = models.to_vec();
 
         // Create repo config
         let repo = RepoConfig {
@@ -282,7 +278,7 @@ impl RestClient {
             project_id: None,
             prompt: description.to_string(),
             repo,
-            agent,
+            agents,
             runtime: RuntimeConfig {
                 runtime_type: RuntimeType::Local,
                 devcontainer_path: None,

@@ -177,17 +177,17 @@ pub fn render_draft_card_content(
         None
     };
 
-    let models_button_text = if card.models.is_empty() {
+    let models_button_text = if card.selected_agents.is_empty() {
         "🤖 Models".to_string()
     } else {
         let model_parts: Vec<String> = card
-            .models
+            .selected_agents
             .iter()
             .map(|model| {
                 if model.count > 1 {
-                    format!("{} x{}", model.name, model.count)
+                    format!("{:?} x{}", model.agent.software, model.count)
                 } else {
-                    model.name.clone()
+                    format!("{:?}", model.agent.software)
                 }
             })
             .collect();

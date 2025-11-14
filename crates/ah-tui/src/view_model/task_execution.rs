@@ -7,7 +7,7 @@ use super::{ButtonViewModel, DashboardFocusState};
 use crate::settings::Settings;
 use ah_core::TaskEvent;
 use ah_domain_types::task::ToolStatus;
-use ah_domain_types::{SelectedModel, TaskExecution, TaskState};
+use ah_domain_types::{AgentChoice, TaskExecution, TaskState};
 use tracing::debug;
 
 /// Focus states specific to task execution cards
@@ -23,7 +23,7 @@ pub enum TaskExecutionFocusState {
 pub struct TaskMetadataViewModel {
     pub repository: String,
     pub branch: String,
-    pub models: Vec<SelectedModel>,
+    pub models: Vec<AgentChoice>,
     pub state: TaskState,
     pub timestamp: String,
     pub delivery_indicators: String, // Delivery status indicators (⎇ ⇄ ✓)

@@ -28,15 +28,15 @@ impl<S: SessionStore> SessionService<S> {
         &self,
         request: &CreateTaskRequest,
     ) -> anyhow::Result<CreateTaskResponse> {
-        let session_id = self.store.create_session(request).await?;
+        let session_ids = self.store.create_session(request).await?;
 
         Ok(CreateTaskResponse {
-            session_ids: vec![session_id.clone()],
+            session_ids: session_ids.clone(),
             status: SessionStatus::Queued,
             links: TaskLinks {
-                self_link: format!("/api/v1/sessions/{}", session_id),
-                events: format!("/api/v1/sessions/{}/events", session_id),
-                logs: format!("/api/v1/sessions/{}/logs", session_id),
+                self_link: format!("/api/v1/tasks/{}", session_ids.join(",")),
+                events: format!("/api/v1/tasks/{}/events", session_ids.join(",")),
+                logs: format!("/api/v1/tasks/{}/logs", session_ids.join(",")),
             },
         })
     }

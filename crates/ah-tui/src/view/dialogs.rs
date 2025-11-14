@@ -50,7 +50,7 @@ pub struct ShortcutHelpModal {
 #[derive(Debug, Clone)]
 pub struct ModelSelectionModal {
     pub available_models: Vec<String>,
-    pub selected_models: Vec<ah_domain_types::SelectedModel>,
+    pub selected_models: Vec<ah_domain_types::AgentChoice>,
     pub selected_index: usize, // Index in available_models for adding new models
     pub editing_count: bool,   // Whether we're editing the count of a selected model
     pub editing_index: usize,  // Index in selected_models when editing count

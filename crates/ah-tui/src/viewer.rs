@@ -46,7 +46,7 @@ pub struct ViewerConfig {
 }
 
 pub(crate) fn default_autocomplete_dependencies() -> Arc<AutocompleteDependencies> {
-    let settings = Settings::default();
+    let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
 
     let repo = ah_repo::VcsRepo::new(".")
         .or_else(|_| ah_repo::VcsRepo::new("/tmp"))
@@ -165,6 +165,7 @@ pub(crate) async fn launch_task_from_instruction(
     recording_terminal_state: Rc<RefCell<TerminalState>>,
     task_manager: Arc<dyn TaskManager>,
     instruction: String,
+    selected_agents: &[ah_domain_types::AgentChoice],
 ) {
     let current_snapshot = {
         let recording_state = recording_terminal_state.borrow();
@@ -186,10 +187,7 @@ pub(crate) async fn launch_task_from_instruction(
             })
             .working_copy_mode(ah_core::WorkingCopyMode::Snapshots)
             .description(instruction)
-            .models(vec![ah_domain_types::SelectedModel {
-                name: "Claude 4.5 Sonnet".to_string(),
-                count: 1,
-            }])
+            .agents(selected_agents.to_vec())
             .agent_type(ah_core::agent_types::AgentType::Codex) // Default agent type
             .task_id(task_id)
             .build()
@@ -403,7 +401,19 @@ impl ViewerEventLoop {
                     let recording_state = self.view_model.recording_terminal_state.clone();
                     let task_manager = Arc::clone(&self.task_manager);
                     self.view_model.cancel_instruction_overlay();
-                    launch_task_from_instruction(recording_state, task_manager, instruction).await;
+                    let empty_agents = Vec::new();
+                    let selected_agents = self
+                        .view_model
+                        .task_entry_overlay()
+                        .map(|entry| &entry.selected_agents)
+                        .unwrap_or(&empty_agents);
+                    launch_task_from_instruction(
+                        recording_state,
+                        task_manager,
+                        instruction,
+                        selected_agents,
+                    )
+                    .await;
                 }
                 return Ok(false);
             }

@@ -483,7 +483,7 @@ impl TuiArgs {
                 task_manager,
                 repositories_enumerator,
                 branches_enumerator,
-                settings: Settings::default(),
+                settings: Settings::from_config().unwrap_or_else(|_| Settings::default()),
                 current_repository,
             })
         } else {
@@ -550,7 +550,7 @@ impl TuiArgs {
                 task_manager,
                 repositories_enumerator,
                 branches_enumerator,
-                settings: Settings::default(),
+                settings: Settings::from_config().unwrap_or_else(|_| Settings::default()),
                 current_repository,
             })
         };

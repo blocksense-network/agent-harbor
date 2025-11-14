@@ -729,6 +729,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                                             recording_state,
                                             Arc::clone(&task_manager),
                                             instruction,
+                                            &view_model.task_entry.selected_agents,
                                         )
                                         .await;
                                     }

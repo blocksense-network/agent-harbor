@@ -103,6 +103,7 @@ OPTIONS:
   --repo <PATH|URL>                  Target repository path or URL
   --branch <NAME>                    Branch name for the task
   --agent <TYPE>[@VERSION]           Agent type and optional version (can be specified multiple times)
+  --model <NAME>                     LLM model to use (applies ot the last --agent parameter)
   --instances <N>                    Number of agent instances (applies to the last --agent parameter)
   --sandbox <local|devcontainer|vm|disabled>
                                       Sandbox profile to use
@@ -137,13 +138,13 @@ The `--agent` flag can be supplied more than once to launch multiple agents work
 
 - `--agent claude --agent codex`: Launches both Claude and Codex agents in parallel
 - `--agent openhands --instances 3`: Launches 3 instances of OpenHands agent
-- `--agent claude --instances 2 --agent codex`: Launches 2 Claude instances and 1 Codex instance
+- `--agent claude --model sonnet --instances 2 --agent codex`: Launches 2 Claude instances with the latest version of the Sonnet model and 1 Codex instance with its default model
 
 **Instance Parameter Behavior:**
 
-- `--instances` applies to the last `--agent` parameter specified
-- If `--instances` is supplied before any `--agent` parameter, it applies to the first agent
-- When `--instances` is specified without `--agent`, it applies to the default agent
+- `--instances` and `--model` apply to the last `--agent` parameter specified
+- If `--instances` or `--model` is supplied before any `--agent` parameter, they apply to the first agent
+- When `--instances` or `--model` is specified without `--agent`, they apply to the default agent
 - Each agent type gets its own isolated filesystem branch for parallel execution
 
 This enables sophisticated workflows where different AI agents can collaborate on the same task, each bringing their unique strengths to different aspects of the work.

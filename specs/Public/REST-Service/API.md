@@ -26,10 +26,10 @@
 ### Core Concepts
 
 - **Task**: A user-entered prompt/request to perform some coding work.
-- **Session**: The running instance of a particular agent-software/model pair working on a particular task; owns a per‑session workspace and has its own lifecycle and logs.
+- **Session**: The running instance of one or more agent-software instances working on a particular task; owns a per‑session workspace and has its own lifecycle and logs.
 - **Workspace**: Isolated filesystem mount realized by snapshot provider or copy, optionally inside a devcontainer.
 - **Runtime**: The execution environment for the agent (devcontainer/local), plus resource limits.
-- **Agent**: The tool performing the coding task (e.g., Claude Code, OpenHands).
+- **Agent**: The tool performing the coding task (e.g., Claude Code, OpenHands), with configuration for version, count, and settings.
 
 ### Lifecycle States
 
@@ -67,7 +67,7 @@
   - `id` (string, ULID/UUID)
   - `tenantId`, `projectId` (optional)
   - `task`: prompt, attachments, labels
-  - `agent`: type, version/config
+  - `agents`: array of agent configurations (type, version, count, settings)
   - `runtime`: type, devcontainer config reference, resource limits
   - `workspace`: snapshot provider, mount path, host, devcontainer details
   - `vcs`: repo info and delivery policy (PR/branch/patch)
@@ -102,11 +102,14 @@ Request:
     "snapshotPreference": ["zfs", "btrfs", "overlay", "copy"],
     "executionHostId": "executor-a"
   },
-  "agent": {
-    "type": "claude-code",
-    "version": "latest",
-    "settings": { "maxTokens": 8000 }
-  },
+  "agents": [
+    {
+      "type": "claude-code",
+      "version": "latest",
+      "count": 1,
+      "settings": { "maxTokens": 8000 }
+    }
+  ],
   "delivery": {
     "mode": "pr",
     "targetBranch": "main"
@@ -130,7 +133,7 @@ Response `201 Created`:
 }
 ```
 
-Note: When multiple models are specified, multiple sessions are created and `session_ids` will contain multiple IDs.
+Note: When multiple agent configurations are specified or when agent configurations have `count > 1`, multiple sessions are created and `session_ids` will contain multiple IDs.
 
 Notes:
 
@@ -1445,10 +1448,13 @@ Drafts allow users to save incomplete task configurations for later completion a
       "url": "https://github.com/user/repo.git",
       "branch": "main"
     },
-    "agent": {
-      "type": "claude-code",
-      "version": "latest"
-    },
+    "agents": [
+      {
+        "type": "claude-code",
+        "version": "latest",
+        "count": 1
+      }
+    ],
     "runtime": {
       "type": "devcontainer"
     },
@@ -1559,7 +1565,7 @@ curl -X POST "$BASE/api/v1/tasks" \
     "prompt": "Refactor build pipeline to reduce flakiness.",
     "repo": {"mode": "git", "url": "git@github.com:acme/storefront.git", "branch": "agent/refactor"},
     "runtime": {"type": "devcontainer"},
-    "agent": {"type": "openhands"}
+    "agents": [{"type": "openhands", "version": "latest", "count": 1}]
   }'
 ```
 
