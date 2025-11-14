@@ -5,6 +5,12 @@
 
 #[test]
 fn test_sandbox_workspace_agentfs() {
+    // Skip this test on non-macOS platforms since AgentFS is macOS-specific
+    if !cfg!(target_os = "macos") {
+        println!("⚠️  Skipping AgentFS sandbox test on non-macOS platform");
+        return;
+    }
+
     // Skip this test in CI environments where AgentFS harness may not be available
     if std::env::var("CI").is_ok() {
         println!("⚠️  Skipping AgentFS sandbox test in CI environment");
