@@ -74,32 +74,15 @@ fn main() -> Result<()> {
             fuser::MountOption::Subtype("agentfs".to_string()),
         ];
 
-        // TODO: Add cache configuration from FsConfig
-        // Note: CUSTOM mount options may not be supported by all FUSE implementations
-        // let attr_timeout = config.cache.attr_ttl_ms as f64 / 1000.0;
-        // let entry_timeout = config.cache.entry_ttl_ms as f64 / 1000.0;
-        // let negative_timeout = config.cache.negative_ttl_ms as f64 / 1000.0;
-        //
-        // mount_options.push(fuser::MountOption::CUSTOM(format!(
-        //     "attr_timeout={}",
-        //     attr_timeout
-        // )));
-        // mount_options.push(fuser::MountOption::CUSTOM(format!(
-        //     "entry_timeout={}",
-        //     entry_timeout
-        // )));
-        // mount_options.push(fuser::MountOption::CUSTOM(format!(
-        //     "negative_timeout={}",
-        //     negative_timeout
-        // )));
-        //
-        // if config.cache.writeback_cache {
-        //     mount_options.push(fuser::MountOption::CUSTOM("writeback_cache".to_string()));
-        // }
-
-        if config.cache.auto_cache {
-            // auto_cache is typically the default, but we can be explicit
-        }
+        info!(
+            "Cache policy: attr={}ms entry={}ms negative={}ms readdir_plus={} auto_cache={} writeback_cache={}",
+            config.cache.attr_ttl_ms,
+            config.cache.entry_ttl_ms,
+            config.cache.negative_ttl_ms,
+            config.cache.enable_readdir_plus,
+            config.cache.auto_cache,
+            config.cache.writeback_cache
+        );
 
         if args.allow_other {
             mount_options.push(fuser::MountOption::AllowOther);

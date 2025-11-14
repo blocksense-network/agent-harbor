@@ -5,11 +5,17 @@
 mountpoint="$1"
 if [ ! -d "$mountpoint" ]; then
   echo "Creating mount point: $mountpoint"
-  mkdir -p "$mountpoint"
+  if ! mkdir -p "$mountpoint"; then
+    echo "Error: Failed to create $mountpoint (insufficient permissions?)"
+    exit 1
+  fi
 fi
 
 # Ensure the mount point is owned by the current user
-sudo chown $(whoami) "$mountpoint" || true
+if ! sudo chown $(whoami) "$mountpoint"; then
+  echo "Error: Unable to chown $mountpoint; aborting mount"
+  exit 1
+fi
 
 echo "Mounting AgentFS FUSE filesystem at $mountpoint..."
 echo "Note: This will run in the background. To unmount later: fusermount -u $mountpoint"
