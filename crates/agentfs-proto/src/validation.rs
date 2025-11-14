@@ -21,6 +21,8 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         Request::SnapshotCreate((version, _))
         | Request::BranchCreate((version, _))
         | Request::BranchBind((version, _))
+        | Request::SnapshotExport((version, _))
+        | Request::SnapshotExportRelease((version, _))
         | Request::FdOpen((version, _))
         | Request::FdDup((version, _))
         | Request::DirOpen((version, _))
@@ -132,6 +134,8 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
     match response {
         Response::SnapshotCreate(_)
         | Response::SnapshotList(_)
+        | Response::SnapshotExport(_)
+        | Response::SnapshotExportRelease(_)
         | Response::BranchCreate(_)
         | Response::BranchBind(_)
         | Response::FdOpen(_)

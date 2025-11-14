@@ -1,0 +1,66 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "fs-snapshots-test-harness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = [
+  "process",
+  "rt-multi-thread",
+  "macros",
+  "time",
+  "signal",
+] }
+thiserror.workspace = true
+uuid.workspace = true
+libc.workspace = true
+clap = { workspace = true, features = ["derive"] }
+ah-repo = { path = "../../crates/ah-repo" }
+
+[dependencies.ah-fs-snapshots]
+path = "../../crates/ah-fs-snapshots"
+
+[dependencies.ah-fs-snapshots-traits]
+path = "../../crates/ah-fs-snapshots-traits"
+
+[dependencies.ah-fs-snapshots-zfs]
+path = "../../crates/ah-fs-snapshots-zfs"
+optional = true
+
+[dependencies.ah-fs-snapshots-btrfs]
+path = "../../crates/ah-fs-snapshots-btrfs"
+optional = true
+
+[dependencies.ah-fs-snapshots-git]
+path = "../../crates/ah-fs-snapshots-git"
+optional = true
+
+[dependencies.agentfs-daemon]
+path = "../../crates/agentfs-daemon"
+
+[dependencies.agentfs-interpose-shim]
+path = "../../crates/agentfs-interpose-shim"
+
+[dependencies.agentfs-interpose-e2e-tests]
+path = "../../crates/agentfs-interpose-e2e-tests"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+tokio = { workspace = true, features = ["rt", "macros", "process"] }
+
+[features]
+default = ["git"]
+zfs = ["ah-fs-snapshots-zfs"]
+btrfs = ["ah-fs-snapshots-btrfs"]
+git = ["ah-fs-snapshots-git"]
+agentfs = ["ah-fs-snapshots/agentfs"]
+
+[[bin]]
+name = "fs-snapshots-harness-driver"
+path = "src/bin/driver.rs"

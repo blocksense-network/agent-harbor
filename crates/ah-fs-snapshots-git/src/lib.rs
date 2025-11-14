@@ -15,6 +15,7 @@ use ah_fs_snapshots_traits::{
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 /// Git-based snapshot provider implementation.
 pub struct GitProvider {
@@ -24,6 +25,14 @@ pub struct GitProvider {
     worktree_dir: PathBuf,
     /// Whether to include untracked files in snapshots (defaults to false)
     include_untracked: bool,
+    /// Tracks readonly mounts so we can release them on cleanup.
+    readonly_mounts: Arc<Mutex<Vec<ReadonlyMount>>>,
+}
+
+#[derive(Clone, Debug)]
+struct ReadonlyMount {
+    path: PathBuf,
+    shadow_repo: PathBuf,
 }
 
 impl GitProvider {
@@ -39,6 +48,7 @@ impl GitProvider {
                 .join("ah")
                 .join("git-worktrees"),
             include_untracked: false,
+            readonly_mounts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -52,6 +62,7 @@ impl GitProvider {
             shadow_repo_dir,
             worktree_dir,
             include_untracked,
+            readonly_mounts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -214,14 +225,6 @@ impl GitProvider {
         Ok(main_git_dir.join("objects"))
     }
 
-    /// Generate a unique identifier for resources.
-    #[allow(dead_code)]
-    fn generate_unique_id(&self) -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-        format!("ah_git_{}_{}", std::process::id(), timestamp)
-    }
-
     /// Create a snapshot commit in the shadow repository.
     fn create_snapshot_commit(
         &self,
@@ -353,6 +356,100 @@ impl GitProvider {
         }
 
         Ok(String::from_utf8_lossy(&commit_output.stdout).trim().to_string())
+    }
+
+    fn cleanup_readonly_mounts(&self) -> Result<()> {
+        let mut mounts = self.readonly_mounts.lock().unwrap();
+        if mounts.is_empty() {
+            return Ok(());
+        }
+
+        let mut retained = Vec::new();
+        let mut failures = Vec::new();
+
+        for mount in mounts.drain(..) {
+            let debug = std::env::var("FS_SNAPSHOTS_HARNESS_DEBUG").is_ok();
+            if debug {
+                println!(
+                    "GitProvider: cleaning readonly worktree {} (shadow repo {})",
+                    mount.path.display(),
+                    mount.shadow_repo.display()
+                );
+            }
+
+            let removal_status = Command::new("git")
+                .args(["worktree", "remove", "--force"])
+                .arg(&mount.path)
+                .current_dir(&mount.shadow_repo)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            if debug {
+                match &removal_status {
+                    Ok(status) => println!(
+                        "GitProvider: git worktree remove status for {}: {}",
+                        mount.path.display(),
+                        status
+                    ),
+                    Err(err) => println!(
+                        "GitProvider: git worktree remove spawn failed for {}: {}",
+                        mount.path.display(),
+                        err
+                    ),
+                }
+            }
+
+            if mount.path.exists() {
+                if debug {
+                    println!(
+                        "GitProvider: readonly worktree still exists after git remove: {}",
+                        mount.path.display()
+                    );
+                }
+                if let Err(err) = std::fs::remove_dir_all(&mount.path) {
+                    failures.push(format!(
+                        "{} (fs remove failed: {})",
+                        mount.path.display(),
+                        err
+                    ));
+                } else if debug {
+                    println!(
+                        "GitProvider: fs::remove_dir_all succeeded for {}",
+                        mount.path.display()
+                    );
+                }
+            }
+
+            if mount.path.exists() {
+                let detail = match removal_status {
+                    Ok(status) => format!("git worktree remove exit status {}", status),
+                    Err(err) => format!("git worktree remove failed to start: {}", err),
+                };
+                failures.push(format!(
+                    "{} (still exists after cleanup; {})",
+                    mount.path.display(),
+                    detail
+                ));
+                retained.push(mount);
+            } else if debug {
+                println!(
+                    "GitProvider: readonly worktree removed successfully: {}",
+                    mount.path.display()
+                );
+            }
+        }
+
+        *mounts = retained;
+
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(ah_fs_snapshots_traits::Error::provider(format!(
+                "Failed to cleanup readonly worktrees: {}",
+                failures.join("; ")
+            )))
+        }
     }
 }
 
@@ -513,6 +610,11 @@ impl FsSnapshotProvider for GitProvider {
             ));
         }
 
+        self.readonly_mounts.lock().unwrap().push(ReadonlyMount {
+            path: worktree_path.clone(),
+            shadow_repo,
+        });
+
         Ok(worktree_path)
     }
 
@@ -585,7 +687,7 @@ impl FsSnapshotProvider for GitProvider {
     fn cleanup(&self, token: &str) -> Result<()> {
         if token.starts_with("git:inplace:") {
             // Nothing to cleanup for in-place mode
-            Ok(())
+            self.cleanup_readonly_mounts()
         } else if token.starts_with("git:worktree:") {
             // Format: git:worktree:session_id:branch_name
             let parts: Vec<&str> = token.split(':').collect();
@@ -605,7 +707,7 @@ impl FsSnapshotProvider for GitProvider {
                 // Remove worktree directory if it still exists
                 let _ = std::fs::remove_dir_all(&worktree_path);
             }
-            Ok(())
+            self.cleanup_readonly_mounts()
         } else if token.starts_with("git:branch:") {
             // Format: git:branch:session_id:branch_name
             let parts: Vec<&str> = token.split(':').collect();
@@ -625,7 +727,7 @@ impl FsSnapshotProvider for GitProvider {
                 // Remove worktree directory if it still exists
                 let _ = std::fs::remove_dir_all(&worktree_path);
             }
-            Ok(())
+            self.cleanup_readonly_mounts()
         } else {
             Err(ah_fs_snapshots_traits::Error::provider(format!(
                 "Invalid Git cleanup token: {}",

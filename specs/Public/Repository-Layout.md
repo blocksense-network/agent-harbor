@@ -119,6 +119,7 @@ agent-harbor/
 │  ├─ ah-schemas/              # Load/validate JSON schemas (e.g., AgentFS control)
 │  ├─ agentfs-core/            # Core FS: VFS, CoW, snapshots/branches, locks, xattrs/ADS
 │  ├─ agentfs-proto/           # Control plane types + validators
+│  ├─ agentfs-client/          # High-level daemon client (handshake/config + control RPCs)
 │  ├─ agentfs-fuse-host/       # Bin: libfuse host → `agentfs-core`
 │  ├─ agentfs-winfsp-host/     # Bin: WinFsp host → `agentfs-core`
 │  ├─ agentfs-ffi/             # C ABI (FFI) for FSKit/Swift bridging

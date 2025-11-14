@@ -1,0 +1,13 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "agentfs-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+libc.workspace = true
+agentfs-daemon = { path = "../agentfs-daemon" }
+agentfs-proto = { path = "../agentfs-proto" }

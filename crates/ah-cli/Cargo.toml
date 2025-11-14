@@ -100,9 +100,11 @@ winapi = { version = "0.3", features = [
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 tui-testing = { path = "../tui-testing" }
+assert_cmd = "2.0"
 
 [features]
 default = ["zfs", "btrfs", "git"]
 zfs = ["ah-fs-snapshots/zfs", "ah-fs-snapshots-zfs"]
 btrfs = ["ah-fs-snapshots/btrfs", "ah-fs-snapshots-btrfs"]
 git = ["ah-fs-snapshots/git", "ah-fs-snapshots-git"]
+agentfs = ["ah-fs-snapshots/agentfs"]

@@ -8,8 +8,13 @@
 
 // Re-export all types from the traits crate
 pub use ah_fs_snapshots_traits::*;
-use async_trait::async_trait;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[cfg(feature = "agentfs")]
+mod agentfs;
+
+#[cfg(feature = "agentfs")]
+pub use agentfs::AgentFsProvider;
 
 /// Auto-detect and return the appropriate provider for a given path.
 pub fn provider_for(path: &Path) -> Result<Box<dyn FsSnapshotProvider>> {
@@ -53,6 +58,17 @@ pub fn provider_for(path: &Path) -> Result<Box<dyn FsSnapshotProvider>> {
         }
     }
 
+    #[cfg(feature = "agentfs")]
+    {
+        let agentfs_provider = AgentFsProvider::new();
+        let capabilities = agentfs_provider.detect_capabilities(path);
+        if capabilities.score > best_score {
+            best_score = capabilities.score;
+            best_provider = Some(Box::new(agentfs_provider));
+        }
+    }
+
+    let _ = best_score;
     best_provider.ok_or_else(|| Error::provider("No suitable provider found"))
 }
 

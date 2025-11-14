@@ -68,6 +68,16 @@ impl XpcControlService {
         match request {
             Request::SnapshotCreate((_, req)) => self.handle_snapshot_create(req).await,
             Request::SnapshotList(_) => self.handle_snapshot_list(SnapshotListRequest {}).await,
+            Request::SnapshotExport((_, _)) => Ok(Response::error(
+                "Snapshot export is not supported by the FSKit host control service".into(),
+                Some(libc::ENOTSUP as u32),
+            )
+            .as_ssz_bytes()),
+            Request::SnapshotExportRelease((_, _)) => Ok(Response::error(
+                "Snapshot export release is not supported by the FSKit host control service".into(),
+                Some(libc::ENOTSUP as u32),
+            )
+            .as_ssz_bytes()),
             Request::BranchCreate((_, req)) => self.handle_branch_create(req).await,
             Request::BranchBind((_, req)) => self.handle_branch_bind(req).await,
             Request::FdOpen(_) => todo!("FdOpen not implemented for XPC control"),

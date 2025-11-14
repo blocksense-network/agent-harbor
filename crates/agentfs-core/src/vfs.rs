@@ -4,6 +4,8 @@
 //! Virtual filesystem implementation for AgentFS Core
 
 use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -1098,14 +1100,20 @@ impl FsCore {
 
     // Snapshot operations
     pub fn snapshot_create(&self, name: Option<&str>) -> FsResult<SnapshotId> {
-        let current_branch = self.branch_for_process(&PID::new(Self::current_process_id()));
+        let current_pid = PID::new(Self::current_process_id());
+        self.snapshot_create_for_pid(&current_pid, name)
+    }
+
+    pub fn snapshot_create_for_pid(&self, pid: &PID, name: Option<&str>) -> FsResult<SnapshotId> {
+        let current_branch = self.branch_for_process(pid);
         let branches = self.branches.lock().unwrap();
         let branch = branches.get(&current_branch).ok_or(FsError::NotFound)?;
 
         let snapshot_id = SnapshotId::new();
 
-        let snapshot_name = name
-            .map(|s| s.to_string())
+        let name_owned = name.map(|s| s.to_string());
+        let snapshot_name = name_owned
+            .clone()
             .unwrap_or_else(|| format!("snapshot_{}", hex::encode(snapshot_id.0)));
 
         // If we have a backstore that supports native snapshots, delegate to it
@@ -1133,7 +1141,7 @@ impl FsCore {
         let snapshot = Snapshot {
             id: snapshot_id,
             root_id: branch.root_id,
-            name: name.map(|s| s.to_string()),
+            name: name_owned.clone(),
         };
 
         self.snapshots.lock().unwrap().insert(snapshot_id, snapshot);
@@ -1142,7 +1150,7 @@ impl FsCore {
         #[cfg(feature = "events")]
         self.emit_event(EventKind::SnapshotCreated {
             id: snapshot_id,
-            name: name.map(|s| s.to_string()),
+            name: name_owned.clone(),
         });
 
         Ok(snapshot_id)
@@ -1151,6 +1159,173 @@ impl FsCore {
     pub fn snapshot_list(&self) -> Vec<(SnapshotId, Option<String>)> {
         let snapshots = self.snapshots.lock().unwrap();
         snapshots.values().map(|s| (s.id, s.name.clone())).collect()
+    }
+
+    pub fn export_snapshot(&self, snapshot_id: SnapshotId, target: &Path) -> FsResult<()> {
+        fs::create_dir_all(target)?;
+        let snapshot = {
+            let snapshots = self.snapshots.lock().unwrap();
+            snapshots.get(&snapshot_id).cloned().ok_or(FsError::NotFound)?
+        };
+        self.export_node_overlay(snapshot.root_id, Path::new("/"), target)
+    }
+
+    fn export_node_overlay(
+        &self,
+        node_id: NodeId,
+        absolute_path: &Path,
+        destination: &Path,
+    ) -> FsResult<()> {
+        let node = {
+            let nodes = self.nodes.lock().unwrap();
+            nodes.get(&node_id).cloned().ok_or(FsError::NotFound)?
+        };
+
+        match node.kind {
+            NodeKind::Directory { children } => {
+                fs::create_dir_all(destination)?;
+
+                let mut entry_map: HashMap<String, Option<NodeId>> =
+                    HashMap::with_capacity(children.len());
+                for (name, child_id) in children.iter() {
+                    entry_map.insert(name.clone(), Some(*child_id));
+                }
+
+                if let Some(lower_fs) = self.lower_fs.as_ref() {
+                    match lower_fs.readdir(absolute_path) {
+                        Ok(lower_entries) => {
+                            for entry in lower_entries {
+                                entry_map.entry(entry.name.clone()).or_insert(None);
+                            }
+                        }
+                        Err(FsError::NotFound) => {}
+                        Err(err) => return Err(err),
+                    }
+                }
+
+                let mut entries: Vec<(String, Option<NodeId>)> = entry_map.into_iter().collect();
+                entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+                for (name, maybe_child_id) in entries {
+                    let child_destination = destination.join(&name);
+                    let child_absolute_path = if absolute_path == Path::new("/") {
+                        PathBuf::from("/").join(&name)
+                    } else {
+                        absolute_path.join(&name)
+                    };
+
+                    if let Some(child_id) = maybe_child_id {
+                        self.export_node_overlay(
+                            child_id,
+                            &child_absolute_path,
+                            &child_destination,
+                        )?;
+                    } else if let Some(lower_fs) = self.lower_fs.as_ref() {
+                        self.export_lower_entry(
+                            lower_fs.as_ref(),
+                            &child_absolute_path,
+                            &child_destination,
+                        )?;
+                    }
+                }
+
+                Ok(())
+            }
+            NodeKind::File { streams } => {
+                if let Some(parent) = destination.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut file = File::create(destination)?;
+                if let Some((content_id, size)) = streams.get("") {
+                    let mut offset = 0u64;
+                    let mut buffer = vec![0u8; 8192];
+                    while offset < *size {
+                        let remaining = (*size - offset) as usize;
+                        let read_len = remaining.min(buffer.len());
+                        let bytes_read =
+                            self.storage.read(*content_id, offset, &mut buffer[..read_len])?;
+                        if bytes_read == 0 {
+                            break;
+                        }
+                        file.write_all(&buffer[..bytes_read])?;
+                        offset += bytes_read as u64;
+                    }
+                }
+                Ok(())
+            }
+            NodeKind::Symlink { target } => {
+                if let Some(parent) = destination.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                #[cfg(unix)]
+                {
+                    std::os::unix::fs::symlink(&target, destination)?;
+                    Ok(())
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = target;
+                    Err(FsError::Unsupported)
+                }
+            }
+        }
+    }
+
+    fn export_lower_entry(
+        &self,
+        lower_fs: &dyn LowerFs,
+        absolute_path: &Path,
+        destination: &Path,
+    ) -> FsResult<()> {
+        let attrs = match lower_fs.stat(absolute_path) {
+            Ok(attrs) => attrs,
+            Err(FsError::NotFound) => return Ok(()),
+            Err(err) => return Err(err),
+        };
+
+        if attrs.is_dir {
+            fs::create_dir_all(destination)?;
+            match lower_fs.readdir(absolute_path) {
+                Ok(entries) => {
+                    for entry in entries {
+                        let child_path = if absolute_path == Path::new("/") {
+                            PathBuf::from("/").join(&entry.name)
+                        } else {
+                            absolute_path.join(&entry.name)
+                        };
+                        let child_destination = destination.join(&entry.name);
+                        self.export_lower_entry(lower_fs, &child_path, &child_destination)?;
+                    }
+                }
+                Err(FsError::NotFound) => {}
+                Err(err) => return Err(err),
+            }
+            return Ok(());
+        }
+
+        if attrs.is_symlink {
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            #[cfg(unix)]
+            {
+                let target = lower_fs.readlink(absolute_path)?;
+                std::os::unix::fs::symlink(target, destination)?;
+                return Ok(());
+            }
+            #[cfg(not(unix))]
+            {
+                return Err(FsError::Unsupported);
+            }
+        }
+
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut reader = lower_fs.open_ro(absolute_path)?;
+        let mut writer = File::create(destination)?;
+        std::io::copy(&mut reader, &mut writer)?;
+        Ok(())
     }
 
     pub fn snapshot_delete(&self, snapshot_id: SnapshotId) -> FsResult<()> {

@@ -186,24 +186,23 @@ impl FsSnapshotProvider for BtrfsProvider {
                 })
             }
             WorkingCopyMode::CowOverlay => {
-                // Btrfs CoW overlay mode: create subvolume snapshot
+                // Btrfs CoW overlay mode: create a writable subvolume snapshot that
+                // the agent can mutate while leaving the source tree untouched.
                 let unique_id = ah_fs_snapshots_traits::generate_unique_id();
-                let snapshot_path = repo.with_file_name(format!("ah_snapshot_{}", unique_id));
+                let workspace_path = repo.with_file_name(format!("ah_workspace_{}", unique_id));
 
-                // Create readonly snapshot
                 self.execute_btrfs_command(&[
                     "subvolume",
                     "snapshot",
-                    "-r",
                     repo.to_str().unwrap(),
-                    snapshot_path.to_str().unwrap(),
+                    workspace_path.to_str().unwrap(),
                 ])?;
 
                 Ok(PreparedWorkspace {
-                    exec_path: snapshot_path.clone(),
+                    exec_path: workspace_path.clone(),
                     working_copy: mode,
                     provider: self.kind(),
-                    cleanup_token: format!("btrfs:cow:{}", snapshot_path.display()),
+                    cleanup_token: format!("btrfs:cow:{}", workspace_path.display()),
                 })
             }
             WorkingCopyMode::Worktree | WorkingCopyMode::Auto => {

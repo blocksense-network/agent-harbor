@@ -110,8 +110,8 @@ impl AgentFsDaemon {
         Ok(registered_pid)
     }
 
-    fn get_process_pid(&self, os_pid: u32) -> Option<&PID> {
-        self.processes.get(&os_pid)
+    fn registered_pid(&self, os_pid: u32) -> Option<PID> {
+        self.processes.get(&os_pid).cloned()
     }
 
     fn handle_fd_open(

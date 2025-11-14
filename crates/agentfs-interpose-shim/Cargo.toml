@@ -21,6 +21,7 @@ ethereum_ssz_derive = "0.8"
 hex = "0.4"
 redhook = "2.0"
 agentfs-proto = { path = "../agentfs-proto" }
+agentfs-client = { path = "../agentfs-client" }
 tempfile = "3"
 agentfs-core = { path = "../agentfs-core", optional = true }
 
