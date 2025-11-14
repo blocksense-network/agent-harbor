@@ -7,7 +7,11 @@
 //! Based on the tmux integration guide in specs/Public/Terminal-Multiplexers/tmux.md
 
 use ah_mux_core::*;
+use std::ffi::OsStr;
+use std::fs::DirBuilder;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// tmux multiplexer implementation
@@ -19,6 +23,7 @@ pub struct TmuxMultiplexer {
 
 impl Default for TmuxMultiplexer {
     fn default() -> Self {
+        init_tmux_test_env();
         Self {
             session_name: "ah".to_string(),
             assume_session_exists: false,
@@ -26,12 +31,81 @@ impl Default for TmuxMultiplexer {
     }
 }
 
+fn tmux_socket_path() -> &'static Path {
+    static SOCKET: OnceLock<PathBuf> = OnceLock::new();
+    SOCKET.get_or_init(|| {
+        if let Ok(force) = std::env::var("AH_MUX_FORCE_TMUX_SOCKET") {
+            return PathBuf::from(force);
+        }
+
+        let dir = std::env::temp_dir().join(format!("ah-mux-tmux-{}", std::process::id()));
+        let mut builder = DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        let _ = builder.create(&dir);
+
+        let socket = dir.join("socket");
+        let _ = std::fs::remove_file(&socket);
+        socket
+    });
+    SOCKET.get().unwrap()
+}
+
+fn tmux_command_with_config(custom_conf: Option<&OsStr>) -> Command {
+    let mut cmd = Command::new("tmux");
+    cmd.env_remove("TMUX");
+    cmd.arg("-S").arg(tmux_socket_path());
+    if let Some(conf) = custom_conf {
+        cmd.arg("-f").arg(conf);
+    } else if let Some(conf) = std::env::var_os("AH_MUX_FORCE_TMUX_CONF") {
+        cmd.arg("-f").arg(conf);
+    }
+    cmd
+}
+
+fn tmux_command() -> Command {
+    tmux_command_with_config(None)
+}
+
+fn init_tmux_test_env() {
+    #[cfg(test)]
+    {
+        use std::sync::Once;
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            const CONFIG: &str = r#"
+set -g status off
+set -g status-interval 0
+set -g status-left ""
+set -g status-right ""
+set -g window-status-format ""
+set -g window-status-current-format ""
+set -g mouse off
+set -g automatic-rename off
+set -g allow-rename off
+set -g default-terminal "xterm"
+set -g default-shell "/bin/sh"
+"#;
+            let path = "/tmp/ah_mux_test_tmux.conf";
+            let _ = std::fs::write(path, CONFIG);
+            std::env::set_var("AH_MUX_FORCE_TMUX_CONF", path);
+            std::env::remove_var("TMUX");
+        });
+    }
+}
+
 impl TmuxMultiplexer {
     pub fn new() -> Result<Self, MuxError> {
+        init_tmux_test_env();
         Ok(Self::default())
     }
 
     pub fn with_session_name(session_name: String) -> Self {
+        init_tmux_test_env();
         Self {
             session_name,
             assume_session_exists: false,
@@ -41,9 +115,10 @@ impl TmuxMultiplexer {
     /// Create a tmux multiplexer that assumes the session already exists
     /// (useful for testing with continuous sessions)
     pub fn with_existing_session(session_name: String) -> Self {
+        init_tmux_test_env();
         // Wait for the session to be ready
         for _ in 0..10 {
-            if Command::new("tmux")
+            if tmux_command()
                 .args(["has-session", "-t", &session_name])
                 .output()
                 .map(|o| o.status.success())
@@ -61,7 +136,7 @@ impl TmuxMultiplexer {
 
     /// Run a tmux command and return its output
     fn run_tmux_command(&self, args: &[&str]) -> Result<String, MuxError> {
-        let output = Command::new("tmux").args(args).output().map_err(|e| {
+        let output = tmux_command().args(args).output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 MuxError::NotAvailable("tmux")
             } else {
@@ -117,7 +192,7 @@ impl Multiplexer for TmuxMultiplexer {
     }
 
     fn is_available(&self) -> bool {
-        std::process::Command::new("tmux")
+        tmux_command()
             .arg("-V")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -500,83 +575,86 @@ mod tests {
             .unwrap()
             .as_millis();
         let session_name = format!("test-split-h-{}", timestamp);
-        if TmuxMultiplexer::new().is_ok() {
-            // Start continuous tmux session for visual testing
-            let _ = snapshot_testing::start_continuous_session(&session_name);
-
-            // Give tmux a moment to fully initialize
-            std::thread::sleep(Duration::from_millis(300));
-
-            // Create tmux API that assumes session already exists
-            let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
-
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("split-test-003"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
-
-            let initial_pane = format!("{}.0", window_id);
-
-            // Run command in initial pane
-            tmux.run_command(
-                &initial_pane,
-                "echo 'Left pane content'",
-                &CommandOptions::default(),
-            )
-            .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: before split
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("before_split_horizontal", snapshot);
-            }
-
-            // Split horizontally
-            let new_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&initial_pane),
-                    SplitDirection::Horizontal,
-                    Some(60), // 60% for left pane
-                    &CommandOptions {
-                        cwd: Some(Path::new("/tmp")),
-                        env: None,
-                    },
-                    None,
-                )
-                .unwrap();
-
-            // The exact window/pane numbering can vary depending on how tmux starts
-            // Just verify it's a valid pane ID format
-            assert!(new_pane.starts_with(&format!("{}:", session_name)));
-
-            // Run command in new pane
-            tmux.run_command(
-                &new_pane,
-                "echo 'Right pane content'",
-                &CommandOptions::default(),
-            )
-            .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after split
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("after_split_horizontal", snapshot);
-            }
-
-            // Verify both panes exist
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert_eq!(panes.len(), 2);
-            // Just verify the panes have the correct session prefix - exact numbering may vary
-            assert!(panes.iter().all(|p| p.starts_with(&format!("{}:", session_name))));
-
-            // Clean up
-            let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
+        if !TmuxMultiplexer::default().is_available() {
+            eprintln!("tmux unavailable, skipping test_split_pane_horizontal");
+            return;
         }
+
+        snapshot_testing::start_continuous_session(&session_name)
+            .expect("failed to start tmux session");
+
+        // Give tmux a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(300));
+
+        // Create tmux API that assumes session already exists
+        let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
+
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("split-test-003"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
+
+        let initial_pane = format!("{}.0", window_id);
+
+        // Run command in initial pane
+        tmux.run_command(
+            &initial_pane,
+            "echo 'Left pane content'",
+            &CommandOptions::default(),
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: before split
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("before_split_horizontal", snapshot);
+        }
+
+        // Split horizontally
+        let new_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&initial_pane),
+                SplitDirection::Horizontal,
+                Some(60), // 60% for left pane
+                &CommandOptions {
+                    cwd: Some(Path::new("/tmp")),
+                    env: None,
+                },
+                None,
+            )
+            .unwrap();
+
+        // The exact window/pane numbering can vary depending on how tmux starts
+        // Just verify it's a valid pane ID format
+        assert!(new_pane.starts_with(&format!("{}:", session_name)));
+
+        // Run command in new pane
+        tmux.run_command(
+            &new_pane,
+            "echo 'Right pane content'",
+            &CommandOptions::default(),
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after split
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("after_split_horizontal", snapshot);
+        }
+
+        // Verify both panes exist
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert_eq!(panes.len(), 2);
+        // Just verify the panes have the correct session prefix - exact numbering may vary
+        assert!(panes.iter().all(|p| p.starts_with(&format!("{}:", session_name))));
+
+        // Clean up
+        let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
     }
 
     #[test]
@@ -687,54 +765,57 @@ mod tests {
             .unwrap()
             .as_millis();
         let session_name = format!("test-cmd-{}", timestamp);
-        if TmuxMultiplexer::new().is_ok() {
-            // Start continuous tmux session for visual testing
-            let _ = snapshot_testing::start_continuous_session(&session_name);
-
-            // Give tmux a moment to fully initialize
-            std::thread::sleep(Duration::from_millis(300));
-
-            // Create tmux API that assumes session already exists
-            let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
-
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("cmd-text-test"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
-
-            let pane_id = format!("{}.0", window_id);
-
-            // Run a command
-            tmux.run_command(&pane_id, "echo 'hello world'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after running command
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("after_run_command", snapshot);
-            }
-
-            // Send text
-            tmux.send_text(&pane_id, "some input text").unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after sending text
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("after_send_text", snapshot);
-            }
-
-            // Commands should not fail - we can't easily verify output without pexpect
-            // but we can verify the pane still exists
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert!(!panes.is_empty());
-
-            // Clean up
-            let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
+        if !TmuxMultiplexer::default().is_available() {
+            eprintln!("tmux unavailable, skipping test_run_command_and_send_text");
+            return;
         }
+
+        snapshot_testing::start_continuous_session(&session_name)
+            .expect("failed to start tmux session");
+
+        // Give tmux a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(300));
+
+        // Create tmux API that assumes session already exists
+        let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
+
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("cmd-text-test"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
+
+        let pane_id = format!("{}.0", window_id);
+
+        // Run a command
+        tmux.run_command(&pane_id, "echo 'hello world'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after running command
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("after_run_command", snapshot);
+        }
+
+        // Send text
+        tmux.send_text(&pane_id, "some input text").unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after sending text
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("after_send_text", snapshot);
+        }
+
+        // Commands should not fail - we can't easily verify output without pexpect
+        // but we can verify the pane still exists
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert!(!panes.is_empty());
+
+        // Clean up
+        let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
     }
 
     #[test]
@@ -922,100 +1003,103 @@ mod tests {
             .unwrap()
             .as_millis();
         let session_name = format!("test-complex-{}", timestamp);
-        if TmuxMultiplexer::new().is_ok() {
-            // Start continuous tmux session for visual testing
-            let _ = snapshot_testing::start_continuous_session(&session_name);
-
-            // Give tmux a moment to fully initialize
-            std::thread::sleep(Duration::from_millis(300));
-
-            // Create tmux API that assumes session already exists
-            let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
-
-            // Create window
-            let window_id = tmux
-                .open_window(&WindowOptions {
-                    title: Some("complex-layout-008"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                })
-                .unwrap();
-
-            let pane0 = format!("{}.0", window_id);
-
-            // Run initial command in editor pane
-            tmux.run_command(&pane0, "echo 'editor pane'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: initial single pane
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("complex_layout_initial", snapshot);
-            }
-
-            // Create a 3-pane layout: editor (left), agent (top-right), logs (bottom-right)
-            let agent_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&pane0),
-                    SplitDirection::Horizontal,
-                    Some(70), // 70% for editor
-                    &CommandOptions::default(),
-                    None,
-                )
-                .unwrap();
-
-            // Run command in agent pane
-            tmux.run_command(&agent_pane, "echo 'agent pane'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: after first split (2 panes)
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("complex_layout_two_panes", snapshot);
-            }
-
-            let logs_pane = tmux
-                .split_pane(
-                    Some(&window_id),
-                    Some(&agent_pane),
-                    SplitDirection::Vertical,
-                    Some(60), // 60% for agent, 40% for logs
-                    &CommandOptions::default(),
-                    None,
-                )
-                .unwrap();
-
-            // Run command in logs pane
-            tmux.run_command(&logs_pane, "echo 'logs pane'", &CommandOptions::default())
-                .unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-
-            // Strategic snapshot: final 3-pane layout
-            if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
-                snapshot_testing::assert_snapshot_optional("complex_layout_final", snapshot);
-            }
-
-            // Verify all panes exist
-            let panes = tmux.list_panes(&window_id).unwrap();
-            assert_eq!(panes.len(), 3);
-            assert!(panes.contains(&pane0));
-            assert!(panes.contains(&agent_pane));
-            assert!(panes.contains(&logs_pane));
-
-            // Test focusing different panes - need to focus window first since display-message works on active window
-            tmux.focus_window(&window_id).unwrap();
-
-            // Test pane focusing by checking that we can focus different panes
-            // (we don't check the exact pane index since tmux pane indexing can be complex)
-            tmux.focus_pane(&agent_pane).unwrap();
-            tmux.focus_pane(&logs_pane).unwrap();
-            tmux.focus_pane(&pane0).unwrap();
-
-            // Clean up
-            let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
+        if !TmuxMultiplexer::default().is_available() {
+            eprintln!("tmux unavailable, skipping test_complex_layout_creation");
+            return;
         }
+
+        snapshot_testing::start_continuous_session(&session_name)
+            .expect("failed to start tmux session");
+
+        // Give tmux a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(300));
+
+        // Create tmux API that assumes session already exists
+        let tmux = TmuxMultiplexer::with_existing_session(session_name.to_string());
+
+        // Create window
+        let window_id = tmux
+            .open_window(&WindowOptions {
+                title: Some("complex-layout-008"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+            })
+            .unwrap();
+
+        let pane0 = format!("{}.0", window_id);
+
+        // Run initial command in editor pane
+        tmux.run_command(&pane0, "echo 'editor pane'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: initial single pane
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("complex_layout_initial", snapshot);
+        }
+
+        // Create a 3-pane layout: editor (left), agent (top-right), logs (bottom-right)
+        let agent_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&pane0),
+                SplitDirection::Horizontal,
+                Some(70), // 70% for editor
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        // Run command in agent pane
+        tmux.run_command(&agent_pane, "echo 'agent pane'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: after first split (2 panes)
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("complex_layout_two_panes", snapshot);
+        }
+
+        let logs_pane = tmux
+            .split_pane(
+                Some(&window_id),
+                Some(&agent_pane),
+                SplitDirection::Vertical,
+                Some(60), // 60% for agent, 40% for logs
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        // Run command in logs pane
+        tmux.run_command(&logs_pane, "echo 'logs pane'", &CommandOptions::default())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Strategic snapshot: final 3-pane layout
+        if let Ok(snapshot) = snapshot_testing::snapshot_continuous_session() {
+            snapshot_testing::assert_snapshot_optional("complex_layout_final", snapshot);
+        }
+
+        // Verify all panes exist
+        let panes = tmux.list_panes(&window_id).unwrap();
+        assert_eq!(panes.len(), 3);
+        assert!(panes.contains(&pane0));
+        assert!(panes.contains(&agent_pane));
+        assert!(panes.contains(&logs_pane));
+
+        // Test focusing different panes - need to focus window first since display-message works on active window
+        tmux.focus_window(&window_id).unwrap();
+
+        // Test pane focusing by checking that we can focus different panes
+        // (we don't check the exact pane index since tmux pane indexing can be complex)
+        tmux.focus_pane(&agent_pane).unwrap();
+        tmux.focus_pane(&logs_pane).unwrap();
+        tmux.focus_pane(&pane0).unwrap();
+
+        // Clean up
+        let _ = snapshot_testing::stop_continuous_session_by_name(&session_name);
     }
 
     #[test]
@@ -1093,33 +1177,53 @@ mod tests {
 
 #[cfg(test)]
 mod snapshot_testing {
+    use super::{init_tmux_test_env, tmux_command, tmux_command_with_config};
     use expectrl::spawn;
+    use std::io::Read;
+    use std::path::PathBuf;
+    use std::process::Stdio;
     use std::time::Duration;
     use vt100::Parser;
 
+    struct ExpectHandle {
+        session: expectrl::session::Session,
+        parser: Parser,
+    }
+
+    struct ContinuousSession {
+        session_name: String,
+        config_path: PathBuf,
+        expect: Option<ExpectHandle>,
+    }
+
     // Thread-local state for continuous tmux session during tests
     thread_local! {
-        static CONTINUOUS_SESSION: std::cell::RefCell<Option<(expectrl::session::Session, Parser, String)>> = std::cell::RefCell::new(None);
+        static CONTINUOUS_SESSION: std::cell::RefCell<Option<ContinuousSession>> = std::cell::RefCell::new(None);
+    }
+
+    fn snapshots_enabled() -> bool {
+        std::env::var("SNAPSHOT_TESTS").is_ok()
     }
 
     /// Start a continuous attached tmux session for testing
     pub fn start_continuous_session(session_name: &str) -> anyhow::Result<()> {
+        init_tmux_test_env();
+        let _ = stop_continuous_session();
         CONTINUOUS_SESSION.with(|session_cell| {
             let mut session = session_cell.borrow_mut();
             if session.is_some() {
-                return Ok(());
+                // Should be cleaned up by stop_continuous_session but guard anyway
+                session.take();
             }
 
             // Kill any existing session first
-            let _ = std::process::Command::new("tmux")
-                .args(&["kill-session", "-t", session_name])
-                .output();
+            let _ = tmux_command().args(&["kill-session", "-t", session_name]).output();
 
             // Give it a moment to clean up
             std::thread::sleep(Duration::from_millis(100));
 
             // Create a comprehensive tmux config file for deterministic testing
-            let config_path = format!("/tmp/tmux-test-config-{}", session_name);
+            let config_path = PathBuf::from(format!("/tmp/tmux-test-config-{}", session_name));
             let tmux_config = r#"
 # Disable status bar completely
 set -g status off
@@ -1162,19 +1266,73 @@ set-environment -g ZDOTDIR ""
 "#;
             std::fs::write(&config_path, tmux_config)?;
 
-            // Spawn tmux with custom config and minimal shell for deterministic snapshots
-            // Use sh instead of the default shell to avoid shell-specific behaviors
-            let tmux_cmd = format!("tmux -f {} new-session -s {} sh", config_path, session_name);
-            let mut p = spawn(&tmux_cmd)?;
-            p.set_echo(false, None)?;
+            // Start a detached tmux session using the custom config so our tests
+            // talk to the same server as the multiplexer helpers.
+            let output = tmux_command_with_config(Some(config_path.as_os_str()))
+                .args(["new-session", "-d", "-s", session_name, "sh"])
+                .stderr(Stdio::inherit())
+                .output()
+                .map_err(|e| anyhow::anyhow!("failed to spawn tmux: {e}"))?;
 
-            // Create vt100 parser for 80x24 terminal
-            let parser = Parser::new(24, 80, 0);
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!(
+                    "failed to create tmux session '{}': {}",
+                    session_name,
+                    stderr.trim()
+                );
+            }
 
             // Give tmux a moment to start up
             std::thread::sleep(Duration::from_millis(200));
 
-            *session = Some((p, parser, config_path));
+            let mut last_err: Option<String> = None;
+            let mut ready = false;
+            for _ in 0..40 {
+                match tmux_command().args(["has-session", "-t", session_name]).output() {
+                    Ok(out) if out.status.success() => {
+                        ready = true;
+                        break;
+                    }
+                    Ok(out) => {
+                        last_err = Some(String::from_utf8_lossy(&out.stderr).trim().to_string());
+                    }
+                    Err(e) => {
+                        last_err = Some(e.to_string());
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+
+            if !ready {
+                anyhow::bail!(
+                    "tmux session '{}' never became ready after startup: {}",
+                    session_name,
+                    last_err.unwrap_or_else(|| "unknown error".to_string())
+                );
+            }
+
+            let expect = if snapshots_enabled() {
+                let tmux_cmd = format!(
+                    "tmux -f {} attach-session -t {}",
+                    config_path.display(),
+                    session_name
+                );
+                let mut p = spawn(&tmux_cmd)?;
+                p.set_echo(false, None)?;
+                Some(ExpectHandle {
+                    session: p,
+                    parser: Parser::new(24, 80, 0),
+                })
+            } else {
+                None
+            };
+
+            *session = Some(ContinuousSession {
+                session_name: session_name.to_string(),
+                config_path,
+                expect,
+            });
             Ok(())
         })
     }
@@ -1183,13 +1341,13 @@ set-environment -g ZDOTDIR ""
     pub fn stop_continuous_session() -> anyhow::Result<()> {
         CONTINUOUS_SESSION.with(|session_cell| {
             let mut session = session_cell.borrow_mut();
-            if let Some((mut p, _, config_path)) = session.take() {
-                // Send exit command to tmux
-                let _ = p.send("exit\n");
-                std::thread::sleep(Duration::from_millis(200));
-
-                // Clean up temporary config file
-                let _ = std::fs::remove_file(&config_path);
+            if let Some(state) = session.take() {
+                if let Some(mut expect) = state.expect {
+                    let _ = expect.session.send("exit\n");
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                let _ = tmux_command().args(["kill-session", "-t", &state.session_name]).output();
+                let _ = std::fs::remove_file(&state.config_path);
             }
             Ok(())
         })
@@ -1201,9 +1359,7 @@ set-environment -g ZDOTDIR ""
         stop_continuous_session()?;
 
         // Then kill any remaining session by name
-        let _ = std::process::Command::new("tmux")
-            .args(&["kill-session", "-t", session_name])
-            .output();
+        let _ = tmux_command().args(&["kill-session", "-t", session_name]).output();
 
         // Give it a moment to die
         std::thread::sleep(Duration::from_millis(100));
@@ -1215,17 +1371,15 @@ set-environment -g ZDOTDIR ""
     pub fn process_pending_output() -> anyhow::Result<()> {
         CONTINUOUS_SESSION.with(|session_cell| {
             let mut session = session_cell.borrow_mut();
-            if let Some((ref mut _p, ref mut _parser, _)) = session.as_mut() {
-                let _buf = [0u8; 8192];
-                // Try to read any available output
-                // TODO: Implement proper async reading or use expectrl's expect API
-                // For now, skip raw byte reading to avoid async/sync complexity in tests
-                // match p.read(&mut buf) {
-                //     Ok(n) if n > 0 => {
-                //         parser.process(&buf[..n]);
-                //     }
-                //     _ => {} // No more data available
-                // }
+            if let Some(state) = session.as_mut() {
+                if let Some(expect) = state.expect.as_mut() {
+                    let mut buf = [0u8; 8192];
+                    let _ = expect.session.get_pty_stream()?.read(&mut buf).map(|n| {
+                        if n > 0 {
+                            expect.parser.process(&buf[..n]);
+                        }
+                    });
+                }
             }
             Ok(())
         })
@@ -1237,8 +1391,13 @@ set-environment -g ZDOTDIR ""
 
         CONTINUOUS_SESSION.with(|session_cell| {
             let session = session_cell.borrow();
-            if let Some((_, ref parser, _)) = session.as_ref() {
-                Ok(snapshot_from_parser(parser))
+            if let Some(state) = session.as_ref() {
+                if let Some(expect) = state.expect.as_ref() {
+                    Ok(snapshot_from_parser(&expect.parser))
+                } else {
+                    // Snapshots disabled; return empty capture so the caller still logs.
+                    Ok(String::new())
+                }
             } else {
                 Err(anyhow::anyhow!("No continuous tmux session running"))
             }
