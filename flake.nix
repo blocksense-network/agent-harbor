@@ -453,6 +453,12 @@
         pkgs.tmux
         pkgs.screen
         pkgs.zellij
+        pkgs.kitty
+      ];
+
+      # GUI testing tools for headless environments
+      gui-test-tools = [
+        pkgs.xorg.xorgserver # Xvfb for virtual display
       ];
 
       # Linux-specific packages
@@ -491,7 +497,7 @@
       # All packages combined
       allPackages = commonPackages ++ linuxPackages ++ darwinPackages ++
                     self.checks.${system}.pre-commit-check.enabledPackages
-                    ++ ah-mux-test-tools;
+                    ++ ah-mux-test-tools ++ gui-test-tools;
 
       # Platform-specific shell hook additions
       exportLinuxEnvVars = if isLinux then ''
