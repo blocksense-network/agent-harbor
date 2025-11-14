@@ -51,6 +51,12 @@ pub struct AgentFsFuse {
     core: FsCore,
     /// Configuration
     config: FsConfig,
+    /// TTL for attribute cache responses
+    attr_ttl: Duration,
+    /// TTL for directory entry cache responses
+    entry_ttl: Duration,
+    /// TTL for negative lookups (future use)
+    negative_ttl: Duration,
     /// Cache of inode to path mappings for control operations
     inodes: HashMap<u64, Vec<u8>>, // inode -> path
     /// Reverse mapping from path to inode
@@ -74,9 +80,16 @@ impl AgentFsFuse {
         inodes.insert(CONTROL_FILE_INO, b"/.agentfs/control".to_vec());
         paths.insert(b"/.agentfs/control".to_vec(), CONTROL_FILE_INO);
 
+        let attr_ttl = Duration::from_millis(config.cache.attr_ttl_ms as u64);
+        let entry_ttl = Duration::from_millis(config.cache.entry_ttl_ms as u64);
+        let negative_ttl = Duration::from_millis(config.cache.negative_ttl_ms as u64);
+
         Ok(Self {
             core,
             config,
+            attr_ttl,
+            entry_ttl,
+            negative_ttl,
             inodes,
             paths,
             next_inode: CONTROL_FILE_INO + 1,
@@ -331,6 +344,51 @@ impl AgentFsFuse {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agentfs_proto::{Request as ControlRequest, Response as ControlResponse};
+
+    #[test]
+    fn cache_ttls_follow_config() {
+        let mut config = FsConfig::default();
+        config.cache.attr_ttl_ms = 1500;
+        config.cache.entry_ttl_ms = 2500;
+        config.cache.negative_ttl_ms = 3500;
+
+        let fuse = AgentFsFuse::new(config).expect("fuse init");
+        assert_eq!(fuse.attr_ttl, Duration::from_millis(1500));
+        assert_eq!(fuse.entry_ttl, Duration::from_millis(2500));
+        assert_eq!(fuse.negative_ttl, Duration::from_millis(3500));
+    }
+
+    #[test]
+    fn control_ioctl_snapshot_roundtrip() {
+        let mut fuse = AgentFsFuse::new(FsConfig::default()).expect("fuse init");
+
+        let create_req = ControlRequest::snapshot_create(Some("snap-one".to_string()));
+        let create_resp = fuse
+            .handle_control_ioctl(&create_req.as_ssz_bytes())
+            .expect("snapshot create resp");
+        match ControlResponse::from_ssz_bytes(&create_resp).expect("decode response") {
+            ControlResponse::SnapshotCreate(info) => {
+                assert!(info.snapshot.name.is_some());
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+
+        let list_req = ControlRequest::snapshot_list();
+        let list_resp =
+            fuse.handle_control_ioctl(&list_req.as_ssz_bytes()).expect("snapshot list resp");
+        match ControlResponse::from_ssz_bytes(&list_resp).expect("decode list") {
+            ControlResponse::SnapshotList(entries) => {
+                assert_eq!(entries.snapshots.len(), 1);
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+    }
+}
+
 impl fuser::Filesystem for AgentFsFuse {
     fn init(&mut self, _req: &Request, _config: &mut fuser::KernelConfig) -> Result<(), c_int> {
         // Cache configuration is handled via mount options in main.rs
@@ -344,6 +402,11 @@ impl fuser::Filesystem for AgentFsFuse {
 
     fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let name_bytes = name.as_bytes();
+
+        if name_bytes.len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
 
         // Handle special .agentfs directory and control file
         if parent == FUSE_ROOT_ID && name == ".agentfs" {
@@ -364,7 +427,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 blksize: 512,
                 flags: 0,
             };
-            reply.entry(&Duration::from_secs(1), &attr, 0);
+            reply.entry(&self.entry_ttl, &attr, 0);
             return;
         }
 
@@ -386,7 +449,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 blksize: 512,
                 flags: 0,
             };
-            reply.entry(&Duration::from_secs(1), &attr, 0);
+            reply.entry(&self.entry_ttl, &attr, 0);
             return;
         }
 
@@ -411,7 +474,7 @@ impl fuser::Filesystem for AgentFsFuse {
             Ok(attr) => {
                 let ino = self.get_or_alloc_inode(&full_path);
                 let fuse_attr = self.attr_to_fuse(&attr, ino);
-                reply.entry(&Duration::from_secs(1), &fuse_attr, 0);
+                reply.entry(&self.entry_ttl, &fuse_attr, 0);
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(_) => reply.error(EIO),
@@ -438,7 +501,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 blksize: 512,
                 flags: 0,
             };
-            reply.attr(&Duration::from_secs(1), &attr);
+            reply.attr(&self.attr_ttl, &attr);
             return;
         }
 
@@ -460,7 +523,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 blksize: 512,
                 flags: 0,
             };
-            reply.attr(&Duration::from_secs(1), &attr);
+            reply.attr(&self.attr_ttl, &attr);
             return;
         }
 
@@ -482,7 +545,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 blksize: 512,
                 flags: 0,
             };
-            reply.attr(&Duration::from_secs(1), &attr);
+            reply.attr(&self.attr_ttl, &attr);
             return;
         }
 
@@ -500,7 +563,39 @@ impl fuser::Filesystem for AgentFsFuse {
         match self.core.getattr(&client_pid, path) {
             Ok(attr) => {
                 let fuse_attr = self.attr_to_fuse(&attr, ino);
-                reply.attr(&Duration::from_secs(1), &fuse_attr);
+                reply.attr(&self.attr_ttl, &fuse_attr);
+            }
+            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(_) => reply.error(EIO),
+        }
+    }
+
+    fn statfs(&mut self, req: &Request, ino: u64, reply: ReplyStatfs) {
+        let path = if ino == FUSE_ROOT_ID {
+            self.path_from_bytes(b"/")
+        } else {
+            match self.inode_to_path(ino) {
+                Some(bytes) => self.path_from_bytes(bytes),
+                None => {
+                    reply.error(ENOENT);
+                    return;
+                }
+            }
+        };
+
+        let client_pid = self.get_client_pid(req);
+        match self.core.statfs(&client_pid, path) {
+            Ok(stats) => {
+                reply.statfs(
+                    stats.f_blocks,
+                    stats.f_bfree,
+                    stats.f_bavail,
+                    stats.f_files,
+                    stats.f_ffree,
+                    stats.f_bsize,
+                    stats.f_namemax,
+                    stats.f_frsize,
+                );
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(_) => reply.error(EIO),
@@ -757,13 +852,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 Ok(attr) => {
                     let ino = self.get_or_alloc_inode(&full_path);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
-                    reply.created(
-                        &Duration::from_secs(1),
-                        &fuse_attr,
-                        0,
-                        handle_id.0 as u64,
-                        0,
-                    );
+                    reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0 as u64, 0);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -810,7 +899,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 Ok(attr) => {
                     let ino = self.get_or_alloc_inode(&full_path);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
-                    reply.entry(&Duration::from_secs(1), &fuse_attr, 0);
+                    reply.entry(&self.entry_ttl, &fuse_attr, 0);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -997,7 +1086,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 Ok(attr) => {
                     let ino = self.get_or_alloc_inode(&linkpath);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
-                    reply.entry(&Duration::from_secs(1), &fuse_attr, 0);
+                    reply.entry(&self.entry_ttl, &fuse_attr, 0);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -1052,7 +1141,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 Ok(attr) => {
                     let ino = self.get_or_alloc_inode(&new_path);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
-                    reply.entry(&Duration::from_secs(1), &fuse_attr, 0);
+                    reply.entry(&self.entry_ttl, &fuse_attr, 0);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -1490,7 +1579,7 @@ impl fuser::Filesystem for AgentFsFuse {
         match self.core.getattr(&client_pid, path) {
             Ok(attr) => {
                 let fuse_attr = self.attr_to_fuse(&attr, ino);
-                reply.attr(&Duration::from_secs(1), &fuse_attr);
+                reply.attr(&self.attr_ttl, &fuse_attr);
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(_) => reply.error(EIO),

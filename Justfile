@@ -312,6 +312,11 @@ test-fuse-basic mountpoint:
 mount-fuse mountpoint:
     ./scripts/mount-fuse.sh "{{mountpoint}}"
 
+# Unmount the AgentFS FUSE filesystem from a given mount point
+# Usage: just umount-fuse /tmp/agentfs
+umount-fuse mountpoint:
+    ./scripts/umount-fuse.sh "{{mountpoint}}"
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
