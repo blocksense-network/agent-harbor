@@ -28,7 +28,7 @@ env:
 
 jobs:
   lint:
-    runs-on: [self-hosted, nixos, x86-64-v3]
+    runs-on: [self-hosted, nixos, x86-64-v3, "bare-metal"]
 
     steps:
       - uses: actions/checkout@v5
@@ -45,6 +45,17 @@ jobs:
 
       - name: Run Lint
         run: nix develop -c pre-commit run --all-files
+
+  ci:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: blocksense-network/nixos-modules/.github/workflows/reusable-flake-checks-ci-matrix.yml@main
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+    with:
+      run-cachix-deploy: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+      runner: '["self-hosted", "Linux", "x86-64-v3", "bare-metal"]'
 
   build-and-cache-devshell:
     strategy:
