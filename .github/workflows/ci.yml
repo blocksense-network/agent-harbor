@@ -81,7 +81,7 @@ jobs:
       matrix:
         include:
           - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3, microvm, fine-tuned-systemd-sandbox]
+            runner: [self-hosted, nixos, x86-64-v3, microvm]
             allowedToFail: false
           # - name: aarch64-darwin (macOS, GitHub-hosted)
           #   runner: macos-latest
