@@ -46,10 +46,12 @@ impl ClaudeAgent {
     /// Retrieve Claude Code credentials from platform-specific sources
     ///
     /// On macOS: executes `security find-generic-password -s "Claude Code-credentials" -w`
-    /// On Linux: reads from `~/.claude/.credentials.json`
-    async fn retrieve_credentials(&self) -> AgentResult<Option<String>> {
+    /// On Linux: reads from `~/.claude/.credentials.json` or `~/.config/claude/.credentials.json`
+    async fn retrieve_credentials(&self, home_dir: Option<&Path>) -> AgentResult<Option<String>> {
         #[cfg(target_os = "macos")]
         {
+            // On macOS, credentials are stored in Keychain (system-wide), not in HOME directory files
+            let _ = home_dir; // Silence unused parameter warning for macOS
             debug!("Retrieving Claude credentials from macOS Keychain");
             match Command::new("security")
                 .args([
@@ -82,25 +84,38 @@ impl ClaudeAgent {
         #[cfg(target_os = "linux")]
         {
             debug!("Retrieving Claude credentials from Linux credentials file");
-            if let Some(home_dir) = dirs::home_dir() {
-                let credentials_path = home_dir.join(".claude").join(".credentials.json");
+            let home = if let Some(h) = home_dir {
+                h.to_path_buf()
+            } else if let Some(h) = dirs::home_dir() {
+                h
+            } else {
+                warn!("Could not determine home directory for Linux credentials");
+                return Ok(None);
+            };
+
+            // Try multiple possible credential locations
+            let possible_paths = vec![
+                home.join(".claude").join(".credentials.json"),
+                home.join(".config").join("claude").join(".credentials.json"),
+            ];
+
+            for credentials_path in possible_paths {
                 match tokio::fs::read_to_string(&credentials_path).await {
                     Ok(json_str) => {
                         debug!("Retrieved credentials from file: {:?}", credentials_path);
-                        Ok(Some(json_str))
+                        return Ok(Some(json_str));
                     }
                     Err(e) => {
-                        warn!(
-                            "Failed to read credentials file {:?}: {}",
+                        debug!(
+                            "Credentials file {:?} not found or not readable: {}",
                             credentials_path, e
                         );
-                        Ok(None)
                     }
                 }
-            } else {
-                warn!("Could not determine home directory for Linux credentials");
-                Ok(None)
             }
+
+            warn!("No Claude credentials found in any of the expected locations");
+            Ok(None)
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -397,7 +412,46 @@ impl AgentExecutor for ClaudeAgent {
                     "Copying credentials from {:?} to {:?}",
                     system_home, config.home_dir
                 );
-                self.copy_credentials(&system_home, &config.home_dir).await?;
+
+                // On macOS, credentials are in Keychain, not files. We need to extract them
+                // and write to a file in the sandboxed HOME.
+                #[cfg(target_os = "macos")]
+                {
+                    // Retrieve credentials from system Keychain BEFORE entering sandbox
+                    if let Some(credentials_json) = self.retrieve_credentials(None).await? {
+                        // Write credentials to the sandboxed HOME
+                        let claude_dir = config.home_dir.join(".claude");
+                        tokio::fs::create_dir_all(&claude_dir).await.map_err(|e| {
+                            AgentError::CredentialCopyFailed(format!(
+                                "Failed to create .claude directory in sandboxed HOME: {}",
+                                e
+                            ))
+                        })?;
+
+                        let credentials_path = claude_dir.join(".credentials.json");
+                        tokio::fs::write(&credentials_path, &credentials_json).await.map_err(
+                            |e| {
+                                AgentError::CredentialCopyFailed(format!(
+                                    "Failed to write credentials to sandboxed HOME: {}",
+                                    e
+                                ))
+                            },
+                        )?;
+
+                        debug!(
+                            "Wrote Claude credentials from Keychain to {:?}",
+                            credentials_path
+                        );
+                    } else {
+                        warn!("No Claude credentials found in Keychain to copy to sandboxed HOME");
+                    }
+                }
+
+                // On Linux, use the default file-based copy
+                #[cfg(not(target_os = "macos"))]
+                {
+                    self.copy_credentials(&system_home, &config.home_dir).await?;
+                }
             }
         }
 
@@ -418,11 +472,34 @@ impl AgentExecutor for ClaudeAgent {
         if let Some(api_key) = &config.api_key {
             cmd.env("ANTHROPIC_API_KEY", api_key);
         } else {
-            // Set CLAUDE_CODE_OAUTH_TOKEN if we can retrieve credentials
-            if let Some(credentials_json) = self.retrieve_credentials().await? {
-                if let Some(access_token) = self.extract_access_token(&credentials_json)? {
-                    debug!("Setting CLAUDE_CODE_OAUTH_TOKEN environment variable");
-                    cmd.env("CLAUDE_CODE_OAUTH_TOKEN", access_token);
+            // Set CLAUDE_CODE_OAUTH_TOKEN if we can retrieve credentials from the sandboxed HOME
+            // Note: We look in the sandboxed HOME because credentials were copied there during
+            // the credential copy phase above (if copy_credentials was enabled)
+            match self.retrieve_credentials(Some(&config.home_dir)).await? {
+                Some(credentials_json) => match self.extract_access_token(&credentials_json)? {
+                    Some(access_token) => {
+                        debug!("Setting CLAUDE_CODE_OAUTH_TOKEN environment variable");
+                        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", access_token);
+                    }
+                    None => {
+                        return Err(AgentError::CredentialCopyFailed(
+                            "Failed to extract access token from Claude credentials. \
+                                The credentials file may be malformed or use an unexpected format."
+                                .to_string(),
+                        ));
+                    }
+                },
+                None => {
+                    return Err(AgentError::CredentialCopyFailed(format!(
+                        "No Claude credentials found in HOME directory: {:?}\n\
+                        \n\
+                        Please ensure you are authenticated with Claude Code:\n\
+                        1. Run 'claude setup-token' to configure authentication\n\
+                        2. Or set the ANTHROPIC_API_KEY environment variable\n\
+                        3. On macOS, ensure credentials are stored in Keychain\n\
+                        4. On Linux, ensure credentials exist at ~/.claude/.credentials.json or ~/.config/claude/.credentials.json",
+                        config.home_dir
+                    )));
                 }
             }
         }
@@ -493,17 +570,13 @@ impl AgentExecutor for ClaudeAgent {
 
     /// Platform-specific credential paths for Claude Code
     fn credential_paths(&self) -> Vec<PathBuf> {
-        #[cfg(target_os = "macos")]
-        {
-            // On macOS, Claude Code uses Keychain for credentials, no files to copy
-            vec![]
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            // On other platforms (Linux, etc.), credentials may be stored in files
-            vec![PathBuf::from(".claude/.credentials.json")]
-        }
+        // Note: On macOS, we now extract credentials from Keychain and write them to a file
+        // during the credential copy phase, so we include the file path here as well.
+        // On Linux, we check multiple possible locations.
+        vec![
+            PathBuf::from(".claude/.credentials.json"),
+            PathBuf::from(".config/claude/.credentials.json"),
+        ]
     }
 
     async fn get_user_api_key(&self) -> AgentResult<Option<String>> {
@@ -534,7 +607,8 @@ impl AgentExecutor for ClaudeAgent {
         }
 
         // 3. Try to extract access token from Claude Code OAuth credentials
-        if let Some(credentials_json) = self.retrieve_credentials().await? {
+        // Use system HOME (None) to retrieve from the user's actual credentials
+        if let Some(credentials_json) = self.retrieve_credentials(None).await? {
             match serde_json::from_str::<ClaudeCredentials>(&credentials_json) {
                 Ok(credentials) => {
                     debug!("Successfully parsed Claude OAuth credentials");
@@ -678,5 +752,153 @@ mod tests {
             credentials.claude_ai_oauth.access_token,
             "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"
         );
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_retrieve_credentials_linux_primary_location() {
+        use tempfile::TempDir;
+
+        let agent = ClaudeAgent::new();
+        let temp = TempDir::new().unwrap();
+        let home_dir = temp.path();
+
+        // Create credentials in primary location: ~/.claude/.credentials.json
+        let claude_dir = home_dir.join(".claude");
+        tokio::fs::create_dir_all(&claude_dir).await.unwrap();
+        let credentials_path = claude_dir.join(".credentials.json");
+        let test_creds = r#"{"claudeAiOauth":{"accessToken":"test-token","refreshToken":"refresh","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+        tokio::fs::write(&credentials_path, test_creds).await.unwrap();
+
+        // Test retrieval
+        let result = agent.retrieve_credentials(Some(home_dir)).await;
+        assert!(result.is_ok());
+        let creds = result.unwrap();
+        assert!(creds.is_some());
+        assert_eq!(creds.unwrap(), test_creds);
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_retrieve_credentials_linux_config_location() {
+        use tempfile::TempDir;
+
+        let agent = ClaudeAgent::new();
+        let temp = TempDir::new().unwrap();
+        let home_dir = temp.path();
+
+        // Create credentials in alternative location: ~/.config/claude/.credentials.json
+        let config_claude_dir = home_dir.join(".config").join("claude");
+        tokio::fs::create_dir_all(&config_claude_dir).await.unwrap();
+        let credentials_path = config_claude_dir.join(".credentials.json");
+        let test_creds = r#"{"claudeAiOauth":{"accessToken":"config-token","refreshToken":"refresh","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+        tokio::fs::write(&credentials_path, test_creds).await.unwrap();
+
+        // Test retrieval
+        let result = agent.retrieve_credentials(Some(home_dir)).await;
+        assert!(result.is_ok());
+        let creds = result.unwrap();
+        assert!(creds.is_some());
+        assert_eq!(creds.unwrap(), test_creds);
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_retrieve_credentials_linux_prefers_primary() {
+        use tempfile::TempDir;
+
+        let agent = ClaudeAgent::new();
+        let temp = TempDir::new().unwrap();
+        let home_dir = temp.path();
+
+        // Create credentials in BOTH locations
+        let claude_dir = home_dir.join(".claude");
+        tokio::fs::create_dir_all(&claude_dir).await.unwrap();
+        let primary_path = claude_dir.join(".credentials.json");
+        let primary_creds = r#"{"claudeAiOauth":{"accessToken":"primary-token","refreshToken":"refresh","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+        tokio::fs::write(&primary_path, primary_creds).await.unwrap();
+
+        let config_claude_dir = home_dir.join(".config").join("claude");
+        tokio::fs::create_dir_all(&config_claude_dir).await.unwrap();
+        let config_path = config_claude_dir.join(".credentials.json");
+        let config_creds = r#"{"claudeAiOauth":{"accessToken":"config-token","refreshToken":"refresh","expiresAt":1792443506258,"scopes":["user:inference"],"subscriptionType":null}}"#;
+        tokio::fs::write(&config_path, config_creds).await.unwrap();
+
+        // Test retrieval - should prefer primary location
+        let result = agent.retrieve_credentials(Some(home_dir)).await;
+        assert!(result.is_ok());
+        let creds = result.unwrap();
+        assert!(creds.is_some());
+        assert_eq!(creds.unwrap(), primary_creds);
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_retrieve_credentials_linux_missing() {
+        use tempfile::TempDir;
+
+        let agent = ClaudeAgent::new();
+        let temp = TempDir::new().unwrap();
+        let home_dir = temp.path();
+
+        // Don't create any credentials file
+        let result = agent.retrieve_credentials(Some(home_dir)).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_credential_paths() {
+        let agent = ClaudeAgent::new();
+        let paths = agent.credential_paths();
+
+        // Should include both possible locations
+        assert!(paths.contains(&PathBuf::from(".claude/.credentials.json")));
+        assert!(paths.contains(&PathBuf::from(".config/claude/.credentials.json")));
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_prepare_launch_fails_without_credentials() {
+        use tempfile::TempDir;
+
+        // Use a harmless binary for version detection in tests instead of requiring
+        // the real `claude` binary to be installed on the system. Most Unix-like
+        // environments ship a `true` command that accepts `--version`, which is
+        // sufficient for our version parsing and onboarding setup.
+        let agent = ClaudeAgent {
+            binary_path: "true".to_string(),
+        };
+        let temp_home = TempDir::new().unwrap();
+        let temp_work = TempDir::new().unwrap();
+
+        let config = AgentLaunchConfig {
+            home_dir: temp_home.path().to_path_buf(),
+            working_dir: temp_work.path().to_path_buf(),
+            prompt: Some("test".to_string()),
+            api_key: None, // No API key provided
+            api_server: None,
+            model: None,
+            interactive: false,
+            json_output: false,
+            unrestricted: false,
+            web_search: false,
+            copy_credentials: false, // Don't copy credentials
+            env_vars: vec![],
+            snapshot_cmd: None,
+            mcp_servers: vec![],
+        };
+
+        // This should fail because no credentials are available
+        let result = agent.prepare_launch(config).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            AgentError::CredentialCopyFailed(msg) => {
+                assert!(msg.contains("No Claude credentials found"));
+                assert!(msg.contains("Run 'claude setup-token'"));
+            }
+            _ => panic!("Expected CredentialCopyFailed error, got: {:?}", err),
+        }
     }
 }
