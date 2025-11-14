@@ -396,7 +396,7 @@ Consolidate custom logging implementations to use the shared `ah_logging` crate.
 
 ### CI Checks
 
-- Lint rules ensure `println!` is not used in production code
+- Lint rules ensure `println!` is not used in production code (with exceptions documented below)
 - Build checks verify trace logs are compiled out in release
 - Integration tests validate log output formats
 - CLI tests verify log level configuration works correctly
@@ -406,3 +406,47 @@ Consolidate custom logging implementations to use the shared `ah_logging` crate.
 - Reviewers should check that appropriate log levels are used
 - Sensitive data logging should be flagged
 - Structured logging should be preferred over string formatting
+
+### Exceptions and Escape Hatches
+
+While `println!` and `eprintln!` are generally disallowed in production code, there are legitimate exceptions:
+
+#### ✅ **CLI User Interface Output**
+
+Commands that produce user-visible output (not logs) may use `println!`/`eprintln!`. Examples:
+
+- `ah config get` - displays configuration values to stdout
+- `ah health` - displays health check results to stdout
+- `ah task get` - displays processed task content to stdout
+- `ah agent start --output text-normalized` - displays agent output to stdout
+
+These are **not logging** - they are the primary output of CLI commands that users expect to see.
+
+#### ✅ **Test Code**
+
+Test functions may use `println!`/`eprintln!` for debugging test failures. These are typically temporary and acceptable in test contexts.
+
+#### ✅ **Error Messages for Critical Failures**
+
+Before logging is initialized, `eprintln!` may be used to report initialization failures.
+
+#### ❌ **What Still Requires Logging**
+
+- Internal operation status (use `tracing::info!`/`tracing::debug!`)
+- Error conditions (use `tracing::error!`/`tracing::warn!`)
+- Performance metrics (use `tracing::info!`)
+- Debug information (use `tracing::debug!`/`tracing::trace!`)
+
+#### **Clippy Configuration**
+
+The lint rule is configured in `clippy.toml`:
+
+```toml
+disallowed-methods = [
+    # Prevent use of println!/eprintln! in production code - use tracing::info!/tracing::error! instead
+    "std::io::_print",
+    "std::io::_eprint"
+]
+```
+
+To suppress the lint for legitimate CLI output, use `#[allow(clippy::disallowed_methods)]` on the specific function or module.

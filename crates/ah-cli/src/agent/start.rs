@@ -402,9 +402,9 @@ impl AgentStartArgs {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to parse proxy response: {}", e))?;
 
-        println!("✅ Proxy session prepared successfully");
+        tracing::info!("Proxy session prepared successfully");
         if let Some(session_id) = response_body.get("session_id").and_then(|v| v.as_str()) {
-            println!("   Session ID: {}", session_id);
+            tracing::info!(session_id = %session_id, "Proxy session created");
         }
 
         Ok(session_api_key)
@@ -754,14 +754,11 @@ impl AgentStartArgs {
             let exec_result = sandbox.exec_process().await;
 
             if let Err(err) = sandbox.stop() {
-                eprintln!("⚠️  Sandbox stop cleanup encountered an error: {}", err);
+                tracing::warn!(error = %err, "Sandbox stop cleanup encountered an error");
             }
 
             if let Err(err) = sandbox.cleanup().await {
-                eprintln!(
-                    "⚠️  Sandbox filesystem cleanup encountered an error: {}",
-                    err
-                );
+                tracing::warn!(error = %err, "Sandbox filesystem cleanup encountered an error");
             }
 
             exec_result.context("Failed to execute mock agent in sandbox")?;

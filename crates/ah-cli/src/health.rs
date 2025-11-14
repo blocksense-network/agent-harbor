@@ -36,6 +36,7 @@ pub struct HealthArgs {
 
 impl HealthArgs {
     /// Run the health check command
+    #[allow(clippy::disallowed_methods)]
     pub async fn run(self) -> anyhow::Result<()> {
         if self.json {
             self.run_json().await

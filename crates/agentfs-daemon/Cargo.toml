@@ -13,6 +13,7 @@ path = "src/bin/agentfs-daemon.rs"
 [dependencies]
 agentfs-core = { path = "../agentfs-core" }
 agentfs-proto = { path = "../agentfs-proto" }
+ah-logging = { path = "../ah-logging" }
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

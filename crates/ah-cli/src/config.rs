@@ -39,6 +39,7 @@ pub enum ConfigCommands {
 }
 
 impl ConfigCommands {
+    #[allow(clippy::disallowed_methods)]
     pub async fn run(self, global_config: Option<&str>) -> Result<()> {
         match self {
             ConfigCommands::Show { key, show_origin } => {

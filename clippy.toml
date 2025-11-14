@@ -4,7 +4,11 @@
 # Clippy configuration for the workspace
 
 # Disallow certain methods
-disallowed-methods = []
+disallowed-methods = [
+  # Prevent use of println!/eprintln! in production code - use tracing::info!/tracing::error! instead
+  "std::io::_print",
+  "std::io::_eprint",
+]
 
 # Allow expect in tests (commonly needed)
 allow-expect-in-tests = true
