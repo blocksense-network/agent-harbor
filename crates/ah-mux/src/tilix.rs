@@ -123,7 +123,7 @@ impl Multiplexer for TilixMultiplexer {
         };
 
         let mut args = vec!["--action", action];
-        let mut cwd_str = String::new();
+        let cwd_str: Option<String>;
 
         // If we have an initial command, add it
         if let Some(cmd) = initial_cmd {
@@ -132,8 +132,8 @@ impl Multiplexer for TilixMultiplexer {
 
         // Add working directory if specified
         if let Some(cwd) = opts.cwd {
-            cwd_str = cwd.to_string_lossy().to_string();
-            args.extend_from_slice(&["--working-directory", &cwd_str]);
+            cwd_str = Some(cwd.to_string_lossy().to_string());
+            args.extend_from_slice(&["--working-directory", cwd_str.as_ref().unwrap()]);
         }
 
         self.run_tilix_command(&args)?;
