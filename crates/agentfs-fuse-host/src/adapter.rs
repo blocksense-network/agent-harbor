@@ -12,7 +12,7 @@ use agentfs_core::{
     Attributes, DirEntry, FileTimes, FsConfig, FsCore, FsError, HandleId, LockRange, OpenOptions,
     ShareMode, error::FsResult, vfs::PID,
 };
-use agentfs_proto::messages::TimespecData;
+use agentfs_proto::messages::{StatData, TimespecData};
 use agentfs_proto::*;
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
@@ -20,11 +20,11 @@ use fuser::{
     TimeOrNow,
 };
 use libc::{
-    EACCES, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOTDIR, ENOTEMPTY,
-    ENOTSUP, c_int,
+    EACCES, EBADF, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS,
+    ENOTDIR, ENOTEMPTY, ENOTSUP, c_int,
 };
 use ssz::{Decode, Encode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
@@ -58,16 +58,21 @@ pub struct AgentFsFuse {
     /// TTL for negative lookups (future use)
     negative_ttl: Duration,
     /// Cache of inode to path mappings for control operations
-    inodes: HashMap<u64, Vec<u8>>, // inode -> path
+    inodes: HashMap<u64, Vec<u8>>, // inode -> canonical path
     /// Reverse mapping from path to inode
     paths: HashMap<Vec<u8>, u64>, // path -> inode
     /// Next available inode number
     next_inode: u64,
+    /// Open handles tracked per inode for fh-less operations
+    inode_handles: HashMap<u64, HashSet<u64>>,
+    /// Map handle IDs to (inode, owning pid)
+    handle_index: HashMap<u64, (u64, u32)>,
 }
 
 impl AgentFsFuse {
     /// Create a new FUSE adapter with the given configuration
-    pub fn new(config: FsConfig) -> FsResult<Self> {
+    pub fn new(mut config: FsConfig) -> FsResult<Self> {
+        config.security.enforce_posix_permissions = true;
         let core = FsCore::new(config.clone())?;
         let mut inodes = HashMap::new();
         let mut paths = HashMap::new();
@@ -93,6 +98,8 @@ impl AgentFsFuse {
             inodes,
             paths,
             next_inode: CONTROL_FILE_INO + 1,
+            inode_handles: HashMap::new(),
+            handle_index: HashMap::new(),
         })
     }
 
@@ -125,11 +132,7 @@ impl AgentFsFuse {
 
         let inode = self.next_inode;
         self.next_inode += 1;
-
-        let path_vec = path.to_vec();
-        self.inodes.insert(inode, path_vec.clone());
-        self.paths.insert(path_vec, inode);
-
+        self.record_path_for_inode(path.to_vec(), inode);
         inode
     }
 
@@ -142,11 +145,65 @@ impl AgentFsFuse {
         }
     }
 
-    /// Deallocate an inode (when file/directory is removed)
-    fn dealloc_inode(&mut self, inode: u64) {
-        if let Some(path) = self.inodes.remove(&inode) {
-            self.paths.remove(&path);
+    /// Associate a path with an inode, preserving the original canonical path.
+    fn record_path_for_inode(&mut self, path: Vec<u8>, inode: u64) {
+        self.paths.insert(path.clone(), inode);
+        self.inodes.insert(inode, path);
+    }
+
+    /// Remove a single path mapping and update canonical bookkeeping.
+    fn remove_path_mapping(&mut self, path: &[u8]) -> Option<u64> {
+        if let Some(inode) = self.paths.remove(path) {
+            let removed_was_canonical =
+                self.inodes.get(&inode).map(|p| p.as_slice() == path).unwrap_or(false);
+
+            if removed_was_canonical {
+                if let Some((replacement, _)) = self.paths.iter().find(|(_, &ino)| ino == inode) {
+                    self.inodes.insert(inode, replacement.clone());
+                }
+            }
+
+            Some(inode)
+        } else {
+            None
         }
+    }
+
+    fn track_handle(&mut self, ino: u64, fh: u64, pid: &PID) {
+        self.inode_handles.entry(ino).or_default().insert(fh);
+        self.handle_index.insert(fh, (ino, pid.as_u32()));
+    }
+
+    fn untrack_handle(&mut self, ino: u64, fh: u64) {
+        if let Some(handles) = self.inode_handles.get_mut(&ino) {
+            handles.remove(&fh);
+            if handles.is_empty() {
+                self.inode_handles.remove(&ino);
+            }
+        }
+        self.handle_index.remove(&fh);
+    }
+
+    fn handle_for_inode(&self, ino: u64) -> Option<(u64, PID)> {
+        self.inode_handles
+            .get(&ino)
+            .and_then(|handles| handles.iter().next())
+            .and_then(|fh| self.handle_index.get(fh).map(|(_, pid)| (*fh, PID::new(*pid))))
+    }
+
+    fn forget_inode(&mut self, inode: u64) {
+        if inode == FUSE_ROOT_ID || inode == AGENTFS_DIR_INO || inode == CONTROL_FILE_INO {
+            return;
+        }
+
+        if let Some(handles) = self.inode_handles.remove(&inode) {
+            for fh in handles {
+                self.handle_index.remove(&fh);
+            }
+        }
+
+        self.inodes.remove(&inode);
+        self.paths.retain(|_, &mut ino| ino != inode);
     }
 
     /// Convert a path slice to a Path
@@ -156,12 +213,23 @@ impl AgentFsFuse {
 
     /// Convert FsCore Attributes to FUSE FileAttr
     fn attr_to_fuse(&self, attr: &Attributes, ino: u64) -> FileAttr {
-        let kind = if attr.is_dir {
-            FileType::Directory
+        let (kind, rdev) = if attr.is_dir {
+            (FileType::Directory, 0)
         } else if attr.is_symlink {
-            FileType::Symlink
+            (FileType::Symlink, 0)
+        } else if let Some(special) = &attr.special_kind {
+            match special {
+                agentfs_core::SpecialNodeKind::Fifo => (FileType::NamedPipe, 0),
+                agentfs_core::SpecialNodeKind::CharDevice { dev } => {
+                    (FileType::CharDevice, (*dev).try_into().unwrap_or(u32::MAX))
+                }
+                agentfs_core::SpecialNodeKind::BlockDevice { dev } => {
+                    (FileType::BlockDevice, (*dev).try_into().unwrap_or(u32::MAX))
+                }
+                agentfs_core::SpecialNodeKind::Socket => (FileType::Socket, 0),
+            }
         } else {
-            FileType::RegularFile
+            (FileType::RegularFile, 0)
         };
 
         FileAttr {
@@ -174,12 +242,46 @@ impl AgentFsFuse {
             crtime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.birthtime as u64),
             kind,
             perm: attr.mode() as u16,
-            nlink: 1, // Hardcoded for now - TODO: implement proper nlink counting
+            nlink: attr.nlink.max(1),
             uid: attr.uid,
             gid: attr.gid,
-            rdev: 0, // Hardcoded for now - TODO: implement device files if needed
+            rdev,
             blksize: 512,
             flags: 0, // macOS specific
+        }
+    }
+
+    fn stat_to_file_attr(&self, stat: &StatData, ino: u64) -> FileAttr {
+        let kind = match stat.st_mode & libc::S_IFMT as u32 {
+            m if m == libc::S_IFDIR as u32 => FileType::Directory,
+            m if m == libc::S_IFLNK as u32 => FileType::Symlink,
+            m if m == libc::S_IFCHR as u32 => FileType::CharDevice,
+            m if m == libc::S_IFBLK as u32 => FileType::BlockDevice,
+            m if m == libc::S_IFIFO as u32 => FileType::NamedPipe,
+            m if m == libc::S_IFSOCK as u32 => FileType::Socket,
+            _ => FileType::RegularFile,
+        };
+
+        let to_system_time = |secs: u64, nanos: u32| {
+            SystemTime::UNIX_EPOCH + Duration::from_secs(secs) + Duration::from_nanos(nanos as u64)
+        };
+
+        FileAttr {
+            ino,
+            size: stat.st_size,
+            blocks: stat.st_blocks,
+            atime: to_system_time(stat.st_atime, stat.st_atime_nsec),
+            mtime: to_system_time(stat.st_mtime, stat.st_mtime_nsec),
+            ctime: to_system_time(stat.st_ctime, stat.st_ctime_nsec),
+            crtime: to_system_time(stat.st_ctime, stat.st_ctime_nsec),
+            kind,
+            perm: (stat.st_mode & 0o7777) as u16,
+            nlink: stat.st_nlink,
+            uid: stat.st_uid,
+            gid: stat.st_gid,
+            rdev: stat.st_rdev as u32,
+            blksize: stat.st_blksize,
+            flags: 0,
         }
     }
 
@@ -400,6 +502,10 @@ impl fuser::Filesystem for AgentFsFuse {
         info!("AgentFS FUSE adapter destroyed");
     }
 
+    fn forget(&mut self, _req: &Request, ino: u64, _nlookup: u64) {
+        self.forget_inode(ino);
+    }
+
     fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let name_bytes = name.as_bytes();
 
@@ -481,7 +587,29 @@ impl fuser::Filesystem for AgentFsFuse {
         }
     }
 
-    fn getattr(&mut self, req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
+    fn getattr(&mut self, req: &Request, ino: u64, fh: Option<u64>, reply: ReplyAttr) {
+        let client_pid = self.get_client_pid(req);
+
+        let mut fh_candidate = fh.map(|fh_raw| (fh_raw, client_pid));
+        if fh_candidate.is_none() {
+            fh_candidate = self.handle_for_inode(ino).map(|(fh_raw, pid)| (fh_raw, pid));
+        }
+
+        if let Some((fh_raw, owner_pid)) = fh_candidate {
+            debug!("getattr using fh {} for ino {}", fh_raw, ino);
+            let handle_id = HandleId(fh_raw);
+            match self.core.fstat(&owner_pid, handle_id) {
+                Ok(stat) => {
+                    let fuse_attr = self.stat_to_file_attr(&stat, ino);
+                    reply.attr(&self.attr_ttl, &fuse_attr);
+                }
+                Err(FsError::BadFileDescriptor) => reply.error(EBADF),
+                Err(FsError::NotFound) => reply.error(ENOENT),
+                Err(_) => reply.error(EIO),
+            }
+            return;
+        }
+
         // Handle special inodes
         if ino == FUSE_ROOT_ID {
             let attr = FileAttr {
@@ -559,7 +687,6 @@ impl fuser::Filesystem for AgentFsFuse {
         };
 
         let path = self.path_from_bytes(path_bytes);
-        let client_pid = self.get_client_pid(req);
         match self.core.getattr(&client_pid, path) {
             Ok(attr) => {
                 let fuse_attr = self.attr_to_fuse(&attr, ino);
@@ -638,6 +765,7 @@ impl fuser::Filesystem for AgentFsFuse {
 
         match self.core.open(&client_pid, path, &options) {
             Ok(handle_id) => {
+                self.track_handle(ino, handle_id.0, &client_pid);
                 reply.opened(handle_id.0, 0);
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
@@ -662,6 +790,61 @@ impl fuser::Filesystem for AgentFsFuse {
             Ok(target) => reply.data(target.as_bytes()),
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::InvalidArgument) => reply.error(EINVAL),
+            Err(_) => reply.error(EIO),
+        }
+    }
+
+    fn mknod(
+        &mut self,
+        req: &Request,
+        parent: u64,
+        name: &OsStr,
+        mode: u32,
+        umask: u32,
+        rdev: u32,
+        reply: ReplyEntry,
+    ) {
+        if name.as_bytes().len() > NAME_MAX {
+            reply.error(ENAMETOOLONG);
+            return;
+        }
+
+        let parent_path = match self.inode_to_path(parent) {
+            Some(p) => p,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+
+        let mut full_path = parent_path.to_vec();
+        if !full_path.ends_with(b"/") {
+            full_path.push(b'/');
+        }
+        full_path.extend_from_slice(name.as_bytes());
+
+        let path = self.path_from_bytes(&full_path);
+        let perm_bits = mode & 0o7777;
+        let masked_perm = perm_bits & (!umask & 0o7777);
+        let file_type = mode & libc::S_IFMT as u32;
+        let final_mode = file_type | masked_perm;
+
+        let client_pid = self.get_client_pid(req);
+        match self.core.mknod(&client_pid, path, final_mode, rdev as u64) {
+            Ok(()) => match self.core.getattr(&client_pid, path) {
+                Ok(attr) => {
+                    let ino = self.get_or_alloc_inode(&full_path);
+                    let fuse_attr = self.attr_to_fuse(&attr, ino);
+                    reply.entry(&self.entry_ttl, &fuse_attr, 0);
+                }
+                Err(_) => reply.error(EIO),
+            },
+            Err(FsError::AlreadyExists) => reply.error(EEXIST),
+            Err(FsError::NotADirectory) => reply.error(ENOTDIR),
+            Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(FsError::InvalidArgument) => reply.error(EINVAL),
+            Err(FsError::Unsupported) => reply.error(ENOSYS),
+            Err(FsError::NotFound) => reply.error(ENOENT),
             Err(_) => reply.error(EIO),
         }
     }
@@ -750,6 +933,7 @@ impl fuser::Filesystem for AgentFsFuse {
             Ok(()) => reply.ok(),
             Err(_) => reply.error(EIO),
         }
+        self.untrack_handle(ino, fh);
     }
 
     fn readdir(
@@ -852,6 +1036,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 Ok(attr) => {
                     let ino = self.get_or_alloc_inode(&full_path);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
+                    self.track_handle(ino, handle_id.0 as u64, &client_pid);
                     reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0 as u64, 0);
                 }
                 Err(_) => reply.error(EIO),
@@ -935,14 +1120,12 @@ impl fuser::Filesystem for AgentFsFuse {
 
         match self.core.unlink(&client_pid, path) {
             Ok(()) => {
-                // Deallocate inode
-                if let Some(inode) = self.paths.get(&full_path) {
-                    self.dealloc_inode(*inode);
-                }
+                self.remove_path_mapping(&full_path);
                 reply.ok();
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(FsError::IsADirectory) => reply.error(EISDIR),
             Err(_) => reply.error(EIO),
         }
     }
@@ -972,15 +1155,14 @@ impl fuser::Filesystem for AgentFsFuse {
 
         match self.core.rmdir(&client_pid, path) {
             Ok(()) => {
-                // Deallocate inode
-                if let Some(inode) = self.paths.get(&full_path) {
-                    self.dealloc_inode(*inode);
-                }
+                self.remove_path_mapping(&full_path);
                 reply.ok();
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::Busy) => reply.error(ENOTEMPTY),
             Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(FsError::NotADirectory) => reply.error(ENOTDIR),
+            Err(FsError::InvalidArgument) => reply.error(EINVAL),
             Err(_) => reply.error(EIO),
         }
     }
@@ -1034,18 +1216,18 @@ impl fuser::Filesystem for AgentFsFuse {
 
         match self.core.rename(&client_pid, old_path_obj, new_path_obj) {
             Ok(()) => {
-                // Update inode mapping for the renamed file
-                if let Some(inode) = self.paths.remove(&old_path) {
-                    self.paths.insert(new_path.clone(), inode);
-                    if let Some(path_vec) = self.inodes.get_mut(&inode) {
-                        *path_vec = new_path;
-                    }
+                if let Some(inode) = self.remove_path_mapping(&old_path) {
+                    self.record_path_for_inode(new_path.clone(), inode);
                 }
                 reply.ok();
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::AlreadyExists) => reply.error(EEXIST),
             Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(FsError::NotADirectory) => reply.error(ENOTDIR),
+            Err(FsError::IsADirectory) => reply.error(EISDIR),
+            Err(FsError::Busy) => reply.error(ENOTEMPTY),
+            Err(FsError::InvalidArgument) => reply.error(EINVAL),
             Err(_) => reply.error(EIO),
         }
     }
@@ -1139,7 +1321,7 @@ impl fuser::Filesystem for AgentFsFuse {
         match self.core.link(&client_pid, old_path, new_path_obj) {
             Ok(()) => match self.core.getattr(&client_pid, new_path_obj) {
                 Ok(attr) => {
-                    let ino = self.get_or_alloc_inode(&new_path);
+                    self.record_path_for_inode(new_path.clone(), ino);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
                     reply.entry(&self.entry_ttl, &fuse_attr, 0);
                 }
