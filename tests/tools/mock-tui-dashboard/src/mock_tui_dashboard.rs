@@ -8,7 +8,8 @@
 //! and View (rendering).
 
 use ah_core::{
-    RemoteBranchesEnumerator, RemoteRepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator,
+    DefaultWorkspaceTermsEnumerator, RemoteBranchesEnumerator, RemoteRepositoriesEnumerator,
+    TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
 };
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
@@ -42,6 +43,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         WorkflowProcessor::for_repo(config, &workspace_dir)
             .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default())),
     );
+    let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+        DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+    );
     let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::with_mock_data());
     let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
 
@@ -50,6 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let deps = TuiDependencies {
         workspace_files,
         workspace_workflows,
+        workspace_terms,
         task_manager,
         repositories_enumerator: Arc::new(RemoteRepositoriesEnumerator::new(
             mock_client.clone(),

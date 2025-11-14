@@ -7,7 +7,10 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ah_core::{BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator};
+use ah_core::{
+    BranchesEnumerator, DefaultWorkspaceTermsEnumerator, MockWorkspaceTermsEnumerator,
+    RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
+};
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::Settings;
 use ah_tui::view_model::ViewModel;
@@ -112,6 +115,9 @@ pub fn build_view_model() -> ViewModel {
             "test-workflow".to_string(),
             "another-workflow".to_string(),
         ]));
+    let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+        DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+    );
     let task_manager = Arc::new(MockRestClient::new());
     let mock_client = MockRestClient::new();
     let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
@@ -126,6 +132,49 @@ pub fn build_view_model() -> ViewModel {
     ViewModel::new(
         workspace_files,
         workspace_workflows,
+        workspace_terms,
+        task_manager,
+        repositories_enumerator,
+        branches_enumerator,
+        settings,
+        ui_tx,
+    )
+}
+
+pub fn build_view_model_with_terms(terms: Vec<String>) -> ViewModel {
+    build_view_model_with_terms_and_settings(terms, Settings::default())
+}
+
+pub fn build_view_model_with_terms_and_settings(
+    terms: Vec<String>,
+    settings: Settings,
+) -> ViewModel {
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+        Arc::new(TestWorkspaceFilesEnumerator::new(vec![
+            "src/main.rs".to_string(),
+            "Cargo.toml".to_string(),
+        ]));
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+        Arc::new(TestWorkspaceWorkflowsEnumerator::new(vec![
+            "test-workflow".to_string(),
+            "another-workflow".to_string(),
+        ]));
+    let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> =
+        Arc::new(MockWorkspaceTermsEnumerator::new(terms));
+    let task_manager = Arc::new(MockRestClient::new());
+    let mock_client = MockRestClient::new();
+    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
+        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
+    );
+    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+        ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
+    );
+    let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
+
+    ViewModel::new(
+        workspace_files,
+        workspace_workflows,
+        workspace_terms,
         task_manager,
         repositories_enumerator,
         branches_enumerator,

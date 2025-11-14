@@ -7,8 +7,8 @@
 //! - Task Events: TaskEvent processing and activity line generation
 
 use ah_core::{
-    BranchesEnumerator, LogLevel, RepositoriesEnumerator, TaskEvent, TaskManager,
-    WorkspaceFilesEnumerator,
+    BranchesEnumerator, DefaultWorkspaceTermsEnumerator, LogLevel, RepositoriesEnumerator,
+    TaskEvent, TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
 };
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, TaskState, task::ToolStatus,
@@ -34,6 +34,9 @@ mod event_processing_tests {
             Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
         let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
             Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+        let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+            DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+        );
         let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
         let mock_client = MockRestClient::new();
         let repositories_enumerator: Arc<dyn RepositoriesEnumerator> =
@@ -52,6 +55,7 @@ mod event_processing_tests {
         let mut vm = ViewModel::new(
             workspace_files,
             workspace_workflows,
+            workspace_terms,
             task_manager,
             repositories_enumerator,
             branches_enumerator,
@@ -505,6 +509,9 @@ mod event_processing_tests {
         let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
             Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
         let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
+        let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+            DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+        );
         let task_manager = Arc::new(MockRestClient::new());
         let mock_client = MockRestClient::new();
         let repositories_enumerator: Arc<dyn RepositoriesEnumerator> =
@@ -522,6 +529,7 @@ mod event_processing_tests {
         let mut vm = ViewModel::new(
             workspace_files,
             workspace_workflows,
+            workspace_terms,
             task_manager,
             repositories_enumerator,
             branches_enumerator,

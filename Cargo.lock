@@ -371,6 +371,7 @@ dependencies = [
  "chrono",
  "ethereum_ssz",
  "ethereum_ssz_derive",
+ "fst",
  "futures",
  "interprocess",
  "regex",
@@ -3566,6 +3567,12 @@ dependencies = [
  "core-foundation 0.10.1",
  "dispatch2",
 ]
+
+[[package]]
+name = "fst"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ab85b9b05e3978cc9a9cf8fea7f01b494e1a09ed3037e16ba39edc7a29eb61a"
 
 [[package]]
 name = "funty"

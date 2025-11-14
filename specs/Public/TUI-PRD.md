@@ -160,13 +160,20 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - **Popup menu navigation**: Tab or arrow keys to navigate suggestions, mouse wheel to scroll, Mouse click or Enter to select
   - **Quick selection**: Right arrow key selects the currently active suggestion
   - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area
+  - Inline completions now present **two dimmed segments**: the shared continuation (characters guaranteed across every match) and the shortest possible completion. The shared portion uses a lighter dim + muted color, while the full completion remainder uses a slightly brighter dim + normal text color so the two steps are visually distinguishable.
+  - **Workspace terms menu**: The background `WorkspaceTermsEnumerator` continuously indexes repository tokens. When the `workspace_terms_menu` preference is enabled (default), typing a regular token (two or more characters without a trigger) opens a `Workspace Terms` popup that lists the ranked matches. The menu uses the same navigation semantics as the `/` and `@` menus and Right Arrow accepts the currently highlighted entry.
+  - **Autocomplete active mode**: Whenever a ghost suggestion or popup menu entry is visible, the input system switches into an `Autocomplete Active` mode that exposes the `Accept Autocomplete` operation (Tab by default). This mode is consulted before any of the standard navigation modes, so Tab inserts the suggested text. As soon as no suggestion is present, Tab reverts to its usual “next field” navigation role automatically.
+  - While the menu is focused, the inline ghost text mirrors the currently selected term—users always see exactly what the next Tab/Right Arrow action will insert. Moving the highlight immediately updates the ghost text so that the “longer” completion segment reflects the candidate under the cursor.
+  - Users who prefer ghost-only completions can disable the menu by setting `workspace_terms_menu = false` in their settings; inline completions (shared + shortest segments) remain available even when the popup is hidden.
+  - Pressing `Tab` inside the textarea inserts the shared continuation when one exists. Pressing `Tab` again (without moving the caret) inserts the remainder needed to reach the shortest matching term. When the lookup returns a single match, both segments are identical so one press is enough. Tab completion takes precedence over focus navigation—only when no inline completion is available does `Tab` move the cursor to the next form control.
+  - These completions are powered by the `WorkspaceTermsEnumerator::lookup` results, which expose both the shared suffix and the shortest completion suffix for any prefix. The inline ghost renderer consumes those values directly and never needs to re-scan the filesystem on every keystroke.
 - **Auto-save status indicators** in text area corners (low-contrast/dimmed text):
   - **Unsaved** (gray): User has typed but no save request is in flight OR current in-flight request is invalidated
   - **Saving...** (yellow): There is a valid (non-invalidated) save request currently in flight
   - **Saved** (green): No pending changes AND most recent save request completed successfully
   - **Error** (red): Most recent save request failed and no new typing has occurred
 - Context-sensitive keyboard shortcuts:
-  - While focus is inside a draft text area, footer shows: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
+  - While focus is inside a draft text area, footer shows: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field" to reflect the two-step completion behavior described above. When no inline completion is available, `Tab` falls back to navigating to the next field.
   - "Agent(s)" is plural if multiple agents are selected
   - Enter key launches the task (calls Go button action)
   - Shift+Enter creates a new line in the text area
@@ -303,7 +310,7 @@ Single-line footer without borders showing context-sensitive shortcuts that chan
 
 - **Task feed focused**: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
 - **Draft card selected**: "↑↓ Navigate • Enter Edit Draft • Ctrl+C x2 Quit"
-- **Draft textarea focused**: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
+- **Draft textarea focused**: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field"
 - **Active task focused**: "↑↓ Navigate • Enter Show Task Progress • Ctrl+C x2 Quit"
 - **Completed/merged task focused**: "↑↓ Navigate • Enter Show Task Details • Ctrl+C x2 Quit"
 - **Modal active**: "↑↓ Navigate • Enter Select • Esc Back"

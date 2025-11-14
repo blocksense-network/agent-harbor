@@ -38,7 +38,7 @@
 //! - **Presentation Only**: Focus on visual appearance and user experience
 //! - **Testable**: Rendering logic can be tested independently
 
-use crate::view::autocomplete::render_autocomplete;
+use crate::view::autocomplete::{render_autocomplete, render_autocomplete_ghost};
 use crate::view::draft_card;
 use crate::view::{HitTestRegistry, Theme, ViewCache};
 use crate::view_model::AgentActivityRow;
@@ -437,6 +437,9 @@ pub fn render(
         view_model.last_textarea_area,
         view_model.draft_cards.first(),
     ) {
+        if let Some(ghost) = view_model.autocomplete.ghost_state() {
+            render_autocomplete_ghost(frame, area, &card.description, ghost, &theme);
+        }
         render_autocomplete(
             view_model.autocomplete.menu_state(),
             frame,
@@ -444,6 +447,7 @@ pub fn render(
             &card.description,
             &theme,
             theme.surface,
+            hit_registry,
         );
     }
 

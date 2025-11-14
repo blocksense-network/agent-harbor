@@ -30,6 +30,7 @@ pub mod task;
 pub mod task_manager;
 pub mod task_manager_init;
 pub mod workspace_files_enumerator;
+pub mod workspace_terms_enumerator;
 
 /// Core result type used throughout the AH system.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -90,6 +91,12 @@ pub use rest_task_manager::{GenericRestTaskManager, RestApiClient, RestTaskManag
 /// Workspace files enumeration for repository file discovery.
 pub use workspace_files_enumerator::{
     FileStream, RepositoryError, RepositoryFile, WorkspaceFilesEnumerator,
+};
+
+/// Workspace term enumeration for autocomplete support.
+pub use workspace_terms_enumerator::{
+    DefaultWorkspaceTermsEnumerator, LookupOutcome, MockWorkspaceTermsEnumerator, TermEntry,
+    WorkspaceTermsEnumerator,
 };
 
 /// Repository enumeration for discovering available repositories.

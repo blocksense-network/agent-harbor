@@ -48,7 +48,7 @@ use ratatui::{prelude::*, widgets::*};
 use tracing;
 
 use crate::settings::Settings;
-use ah_core::{TaskManager, WorkspaceFilesEnumerator};
+use ah_core::{TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator};
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 use std::sync::Arc;
 
@@ -56,6 +56,7 @@ use std::sync::Arc;
 pub struct TuiDependencies {
     pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
     pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+    pub workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
     pub task_manager: Arc<dyn TaskManager>,
     pub repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator>,
     pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,

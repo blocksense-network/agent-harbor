@@ -1,15 +1,9 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_core::{
-    BranchesEnumerator, RepositoriesEnumerator, RepositoryFile, TaskManager,
-    WorkspaceFilesEnumerator,
-};
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, TaskExecution, TaskState,
 };
-use ah_repo::VcsRepo;
-use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
 use ah_tui::view_model::DashboardFocusState;
 use ah_tui::view_model::task_entry::CardFocusElement;
@@ -17,51 +11,13 @@ use ah_tui::view_model::{
     FilterControl, ModalState, ModalType, MouseAction, Msg, TaskCardType, TaskExecutionFocusState,
     TaskExecutionViewModel, TaskMetadataViewModel, ViewModel, dashboard_model::FilteredOption,
 };
-use ah_workflows::{WorkflowCommand, WorkflowError, WorkspaceWorkflowsEnumerator};
-use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use futures::StreamExt;
 use ratatui::layout::Rect;
-use std::sync::Arc;
 
-// Mock implementations for tests
-
-#[derive(Clone)]
-struct MockWorkspaceWorkflows;
-#[async_trait::async_trait]
-impl WorkspaceWorkflowsEnumerator for MockWorkspaceWorkflows {
-    async fn enumerate_workflow_commands(
-        &self,
-    ) -> Result<Vec<ah_workflows::WorkflowCommand>, ah_workflows::WorkflowError> {
-        Ok(vec![])
-    }
-}
+mod common;
 
 fn new_view_model() -> ViewModel {
-    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-        Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
-    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
-        Arc::new(MockWorkspaceWorkflows);
-    let task_manager: Arc<dyn TaskManager> = Arc::new(MockRestClient::new());
-    let mock_client = MockRestClient::new();
-    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
-        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
-    );
-    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
-        ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
-    );
-    let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
-    let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
-
-    ViewModel::new(
-        workspace_files,
-        workspace_workflows,
-        task_manager,
-        repositories_enumerator,
-        branches_enumerator,
-        settings,
-        ui_tx,
-    )
+    common::build_view_model()
 }
 
 fn send_key(vm: &mut ViewModel, code: KeyCode, modifiers: KeyModifiers) {
@@ -884,6 +840,79 @@ mod keyboard {
     }
 }
 
+mod autocomplete_ghost {
+    use super::common::{build_view_model_with_terms, build_view_model_with_terms_and_settings};
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    #[test]
+    fn plaintext_terms_ghost_accepts_with_right_arrow() {
+        let mut settings = Settings::default();
+        settings.workspace_terms_menu = Some(false);
+        let mut vm = build_view_model_with_terms_and_settings(
+            vec!["helloWorld".to_string(), "helloUniverse".to_string()],
+            settings,
+        );
+
+        assert!(vm.autocomplete.ghost_state().is_none());
+
+        for ch in ['h', 'e', 'l'] {
+            let _ = vm.handle_char_input(ch);
+        }
+
+        let ghost = vm
+            .autocomplete
+            .ghost_state()
+            .expect("ghost should be suggested after typing 'hel'");
+        assert_eq!(ghost.shared_extension(), "lo");
+        assert_eq!(ghost.completion_extension(), "loWorld");
+
+        let accept_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
+        assert!(vm.handle_key_event(accept_event));
+
+        let draft_text = vm.draft_cards[0].description.lines().join("\n");
+        assert_eq!(draft_text, "helloWorld");
+
+        assert!(
+            vm.autocomplete.ghost_state().is_none(),
+            "ghost should clear after accepting completion"
+        );
+    }
+
+    #[test]
+    fn tab_steps_through_shared_and_shortest_completion() {
+        let mut settings = Settings::default();
+        settings.workspace_terms_menu = Some(false);
+        let mut vm = build_view_model_with_terms_and_settings(
+            vec!["helloWorld".to_string(), "helloWarehouse".to_string()],
+            settings,
+        );
+
+        for ch in ['h', 'e', 'l'] {
+            let _ = vm.handle_char_input(ch);
+        }
+
+        let first_tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
+        assert!(vm.handle_key_event(first_tab));
+
+        let ghost_after_first = vm
+            .autocomplete
+            .ghost_state()
+            .expect("ghost should remain for shortest completion");
+        assert_eq!(ghost_after_first.shared_extension(), "");
+        assert_eq!(ghost_after_first.completion_extension(), "orld");
+
+        let text_after_first = vm.draft_cards[0].description.lines().join("\n");
+        assert_eq!(text_after_first, "helloW");
+
+        let second_tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::empty());
+        assert!(vm.handle_key_event(second_tab));
+
+        let text_after_second = vm.draft_cards[0].description.lines().join("\n");
+        assert_eq!(text_after_second, "helloWorld");
+    }
+}
+
 mod mouse {
     use super::*;
 
@@ -1074,7 +1103,9 @@ mod mouse {
             vec![ah_tui::view_model::autocomplete::ScoredMatch {
                 item: ah_tui::view_model::autocomplete::Item {
                     id: "test-workflow".to_string(),
-                    trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
+                    context: ah_tui::view_model::autocomplete::MenuContext::Trigger(
+                        ah_tui::view_model::autocomplete::Trigger::Slash,
+                    ),
                     label: "test-workflow".to_string(),
                     detail: Some("Test workflow".to_string()),
                     replacement: "/test-workflow".to_string(),
@@ -1155,7 +1186,9 @@ mod mouse {
             vec![ah_tui::view_model::autocomplete::ScoredMatch {
                 item: ah_tui::view_model::autocomplete::Item {
                     id: "test-workflow".to_string(),
-                    trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
+                    context: ah_tui::view_model::autocomplete::MenuContext::Trigger(
+                        ah_tui::view_model::autocomplete::Trigger::Slash,
+                    ),
                     label: "test-workflow".to_string(),
                     detail: Some("Test workflow".to_string()),
                     replacement: "/test-workflow".to_string(),
@@ -1194,7 +1227,9 @@ mod mouse {
             vec![ah_tui::view_model::autocomplete::ScoredMatch {
                 item: ah_tui::view_model::autocomplete::Item {
                     id: "test-workflow".to_string(),
-                    trigger: ah_tui::view_model::autocomplete::Trigger::Slash,
+                    context: ah_tui::view_model::autocomplete::MenuContext::Trigger(
+                        ah_tui::view_model::autocomplete::Trigger::Slash,
+                    ),
                     label: "test-workflow".to_string(),
                     detail: Some("Test workflow".to_string()),
                     replacement: "/test-workflow".to_string(),

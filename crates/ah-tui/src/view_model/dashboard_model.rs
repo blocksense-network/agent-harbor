@@ -55,10 +55,9 @@
 //! ```
 
 use crate::Settings;
-use crate::WorkspaceFilesEnumerator;
 use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
-use crate::view_model::autocomplete::InlineAutocomplete;
-use crate::view_model::input::{InputMinorMode, InputResult};
+use crate::view_model::autocomplete::{AutocompleteAcceptance, InlineAutocomplete};
+use crate::view_model::input::{InputMinorMode, InputResult, minor_modes};
 use crate::view_model::task_entry::{
     CardFocusElement, DRAFT_TEXT_EDITING_MODE, KeyboardOperationResult,
 };
@@ -72,6 +71,7 @@ use ah_core::branches_enumerator::BranchesEnumerator;
 use ah_core::repositories_enumerator::RepositoriesEnumerator;
 use ah_core::task_manager::SaveDraftResult;
 use ah_core::task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
+use ah_core::{WorkspaceFilesEnumerator, WorkspaceTermsEnumerator};
 use ah_domain_types::task::ToolStatus;
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, DraftTask, TaskExecution,
@@ -1435,6 +1435,7 @@ impl ViewModel {
                     Some(self.branches_enumerator.clone()),
                     Arc::clone(&self.workspace_files),
                     Arc::clone(&self.workspace_workflows),
+                    Arc::clone(&self.workspace_terms),
                 );
                 self.draft_cards.push(new_card);
             }
@@ -1571,6 +1572,7 @@ impl ViewModel {
         Self::create_draft_task_internal(
             self.workspace_files.clone(),
             self.workspace_workflows.clone(),
+            self.workspace_terms.clone(),
             description,
             repository,
             branch,
@@ -1585,6 +1587,7 @@ impl ViewModel {
     fn create_draft_task_internal(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
         description: String,
         repository: String,
         branch: String,
@@ -1609,6 +1612,7 @@ impl ViewModel {
             branches_enumerator,
             workspace_files,
             workspace_workflows,
+            workspace_terms,
         )
     }
 
@@ -1639,6 +1643,7 @@ pub enum MouseAction {
     OpenSettings,
     EditFilter(FilterControl),
     Footer(FooterAction),
+    AutocompleteSelect(usize),
 }
 
 /// Footer action types for keyboard shortcuts
@@ -1834,6 +1839,7 @@ pub struct ViewModel {
     // Service dependencies
     pub workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
     pub workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+    pub workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
     pub task_manager: Arc<dyn TaskManager>, // Task launching abstraction
     pub repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
     pub branches_enumerator: Arc<dyn BranchesEnumerator>,
@@ -1891,6 +1897,7 @@ impl ViewModel {
     pub fn new(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
@@ -1900,6 +1907,7 @@ impl ViewModel {
         Self::new_internal(
             workspace_files,
             workspace_workflows,
+            workspace_terms,
             task_manager,
             repositories_enumerator,
             branches_enumerator,
@@ -1914,6 +1922,7 @@ impl ViewModel {
     pub fn new_with_background_loading_and_current_repo(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
@@ -1924,6 +1933,7 @@ impl ViewModel {
         Self::new_internal(
             workspace_files,
             workspace_workflows,
+            workspace_terms,
             task_manager,
             repositories_enumerator,
             branches_enumerator,
@@ -1937,6 +1947,7 @@ impl ViewModel {
     fn new_internal(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+        workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
@@ -2068,6 +2079,7 @@ impl ViewModel {
         let draft_cards = vec![Self::create_draft_task_internal(
             Arc::clone(&workspace_files),
             Arc::clone(&workspace_workflows),
+            Arc::clone(&workspace_terms),
             String::new(), // empty description
             current_repository.unwrap_or_else(|| "blocksense/agent-harbor".to_string()),
             "main".to_string(),
@@ -2181,6 +2193,7 @@ impl ViewModel {
             // Service dependencies
             workspace_files: workspace_files.clone(),
             workspace_workflows: workspace_workflows.clone(),
+            workspace_terms: workspace_terms.clone(),
             task_manager: task_manager.clone(),
             repositories_enumerator: repositories_enumerator.clone(),
             branches_enumerator: branches_enumerator.clone(),
@@ -2190,6 +2203,7 @@ impl ViewModel {
                 let deps = Arc::new(crate::view_model::autocomplete::AutocompleteDependencies {
                     workspace_files: workspace_files.clone(),
                     workspace_workflows: workspace_workflows.clone(),
+                    workspace_terms: workspace_terms.clone(),
                     settings: settings.clone(),
                 });
                 InlineAutocomplete::with_dependencies(deps)
@@ -2305,7 +2319,13 @@ impl ViewModel {
     ) -> KeyboardOperationResult {
         if let Some(card) = self.draft_cards.get_mut(draft_index) {
             match card.handle_keyboard_operation(operation, key_event, &mut self.needs_redraw) {
-                KeyboardOperationResult::Handled => KeyboardOperationResult::Handled,
+                KeyboardOperationResult::Handled => {
+                    if card.focus_element == CardFocusElement::TaskDescription {
+                        self.autocomplete
+                            .after_textarea_change(&card.description, &mut self.needs_redraw);
+                    }
+                    KeyboardOperationResult::Handled
+                }
                 KeyboardOperationResult::NotHandled => {
                     // Handle button activation that wasn't handled by the card
                     if matches!(operation, KeyboardOperation::ActivateCurrentItem) {
@@ -2345,6 +2365,10 @@ impl ViewModel {
                         // Handle operations that should fall back to dashboard level
                         match operation {
                             KeyboardOperation::MoveToNextField => {
+                                if self.autocomplete.is_open() && self.autocomplete.select_next() {
+                                    self.needs_redraw = true;
+                                    return KeyboardOperationResult::Handled;
+                                }
                                 if self.focus_next_control() {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2352,6 +2376,12 @@ impl ViewModel {
                                 }
                             }
                             KeyboardOperation::MoveToPreviousField => {
+                                if self.autocomplete.is_open()
+                                    && self.autocomplete.select_previous()
+                                {
+                                    self.needs_redraw = true;
+                                    return KeyboardOperationResult::Handled;
+                                }
                                 if self.focus_previous_control() {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2630,9 +2660,59 @@ impl ViewModel {
         }
     }
 
+    fn handle_autocomplete_accept(
+        &mut self,
+        idx: usize,
+        acceptance: AutocompleteAcceptance,
+    ) -> bool {
+        if let Some(card) = self.draft_cards.get_mut(idx) {
+            if self.autocomplete.accept_completion(
+                &mut card.description,
+                &mut self.needs_redraw,
+                acceptance,
+            ) {
+                card.on_content_changed();
+                card.autocomplete
+                    .after_textarea_change(&card.description, &mut self.needs_redraw);
+                self.autocomplete
+                    .after_textarea_change(&card.description, &mut self.needs_redraw);
+                self.mark_draft_dirty(idx);
+                self.clear_exit_confirmation();
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Handle keyboard events by translating to KeyboardOperation and dispatching
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         use ratatui::crossterm::event::KeyCode;
+
+        if self.autocomplete.has_actionable_suggestion() {
+            if let Some(idx) = self.focused_textarea_index() {
+                if let Some(operation) = minor_modes::AUTOCOMPLETE_ACTIVE_MODE
+                    .resolve_key_to_operation(&key, &self.settings)
+                {
+                    if operation == KeyboardOperation::AcceptAutocomplete
+                        && self.handle_autocomplete_accept(
+                            idx,
+                            AutocompleteAcceptance::SharedExtension,
+                        )
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if key.code == KeyCode::Right && key.modifiers.is_empty() {
+            if let Some(idx) = self.focused_textarea_index() {
+                if self.handle_autocomplete_accept(idx, AutocompleteAcceptance::FullCompletion) {
+                    return true;
+                }
+            }
+        }
 
         // Try handlers in priority order (like the original input stack)
         // Modal > Draft buttons > Textarea > Dashboard
@@ -4095,6 +4175,16 @@ impl ViewModel {
     /// Handle mouse scroll actions by mapping them to hierarchical navigation.
     fn handle_mouse_scroll(&mut self, direction: NavigationDirection) -> bool {
         self.clear_exit_confirmation();
+        if self.autocomplete.is_open() {
+            let changed = match direction {
+                NavigationDirection::Next => self.autocomplete.select_next(),
+                NavigationDirection::Previous => self.autocomplete.select_previous(),
+            };
+            if changed {
+                self.needs_redraw = true;
+                return true;
+            }
+        }
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(card) = self.draft_cards.get_mut(idx) {
                 if card.focus_element == CardFocusElement::TaskDescription {
@@ -4124,6 +4214,7 @@ impl ViewModel {
 
     /// Start background loading of workspace files and workflows
     pub fn start_background_loading(&mut self) {
+        self.workspace_terms.request_refresh();
         // Start loading files if not already loaded
         if !self.files_loaded && !self.loading_files {
             self.loading_files = true;
@@ -4536,6 +4627,44 @@ impl ViewModel {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.focus_element = DashboardFocusState::DraftTask(0);
             }
+            MouseAction::AutocompleteSelect(index) => {
+                if self.autocomplete.is_open() {
+                    if let Some(draft_index) = self.focused_textarea_index() {
+                        if let Some(card) = self.draft_cards.get_mut(draft_index) {
+                            if self.autocomplete.set_selected_index(index) {
+                                self.needs_redraw = true;
+                            }
+
+                            let mut changed = false;
+                            if self.autocomplete.commit_current_selection(
+                                &mut card.description,
+                                &mut self.needs_redraw,
+                            ) {
+                                changed = true;
+                            } else if self.autocomplete.accept_ghost(
+                                &mut card.description,
+                                &mut self.needs_redraw,
+                                true,
+                            ) {
+                                changed = true;
+                            }
+
+                            if changed {
+                                card.on_content_changed();
+                                card.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
+                                self.mark_draft_dirty(draft_index);
+                            }
+                        }
+                    }
+                }
+            }
             _ => {
                 // TODO: Handle other mouse actions like ActivateGoButton, StopTask, EditFilter, Footer
             }
@@ -4804,6 +4933,7 @@ impl ViewModel {
                     Some(self.branches_enumerator.clone()),
                     Arc::clone(&self.workspace_files),
                     Arc::clone(&self.workspace_workflows),
+                    Arc::clone(&self.workspace_terms),
                 );
                 self.draft_cards.push(draft_card);
             }
@@ -5244,6 +5374,7 @@ pub fn create_draft_card_from_task(
     branches_enumerator: Option<Arc<dyn BranchesEnumerator>>,
     workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
     workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
+    workspace_terms: Arc<dyn WorkspaceTermsEnumerator>,
 ) -> TaskEntryViewModel {
     let description = create_draft_card_textarea(&task.description);
 
@@ -5280,8 +5411,9 @@ pub fn create_draft_card_from_task(
     let height = inner_height as u16 + 2; // account for rounded border
 
     let deps = Arc::new(crate::view_model::autocomplete::AutocompleteDependencies {
-        workspace_files: workspace_files,
-        workspace_workflows: workspace_workflows,
+        workspace_files,
+        workspace_workflows,
+        workspace_terms,
         settings: crate::settings::Settings::default(),
     });
 

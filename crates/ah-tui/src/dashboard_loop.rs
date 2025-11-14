@@ -41,6 +41,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
     let mut view_model = ViewModel::new_with_background_loading_and_current_repo(
         deps.workspace_files,
         deps.workspace_workflows,
+        deps.workspace_terms,
         deps.task_manager,
         deps.repositories_enumerator,
         deps.branches_enumerator,
