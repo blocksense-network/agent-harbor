@@ -581,7 +581,12 @@ impl AgentStartArgs {
                     cwd.clone()
                 } else {
                     // Prepare a snapshot-based workspace
-                    match crate::sandbox::prepare_workspace_with_fallback(&cwd).await {
+                    match crate::sandbox::prepare_workspace_with_fallback(
+                        &cwd,
+                        self.fs_snapshots.clone(),
+                    )
+                    .await
+                    {
                         Ok(prepared_workspace) => prepared_workspace.exec_path,
                         Err(e) => {
                             return Err(e.into());

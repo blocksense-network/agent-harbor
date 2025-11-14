@@ -2964,7 +2964,7 @@ async fn validate_and_prepare_sandbox(args: &TaskCreateArgs) -> Result<PreparedW
         std::env::current_dir().context("Failed to get current working directory")?;
 
     // Prepare writable workspace using FS snapshots
-    prepare_workspace_with_fallback(&workspace_path)
+    prepare_workspace_with_fallback(&workspace_path, crate::tui::FsSnapshotsType::Auto)
         .await
         .context("Failed to prepare sandbox workspace")
 }
