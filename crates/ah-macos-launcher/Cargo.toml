@@ -16,6 +16,7 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+ah-logging = { path = "../ah-logging" }
 clap = { workspace = true }
 ah-sandbox-macos = { path = "../ah-sandbox-macos" }
 libc = "0.2"

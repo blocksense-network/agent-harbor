@@ -11,6 +11,8 @@ use sandbox_core::{NamespaceConfig, ProcessConfig, Sandbox};
 use sandbox_fs::{FilesystemConfig, FilesystemManager};
 
 #[cfg(target_os = "linux")]
+use ah_logging::{Level, LogFormat, init};
+#[cfg(target_os = "linux")]
 use tracing::info;
 
 use tracing::error;
@@ -93,14 +95,13 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_max_level(if args.debug {
-            tracing::Level::DEBUG
-        } else {
-            tracing::Level::INFO
-        })
-        .init();
+    // Initialize logging
+    let default_level = if args.debug {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
+    init("sbx-helper", default_level, LogFormat::Plaintext)?;
 
     info!("Starting sandbox helper with args: {:?}", args);
 

@@ -53,6 +53,7 @@ dependencies = [
  "agentfs-backstore-macos",
  "agentfs-core",
  "agentfs-proto",
+ "ah-logging",
  "anyhow",
  "clap",
  "core-foundation 0.10.1",
@@ -521,6 +522,7 @@ dependencies = [
 name = "ah-macos-launcher"
 version = "0.1.0"
 dependencies = [
+ "ah-logging",
  "ah-sandbox-macos",
  "anyhow",
  "clap",
@@ -7142,6 +7144,7 @@ dependencies = [
 name = "sbx-helper"
 version = "0.1.0"
 dependencies = [
+ "ah-logging",
  "anyhow",
  "clap",
  "sandbox-cgroups",

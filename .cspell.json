@@ -294,6 +294,7 @@
     "Envsubst",
     "EOPNOTSUPP",
     "EPERM",
+    "eprint",
     "eprintln",
     "ERANGE",
     "erase",

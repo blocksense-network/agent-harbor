@@ -88,15 +88,15 @@ impl SandboxRunArgs {
             .await
             .context("Failed to prepare writable workspace with any provider")?;
 
-        println!(
-            "Prepared workspace at: {}",
-            prepared_workspace.exec_path.display()
+        tracing::info!(
+            workspace_path = %prepared_workspace.exec_path.display(),
+            working_copy = ?prepared_workspace.working_copy,
+            provider = ?prepared_workspace.provider,
+            "Prepared sandbox workspace"
         );
-        println!("Working copy mode: {:?}", prepared_workspace.working_copy);
-        println!("Provider: {:?}", prepared_workspace.provider);
 
         if prepared_workspace.provider == SnapshotProviderKind::Disable {
-            println!("⚠️  No filesystem snapshot provider available; using in-place workspace");
+            tracing::warn!("No filesystem snapshot provider available; using in-place workspace");
         }
 
         let cleanup_token = prepared_workspace.cleanup_token.clone();
@@ -107,19 +107,18 @@ impl SandboxRunArgs {
         let result: Result<()> = {
             let exec_dir = prepared_workspace.exec_path.clone();
 
-            println!(
-                "Running command inside sandbox workspace: {}",
-                exec_dir.display()
+            tracing::info!(
+                workspace_path = %exec_dir.display(),
+                command = ?command,
+                allow_network = allow_network,
+                allow_containers = allow_containers,
+                allow_kvm = allow_kvm,
+                seccomp = seccomp,
+                seccomp_debug = seccomp_debug,
+                mount_rw = ?mount_rw,
+                overlay = ?overlay,
+                "Running command inside sandbox workspace"
             );
-            println!("Command: {:?}", command);
-            println!("Configuration:");
-            println!("  Allow network: {}", allow_network);
-            println!("  Allow containers: {}", allow_containers);
-            println!("  Allow KVM: {}", allow_kvm);
-            println!("  Seccomp: {}", seccomp);
-            println!("  Seccomp debug: {}", seccomp_debug);
-            println!("  Mount RW paths: {:?}", mount_rw);
-            println!("  Overlay paths: {:?}", overlay);
 
             let mut sandbox = create_sandbox_from_args(
                 allow_network,
@@ -140,19 +139,16 @@ impl SandboxRunArgs {
             let exec_result = sandbox.exec_process().await;
 
             if let Err(err) = sandbox.stop() {
-                eprintln!("⚠️  Sandbox stop cleanup encountered an error: {}", err);
+                tracing::warn!(error = %err, "Sandbox stop cleanup encountered an error");
             }
 
             if let Err(err) = sandbox.cleanup().await {
-                eprintln!(
-                    "⚠️  Sandbox filesystem cleanup encountered an error: {}",
-                    err
-                );
+                tracing::warn!(error = %err, "Sandbox filesystem cleanup encountered an error");
             }
 
             let outcome =
                 exec_result.context("Failed to execute command inside sandbox").map(|_| {
-                    println!("✅ Sandbox command completed successfully");
+                    tracing::info!("Sandbox command completed successfully");
                 });
 
             cleanup_prepared_workspace(&workspace_path, provider_kind, &cleanup_token);
@@ -211,12 +207,13 @@ pub async fn prepare_workspace_with_fallback(
             };
 
             for mode in modes_to_try {
-                println!("  Trying mode: {:?}", mode);
+                tracing::debug!(mode = ?mode, "Trying workspace preparation mode");
                 match provider.prepare_writable_workspace(workspace_path, mode) {
                     Ok(workspace) => {
-                        println!(
-                            "Successfully prepared workspace with {} provider using {:?}",
-                            name, mode
+                        tracing::info!(
+                            provider = name,
+                            mode = ?mode,
+                            "Successfully prepared workspace"
                         );
                         return Ok(workspace);
                     }
@@ -340,16 +337,17 @@ fn cleanup_prepared_workspace(
     match ah_fs_snapshots::provider_for(workspace_path) {
         Ok(provider) => {
             if let Err(err) = provider.cleanup(cleanup_token) {
-                eprintln!(
-                    "⚠️  Failed to cleanup sandbox workspace (token={}): {}",
-                    cleanup_token, err
+                tracing::warn!(
+                    cleanup_token = cleanup_token,
+                    error = %err,
+                    "Failed to cleanup sandbox workspace"
                 );
             }
         }
         Err(err) => {
-            eprintln!(
-                "⚠️  Unable to clean up sandbox workspace (provider lookup failed): {}",
-                err
+            tracing::warn!(
+                error = %err,
+                "Unable to clean up sandbox workspace (provider lookup failed)"
             );
         }
     }

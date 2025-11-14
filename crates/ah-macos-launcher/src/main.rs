@@ -1,6 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use ah_logging::{Level, LogFormat, init};
 use ah_sandbox_macos::{SbplBuilder, apply_builder};
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -46,7 +47,8 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // Initialize logging
+    init("ah-macos-launcher", Level::INFO, LogFormat::Plaintext)?;
     let args = Args::parse();
 
     // Optional chroot into AgentFS view

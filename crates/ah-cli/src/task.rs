@@ -629,6 +629,7 @@ impl TaskGetArgs {
             tracing::warn!(diagnostic = %diagnostic, "Task processing diagnostic");
         }
 
+        #[allow(clippy::disallowed_methods)]
         if self.get_setup_env {
             // Print environment variables in KEY=VALUE format
             for (key, value) in env_vars {

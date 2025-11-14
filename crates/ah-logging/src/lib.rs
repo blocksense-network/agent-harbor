@@ -42,11 +42,11 @@ impl Default for LogFormat {
 /// # Example
 /// ```rust
 /// use ah_logging::get_standard_log_path;
-/// use ah_logging::{init_to_file, Level};
+/// use ah_logging::{init_to_file, Level, LogFormat};
 ///
 /// fn main() -> anyhow::Result<()> {
 ///     let log_path = get_standard_log_path();
-///     init_to_file("my-app", Level::INFO, &log_path)?;
+///     init_to_file("my-app", Level::INFO, LogFormat::Plaintext, &log_path)?;
 ///     Ok(())
 /// }
 /// ```

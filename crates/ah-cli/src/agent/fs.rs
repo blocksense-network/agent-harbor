@@ -201,6 +201,7 @@ impl AgentFsCommands {
 
         if opts.detect_only {
             // Only show detection results
+            #[allow(clippy::disallowed_methods)]
             if opts.json {
                 let json = FsStatusJson {
                     path: path.display().to_string(),
