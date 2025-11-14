@@ -269,6 +269,7 @@ impl HealthFormatter for HumanReadableFormatter {
             output.push_str(&format!("{} {}: {}\n", emoji, name, desc));
         }
 
+        output.push('\n');
         output
     }
 }

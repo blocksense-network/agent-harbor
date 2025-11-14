@@ -97,6 +97,7 @@ pub use ah_core::agent_types::AgentType;
 pub mod test_utils;
 
 // Test support utilities
+#[cfg(any(test, doctest))]
 pub mod test_support;
 
 // Convenience constructors for each agent

@@ -253,25 +253,15 @@ impl GeminiAgent {
     /// - Authentication source information
     /// - Any errors encountered
     pub async fn get_gemini_status(&self) -> AgentStatus {
-        // Check CLI availability by detecting version with timeout
-        let (available, version, error) = match tokio::time::timeout(
-            std::time::Duration::from_millis(1500),
-            self.detect_version(),
-        )
-        .await
-        {
-            Ok(Ok(version_info)) => (true, Some(version_info.version), None),
-            Ok(Err(AgentError::AgentNotFound(_))) => (
+        // Check CLI availability by detecting version
+        let (available, version, error) = match self.detect_version().await {
+            Ok(version_info) => (true, Some(version_info.version), None),
+            Err(AgentError::AgentNotFound(_)) => (
                 false,
                 None,
                 Some("Gemini CLI not found in PATH".to_string()),
             ),
-            Ok(Err(e)) => (
-                false,
-                None,
-                Some(format!("Version detection failed: {}", e)),
-            ),
-            Err(_) => (false, None, Some("Version detection timed out".to_string())),
+            Err(e) => (false, None, Some(e.to_string())),
         };
 
         if !available {
@@ -1071,9 +1061,10 @@ mod tests {
             }
 
             if self.should_fail {
-                return Err(AgentError::VersionDetectionFailed(
-                    "Test failure".to_string(),
-                ));
+                return Err(AgentError::ProcessSpawnFailed(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Test failure",
+                )));
             }
 
             if self.should_timeout {
@@ -1190,7 +1181,7 @@ mod tests {
         assert_eq!(status.auth_source, None);
         assert_eq!(
             status.error,
-            Some("Version detection failed: Test failure".to_string())
+            Some("Failed to spawn agent process: Test failure".to_string())
         );
     }
 
