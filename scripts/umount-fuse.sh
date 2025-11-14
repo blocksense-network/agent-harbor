@@ -3,10 +3,19 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 mountpoint="$1"
+
+is_mounted() {
+  mount | grep -F " on $mountpoint " >/dev/null 2>&1
+}
+
 if [ ! -d "$mountpoint" ]; then
-  echo "Error: Mount point $mountpoint does not exist"
-  echo "Hint: Mount the filesystem first with: just mount-fuse $mountpoint"
-  exit 1
+  if is_mounted; then
+    echo "⚠️  Mount point $mountpoint is unreachable but still mounted; attempting forced unmount..."
+  else
+    echo "Error: Mount point $mountpoint does not exist"
+    echo "Hint: Mount the filesystem first with: just mount-fuse $mountpoint"
+    exit 1
+  fi
 fi
 
 echo "🔌 Unmounting FUSE filesystem from $mountpoint..."
@@ -18,6 +27,11 @@ elif command -v umount >/dev/null 2>&1; then
   umount "$mountpoint" 2>/dev/null || true
 else
   echo "⚠️  Neither fusermount nor umount found, manual unmounting may be required"
+fi
+
+if is_mounted; then
+  echo "⚠️  FUSE filesystem still appears mounted at $mountpoint; manual cleanup may be required"
+  exit 1
 fi
 
 echo "✅ FUSE filesystem unmounted from $mountpoint"
