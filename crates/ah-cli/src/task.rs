@@ -458,7 +458,7 @@ impl TaskCreateArgs {
             .context("Failed to create task record")?;
 
         // Log the created records for debugging
-        println!("Created session '{}' with task ID {}", session_id, task_id);
+        tracing::info!(session_id = %session_id, task_id = %task_id, "Created session with task");
 
         // Create initial filesystem snapshot for time travel (if supported)
         // TODO: Once AgentFS integration is implemented, this will:
@@ -467,12 +467,9 @@ impl TaskCreateArgs {
         // 3. Associate the snapshot with the session for later time travel
         // 4. Store snapshot metadata in the database
         if !self.non_interactive {
-            println!(
-                "Note: Automatic snapshot creation for time travel not yet implemented in this milestone"
-            );
-            println!(
-                "When implemented, an initial snapshot will be created here for session '{}'",
-                actual_branch_name
+            tracing::info!(
+                branch = %actual_branch_name,
+                "Automatic snapshot creation for time travel not yet implemented"
             );
         }
 
@@ -485,7 +482,7 @@ impl TaskCreateArgs {
 
         // For now, just log the sandbox workspace preparation
         if let Some(ref ws) = sandbox_workspace {
-            println!("Sandbox workspace prepared at: {}", ws.exec_path.display());
+            tracing::info!(workspace_path = %ws.exec_path.display(), "Sandbox workspace prepared");
         }
 
         // Handle push operations
@@ -627,9 +624,9 @@ impl TaskGetArgs {
             .await
             .context("Failed to process task with workflows")?;
 
-        // Display diagnostics if any
+        // Log diagnostics
         for diagnostic in diagnostics {
-            eprintln!("Warning: {}", diagnostic);
+            tracing::warn!(diagnostic = %diagnostic, "Task processing diagnostic");
         }
 
         if self.get_setup_env {
@@ -1000,7 +997,7 @@ mod tests {
         } else {
             // If nix is not available, the function should still not panic
             // The error is expected in some test environments
-            eprintln!("Nix not available for devshell testing: {:?}", result);
+            tracing::warn!(error = ?result, "Nix not available for devshell testing");
         }
     }
 

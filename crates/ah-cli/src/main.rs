@@ -2,17 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ah_cli::{AgentCommands, Cli, Commands, Parser, health};
+use ah_domain_types::CliLogLevel;
+use ah_logging::{Level, LogFormat, init_to_standard_file};
 use ah_tui::view::TuiDependencies;
-use anyhow::{Context, Result};
-use std::fs;
-use std::path::PathBuf;
+use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Set up centralized logging to file
-    setup_logging(&cli.log_level)?;
+    // Set up centralized logging to file with platform-specific path
+    let default_level = match cli.log_level {
+        CliLogLevel::Error => Level::ERROR,
+        CliLogLevel::Warn => Level::WARN,
+        CliLogLevel::Info => Level::INFO,
+        CliLogLevel::Debug => Level::DEBUG,
+        CliLogLevel::Trace => Level::TRACE,
+    };
+    init_to_standard_file("ah-cli", default_level, LogFormat::Plaintext)?;
 
     // Helper function to get TUI dependencies for record/replay commands
     fn get_record_tui_dependencies(cli: &Cli) -> Result<TuiDependencies> {
@@ -49,78 +56,5 @@ async fn main() -> Result<()> {
         },
         Commands::Tui(args) => args.run(cli.fs_snapshots).await,
         Commands::Health(args) => args.run().await,
-    }
-}
-
-/// Set up centralized logging to a file
-fn setup_logging(log_level: &str) -> Result<()> {
-    // Determine log file path based on OS
-    let log_path = get_log_file_path();
-
-    // Create parent directory if it doesn't exist
-    if let Some(parent) = log_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create log directory: {}", parent.display()))?;
-    }
-
-    // Create or open the log file
-    let log_file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .with_context(|| format!("Failed to open log file: {}", log_path.display()))?;
-
-    // Set up the tracing subscriber to write to the file
-    let filter = format!("{},ah_cli=debug,ah_recorder=debug,ah_tui=debug", log_level);
-    tracing_subscriber::fmt()
-        .with_writer(log_file)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&filter)),
-        )
-        .try_init()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
-
-    Ok(())
-}
-
-/// Get the standard log file path for the current OS
-fn get_log_file_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: %APPDATA%\agent-harbor\agent-harbor.log
-        let mut path = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("C:\\Users\\Default\\AppData\\Roaming"));
-        path.push("agent-harbor");
-        path.push("agent-harbor.log");
-        path
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: ~/Library/Logs/agent-harbor.log
-        let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        path.push("Library");
-        path.push("Logs");
-        path.push("agent-harbor.log");
-        path
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux: ~/.local/share/agent-harbor/agent-harbor.log
-        let mut path = dirs::data_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp")));
-        path.push("agent-harbor");
-        path.push("agent-harbor.log");
-        path
-    }
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        // Fallback for other OSes
-        let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        path.push("agent-harbor.log");
-        path
     }
 }

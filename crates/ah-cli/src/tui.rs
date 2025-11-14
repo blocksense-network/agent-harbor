@@ -210,9 +210,9 @@ impl TuiArgs {
                 MultiplexerChoice::InSupportedMultiplexer(multiplexer_type),
             )
             | (None, MultiplexerChoice::InSupportedMultiplexer(multiplexer_type)) => {
-                println!(
-                    "Detected {} multiplexer environment, launching dashboard directly...",
-                    multiplexer_display_name(&multiplexer_type)
+                tracing::info!(
+                    multiplexer_type = ?multiplexer_type,
+                    "Detected multiplexer environment, launching dashboard directly"
                 );
                 // Use the detected multiplexer for task management
                 let multiplexer_type = Some(multiplexer_type.clone());
@@ -227,8 +227,8 @@ impl TuiArgs {
             }
             (Some(CliMultiplexerArg::Auto), MultiplexerChoice::InSupportedTerminal)
             | (None, MultiplexerChoice::InSupportedTerminal) => {
-                println!(
-                    "Detected supported terminal environment, launching dashboard directly..."
+                tracing::info!(
+                    "Detected supported terminal environment, launching dashboard directly"
                 );
                 let deps = Self::create_dashboard_dependencies(
                     self.remote_server.clone(),
@@ -318,9 +318,9 @@ impl TuiArgs {
             );
         }
 
-        println!(
-            "Creating new {} session for agent-harbor...",
-            multiplexer.id()
+        tracing::info!(
+            multiplexer_id = %multiplexer.id(),
+            "Creating new multiplexer session for agent-harbor"
         );
 
         // Create a new window with the dashboard command
@@ -343,8 +343,11 @@ impl TuiArgs {
 
         // For now, we'll run the dashboard locally instead of trying to exec into multiplexer
         // TODO: Implement proper session attachment
-        println!("Note: Multiplexer session created. For full multiplexer integration, run:");
-        println!("  {} attach -t {}", multiplexer.id(), window_id);
+        tracing::info!(
+            multiplexer_id = %multiplexer.id(),
+            window_id = %window_id,
+            "Multiplexer session created, run attach command for full integration"
+        );
 
         // For development, just run the dashboard directly
         let deps = Self::create_dashboard_dependencies(
@@ -439,7 +442,7 @@ impl TuiArgs {
         // Create service dependencies based on remote server configuration
         let deps = if let Some(server_url) = remote_server {
             // Remote server mode
-            println!("Connecting to remote server: {}", server_url);
+            tracing::info!(server_url = %server_url, "Connecting to remote server");
 
             // Create authentication config
             let auth = if let Some(api_key) = api_key {
@@ -485,7 +488,7 @@ impl TuiArgs {
             })
         } else {
             // Local mode
-            println!("Running in local mode");
+            tracing::info!("Running in local mode");
 
             // Create local service dependencies
             let workspace_dir =
@@ -517,9 +520,9 @@ impl TuiArgs {
                 None => ah_core::MultiplexerPreference::Auto,
                 // For unsupported multiplexers, fall back to auto-detection
                 Some(unsupported) => {
-                    eprintln!(
-                        "Warning: Multiplexer {:?} not yet supported for task manager, using auto-detection",
-                        unsupported
+                    tracing::warn!(
+                        multiplexer_type = ?unsupported,
+                        "Multiplexer not yet supported for task manager, using auto-detection"
                     );
                     ah_core::MultiplexerPreference::Auto
                 }

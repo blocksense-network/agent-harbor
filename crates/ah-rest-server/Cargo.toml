@@ -57,6 +57,8 @@ ah-rest-api-contract = { path = "../ah-rest-api-contract" }
 
 # Core functionality
 ah-core = { path = "../ah-core" }
+ah-domain-types = { path = "../ah-domain-types" }
+ah-logging = { path = "../ah-logging" }
 ah-repo = { path = "../ah-repo" }
 ah-fs-snapshots = { path = "../ah-fs-snapshots" }
 
