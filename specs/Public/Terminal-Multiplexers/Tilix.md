@@ -4,18 +4,20 @@ Automate Tilix using command‑line actions and session files; D‑Bus is also a
 
 ## Overview
 
-- Product: Tilix (tiling terminal emulator)
-- Platform: Linux (GTK)
-- Install: distro package manager
-- Interfaces: `tilix` CLI with `--action`, `--session` JSON; D‑Bus methods. [1]
+- Product name and version(s) tested: Tilix 1.9.6 (tiling terminal emulator)
+- Platforms: Linux (GTK)
+- License and install path(s): Open source, available via distro package managers
+- CLI(s) or RPC used: `tilix` CLI with `--action`, `--session`; D‑Bus methods. [1]
 
 ## Capabilities Summary
 
-- Tabs (terminals) and splits supported; actions to add terminals down/right. [1]
-- Start commands per terminal via `--command`/`--working-directory` or session JSON. [1]
-- Addressability: via session layout definitions; runtime targeting via D‑Bus/window focus is limited.
-- Focus/activate: window manager focus; Tilix can `--maximize` etc. [1]
-- Send keys: no built‑in send‑keys; use the shell/app CLI.
+- Tabs/workspaces support: Yes (sessions and windows)
+- Horizontal/vertical splits: Yes (via `session-add-right`, `session-add-down` actions)
+- Addressability: Via session layout definitions; runtime targeting via D‑Bus/window focus is limited
+- Start commands per pane automatically: Yes, via `--command` and `--working-directory` or session layouts
+- Focus/activate existing pane: Window manager focus; Tilix can `--maximize` etc. [1]
+- Send keys / scripted answers: No built‑in send‑keys; use the shell/app CLI
+- Startup layout recipe: Command-line actions or saved session layouts
 
 ## Creating a New Tab With Split Layout
 
@@ -23,11 +25,11 @@ Using actions (left/right/down) and `--command`:
 
 ```
 TASK_ID=$1
-tilix --new-window --title="ah-task-${TASK_ID}" \
+tilix --title="ah-task-${TASK_ID}" \
   --command="bash -lc 'nvim .'" &
 sleep 0.3
-tilix --action=app-new-session-right --command="bash -lc 'ah tui --follow ${TASK_ID}'"
-tilix --action=app-new-session-down --command="bash -lc 'ah session logs ${TASK_ID} -f'"
+tilix --action=session-add-right --command="bash -lc 'ah tui --follow ${TASK_ID}'"
+tilix --action=session-add-down --command="bash -lc 'ah session logs ${TASK_ID} -f'"
 ```
 
 Alternatively, define a reusable session JSON and load it with `--session FILE`. [1]
@@ -46,7 +48,7 @@ Alternatively, define a reusable session JSON and load it with `--session FILE`.
 
 ## Programmatic Control Interfaces
 
-- CLI actions: `app-new-session-right`, `app-new-session-down`, etc. [1]
+- CLI actions: `session-add-right`, `session-add-down`, `app-new-session`, `app-new-window`. [1]
 - Session files: JSON defining terminals, commands, titles (`tilix --session layout.json`). [1]
 
 ## Detection and Version Compatibility
