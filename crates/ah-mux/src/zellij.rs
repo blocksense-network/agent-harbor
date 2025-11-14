@@ -136,7 +136,8 @@ impl Multiplexer for ZellijMultiplexer {
         // Zellij doesn't return pane IDs in a parseable way from CLI.
         // We'll return a placeholder ID that won't be usable for targeting.
         // In practice, AH workflows should use layouts instead of individual splits.
-        Ok(format!("zellij-pane-{:?}", window))
+        let window_str = window.map(|w| w.as_str()).unwrap_or("default");
+        Ok(format!("zellij-pane-{}", window_str))
     }
 
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
@@ -262,21 +263,21 @@ mod tests {
     #[test]
     fn test_zellij_send_text_not_available() {
         let mux = ZellijMultiplexer::new().unwrap();
-        let result = mux.send_text("dummy", "text");
+        let result = mux.send_text(&"dummy".to_string(), "text");
         assert!(matches!(result, Err(MuxError::NotAvailable("zellij"))));
     }
 
     #[test]
     fn test_zellij_focus_pane_not_available() {
         let mux = ZellijMultiplexer::new().unwrap();
-        let result = mux.focus_pane("dummy");
+        let result = mux.focus_pane(&"dummy".to_string());
         assert!(matches!(result, Err(MuxError::NotAvailable("zellij"))));
     }
 
     #[test]
     fn test_zellij_list_panes_not_available() {
         let mux = ZellijMultiplexer::new().unwrap();
-        let result = mux.list_panes("dummy");
+        let result = mux.list_panes(&"dummy".to_string());
         assert!(matches!(result, Err(MuxError::NotAvailable("zellij"))));
     }
 }

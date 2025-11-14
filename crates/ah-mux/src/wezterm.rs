@@ -329,7 +329,9 @@ mod tests {
 
     #[test]
     fn test_wezterm_id() {
-        let mux = WezTermMultiplexer::new().unwrap();
-        assert_eq!(mux.id(), "wezterm");
+        // Only run this test if wezterm is available
+        if let Ok(mux) = WezTermMultiplexer::new() {
+            assert_eq!(mux.id(), "wezterm");
+        }
     }
 }

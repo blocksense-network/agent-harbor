@@ -45,6 +45,8 @@ mod event_processing_tests {
         let mut settings = Settings::default();
         settings.active_sessions_activity_rows = Some(3); // Set activity rows for testing
 
+        let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
+
         let mut vm = ViewModel::new(
             workspace_files,
             workspace_workflows,
@@ -52,6 +54,7 @@ mod event_processing_tests {
             repositories_enumerator,
             branches_enumerator,
             settings,
+            ui_tx,
         );
 
         // Add a test active task card manually
@@ -500,6 +503,8 @@ mod event_processing_tests {
         );
         let settings = Settings::default();
 
+        let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
+
         let mut vm = ViewModel::new(
             workspace_files,
             workspace_workflows,
@@ -507,6 +512,7 @@ mod event_processing_tests {
             repositories_enumerator,
             branches_enumerator,
             settings,
+            ui_tx,
         );
 
         // The MockTaskManager creates draft cards, so we should have at least one

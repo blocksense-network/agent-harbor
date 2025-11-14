@@ -78,18 +78,18 @@ use ah_domain_types::{
 };
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 use chrono;
+use crossbeam_channel::Sender as UiSender;
 use futures::stream::StreamExt;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Modifier, Style};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use std::time::{Duration, Instant};
+use tokio::sync::oneshot;
 use tracing::{debug, error};
 use uuid;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
+const AUTO_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 
 const DASHBOARD_INPUT_OPERATIONS: &[KeyboardOperation] = &[
     KeyboardOperation::MoveToNextLine,
@@ -111,6 +111,17 @@ const MODAL_INPUT_OPERATIONS: &[KeyboardOperation] = &[
     KeyboardOperation::IndentOrComplete,
     KeyboardOperation::DismissOverlay,
 ];
+
+#[derive(Clone)]
+struct AutoSaveRequestPayload {
+    draft_id: String,
+    request_id: u64,
+    generation: u64,
+    description: String,
+    repository: String,
+    branch: String,
+    models: Vec<SelectedModel>,
+}
 
 /// Information about an AI model available for selection
 #[derive(Debug, Clone)]
@@ -607,45 +618,30 @@ impl ViewModel {
             DashboardFocusState::DraftTask(_) => {
                 // Support editing the description when focused on any DraftTask
                 if let DashboardFocusState::DraftTask(0) = self.focus_element {
-                    // Get the first (and currently only) draft card
                     if let Some(card) = self.draft_cards.get_mut(0) {
-                        // Feed the character to the textarea widget
                         use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                         let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
-
-                        // Trigger autocomplete after textarea change
                         self.autocomplete
                             .after_textarea_change(&card.description, &mut self.needs_redraw);
-
-                        card.save_state = DraftSaveState::Unsaved;
-                        // Reset auto-save timer
-                        card.auto_save_timer = Some(std::time::Instant::now());
-                        return true;
                     }
+                    self.mark_draft_dirty(0);
+                    return true;
                 } else if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                    // When a draft task is focused, edit its description only if internal focus is on text area
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
-                            // Feed the character to the textarea widget
                             use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                             let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
                             self.autocomplete.notify_text_input();
                             card.description.input(key_event);
-
-                            // Trigger autocomplete after textarea change
                             self.autocomplete
                                 .after_textarea_change(&card.description, &mut self.needs_redraw);
-
-                            card.save_state = DraftSaveState::Unsaved;
-                            // Reset auto-save timer
-                            card.auto_save_timer = Some(std::time::Instant::now());
+                            let _ = card;
+                            self.mark_draft_dirty(idx);
                             return true;
                         }
                     }
-                    // TODO: Aren't these the same?
-                    // The duplication seems legacy of removing the TaskDescription focus state
                 }
             }
             _ => {}
@@ -1294,19 +1290,12 @@ impl ViewModel {
         )
     }
 
-    /// Handle auto-save timer tick
     pub fn handle_tick(&mut self) -> bool {
         let mut changed = false;
-        for card in &mut self.draft_cards {
-            if let Some(timer) = card.auto_save_timer {
-                if timer.elapsed() > std::time::Duration::from_millis(500) {
-                    if card.save_state == DraftSaveState::Unsaved {
-                        card.save_state = DraftSaveState::Saved;
-                        card.auto_save_timer = None;
-                        changed = true;
-                        // TODO: Actually save to storage
-                    }
-                }
+        let now = Instant::now();
+        for idx in 0..self.draft_cards.len() {
+            if self.try_start_auto_save(idx, now) {
+                changed = true;
             }
         }
         changed
@@ -1389,6 +1378,13 @@ pub enum Msg {
     MouseScrollUp,
     /// Mouse scroll downwards (equivalent to navigating down)
     MouseScrollDown,
+    /// Auto-save completion for draft tasks
+    DraftSaveCompleted {
+        draft_id: String,
+        request_id: u64,
+        generation: u64,
+        result: SaveDraftResult,
+    },
     /// Periodic timer tick for animations/updates
     Tick,
     /// Application lifecycle events
@@ -1550,6 +1546,8 @@ pub struct ViewModel {
     pub workflows_receiver: Option<oneshot::Receiver<Vec<String>>>,
     pub repositories_receiver: Option<oneshot::Receiver<Vec<String>>>,
     pub branches_receiver: Option<oneshot::Receiver<Vec<String>>>,
+    save_request_counter: u64,
+    ui_tx: UiSender<Msg>,
 
     // Task collections - cards contain the domain objects
     pub draft_cards: Vec<TaskEntryViewModel>, // Draft tasks (editable)
@@ -1562,6 +1560,8 @@ pub struct ViewModel {
     pub needs_redraw: bool, // Flag to indicate when UI needs to be redrawn
 
     pub input_stack: InputStateStack,
+    pending_bubbled_operation: Option<KeyboardOperation>,
+    bubbled_operation_consumed: bool,
 }
 
 impl ViewModel {
@@ -1574,6 +1574,7 @@ impl ViewModel {
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
+        ui_tx: UiSender<Msg>,
     ) -> Self {
         Self::new_internal(
             workspace_files,
@@ -1584,6 +1585,7 @@ impl ViewModel {
             settings,
             false,
             None,
+            ui_tx,
         )
     }
 
@@ -1596,6 +1598,7 @@ impl ViewModel {
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         settings: Settings,
         current_repository: Option<String>,
+        ui_tx: UiSender<Msg>,
     ) -> Self {
         Self::new_internal(
             workspace_files,
@@ -1606,6 +1609,7 @@ impl ViewModel {
             settings,
             true,
             current_repository,
+            ui_tx,
         )
     }
 
@@ -1618,6 +1622,7 @@ impl ViewModel {
         settings: Settings,
         with_background_loading: bool,
         current_repository: Option<String>,
+        ui_tx: UiSender<Msg>,
     ) -> Self {
         // Initialize available options (will be populated asynchronously)
         let available_repositories = vec![];
@@ -1772,6 +1777,8 @@ impl ViewModel {
             workflows_receiver,
             repositories_receiver,
             branches_receiver,
+            save_request_counter: 0,
+            ui_tx: ui_tx.clone(),
 
             draft_cards: draft_cards.clone(),
             task_cards: task_cards.clone(),
@@ -1824,6 +1831,8 @@ impl ViewModel {
 
             needs_redraw: true,
             input_stack: InputStateStack::new(),
+            pending_bubbled_operation: None,
+            bubbled_operation_consumed: false,
         };
 
         // Sync cursor style for initial focus on textarea
@@ -1869,6 +1878,14 @@ impl ViewModel {
                 if self.handle_mouse_scroll(NavigationDirection::Next) {
                     self.needs_redraw = true;
                 }
+            }
+            Msg::DraftSaveCompleted {
+                draft_id,
+                request_id,
+                generation,
+                result,
+            } => {
+                self.apply_save_result(draft_id, request_id, generation, result);
             }
             Msg::Tick => {
                 // Handle periodic updates (activity simulation, etc.)
@@ -1946,9 +1963,19 @@ impl ViewModel {
     ) -> InputResult {
         if let Some(card) = self.draft_cards.get_mut(draft_index) {
             match card.handle_keyboard_operation(operation, key_event, &mut self.needs_redraw) {
-                KeyboardOperationResult::Handled => InputResult::Handled,
+                KeyboardOperationResult::Handled => {
+                    if matches!(self.focus_element, DashboardFocusState::DraftTask(idx) if idx == draft_index)
+                    {
+                        self.focus_element = DashboardFocusState::DraftTask(draft_index);
+                        self.update_footer();
+                    }
+                    InputResult::Handled
+                }
                 KeyboardOperationResult::NotHandled => InputResult::NotHandled,
-                KeyboardOperationResult::Bubble { operation } => InputResult::Bubble(operation),
+                KeyboardOperationResult::Bubble { operation } => {
+                    self.pending_bubbled_operation = Some(operation);
+                    InputResult::Bubble(operation)
+                }
                 KeyboardOperationResult::TaskLaunched {
                     split_mode,
                     focus,
@@ -2029,7 +2056,22 @@ impl ViewModel {
         operation: KeyboardOperation,
         key_event: &KeyEvent,
     ) -> InputResult {
-        if self.process_dashboard_operation(operation, key_event) {
+        let bubbled = self
+            .pending_bubbled_operation
+            .as_ref()
+            .map(|pending| pending == &operation)
+            .unwrap_or(false);
+
+        let handled = self.process_dashboard_operation(operation, key_event);
+
+        if bubbled {
+            self.pending_bubbled_operation = None;
+            if handled {
+                self.bubbled_operation_consumed = true;
+            }
+        }
+
+        if handled {
             InputResult::Handled
         } else {
             InputResult::NotHandled
@@ -2044,10 +2086,25 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
+        let previously_focused_draft = match self.focus_element {
+            DashboardFocusState::DraftTask(idx) => Some(idx),
+            _ => None,
+        };
+
         self.rebuild_input_stack();
         let handled = self.input_stack.handle_key_event(&key, &self.settings);
 
         if handled {
+            let keymap = self.settings.keymap();
+            let is_shift_vertical = key.modifiers.contains(KeyModifiers::SHIFT)
+                && (keymap.matches(KeyboardOperation::MoveToPreviousLine, &key)
+                    || keymap.matches(KeyboardOperation::MoveToNextLine, &key));
+            if is_shift_vertical {
+                if let Some(idx) = previously_focused_draft {
+                    self.focus_element = DashboardFocusState::DraftTask(idx);
+                    self.update_footer();
+                }
+            }
             return true;
         }
 
@@ -2080,10 +2137,33 @@ impl ViewModel {
             self.clear_exit_confirmation();
         }
 
+        let previously_focused_draft = match self.focus_element {
+            DashboardFocusState::DraftTask(idx) => Some(idx),
+            _ => None,
+        };
+
+        self.pending_bubbled_operation = None;
+        self.bubbled_operation_consumed = false;
         self.rebuild_input_stack();
         let handled = self.input_stack.dispatch_operation(operation, key);
+        let bubbled_consumed = self.bubbled_operation_consumed;
+        self.bubbled_operation_consumed = false;
+        self.pending_bubbled_operation = None;
 
-        handled
+        if handled
+            && key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT)
+            && matches!(
+                operation,
+                KeyboardOperation::MoveToPreviousLine | KeyboardOperation::MoveToNextLine
+            )
+        {
+            if let Some(idx) = previously_focused_draft {
+                self.focus_element = DashboardFocusState::DraftTask(idx);
+                self.update_footer();
+            }
+        }
+
+        if bubbled_consumed { false } else { handled }
     }
 
     pub fn take_exit_request(&mut self) -> bool {
@@ -2212,6 +2292,12 @@ impl ViewModel {
                 if self.handle_overlay_navigation(NavigationDirection::Previous) {
                     return true;
                 }
+                if key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT) {
+                    if let Some(idx) = self.focused_textarea_index() {
+                        self.focus_element = DashboardFocusState::DraftTask(idx);
+                        return true;
+                    }
+                }
                 // Task entry handling is done by early delegation
                 // If we reach here, navigate up hierarchy
                 self.navigate_up_hierarchy()
@@ -2219,6 +2305,12 @@ impl ViewModel {
             KeyboardOperation::MoveToNextLine => {
                 if self.handle_overlay_navigation(NavigationDirection::Next) {
                     return true;
+                }
+                if key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT) {
+                    if let Some(idx) = self.focused_textarea_index() {
+                        self.focus_element = DashboardFocusState::DraftTask(idx);
+                        return true;
+                    }
                 }
                 // Task entry handling is done by early delegation
                 // If we reach here, navigate down hierarchy
@@ -3228,6 +3320,27 @@ impl ViewModel {
     /// Handle mouse scroll actions by mapping them to hierarchical navigation.
     fn handle_mouse_scroll(&mut self, direction: NavigationDirection) -> bool {
         self.clear_exit_confirmation();
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+            if let Some(card) = self.draft_cards.get_mut(idx) {
+                if card.focus_element == CardFocusElement::TaskDescription {
+                    use tui_textarea::Scrolling;
+                    let before = card.description.viewport_origin();
+                    match direction {
+                        NavigationDirection::Next => {
+                            card.description.scroll(Scrolling::Delta { rows: 1, cols: 0 })
+                        }
+                        NavigationDirection::Previous => {
+                            card.description.scroll(Scrolling::Delta { rows: -1, cols: 0 })
+                        }
+                    }
+                    let after = card.description.viewport_origin();
+                    if after != before {
+                        self.needs_redraw = true;
+                        return true;
+                    }
+                }
+            }
+        }
         match direction {
             NavigationDirection::Next => self.navigate_down_hierarchy(),
             NavigationDirection::Previous => self.navigate_up_hierarchy(),
@@ -3368,6 +3481,131 @@ impl ViewModel {
                 self.needs_redraw = true; // Trigger redraw to update UI
             }
         }
+    }
+
+    fn apply_save_result(
+        &mut self,
+        draft_id: String,
+        request_id: u64,
+        generation: u64,
+        result: SaveDraftResult,
+    ) {
+        if let Some(idx) = self.draft_cards.iter().position(|card| card.id == draft_id) {
+            let update_footer_needed;
+            {
+                let card = &mut self.draft_cards[idx];
+                if card.pending_save_request_id != Some(request_id) {
+                    return;
+                }
+
+                card.pending_save_request_id = None;
+                card.pending_save_invalidated = false;
+
+                match result {
+                    SaveDraftResult::Success => {
+                        card.last_saved_generation = card.last_saved_generation.max(generation);
+
+                        if card.dirty_generation == generation {
+                            card.last_saved_generation = generation;
+                            card.save_state = DraftSaveState::Saved;
+                            card.auto_save_timer = None;
+                            self.status_bar.error_message = None;
+                        } else {
+                            card.save_state = DraftSaveState::Unsaved;
+                            card.auto_save_timer = Some(Instant::now());
+                        }
+                    }
+                    SaveDraftResult::Failure { error } => {
+                        card.save_state = DraftSaveState::Error;
+                        card.auto_save_timer = None;
+                        self.status_bar.error_message =
+                            Some(format!("Draft auto-save failed: {}", error));
+                    }
+                }
+
+                update_footer_needed = matches!(self.focus_element, DashboardFocusState::DraftTask(focus_idx) if focus_idx == idx);
+            }
+
+            self.needs_redraw = true;
+            if update_footer_needed {
+                self.update_footer();
+            }
+        }
+    }
+
+    fn try_start_auto_save(&mut self, idx: usize, now: Instant) -> bool {
+        let Some(card) = self.draft_cards.get_mut(idx) else {
+            return false;
+        };
+
+        if card.dirty_generation <= card.last_saved_generation {
+            card.auto_save_timer = None;
+            return false;
+        }
+
+        let Some(timer) = card.auto_save_timer else {
+            return false;
+        };
+
+        if now.saturating_duration_since(timer) < AUTO_SAVE_DEBOUNCE {
+            return false;
+        }
+
+        if card.pending_save_request_id.is_some() {
+            return false;
+        }
+
+        let request_id = self.save_request_counter;
+        self.save_request_counter = self.save_request_counter.wrapping_add(1);
+
+        let payload = AutoSaveRequestPayload {
+            draft_id: card.id.clone(),
+            request_id,
+            generation: card.dirty_generation,
+            description: card.description.lines().join("\n"),
+            repository: card.repository.clone(),
+            branch: card.branch.clone(),
+            models: card.models.clone(),
+        };
+
+        card.pending_save_request_id = Some(request_id);
+        card.pending_save_invalidated = false;
+        card.save_state = DraftSaveState::Saving;
+        card.auto_save_timer = None;
+
+        let update_footer_needed = matches!(self.focus_element, DashboardFocusState::DraftTask(focus_idx) if focus_idx == idx);
+
+        self.needs_redraw = true;
+        if update_footer_needed {
+            self.update_footer();
+        }
+
+        let handle = tokio::runtime::Handle::try_current().expect(
+            "Draft auto-save requires an active Tokio runtime; \
+             ensure ViewModel operations run inside a Tokio executor",
+        );
+        let tx = self.ui_tx.clone();
+        let task_manager = Arc::clone(&self.task_manager);
+        let payload_clone = payload.clone();
+        handle.spawn(async move {
+            let result = task_manager
+                .save_draft_task(
+                    &payload_clone.draft_id,
+                    &payload_clone.description,
+                    &payload_clone.repository,
+                    &payload_clone.branch,
+                    &payload_clone.models,
+                )
+                .await;
+            let _ = tx.send(Msg::DraftSaveCompleted {
+                draft_id: payload_clone.draft_id,
+                request_id: payload_clone.request_id,
+                generation: payload_clone.generation,
+                result,
+            });
+        });
+
+        true
     }
 
     /// Close autocomplete if focus is moving away from textarea elements
@@ -3586,33 +3824,61 @@ impl ViewModel {
 
     /// Select a repository from modal
     pub fn select_repository(&mut self, repo: String) {
+        let mut update_footer_needed = false;
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-                draft_card.repository = repo;
+                if draft_card.repository != repo {
+                    draft_card.repository = repo;
+                    draft_card.on_content_changed();
+                    update_footer_needed = true;
+                }
             }
+            self.needs_redraw = true;
         }
         self.close_modal();
+        if update_footer_needed {
+            self.update_footer();
+        }
     }
 
     /// Select a branch from modal
     pub fn select_branch(&mut self, branch: String) {
+        let mut update_footer_needed = false;
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-                draft_card.branch = branch;
+                if draft_card.branch != branch {
+                    draft_card.branch = branch;
+                    draft_card.on_content_changed();
+                    update_footer_needed = true;
+                }
             }
+            self.needs_redraw = true;
         }
         self.close_modal();
+        if update_footer_needed {
+            self.update_footer();
+        }
     }
 
     /// Select model names from modal
     pub fn select_model_names(&mut self, model_names: Vec<String>) {
+        let mut update_footer_needed = false;
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(draft_card) = self.draft_cards.get_mut(idx) {
-                draft_card.models =
+                let new_models: Vec<SelectedModel> =
                     model_names.into_iter().map(|name| SelectedModel { name, count: 1 }).collect();
+                if draft_card.models != new_models {
+                    draft_card.models = new_models;
+                    draft_card.on_content_changed();
+                    update_footer_needed = true;
+                }
             }
+            self.needs_redraw = true;
         }
         self.close_modal();
+        if update_footer_needed {
+            self.update_footer();
+        }
     }
 
     /// Set status message
@@ -3795,6 +4061,9 @@ impl ViewModel {
         // Note: We search by ID, not by current focus, since focus might change during await
         if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
             card.save_state = DraftSaveState::Saving;
+            card.pending_save_request_id = None;
+            card.pending_save_invalidated = false;
+            card.auto_save_timer = None;
         }
 
         let result = self
@@ -3808,10 +4077,13 @@ impl ViewModel {
             match result {
                 SaveDraftResult::Success => {
                     card.save_state = DraftSaveState::Saved;
+                    card.last_saved_generation = card.dirty_generation;
+                    card.auto_save_timer = None;
                     Ok(())
                 }
                 SaveDraftResult::Failure { error } => {
                     card.save_state = DraftSaveState::Error;
+                    card.auto_save_timer = None;
                     Err(error)
                 }
             }
@@ -3823,8 +4095,21 @@ impl ViewModel {
 
     /// Mark the currently focused draft as having unsaved changes
     pub fn mark_focused_draft_unsaved(&mut self) {
-        if let Some(card) = self.get_focused_draft_card_mut() {
-            card.save_state = DraftSaveState::Unsaved;
+        if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+            self.mark_draft_dirty(idx);
+        }
+    }
+
+    fn mark_draft_dirty(&mut self, idx: usize) {
+        let mut update_footer_needed = false;
+        if let Some(card) = self.draft_cards.get_mut(idx) {
+            card.on_content_changed();
+            update_footer_needed =
+                matches!(self.focus_element, DashboardFocusState::DraftTask(i) if i == idx);
+        }
+        self.needs_redraw = true;
+        if update_footer_needed {
+            self.update_footer();
         }
     }
 
@@ -3864,23 +4149,32 @@ impl ViewModel {
     /// Set draft repository
     pub fn set_draft_repository(&mut self, repo: &str, draft_id: &str) {
         if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
-            card.repository = repo.to_string();
+            if card.repository != repo {
+                card.repository = repo.to_string();
+                card.on_content_changed();
+            }
         }
     }
 
     /// Set draft branch
     pub fn set_draft_branch(&mut self, branch: &str, draft_id: &str) {
         if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
-            card.branch = branch.to_string();
+            if card.branch != branch {
+                card.branch = branch.to_string();
+                card.on_content_changed();
+            }
         }
     }
 
     /// Set draft model names
     pub fn set_draft_model_names(&mut self, model_names: Vec<String>, draft_id: &str) {
         if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
-            // Convert model names to SelectedModel with count 1
-            card.models =
+            let new_models: Vec<SelectedModel> =
                 model_names.into_iter().map(|name| SelectedModel { name, count: 1 }).collect();
+            if card.models != new_models {
+                card.models = new_models;
+                card.on_content_changed();
+            }
         }
     }
 
@@ -4186,6 +4480,10 @@ pub fn create_draft_card_from_task(
         description,
         focus_element,
         auto_save_timer: None,
+        dirty_generation: 0,
+        last_saved_generation: 0,
+        pending_save_request_id: None,
+        pending_save_invalidated: false,
         repositories_enumerator,
         branches_enumerator,
         autocomplete,
@@ -4322,6 +4620,10 @@ fn create_draft_card_view_models(
                 description: textarea,
                 focus_element: CardFocusElement::TaskDescription,
                 auto_save_timer: None,
+                dirty_generation: 0,
+                last_saved_generation: 0,
+                pending_save_request_id: None,
+                pending_save_invalidated: false,
                 repositories_enumerator: None,
                 branches_enumerator: None,
                 autocomplete: panic!("This function should not be used"),

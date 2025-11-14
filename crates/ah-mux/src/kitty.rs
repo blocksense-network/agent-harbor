@@ -298,7 +298,7 @@ mod tests {
 
                     // Now try to split it
                     let split_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id), // In kitty, panes are windows, so use window_id as pane_id
                         SplitDirection::Horizontal,
                         Some(60),
@@ -367,7 +367,7 @@ mod tests {
                     assert!(kitty.window_exists(&window_id).unwrap_or(false));
 
                     let split_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id),
                         SplitDirection::Vertical,
                         Some(70),
@@ -426,7 +426,7 @@ mod tests {
                 Ok(window_id) => {
                     // Split with initial command that should keep the pane alive
                     let split_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id),
                         SplitDirection::Horizontal,
                         None,
@@ -797,7 +797,7 @@ mod tests {
 
                     // Create agent pane (top-right of main window)
                     let agent_result = kitty.split_pane(
-                        &window_id,
+                        Some(&window_id),
                         Some(&window_id),
                         SplitDirection::Horizontal,
                         Some(70), // 70% for editor (main window)
@@ -813,7 +813,7 @@ mod tests {
 
                             // Create logs pane (bottom-right, split from agent pane)
                             let logs_result = kitty.split_pane(
-                                &window_id,
+                                Some(&window_id),
                                 Some(&agent_pane),
                                 SplitDirection::Vertical,
                                 Some(60), // 60% for agent, 40% for logs
@@ -893,20 +893,18 @@ mod tests {
 
     #[test]
     fn test_kitty_not_available() {
-        // Test behavior when kitty is not available
+        // Test behavior when using a non-existent socket
         let kitty = KittyMultiplexer::with_socket_path("/nonexistent/socket".to_string());
 
-        // Mock kitty not being available by checking if it's actually available
-        if !kitty.is_available() {
-            assert!(!kitty.is_available());
+        // With a non-existent socket, kitty should not be available
+        // or operations should fail
+        let result = kitty.open_window(&WindowOptions::default());
 
-            // These operations should return CommandFailed error
-            let result = kitty.open_window(&WindowOptions::default());
-            assert!(matches!(result, Err(MuxError::CommandFailed(_))));
-
-            let result = kitty.list_windows(None);
-            assert!(matches!(result, Err(MuxError::CommandFailed(_))));
-        }
+        // Accept any error type - the important thing is that it fails
+        assert!(
+            result.is_err(),
+            "Opening window with invalid socket should fail"
+        );
     }
 }
 

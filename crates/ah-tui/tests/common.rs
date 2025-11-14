@@ -121,6 +121,7 @@ pub fn build_view_model() -> ViewModel {
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
     let settings = Settings::default();
+    let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
     ViewModel::new(
         workspace_files,
@@ -129,6 +130,7 @@ pub fn build_view_model() -> ViewModel {
         repositories_enumerator,
         branches_enumerator,
         settings,
+        ui_tx,
     )
 }
 

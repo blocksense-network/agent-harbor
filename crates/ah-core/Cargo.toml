@@ -41,3 +41,32 @@ ethereum_ssz_derive = { workspace = true }
 # Aliases for SSZ crates (matching recorder pattern)
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
+
+[features]
+default = [
+  "tmux",
+  "kitty",
+  "neovim",
+  "emacs",
+  "screen",
+  "vim",
+  "wezterm",
+  "zellij",
+  "iterm2",
+  "ghostty",
+  "tilix",
+  "windows-terminal",
+]
+# Propagate multiplexer features to ah-mux
+tmux = ["ah-mux/tmux"]
+kitty = ["ah-mux/kitty"]
+wezterm = ["ah-mux/wezterm"]
+zellij = ["ah-mux/zellij"]
+screen = ["ah-mux/screen"]
+ghostty = ["ah-mux/ghostty"]
+tilix = ["ah-mux/tilix"]
+windows-terminal = ["ah-mux/windows-terminal"]
+vim = ["ah-mux/vim"]
+neovim = ["ah-mux/neovim"]
+emacs = ["ah-mux/emacs"]
+iterm2 = ["ah-mux/iterm2"]
