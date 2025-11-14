@@ -6,7 +6,8 @@
     "webui/shared",
     "webui/mock-server",
     "webui/e2e-tests",
-    "electron-app"
+    "electron-app",
+    "docs/site"
   ],
   "scripts": {
     "knip": "knip"
