@@ -174,6 +174,24 @@ pub struct FileMode {
     pub exec: bool,
 }
 
+/// Additional metadata describing non-regular files
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SpecialNodeKind {
+    Fifo,
+    CharDevice { dev: u64 },
+    BlockDevice { dev: u64 },
+    Socket,
+}
+
+impl SpecialNodeKind {
+    pub fn rdev(&self) -> u64 {
+        match self {
+            SpecialNodeKind::Fifo | SpecialNodeKind::Socket => 0,
+            SpecialNodeKind::CharDevice { dev } | SpecialNodeKind::BlockDevice { dev } => *dev,
+        }
+    }
+}
+
 /// File attributes
 #[derive(Clone, Debug)]
 pub struct Attributes {
@@ -183,6 +201,8 @@ pub struct Attributes {
     pub gid: u32,
     pub is_dir: bool,
     pub is_symlink: bool,
+    pub special_kind: Option<SpecialNodeKind>,
+    pub nlink: u32,
     pub mode_user: FileMode,
     pub mode_group: FileMode,
     pub mode_other: FileMode,
@@ -198,6 +218,13 @@ impl Attributes {
             mode |= libc::S_IFDIR as u32;
         } else if self.is_symlink {
             mode |= libc::S_IFLNK as u32;
+        } else if let Some(kind) = &self.special_kind {
+            mode |= match kind {
+                SpecialNodeKind::Fifo => libc::S_IFIFO as u32,
+                SpecialNodeKind::CharDevice { .. } => libc::S_IFCHR as u32,
+                SpecialNodeKind::BlockDevice { .. } => libc::S_IFBLK as u32,
+                SpecialNodeKind::Socket => libc::S_IFSOCK as u32,
+            };
         } else {
             mode |= libc::S_IFREG as u32;
         }
@@ -234,6 +261,10 @@ impl Attributes {
         }
 
         mode
+    }
+
+    pub fn rdev(&self) -> u64 {
+        self.special_kind.as_ref().map(|k| k.rdev()).unwrap_or(0)
     }
 }
 

@@ -16,7 +16,7 @@ use crate::storage::StorageBackend;
 use crate::{
     Attributes, BackstoreInfo, BranchId, BranchInfo, ContentId, DirEntry, FileMode, FileTimes,
     FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode, SnapshotId,
-    StreamSpec,
+    SpecialNodeKind, StreamSpec,
 };
 
 use crate::{Backstore, LowerFs};
@@ -110,9 +110,11 @@ pub(crate) struct Node {
     pub mode: u32,
     pub uid: u32,
     pub gid: u32,
+    pub special_kind: Option<SpecialNodeKind>,
     pub xattrs: HashMap<String, Vec<u8>>, // Extended attributes
     pub acls: HashMap<u32, Vec<u8>>,      // ACLs by type (ACL_TYPE_EXTENDED, etc.)
     pub flags: u32,                       // BSD flags (UF_* flags)
+    pub nlink: u32,
 }
 
 /// Handle types
@@ -357,9 +359,11 @@ impl FsCore {
             mode: 0o755,
             uid: self.config.security.default_uid,
             gid: self.config.security.default_gid,
+            special_kind: None,
             xattrs: HashMap::new(),
             acls: HashMap::new(),
             flags: 0,
+            nlink: 2, // root has '.' and '..'
         };
 
         let default_branch = Branch {
@@ -538,17 +542,17 @@ impl FsCore {
             groups: vec![gid], // Basic group membership - can be extended later
         };
 
-        // Check if already registered - if so, return existing PID
-        {
-            let identities = self.process_identities.lock().unwrap();
-            if identities.contains_key(&pid) {
-                return PID(pid);
-            }
-        }
-
-        // Register the process identity
+        // Check if already registered - if so, refresh identity and return
         {
             let mut identities = self.process_identities.lock().unwrap();
+            if let Some(existing) = identities.get_mut(&pid) {
+                if existing.uid != uid || existing.gid != gid {
+                    existing.uid = uid;
+                    existing.gid = gid;
+                    existing.groups = vec![gid];
+                }
+                return PID(pid);
+            }
             identities.insert(pid, user);
         }
 
@@ -642,6 +646,38 @@ impl FsCore {
         let allow_w = !want_write || (mode & w_bit) != 0;
         let allow_x = !want_exec || (mode & x_bit) != 0;
         allow_r && allow_w && allow_x
+    }
+
+    fn get_node_clone(&self, node_id: NodeId) -> FsResult<Node> {
+        let nodes = self.nodes.lock().unwrap();
+        nodes.get(&node_id).cloned().ok_or(FsError::NotFound)
+    }
+
+    fn check_dir_permissions(
+        &self,
+        pid: &PID,
+        dir_id: NodeId,
+        child: Option<&Node>,
+    ) -> FsResult<()> {
+        if !self.config.security.enforce_posix_permissions {
+            return Ok(());
+        }
+        let Some(user) = self.user_for_process(pid) else {
+            return Ok(());
+        };
+        let dir_node = self.get_node_clone(dir_id)?;
+        if !self.allowed_for_user(&dir_node, &user, false, true, true) {
+            return Err(FsError::AccessDenied);
+        }
+
+        if let Some(child_node) = child {
+            let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
+            if sticky && user.uid != 0 && user.uid != dir_node.uid && user.uid != child_node.uid {
+                return Err(FsError::AccessDenied);
+            }
+        }
+
+        Ok(())
     }
 
     /// Resolve a path to a node ID and parent information (read-only)
@@ -747,9 +783,40 @@ impl FsCore {
             mode: 0o644,
             uid: self.config.security.default_uid,
             gid: self.config.security.default_gid,
+            special_kind: None,
             xattrs: HashMap::new(),
             acls: HashMap::new(),
             flags: 0,
+            nlink: 1,
+        };
+
+        self.nodes.lock().unwrap().insert(node_id, node);
+        Ok(node_id)
+    }
+
+    fn create_special_node(&self, kind: SpecialNodeKind) -> FsResult<NodeId> {
+        let node_id = self.allocate_node_id();
+        let now = Self::current_timestamp();
+
+        let node = Node {
+            id: node_id,
+            kind: NodeKind::File {
+                streams: HashMap::new(),
+            },
+            times: FileTimes {
+                atime: now,
+                mtime: now,
+                ctime: now,
+                birthtime: now,
+            },
+            mode: 0o644,
+            uid: self.config.security.default_uid,
+            gid: self.config.security.default_gid,
+            special_kind: Some(kind),
+            xattrs: HashMap::new(),
+            acls: HashMap::new(),
+            flags: 0,
+            nlink: 1,
         };
 
         self.nodes.lock().unwrap().insert(node_id, node);
@@ -775,9 +842,11 @@ impl FsCore {
             mode: 0o755,
             uid: self.config.security.default_uid,
             gid: self.config.security.default_gid,
+            special_kind: None,
             xattrs: HashMap::new(),
             acls: HashMap::new(),
             flags: 0,
+            nlink: 2, // '.' and '..'
         };
 
         self.nodes.lock().unwrap().insert(node_id, node);
@@ -892,14 +961,7 @@ impl FsCore {
         }
 
         // Insert into parent directory
-        {
-            let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent.kind {
-                    children.insert(internal_name, new_node_id);
-                }
-            }
-        }
+        self.link_child_into_parent(parent_id, &internal_name, new_node_id)?;
 
         Ok(new_node_id.0)
     }
@@ -1080,6 +1142,8 @@ impl FsCore {
             gid: node.gid,
             is_dir,
             is_symlink,
+            special_kind: node.special_kind.clone(),
+            nlink: node.nlink,
             mode_user: FileMode {
                 read: (perm_bits & 0o400) != 0,
                 write: (perm_bits & 0o200) != 0,
@@ -1581,6 +1645,174 @@ impl FsCore {
         }
     }
 
+    fn ensure_parent_dir_allows_creation(&self, pid: &PID, parent_id: NodeId) -> FsResult<()> {
+        if self.config.security.enforce_posix_permissions {
+            if let Some(user) = self.user_for_process(pid) {
+                let nodes = self.nodes.lock().unwrap();
+                let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
+                if !self.allowed_for_user(parent_node, &user, false, true, true) {
+                    return Err(FsError::AccessDenied);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn link_child_into_parent(
+        &self,
+        parent_id: NodeId,
+        child_name: &str,
+        child_id: NodeId,
+    ) -> FsResult<()> {
+        let mut nodes = self.nodes.lock().unwrap();
+        let child_is_dir = matches!(
+            nodes.get(&child_id).map(|n| &n.kind),
+            Some(NodeKind::Directory { .. })
+        );
+        if let Some(parent_node) = nodes.get_mut(&parent_id) {
+            match &mut parent_node.kind {
+                NodeKind::Directory { children } => {
+                    if children.contains_key(child_name) {
+                        return Err(FsError::AlreadyExists);
+                    }
+                    children.insert(child_name.to_string(), child_id);
+                    let now = Self::current_timestamp();
+                    parent_node.times.mtime = now;
+                    parent_node.times.ctime = now;
+                    if child_is_dir {
+                        parent_node.nlink = parent_node.nlink.saturating_add(1);
+                    }
+                    Ok(())
+                }
+                _ => Err(FsError::NotADirectory),
+            }
+        } else {
+            Err(FsError::NotFound)
+        }
+    }
+
+    fn unlink_child_from_parent(&self, parent_id: NodeId, child_name: &str) {
+        let mut nodes = self.nodes.lock().unwrap();
+        let removed_child = {
+            let Some(parent_node) = nodes.get_mut(&parent_id) else {
+                return;
+            };
+            if let NodeKind::Directory { children } = &mut parent_node.kind {
+                if let Some(child_id) = children.remove(child_name) {
+                    let now = Self::current_timestamp();
+                    parent_node.times.mtime = now;
+                    parent_node.times.ctime = now;
+                    Some(child_id)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some(child_id) = removed_child {
+            let child_is_dir = matches!(
+                nodes.get(&child_id).map(|n| &n.kind),
+                Some(NodeKind::Directory { .. })
+            );
+            if child_is_dir {
+                if let Some(parent_node) = nodes.get_mut(&parent_id) {
+                    parent_node.nlink = parent_node.nlink.saturating_sub(1);
+                }
+            }
+        }
+    }
+
+    fn increment_link_count(&self, node_id: NodeId) {
+        let mut nodes = self.nodes.lock().unwrap();
+        if let Some(node) = nodes.get_mut(&node_id) {
+            node.nlink = node.nlink.saturating_add(1);
+        }
+    }
+
+    fn decrement_link_count(&self, node_id: NodeId) -> u32 {
+        let mut nodes = self.nodes.lock().unwrap();
+        if let Some(node) = nodes.get_mut(&node_id) {
+            if node.nlink > 0 {
+                node.nlink -= 1;
+            }
+            return node.nlink;
+        }
+        0
+    }
+
+    fn node_link_count(&self, node_id: NodeId) -> u32 {
+        let nodes = self.nodes.lock().unwrap();
+        nodes.get(&node_id).map(|n| n.nlink).unwrap_or(0)
+    }
+
+    fn create_special_at_path(
+        &self,
+        pid: &PID,
+        path: &Path,
+        kind: SpecialNodeKind,
+        mode: u32,
+    ) -> FsResult<()> {
+        if self.resolve_path(pid, path).is_ok() {
+            return Err(FsError::AlreadyExists);
+        }
+
+        let parent_path = path.parent().ok_or(FsError::InvalidArgument)?;
+        let name = path.file_name().and_then(|n| n.to_str()).ok_or(FsError::InvalidName)?;
+
+        let (parent_id, _) = self.resolve_path(pid, parent_path)?;
+        self.ensure_parent_dir_allows_creation(pid, parent_id)?;
+
+        {
+            let nodes = self.nodes.lock().unwrap();
+            let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
+            if let NodeKind::Directory { children } = &parent_node.kind {
+                if children.contains_key(name) {
+                    return Err(FsError::AlreadyExists);
+                }
+            } else {
+                return Err(FsError::NotADirectory);
+            }
+        }
+
+        let node_id = self.create_special_node(kind)?;
+
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            if let Some(node) = nodes.get_mut(&node_id) {
+                node.mode = mode & 0o7777;
+            }
+        }
+
+        if let Some(user) = self.user_for_process(pid) {
+            let mut nodes = self.nodes.lock().unwrap();
+            if let Some(node) = nodes.get_mut(&node_id) {
+                node.uid = user.uid;
+                node.gid = user.gid;
+            }
+        }
+
+        self.link_child_into_parent(parent_id, name, node_id)?;
+
+        #[cfg(feature = "events")]
+        self.emit_event(EventKind::Created {
+            path: path.to_string_lossy().to_string(),
+        });
+
+        Ok(())
+    }
+
+    fn create_regular_via_mknod(&self, pid: &PID, path: &Path, mode: u32) -> FsResult<()> {
+        let mut opts = OpenOptions::default();
+        opts.create = true;
+        opts.write = true;
+        let handle = self.create(pid, path, &opts)?;
+        self.set_mode(pid, path, mode & 0o7777)?;
+        self.close(pid, handle)?;
+        Ok(())
+    }
+
     // File operations
     pub fn create(&self, pid: &PID, path: &Path, opts: &OpenOptions) -> FsResult<HandleId> {
         // Check if the path already exists
@@ -1595,15 +1827,7 @@ impl FsCore {
         let (parent_id, _) = self.resolve_path(pid, parent_path)?;
 
         // Permission check for parent directory w+x access
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                let nodes = self.nodes.lock().unwrap();
-                let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
-                if !self.allowed_for_user(parent_node, &user, false, true, true) {
-                    return Err(FsError::AccessDenied);
-                }
-            }
-        }
+        self.ensure_parent_dir_allows_creation(pid, parent_id)?;
 
         let nodes = self.nodes.lock().unwrap();
         let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
@@ -1623,15 +1847,7 @@ impl FsCore {
         let content_id = self.storage.allocate(&[])?;
         let file_node_id = self.create_file_node(content_id)?;
 
-        // Add to parent directory
-        {
-            let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent_node) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent_node.kind {
-                    children.insert(parent_name.to_string(), file_node_id);
-                }
-            }
-        }
+        self.link_child_into_parent(parent_id, parent_name, file_node_id)?;
 
         // Set ownership to creating process
         if let Some(user) = self.user_for_process(pid) {
@@ -1662,6 +1878,32 @@ impl FsCore {
         self.emit_event(EventKind::Created { path: path_str });
 
         Ok(handle_id)
+    }
+
+    pub fn mkfifo(&self, pid: &PID, path: &Path, mode: u32) -> FsResult<()> {
+        self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
+    }
+
+    pub fn mknod(&self, pid: &PID, path: &Path, mode: u32, dev: u64) -> FsResult<()> {
+        let file_type = mode & libc::S_IFMT as u32;
+        match file_type {
+            t if t == 0 || t == libc::S_IFREG as u32 => {
+                self.create_regular_via_mknod(pid, path, mode)
+            }
+            t if t == libc::S_IFIFO as u32 => {
+                self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
+            }
+            t if t == libc::S_IFCHR as u32 => {
+                self.create_special_at_path(pid, path, SpecialNodeKind::CharDevice { dev }, mode)
+            }
+            t if t == libc::S_IFBLK as u32 => {
+                self.create_special_at_path(pid, path, SpecialNodeKind::BlockDevice { dev }, mode)
+            }
+            t if t == libc::S_IFSOCK as u32 => {
+                self.create_special_at_path(pid, path, SpecialNodeKind::Socket, mode)
+            }
+            _ => Err(FsError::Unsupported),
+        }
     }
 
     pub fn open(&self, pid: &PID, path: &Path, opts: &OpenOptions) -> FsResult<HandleId> {
@@ -2140,12 +2382,10 @@ impl FsCore {
         }
         drop(locks);
 
-        // If this was the last handle to a deleted file, remove the node
+        // If this was the last handle to a deleted file with no remaining links, remove the node
         if was_deleted {
-            let remaining_handles: Vec<_> =
-                handles.values().filter(|h| h.node_id == node_id).collect();
-
-            if remaining_handles.is_empty() {
+            let remaining_handles = handles.values().any(|h| h.node_id == node_id);
+            if !remaining_handles && self.node_link_count(node_id) == 0 {
                 let mut nodes = self.nodes.lock().unwrap();
                 nodes.remove(&node_id);
             }
@@ -2266,15 +2506,7 @@ impl FsCore {
             }
         }
 
-        // Add to parent directory
-        {
-            let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent_node) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent_node.kind {
-                    children.insert(dir_name.to_string(), dir_node_id);
-                }
-            }
-        }
+        self.link_child_into_parent(parent_id, dir_name, dir_node_id)?;
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
@@ -2291,30 +2523,23 @@ impl FsCore {
             return Err(FsError::InvalidArgument); // Can't remove root
         };
 
-        let nodes = self.nodes.lock().unwrap();
-        let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+        let node = {
+            let nodes = self.nodes.lock().unwrap();
+            nodes.get(&node_id).cloned().ok_or(FsError::NotFound)?
+        };
 
-        // Check if it's a directory and empty
         match &node.kind {
             NodeKind::Directory { children } => {
                 if !children.is_empty() {
-                    return Err(FsError::Busy); // Directory not empty
+                    return Err(FsError::Busy);
                 }
             }
-            NodeKind::File { .. } => return Err(FsError::NotADirectory),
-            NodeKind::Symlink { .. } => return Err(FsError::NotADirectory),
+            _ => return Err(FsError::NotADirectory),
         }
-        drop(nodes);
 
-        // Remove from parent directory
-        {
-            let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent_node) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent_node.kind {
-                    children.remove(&name);
-                }
-            }
-        }
+        self.check_dir_permissions(pid, parent_id, Some(&node))?;
+
+        self.unlink_child_from_parent(parent_id, &name);
 
         // Remove the directory node itself to avoid leaking nodes
         {
@@ -2417,6 +2642,8 @@ impl FsCore {
                 gid: child_node.gid,
                 is_dir,
                 is_symlink,
+                special_kind: child_node.special_kind.clone(),
+                nlink: child_node.nlink,
                 mode_user: FileMode {
                     read: (perm_bits & 0o400) != 0,
                     write: (perm_bits & 0o200) != 0,
@@ -2493,6 +2720,8 @@ impl FsCore {
                     gid: child_node.gid,
                     is_dir,
                     is_symlink,
+                    special_kind: child_node.special_kind.clone(),
+                    nlink: child_node.nlink,
                     mode_user: FileMode {
                         read: (perm_bits & 0o400) != 0,
                         write: (perm_bits & 0o200) != 0,
@@ -2560,6 +2789,8 @@ impl FsCore {
                         gid: child_node.gid,
                         is_dir,
                         is_symlink,
+                        special_kind: child_node.special_kind.clone(),
+                        nlink: child_node.nlink,
                         mode_user: FileMode {
                             read: true,
                             write: true,
@@ -2901,6 +3132,8 @@ impl FsCore {
             gid: node.gid,
             is_dir,
             is_symlink,
+            special_kind: node.special_kind.clone(),
+            nlink: node.nlink,
             mode_user: FileMode {
                 read: (perm_bits & 0o400) != 0,
                 write: (perm_bits & 0o200) != 0,
@@ -3079,6 +3312,8 @@ impl FsCore {
                             gid: child_node.gid,
                             is_dir,
                             is_symlink,
+                            special_kind: child_node.special_kind.clone(),
+                            nlink: child_node.nlink,
                             mode_user: FileMode {
                                 read: (perm_bits & 0o400) != 0,
                                 write: (perm_bits & 0o200) != 0,
@@ -3401,33 +3636,20 @@ impl FsCore {
             return Err(FsError::InvalidArgument); // Can't unlink root
         };
 
-        let nodes = self.nodes.lock().unwrap();
-        let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+        let node = {
+            let nodes = self.nodes.lock().unwrap();
+            nodes.get(&node_id).cloned().ok_or(FsError::NotFound)?
+        };
 
-        // Check if it's a file or symlink (can't unlink directories with unlink)
         match &node.kind {
             NodeKind::Directory { .. } => return Err(FsError::IsADirectory),
-            NodeKind::File { .. } => {}
-            NodeKind::Symlink { .. } => {} // Symlinks can be unlinked like files
+            _ => {}
         }
-        // Enforce parent directory permissions w+x and sticky semantics
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                let parent = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
-                if !self.allowed_for_user(parent, &user, false, true, true) {
-                    return Err(FsError::AccessDenied);
-                }
-                let sticky = (parent.mode & 0o1000) != 0;
-                if sticky && user.uid != 0 && user.uid != parent.uid && user.uid != node.uid {
-                    return Err(FsError::AccessDenied);
-                }
-            }
-        }
-        drop(nodes);
+        self.check_dir_permissions(pid, parent_id, Some(&node))?;
 
-        // Check if any handles are open to this file and mark them as deleted
         let mut handles = self.handles.lock().unwrap();
         let has_open_handles = handles.values().any(|h| h.node_id == node_id);
+        let remaining_links = self.decrement_link_count(node_id);
 
         if has_open_handles {
             // Mark all file handles to this file as deleted
@@ -3438,21 +3660,22 @@ impl FsCore {
                     }
                 }
             }
-        } else {
-            // No open handles, remove immediately
-            let mut nodes = self.nodes.lock().unwrap();
-            nodes.remove(&node_id);
         }
+        drop(handles);
 
-        // Remove from parent directory
+        let now = FsCore::current_timestamp();
         {
             let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent_node) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent_node.kind {
-                    children.remove(&name);
-                }
+            if let Some(node) = nodes.get_mut(&node_id) {
+                node.times.ctime = now;
+            }
+            if remaining_links == 0 && !has_open_handles {
+                // No open handles and no more directory links, remove immediately
+                nodes.remove(&node_id);
             }
         }
+
+        self.unlink_child_from_parent(parent_id, &name);
 
         // Emit event
         let path_str = path.to_string_lossy().to_string();
@@ -3518,6 +3741,8 @@ impl FsCore {
                     gid: node.gid,
                     is_dir: false,
                     is_symlink: true,
+                    special_kind: node.special_kind.clone(),
+                    nlink: node.nlink,
                     mode_user: FileMode {
                         read: (node.mode & libc::S_IRUSR as u32) != 0,
                         write: (node.mode & libc::S_IWUSR as u32) != 0,
@@ -3795,62 +4020,14 @@ impl FsCore {
         // Get inode number from path hash (simplified)
         let inode = self.simple_inode_from_path(path);
 
-        // Convert FileMode structs to mode bits
-        let user_mode = if attrs.mode_user.read {
-            libc::S_IRUSR as u32
-        } else {
-            0
-        } | if attrs.mode_user.write {
-            libc::S_IWUSR as u32
-        } else {
-            0
-        } | if attrs.mode_user.exec {
-            libc::S_IXUSR as u32
-        } else {
-            0
-        };
-        let group_mode = if attrs.mode_group.read {
-            libc::S_IRGRP as u32
-        } else {
-            0
-        } | if attrs.mode_group.write {
-            libc::S_IWGRP as u32
-        } else {
-            0
-        } | if attrs.mode_group.exec {
-            libc::S_IXGRP as u32
-        } else {
-            0
-        };
-        let other_mode = if attrs.mode_other.read {
-            libc::S_IROTH as u32
-        } else {
-            0
-        } | if attrs.mode_other.write {
-            libc::S_IWOTH as u32
-        } else {
-            0
-        } | if attrs.mode_other.exec {
-            libc::S_IXOTH as u32
-        } else {
-            0
-        };
-        let file_type = if attrs.is_dir {
-            libc::S_IFDIR as u32
-        } else if attrs.is_symlink {
-            libc::S_IFLNK as u32
-        } else {
-            libc::S_IFREG as u32
-        };
-
         Ok(StatData {
             st_dev: 1, // Dummy device ID
             st_ino: inode,
-            st_mode: file_type | user_mode | group_mode | other_mode,
-            st_nlink: 1, // Simplified
+            st_mode: attrs.mode(),
+            st_nlink: attrs.nlink,
             st_uid: attrs.uid,
             st_gid: attrs.gid,
-            st_rdev: 0, // Not a special file
+            st_rdev: attrs.rdev(),
             st_size: attrs.len,
             st_blksize: 4096,                   // 4KB block size
             st_blocks: attrs.len.div_ceil(512), // Number of 512-byte blocks
@@ -3875,64 +4052,83 @@ impl FsCore {
 
     /// Rename a node from old path to new path. Fails if destination exists.
     pub fn rename(&self, pid: &PID, old: &Path, new: &Path) -> FsResult<()> {
-        // Resolve old path and its parent
-        let (old_id, old_parent) = self.resolve_path(pid, old)?;
-        let Some((old_parent_id, old_name)) = old_parent else {
-            return Err(FsError::InvalidArgument); // Cannot rename root
-        };
+        if old == new {
+            return Ok(());
+        }
 
-        // Resolve destination parent and name
+        let (src_id, src_parent_info) = self.resolve_path(pid, old)?;
+        let Some((src_parent_id, src_name)) = src_parent_info else {
+            return Err(FsError::InvalidArgument);
+        };
+        let src_node = self.get_node_clone(src_id)?;
+
         let new_parent_path = new.parent().ok_or(FsError::InvalidArgument)?;
         let new_name = new
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or(FsError::InvalidName)?
             .to_string();
+        let (dst_parent_id, _) = self.resolve_path(pid, new_parent_path)?;
 
-        let (new_parent_id, _) = self.resolve_path(pid, new_parent_path)?;
+        if src_parent_id == dst_parent_id && src_name == new_name {
+            return Ok(());
+        }
 
-        // Lock nodes for mutation
-        let mut nodes = self.nodes.lock().unwrap();
+        if matches!(src_node.kind, NodeKind::Directory { .. }) && new.starts_with(old) {
+            return Err(FsError::InvalidArgument);
+        }
 
-        // Ensure destination does not exist
-        if let Some(parent_node) = nodes.get(&new_parent_id) {
-            if let NodeKind::Directory { children } = &parent_node.kind {
-                if children.contains_key(&new_name) {
-                    return Err(FsError::AlreadyExists);
+        let (dest_id, dest_node) = match self.resolve_path(pid, new) {
+            Ok((id, _)) => {
+                if id == src_id {
+                    return Ok(());
                 }
-            } else {
-                return Err(FsError::NotADirectory);
+                (Some(id), Some(self.get_node_clone(id)?))
             }
-        } else {
-            return Err(FsError::NotFound);
-        }
+            Err(FsError::NotFound) => (None, None),
+            Err(e) => return Err(e),
+        };
 
-        // Remove from old parent's children and insert into new parent's children
-        // Also update ctime on the moved node and both directories
-        let now = FsCore::current_timestamp();
-
-        // Remove from old parent
-        if let Some(old_parent_node) = nodes.get_mut(&old_parent_id) {
-            if let NodeKind::Directory { children } = &mut old_parent_node.kind {
-                children.remove(&old_name);
-                old_parent_node.times.ctime = now;
-            }
-        }
-
-        // Insert into new parent
-        if let Some(new_parent_node) = nodes.get_mut(&new_parent_id) {
-            if let NodeKind::Directory { children } = &mut new_parent_node.kind {
-                children.insert(new_name, old_id);
-                new_parent_node.times.ctime = now;
+        if let Some(dest_node) = &dest_node {
+            match (&src_node.kind, &dest_node.kind) {
+                (NodeKind::Directory { .. }, NodeKind::Directory { children }) => {
+                    if !children.is_empty() {
+                        return Err(FsError::Busy);
+                    }
+                }
+                (NodeKind::Directory { .. }, _) => return Err(FsError::NotADirectory),
+                (_, NodeKind::Directory { .. }) => return Err(FsError::IsADirectory),
+                _ => {}
             }
         }
 
-        // Update moved node's ctime
-        if let Some(node) = nodes.get_mut(&old_id) {
-            node.times.ctime = now;
+        self.check_dir_permissions(pid, src_parent_id, Some(&src_node))?;
+        if dst_parent_id != src_parent_id || dest_node.is_some() {
+            self.check_dir_permissions(pid, dst_parent_id, dest_node.as_ref())?;
         }
 
-        // Emit Renamed event
+        if let Some(dest_node) = dest_node {
+            match dest_node.kind {
+                NodeKind::Directory { .. } => {
+                    self.rmdir(pid, new)?;
+                }
+                _ => {
+                    self.unlink(pid, new)?;
+                }
+            }
+        }
+
+        self.unlink_child_from_parent(src_parent_id, &src_name);
+        self.link_child_into_parent(dst_parent_id, &new_name, src_id)?;
+
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            if let Some(node) = nodes.get_mut(&src_id) {
+                let now = FsCore::current_timestamp();
+                node.times.ctime = now;
+            }
+        }
+
         #[cfg(feature = "events")]
         self.emit_event(EventKind::Renamed {
             from: old.to_string_lossy().to_string(),
@@ -3978,15 +4174,7 @@ impl FsCore {
         // Create symlink node
         let symlink_node_id = self.create_symlink_node(target.to_string())?;
 
-        // Add to parent directory
-        {
-            let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent_node) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent_node.kind {
-                    children.insert(link_name, symlink_node_id);
-                }
-            }
-        }
+        self.link_child_into_parent(parent_id, &link_name, symlink_node_id)?;
 
         // Emit event
         let path_str = linkpath.to_string_lossy().to_string();
@@ -4043,19 +4231,11 @@ impl FsCore {
             }
         }
 
-        // Add link to parent directory
+        self.link_child_into_parent(parent_id, &link_name, node_id)?;
+        self.increment_link_count(node_id);
+
         {
             let mut nodes = self.nodes.lock().unwrap();
-            if let Some(parent_node) = nodes.get_mut(&parent_id) {
-                if let NodeKind::Directory { children } = &mut parent_node.kind {
-                    children.insert(link_name, node_id);
-                    parent_node.times.ctime = Self::current_timestamp();
-                } else {
-                    return Err(FsError::NotADirectory);
-                }
-            }
-
-            // Increment link count
             if let Some(node) = nodes.get_mut(&node_id) {
                 node.times.ctime = Self::current_timestamp();
             }
@@ -4168,9 +4348,11 @@ impl FsCore {
             mode: 0o777, // Symlinks typically have full permissions
             uid: self.config.security.default_uid,
             gid: self.config.security.default_gid,
+            special_kind: None,
             xattrs: HashMap::new(),
             acls: HashMap::new(),
             flags: 0,
+            nlink: 1,
         };
 
         let mut nodes = self.nodes.lock().unwrap();
@@ -4370,6 +4552,106 @@ mod tests {
         // Verify basic filesystem stats (these will be dummy values for now)
         assert!(statfs_data.f_bsize > 0);
         assert!(statfs_data.f_blocks > 0);
+    }
+
+    #[test]
+    fn test_mkfifo_sets_fifo_type() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        fs.mkfifo(&pid, "/pipe".as_ref(), 0o640).expect("mkfifo should succeed");
+
+        let attrs = fs.getattr(&pid, "/pipe".as_ref()).expect("getattr should succeed");
+        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFIFO as u32);
+        assert_eq!(attrs.mode() & 0o777, 0o640);
+    }
+
+    #[test]
+    fn test_mknod_char_device_records_rdev() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        let dev: u64 = 0x1234;
+        fs.mknod(&pid, "/ttyX".as_ref(), (libc::S_IFCHR as u32) | 0o660, dev)
+            .expect("mknod should succeed");
+
+        let attrs = fs.getattr(&pid, "/ttyX".as_ref()).expect("getattr should succeed");
+        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFCHR as u32);
+        assert_eq!(attrs.mode() & 0o777, 0o660);
+        assert_eq!(attrs.rdev(), dev);
+    }
+
+    #[test]
+    fn test_mknod_socket_creates_special_file() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        fs.mknod(&pid, "/sock".as_ref(), (libc::S_IFSOCK as u32) | 0o644, 0)
+            .expect("mknod should support sockets");
+
+        let attrs = fs.getattr(&pid, "/sock".as_ref()).expect("getattr should succeed");
+        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFSOCK as u32);
+        assert_eq!(attrs.mode() & 0o777, 0o644);
+        assert_eq!(attrs.special_kind, Some(SpecialNodeKind::Socket));
+    }
+
+    #[test]
+    fn test_unlink_allows_recreate_same_name() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        // Create then unlink a regular file
+        let handle = fs.create(&pid, "/foo".as_ref(), &rw_create()).expect("create foo");
+        fs.close(&pid, handle).expect("close foo");
+        fs.unlink(&pid, "/foo".as_ref()).expect("unlink foo");
+
+        // Recreate as fifo should succeed
+        fs.mkfifo(&pid, "/foo".as_ref(), 0o600).expect("mkfifo after unlink");
+
+        fs.unlink(&pid, "/foo".as_ref()).expect("unlink fifo");
+
+        // Create as socket
+        fs.mknod(&pid, "/foo".as_ref(), (libc::S_IFSOCK as u32) | 0o600, 0)
+            .expect("mknod socket after unlink");
+    }
+
+    #[test]
+    fn test_unlink_updates_ctime_for_remaining_links() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        fs.create(&pid, "/file".as_ref(), &rw_create()).expect("create file");
+        fs.link(&pid, "/file".as_ref(), "/file_link".as_ref()).expect("link file");
+
+        // Force a predictable baseline for ctime.
+        let (node_id, _) = fs.resolve_path(&pid, "/file".as_ref()).expect("resolve file");
+        let baseline = FileTimes {
+            atime: 1,
+            mtime: 1,
+            ctime: 5,
+            birthtime: 1,
+        };
+        fs.set_node_times(node_id, baseline).expect("set custom times");
+
+        let before = fs.getattr(&pid, "/file".as_ref()).expect("stat before");
+        fs.unlink(&pid, "/file_link".as_ref()).expect("unlink link");
+        let after = fs.getattr(&pid, "/file".as_ref()).expect("stat after");
+
+        assert!(after.times.ctime > before.times.ctime);
+    }
+
+    #[test]
+    fn test_unlink_sets_nlink_zero_for_open_handle() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        let handle = fs.create(&pid, "/ghost".as_ref(), &rw_create()).expect("create ghost");
+        fs.unlink(&pid, "/ghost".as_ref()).expect("unlink ghost");
+
+        let stat = fs.fstat(&pid, handle).expect("fstat handle");
+        assert_eq!(stat.st_nlink, 0);
+
+        fs.close(&pid, handle).expect("close ghost");
     }
 
     #[test]

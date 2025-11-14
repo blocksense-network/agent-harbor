@@ -160,6 +160,7 @@ impl AgentFsClient {
                     gid: 0, // Not available in simplified SSZ response
                     is_dir: resp.is_dir,
                     is_symlink: resp.is_symlink,
+                    nlink: 1,
                     mode_user: agentfs_core::FileMode {
                         read: true,
                         write: resp.is_dir,
