@@ -10,7 +10,9 @@ use ah_core::{
     BranchesEnumerator, LogLevel, RepositoriesEnumerator, TaskEvent, TaskManager,
     WorkspaceFilesEnumerator,
 };
-use ah_domain_types::{TaskState, task::ToolStatus};
+use ah_domain_types::{
+    AgentChoice, AgentSoftware, AgentSoftwareBuild, TaskState, task::ToolStatus,
+};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::Settings;
@@ -63,9 +65,15 @@ mod event_processing_tests {
             id: "test_task_1".to_string(),
             repository: "test/repo".to_string(),
             branch: "main".to_string(),
-            agents: vec![ah_domain_types::SelectedModel {
-                name: "Claude".to_string(),
+            agents: vec![ah_domain_types::AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }],
             state: TaskState::Running,
             timestamp: "2024-01-01T12:00:00Z".to_string(),
@@ -81,9 +89,15 @@ mod event_processing_tests {
             metadata: TaskMetadataViewModel {
                 repository: "test/repo".to_string(),
                 branch: "main".to_string(),
-                models: vec![ah_domain_types::SelectedModel {
-                    name: "Claude".to_string(),
+                models: vec![ah_domain_types::AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software: AgentSoftware::Claude,
+                        version: "latest".to_string(),
+                    },
+                    model: "sonnet".to_string(),
                     count: 1,
+                    settings: std::collections::HashMap::new(),
+                    display_name: Some("Claude Latest".to_string()),
                 }],
                 state: ah_domain_types::TaskState::Running,
                 timestamp: "2024-01-01T12:00:00Z".to_string(),

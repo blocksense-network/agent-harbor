@@ -35,8 +35,15 @@ pub async fn create_task(
     let response = session_service.create_session(&request).await?;
     drop(session_service); // Release the service
 
-    // Verify the session was created by fetching it
-    let session =
+    // Verify at least one session was created
+    if response.session_ids.is_empty() {
+        return Err(crate::ServerError::BadRequest(
+            "No sessions were created".to_string(),
+        ));
+    }
+
+    // Verify the first session was created
+    let _session =
         state
             .session_store
             .get_session(&response.session_ids[0])

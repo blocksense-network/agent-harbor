@@ -7,7 +7,8 @@
 //! the real REST API client or a mock client, allowing seamless switching between
 //! production and testing environments.
 
-use ah_domain_types::{SelectedModel, TaskExecution, TaskInfo, TaskState};
+use ah_domain_types::{TaskExecution, TaskInfo, TaskState};
+
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
@@ -80,7 +81,7 @@ pub trait RestApiClient: Send + Sync {
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[ah_domain_types::SelectedModel],
+        models: &[ah_domain_types::AgentChoice],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     /// Get files for a repository
@@ -246,16 +247,8 @@ where
         let repo_url = url::Url::parse(params.repository())
             .expect("Repository URL should be valid (validated in TaskLaunchParams::new)");
 
-        // Convert parameters to REST API format
-        let agent = ah_rest_api_contract::AgentConfig {
-            agent_type: params
-                .models()
-                .first()
-                .map(|m| m.name.clone())
-                .unwrap_or_else(|| "claude-code".to_string()),
-            version: "latest".to_string(),
-            settings: std::collections::HashMap::new(),
-        };
+        // Use agents directly from parameters
+        let agents: Vec<ah_domain_types::AgentChoice> = params.models().to_vec();
 
         let repo = ah_rest_api_contract::RepoConfig {
             mode: ah_rest_api_contract::RepoMode::Git,
@@ -277,7 +270,7 @@ where
             repo,
             runtime,
             workspace: None,
-            agent,
+            agents,
             delivery: None,
             labels: std::collections::HashMap::new(),
             webhooks: vec![],
@@ -350,10 +343,7 @@ where
                         id: session.id,
                         repository: session.vcs.repo_url.unwrap_or_else(|| "unknown".to_string()),
                         branch: session.vcs.branch.unwrap_or_else(|| "main".to_string()),
-                        agents: vec![SelectedModel {
-                            name: session.agent.agent_type,
-                            count: 1,
-                        }],
+                        agents: vec![session.agent.clone()],
                         state: match session.status {
                             ah_rest_api_contract::SessionStatus::Queued => TaskState::Queued,
                             ah_rest_api_contract::SessionStatus::Provisioning => {
@@ -391,7 +381,7 @@ where
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[ah_domain_types::SelectedModel],
+        models: &[ah_domain_types::AgentChoice],
     ) -> crate::task_manager::SaveDraftResult {
         match self
             .client
@@ -487,7 +477,7 @@ impl RestApiClient for ah_rest_client::RestClient {
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[ah_domain_types::SelectedModel],
+        models: &[ah_domain_types::AgentChoice],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.save_draft_task(draft_id, description, repository, branch, models)
             .await
@@ -509,7 +499,7 @@ impl RestApiClient for ah_rest_client::RestClient {
 mod tests {
     use super::*;
     use crate::agent_types::AgentType;
-    use ah_domain_types::SelectedModel;
+    use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 
     #[tokio::test]
     async fn rest_task_manager_validates_parameters() {
@@ -520,9 +510,15 @@ mod tests {
             .repository("https://github.com/test/repo".to_string())
             .branch("main".to_string())
             .description("".to_string())
-            .models(vec![SelectedModel {
-                name: "claude-code".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .agent_type(AgentType::Claude)
             .task_id("test-task-id".to_string())
@@ -535,7 +531,7 @@ mod tests {
             .repository("https://github.com/test/repo".to_string())
             .branch("main".to_string())
             .description("Test task".to_string())
-            .models(vec![])
+            .agents(vec![])
             .agent_type(AgentType::Claude)
             .task_id("test-task-id".to_string())
             .build();
@@ -547,9 +543,15 @@ mod tests {
             .repository("".to_string())
             .branch("main".to_string())
             .description("Test task".to_string())
-            .models(vec![SelectedModel {
-                name: "claude-code".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .agent_type(AgentType::Claude)
             .task_id("test-task-id".to_string())
@@ -562,9 +564,15 @@ mod tests {
             .repository("https://github.com/test/repo".to_string())
             .branch("".to_string())
             .description("Test task".to_string())
-            .models(vec![SelectedModel {
-                name: "claude-code".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .agent_type(AgentType::Claude)
             .task_id("test-task-id".to_string())
@@ -580,9 +588,15 @@ mod tests {
             .repository("https://github.com/test/repo".to_string())
             .branch("main".to_string())
             .description("Test task".to_string())
-            .models(vec![SelectedModel {
-                name: "claude-code".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .agent_type(AgentType::Claude)
             .task_id("test-task-id".to_string())

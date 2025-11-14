@@ -241,7 +241,7 @@ impl RestApiClient for RecordingClient {
         _description: &str,
         _repository: &str,
         _branch: &str,
-        _models: &[ah_domain_types::SelectedModel],
+        _agents: &[ah_domain_types::AgentChoice],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         panic!("save_draft_task should not be called in repository enumerator test");
     }

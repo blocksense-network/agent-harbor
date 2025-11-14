@@ -20,6 +20,7 @@ ah-core = { path = "../ah-core" }
 ah-workflows = { path = "../ah-workflows" }
 ah-recorder = { path = "../ah-recorder" }
 ah-mux = { path = "../ah-mux" }
+config-core = { path = "../config-core" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
 ratatui = "0.29"

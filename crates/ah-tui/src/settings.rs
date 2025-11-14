@@ -1,8 +1,8 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use ah_domain_types::AgentChoice;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Font style for displaying symbols and icons
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1728,6 +1728,9 @@ pub struct Settings {
 
     /// Keyboard shortcuts configuration
     pub keymap: Option<KeymapConfig>,
+
+    /// Default agent selections for new tasks
+    pub default_agents: Option<Vec<AgentChoice>>,
 }
 
 impl Default for Settings {
@@ -1738,11 +1741,34 @@ impl Default for Settings {
             selection_dialog_style: Some(SelectionDialogStyle::Default),
             autocomplete_show_border: Some(true),
             keymap: Some(KeymapConfig::default()),
+            default_agents: None,
         }
     }
 }
 
 impl Settings {
+    /// Load settings from configuration
+    pub fn from_config() -> Result<Self, Box<dyn std::error::Error>> {
+        let mut settings = Self::default();
+
+        // Load configuration
+        let paths = config_core::paths::discover_paths(None);
+        let config = config_core::load_all(&paths, &[])?;
+
+        // Extract default agents if configured
+        if let Some(default_agents_config) = config.json.get("default-agents") {
+            if let Ok(agents) =
+                serde_json::from_value::<Vec<AgentChoice>>(default_agents_config.clone())
+            {
+                if !agents.is_empty() {
+                    settings.default_agents = Some(agents);
+                }
+            }
+        }
+
+        Ok(settings)
+    }
+
     /// Get the number of activity rows, with default fallback
     pub fn activity_rows(&self) -> usize {
         self.active_sessions_activity_rows.unwrap_or(3)

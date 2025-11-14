@@ -12,7 +12,10 @@ use ah_core::{
     SplitMode, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager, TaskState,
     agent_types::AgentType, task_manager::SaveDraftResult,
 };
-use ah_domain_types::{Branch, DeliveryStatus, Repository, SelectedModel, TaskExecution, TaskInfo};
+use ah_domain_types::{
+    AgentChoice, AgentSoftware, AgentSoftwareBuild, Branch, DeliveryStatus, Repository,
+    TaskExecution, TaskInfo,
+};
 use ah_domain_types::{LogLevel, ToolStatus};
 use ah_rest_api_contract::*;
 use async_trait::async_trait;
@@ -23,6 +26,28 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
+
+/// Helper function to create AgentChoice from display name
+fn create_agent_choice(display_name: &str, count: usize) -> AgentChoice {
+    let (software, model) = match display_name {
+        "Claude 3.5 Sonnet" => (AgentSoftware::Claude, "sonnet"),
+        "Claude Opus" | "Claude 3 Opus" => (AgentSoftware::Claude, "opus"),
+        "GPT-4" => (AgentSoftware::Codex, "gpt-4"),
+        "GPT-5" => (AgentSoftware::Codex, "gpt-5"),
+        "GPT-3.5 Turbo" => (AgentSoftware::Codex, "gpt-3.5-turbo"),
+        _ => (AgentSoftware::Claude, "sonnet"), // default fallback
+    };
+    AgentChoice {
+        agent: AgentSoftwareBuild {
+            software,
+            version: "latest".to_string(),
+        },
+        model: model.to_string(),
+        count,
+        settings: std::collections::HashMap::new(),
+        display_name: Some(display_name.to_string()),
+    }
+}
 
 /// Mock REST client implementing the TaskManager trait
 #[derive(Debug, Clone)]
@@ -104,11 +129,7 @@ impl MockRestClient {
             id: task_info.id,
             repository: task_info.repository,
             branch: task_info.branch,
-            agents: task_info
-                .models
-                .into_iter()
-                .map(|name| SelectedModel { name, count: 1 })
-                .collect(),
+            agents: task_info.models.clone(),
             state: match task_info.status.as_str() {
                 "running" => TaskState::Running,
                 "completed" => TaskState::Completed,
@@ -182,7 +203,7 @@ impl TaskManager for MockRestClient {
             repository: params.repository().to_string(),
             branch: params.branch().to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
-            models: params.models().iter().map(|m| m.name.clone()).collect(),
+            models: params.models().to_vec(),
         };
 
         self.tasks.write().await.insert(task_id.clone(), task_info);
@@ -229,10 +250,7 @@ impl TaskManager for MockRestClient {
                 id: "Implement user authentication flow".to_string(),
                 repository: "myapp/backend".to_string(),
                 branch: "main".to_string(),
-                agents: vec![SelectedModel {
-                    name: "Claude 3.5 Sonnet".to_string(),
-                    count: 1,
-                }],
+                agents: vec![create_agent_choice("Claude 3.5 Sonnet", 1)],
                 state: TaskState::Running,
                 timestamp: chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::hours(1))
@@ -249,10 +267,7 @@ impl TaskManager for MockRestClient {
                 id: "Optimize database queries for performance".to_string(),
                 repository: "myapp/backend".to_string(),
                 branch: "feature/db-optimization".to_string(),
-                agents: vec![SelectedModel {
-                    name: "GPT-4".to_string(),
-                    count: 1,
-                }],
+                agents: vec![create_agent_choice("GPT-4", 1)],
                 state: TaskState::Running,
                 timestamp: chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::hours(2))
@@ -267,10 +282,7 @@ impl TaskManager for MockRestClient {
                 id: "Add error handling to API endpoints".to_string(),
                 repository: "myapp/backend".to_string(),
                 branch: "main".to_string(),
-                agents: vec![SelectedModel {
-                    name: "Claude 3 Opus".to_string(),
-                    count: 1,
-                }],
+                agents: vec![create_agent_choice("Claude 3 Opus", 1)],
                 state: TaskState::Completed,
                 timestamp: chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::days(1))
@@ -296,10 +308,7 @@ impl TaskManager for MockRestClient {
                 id: "Implement dark mode toggle in UI".to_string(),
                 repository: "myapp/frontend".to_string(),
                 branch: "feature/dark-mode".to_string(),
-                agents: vec![SelectedModel {
-                    name: "GPT-3.5 Turbo".to_string(),
-                    count: 1,
-                }],
+                agents: vec![create_agent_choice("GPT-3.5 Turbo", 1)],
                 state: TaskState::Merged,
                 timestamp: chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::days(2))
@@ -332,7 +341,7 @@ impl TaskManager for MockRestClient {
         description: &str,
         repository: &str,
         branch: &str,
-        models: &[ah_domain_types::SelectedModel],
+        models: &[ah_domain_types::AgentChoice],
     ) -> ah_core::task_manager::SaveDraftResult {
         use ah_core::task_manager::SaveDraftResult;
 
@@ -355,7 +364,7 @@ impl TaskManager for MockRestClient {
             repository: repository.to_string(),
             branch: branch.to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
-            models: models.iter().map(|m| m.name.clone()).collect(),
+            models: models.to_vec(),
         };
 
         self.drafts.write().await.insert(draft_id.to_string(), draft_info);
@@ -387,10 +396,7 @@ impl ah_core::RestApiClient for MockRestClient {
             )
             .branch(request.repo.branch.clone().unwrap_or_else(|| "main".to_string()))
             .description(request.prompt.clone())
-            .models(vec![ah_domain_types::SelectedModel {
-                name: request.agent.agent_type.clone(),
-                count: 1,
-            }])
+            .agents(request.agents.clone())
             .agent_type(ah_core::agent_types::AgentType::Codex)
             .split_mode(SplitMode::None) // Mock client doesn't support split view
             .focus(false) // Mock client doesn't support focus
@@ -627,15 +633,16 @@ impl ah_core::RestApiClient for MockRestClient {
                     attachments: std::collections::HashMap::new(),
                     labels: std::collections::HashMap::new(),
                 },
-                agent: ah_rest_api_contract::AgentConfig {
-                    agent_type: task
-                        .agents
-                        .first()
-                        .map(|m| m.name.clone())
-                        .unwrap_or_else(|| "claude-code".to_string()),
-                    version: "latest".to_string(),
+                agent: task.agents.first().cloned().unwrap_or_else(|| AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software: AgentSoftware::Claude,
+                        version: "latest".to_string(),
+                    },
+                    model: "sonnet".to_string(),
+                    count: 1,
                     settings: std::collections::HashMap::new(),
-                },
+                    display_name: Some("Claude Code".to_string()),
+                }),
                 runtime: ah_rest_api_contract::RuntimeConfig {
                     runtime_type: ah_rest_api_contract::RuntimeType::Local,
                     devcontainer_path: None,
@@ -787,7 +794,7 @@ impl ah_core::RestApiClient for MockRestClient {
         _description: &str,
         _repository: &str,
         _branch: &str,
-        _models: &[ah_domain_types::SelectedModel],
+        _models: &[ah_domain_types::AgentChoice],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Simulate network delay
         if self.delay_ms > 0 {
@@ -1292,9 +1299,15 @@ mod tests {
             .repository("https://github.com/test/repo".to_string())
             .branch("main".to_string())
             .description("Test task".to_string())
-            .models(vec![SelectedModel {
-                name: "Claude".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .split_mode(SplitMode::None)
             .focus(false)
@@ -1316,9 +1329,15 @@ mod tests {
             .repository("test/repo".to_string())
             .branch("main".to_string())
             .description("".to_string())
-            .models(vec![SelectedModel {
-                name: "Claude".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .split_mode(SplitMode::None)
             .focus(false)
@@ -1337,7 +1356,7 @@ mod tests {
             .repository("test/repo".to_string())
             .branch("main".to_string())
             .description("Test task".to_string())
-            .models(vec![])
+            .agents(vec![])
             .split_mode(SplitMode::None)
             .focus(false)
             .agent_type(AgentType::Claude)
@@ -1356,9 +1375,15 @@ mod tests {
             .repository("https://github.com/test/repo".to_string())
             .branch("main".to_string())
             .description("This task will fail".to_string())
-            .models(vec![SelectedModel {
-                name: "Claude".to_string(),
+            .agents(vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }])
             .split_mode(SplitMode::None)
             .focus(false)

@@ -107,7 +107,8 @@ fn create_test_view_model(
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
-    let settings = ah_tui::settings::Settings::default();
+    let settings = ah_tui::settings::Settings::from_config()
+        .unwrap_or_else(|_| ah_tui::settings::Settings::default());
 
     let autocomplete_deps = Arc::new(AutocompleteDependencies {
         workspace_files,

@@ -5,7 +5,9 @@ use ah_core::{
     BranchesEnumerator, RepositoriesEnumerator, RepositoryFile, TaskManager,
     WorkspaceFilesEnumerator,
 };
-use ah_domain_types::{DeliveryStatus, SelectedModel, TaskExecution, TaskState};
+use ah_domain_types::{
+    AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, TaskExecution, TaskState,
+};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
@@ -48,7 +50,7 @@ fn new_view_model() -> ViewModel {
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
-    let settings = Settings::default();
+    let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
     ViewModel::new(
@@ -1007,9 +1009,15 @@ mod mouse {
             id: "task-1".to_string(),
             repository: "repo".to_string(),
             branch: "main".to_string(),
-            agents: vec![SelectedModel {
-                name: "Claude".to_string(),
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }],
             state: TaskState::Completed,
             timestamp: "2025-01-01".to_string(),
@@ -1084,9 +1092,15 @@ mod mouse {
             id: "task-1".to_string(),
             repository: "repo".to_string(),
             branch: "main".to_string(),
-            agents: vec![SelectedModel {
-                name: "Claude".to_string(),
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
                 count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: None,
             }],
             state: TaskState::Completed,
             timestamp: "2025-01-01".to_string(),
@@ -2225,7 +2239,7 @@ mod mouse {
 
         // Modify the existing draft task to have no models
         if let Some(draft) = vm.draft_cards.first_mut() {
-            draft.models.clear();
+            draft.selected_agents.clear();
         }
 
         // Open model selection modal
@@ -2395,7 +2409,7 @@ mod mouse {
 
         // The count should be back to its original value (incremented then decremented)
         if let Some(card) = vm.draft_cards.get(0) {
-            if let Some(selected_model) = card.models.first() {
+            if let Some(selected_model) = card.selected_agents.first() {
                 // Count should be 1 (was incremented from 0 to 1, then decremented from 1 to 0,
                 // but since we selected it with Enter, it should be 1)
                 assert_eq!(
@@ -2412,7 +2426,7 @@ mod mouse {
 
         // Modify the existing draft task to have no models
         if let Some(draft) = vm.draft_cards.first_mut() {
-            draft.models.clear();
+            draft.selected_agents.clear();
         }
 
         // Open model selection modal

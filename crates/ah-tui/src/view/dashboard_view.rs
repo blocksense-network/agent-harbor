@@ -575,15 +575,15 @@ fn render_active_task_card(
         "No agents".to_string()
     } else if card.metadata.models.len() == 1 {
         format!(
-            "{} (x{})",
-            card.metadata.models[0].name, card.metadata.models[0].count
+            "{:?} (x{})",
+            card.metadata.models[0].agent.software, card.metadata.models[0].count
         )
     } else {
         let agent_strings: Vec<String> = card
             .metadata
             .models
             .iter()
-            .map(|model| format!("{} (x{})", model.name, model.count))
+            .map(|model| format!("{:?} (x{})", model.agent.software, model.count))
             .collect();
         agent_strings.join(", ")
     };
@@ -826,15 +826,15 @@ fn render_completed_task_card(
         "No agents".to_string()
     } else if card.metadata.models.len() == 1 {
         format!(
-            "{} (x{})",
-            card.metadata.models[0].name, card.metadata.models[0].count
+            "{:?} (x{})",
+            card.metadata.models[0].agent.software, card.metadata.models[0].count
         )
     } else {
         let agent_strings: Vec<String> = card
             .metadata
             .models
             .iter()
-            .map(|model| format!("{} (x{})", model.name, model.count))
+            .map(|model| format!("{:?} (x{})", model.agent.software, model.count))
             .collect();
         agent_strings.join(", ")
     };

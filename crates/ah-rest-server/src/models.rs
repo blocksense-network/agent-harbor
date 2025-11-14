@@ -3,6 +3,7 @@
 
 //! Data models and business logic
 
+use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_local_db::{
     Database, SessionRecord, SessionStore as DbSessionStore, TaskRecord, TaskStore as DbTaskStore,
 };
@@ -26,7 +27,7 @@ pub struct InternalSession {
 /// Session store interface
 #[async_trait::async_trait]
 pub trait SessionStore: Send + Sync {
-    async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<String>;
+    async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<Vec<String>>;
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Option<InternalSession>>;
     async fn update_session(
         &self,
@@ -60,54 +61,81 @@ impl InMemorySessionStore {
 
 #[async_trait::async_trait]
 impl SessionStore for InMemorySessionStore {
-    async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<String> {
-        let session_id = uuid::Uuid::new_v4().to_string();
+    async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<Vec<String>> {
+        let mut session_ids = Vec::new();
         let now = Utc::now();
 
-        let session = Session {
-            id: session_id.clone(),
-            tenant_id: request.tenant_id.clone(),
-            project_id: request.project_id.clone(),
-            task: TaskInfo {
-                prompt: request.prompt.clone(),
-                attachments: HashMap::new(),
-                labels: request.labels.clone(),
-            },
-            agent: request.agent.clone(),
-            runtime: request.runtime.clone(),
-            workspace: WorkspaceInfo {
-                snapshot_provider: "git".to_string(),     // placeholder
-                mount_path: "/tmp/workspace".to_string(), // placeholder
-                host: None,
-                devcontainer_details: None,
-            },
-            vcs: VcsInfo {
-                repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
-                branch: request.repo.branch.clone(),
-                commit: request.repo.commit.clone(),
-            },
-            status: SessionStatus::Queued,
-            started_at: None,
-            ended_at: None,
-            links: SessionLinks {
-                self_link: format!("/api/v1/sessions/{}", session_id),
-                events: format!("/api/v1/sessions/{}/events", session_id),
-                logs: format!("/api/v1/sessions/{}/logs", session_id),
-            },
-        };
+        for agent_config in &request.agents {
+            // Create multiple sessions based on agent count
+            for instance in 0..agent_config.count {
+                let session_id = if request.agents.len() == 1 && agent_config.count == 1 {
+                    // Single agent, single instance - use simple UUID
+                    uuid::Uuid::new_v4().to_string()
+                } else if agent_config.count == 1 {
+                    // Single instance per agent - include agent index
+                    let agent_index =
+                        request.agents.iter().position(|a| a == agent_config).unwrap();
+                    format!("{}-{}", uuid::Uuid::new_v4().to_string(), agent_index)
+                } else {
+                    // Multiple instances - include agent index and instance index
+                    let agent_index =
+                        request.agents.iter().position(|a| a == agent_config).unwrap();
+                    format!(
+                        "{}-{}-{}",
+                        uuid::Uuid::new_v4().to_string(),
+                        agent_index,
+                        instance
+                    )
+                };
 
-        let internal_session = InternalSession {
-            session,
-            created_at: now,
-            updated_at: now,
-            logs: vec![],
-            events: vec![],
-        };
+                let session = Session {
+                    id: session_id.clone(),
+                    tenant_id: request.tenant_id.clone(),
+                    project_id: request.project_id.clone(),
+                    task: TaskInfo {
+                        prompt: request.prompt.clone(),
+                        attachments: HashMap::new(),
+                        labels: request.labels.clone(),
+                    },
+                    agent: agent_config.clone(),
+                    runtime: request.runtime.clone(),
+                    workspace: WorkspaceInfo {
+                        snapshot_provider: "git".to_string(),     // placeholder
+                        mount_path: "/tmp/workspace".to_string(), // placeholder
+                        host: None,
+                        devcontainer_details: None,
+                    },
+                    vcs: VcsInfo {
+                        repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
+                        branch: request.repo.branch.clone(),
+                        commit: request.repo.commit.clone(),
+                    },
+                    status: SessionStatus::Queued,
+                    started_at: None,
+                    ended_at: None,
+                    links: SessionLinks {
+                        self_link: format!("/api/v1/sessions/{}", session_id),
+                        events: format!("/api/v1/sessions/{}/events", session_id),
+                        logs: format!("/api/v1/sessions/{}/logs", session_id),
+                    },
+                };
 
-        let mut sessions = self.sessions.write().await;
-        sessions.insert(session_id.clone(), internal_session);
+                let internal_session = InternalSession {
+                    session,
+                    created_at: now,
+                    updated_at: now,
+                    logs: vec![],
+                    events: vec![],
+                };
 
-        Ok(session_id)
+                let mut sessions = self.sessions.write().await;
+                sessions.insert(session_id.clone(), internal_session);
+
+                session_ids.push(session_id);
+            }
+        }
+
+        Ok(session_ids)
     }
 
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Option<InternalSession>> {
@@ -316,10 +344,15 @@ impl DatabaseSessionStore {
                     .agent_config
                     .as_ref()
                     .and_then(|config| serde_json::from_str(config).ok())
-                    .unwrap_or_else(|| AgentConfig {
-                        agent_type: "unknown".to_string(),
-                        version: "latest".to_string(),
+                    .unwrap_or_else(|| ah_domain_types::AgentChoice {
+                        agent: AgentSoftwareBuild {
+                            software: AgentSoftware::Claude,
+                            version: "latest".to_string(),
+                        },
+                        model: "sonnet".to_string(),
+                        count: 1,
                         settings: HashMap::new(),
+                        display_name: None,
                     }),
                 runtime: record
                     .runtime_config
@@ -375,73 +408,97 @@ impl DatabaseSessionStore {
 
 #[async_trait::async_trait]
 impl SessionStore for DatabaseSessionStore {
-    async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<String> {
-        let session_id = uuid::Uuid::new_v4().to_string();
+    async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<Vec<String>> {
+        let mut session_ids = Vec::new();
 
-        // Create session record first (without foreign keys for now)
-        let session_record = SessionRecord {
-            id: session_id.clone(),
-            repo_id: None,
-            workspace_id: None,
-            agent_id: None,
-            runtime_id: None,
-            multiplexer_kind: Some("tmux".to_string()),
-            mux_session: None,
-            mux_window: None,
-            pane_left: None,
-            pane_right: None,
-            pid_agent: None,
-            status: "queued".to_string(),
-            log_path: None,
-            workspace_path: None,
-            started_at: Utc::now().to_rfc3339(),
-            ended_at: None,
-            agent_config: Some(
-                serde_json::to_string(&request.agent).unwrap_or_else(|_| "{}".to_string()),
-            ),
-            runtime_config: Some(
-                serde_json::to_string(&request.runtime).unwrap_or_else(|_| "{}".to_string()),
-            ),
-        };
-
-        // Store session in database
+        // Get database connection
         let conn = self
             .db
             .connection()
             .lock()
             .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-        let session_store = DbSessionStore::new(&conn);
-        session_store.insert(&session_record)?;
 
-        // Create task record
-        let task_record = TaskRecord {
-            id: 0, // Will be set by database
-            session_id: session_id.clone(),
-            prompt: request.prompt.clone(),
-            repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
-            branch: request.repo.branch.clone(),
-            commit: request.repo.commit.clone(),
-            delivery: None, // TODO: Map delivery config
-            instances: None,
-            labels: if request.labels.is_empty() {
-                None
-            } else {
-                Some(
-                    serde_json::to_string(&request.labels)
-                        .unwrap_or_else(|_| "default".to_string()),
-                )
-            },
-            browser_automation: 1, // Default enabled
-            browser_profile: None,
-            chatgpt_username: None,
-            codex_workspace: None,
-        };
+        for agent_config in &request.agents {
+            for instance in 0..agent_config.count {
+                let session_id = if request.agents.len() == 1 && agent_config.count == 1 {
+                    uuid::Uuid::new_v4().to_string()
+                } else if agent_config.count == 1 {
+                    let agent_index =
+                        request.agents.iter().position(|a| a == agent_config).unwrap();
+                    format!("{}-{}", uuid::Uuid::new_v4().to_string(), agent_index)
+                } else {
+                    let agent_index =
+                        request.agents.iter().position(|a| a == agent_config).unwrap();
+                    format!(
+                        "{}-{}-{}",
+                        uuid::Uuid::new_v4().to_string(),
+                        agent_index,
+                        instance
+                    )
+                };
 
-        // Store task in database
-        let task_store = DbTaskStore::new(&conn);
-        task_store.insert(&task_record)?;
+                // Create session record
+                let session_record = SessionRecord {
+                    id: session_id.clone(),
+                    repo_id: None,
+                    workspace_id: None,
+                    agent_id: None,
+                    runtime_id: None,
+                    multiplexer_kind: Some("tmux".to_string()),
+                    mux_session: None,
+                    mux_window: None,
+                    pane_left: None,
+                    pane_right: None,
+                    pid_agent: None,
+                    status: "queued".to_string(),
+                    log_path: None,
+                    workspace_path: None,
+                    started_at: Utc::now().to_rfc3339(),
+                    ended_at: None,
+                    agent_config: Some(
+                        serde_json::to_string(agent_config).unwrap_or_else(|_| "{}".to_string()),
+                    ),
+                    runtime_config: Some(
+                        serde_json::to_string(&request.runtime)
+                            .unwrap_or_else(|_| "{}".to_string()),
+                    ),
+                };
 
-        Ok(session_id)
+                let session_store = DbSessionStore::new(&conn);
+                session_store.insert(&session_record)?;
+
+                // Create task record
+                let task_record = TaskRecord {
+                    id: 0, // Will be set by database
+                    session_id: session_id.clone(),
+                    prompt: request.prompt.clone(),
+                    repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
+                    branch: request.repo.branch.clone(),
+                    commit: request.repo.commit.clone(),
+                    delivery: None, // TODO: Map delivery config
+                    instances: None,
+                    labels: if request.labels.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            serde_json::to_string(&request.labels)
+                                .unwrap_or_else(|_| "default".to_string()),
+                        )
+                    },
+                    browser_automation: 1, // Default enabled
+                    browser_profile: None,
+                    chatgpt_username: None,
+                    codex_workspace: None,
+                };
+
+                let task_store = DbTaskStore::new(&conn);
+                task_store.insert(&task_record)?;
+
+                session_ids.push(session_id);
+            }
+        }
+
+        Ok(session_ids)
     }
 
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Option<InternalSession>> {

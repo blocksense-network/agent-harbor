@@ -5,6 +5,7 @@
 
 use crate::error::ApiContractError;
 use crate::types::*;
+use ah_domain_types::AgentChoice;
 use validator::Validate;
 
 /// Validate a create task request
@@ -14,7 +15,7 @@ pub fn validate_create_task_request(request: &CreateTaskRequest) -> Result<(), A
 }
 
 /// Validate agent configuration
-pub fn validate_agent_config(config: &AgentConfig) -> Result<(), ApiContractError> {
+pub fn validate_agent_config(config: &AgentChoice) -> Result<(), ApiContractError> {
     config.validate()?;
     Ok(())
 }
@@ -90,6 +91,7 @@ mod tests {
     use super::*;
     use crate::ProblemDetails;
     use crate::types::*;
+    use ah_domain_types::{AgentSoftware, AgentSoftwareBuild};
     use serde_json;
 
     #[test]
@@ -110,11 +112,16 @@ mod tests {
                 resources: None,
             },
             workspace: None,
-            agent: AgentConfig {
-                agent_type: "claude-code".to_string(),
-                version: "latest".to_string(),
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
+                count: 1,
                 settings: Default::default(),
-            },
+                display_name: None,
+            }],
             delivery: None,
             labels: Default::default(),
             webhooks: vec![],
@@ -141,11 +148,16 @@ mod tests {
                 resources: None,
             },
             workspace: None,
-            agent: AgentConfig {
-                agent_type: "claude-code".to_string(),
-                version: "latest".to_string(),
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
+                count: 1,
                 settings: Default::default(),
-            },
+                display_name: None,
+            }],
             delivery: None,
             labels: Default::default(),
             webhooks: vec![],
@@ -215,11 +227,16 @@ mod tests {
                 resources: None,
             },
             workspace: None,
-            agent: AgentConfig {
-                agent_type: "claude-code".to_string(),
-                version: "latest".to_string(),
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
+                count: 1,
                 settings: Default::default(),
-            },
+                display_name: None,
+            }],
             delivery: None,
             labels: Default::default(),
             webhooks: vec![],
