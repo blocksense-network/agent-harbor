@@ -49,7 +49,8 @@ pub struct Cli {
         long,
         value_enum,
         default_value = "auto",
-        help = "Filesystem snapshot provider (auto, zfs, btrfs, agentfs, git, disable)"
+        help = "Filesystem snapshot provider (auto, zfs, btrfs, agentfs, git, disable)",
+        global = true
     )]
     pub fs_snapshots: FsSnapshotsType,
 

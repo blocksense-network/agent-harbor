@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
             AgentCommands::Fs {
                 subcommand: ref cmd,
             } => (*cmd).clone().run().await,
-            AgentCommands::Sandbox(ref args) => (*args).clone().run().await,
+            AgentCommands::Sandbox(ref args) => (*args).clone().run(cli.fs_snapshots).await,
             AgentCommands::Start(ref args) => (*args).clone().run().await,
             AgentCommands::Record(args) => {
                 let deps = get_record_tui_dependencies(&cli)?;
