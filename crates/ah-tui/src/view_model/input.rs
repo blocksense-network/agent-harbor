@@ -315,6 +315,21 @@ pub mod minor_modes {
     /// Selection with prominent operations
     pub static SELECTION_PROMINENT_MODE: InputMinorMode =
         InputMinorMode::with_prominent_operations(operations::SELECTION, operations::SELECTION);
+
+    /// Session viewer search mode
+    pub static SESSION_VIEWER_SEARCH_MODE: InputMinorMode = InputMinorMode::new(&[
+        KeyboardOperation::IncrementalSearchForward,
+        KeyboardOperation::IncrementalSearchBackward,
+        KeyboardOperation::FindNext,
+        KeyboardOperation::FindPrevious,
+    ]);
+
+    /// Session viewer selection mode (for overlays and instructions)
+    pub static SESSION_VIEWER_SELECTION_MODE: InputMinorMode = InputMinorMode::new(&[
+        KeyboardOperation::DismissOverlay,
+        KeyboardOperation::NewDraft,
+        KeyboardOperation::SelectAll,
+    ]);
 }
 
 /// Input minor mode defining a set of keyboard operations for a UI context

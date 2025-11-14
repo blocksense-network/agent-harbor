@@ -26,15 +26,27 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
-// Minor mode for session viewer navigation (for viewing terminal sessions and navigating snapshots)
-pub static SESSION_VIEWER_MODE: crate::view_model::input::InputMinorMode =
+// Minor mode for terminal navigation operations that work even when task entry is focused
+pub static TERMINAL_NAVIGATION_MODE: crate::view_model::input::InputMinorMode =
     crate::view_model::input::InputMinorMode::new(&[
         KeyboardOperation::MoveToNextLine,
         KeyboardOperation::MoveToPreviousLine,
-        KeyboardOperation::MoveToNextField,
-        KeyboardOperation::MoveToPreviousField,
+        KeyboardOperation::ScrollUpOneScreen,
+        KeyboardOperation::ScrollDownOneScreen,
+        KeyboardOperation::MoveToBeginningOfDocument,
+        KeyboardOperation::MoveToEndOfDocument,
         KeyboardOperation::PreviousSnapshot,
         KeyboardOperation::NextSnapshot,
+        KeyboardOperation::IncrementalSearchForward,
+    ]);
+
+// Minor mode for session viewer navigation (for viewing terminal sessions and navigating snapshots)
+pub static SESSION_VIEWER_MODE: crate::view_model::input::InputMinorMode =
+    crate::view_model::input::InputMinorMode::new(&[
+        KeyboardOperation::MoveToNextField,
+        KeyboardOperation::MoveToPreviousField,
+        KeyboardOperation::DismissOverlay,
+        KeyboardOperation::NewDraft,
     ]);
 
 /// Mouse actions for the SessionViewer interface
@@ -381,11 +393,35 @@ impl SessionViewerViewModel {
             self.status_bar.exit_confirmation_message = None;
         }
 
-        // First try to translate the key event to a keyboard operation
-        // Check navigation operations first (most common)
-        if let Some(operation) =
-            SESSION_VIEWER_MODE.resolve_key_to_operation(&key, &Default::default())
+        let settings = crate::Settings::default();
+
+        // Try terminal navigation operations first (always available, even when task entry is focused)
+        if let Some(operation) = TERMINAL_NAVIGATION_MODE.resolve_key_to_operation(&key, &settings)
         {
+            tracing::debug!(
+                "resolve_key_to_operation (TERMINAL_NAVIGATION): {:?} -> {:?}",
+                key,
+                operation
+            );
+            return self.handle_keyboard_operation(operation, &key);
+        }
+
+        // Try task entry operations (when task entry is focused)
+        if self.focus_element == SessionViewerFocusState::TaskEntry {
+            if let Some(operation) =
+                DRAFT_TEXT_EDITING_MODE.resolve_key_to_operation(&key, &settings)
+            {
+                tracing::debug!(
+                    "resolve_key_to_operation (TASK_ENTRY): {:?} -> {:?}",
+                    key,
+                    operation
+                );
+                return self.handle_keyboard_operation(operation, &key);
+            }
+        }
+
+        // Try session viewer operations
+        if let Some(operation) = SESSION_VIEWER_MODE.resolve_key_to_operation(&key, &settings) {
             tracing::debug!(
                 "resolve_key_to_operation (SESSION_VIEWER): {:?} -> {:?}",
                 key,
@@ -394,85 +430,14 @@ impl SessionViewerViewModel {
             return self.handle_keyboard_operation(operation, &key);
         }
 
-        // Then check selection operations
-        if let Some(operation) =
-            minor_modes::SELECTION_MODE.resolve_key_to_operation(&key, &Default::default())
-        {
-            tracing::debug!(
-                "resolve_key_to_operation (SELECTION): {:?} -> {:?}",
-                key,
-                operation
-            );
-            return self.handle_keyboard_operation(operation, &key);
-        }
-
         tracing::debug!("resolve_key_to_operation: {:?} -> None", key);
 
-        // Handle special key codes directly
-        match key.code {
-            KeyCode::Esc => {
-                if self.exit_confirmation_armed {
-                    // Second ESC - quit
-                    self.exit_requested = true;
-                    vec![super::Msg::Quit]
-                } else {
-                    // First ESC - arm confirmation
-                    self.exit_confirmation_armed = true;
-                    self.status_bar.exit_confirmation_message =
-                        Some("Press Esc again to quit".to_string());
-                    vec![]
-                }
-            }
-            KeyCode::Up => {
-                if self.scroll_offset.as_usize() > 0 {
-                    self.scroll_offset = LineIndex(self.scroll_offset.as_usize().saturating_sub(1));
-                    self.auto_follow = false;
-                }
-                vec![]
-            }
-            KeyCode::Down => {
-                let max_scroll =
-                    self.recording_terminal_state.borrow().line_count().saturating_sub(1);
-                if self.scroll_offset.as_usize() < max_scroll {
-                    self.scroll_offset = LineIndex(self.scroll_offset.as_usize() + 1);
-                    self.auto_follow = false;
-                }
-                vec![]
-            }
-            KeyCode::PageUp => {
-                self.scroll_offset = LineIndex(self.scroll_offset.as_usize().saturating_sub(10));
-                self.auto_follow = false;
-                vec![]
-            }
-            KeyCode::PageDown => {
-                let viewport_height = self.display_rows() as usize;
-                self.scroll_offset = LineIndex(self.scroll_offset.as_usize().saturating_add(10));
-                let max_scroll = self.total_rows().saturating_sub(viewport_height);
-                if self.scroll_offset.as_usize() >= max_scroll {
-                    self.scroll_offset = LineIndex(max_scroll);
-                    self.auto_follow = true;
-                } else {
-                    self.auto_follow = false;
-                }
-                vec![]
-            }
-            KeyCode::Home => {
-                self.scroll_offset = LineIndex(0);
-                self.auto_follow = true;
-                vec![]
-            }
-            KeyCode::End => {
-                let viewport_height = self.display_rows() as usize;
-                self.scroll_offset = LineIndex(self.total_rows().saturating_sub(viewport_height));
-                self.auto_follow = true;
-                vec![]
-            }
-            _ => vec![], // Other keys not handled at view model level
-        }
+        // Key not handled by any input mode
+        vec![]
     }
 
     /// Handle a KeyboardOperation with the original KeyEvent context
-    fn handle_keyboard_operation(
+    pub fn handle_keyboard_operation(
         &mut self,
         operation: KeyboardOperation,
         key: &KeyEvent,
@@ -566,13 +531,12 @@ impl SessionViewerViewModel {
 
         // Handle session viewer specific operations
         match operation {
-            crate::settings::KeyboardOperation::NextSnapshot
-            | crate::settings::KeyboardOperation::MoveToNextLine => {
+            KeyboardOperation::NextSnapshot | KeyboardOperation::MoveToNextLine => {
                 debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
                 self.navigate_to_next_snapshot();
                 return vec![];
             }
-            crate::settings::KeyboardOperation::PreviousSnapshot => {
+            KeyboardOperation::PreviousSnapshot => {
                 debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
                 if matches!(self.session_mode, SessionViewerMode::LiveRecording)
                     && !self.task_entry_visible
@@ -585,11 +549,67 @@ impl SessionViewerViewModel {
                 }
                 return vec![];
             }
-            crate::settings::KeyboardOperation::MoveToEndOfDocument => {
+            KeyboardOperation::MoveToEndOfDocument => {
                 debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
                 let viewport_height = self.display_rows() as usize;
                 self.scroll_offset = LineIndex(self.total_rows().saturating_sub(viewport_height));
                 self.auto_follow = true;
+                return vec![];
+            }
+            KeyboardOperation::MoveToBeginningOfDocument => {
+                debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
+                self.scroll_offset = LineIndex(0);
+                self.auto_follow = false;
+                return vec![];
+            }
+            KeyboardOperation::ScrollUpOneScreen => {
+                let viewport_height = self.display_rows() as usize;
+                self.scroll_offset =
+                    LineIndex(self.scroll_offset.as_usize().saturating_sub(viewport_height));
+                self.auto_follow = false;
+                return vec![];
+            }
+            KeyboardOperation::ScrollDownOneScreen => {
+                debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
+                let viewport_height = self.display_rows() as usize;
+                self.scroll_offset =
+                    LineIndex(self.scroll_offset.as_usize().saturating_add(viewport_height));
+                let max_scroll = self.total_rows().saturating_sub(viewport_height);
+                if self.scroll_offset.as_usize() >= max_scroll {
+                    self.scroll_offset = LineIndex(max_scroll);
+                    self.auto_follow = true;
+                } else {
+                    self.auto_follow = false;
+                }
+                return vec![];
+            }
+            KeyboardOperation::IncrementalSearchForward => {
+                debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
+                self.start_search();
+                return vec![];
+            }
+            KeyboardOperation::DismissOverlay => {
+                debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
+                if self.task_entry_visible {
+                    self.cancel_instruction_overlay();
+                } else if self.exit_confirmation_armed {
+                    // Second ESC - quit
+                    self.exit_requested = true;
+                    return vec![super::Msg::Quit];
+                } else {
+                    // First ESC - arm confirmation
+                    self.exit_confirmation_armed = true;
+                    self.status_bar.exit_confirmation_message =
+                        Some("Press Esc again to quit".to_string());
+                }
+                return vec![];
+            }
+            KeyboardOperation::NewDraft => {
+                debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
+                if !self.task_entry_visible {
+                    // Show task entry at latest snapshot for new draft
+                    self.show_task_entry_at_latest_snapshot();
+                }
                 return vec![];
             }
             _ => {}
@@ -1122,14 +1142,15 @@ impl SessionViewerViewModel {
 
         let settings = crate::Settings::default();
 
-        // Check for selection operations (includes DismissOverlay)
+        // Check for session viewer selection operations (includes DismissOverlay, NewDraft)
         if let Some(operation) =
-            minor_modes::SELECTION_MODE.resolve_key_to_operation(key, &settings)
+            minor_modes::SESSION_VIEWER_SELECTION_MODE.resolve_key_to_operation(key, &settings)
         {
             if matches!(operation, KeyboardOperation::DismissOverlay) {
                 self.clear_task_entry_overlay();
                 return true;
             }
+            // Other selection operations are handled by the task entry itself
         }
 
         // Check for navigation operations (includes Previous/NextSnapshot)
