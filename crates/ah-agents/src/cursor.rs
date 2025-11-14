@@ -149,21 +149,17 @@ impl CursorAgent {
     /// - Session token information (masked for security)
     /// - Any errors encountered
     pub async fn get_cursor_status(&self) -> AgentStatus {
-        // Check CLI availability by detecting version with timeout
-        let version_result = tokio::time::timeout(
-            std::time::Duration::from_millis(1500),
-            self.detect_version(),
-        )
-        .await;
+        // Check CLI availability by detecting version
+        let version_result = self.detect_version().await;
 
         debug!("Cursor version detection result: {:?}", version_result);
 
         let (available, version, mut error) = match version_result {
-            Ok(Ok(version_info)) => {
+            Ok(version_info) => {
                 debug!("Version detected successfully: {}", version_info.version);
                 (true, Some(version_info.version), None)
             }
-            Ok(Err(AgentError::AgentNotFound(_))) => {
+            Err(AgentError::AgentNotFound(_)) => {
                 debug!("Cursor agent not found in PATH");
                 (
                     false,
@@ -171,17 +167,9 @@ impl CursorAgent {
                     Some("cursor-agent not found in PATH".to_string()),
                 )
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 debug!("Version detection failed with error: {:?}", e);
-                (
-                    false,
-                    None,
-                    Some(format!("Version detection failed: {}", e)),
-                )
-            }
-            Err(_) => {
-                debug!("Version detection timed out");
-                (false, None, Some("Version detection timed out".to_string()))
+                (false, None, Some(e.to_string()))
             }
         };
 
@@ -725,11 +713,7 @@ mod tests {
                         None,
                         Some("cursor-agent not found in PATH".to_string()),
                     ),
-                    Ok(Err(e)) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Ok(Err(e)) => (false, None, Some(e.to_string())),
                     Err(_) => (false, None, Some("Version detection timed out".to_string())),
                 };
 
@@ -884,11 +868,7 @@ mod tests {
 
                 let (available, version, error) = match version_result {
                     Ok(version_info) => (true, Some(version_info.version), None),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {
@@ -963,11 +943,7 @@ mod tests {
 
                 let (available, version, error) = match version_result {
                     Ok(version_info) => (true, Some(version_info.version), None),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {

@@ -304,11 +304,7 @@ impl ClaudeAgent {
                 None,
                 Some("Claude CLI not found in PATH".to_string()),
             ),
-            Err(e) => (
-                false,
-                None,
-                Some(format!("Version detection failed: {}", e)),
-            ),
+            Err(e) => (false, None, Some(e.to_string())),
         };
 
         if !available {
@@ -1081,11 +1077,7 @@ mod tests {
                         None,
                         Some("Claude CLI not found in PATH".to_string()),
                     ),
-                    Ok(Err(e)) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Ok(Err(e)) => (false, None, Some(e.to_string())),
                     Err(_) => (false, None, Some("Version detection timed out".to_string())),
                 };
 
@@ -1357,11 +1349,7 @@ mod tests {
                         None,
                         Some("Claude CLI not found in PATH".to_string()),
                     ),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {
@@ -1442,11 +1430,7 @@ mod tests {
                         None,
                         Some("Claude CLI not found in PATH".to_string()),
                     ),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {
@@ -1521,11 +1505,7 @@ mod tests {
                         None,
                         Some("Claude CLI not found in PATH".to_string()),
                     ),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {

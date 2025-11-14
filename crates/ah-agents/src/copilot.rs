@@ -166,11 +166,7 @@ impl CopilotAgent {
                 None,
                 Some("Copilot CLI not found in PATH".to_string()),
             ),
-            Err(e) => (
-                false,
-                None,
-                Some(format!("Version detection failed: {}", e)),
-            ),
+            Err(e) => (false, None, Some(e.to_string())),
         };
 
         if !available {
@@ -191,7 +187,16 @@ impl CopilotAgent {
                 let source = self.detect_auth_source().await;
                 (true, Some(method), Some(source))
             }
-            Ok(None) => (false, None, None),
+            Ok(None) => {
+                // Add more detailed error message for debugging macOS issues
+                let debug_msg = if cfg!(target_os = "macos") {
+                    "No authentication found. Check GitHub CLI login or environment variables (GH_TOKEN/GITHUB_TOKEN)"
+                } else {
+                    "No authentication found"
+                };
+                error = Some(debug_msg.to_string());
+                (false, None, None)
+            }
             Err(e) => {
                 error = Some(format!("Authentication check failed: {}", e));
                 (false, None, None)
@@ -886,11 +891,7 @@ mod tests {
                         None,
                         Some("Copilot CLI not found in PATH".to_string()),
                     ),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {
@@ -972,11 +973,7 @@ mod tests {
                         None,
                         Some("Copilot CLI not found in PATH".to_string()),
                     ),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {

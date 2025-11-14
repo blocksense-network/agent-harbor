@@ -53,23 +53,13 @@ impl CodexAgent {
     /// - API key information source
     /// - Any errors encountered
     pub async fn get_codex_status(&self) -> AgentStatus {
-        // Check CLI availability by detecting version with timeout
-        let (available, version, mut error) = match tokio::time::timeout(
-            std::time::Duration::from_millis(1500),
-            self.detect_version(),
-        )
-        .await
-        {
-            Ok(Ok(version_info)) => (true, Some(version_info.version), None),
-            Ok(Err(AgentError::AgentNotFound(_))) => {
+        // Check CLI availability by detecting version
+        let (available, version, mut error) = match self.detect_version().await {
+            Ok(version_info) => (true, Some(version_info.version), None),
+            Err(AgentError::AgentNotFound(_)) => {
                 (false, None, Some("Codex CLI not found in PATH".to_string()))
             }
-            Ok(Err(e)) => (
-                false,
-                None,
-                Some(format!("Version detection failed: {}", e)),
-            ),
-            Err(_) => (false, None, Some("Version detection timed out".to_string())),
+            Err(e) => (false, None, Some(e.to_string())),
         };
 
         if !available {
@@ -126,8 +116,10 @@ impl CodexAgent {
             if auth_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&auth_path) {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if json.get("oauth").is_some() {
-                            return "OAuth Token Exchange from Codex auth file".to_string();
+                        if let Some(oauth) = json.get("oauth") {
+                            if oauth.get("access_token").is_some() {
+                                return "OAuth Token Exchange from Codex auth file".to_string();
+                            }
                         }
                     }
                 }
@@ -543,11 +535,7 @@ mod tests {
                     Ok(Err(AgentError::AgentNotFound(_))) => {
                         (false, None, Some("Codex CLI not found in PATH".to_string()))
                     }
-                    Ok(Err(e)) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Ok(Err(e)) => (false, None, Some(e.to_string())),
                     Err(_) => (false, None, Some("Version detection timed out".to_string())),
                 };
 
@@ -858,11 +846,7 @@ mod tests {
 
                 let (available, version, error) = match version_result {
                     Ok(version_info) => (true, Some(version_info.version), None),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {
@@ -938,11 +922,7 @@ mod tests {
 
                 let (available, version, error) = match version_result {
                     Ok(version_info) => (true, Some(version_info.version), None),
-                    Err(e) => (
-                        false,
-                        None,
-                        Some(format!("Version detection failed: {}", e)),
-                    ),
+                    Err(e) => (false, None, Some(e.to_string())),
                 };
 
                 if !available {
