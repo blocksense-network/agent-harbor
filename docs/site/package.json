@@ -1,0 +1,8 @@
+{
+  "name": "site",
+  "version": "1.0.0",
+  "license": "ISC",
+  "engines": {
+    "node": ">=22"
+  }
+}
