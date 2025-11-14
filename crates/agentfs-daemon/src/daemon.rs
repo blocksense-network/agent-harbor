@@ -102,6 +102,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use tempfile::TempDir;
+use tracing::{debug, error, info, trace, warn};
 
 // AgentFS core imports
 use agentfs_core::{
@@ -133,6 +134,8 @@ use crate::macos::interposition::{
 };
 #[cfg(target_os = "macos")]
 use crate::macos::kqueue::SInt32;
+
+const COMPONENT: &str = "agentfs-daemon";
 
 /// Helper function to get PID for client operations (avoids nested locking issues)
 #[allow(dead_code)]
@@ -199,9 +202,11 @@ impl AgentFsDaemon {
     ) -> FsResult<Self> {
         // Configure FsCore based on overlay settings
         let config = if let Some(lower) = lower_dir {
-            println!(
-                "AgentFsDaemon: configuring overlay with lower={}",
-                lower.display()
+            info!(
+                component = COMPONENT,
+                operation = "configure_overlay",
+                lower_dir = %lower.display(),
+                "configuring AgentFS overlay"
             );
             FsConfig {
                 interpose: InterposeConfig {
@@ -284,7 +289,8 @@ impl AgentFsDaemon {
     ) -> FsResult<Self> {
         // Configure FsCore based on overlay and backstore settings
         let config = if let Some(lower) = lower_dir {
-            println!(
+            debug!(
+                component = COMPONENT,
                 "AgentFsDaemon: configuring overlay with lower={}",
                 lower.display()
             );
@@ -383,9 +389,11 @@ impl AgentFsDaemon {
 
     /// Clean up all watch registrations for a process (called when process exits)
     pub fn cleanup_process_watches(&mut self, pid: u32) {
-        println!(
-            "AgentFS Daemon: cleaning up all watches for process {}",
-            pid
+        debug!(
+            component = COMPONENT,
+            operation = "cleanup_process_watches",
+            pid,
+            "cleaning up watches for process"
         );
 
         // Remove all kqueue watches for this process
@@ -403,9 +411,11 @@ impl AgentFsDaemon {
         // Clear any pending events for kqueues belonging to this process
         self.watch_service.clear_pending_events_for_pid(pid);
 
-        println!(
-            "AgentFS Daemon: finished cleaning up watches for process {}",
-            pid
+        debug!(
+            component = COMPONENT,
+            operation = "cleanup_process_watches",
+            pid,
+            "finished cleaning up watches for process"
         );
     }
 
@@ -500,9 +510,13 @@ impl AgentFsDaemon {
         mode: u32,
         os_pid: u32,
     ) -> Result<RawFd, String> {
-        println!(
+        debug!(
+            component = COMPONENT,
             "AgentFsDaemon: fd_open({}, flags={:#x}, mode={:#o}, pid={})",
-            path, flags, mode, os_pid
+            path,
+            flags,
+            mode,
+            os_pid
         );
 
         // Use the real FsCore fd_open implementation
@@ -513,13 +527,22 @@ impl AgentFsDaemon {
             .fd_open(os_pid, std::path::Path::new(&path), flags, mode)
         {
             Ok(fd) => {
-                println!("AgentFsDaemon: fd_open succeeded '{}' -> fd {}", path, fd);
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: fd_open succeeded '{}' -> fd {}", path, fd
+                );
                 // Record the file open for testing state tracking
                 *self.opened_files.entry(path.clone()).or_insert(0) += 1;
                 Ok(fd)
             }
             Err(e) => {
-                println!("AgentFsDaemon: fd_open failed '{}': {}", path, e);
+                warn!(
+                    component = COMPONENT,
+                    operation = "fd_open",
+                    path = %path,
+                    error = %e,
+                    "fd_open failed"
+                );
                 Err(e)
             }
         }
@@ -527,7 +550,10 @@ impl AgentFsDaemon {
 
     /// Handle a dir_open request
     pub fn handle_dir_open(&mut self, path: String, client_pid: u32) -> Result<u64, String> {
-        println!("AgentFsDaemon: dir_open({}, pid={})", path, client_pid);
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dir_open({}, pid={})", path, client_pid
+        );
 
         // Use FsCore to handle the directory open
         let pid = agentfs_core::PID::new(client_pid);
@@ -535,16 +561,24 @@ impl AgentFsDaemon {
 
         match self.core.lock().unwrap().opendir(&pid, path_obj) {
             Ok(handle_id) => {
-                println!(
+                debug!(
+                    component = COMPONENT,
                     "AgentFsDaemon: FsCore opendir succeeded for {}, handle_id={}",
-                    path, handle_id.0
+                    path,
+                    handle_id.0
                 );
                 // Track the directory access for filesystem state verification
                 *self.opened_dirs.entry(path.clone()).or_insert(0) += 1;
                 Ok(handle_id.0) // Return FsCore handle ID
             }
             Err(e) => {
-                println!("AgentFsDaemon: FsCore opendir failed for {}: {:?}", path, e);
+                warn!(
+                    component = COMPONENT,
+                    operation = "dir_open",
+                    path = %path,
+                    error = ?e,
+                    "FsCore opendir failed"
+                );
                 Err(format!("opendir failed: {:?}", e))
             }
         }
@@ -552,7 +586,10 @@ impl AgentFsDaemon {
 
     /// Handle a readlink request
     pub fn handle_readlink(&mut self, path: String, client_pid: u32) -> Result<String, String> {
-        println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: readlink({}, pid={})", path, client_pid
+        );
 
         // Use FsCore to handle the readlink
         let pid = agentfs_core::PID::new(client_pid);
@@ -560,16 +597,16 @@ impl AgentFsDaemon {
 
         match self.core.lock().unwrap().readlink(&pid, path_obj) {
             Ok(target) => {
-                println!(
-                    "AgentFsDaemon: FsCore readlink succeeded for {}, target: {}",
-                    path, target
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: FsCore readlink succeeded for {}, target: {}", path, target
                 );
                 Ok(target)
             }
             Err(e) => {
-                println!(
-                    "AgentFsDaemon: FsCore readlink failed for {}: {:?}",
-                    path, e
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: FsCore readlink failed for {}: {:?}", path, e
                 );
                 Err(format!("readlink failed: {:?}", e))
             }
@@ -582,9 +619,9 @@ impl AgentFsDaemon {
         handle: u64,
         client_pid: u32,
     ) -> Result<Vec<DirEntry>, String> {
-        println!(
-            "AgentFsDaemon: dir_read(handle={}, pid={})",
-            handle, client_pid
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dir_read(handle={}, pid={})", handle, client_pid
         );
 
         // Use FsCore to read from the directory handle
@@ -593,9 +630,9 @@ impl AgentFsDaemon {
 
         match self.core.lock().unwrap().readdir(&pid, handle_id) {
             Ok(Some(entry)) => {
-                println!(
-                    "AgentFsDaemon: dir_read succeeded, got entry: {}",
-                    entry.name
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: dir_read succeeded, got entry: {}", entry.name
                 );
                 // Convert from agentfs_core::DirEntry to agentfs_proto::messages::DirEntry
                 let proto_entry = DirEntry {
@@ -611,11 +648,19 @@ impl AgentFsDaemon {
                 Ok(vec![proto_entry])
             }
             Ok(None) => {
-                println!("AgentFsDaemon: dir_read reached end of directory");
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: dir_read reached end of directory"
+                );
                 Ok(Vec::new()) // End of directory
             }
             Err(e) => {
-                println!("AgentFsDaemon: FsCore readdir failed: {:?}", e);
+                warn!(
+                    component = COMPONENT,
+                    operation = "dir_read",
+                    error = ?e,
+                    "FsCore readdir failed"
+                );
                 Err(format!("readdir failed: {:?}", e))
             }
         }
@@ -623,9 +668,9 @@ impl AgentFsDaemon {
 
     /// Handle a dir_close request
     pub fn handle_dir_close(&mut self, handle: u64, client_pid: u32) -> Result<(), String> {
-        println!(
-            "AgentFsDaemon: dir_close(handle={}, pid={})",
-            handle, client_pid
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dir_close(handle={}, pid={})", handle, client_pid
         );
 
         // Use FsCore to close the directory handle
@@ -634,11 +679,19 @@ impl AgentFsDaemon {
 
         match self.core.lock().unwrap().closedir(&pid, handle_id) {
             Ok(()) => {
-                println!("AgentFsDaemon: FsCore closedir succeeded");
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: FsCore closedir succeeded"
+                );
                 Ok(())
             }
             Err(e) => {
-                println!("AgentFsDaemon: FsCore closedir failed: {:?}", e);
+                warn!(
+                    component = COMPONENT,
+                    operation = "dir_close",
+                    error = ?e,
+                    "FsCore closedir failed"
+                );
                 Err(format!("closedir failed: {:?}", e))
             }
         }
@@ -646,11 +699,17 @@ impl AgentFsDaemon {
 
     /// Handle an fd_dup request
     pub fn handle_fd_dup(&mut self, fd: u32, client_pid: u32) -> Result<u32, String> {
-        println!("AgentFsDaemon: fd_dup(fd={}, pid={})", fd, client_pid);
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: fd_dup(fd={}, pid={})", fd, client_pid
+        );
 
         // For testing purposes, just return the same fd (simulated dup)
         // In a real implementation, we'd need to track file descriptors
-        println!("AgentFsDaemon: fd_dup returning same fd (simulated)");
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: fd_dup returning same fd (simulated)"
+        );
         Ok(fd)
     }
 
@@ -662,9 +721,9 @@ impl AgentFsDaemon {
         _args: Option<Vec<u8>>,
         client_pid: u32,
     ) -> Result<Option<String>, String> {
-        println!(
-            "AgentFsDaemon: path_op(path={}, op={}, pid={})",
-            path, operation, client_pid
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: path_op(path={}, op={}, pid={})", path, operation, client_pid
         );
 
         // Use FsCore to handle path operations
@@ -677,17 +736,28 @@ impl AgentFsDaemon {
                     Ok(_attrs) => {
                         // For testing, return a simple stat result
                         // In a real implementation, we'd serialize the full stat structure
-                        println!("AgentFsDaemon: path_op stat succeeded");
+                        debug!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: path_op stat succeeded"
+                        );
                         Ok(Some("stat_result".to_string())) // dummy data
                     }
                     Err(e) => {
-                        println!("AgentFsDaemon: path_op stat failed: {:?}", e);
+                        warn!(
+                            component = COMPONENT,
+                            operation = "path_op_stat",
+                            error = ?e,
+                            "path_op stat failed"
+                        );
                         Err(format!("stat failed: {:?}", e))
                     }
                 }
             }
             _ => {
-                println!("AgentFsDaemon: path_op {} not implemented", operation);
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: path_op {} not implemented", operation
+                );
                 Err(format!("operation {} not implemented", operation))
             }
         }
@@ -791,7 +861,10 @@ impl AgentFsDaemon {
 
         // If include_overlay is true, traverse FsCore's node structure
         if query.include_overlay != 0 {
-            println!("AgentFsDaemon: capturing filesystem state from FsCore");
+            debug!(
+                component = COMPONENT,
+                "AgentFsDaemon: capturing filesystem state from FsCore"
+            );
 
             // Start traversal from root directory "/"
             self.traverse_fscore_tree(&test_pid, std::path::Path::new("/"), query, &mut entries)?;
@@ -864,7 +937,8 @@ impl AgentFsDaemon {
                             }
                         }
                         Err(e) => {
-                            println!(
+                            debug!(
+                                component = COMPONENT,
                                 "AgentFsDaemon: failed to read directory {}: {:?}",
                                 current_path.display(),
                                 e
@@ -874,7 +948,8 @@ impl AgentFsDaemon {
                 }
             }
             Err(e) => {
-                println!(
+                debug!(
+                    component = COMPONENT,
                     "AgentFsDaemon: failed to get attributes for {}: {:?}",
                     current_path.display(),
                     e
@@ -1106,7 +1181,10 @@ impl AgentFsDaemon {
         query: &FilesystemQuery,
         entries: &mut Vec<FilesystemEntry>,
     ) -> Result<(), String> {
-        eprintln!("AgentFsDaemon: ENTERING scan_for_test_dirs_and_files");
+        trace!(
+            component = COMPONENT,
+            "AgentFsDaemon: ENTERING scan_for_test_dirs_and_files"
+        );
         match std::fs::read_dir(temp_path) {
             Ok(dir_entries) => {
                 let mut found_dirs = 0;
@@ -1116,7 +1194,8 @@ impl AgentFsDaemon {
                         found_dirs += 1;
                         // Check if this looks like a test directory
                         let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                        eprintln!(
+                        trace!(
+                            component = COMPONENT,
                             "AgentFsDaemon: found dir: {} (len: {})",
                             dir_name,
                             dir_name.len()
@@ -1124,41 +1203,53 @@ impl AgentFsDaemon {
                         let starts_with_tmp = dir_name.starts_with(".tmp");
                         let len_check = dir_name.len() >= 10;
                         let is_test_dir = dir_name == "agentfs_readlink_test";
-                        eprintln!(
+                        trace!(
+                            component = COMPONENT,
                             "AgentFsDaemon: starts_with .tmp: {}, len >= 10: {}, is_test_dir: {}",
-                            starts_with_tmp, len_check, is_test_dir
+                            starts_with_tmp,
+                            len_check,
+                            is_test_dir
                         );
                         if (starts_with_tmp && len_check) || is_test_dir {
                             // This looks like a temp directory created by the test
-                            eprintln!(
+                            trace!(
+                                component = COMPONENT,
                                 "AgentFsDaemon: CONDITION MET - scanning test temp dir: {}",
                                 dir_name
                             );
-                            eprintln!(
+                            trace!(
+                                component = COMPONENT,
                                 "AgentFsDaemon: about to call scan_test_directory for path: {:?}",
                                 path
                             );
                             match self.scan_test_directory(&path, query, entries) {
-                                Ok(_) => eprintln!(
-                                    "AgentFsDaemon: scan_test_directory succeeded for {}",
-                                    dir_name
+                                Ok(_) => trace!(
+                                    component = COMPONENT,
+                                    "AgentFsDaemon: scan_test_directory succeeded for {}", dir_name
                                 ),
-                                Err(e) => eprintln!(
+                                Err(e) => trace!(
+                                    component = COMPONENT,
                                     "AgentFsDaemon: scan_test_directory failed for {}: {}",
-                                    dir_name, e
+                                    dir_name,
+                                    e
                                 ),
                             }
                         }
                     }
                 }
-                println!(
-                    "AgentFsDaemon: found {} directories in temp dir",
-                    found_dirs
+                debug!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: found {} directories in temp dir", found_dirs
                 );
                 Ok(())
             }
             Err(e) => {
-                println!("AgentFsDaemon: failed to read temp dir: {:?}", e);
+                warn!(
+                    component = COMPONENT,
+                    operation = "scan_temp_dir",
+                    error = ?e,
+                    "failed to read temp directory"
+                );
                 Ok(())
             }
         }
@@ -1173,9 +1264,9 @@ impl AgentFsDaemon {
         entries: &mut Vec<FilesystemEntry>,
     ) -> Result<(), String> {
         let dir_path_str = dir_path.to_string_lossy().to_string();
-        eprintln!(
-            "AgentFsDaemon: === SCANNING TEST DIRECTORY: {} ===",
-            dir_path_str
+        trace!(
+            component = COMPONENT,
+            "AgentFsDaemon: === SCANNING TEST DIRECTORY: {} ===", dir_path_str
         );
 
         // Add the directory itself
@@ -1192,15 +1283,23 @@ impl AgentFsDaemon {
             Ok(contents) => {
                 let mut found_files = 0;
                 let mut found_symlinks = 0;
-                eprintln!("AgentFsDaemon: reading directory: {}", dir_path.display());
+                trace!(
+                    component = COMPONENT,
+                    "AgentFsDaemon: reading directory: {}",
+                    dir_path.display()
+                );
                 let all_entries: Vec<_> = contents.collect();
-                eprintln!(
+                trace!(
+                    component = COMPONENT,
                     "AgentFsDaemon: directory has {} total entries",
                     all_entries.len()
                 );
 
                 for (i, entry) in all_entries.iter().enumerate() {
-                    eprintln!("AgentFsDaemon: entry {}: {:?}", i, entry);
+                    trace!(
+                        component = COMPONENT,
+                        "AgentFsDaemon: entry {}: {:?}", i, entry
+                    );
                 }
 
                 for entry in all_entries.into_iter().flatten() {
@@ -1211,7 +1310,10 @@ impl AgentFsDaemon {
                     if path.is_dir() {
                         if file_name == "test_dir" || file_name == "test_files" {
                             // This is a test directory we want to capture
-                            println!("AgentFsDaemon: found test dir {}, capturing it", file_name);
+                            debug!(
+                                component = COMPONENT,
+                                "AgentFsDaemon: found test dir {}, capturing it", file_name
+                            );
                             self.capture_directory_from_filesystem(
                                 &entry_path_str,
                                 query,
@@ -1230,9 +1332,16 @@ impl AgentFsDaemon {
                     } else if path.is_symlink() {
                         // Add symlinks (check this before is_file since symlinks can return true for is_file)
                         found_symlinks += 1;
-                        eprintln!("AgentFsDaemon: found symlink: {}", entry_path_str);
+                        trace!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: found symlink: {}", entry_path_str
+                        );
                         if let Ok(target) = std::fs::read_link(&path) {
-                            eprintln!("AgentFsDaemon: symlink target: {}", target.display());
+                            trace!(
+                                component = COMPONENT,
+                                "AgentFsDaemon: symlink target: {}",
+                                target.display()
+                            );
                             entries.push(FilesystemEntry {
                                 path: entry_path_str.as_bytes().to_vec(),
                                 kind: FileKind { discriminant: 2 }, // Symlink
@@ -1244,7 +1353,10 @@ impl AgentFsDaemon {
                     } else if path.is_file() {
                         // Add regular files
                         found_files += 1;
-                        eprintln!("AgentFsDaemon: found file: {}", entry_path_str);
+                        trace!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: found file: {}", entry_path_str
+                        );
                         if let Ok(metadata) = path.metadata() {
                             let size = metadata.len();
                             let content = if size <= query.max_file_size as u64 {
@@ -1262,7 +1374,8 @@ impl AgentFsDaemon {
                         }
                     }
                 }
-                eprintln!(
+                trace!(
+                    component = COMPONENT,
                     "AgentFsDaemon: scan_test_directory found {} files, {} symlinks in {}",
                     found_files,
                     found_symlinks,
@@ -1271,7 +1384,8 @@ impl AgentFsDaemon {
                 Ok(())
             }
             Err(e) => {
-                eprintln!(
+                trace!(
+                    component = COMPONENT,
                     "AgentFsDaemon: failed to read directory {}: {:?}",
                     dir_path.display(),
                     e
@@ -1283,9 +1397,9 @@ impl AgentFsDaemon {
 
     #[allow(dead_code)]
     fn handle_dirfd_open_dir(&mut self, pid: u32, path: String, fd: i32) -> Result<(), String> {
-        println!(
-            "AgentFsDaemon: dirfd_open_dir(pid={}, path={}, fd={})",
-            pid, path, fd
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dirfd_open_dir(pid={}, path={}, fd={})", pid, path, fd
         );
 
         // Register the dirfd mapping with FsCore
@@ -1304,7 +1418,10 @@ impl AgentFsDaemon {
 
     #[allow(dead_code)]
     fn handle_dirfd_close_fd(&mut self, pid: u32, fd: i32) -> Result<(), String> {
-        println!("AgentFsDaemon: dirfd_close_fd(pid={}, fd={})", pid, fd);
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dirfd_close_fd(pid={}, fd={})", pid, fd
+        );
 
         self.core
             .lock()
@@ -1315,9 +1432,9 @@ impl AgentFsDaemon {
 
     #[allow(dead_code)]
     fn handle_dirfd_dup_fd(&mut self, pid: u32, old_fd: i32, new_fd: i32) -> Result<(), String> {
-        println!(
-            "AgentFsDaemon: dirfd_dup_fd(pid={}, old_fd={}, new_fd={})",
-            pid, old_fd, new_fd
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dirfd_dup_fd(pid={}, old_fd={}, new_fd={})", pid, old_fd, new_fd
         );
 
         self.core
@@ -1333,7 +1450,10 @@ impl AgentFsDaemon {
 
     #[allow(dead_code)]
     fn handle_dirfd_set_cwd(&mut self, pid: u32, cwd: String) -> Result<(), String> {
-        println!("AgentFsDaemon: dirfd_set_cwd(pid={}, cwd={})", pid, cwd);
+        debug!(
+            component = COMPONENT,
+            "AgentFsDaemon: dirfd_set_cwd(pid={}, cwd={})", pid, cwd
+        );
 
         self.core
             .lock()
@@ -1349,9 +1469,13 @@ impl AgentFsDaemon {
         dirfd: i32,
         relative_path: String,
     ) -> Result<String, String> {
-        println!(
-            "AgentFsDaemon: dirfd_resolve_path(pid={}, dirfd={}, relative_path={})",
-            pid, dirfd, relative_path
+        debug!(
+            component = COMPONENT,
+            operation = "dirfd_resolve_path",
+            pid,
+            dirfd,
+            relative_path = %relative_path,
+            "resolving path with dirfd"
         );
 
         let resolved_path = self
@@ -1379,10 +1503,12 @@ impl AgentFsDaemon {
             .snapshot_create_for_pid(&pid, name.as_deref())
             .map_err(|e| format!("snapshot_create failed: {:?}", e))?;
 
-        println!(
-            "AgentFS Daemon: snapshot_create pid={} -> {}",
-            pid.as_u32(),
-            snapshot_id
+        debug!(
+            component = COMPONENT,
+            operation = "snapshot_create",
+            pid = pid.as_u32(),
+            snapshot_id = %snapshot_id,
+            "snapshot created"
         );
 
         Ok(ProtoSnapshotInfo {
@@ -1416,9 +1542,12 @@ impl AgentFsDaemon {
             .branch_create_from_snapshot(snapshot_id, name.as_deref())
             .map_err(|e| format!("branch_create failed: {:?}", e))?;
 
-        println!(
-            "AgentFS Daemon: branch_create from {} -> {}",
-            snapshot_id, branch_id
+        debug!(
+            component = COMPONENT,
+            operation = "branch_create",
+            snapshot_id = %snapshot_id,
+            branch_id = %branch_id,
+            "branch created"
         );
 
         Ok(ProtoBranchInfo {
@@ -1488,9 +1617,9 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     {
         let mut daemon = daemon.lock().unwrap();
         if let Err(err) = daemon.register_process(client_pid, 0, 0, 0) {
-            eprintln!(
-                "AgentFsDaemon: register_process failed for pid {}: {}",
-                client_pid, err
+            trace!(
+                component = COMPONENT,
+                "AgentFsDaemon: register_process failed for pid {}: {}", client_pid, err
             );
             return;
         }
@@ -1557,7 +1686,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         // Try to decode as regular request
         match decode_ssz_message::<Request>(&msg_buf) {
             Ok(request) => {
-                println!("AgentFS Daemon (lib): received request: {:?}", request);
+                trace!(
+                    component = COMPONENT,
+                    operation = "handle_request",
+                    ?request,
+                    "received daemon request"
+                );
                 match request {
                     Request::SnapshotExport((_, export_req)) => {
                         let snapshot_id = match parse_snapshot_id_bytes(&export_req.snapshot) {
@@ -1581,7 +1715,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(err) => {
-                                println!("AgentFS Daemon: snapshot_export error: {}", err);
+                                error!(
+                                    component = COMPONENT,
+                                    operation = "snapshot_export",
+                                    error = %err,
+                                    "snapshot_export failed"
+                                );
                                 let response = Response::error(err, Some(5));
                                 send_response(&mut stream, &response);
                             }
@@ -1606,7 +1745,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(err) => {
-                                println!("AgentFS Daemon: snapshot_export_release error: {}", err);
+                                error!(
+                                    component = COMPONENT,
+                                    operation = "snapshot_export_release",
+                                    error = %err,
+                                    "snapshot_export_release failed"
+                                );
                                 let response = Response::error(err, Some(5));
                                 send_response(&mut stream, &response);
                             }
@@ -1635,7 +1779,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(err) => {
-                                println!("AgentFS Daemon: snapshot_create error: {}", err);
+                                error!(
+                                    component = COMPONENT,
+                                    operation = "snapshot_create",
+                                    error = %err,
+                                    "snapshot_create failed"
+                                );
                                 let response = Response::error(err, Some(5));
                                 send_response(&mut stream, &response);
                             }
@@ -1718,16 +1867,27 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     }
                     Request::Readlink((version, readlink_req)) => {
                         let path = String::from_utf8_lossy(&readlink_req.path).to_string();
-                        println!("AgentFsDaemon: readlink({}, pid={})", path, client_pid);
+                        debug!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: readlink({}, pid={})", path, client_pid
+                        );
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_readlink(path, client_pid) {
                             Ok(target) => {
-                                println!("AgentFsDaemon: readlink succeeded, target: {}", target);
+                                debug!(
+                                    component = COMPONENT,
+                                    "AgentFsDaemon: readlink succeeded, target: {}", target
+                                );
                                 let response = Response::readlink(target);
                                 send_response(&mut stream, &response);
                             }
                             Err(e) => {
-                                println!("AgentFsDaemon: readlink failed: {}", e);
+                                warn!(
+                                    component = COMPONENT,
+                                    operation = "readlink",
+                                    error = %e,
+                                    "readlink failed"
+                                );
                                 let response =
                                     Response::error(format!("readlink failed: {}", e), Some(2));
                                 send_response(&mut stream, &response);
@@ -1736,11 +1896,15 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     }
                     Request::DirRead((version, dir_read_req)) => {
                         let handle = dir_read_req.handle;
-                        println!("AgentFsDaemon: dir_read(handle={})", handle);
+                        debug!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: dir_read(handle={})", handle
+                        );
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dir_read(handle, client_pid) {
                             Ok(entries) => {
-                                println!(
+                                debug!(
+                                    component = COMPONENT,
                                     "AgentFsDaemon: dir_read succeeded, {} entries",
                                     entries.len()
                                 );
@@ -1748,7 +1912,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(e) => {
-                                println!("AgentFsDaemon: dir_read failed: {}", e);
+                                warn!(
+                                    component = COMPONENT,
+                                    operation = "dir_read",
+                                    error = %e,
+                                    "dir_read failed"
+                                );
                                 let response =
                                     Response::error(format!("dir_read failed: {}", e), Some(3));
                                 send_response(&mut stream, &response);
@@ -1757,16 +1926,24 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     }
                     Request::DirClose((version, dir_close_req)) => {
                         let handle = dir_close_req.handle;
-                        println!("AgentFsDaemon: dir_close(handle={})", handle);
+                        debug!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: dir_close(handle={})", handle
+                        );
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dir_close(handle, client_pid) {
                             Ok(()) => {
-                                println!("AgentFsDaemon: dir_close succeeded");
+                                debug!(component = COMPONENT, "AgentFsDaemon: dir_close succeeded");
                                 let response = Response::dir_close();
                                 send_response(&mut stream, &response);
                             }
                             Err(e) => {
-                                println!("AgentFsDaemon: dir_close failed: {}", e);
+                                warn!(
+                                    component = COMPONENT,
+                                    operation = "dir_close",
+                                    error = %e,
+                                    "dir_close failed"
+                                );
                                 let response =
                                     Response::error(format!("dir_close failed: {}", e), Some(3));
                                 send_response(&mut stream, &response);
@@ -1775,16 +1952,24 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     }
                     Request::FdDup((version, fd_dup_req)) => {
                         let fd = fd_dup_req.fd;
-                        println!("AgentFsDaemon: fd_dup(fd={})", fd);
+                        debug!(component = COMPONENT, "AgentFsDaemon: fd_dup(fd={})", fd);
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_fd_dup(fd, client_pid) {
                             Ok(duped_fd) => {
-                                println!("AgentFsDaemon: fd_dup succeeded, new fd: {}", duped_fd);
+                                debug!(
+                                    component = COMPONENT,
+                                    "AgentFsDaemon: fd_dup succeeded, new fd: {}", duped_fd
+                                );
                                 let response = Response::fd_dup(duped_fd);
                                 send_response(&mut stream, &response);
                             }
                             Err(e) => {
-                                println!("AgentFsDaemon: fd_dup failed: {}", e);
+                                warn!(
+                                    component = COMPONENT,
+                                    operation = "fd_dup",
+                                    error = %e,
+                                    "fd_dup failed"
+                                );
                                 let response =
                                     Response::error(format!("fd_dup failed: {}", e), Some(2));
                                 send_response(&mut stream, &response);
@@ -1794,16 +1979,24 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     Request::PathOp((version, path_op_req)) => {
                         let path = String::from_utf8_lossy(&path_op_req.path).to_string();
                         let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
-                        println!("AgentFsDaemon: path_op(path={}, op={})", path, operation);
+                        debug!(
+                            component = COMPONENT,
+                            "AgentFsDaemon: path_op(path={}, op={})", path, operation
+                        );
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_path_op(path, operation, path_op_req.args, client_pid) {
                             Ok(result) => {
-                                println!("AgentFsDaemon: path_op succeeded");
+                                debug!(component = COMPONENT, "AgentFsDaemon: path_op succeeded");
                                 let response = Response::path_op(result);
                                 send_response(&mut stream, &response);
                             }
                             Err(e) => {
-                                println!("AgentFsDaemon: path_op failed: {}", e);
+                                warn!(
+                                    component = COMPONENT,
+                                    operation = "path_op",
+                                    error = %e,
+                                    "path_op failed"
+                                );
                                 let response =
                                     Response::error(format!("path_op failed: {}", e), Some(4));
                                 send_response(&mut stream, &response);
@@ -1811,9 +2004,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                     Request::DaemonStateFilesystem(DaemonStateFilesystemRequest { query }) => {
-                        println!(
+                        debug!(
+                            component = COMPONENT,
                             "AgentFsDaemon: processing filesystem state query with max_depth={}, include_overlay={}, max_file_size={}",
-                            query.max_depth, query.include_overlay, query.max_file_size
+                            query.max_depth,
+                            query.include_overlay,
+                            query.max_file_size
                         );
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         match daemon.lock().unwrap().get_daemon_state_filesystem(&query) {
@@ -1824,7 +2020,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                     }
                                     _ => 0,
                                 };
-                                println!(
+                                debug!(
+                                    component = COMPONENT,
                                     "AgentFsDaemon: filesystem state query successful, {} entries",
                                     entry_count
                                 );
@@ -1832,7 +2029,12 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(e) => {
-                                println!("AgentFsDaemon: filesystem state query failed: {}", e);
+                                warn!(
+                                    component = COMPONENT,
+                                    operation = "filesystem_state_query",
+                                    error = %e,
+                                    "filesystem state query failed"
+                                );
                                 let response = Response::error(
                                     format!("daemon_state_filesystem failed: {}", e),
                                     Some(4),
@@ -2500,7 +2702,13 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(err) => {
-                                println!("AgentFS Daemon: branch_create error: {}", err);
+                                error!(
+                                    component = COMPONENT,
+                                    operation = "branch_create",
+                                    error = %err,
+                                    snapshot_id = %snapshot_id,
+                                    "branch_create failed"
+                                );
                                 let response = Response::error(err, Some(5));
                                 send_response(&mut stream, &response);
                             }
@@ -2526,7 +2734,13 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 send_response(&mut stream, &response);
                             }
                             Err(err) => {
-                                println!("AgentFS Daemon: branch_bind error: {}", err);
+                                error!(
+                                    component = COMPONENT,
+                                    operation = "branch_bind",
+                                    error = %err,
+                                    branch_id = %branch_id.to_string(),
+                                    "branch_bind failed"
+                                );
                                 let response = Response::error(err, Some(5));
                                 send_response(&mut stream, &response);
                             }
@@ -2540,7 +2754,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                 }
             }
             Err(e) => {
-                eprintln!("Failed to decode request: {:?}", e);
+                trace!(component = COMPONENT, "Failed to decode request: {:?}", e);
                 break;
             }
         }
