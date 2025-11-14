@@ -71,6 +71,8 @@ impl LowerFs for HostLowerFs {
             gid: 0,
             is_dir: file_type.is_dir(),
             is_symlink: file_type.is_symlink(),
+            special_kind: None,
+            nlink: 1,
             mode_user: crate::FileMode {
                 read: true, // Assume readable for simplicity
                 write: file_type.is_dir() || !metadata.permissions().readonly(),
