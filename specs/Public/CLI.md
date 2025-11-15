@@ -1156,6 +1156,9 @@ OPTIONS:
   --overlay <PATH>...            Promote read-only paths to copy-on-write overlays.
   --env <KEY=VALUE>...           Inject environment variables (filtered against policy).
   --timeout <DURATION>           Auto-terminate sandbox after wall clock timeout.
+  --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
+                                   Filesystem snapshot provider (default: auto).
+  --agentfs-socket <PATH>         Path to existing AgentFS daemon socket (reuses existing daemon).
 ```
 
 BEHAVIOR:

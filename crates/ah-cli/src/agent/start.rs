@@ -584,6 +584,7 @@ impl AgentStartArgs {
                     match crate::sandbox::prepare_workspace_with_fallback(
                         &cwd,
                         self.fs_snapshots.clone(),
+                        None,
                     )
                     .await
                     {

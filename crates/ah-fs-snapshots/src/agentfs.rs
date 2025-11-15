@@ -149,47 +149,8 @@ impl FsSnapshotProvider for AgentFsProvider {
 
             let harness =
                 runtime::AgentFsHarness::start(repo).map_err(|e| Error::provider(e.to_string()))?;
-            let workspace_path =
-                harness.workspace_path().map_err(|e| Error::provider(e.to_string()))?;
-            let mut client = harness.connect().map_err(|e| Error::provider(e.to_string()))?;
 
-            // Create an initial snapshot (base) and a dedicated branch for this workspace.
-            let base_snapshot =
-                client.snapshot_create(None).map_err(|e| Error::provider(e.to_string()))?;
-            let branch_name = generate_unique_id();
-            let branch = client
-                .branch_create(&base_snapshot.id, Some(branch_name.clone()))
-                .map_err(|e| Error::provider(e.to_string()))?;
-            client
-                .branch_bind(&branch.id, Some(std::process::id()))
-                .map_err(|e| Error::provider(e.to_string()))?;
-
-            let cleanup_token = generate_unique_id();
-            let session = AgentFsSession {
-                harness: harness.clone(),
-                cleanup_token: cleanup_token.clone(),
-                workspace_path: workspace_path.clone(),
-                source_repo: repo.to_path_buf(),
-                branch_id: branch.id.clone(),
-                current_snapshot: Mutex::new(Some(base_snapshot.id.clone())),
-                mode: requested_mode,
-                readonly_exports: Vec::new(),
-            };
-
-            self.state
-                .lock()
-                .expect("AgentFS provider state poisoned")
-                .sessions
-                .insert(cleanup_token.clone(), session);
-
-            let workspace = PreparedWorkspace {
-                exec_path: workspace_path,
-                working_copy: requested_mode,
-                provider: SnapshotProviderKind::AgentFs,
-                cleanup_token,
-            };
-
-            Ok(workspace)
+            self.prepare_agentfs_workspace(harness, repo, requested_mode)
         }
 
         #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
@@ -502,6 +463,115 @@ impl FsSnapshotProvider for AgentFsProvider {
     }
 }
 
+impl AgentFsProvider {
+    /// Common AgentFS workspace preparation logic
+    fn prepare_agentfs_workspace(
+        &self,
+        harness: runtime::AgentFsHarness,
+        repo: &Path,
+        requested_mode: WorkingCopyMode,
+    ) -> Result<PreparedWorkspace> {
+        let workspace_path =
+            harness.workspace_path().map_err(|e| Error::provider(e.to_string()))?;
+        let mut client = harness.connect().map_err(|e| Error::provider(e.to_string()))?;
+
+        // Create an initial snapshot (base) and a dedicated branch for this workspace.
+        let base_snapshot =
+            client.snapshot_create(None).map_err(|e| Error::provider(e.to_string()))?;
+        let branch_name = generate_unique_id();
+        let branch = client
+            .branch_create(&base_snapshot.id, Some(branch_name.clone()))
+            .map_err(|e| Error::provider(e.to_string()))?;
+
+        // Note: Process binding should happen when the actual process is spawned,
+        // not during workspace preparation. The interposition mechanism will
+        // handle binding based on environment variables and daemon state.
+
+        let cleanup_token = generate_unique_id();
+        let session = AgentFsSession {
+            harness: harness.clone(),
+            cleanup_token: cleanup_token.clone(),
+            workspace_path: workspace_path.clone(),
+            source_repo: repo.to_path_buf(),
+            branch_id: branch.id.clone(),
+            current_snapshot: Mutex::new(Some(base_snapshot.id.clone())),
+            mode: requested_mode,
+            readonly_exports: Vec::new(),
+        };
+
+        // Set the branch ID environment variable so interposition binds processes to this branch
+        harness.set_branch_id_env(&branch.id);
+
+        self.state
+            .lock()
+            .expect("AgentFS provider state poisoned")
+            .sessions
+            .insert(cleanup_token.clone(), session);
+
+        tracing::info!(
+            provider = "AgentFS",
+            mode = ?requested_mode,
+            branch_id = %branch.id,
+            "Successfully prepared AgentFS workspace"
+        );
+
+        Ok(PreparedWorkspace {
+            exec_path: workspace_path,
+            working_copy: requested_mode,
+            provider: SnapshotProviderKind::AgentFs,
+            cleanup_token,
+        })
+    }
+
+    /// Prepare a writable workspace using an existing AgentFS daemon socket
+    fn prepare_writable_workspace_with_socket(
+        &self,
+        repo: &Path,
+        mode: WorkingCopyMode,
+        socket_path: &Path,
+    ) -> Result<PreparedWorkspace> {
+        if !Self::experimental_flag_enabled() {
+            return Err(Error::provider(
+                "AgentFS provider is experimental; set AH_ENABLE_AGENTFS_PROVIDER=1 to enable it",
+            ));
+        }
+
+        match self.platform {
+            PlatformSupport::Supported => {}
+            PlatformSupport::Unsupported(reason) => {
+                return Err(Error::provider(reason));
+            }
+        }
+
+        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        {
+            let requested_mode = match mode {
+                WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
+                other => return Self::unsupported_mode(other),
+            };
+
+            let harness = runtime::AgentFsHarness::connect_to_socket(socket_path, repo)
+                .map_err(|e| Error::provider(e.to_string()))?;
+
+            let workspace = self.prepare_agentfs_workspace(harness, repo, requested_mode)?;
+
+            tracing::info!(
+                agentfs_socket = %socket_path.display(),
+                "Successfully prepared AgentFS workspace with existing daemon"
+            );
+
+            Ok(workspace)
+        }
+
+        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        {
+            Err(Error::provider(
+                "AgentFS provider not available on this platform",
+            ))
+        }
+    }
+}
+
 struct AgentFsState {
     #[cfg(all(feature = "agentfs", target_os = "macos"))]
     sessions: HashMap<String, AgentFsSession>,
@@ -583,6 +653,7 @@ mod runtime {
         client_config: ClientConfig,
         previous_socket: Option<OsString>,
         previous_exe: Option<OsString>,
+        previous_branch_id: Option<OsString>,
         exe_path: PathBuf,
     }
 
@@ -622,6 +693,15 @@ mod runtime {
                         None => std::env::remove_var("AGENTFS_INTERPOSE_EXE"),
                     }
                 }
+
+                let current_branch_env = std::env::var_os("AGENTFS_BRANCH_ID");
+                let should_restore_branch = current_branch_env.as_ref().is_some(); // Restore if we set any branch ID
+                if should_restore_branch {
+                    match &self.previous_branch_id {
+                        Some(prev) => std::env::set_var("AGENTFS_BRANCH_ID", prev),
+                        None => std::env::remove_var("AGENTFS_BRANCH_ID"),
+                    }
+                }
             }
         }
     }
@@ -629,6 +709,7 @@ mod runtime {
     impl AgentFsHarness {
         pub fn start(repo: &Path) -> Result<Self> {
             let previous_socket = std::env::var_os("AGENTFS_INTERPOSE_SOCKET");
+            let previous_branch_id = std::env::var_os("AGENTFS_BRANCH_ID");
 
             let temp_dir = TempDir::new().context("failed to create AgentFS harness temp dir")?;
             let socket_path = temp_dir.path().join("agentfs.sock");
@@ -686,6 +767,42 @@ mod runtime {
                     client_config,
                     previous_socket,
                     previous_exe,
+                    previous_branch_id,
+                    exe_path: current_exe,
+                }),
+            })
+        }
+
+        /// Connect to an existing AgentFS daemon at the specified socket path
+        pub fn connect_to_socket(socket_path: &Path, repo: &Path) -> Result<Self> {
+            let previous_socket = std::env::var_os("AGENTFS_INTERPOSE_SOCKET");
+            let previous_exe = std::env::var_os("AGENTFS_INTERPOSE_EXE");
+            let previous_branch_id = std::env::var_os("AGENTFS_BRANCH_ID");
+
+            let client_config =
+                ClientConfig::builder("ah-fs-snapshots-provider", env!("CARGO_PKG_VERSION"))
+                    .feature("control-plane-only")
+                    .build()
+                    .context("failed to construct AgentFS client configuration")?;
+
+            // Test the connection
+            let _client = AgentFsClient::connect(socket_path, &client_config)
+                .context("failed to connect to existing AgentFS daemon")?;
+
+            let current_exe =
+                std::env::current_exe().context("failed to resolve current executable")?;
+
+            Ok(Self {
+                inner: Arc::new(AgentFsHarnessInner {
+                    _temp_dir: Mutex::new(None), // No temp dir for existing daemon
+                    socket_path: socket_path.to_path_buf(),
+                    daemon: Mutex::new(None), // No daemon process to manage
+                    workspace_path: repo.to_path_buf(),
+                    source_repo: repo.to_path_buf(),
+                    client_config,
+                    previous_socket,
+                    previous_exe,
+                    previous_branch_id,
                     exe_path: current_exe,
                 }),
             })
@@ -697,6 +814,11 @@ mod runtime {
 
         pub fn connect(&self) -> Result<AgentFsClient> {
             AgentFsClient::connect(self.socket_path(), &self.inner.client_config)
+        }
+
+        /// Set the branch ID environment variable for interposition
+        pub fn set_branch_id_env(&self, branch_id: &str) {
+            std::env::set_var("AGENTFS_BRANCH_ID", branch_id);
         }
 
         pub fn workspace_path(&self) -> Result<PathBuf> {
