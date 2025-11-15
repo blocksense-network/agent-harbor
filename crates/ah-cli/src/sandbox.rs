@@ -70,6 +70,11 @@ pub struct SandboxRunArgs {
     #[allow(unused)]
     pub overlay: Vec<PathBuf>,
 
+    /// Path to existing AgentFS daemon socket (reuses existing daemon)
+    #[arg(long = "agentfs-socket", value_name = "PATH")]
+    #[allow(unused)]
+    pub agentfs_socket: Option<PathBuf>,
+
     /// Command and arguments to run in the sandbox
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub command: Vec<String>,
@@ -87,6 +92,7 @@ impl SandboxRunArgs {
             seccomp_debug,
             mount_rw,
             overlay,
+            agentfs_socket,
             command,
         } = self;
 
@@ -109,10 +115,13 @@ impl SandboxRunArgs {
         let workspace_path =
             std::env::current_dir().context("Failed to get current working directory")?;
 
-        let prepared_workspace =
-            prepare_workspace_with_fallback(&workspace_path, fs_snapshots.clone())
-                .await
-                .context("Failed to prepare writable workspace with any provider")?;
+        let prepared_workspace = prepare_workspace_with_fallback(
+            &workspace_path,
+            fs_snapshots.clone(),
+            agentfs_socket.as_deref(),
+        )
+        .await
+        .context("Failed to prepare writable workspace with any provider")?;
 
         // Log telemetry about provider selection
         tracing::info!(
@@ -229,6 +238,7 @@ fn convert_fs_snapshots_type(fs_snapshots: FsSnapshotsType) -> FsProviderArg {
 pub async fn prepare_workspace_with_fallback(
     workspace_path: &std::path::Path,
     fs_snapshots: FsSnapshotsType,
+    agentfs_socket: Option<&std::path::Path>,
 ) -> Result<PreparedWorkspace> {
     let fs_provider = convert_fs_snapshots_type(fs_snapshots);
     // Handle explicit provider selection or auto-detection
@@ -247,34 +257,59 @@ pub async fn prepare_workspace_with_fallback(
             {
                 tracing::info!("Trying AgentFS provider (explicitly requested)");
                 let provider = ah_fs_snapshots::AgentFsProvider::new();
-                let capabilities = provider.detect_capabilities(workspace_path);
 
-                if capabilities.score > 0 {
-                    let modes_to_try = if capabilities.supports_cow_overlay {
-                        vec![WorkingCopyMode::CowOverlay]
-                    } else {
-                        vec![WorkingCopyMode::InPlace]
-                    };
+                if let Some(socket_path) = agentfs_socket {
+                    // Use existing daemon socket
+                    tracing::debug!(socket = %socket_path.display(), "Using existing AgentFS daemon socket");
+                    let mode = WorkingCopyMode::CowOverlay; // Default for socket reuse
+                    match provider.prepare_writable_workspace_with_socket(
+                        workspace_path,
+                        mode,
+                        socket_path,
+                    ) {
+                        Ok(workspace) => {
+                            tracing::info!(
+                                provider = "AgentFS",
+                                mode = ?mode,
+                                agentfs_socket = %socket_path.display(),
+                                "Successfully prepared AgentFS workspace with existing daemon"
+                            );
+                            return Ok(workspace);
+                        }
+                        Err(e) => {
+                            tracing::warn!(socket = %socket_path.display(), error = %e, "Failed to prepare AgentFS workspace with existing daemon");
+                        }
+                    }
+                } else {
+                    // Start new daemon
+                    let capabilities = provider.detect_capabilities(workspace_path);
 
-                    for mode in modes_to_try {
-                        tracing::debug!(mode = ?mode, "Trying AgentFS workspace preparation mode");
-                        match provider.prepare_writable_workspace(workspace_path, mode) {
-                            Ok(workspace) => {
-                                tracing::info!(
-                                    provider = "AgentFS",
-                                    mode = ?mode,
-                                    agentfs_socket = ?agentfs_socket,
-                                    "Successfully prepared AgentFS workspace"
-                                );
-                                return Ok(workspace);
-                            }
-                            Err(err) => {
-                                tracing::debug!(
-                                    "AgentFS provider failed in {:?} mode: {}",
-                                    mode,
-                                    err
-                                );
-                                continue;
+                    if capabilities.score > 0 {
+                        let modes_to_try = if capabilities.supports_cow_overlay {
+                            vec![WorkingCopyMode::CowOverlay]
+                        } else {
+                            vec![WorkingCopyMode::InPlace]
+                        };
+
+                        for mode in modes_to_try {
+                            tracing::debug!(mode = ?mode, "Trying AgentFS workspace preparation mode");
+                            match provider.prepare_writable_workspace(workspace_path, mode) {
+                                Ok(workspace) => {
+                                    tracing::info!(
+                                        provider = "AgentFS",
+                                        mode = ?mode,
+                                        "Successfully prepared AgentFS workspace"
+                                    );
+                                    return Ok(workspace);
+                                }
+                                Err(err) => {
+                                    tracing::debug!(
+                                        "AgentFS provider failed in {:?} mode: {}",
+                                        mode,
+                                        err
+                                    );
+                                    continue;
+                                }
                             }
                         }
                     }

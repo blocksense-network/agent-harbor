@@ -320,6 +320,7 @@ const ENV_SOCKET: &str = "AGENTFS_INTERPOSE_SOCKET";
 const ENV_ALLOWLIST: &str = "AGENTFS_INTERPOSE_ALLOWLIST";
 const ENV_LOG_LEVEL: &str = "AGENTFS_INTERPOSE_LOG";
 const ENV_FAIL_FAST: &str = "AGENTFS_INTERPOSE_FAIL_FAST";
+const ENV_BRANCH_ID: &str = "AGENTFS_BRANCH_ID";
 const DEFAULT_BANNER: &str = "AgentFS interpose shim loaded";
 
 /// Per-process directory file descriptor mapping
@@ -1663,7 +1664,7 @@ fn attempt_handshake(
         .build()
         .map_err(|err| format!("failed to build AgentFS client configuration: {err}"))?;
 
-    let client = AgentFsClient::connect(socket_path, &config).map_err(|err| {
+    let mut client = AgentFsClient::connect(socket_path, &config).map_err(|err| {
         format!(
             "failed to connect to AgentFS control socket '{}': {}",
             socket_display, err
@@ -1674,6 +1675,28 @@ fn attempt_handshake(
     log_message(&format!(
         "handshake acknowledged by {socket_display}: {acknowledgement}"
     ));
+
+    // Bind the current process to the branch specified in the environment
+    if let Some(branch_id_str) = std::env::var_os(ENV_BRANCH_ID) {
+        if let Some(branch_id_str) = branch_id_str.to_str() {
+            match client.branch_bind(branch_id_str, None) {
+                Ok(()) => {
+                    log_message(&format!(
+                        "bound current process to branch {} via AgentFS control socket: {}",
+                        branch_id_str, socket_display
+                    ));
+                }
+                Err(err) => {
+                    log_message(&format!(
+                        "failed to bind current process to branch {}: {}",
+                        branch_id_str, err
+                    ));
+                    // Don't fail the handshake if branch binding fails
+                }
+            }
+        }
+    }
+
     log_message(&format!(
         "handshake completed with AgentFS control socket: {}",
         socket_display
