@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::fs::{self, File};
+use std::fs::OpenOptions as StdOpenOptions;
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
@@ -672,12 +673,142 @@ impl FsCore {
 
         if let Some(child_node) = child {
             let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
-            if sticky && user.uid != 0 && user.uid != dir_node.uid && user.uid != child_node.uid {
+            let should_log = sticky && user.uid != 0;
+            let should_deny =
+                sticky && user.uid != 0 && user.uid != dir_node.uid && user.uid != child_node.uid;
+
+            if should_log {
+                let action = if should_deny { "deny" } else { "allow" };
+                self.log_sticky_event(
+                    pid,
+                    dir_id,
+                    &dir_node,
+                    Some(child_node),
+                    user.uid,
+                    action,
+                    None,
+                );
+            }
+
+            if should_deny {
                 return Err(FsError::AccessDenied);
             }
         }
 
         Ok(())
+    }
+
+    fn check_dir_cross_parent_permissions(
+        &self,
+        pid: &PID,
+        dir_id: NodeId,
+        child: &Node,
+    ) -> FsResult<()> {
+        if !self.config.security.enforce_posix_permissions {
+            return Ok(());
+        }
+
+        let Some(user) = self.user_for_process(pid) else {
+            return Ok(());
+        };
+
+        let dir_node = self.get_node_clone(dir_id)?;
+        let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
+        if !sticky {
+            return Ok(());
+        }
+
+        if self.config.security.root_bypass_permissions && user.uid == 0 {
+            return Ok(());
+        }
+
+        let should_deny = user.uid != child.uid;
+
+        let decision = if should_deny {
+            "deny_cross_parent"
+        } else {
+            "allow_cross_parent"
+        };
+        self.log_sticky_event(
+            pid,
+            dir_id,
+            &dir_node,
+            Some(child),
+            user.uid,
+            decision,
+            None,
+        );
+
+        if should_deny {
+            return Err(FsError::AccessDenied);
+        }
+
+        Ok(())
+    }
+
+    fn log_sticky_event(
+        &self,
+        pid: &PID,
+        dir_id: NodeId,
+        dir_node: &Node,
+        child: Option<&Node>,
+        user_uid: u32,
+        tag: &str,
+        extra: Option<String>,
+    ) {
+        if user_uid == 0 {
+            return;
+        }
+        let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
+        if !sticky {
+            return;
+        }
+
+        let dir_path = self
+            .path_for_node(pid, dir_id)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| format!("inode:{}", dir_id.0));
+        let child_uid = child.map(|node| node.uid);
+        let child_kind = child.map(|node| match node.kind {
+            NodeKind::Directory { .. } => "dir",
+            NodeKind::File { .. } => "file",
+            NodeKind::Symlink { .. } => "symlink",
+        });
+        let child_uid_str = child_uid.map(|uid| uid.to_string()).unwrap_or_else(|| "-".to_string());
+        let child_kind_str = child_kind.unwrap_or("-");
+
+        if let Ok(mut log) =
+            StdOpenOptions::new().create(true).append(true).open("/tmp/agentfs-sticky.log")
+        {
+            if let Some(extra_str) = extra.as_deref() {
+                let _ = writeln!(
+                    log,
+                    "{} dir_id={} dir_uid={} child_uid={} child_kind={} user_uid={} mode={:o} path={} {}",
+                    tag,
+                    dir_id.0,
+                    dir_node.uid,
+                    child_uid_str,
+                    child_kind_str,
+                    user_uid,
+                    dir_node.mode,
+                    dir_path,
+                    extra_str
+                );
+            } else {
+                let _ = writeln!(
+                    log,
+                    "{} dir_id={} dir_uid={} child_uid={} child_kind={} user_uid={} mode={:o} path={}",
+                    tag,
+                    dir_id.0,
+                    dir_node.uid,
+                    child_uid_str,
+                    child_kind_str,
+                    user_uid,
+                    dir_node.mode,
+                    dir_path
+                );
+            }
+        }
     }
 
     /// Resolve a path to a node ID and parent information (read-only)
@@ -1627,11 +1758,47 @@ impl FsCore {
 
     // Helper method to emit events to all subscribers
     #[cfg(feature = "events")]
-    /// Reconstruct the path for a given node ID within the current process branch
-    fn path_for_node(&self, _pid: &PID, _node_id: NodeId) -> Option<PathBuf> {
-        // For now, return a placeholder path since reconstructing paths is complex
-        // In a full implementation, this would walk the directory tree
-        Some(PathBuf::from("/reconstructed_path"))
+    /// Reconstruct the absolute path for a node ID within the caller's branch
+    fn path_for_node(&self, pid: &PID, target_id: NodeId) -> Option<PathBuf> {
+        let branch_id = self.branch_for_process(pid);
+        let branches = self.branches.lock().unwrap();
+        let branch = branches.get(&branch_id)?;
+        let root_id = branch.root_id;
+        drop(branches);
+
+        let nodes = self.nodes.lock().unwrap();
+        let mut components = Vec::new();
+        if Self::find_path_components(&nodes, root_id, target_id, &mut components) {
+            let mut path = PathBuf::from("/");
+            for component in components.iter() {
+                path.push(component);
+            }
+            return Some(path);
+        }
+        None
+    }
+
+    fn find_path_components(
+        nodes: &HashMap<NodeId, Node>,
+        current: NodeId,
+        target: NodeId,
+        components: &mut Vec<String>,
+    ) -> bool {
+        if current == target {
+            return true;
+        }
+        if let Some(node) = nodes.get(&current) {
+            if let NodeKind::Directory { children } = &node.kind {
+                for (name, child_id) in children {
+                    components.push(name.clone());
+                    if Self::find_path_components(nodes, *child_id, target, components) {
+                        return true;
+                    }
+                    components.pop();
+                }
+            }
+        }
+        false
     }
 
     fn emit_event(&self, event: EventKind) {
@@ -4103,6 +4270,31 @@ impl FsCore {
         }
 
         self.check_dir_permissions(pid, src_parent_id, Some(&src_node))?;
+        if dst_parent_id != src_parent_id {
+            if let NodeKind::Directory { .. } = src_node.kind {
+                if let Some(user) = self.user_for_process(pid) {
+                    if let Ok(dir_node) = self.get_node_clone(src_parent_id) {
+                        let extra = self.path_for_node(pid, dst_parent_id).map(|path| {
+                            format!(
+                                "dst_parent_id={} dst_path={}",
+                                dst_parent_id.0,
+                                path.to_string_lossy()
+                            )
+                        });
+                        self.log_sticky_event(
+                            pid,
+                            src_parent_id,
+                            &dir_node,
+                            Some(&src_node),
+                            user.uid,
+                            "cross_parent_probe",
+                            extra,
+                        );
+                    }
+                }
+                self.check_dir_cross_parent_permissions(pid, src_parent_id, &src_node)?;
+            }
+        }
         if dst_parent_id != src_parent_id || dest_node.is_some() {
             self.check_dir_permissions(pid, dst_parent_id, dest_node.as_ref())?;
         }
