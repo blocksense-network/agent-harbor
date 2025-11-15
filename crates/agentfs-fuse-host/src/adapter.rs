@@ -73,6 +73,8 @@ impl AgentFsFuse {
     /// Create a new FUSE adapter with the given configuration
     pub fn new(mut config: FsConfig) -> FsResult<Self> {
         config.security.enforce_posix_permissions = true;
+        // pjdfstest expects uid 0 to bypass sticky/exec bits so cleanup steps succeed.
+        config.security.root_bypass_permissions = true;
         let core = FsCore::new(config.clone())?;
         let mut inodes = HashMap::new();
         let mut paths = HashMap::new();
