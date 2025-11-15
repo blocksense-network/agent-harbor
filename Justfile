@@ -335,6 +335,12 @@ run-pjdfstest mountpoint:
 test-pjdfs-subset mountpoint:
     ./scripts/run-pjdfstest-subset.sh "{{mountpoint}}"
 
+# Run complete pjdfstest workflow: setup (if needed), mount, test, unmount
+# Usage: just test-pjdfstest-suite [mountpoint]
+#   mountpoint: Mount point for the filesystem (default: /tmp/agentfs)
+test-pjdfstest-suite mountpoint="/tmp/agentfs":
+    ./scripts/test-pjdfstest-suite.sh "{{mountpoint}}"
+
 # Build all TUI test binaries needed for TUI testing
 build-tui-tests: build-tui-test-binaries
 
