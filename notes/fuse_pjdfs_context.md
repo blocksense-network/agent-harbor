@@ -12,6 +12,7 @@
 - `agentfs-control-cli` remains the helper binary for direct SSZ IOCTLs. The harness now respects `SKIP_FUSE_BUILD`/`SKIP_CONTROL_CLI_BUILD` so CI can build the binaries once and reuse them.
 - IOCTL framing (length-prefixed request/response) is unchanged; both the CLI and AH client still share the transport.
 - Regression sweep: mount-cycle, mount-failures, mount-concurrent, basic-ops, negative-ops, overlay-ops, and the pjdfstest subset are still green (see the Nov 15 logs under `logs/` listed below).
+- `scripts/test-pjdfstest-full.sh` + `just test-pjdfstest-full` now automate the **entire** pjdfstest suite: they set up the resources, build/mount with `--allow-other`, stream the full `prove -vr` output into `logs/pjdfstest-full-<ts>/pjdfstest.log`, emit a machine-readable `summary.json`, and compare the results against `specs/Public/AgentFS/pjdfstest.baseline.json`. Latest run (still FAIL because of chmod/chown/utimens gaps, but matching the baseline) lives under `logs/pjdfstest-full-20251115-135821/`.
 
 ## What Changed This Session
 
@@ -27,16 +28,17 @@
 
 ## Pending / Next Steps
 
-1. **Control-plane coverage expansion**
-   - Negative cases (bogus branch ID, `snapshot-list` while unmounted) and multi-PID branch binding are now baked into the harness. The remaining gap is demonstrating branch-local writes: the current FsCore build refuses to mutate files after a snapshot is created (even on the default branch), so the new coverage only proves that separate PIDs can bind without interfering and that branch-bound readers stay on the snapshot view. We should fix the write-after-snapshot limitation or add a lower-layer worker that can mutate the HostFs backstore so we can finally show diverging data per PID.
-2. **Hook into CI**
-   - `just test-fuse-control-plane` is now part of the self-hosted “FUSE harness” workflow alongside mount/basic/negative/overlay. Ensure the runner keeps `sudo` + FUSE available.
-3. **Manual CLI verification**
-   - Continue to use `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list` etc. when debugging. The harness drops a per-run `fuse-config.json` under `logs/fuse-control-plane-*/` that can be reused for ad-hoc mounts.
+1. **Control-plane write semantics**
+   - Negative samples + remount behaviour are covered, but FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
+2. **pjdfstest regression gating (F5)**
+   - Baseline failures are captured in `specs/Public/AgentFS/pjdfstest.baseline.json`, and the harness now diffs `summary.json` against it. Next steps are (a) start tackling the chmod/chown/ftruncate/utimens issues and (b) keep expanding the baseline as fixes land so the diff stays meaningful.
+3. **Hook pjdfstest-full into CI**
+   - Add a CI job (similar to the FUSE harness job) that runs `just test-pjdfstest-full` on a privileged runner, archives `pjdfstest.log` + `summary.json`, and relies on the baseline diff for pass/fail.
 
 ## Useful Paths & Logs
 
 - Control-plane harness log (latest): `logs/fuse-control-plane-20251115-130217/control-plane.log`
+- pjdfstest full-suite harness: `logs/pjdfstest-full-20251115-135821/{pjdfstest.log,summary.json}` (many chmod/chown/ftruncate failures; baseline diff keeps the noise contained).
 - Other harness logs (Nov 15 runs):
   - `logs/fuse-mount-cycle-20251115-102831`
   - `logs/fuse-mount-failures-20251115-104618`
@@ -50,6 +52,7 @@
 ## Commands Recap
 
 - Control-plane smoke test: `just test-fuse-control-plane`
+- pjdfstest full suite: `just test-pjdfstest-full`
 - Manual CLI usage:
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list`
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-create --name demo`
