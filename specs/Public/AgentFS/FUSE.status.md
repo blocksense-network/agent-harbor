@@ -94,6 +94,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T3.4 Symlink Operations**: Create symlinks, resolve them, verify they appear correctly in directory listings
   - **T3.5 Large File Handling**: Test files larger than page size to ensure proper read/write chunking
 
+- **Verification Results**:
+  - [x] T3.1–T3.5 basic operations – `scripts/test-fuse-basic-ops.sh` automates CRUD, directory, metadata, symlink, and large-file tests; latest run logged at `logs/fuse-basic-ops-20251115-092526`
+
 **F3.2. Negative Path and Error Code Validation** (2–3d)
 
 - **Deliverables**:
