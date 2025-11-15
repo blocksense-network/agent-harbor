@@ -161,7 +161,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T4.3 Branch Operations**: Create branches from snapshots, verify content isolation
   - **T4.4 Process Binding**: Test per-process branch binding with multiple processes seeing different content
 - **Verification Results**:
-  - [x] T4.1–T4.4 control-plane suite – `scripts/test-fuse-control-plane.sh` drives the new `agentfs-control-cli` to create/list snapshots, fork branches, and bind a worker PID; latest run logged at `logs/fuse-control-plane-20251115-113550`
+  - [x] T4.1–T4.4 control-plane suite – `scripts/test-fuse-control-plane.sh` now rejects bogus branch IDs, binds two independent PIDs to the same branch, confirms default-PID reads still work, and exercises snapshot-list across an unmount/remount (branch-local writes remain blocked by the current FsCore snapshot implementation, so the harness asserts read-only isolation for now). Latest log: `logs/fuse-control-plane-20251115-130217`.
+  - [ ] Fix FsCore’s post-snapshot write denial so the harness can validate branch-local divergence (currently tracked in `notes/fuse_pjdfs_context.md`).
 
 **F5. pjdfstests Compliance Suite** (4–6d)
 
