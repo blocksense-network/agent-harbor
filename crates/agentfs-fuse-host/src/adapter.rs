@@ -41,8 +41,8 @@ const AGENTFS_DIR_INO: u64 = FUSE_ROOT_ID + 1;
 /// Special inode for the .agentfs/control file
 const CONTROL_FILE_INO: u64 = FUSE_ROOT_ID + 2;
 
-/// IOCTL command for AgentFS control operations
-const AGENTFS_IOCTL_CMD: u32 = 0x8000_4146; // 'AF' in hex with 0x8000 bit set
+/// IOCTL command for AgentFS control operations (matches _IOWR('A','F', 4096))
+const AGENTFS_IOCTL_CMD: u32 = 0xD000_4146;
 
 /// Maximum single path component length to guard against overly long names
 const NAME_MAX: usize = 255;
@@ -441,7 +441,12 @@ impl AgentFsFuse {
     fn handle_control_ioctl(&self, data: &[u8]) -> Result<Vec<u8>, c_int> {
         use agentfs_proto::*;
 
-        let request: Request = <Request as Decode>::from_ssz_bytes(data).map_err(|e| {
+        let request_bytes = Self::extract_framed_payload(data).map_err(|code| {
+            error!("Malformed control request payload (errno={})", code);
+            code
+        })?;
+
+        let request: Request = <Request as Decode>::from_ssz_bytes(request_bytes).map_err(|e| {
             error!("Failed to decode SSZ control request: {:?}", e);
             EINVAL
         })?;
@@ -450,7 +455,9 @@ impl AgentFsFuse {
         if let Err(e) = validate_request(&request) {
             error!("Request validation failed: {}", e);
             let response = Response::error(format!("{}", e), Some(EINVAL as u32));
-            return Ok(<Response as Encode>::as_ssz_bytes(&response));
+            return Ok(Self::frame_response_bytes(
+                <Response as Encode>::as_ssz_bytes(&response),
+            ));
         }
 
         match request {
@@ -469,7 +476,9 @@ impl AgentFsFuse {
                             id: snapshot_id.to_string().into_bytes(),
                             name: name.map(|s| s.into_bytes()),
                         });
-                        Ok(<Response as Encode>::as_ssz_bytes(&response))
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
                     }
                     Err(e) => {
                         let errno = match e {
@@ -480,7 +489,9 @@ impl AgentFsFuse {
                             _ => EIO,
                         };
                         let response = Response::error(format!("{:?}", e), Some(errno as u32));
-                        Ok(<Response as Encode>::as_ssz_bytes(&response))
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
                     }
                 }
             }
@@ -495,7 +506,7 @@ impl AgentFsFuse {
                     .collect();
 
                 let response = Response::snapshot_list(snapshot_infos);
-                Ok(response.as_ssz_bytes())
+                Ok(Self::frame_response_bytes(response.as_ssz_bytes()))
             }
             Request::BranchCreate((_, req)) => {
                 let from_str = String::from_utf8_lossy(&req.from).to_string();
@@ -518,7 +529,9 @@ impl AgentFsFuse {
                                 .unwrap_or_default()
                                 .into_bytes(),
                         });
-                        Ok(<Response as Encode>::as_ssz_bytes(&response))
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
                     }
                     Err(e) => {
                         let errno = match e {
@@ -529,7 +542,9 @@ impl AgentFsFuse {
                             _ => EIO,
                         };
                         let response = Response::error(format!("{:?}", e), Some(errno as u32));
-                        Ok(<Response as Encode>::as_ssz_bytes(&response))
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
                     }
                 }
             }
@@ -541,7 +556,9 @@ impl AgentFsFuse {
                 match self.core.bind_process_to_branch_with_pid(branch_id, pid) {
                     Ok(()) => {
                         let response = Response::branch_bind(req.branch.clone(), pid);
-                        Ok(<Response as Encode>::as_ssz_bytes(&response))
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
                     }
                     Err(e) => {
                         let errno = match e {
@@ -552,7 +569,9 @@ impl AgentFsFuse {
                             _ => EIO,
                         };
                         let response = Response::error(format!("{:?}", e), Some(errno as u32));
-                        Ok(<Response as Encode>::as_ssz_bytes(&response))
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
                     }
                 }
             }
@@ -560,9 +579,30 @@ impl AgentFsFuse {
                 // For now, only handle the basic control operations mentioned in the milestone
                 let response =
                     Response::error("Unsupported operation".to_string(), Some(ENOTSUP as u32));
-                Ok(response.as_ssz_bytes())
+                Ok(Self::frame_response_bytes(response.as_ssz_bytes()))
             }
         }
+    }
+
+    fn extract_framed_payload(data: &[u8]) -> Result<&[u8], c_int> {
+        if data.len() < 4 {
+            return Err(EINVAL);
+        }
+        let mut len_bytes = [0u8; 4];
+        len_bytes.copy_from_slice(&data[..4]);
+        let payload_len = u32::from_le_bytes(len_bytes) as usize;
+        let end = 4 + payload_len;
+        if payload_len == 0 || end > data.len() {
+            return Err(EINVAL);
+        }
+        Ok(&data[4..end])
+    }
+
+    fn frame_response_bytes(mut payload: Vec<u8>) -> Vec<u8> {
+        let mut framed = Vec::with_capacity(payload.len() + 4);
+        framed.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        framed.append(&mut payload);
+        framed
     }
 }
 

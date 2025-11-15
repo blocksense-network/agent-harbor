@@ -1,50 +1,70 @@
-# FUSE Adapter / pjdfstest Status – Nov 15 2025 (handoff)
+# FUSE Adapter Control-Plane Status – Nov 15 2025 (handoff)
 
 ## Current Scope
 
-- Branch `feat/agentfs-fuse-pjdfstest` rebased; we're 4 commits ahead, 74 behind `origin/main`.
-- Goal: finish **F1** by getting the pjdfstest unlink/rename/mkdir/rmdir subsets green on the FUSE mount at `/tmp/agentfs`.
-- Tooling: `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, run subsets with `sudo -E just test-pjdfs-subset /tmp/agentfs`, unmount via `just umount-fuse /tmp/agentfs`.
+- Working branch: `feat/agentfs-fuse-f4`.
+- Focus: **F4 – Control Plane Integration Testing**. We need automated coverage that opens `<MOUNT>/.agentfs/control`, issues snapshot/branch/bind IOCTLs, and proves per-process binding isolation on a live mount.
+- Tooling targets: `just test-fuse-control-plane` (new); also keep the F1/F3 harnesses runnable (`test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`).
 
 ## Current State
 
-- `cargo test -p agentfs-core` is green (91 tests) after latest sticky enforcement changes.
-- pjdfstest unlink suite passes. Rename suite still fails on tests 2266–2301 in `rename/09.t` (sticky directories + cross-parent moves) even after remounting with the new binary. Latest failure logs: `logs/pjdfs-subset-20251115-044909/rename.log`, `/tmp/agentfs-fuse-rename.log`, `/tmp/agentfs-sticky.log`.
-- Sticky log now records both per-directory unlink checks and explicit `allow_cross_parent`/`deny_cross_parent` entries for cross-parent directory moves, but the failing cases still show the FUSE layer returning success for prohibited renames.
+- Fresh control-plane harness (`scripts/test-fuse-control-plane.sh`) now green. Latest run: `logs/fuse-control-plane-20251115-113550`. It mounts `/tmp/agentfs-control-plane`, hits `.agentfs/control`, creates a snapshot + branch, binds the current shell to that branch via IOCTL, and logs all interactions.
+- `agentfs-control-cli` (new crate) is the helper binary that speaks the SSZ control protocol from the CLI. It’s invoked by both the harness and can be used manually (`target/debug/agentfs-control-cli --mount /tmp/agentfs snapshot-list` etc.).
+- IOCTL framing changed: both requests and responses now carry a 4-byte little-endian length prefix so generic buffers (4 KiB) can safely decode replies. Adapter and AH CLI transport updated accordingly.
+- Regression check: after these changes, all existing FUSE harnesses still pass (`test-fuse-mount-cycle`, `test-fuse-mount-failures`, `test-fuse-mount-concurrent`, `test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`). Logs for this rerun:
+  - `logs/fuse-mount-cycle-20251115-104613`
+  - `logs/fuse-mount-failures-20251115-104618`
+  - `logs/fuse-mount-concurrent-20251115-104626`
+  - `logs/fuse-basic-ops-20251115-103631`
+  - `logs/fuse-negative-ops-20251115-104635`
+  - `logs/fuse-overlay-ops-20251115-104639`
+  - `logs/pjdfs-subset-20251115-104653`
 
 ## What Changed This Session
 
-1. **Sticky rename enforcement**
-   - Strengthened `check_dir_cross_parent_permissions`: still requires the caller to own directories during cross-parent renames, and now always logs `allow_cross_parent` vs `deny_cross_parent` in `/tmp/agentfs-sticky.log`. Only uid 0 bypasses via `root_bypass_permissions`.
-   - Added helper `test_core_posix_with_root_bypass` plus new unit test `test_sticky_directory_blocks_cross_parent_dir_move_with_root_bypass_enabled` to pin behaviour when root bypass is enabled (mirrors the FUSE host config).
-   - Extra logging ensures we can tie each cross-parent attempt back to inode ownership with absolute paths.
-2. **Tests**
-   - `cargo test -p agentfs-core` now runs 91 tests (all green).
-   - Rebuilt `agentfs-fuse-host`, remounted `/tmp/agentfs`, and re-ran `sudo -E just test-pjdfs-subset /tmp/agentfs`; rename/09 failures persist (see `logs/pjdfs-subset-20251115-044909`).
+1. **Control-plane CLI + harness**
+   - Added `crates/agentfs-control-cli`: small Clap binary that opens `<mount>/.agentfs/control`, frames SSZ requests/responses, and prints snapshot/branch/bind results. Mirrors the AH CLI transport but without the rest of the agent stack.
+   - Added `scripts/test-fuse-control-plane.sh` and wired it into the `Justfile` (`just test-fuse-control-plane`). Script builds the FUSE host + CLI, mounts `/tmp/agentfs-control-plane`, runs snapshot-create/list + branch-create/bind, and stores logs under `logs/fuse-control-plane-<timestamp>`.
+2. **Adapter framing tweaks**
+   - `AgentFsFuse::handle_control_ioctl` now expects the first 4 bytes of the ioctl buffer to encode payload length; responses are framed the same way to keep the CLI agnostic of actual response sizes.
+   - AH CLI’s transport (used by `ah agent fs …`) now writes/reads the same framed format, so the new CLI and the existing one share the protocol.
+3. **Documentation + status**
+   - `specs/Public/AgentFS/FUSE.status.md` now marks T4.1–T4.4 as ✅ with a link to `logs/fuse-control-plane-20251115-113550`.
+   - `notes/fuse_pjdfs_context.md` (this file) now reflects the F4 work instead of the old pjdfstest debugging notes.
 
 ## Pending / Next Steps
 
-1. **Root cause remaining rename/09 failures**
-   - Even after remounting, pjdfstest can cross-parent move root-owned directories out of sticky parents as uid 65534; `check_dir_cross_parent_permissions` apparently isn’t firing (no `deny_cross_parent` entries for these paths). Need to trace control flow in `FsCore::rename` to ensure we still call the helper before deleting the destination, and confirm the source node we hand into the check retains the original uid/gid after earlier successful renames.
-   - Investigate whether the directory ownership mutates mid-test (pjdfstest expects uid/gid to remain 0/0). Compare inode ownership stored in `self.nodes` vs what pjdfstest expects (see failed assertions expecting inode 485 owned by root). Maybe the user-level `chown` inside pjdfstest actually succeeded because FUSE host forced root bypass? Need to gather per-step inode metadata via debug instrumentation or `agentfs-core` tracing.
-   - Confirm whether `root_bypass_permissions` being enabled inside the FUSE adapter is inadvertently short-circuiting permission checks before they reach `agentfs-core`. (Adapter always registers processes with their real uid/gid, but the config toggles root bypass globally.)
-2. **Re-run pjdfstest after adjustments**
-   - Each iteration: user mounts via `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, then `sudo -E just test-pjdfs-subset /tmp/agentfs`, inspect `/tmp/agentfs-sticky.log` and `/tmp/agentfs-fuse-rename.log`.
-   - Archive each failing run under `logs/pjdfs-subset-<timestamp>` for reference.
-3. **Rebase/cleanup**
-   - Once rename suite is green, rebase onto latest `origin/main`, rerun `cargo fmt`, `cargo test -p agentfs-core`, pjdfstest subset.
-   - Update `specs/Public/AgentFS/FUSE.status.md` and README/notes when F1 criteria are met.
+1. **Control-plane coverage expansion**
+   - Harness currently exercises snapshot create/list and a single branch bind. Next steps: add negative cases (bind invalid branch, snapshot list after unmount/remount) and cover branch isolation by actually reading/writing files under different PIDs (requires reintroducing a worker flow once the simpler smoke test is solid).
+2. **Hook into CI**
+   - Wire `just test-fuse-control-plane` into the same pipeline that already runs the mount/negative/overlay harnesses so control-plane regressions get caught automatically.
+3. **Manual CLI verification**
+   - Use `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list` etc. to manually inspect control state while reproducing issues.
 
 ## Useful Paths & Logs
 
-- Latest logs: `logs/pjdfs-subset-20251115-044909/rename.log`, `/tmp/agentfs-fuse-rename.log`, `/tmp/agentfs-sticky.log`.
-- Older references: `logs/pjdfs-subset-20251114-163136`, `logs/pjdfs-subset-20251114-170151`, etc.
-- Sticky path examples: `/pjdfstest_2340aa526a954f8114fc4535596ce2aa/pjdfstest_9dd361e62c47469c752cd6f3d0f97c0c`.
+- Control-plane harness log (latest): `logs/fuse-control-plane-20251115-113550/control-plane.log`
+- Other harness logs (Nov 15 runs):
+  - `logs/fuse-mount-cycle-20251115-102831`
+  - `logs/fuse-mount-failures-20251115-104618`
+  - `logs/fuse-mount-concurrent-20251115-104626`
+  - `logs/fuse-basic-ops-20251115-103631`
+  - `logs/fuse-negative-ops-20251115-104635`
+  - `logs/fuse-overlay-ops-20251115-104639`
+  - `logs/pjdfs-subset-20251115-104653`
+- Source additions: `crates/agentfs-control-cli`, `scripts/test-fuse-control-plane.sh`, FUSE adapter framing changes.
 
 ## Commands Recap
 
-- Mount: `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`
-- Run subset: `sudo -E just test-pjdfs-subset /tmp/agentfs`
-- Unmount: `just umount-fuse /tmp/agentfs`
-- Inspect sticky log: `sudo tail -n 100 /tmp/agentfs-sticky.log`
-- Inspect rename log: `sudo tail -n 100 /tmp/agentfs-fuse-rename.log`
+- Control-plane smoke test: `just test-fuse-control-plane`
+- Manual CLI usage:
+  - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list`
+  - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-create --name demo`
+  - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane branch-create --snapshot <id> --name feature`
+  - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane branch-bind --branch <id> --pid $$`
+- Other harnesses (unchanged):
+  - `just test-fuse-basic-ops`
+  - `just test-fuse-negative-ops`
+  - `just test-fuse-overlay-ops`
+  - `sudo -E just test-pjdfs-subset /tmp/agentfs`
+  - Mount/unmount helpers: `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, `just umount-fuse /tmp/agentfs`

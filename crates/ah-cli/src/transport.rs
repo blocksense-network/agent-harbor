@@ -128,13 +128,19 @@ async fn send_fuse_control_request(mount_point: PathBuf, request: Request) -> Re
 
     // Encode request to SSZ
     let request_bytes = request.as_ssz_bytes();
-    let mut buffer = request_bytes;
-
-    // Ensure buffer has enough space for response (4KB should be enough)
+    if request_bytes.len() + 4 > 4096 {
+        return Err(anyhow!(
+            "control request too large ({} bytes)",
+            request_bytes.len()
+        ));
+    }
+    let mut buffer = Vec::with_capacity(4096);
+    buffer.extend_from_slice(&(request_bytes.len() as u32).to_le_bytes());
+    buffer.extend_from_slice(&request_bytes);
     buffer.resize(4096, 0);
 
     // Define ioctl command (must match FUSE adapter)
-    const AGENTFS_IOCTL_CMD: u32 = 0x8000_4146; // 'AF' in hex with 0x8000 bit set
+    const AGENTFS_IOCTL_CMD: u32 = 0xD000_4146; // _IOWR('A','F',4096)
 
     // Use nix crate for ioctl
     let fd = nix::fcntl::open(
@@ -162,8 +168,16 @@ async fn send_fuse_control_request(mount_point: PathBuf, request: Request) -> Re
     // Close file descriptor
     let _ = nix::unistd::close(fd);
 
-    // Decode SSZ response (ioctl overwrites the buffer with response)
-    let response = Response::from_ssz_bytes(&buffer)
+    if buffer.len() < 4 {
+        return Err(anyhow!("control response truncated"));
+    }
+    let mut len_bytes = [0u8; 4];
+    len_bytes.copy_from_slice(&buffer[..4]);
+    let response_len = u32::from_le_bytes(len_bytes) as usize;
+    if response_len == 0 || 4 + response_len > buffer.len() {
+        return Err(anyhow!("invalid response length {}", response_len));
+    }
+    let response = Response::from_ssz_bytes(&buffer[4..4 + response_len])
         .map_err(|e| anyhow!("Failed to decode SSZ response: {:?}", e))?;
 
     Ok(response)
