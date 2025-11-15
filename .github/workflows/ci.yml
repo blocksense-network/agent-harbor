@@ -222,6 +222,54 @@ jobs:
   webui:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
+  pjdfstest:
+    name: pjdfstest suite
+    needs: fuse-harness
+    runs-on: [self-hosted, nixos, x86-64-v3, microvm, fine-tuned-systemd-sandbox]
+
+    steps:
+      - name: Test passwordless `sudo`
+        run: sudo true
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: 'recursive'
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build & activate the Nix Dev Shell
+        run: |
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
+
+      - name: Build FUSE test binaries
+        run: just build-fuse-test-binaries
+
+      - name: Run full pjdfstest suite
+        run: SKIP_FUSE_BUILD=1 just test-pjdfstest-full
+
+      - name: Capture pjdfstest logs path
+        run: |
+          LOG_DIR=$(ls -td logs/pjdfstest-full-* 2>/dev/null | head -n 1 || true)
+          if [ -z "$LOG_DIR" ]; then
+            echo "pjdfstest log directory not found" >&2
+            exit 1
+          fi
+          echo "PJDFS_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
+
+      - name: Upload pjdfstest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pjdfstest-full
+          path: ${{ env.PJDFS_LOG_DIR }}
+
     steps:
       - uses: actions/checkout@v4
         with:

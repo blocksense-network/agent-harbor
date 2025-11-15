@@ -225,6 +225,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T5.2 Result Analysis**: Parse test results, categorize passes/failures/skips
   - **T5.3 Critical Test Validation**: Ensure all basic POSIX filesystem operations pass
   - **T5.4 Regression Detection**: Compare results against established baseline, fail on regressions
+- **Verification Results**:
+  - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251115-135821/`).
+  - [ ] CI gating – wire the full-suite harness + baseline diff into GitHub Actions so regressions fail automatically (pending privileged runner capacity).
 
 **F6. Performance Benchmarking Suite** (3–4d)
 
