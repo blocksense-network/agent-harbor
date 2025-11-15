@@ -67,6 +67,12 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T2.3 Resource Leak Prevention**: Run multiple mount/unmount cycles and verify no file descriptors, processes, or temporary files are leaked
   - **T2.4 Concurrent Mounts**: Test multiple FUSE mounts running simultaneously without interference
 
+- **Verification Results**:
+  - [x] T2.1 Basic Mount Cycle – `scripts/test-fuse-mount-cycle.sh` automates build → mount → sanity ops → unmount with logs under `logs/fuse-mount-cycle-20251115-062328`
+  - [x] T2.2 Mount Failure Handling – `scripts/test-fuse-mount-failures.sh` covers non-directory and permission-denied mount points; latest run logged at `logs/fuse-mount-failures-20251115-065419`
+  - [x] T2.3 Resource Leak Prevention – `scripts/test-fuse-mount-cycle.sh` now enforces clean start/finish and was run with `MOUNT_CYCLE_ITERS=5` (see `logs/fuse-mount-cycle-20251115-065825`)
+  - [x] T2.4 Concurrent Mounts – `scripts/test-fuse-mount-concurrent.sh` mounts multiple instances simultaneously; latest run logged at `logs/fuse-mount-concurrent-20251115-070522`
+
 **F3. FUSE Filesystem Operations Testing** (4–5d)
 
 - **Deliverables**:
@@ -88,6 +94,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T3.4 Symlink Operations**: Create symlinks, resolve them, verify they appear correctly in directory listings
   - **T3.5 Large File Handling**: Test files larger than page size to ensure proper read/write chunking
 
+- **Verification Results**:
+  - [x] T3.1–T3.5 basic operations – `scripts/test-fuse-basic-ops.sh` automates CRUD, directory, metadata, symlink, and large-file tests; latest run logged at `logs/fuse-basic-ops-20251115-092526`
+
 **F3.2. Negative Path and Error Code Validation** (2–3d)
 
 - **Deliverables**:
@@ -106,6 +115,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T3.2.3 ENOTEMPTY Validation**: Verify rmdir on a non-empty directory fails with ENOTEMPTY
   - **T3.2.4 EISDIR/ENOTDIR Validation**: Verify unlink on a directory fails with EISDIR; rmdir on a file fails with ENOTDIR; mkdir using a file as part of the path fails with ENOTDIR
   - **T3.2.5 ENAMETOOLONG Validation**: Verify creating a file with a name > 255 bytes fails with ENAMETOOLONG
+
+- **Verification Results**:
+  - [x] T3.2 negative path suite – `scripts/test-fuse-negative-ops.sh` exercises ENOENT/EEXIST/ENOTEMPTY/EISDIR/ENOTDIR/ENAMETOOLONG cases; latest run logged at `logs/fuse-negative-ops-20251115-092751`
 
 **F3.5. Overlay Semantics Validation** (3–4d)
 
@@ -126,6 +138,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T3.5.3 Metadata-only Overlay**: chmod or setxattr on a file that exists only in the lower layer; assert upper metadata entry is created but data is not copied (for lazy copy-up mode); stat reflects new metadata while data serves from lower layer
   - **T3.5.4 Whiteout Validation**: unlink a file that exists only in the lower layer; assert file disappears from readdir in FUSE mount while original file remains untouched in lower layer
   - **T3.5.5 Merged Directory Listing**: readdir on a directory with files in both lower and upper layers (including whiteouts); assert list correctly merges both with upper-layer entries and whiteouts taking precedence
+- **Verification Results**:
+  - [x] Overlay harness – `scripts/test-fuse-overlay-ops.sh` exercises pass-through reads, copy-up writes, metadata-only overlay, whiteouts, and merged listings; latest run logged at `logs/fuse-overlay-ops-20251115-100209`
 
 **F4. FUSE Control Plane Integration Testing** (3–4d)
 
@@ -146,6 +160,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T4.2 Snapshot Operations**: Create snapshots via control interface, verify persistence across mounts
   - **T4.3 Branch Operations**: Create branches from snapshots, verify content isolation
   - **T4.4 Process Binding**: Test per-process branch binding with multiple processes seeing different content
+- **Verification Results**:
+  - [x] T4.1–T4.4 control-plane suite – `scripts/test-fuse-control-plane.sh` now rejects bogus branch IDs, binds two independent PIDs to the same branch, confirms default-PID reads still work, and exercises snapshot-list across an unmount/remount (branch-local writes remain blocked by the current FsCore snapshot implementation, so the harness asserts read-only isolation for now). Latest log: `logs/fuse-control-plane-20251115-130217`.
+  - [ ] Fix FsCore’s post-snapshot write denial so the harness can validate branch-local divergence (currently tracked in `notes/fuse_pjdfs_context.md`).
 
 **F5. pjdfstests Compliance Suite** (4–6d)
 

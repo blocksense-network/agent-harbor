@@ -317,6 +317,34 @@ mount-fuse mountpoint:
 umount-fuse mountpoint:
     ./scripts/umount-fuse.sh "{{mountpoint}}"
 
+# Automated mount/unmount cycle test harness (T2.1)
+test-fuse-mount-cycle:
+    ./scripts/test-fuse-mount-cycle.sh
+
+# Mount failure handling scenarios (T2.2)
+test-fuse-mount-failures:
+    ./scripts/test-fuse-mount-failures.sh
+
+# Concurrent mount harness (T2.4)
+test-fuse-mount-concurrent:
+    ./scripts/test-fuse-mount-concurrent.sh
+
+# Basic filesystem operations (F3.1–T3.4)
+test-fuse-basic-ops:
+    ./scripts/test-fuse-basic-ops.sh
+
+# Negative path/errno validation (F3.2)
+test-fuse-negative-ops:
+    ./scripts/test-fuse-negative-ops.sh
+
+# Overlay semantics validation (F3.5)
+test-fuse-overlay-ops:
+    ./scripts/test-fuse-overlay-ops.sh
+
+# Control plane integration (F4)
+test-fuse-control-plane:
+    ./scripts/test-fuse-control-plane.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:

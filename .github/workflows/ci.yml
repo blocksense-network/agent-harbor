@@ -152,6 +152,73 @@ jobs:
       - name: Run tests
         run: just test-rust-verbose
 
+  fuse-harness:
+    name: FUSE harness
+    needs: test
+    runs-on: [self-hosted, nixos, x86-64-v3, microvm, fine-tuned-systemd-sandbox]
+
+    steps:
+      - name: Test passwordless `sudo`
+        run: sudo true
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: 'recursive'
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build & activate the Nix Dev Shell
+        run: |
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
+
+      - name: Build AgentFS FUSE binaries
+        run: |
+          cargo build -p agentfs-fuse-host --features fuse
+          cargo build -p agentfs-control-cli
+
+      - name: Run mount cycle harness
+        run: just test-fuse-mount-cycle
+        env:
+          SKIP_FUSE_BUILD: 1
+
+      - name: Run mount failure harness
+        run: just test-fuse-mount-failures
+        env:
+          SKIP_FUSE_BUILD: 1
+
+      - name: Run concurrent mount harness
+        run: just test-fuse-mount-concurrent
+        env:
+          SKIP_FUSE_BUILD: 1
+
+      - name: Run basic ops harness
+        run: just test-fuse-basic-ops
+        env:
+          SKIP_FUSE_BUILD: 1
+
+      - name: Run negative ops harness
+        run: just test-fuse-negative-ops
+        env:
+          SKIP_FUSE_BUILD: 1
+
+      - name: Run overlay ops harness
+        run: just test-fuse-overlay-ops
+        env:
+          SKIP_FUSE_BUILD: 1
+
+      - name: Run control-plane harness
+        run: just test-fuse-control-plane
+        env:
+          SKIP_FUSE_BUILD: 1
+          SKIP_CONTROL_CLI_BUILD: 1
+
   webui:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
