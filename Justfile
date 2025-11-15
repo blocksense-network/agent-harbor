@@ -329,6 +329,10 @@ test-fuse-mount-failures:
 test-fuse-mount-concurrent:
     ./scripts/test-fuse-mount-concurrent.sh
 
+# Basic filesystem operations (F3.1–T3.4)
+test-fuse-basic-ops:
+    ./scripts/test-fuse-basic-ops.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
