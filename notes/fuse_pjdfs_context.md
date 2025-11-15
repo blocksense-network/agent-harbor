@@ -8,17 +8,10 @@
 
 ## Current State
 
-- Fresh control-plane harness (`scripts/test-fuse-control-plane.sh`) now green. Latest run: `logs/fuse-control-plane-20251115-113550`. It mounts `/tmp/agentfs-control-plane`, hits `.agentfs/control`, creates a snapshot + branch, binds the current shell to that branch via IOCTL, and logs all interactions.
-- `agentfs-control-cli` (new crate) is the helper binary that speaks the SSZ control protocol from the CLI. It’s invoked by both the harness and can be used manually (`target/debug/agentfs-control-cli --mount /tmp/agentfs snapshot-list` etc.).
-- IOCTL framing changed: both requests and responses now carry a 4-byte little-endian length prefix so generic buffers (4 KiB) can safely decode replies. Adapter and AH CLI transport updated accordingly.
-- Regression check: after these changes, all existing FUSE harnesses still pass (`test-fuse-mount-cycle`, `test-fuse-mount-failures`, `test-fuse-mount-concurrent`, `test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`). Logs for this rerun:
-  - `logs/fuse-mount-cycle-20251115-104613`
-  - `logs/fuse-mount-failures-20251115-104618`
-  - `logs/fuse-mount-concurrent-20251115-104626`
-  - `logs/fuse-basic-ops-20251115-103631`
-  - `logs/fuse-negative-ops-20251115-104635`
-  - `logs/fuse-overlay-ops-20251115-104639`
-  - `logs/pjdfs-subset-20251115-104653`
+- Control-plane harness now exercises the entire happy path plus the negative cases we identified. Latest log: `logs/fuse-control-plane-20251115-130217/control-plane.log`. Each run builds the FUSE host + control CLI, mounts with a HostFs backstore config, validates `.agentfs/control` access, creates a snapshot + branch, deliberately rejects an invalid branch ID, binds two independent PIDs to the same branch, and proves the default PID can continue reading while the branch-bound readers stay on the snapshot view. We also added an explicit unmount/remount cycle that asserts `snapshot-list` fails while unmounted and recovers afterwards (persistence still TODO—see below).
+- `agentfs-control-cli` remains the helper binary for direct SSZ IOCTLs. The harness now respects `SKIP_FUSE_BUILD`/`SKIP_CONTROL_CLI_BUILD` so CI can build the binaries once and reuse them.
+- IOCTL framing (length-prefixed request/response) is unchanged; both the CLI and AH client still share the transport.
+- Regression sweep: mount-cycle, mount-failures, mount-concurrent, basic-ops, negative-ops, overlay-ops, and the pjdfstest subset are still green (see the Nov 15 logs under `logs/` listed below).
 
 ## What Changed This Session
 
@@ -35,15 +28,15 @@
 ## Pending / Next Steps
 
 1. **Control-plane coverage expansion**
-   - Harness currently exercises snapshot create/list and a single branch bind. Next steps: add negative cases (bind invalid branch, snapshot list after unmount/remount) and cover branch isolation by actually reading/writing files under different PIDs (requires reintroducing a worker flow once the simpler smoke test is solid).
+   - Negative cases (bogus branch ID, `snapshot-list` while unmounted) and multi-PID branch binding are now baked into the harness. The remaining gap is demonstrating branch-local writes: the current FsCore build refuses to mutate files after a snapshot is created (even on the default branch), so the new coverage only proves that separate PIDs can bind without interfering and that branch-bound readers stay on the snapshot view. We should fix the write-after-snapshot limitation or add a lower-layer worker that can mutate the HostFs backstore so we can finally show diverging data per PID.
 2. **Hook into CI**
-   - Wire `just test-fuse-control-plane` into the same pipeline that already runs the mount/negative/overlay harnesses so control-plane regressions get caught automatically.
+   - `just test-fuse-control-plane` is now part of the self-hosted “FUSE harness” workflow alongside mount/basic/negative/overlay. Ensure the runner keeps `sudo` + FUSE available.
 3. **Manual CLI verification**
-   - Use `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list` etc. to manually inspect control state while reproducing issues.
+   - Continue to use `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list` etc. when debugging. The harness drops a per-run `fuse-config.json` under `logs/fuse-control-plane-*/` that can be reused for ad-hoc mounts.
 
 ## Useful Paths & Logs
 
-- Control-plane harness log (latest): `logs/fuse-control-plane-20251115-113550/control-plane.log`
+- Control-plane harness log (latest): `logs/fuse-control-plane-20251115-130217/control-plane.log`
 - Other harness logs (Nov 15 runs):
   - `logs/fuse-mount-cycle-20251115-102831`
   - `logs/fuse-mount-failures-20251115-104618`
