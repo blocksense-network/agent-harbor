@@ -116,6 +116,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T3.2.4 EISDIR/ENOTDIR Validation**: Verify unlink on a directory fails with EISDIR; rmdir on a file fails with ENOTDIR; mkdir using a file as part of the path fails with ENOTDIR
   - **T3.2.5 ENAMETOOLONG Validation**: Verify creating a file with a name > 255 bytes fails with ENAMETOOLONG
 
+- **Verification Results**:
+  - [x] T3.2 negative path suite – `scripts/test-fuse-negative-ops.sh` exercises ENOENT/EEXIST/ENOTEMPTY/EISDIR/ENOTDIR/ENAMETOOLONG cases; latest run logged at `logs/fuse-negative-ops-20251115-092751`
+
 **F3.5. Overlay Semantics Validation** (3–4d)
 
 - **Deliverables**:
