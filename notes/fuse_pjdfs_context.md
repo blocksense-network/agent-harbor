@@ -13,6 +13,7 @@
 - IOCTL framing (length-prefixed request/response) is unchanged; both the CLI and AH client still share the transport.
 - Regression sweep: mount-cycle, mount-failures, mount-concurrent, basic-ops, negative-ops, overlay-ops, and the pjdfstest subset are still green (see the Nov 15 logs under `logs/` listed below).
 - `scripts/test-pjdfstest-full.sh` + `just test-pjdfstest-full` now automate the **entire** pjdfstest suite: they set up the resources, build/mount with `--allow-other`, stream the full `prove -vr` output into `logs/pjdfstest-full-<ts>/pjdfstest.log`, emit a machine-readable `summary.json`, and compare the results against `specs/Public/AgentFS/pjdfstest.baseline.json`. Latest run (still FAIL because of chmod/chown/utimens gaps, but matching the baseline) lives under `logs/pjdfstest-full-20251115-135821/`.
+- Performance harness (`scripts/test-fuse-performance.sh` via `just test-fuse-performance`) now mounts AgentFS with a HostFs backstore, runs sequential read/write, metadata, and 4-way concurrent write benchmarks on both AgentFS and a host baseline, and emits `results.jsonl` + `summary.json` under `logs/fuse-performance-<ts>/`. Latest run: `logs/fuse-performance-20251115-161415/`.
 
 ## What Changed This Session
 
@@ -34,10 +35,13 @@
    - Baseline failures are captured in `specs/Public/AgentFS/pjdfstest.baseline.json`, and the harness now diffs `summary.json` against it. Next steps are (a) start tackling the chmod/chown/ftruncate/utimens issues and (b) keep expanding the baseline as fixes land so the diff stays meaningful.
 3. **Hook pjdfstest-full into CI**
    - Add a CI job (similar to the FUSE harness job) that runs `just test-pjdfstest-full` on a privileged runner, archives `pjdfstest.log` + `summary.json`, and relies on the baseline diff for pass/fail.
+4. **Performance tuning (F6)**
+   - The initial benchmark shows AgentFS is still dramatically slower than the host baseline for sequential writes and concurrent workloads (see `logs/fuse-performance-20251115-161415/summary.json`). We need to profile the adapter/backstore to improve throughput and define threshold-based regression checks before wiring into CI.
 
 ## Useful Paths & Logs
 
 - Control-plane harness log (latest): `logs/fuse-control-plane-20251115-130217/control-plane.log`
+- Performance harness: `logs/fuse-performance-20251115-161415/{performance.log,results.jsonl,summary.json}`.
 - pjdfstest full-suite harness: `logs/pjdfstest-full-20251115-135821/{pjdfstest.log,summary.json}` (many chmod/chown/ftruncate failures; baseline diff keeps the noise contained).
 - Other harness logs (Nov 15 runs):
   - `logs/fuse-mount-cycle-20251115-102831`
@@ -52,6 +56,7 @@
 ## Commands Recap
 
 - Control-plane smoke test: `just test-fuse-control-plane`
+- Performance benchmarks (F6): `just test-fuse-performance`
 - pjdfstest full suite: `just test-pjdfstest-full`
 - Manual CLI usage:
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list`
