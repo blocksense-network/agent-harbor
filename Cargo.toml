@@ -39,6 +39,7 @@ members = [
   # AgentFS crates
   "crates/agentfs-core",
   "crates/agentfs-proto",
+  "crates/agentfs-control-cli",
   "crates/agentfs-client",
   "crates/agentfs-fuse-host",
   "crates/agentfs-winfsp-host",

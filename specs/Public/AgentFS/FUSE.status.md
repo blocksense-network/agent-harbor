@@ -160,6 +160,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T4.2 Snapshot Operations**: Create snapshots via control interface, verify persistence across mounts
   - **T4.3 Branch Operations**: Create branches from snapshots, verify content isolation
   - **T4.4 Process Binding**: Test per-process branch binding with multiple processes seeing different content
+- **Verification Results**:
+  - [x] T4.1–T4.4 control-plane suite – `scripts/test-fuse-control-plane.sh` drives the new `agentfs-control-cli` to create/list snapshots, fork branches, and bind a worker PID; latest run logged at `logs/fuse-control-plane-20251115-113550`
 
 **F5. pjdfstests Compliance Suite** (4–6d)
 
