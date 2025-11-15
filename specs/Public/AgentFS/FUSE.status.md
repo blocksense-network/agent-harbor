@@ -138,6 +138,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T3.5.3 Metadata-only Overlay**: chmod or setxattr on a file that exists only in the lower layer; assert upper metadata entry is created but data is not copied (for lazy copy-up mode); stat reflects new metadata while data serves from lower layer
   - **T3.5.4 Whiteout Validation**: unlink a file that exists only in the lower layer; assert file disappears from readdir in FUSE mount while original file remains untouched in lower layer
   - **T3.5.5 Merged Directory Listing**: readdir on a directory with files in both lower and upper layers (including whiteouts); assert list correctly merges both with upper-layer entries and whiteouts taking precedence
+- **Verification Results**:
+  - [x] Overlay harness – `scripts/test-fuse-overlay-ops.sh` exercises pass-through reads, copy-up writes, metadata-only overlay, whiteouts, and merged listings; latest run logged at `logs/fuse-overlay-ops-20251115-100209`
 
 **F4. FUSE Control Plane Integration Testing** (3–4d)
 
