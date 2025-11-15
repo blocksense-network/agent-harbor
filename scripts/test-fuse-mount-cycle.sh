@@ -50,6 +50,25 @@ if [[ -z "$SKIP_BUILD" ]]; then
   ) >>"$LOG_FILE" 2>&1
 fi
 
+agentfs_pids() {
+  pgrep -f agentfs-fuse-host || true
+}
+
+ensure_no_agentfs_processes() {
+  local pids
+  pids="$(agentfs_pids)"
+  if [[ -n "$pids" ]]; then
+    log "ERROR: agentfs-fuse-host still running (PIDs: $pids)"
+    exit 1
+  fi
+}
+
+existing_pids="$(agentfs_pids)"
+if [[ -n "$existing_pids" ]]; then
+  log "ERROR: Found existing agentfs-fuse-host processes (PIDs: $existing_pids). Abort to avoid interference."
+  exit 1
+fi
+
 cleanup_mountpoints=()
 
 cleanup() {
@@ -96,7 +115,17 @@ for ((iter = 1; iter <= ITERATIONS; iter++)); do
   if [[ -z "$REQUESTED_MOUNTPOINT" ]]; then
     rm -rf "$mount_path"
   fi
+  ensure_no_agentfs_processes
 done
+
+for mount_path in "${cleanup_mountpoints[@]}"; do
+  if [[ -e "$mount_path" ]]; then
+    log "ERROR: temporary mount path $mount_path still exists after cleanup."
+    exit 1
+  fi
+done
+
+ensure_no_agentfs_processes
 
 log "Mount cycle test complete. Logs: $RUN_DIR"
 echo "Mount cycle logs available at: $RUN_DIR"
