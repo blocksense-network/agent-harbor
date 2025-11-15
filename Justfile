@@ -333,6 +333,10 @@ test-fuse-mount-cycle:
 test-fuse-mount-failures:
     ./scripts/test-fuse-mount-failures.sh
 
+# Concurrent mount harness (T2.4)
+test-fuse-mount-concurrent:
+    ./scripts/test-fuse-mount-concurrent.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
