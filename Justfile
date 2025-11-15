@@ -325,6 +325,10 @@ mount-fuse mountpoint:
 umount-fuse mountpoint:
     ./scripts/umount-fuse.sh "{{mountpoint}}"
 
+# Automated mount/unmount cycle test harness (T2.1)
+test-fuse-mount-cycle:
+    ./scripts/test-fuse-mount-cycle.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
