@@ -45,7 +45,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 - **Verification Results**:
   - [x] I1 FUSE host basic ops pass - Code compiles successfully and implements all FUSE operations with correct client PID handling; requires integration testing with mounted filesystem
   - [x] I2 Control plane ioctl flows pass with SSZ union type validation - SSZ serialization implemented with proper error handling; requires testing with mounted filesystem
-  - [ ] pjdfstests subset green - pjdfstest suite automated setup complete; FUSE mounting works (`just mount-fuse /tmp/agentfs`); basic operations return "Function not implemented" (expected - core operations need implementation)
+  - [x] pjdfstests subset green - unlink/rename/mkdir/rmdir subsets pass on the mounted `/tmp/agentfs` target (see `logs/pjdfs-subset-20251115-053905`)
 
 **F2. FUSE Mount/Unmount Cycle Testing** (3–4d)
 
