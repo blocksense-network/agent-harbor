@@ -345,6 +345,10 @@ test-fuse-basic-ops:
 test-fuse-negative-ops:
     ./scripts/test-fuse-negative-ops.sh
 
+# Overlay semantics validation (F3.5)
+test-fuse-overlay-ops:
+    ./scripts/test-fuse-overlay-ops.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
