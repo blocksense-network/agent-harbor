@@ -248,6 +248,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T6.2 Memory Usage Tracking**: Monitor memory consumption during intensive operations
   - **T6.3 Concurrent Access**: Test performance under multiple concurrent readers/writers
   - **T6.4 Metadata Operations**: Benchmark directory listing, attribute operations, and control plane calls
+- **Verification Results**:
+  - [x] Performance harness – `scripts/test-fuse-performance.sh` (`just test-fuse-performance`) mounts AgentFS with a HostFs backstore, runs sequential read/write, metadata, and 4-way concurrent write benchmarks against a host baseline, and emits structured logs (`results.jsonl` + `summary.json`). Latest run: `logs/fuse-performance-20251115-161415/`.
+  - [ ] Regression thresholds – define acceptable ratios vs. baseline and wire alerts/CI gating once throughput regressions are better understood (current ratios highlight significant gaps that need tuning).
 
 **F7. Stress Testing and Fault Injection** (4–5d)
 
