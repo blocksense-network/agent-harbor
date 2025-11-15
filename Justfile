@@ -345,6 +345,10 @@ test-fuse-overlay-ops:
 test-fuse-control-plane:
     ./scripts/test-fuse-control-plane.sh
 
+# Performance benchmarks (F6)
+test-fuse-performance:
+    ./scripts/test-fuse-performance.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:

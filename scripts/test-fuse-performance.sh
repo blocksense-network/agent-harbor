@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOG_ROOT="$REPO_ROOT/logs"
+TS="$(date +%Y%m%d-%H%M%S)"
+RUN_DIR="$LOG_ROOT/fuse-performance-$TS"
+RESULTS_FILE="$RUN_DIR/results.jsonl"
+SUMMARY_FILE="$RUN_DIR/summary.json"
+DEFAULT_MOUNTPOINT="/tmp/agentfs-perf-$TS"
+MOUNTPOINT="${1:-$DEFAULT_MOUNTPOINT}"
+BASELINE_DIR="$RUN_DIR/baseline"
+SKIP_FUSE_BUILD="${SKIP_FUSE_BUILD:-}"
+TIME_BIN="$(command -v time || command -v /usr/bin/time || true)"
+AGENTFS_WORKDIR="$MOUNTPOINT/perf"
+FUSE_CONFIG="$RUN_DIR/fuse-config.json"
+BACKSTORE_DIR="$RUN_DIR/backstore"
+USER_ID="$(id -u)"
+GROUP_ID="$(id -g)"
+mkdir -p "$RUN_DIR" "$BASELINE_DIR" "$BACKSTORE_DIR"
+
+log() {
+  echo "[$(date +%H:%M:%S)] $*" | tee -a "$RUN_DIR/performance.log"
+}
+
+if [[ -z "$TIME_BIN" ]]; then
+  log "Required 'time' binary not found in PATH"
+  exit 1
+fi
+
+force_remove_dir() {
+  local target="$1"
+  if [[ -z "$target" ]]; then
+    return
+  fi
+  if ! rm -rf "$target" 2>/dev/null; then
+    sudo rm -rf "$target" 2>/dev/null || true
+  fi
+}
+
+cleanup() {
+  if mountpoint -q "$MOUNTPOINT" 2>/dev/null; then
+    log "Unmounting $MOUNTPOINT"
+    (cd "$REPO_ROOT" && just umount-fuse "$MOUNTPOINT") >>"$RUN_DIR/performance.log" 2>&1 || true
+  fi
+  force_remove_dir "$MOUNTPOINT"
+  force_remove_dir "$BASELINE_DIR"
+  force_remove_dir "$BACKSTORE_DIR"
+}
+trap cleanup EXIT
+
+build_fuse_host() {
+  if [[ -z "$SKIP_FUSE_BUILD" ]]; then
+    log "Building agentfs-fuse-host (performance suite)"
+    (cd "$REPO_ROOT" && just build-fuse-host) >>"$RUN_DIR/performance.log" 2>&1
+  else
+    log "SKIP_FUSE_BUILD set; skipping build"
+  fi
+}
+
+mount_agentfs() {
+  force_remove_dir "$MOUNTPOINT"
+  mkdir -p "$MOUNTPOINT"
+  cat >"$FUSE_CONFIG" <<JSON
+{
+  "case_sensitivity": "Sensitive",
+  "memory": {
+    "max_bytes_in_memory": 268435456,
+    "spill_directory": null
+  },
+  "limits": {
+    "max_open_handles": 4096,
+    "max_branches": 64,
+    "max_snapshots": 128
+  },
+  "cache": {
+    "attr_ttl_ms": 250,
+    "entry_ttl_ms": 250,
+    "negative_ttl_ms": 250,
+    "enable_readdir_plus": true,
+    "auto_cache": true,
+    "writeback_cache": false
+  },
+  "enable_xattrs": true,
+  "enable_ads": false,
+  "track_events": false,
+  "security": {
+    "enforce_posix_permissions": true,
+    "default_uid": $USER_ID,
+    "default_gid": $GROUP_ID,
+    "enable_windows_acl_compat": false,
+    "root_bypass_permissions": true
+  },
+  "backstore": {
+    "HostFs": {
+      "root": "$BACKSTORE_DIR",
+      "prefer_native_snapshots": false
+    }
+  },
+  "overlay": {
+    "enabled": false,
+    "lower_root": null,
+    "copyup_mode": "Lazy"
+  },
+  "interpose": {
+    "enabled": false,
+    "max_copy_bytes": 1048576,
+    "require_reflink": false,
+    "allow_windows_reparse": false
+  }
+}
+JSON
+  log "Mounting AgentFS at $MOUNTPOINT"
+  (cd "$REPO_ROOT" && AGENTFS_FUSE_CONFIG="$FUSE_CONFIG" AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT") >>"$RUN_DIR/performance.log" 2>&1
+}
+
+prepare_agentfs_workspace() {
+  log "Preparing AgentFS workspace $AGENTFS_WORKDIR"
+  sleep 1
+  if ! mkdir -p "$AGENTFS_WORKDIR" 2>/dev/null; then
+    sudo mkdir -p "$AGENTFS_WORKDIR"
+  fi
+  if ! chown "$(id -u)":"$(id -g)" "$AGENTFS_WORKDIR" 2>/dev/null; then
+    sudo chown "$(id -u)":"$(id -g)" "$AGENTFS_WORKDIR"
+  fi
+}
+
+run_time_dd() {
+  local label="$1"
+  local test="$2"
+  local cmd="$3"
+  local bytes="$4"
+  local output="$RUN_DIR/${label}_${test}.time"
+  "$TIME_BIN" --verbose bash -c "$cmd" >>"$RUN_DIR/${label}_${test}.log" 2>"$output"
+  python3 - "$output" "$bytes" "$label" "$test" "$RESULTS_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+log_path = Path(sys.argv[1])
+bytes_total = int(sys.argv[2])
+label = sys.argv[3]
+test = sys.argv[4]
+results_path = Path(sys.argv[5])
+fields = {}
+for line in log_path.read_text().splitlines():
+    line = line.strip()
+    if line.startswith("User time (seconds):"):
+        fields["user_sec"] = float(line.split(":", 1)[1])
+    elif line.startswith("System time (seconds):"):
+        fields["sys_sec"] = float(line.split(":", 1)[1])
+    elif line.startswith("Percent of CPU this job got:"):
+        fields["cpu_percent"] = float(line.split(":", 1)[1].strip().rstrip("%"))
+    elif line.startswith("Elapsed (wall clock) time"):
+        value = line.rsplit(":", 1)[1].strip()
+        parts = value.split(":")
+        if len(parts) == 3:
+            h, m, s = parts
+        elif len(parts) == 2:
+            h = 0
+            m, s = parts
+        else:
+            h = 0
+            m = 0
+            s = parts[0]
+        elapsed = float(h) * 3600 + float(m) * 60 + float(s)
+        fields["elapsed_sec"] = elapsed
+    elif line.startswith("Maximum resident set size (kbytes):"):
+        fields["max_rss_kb"] = int(line.split(":", 1)[1])
+if "elapsed_sec" not in fields or fields["elapsed_sec"] == 0:
+    fields["elapsed_sec"] = None
+throughput_mb_s = None
+if fields.get("elapsed_sec"):
+    throughput_mb_s = bytes_total / fields["elapsed_sec"] / (1024 * 1024)
+result = {
+    "label": label,
+    "test": test,
+    "bytes": bytes_total,
+    "elapsed_sec": fields.get("elapsed_sec"),
+    "user_sec": fields.get("user_sec"),
+    "sys_sec": fields.get("sys_sec"),
+    "cpu_percent": fields.get("cpu_percent"),
+    "max_rss_kb": fields.get("max_rss_kb"),
+    "throughput_mb_s": throughput_mb_s,
+}
+with results_path.open("a") as fh:
+    fh.write(json.dumps(result) + "\n")
+PY
+}
+
+run_metadata_test() {
+  local label="$1"
+  local target_dir="$2"
+  local entries="$3"
+  python3 - "$label" "$target_dir" "$entries" "$RESULTS_FILE" <<'PY'
+import json
+import os
+import sys
+import time
+
+label = sys.argv[1]
+target_dir = sys.argv[2]
+entries = int(sys.argv[3])
+results_path = sys.argv[4]
+os.makedirs(target_dir, exist_ok=True)
+start = time.perf_counter()
+for i in range(entries):
+    sub = os.path.join(target_dir, f"dir_{i}")
+    os.makedirs(sub, exist_ok=True)
+    with open(os.path.join(sub, "file.txt"), "w") as handle:
+        handle.write("metadata-test\n")
+elapsed = time.perf_counter() - start
+ops = entries * 2  # mkdir + file write
+ops_per_sec = ops / elapsed if elapsed else None
+result = {
+    "label": label,
+    "test": "metadata",
+    "entries": entries,
+    "elapsed_sec": elapsed,
+    "ops_per_sec": ops_per_sec,
+}
+with open(results_path, "a") as fh:
+    fh.write(json.dumps(result) + "\n")
+PY
+  rm -rf "$target_dir"
+}
+
+run_concurrent_writes() {
+  local label="$1"
+  local target_path="$2"
+  local jobs="$3"
+  local file_mb="$4"
+  local bytes=$((jobs * file_mb * 1024 * 1024))
+  local logfile="$RUN_DIR/${label}_concurrent.time"
+  "$TIME_BIN" --verbose bash -c '
+set -euo pipefail
+TARGET="$1"
+JOBS=$2
+SIZE_MB=$3
+for i in $(seq 1 "$JOBS"); do
+  dd if=/dev/zero "of=$TARGET/concurrent_$i.bin" bs=1M "count=$SIZE_MB" status=none &
+  PIDS[$i]=$!
+done
+exit_code=0
+for pid in "${PIDS[@]}"; do
+  if ! wait "$pid"; then
+    exit_code=1
+  fi
+done
+exit "$exit_code"
+' bash "$target_path" "$jobs" "$file_mb" >>"$RUN_DIR/${label}_concurrent.log" 2>"$logfile"
+  python3 - "$logfile" "$bytes" "$label" "$RESULTS_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+log_path = Path(sys.argv[1])
+bytes_total = int(sys.argv[2])
+label = sys.argv[3]
+results_path = Path(sys.argv[4])
+fields = {}
+for line in log_path.read_text().splitlines():
+    line = line.strip()
+    if line.startswith("Percent of CPU this job got:"):
+        fields["cpu_percent"] = float(line.split(":", 1)[1].strip().rstrip("%"))
+    elif line.startswith("Elapsed (wall clock) time"):
+        parts = line.rsplit(":", 1)[1].strip().split(":")
+        if len(parts) == 3:
+            h, m, s = parts
+        elif len(parts) == 2:
+            h = 0
+            m, s = parts
+        else:
+            h = 0
+            m = 0
+            s = parts[0]
+        fields["elapsed_sec"] = float(h) * 3600 + float(m) * 60 + float(s)
+result = {
+    "label": label,
+    "test": "concurrent_write",
+    "bytes": bytes_total,
+    "elapsed_sec": fields.get("elapsed_sec"),
+    "throughput_mb_s": bytes_total / fields["elapsed_sec"] / (1024 * 1024) if fields.get("elapsed_sec") else None,
+    "cpu_percent": fields.get("cpu_percent"),
+}
+with results_path.open("a") as fh:
+    fh.write(json.dumps(result) + "\n")
+PY
+  rm -f "$target_path"/concurrent_*.bin
+}
+
+run_throughput_tests() {
+  local label="$1"
+  local path="$2"
+  local test_file="$path/throughput.bin"
+  local write_bytes=$((256 * 1024 * 1024)) # 256 MiB
+  local count=$((write_bytes / (4 * 1024 * 1024)))
+  run_time_dd "$label" "seq_write" "dd if=/dev/zero of=$test_file bs=4M count=$count status=none conv=fdatasync" "$write_bytes"
+  run_time_dd "$label" "seq_read" "dd if=$test_file of=/dev/null bs=4M count=$count status=none" "$write_bytes"
+  rm -f "$test_file"
+}
+
+run_suite() {
+  build_fuse_host
+  mount_agentfs
+  prepare_agentfs_workspace
+  run_throughput_tests "agentfs" "$AGENTFS_WORKDIR"
+  run_metadata_test "agentfs" "$AGENTFS_WORKDIR/metadata" 2000
+  run_concurrent_writes "agentfs" "$AGENTFS_WORKDIR" 4 64
+  log "Preparing baseline directory $BASELINE_DIR"
+  mkdir -p "$BASELINE_DIR"
+  run_throughput_tests "baseline" "$BASELINE_DIR"
+  run_metadata_test "baseline" "$BASELINE_DIR/metadata" 2000
+  run_concurrent_writes "baseline" "$BASELINE_DIR" 4 64
+}
+
+summarize_results() {
+  python3 - "$RESULTS_FILE" "$SUMMARY_FILE" <<'PY'
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+results_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+entries = [json.loads(line) for line in results_path.read_text().splitlines() if line.strip()]
+grouped = defaultdict(dict)
+for entry in entries:
+    grouped[entry["test"]][entry["label"]] = entry
+summary = []
+for test, data in grouped.items():
+    agent = data.get("agentfs")
+    base = data.get("baseline")
+    record = {
+        "test": test,
+        "agentfs": agent,
+        "baseline": base,
+    }
+    if agent and base:
+        key = "ops_per_sec" if test == "metadata" else "throughput_mb_s"
+        if agent.get(key) and base.get(key) and base.get(key) != 0:
+            record["ratio"] = agent[key] / base[key]
+    summary.append(record)
+out_path.write_text(json.dumps(summary, indent=2))
+PY
+  log "Performance summary written to $SUMMARY_FILE"
+}
+
+run_suite
+summarize_results
+log "Performance benchmarks complete. Results stored in $RUN_DIR"
