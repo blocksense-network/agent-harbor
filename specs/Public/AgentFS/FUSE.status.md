@@ -71,7 +71,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] T2.1 Basic Mount Cycle – `scripts/test-fuse-mount-cycle.sh` automates build → mount → sanity ops → unmount with logs under `logs/fuse-mount-cycle-20251115-062328`
   - [x] T2.2 Mount Failure Handling – `scripts/test-fuse-mount-failures.sh` covers non-directory and permission-denied mount points; latest run logged at `logs/fuse-mount-failures-20251115-065419`
   - [x] T2.3 Resource Leak Prevention – `scripts/test-fuse-mount-cycle.sh` now enforces clean start/finish and was run with `MOUNT_CYCLE_ITERS=5` (see `logs/fuse-mount-cycle-20251115-065825`)
-  - [ ] T2.4 Concurrent Mounts
+  - [x] T2.4 Concurrent Mounts – `scripts/test-fuse-mount-concurrent.sh` mounts multiple instances simultaneously; latest run logged at `logs/fuse-mount-concurrent-20251115-070522`
 
 **F3. FUSE Filesystem Operations Testing** (4–5d)
 
