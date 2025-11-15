@@ -4,8 +4,8 @@
 //! Virtual filesystem implementation for AgentFS Core
 
 use std::collections::HashMap;
-use std::fs::{self, File};
 use std::fs::OpenOptions as StdOpenOptions;
+use std::fs::{self, File};
 use std::io::Write;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
