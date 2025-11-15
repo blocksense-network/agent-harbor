@@ -341,6 +341,10 @@ test-fuse-mount-concurrent:
 test-fuse-basic-ops:
     ./scripts/test-fuse-basic-ops.sh
 
+# Negative path/errno validation (F3.2)
+test-fuse-negative-ops:
+    ./scripts/test-fuse-negative-ops.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
