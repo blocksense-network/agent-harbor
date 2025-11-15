@@ -321,6 +321,10 @@ umount-fuse mountpoint:
 test-fuse-mount-cycle:
     ./scripts/test-fuse-mount-cycle.sh
 
+# Mount failure handling scenarios (T2.2)
+test-fuse-mount-failures:
+    ./scripts/test-fuse-mount-failures.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:
