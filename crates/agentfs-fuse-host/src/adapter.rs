@@ -26,9 +26,11 @@ use libc::{
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
+use std::fs::File;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::os::unix::fs::{FileExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
@@ -44,6 +46,14 @@ const AGENTFS_IOCTL_CMD: u32 = 0x8000_4146; // 'AF' in hex with 0x8000 bit set
 
 /// Maximum single path component length to guard against overly long names
 const NAME_MAX: usize = 255;
+
+/// File-handle space reserved for lower pass-through handles
+const LOWER_HANDLE_BASE: u64 = 1u64 << 60;
+
+struct LowerHandle {
+    file: File,
+    ino: u64,
+}
 
 /// AgentFS FUSE filesystem adapter
 pub struct AgentFsFuse {
@@ -67,6 +77,12 @@ pub struct AgentFsFuse {
     inode_handles: HashMap<u64, HashSet<u64>>,
     /// Map handle IDs to (inode, owning pid)
     handle_index: HashMap<u64, (u64, u32)>,
+    /// Lower pass-through handles
+    lower_handles: HashMap<u64, LowerHandle>,
+    /// Next pass-through handle id
+    next_lower_fh: u64,
+    /// Explicit whiteouts for lower-only entries
+    whiteouts: HashSet<Vec<u8>>,
 }
 
 impl AgentFsFuse {
@@ -102,6 +118,9 @@ impl AgentFsFuse {
             next_inode: CONTROL_FILE_INO + 1,
             inode_handles: HashMap::new(),
             handle_index: HashMap::new(),
+            lower_handles: HashMap::new(),
+            next_lower_fh: LOWER_HANDLE_BASE,
+            whiteouts: HashSet::new(),
         })
     }
 
@@ -149,8 +168,107 @@ impl AgentFsFuse {
 
     /// Associate a path with an inode, preserving the original canonical path.
     fn record_path_for_inode(&mut self, path: Vec<u8>, inode: u64) {
+        self.whiteouts.remove(&path);
         self.paths.insert(path.clone(), inode);
         self.inodes.insert(inode, path);
+    }
+
+    fn clear_whiteout(&mut self, path: &[u8]) {
+        self.whiteouts.remove(path);
+    }
+
+    fn is_whiteouted(&self, path: &[u8]) -> bool {
+        self.whiteouts.contains(path)
+    }
+
+    fn record_whiteout(&mut self, path: Vec<u8>) {
+        self.whiteouts.insert(path);
+    }
+
+    fn overlay_enabled(&self) -> bool {
+        self.config.overlay.enabled && self.config.overlay.lower_root.is_some()
+    }
+
+    fn lower_root(&self) -> Option<&Path> {
+        self.config.overlay.lower_root.as_deref()
+    }
+
+    fn lower_full_path(&self, path: &Path) -> Option<PathBuf> {
+        self.lower_root().map(|root| {
+            let rel = path.strip_prefix("/").unwrap_or(path);
+            root.join(rel)
+        })
+    }
+
+    fn lower_entry_exists(&self, path: &Path) -> bool {
+        self.lower_full_path(path).map(|p| p.exists()).unwrap_or(false)
+    }
+
+    fn alloc_lower_handle(&mut self, ino: u64, file: File) -> u64 {
+        let fh = self.next_lower_fh;
+        self.next_lower_fh = self.next_lower_fh.saturating_add(1);
+        self.lower_handles.insert(fh, LowerHandle { file, ino });
+        fh
+    }
+
+    fn ensure_upper_parent_dirs(&mut self, pid: &PID, path: &Path) -> FsResult<()> {
+        if let Some(parent) = path.parent() {
+            use std::path::Component;
+            let mut current = PathBuf::from("/");
+            for component in parent.components() {
+                if let Component::Normal(name) = component {
+                    current.push(name);
+                    let upper_exists = self.core.has_upper_entry(pid, &current).unwrap_or(false);
+                    if upper_exists {
+                        continue;
+                    }
+                    match self.core.mkdir(pid, &current, 0o755) {
+                        Ok(()) => {}
+                        Err(FsError::AlreadyExists) => {}
+                        Err(err) => return Err(err),
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn copy_lower_to_upper(&mut self, pid: &PID, path: &Path, canonical: &[u8]) -> FsResult<()> {
+        let lower_path = self.lower_full_path(path).ok_or(FsError::NotFound)?;
+        if !lower_path.exists() {
+            return Err(FsError::NotFound);
+        }
+
+        self.ensure_upper_parent_dirs(pid, path)?;
+
+        let mut opts = OpenOptions::default();
+        opts.read = true;
+        opts.write = true;
+        opts.create = true;
+        let handle = self.core.create(pid, path, &opts)?;
+
+        let mut lower_file = File::open(&lower_path)?;
+        let mut buffer = vec![0u8; 8192];
+        let mut offset = 0u64;
+        loop {
+            let read_bytes = lower_file.read(&mut buffer)?;
+            if read_bytes == 0 {
+                break;
+            }
+            self.core.write(pid, handle, offset, &buffer[..read_bytes])?;
+            offset += read_bytes as u64;
+        }
+        self.core.close(pid, handle)?;
+
+        let metadata = std::fs::metadata(&lower_path)?;
+        #[cfg(unix)]
+        {
+            let mode = metadata.permissions().mode();
+            let _ = self.core.set_mode(pid, path, mode);
+        }
+
+        self.clear_whiteout(canonical);
+        Ok(())
     }
 
     /// Remove a single path mapping and update canonical bookkeeping.
@@ -576,6 +694,11 @@ impl fuser::Filesystem for AgentFsFuse {
         }
         full_path.extend_from_slice(name_bytes);
 
+        if self.is_whiteouted(&full_path) {
+            reply.error(ENOENT);
+            return;
+        }
+
         let path = self.path_from_bytes(&full_path);
         let client_pid = self.get_client_pid(req);
         match self.core.getattr(&client_pid, path) {
@@ -590,6 +713,13 @@ impl fuser::Filesystem for AgentFsFuse {
     }
 
     fn getattr(&mut self, req: &Request, ino: u64, fh: Option<u64>, reply: ReplyAttr) {
+        if let Some(path_bytes) = self.inode_to_path(ino) {
+            if self.is_whiteouted(path_bytes) {
+                reply.error(ENOENT);
+                return;
+            }
+        }
+
         let client_pid = self.get_client_pid(req);
 
         let mut fh_candidate = fh.map(|fh_raw| (fh_raw, client_pid));
@@ -746,7 +876,14 @@ impl fuser::Filesystem for AgentFsFuse {
             }
         };
 
-        let path = self.path_from_bytes(path_bytes);
+        let canonical_path = path_bytes.to_vec();
+
+        if self.is_whiteouted(&canonical_path) {
+            reply.error(ENOENT);
+            return;
+        }
+
+        let path = self.path_from_bytes(&canonical_path);
         let options = self.fuse_flags_to_options(flags);
         let client_pid = self.get_client_pid(req);
 
@@ -770,7 +907,46 @@ impl fuser::Filesystem for AgentFsFuse {
                 self.track_handle(ino, handle_id.0, &client_pid);
                 reply.opened(handle_id.0, 0);
             }
-            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(FsError::NotFound) | Err(FsError::Unsupported) => {
+                if !self.overlay_enabled() || !self.lower_entry_exists(path) {
+                    reply.error(ENOENT);
+                    return;
+                }
+
+                if options.write || options.create || options.truncate || options.append {
+                    if let Err(err) = self.copy_lower_to_upper(&client_pid, path, &canonical_path) {
+                        error!("failed to materialize lower entry: {:?}", err);
+                        reply.error(EIO);
+                        return;
+                    }
+                    match self.core.open(&client_pid, path, &options) {
+                        Ok(handle_id) => {
+                            self.track_handle(ino, handle_id.0, &client_pid);
+                            reply.opened(handle_id.0, 0);
+                        }
+                        Err(FsError::AccessDenied) => reply.error(EACCES),
+                        Err(FsError::NotFound) => reply.error(ENOENT),
+                        Err(_) => reply.error(EIO),
+                    }
+                } else if options.read {
+                    if let Some(lower_path) = self.lower_full_path(path) {
+                        match File::open(&lower_path) {
+                            Ok(file) => {
+                                let fh = self.alloc_lower_handle(ino, file);
+                                reply.opened(fh, 0);
+                            }
+                            Err(err) => {
+                                error!("failed to open lower file {:?}: {:?}", lower_path, err);
+                                reply.error(EIO);
+                            }
+                        }
+                    } else {
+                        reply.error(ENOENT);
+                    }
+                } else {
+                    reply.error(EACCES);
+                }
+            }
             Err(FsError::AccessDenied) => reply.error(EACCES),
             Err(_) => reply.error(EIO),
         }
@@ -868,6 +1044,18 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        if let Some(lower) = self.lower_handles.get(&fh) {
+            let mut buf = vec![0u8; size as usize];
+            match lower.file.read_at(&mut buf, offset as u64) {
+                Ok(bytes_read) => {
+                    buf.truncate(bytes_read);
+                    reply.data(&buf);
+                }
+                Err(_) => reply.error(EIO),
+            }
+            return;
+        }
+
         let handle_id = HandleId(fh);
         let mut buf = vec![0u8; size as usize];
         let client_pid = self.get_client_pid(req);
@@ -900,6 +1088,11 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        if self.lower_handles.contains_key(&fh) {
+            reply.error(EACCES);
+            return;
+        }
+
         let handle_id = HandleId(fh);
         let client_pid = self.get_client_pid(req);
 
@@ -924,6 +1117,11 @@ impl fuser::Filesystem for AgentFsFuse {
     ) {
         // Control file has no handle to release
         if ino == CONTROL_FILE_INO {
+            reply.ok();
+            return;
+        }
+
+        if self.lower_handles.remove(&fh).is_some() {
             reply.ok();
             return;
         }
@@ -977,6 +1175,10 @@ impl fuser::Filesystem for AgentFsFuse {
                         entry_path.push(b'/');
                     }
                     entry_path.extend_from_slice(entry.name.as_bytes());
+
+                    if self.is_whiteouted(&entry_path) {
+                        continue;
+                    }
 
                     let entry_ino = self.get_or_alloc_inode(&entry_path);
 
@@ -1033,6 +1235,15 @@ impl fuser::Filesystem for AgentFsFuse {
         let options = self.fuse_flags_to_options(flags);
         let client_pid = self.get_client_pid(req);
 
+        if let Err(err) = self.ensure_upper_parent_dirs(&client_pid, path) {
+            reply.error(match err {
+                FsError::AccessDenied => EACCES,
+                FsError::NotFound => ENOENT,
+                _ => EIO,
+            });
+            return;
+        }
+
         match self.core.create(&client_pid, path, &options) {
             Ok(handle_id) => match self.core.getattr(&client_pid, path) {
                 Ok(attr) => {
@@ -1081,6 +1292,15 @@ impl fuser::Filesystem for AgentFsFuse {
         let path = self.path_from_bytes(&full_path);
         let client_pid = self.get_client_pid(req);
 
+        if let Err(err) = self.ensure_upper_parent_dirs(&client_pid, path) {
+            reply.error(match err {
+                FsError::AccessDenied => EACCES,
+                FsError::NotFound => ENOENT,
+                _ => EIO,
+            });
+            return;
+        }
+
         match self.core.mkdir(&client_pid, path, mode) {
             Ok(()) => match self.core.getattr(&client_pid, path) {
                 Ok(attr) => {
@@ -1125,7 +1345,15 @@ impl fuser::Filesystem for AgentFsFuse {
                 self.remove_path_mapping(&full_path);
                 reply.ok();
             }
-            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(FsError::NotFound) => {
+                if self.overlay_enabled() && self.lower_entry_exists(path) {
+                    self.record_whiteout(full_path.clone());
+                    self.remove_path_mapping(&full_path);
+                    reply.ok();
+                } else {
+                    reply.error(ENOENT);
+                }
+            }
             Err(FsError::AccessDenied) => reply.error(EACCES),
             Err(FsError::IsADirectory) => reply.error(EISDIR),
             Err(_) => reply.error(EIO),
@@ -1607,7 +1835,15 @@ impl fuser::Filesystem for AgentFsFuse {
                 return;
             }
         };
-        let path = self.path_from_bytes(path_bytes);
+
+        let canonical_path = path_bytes.to_vec();
+
+        if self.is_whiteouted(&canonical_path) {
+            reply.error(ENOENT);
+            return;
+        }
+
+        let path = self.path_from_bytes(&canonical_path);
         let client_pid = self.get_client_pid(req);
 
         // Helper: get current times for UTIME_OMIT behavior
@@ -1615,6 +1851,32 @@ impl fuser::Filesystem for AgentFsFuse {
             Ok(attr) => Some(attr.times),
             Err(_) => None,
         };
+
+        let needs_materialization = mode.is_some()
+            || uid.is_some()
+            || gid.is_some()
+            || size.is_some()
+            || atime.is_some()
+            || mtime.is_some();
+
+        if needs_materialization {
+            let upper_exists = self.core.has_upper_entry(&client_pid, path).unwrap_or(false);
+            if !upper_exists {
+                if self.overlay_enabled() && self.lower_entry_exists(path) {
+                    if let Err(err) = self.copy_lower_to_upper(&client_pid, path, &canonical_path) {
+                        reply.error(match err {
+                            FsError::AccessDenied => EACCES,
+                            FsError::NotFound => ENOENT,
+                            _ => EIO,
+                        });
+                        return;
+                    }
+                } else {
+                    reply.error(ENOENT);
+                    return;
+                }
+            }
+        }
 
         // Apply size (truncate)
         if let Some(new_size) = size {
