@@ -67,6 +67,12 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T2.3 Resource Leak Prevention**: Run multiple mount/unmount cycles and verify no file descriptors, processes, or temporary files are leaked
   - **T2.4 Concurrent Mounts**: Test multiple FUSE mounts running simultaneously without interference
 
+- **Verification Results**:
+  - [x] T2.1 Basic Mount Cycle – `scripts/test-fuse-mount-cycle.sh` automates build → mount → sanity ops → unmount with logs under `logs/fuse-mount-cycle-20251115-062328`
+  - [ ] T2.2 Mount Failure Handling
+  - [ ] T2.3 Resource Leak Prevention
+  - [ ] T2.4 Concurrent Mounts
+
 **F3. FUSE Filesystem Operations Testing** (4–5d)
 
 - **Deliverables**:
