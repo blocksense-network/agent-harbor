@@ -93,7 +93,8 @@ run_root_ops() {
   sudo bash -c "$cmd" >>"$LOG_FILE" 2>&1
 }
 
-run_root_ops "prepare test directory" "mkdir -p $MOUNTPOINT/testuser && chown $(id -u):$(id -g) $MOUNTPOINT/testuser"
+run_root_ops "create test directory" "mkdir -p $MOUNTPOINT/testuser"
+run_root_ops "chown test directory" "chown $(id -u):$(id -g) $MOUNTPOINT/testuser"
 TESTDIR="$MOUNTPOINT/testuser"
 
 log "== File CRUD operations =="

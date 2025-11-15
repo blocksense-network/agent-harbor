@@ -1859,10 +1859,10 @@ impl fuser::Filesystem for AgentFsFuse {
             || atime.is_some()
             || mtime.is_some();
 
-        if needs_materialization {
+        if self.overlay_enabled() && needs_materialization {
             let upper_exists = self.core.has_upper_entry(&client_pid, path).unwrap_or(false);
             if !upper_exists {
-                if self.overlay_enabled() && self.lower_entry_exists(path) {
+                if self.lower_entry_exists(path) {
                     if let Err(err) = self.copy_lower_to_upper(&client_pid, path, &canonical_path) {
                         reply.error(match err {
                             FsError::AccessDenied => EACCES,
