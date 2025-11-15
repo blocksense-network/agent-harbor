@@ -202,15 +202,15 @@ pub mod operations {
         KeyboardOperation::MoveToPreviousLine,
         KeyboardOperation::MoveToNextField,
         KeyboardOperation::MoveToPreviousField,
-        KeyboardOperation::PreviousSnapshot,
-        KeyboardOperation::NextSnapshot,
+        KeyboardOperation::MoveToPreviousSnapshot,
+        KeyboardOperation::MoveToNextSnapshot,
     ];
 
     /// Selection operations (enter, space, etc.)
     pub const SELECTION: &[KeyboardOperation] = &[
         KeyboardOperation::DismissOverlay,
         KeyboardOperation::SelectAll,
-        KeyboardOperation::NewDraft,
+        KeyboardOperation::DraftNewTask,
     ];
 
     /// Text editing operations (cursor movement, deletion, etc.)
@@ -271,7 +271,7 @@ pub mod minor_modes {
         KeyboardOperation::MoveToPreviousField,
         KeyboardOperation::DismissOverlay,
         KeyboardOperation::SelectAll,
-        KeyboardOperation::NewDraft,
+        KeyboardOperation::DraftNewTask,
     ]);
 
     /// Text editing with prominent operations for status bar
@@ -327,14 +327,14 @@ pub mod minor_modes {
     /// Session viewer selection mode (for overlays and instructions)
     pub static SESSION_VIEWER_SELECTION_MODE: InputMinorMode = InputMinorMode::new(&[
         KeyboardOperation::DismissOverlay,
-        KeyboardOperation::NewDraft,
+        KeyboardOperation::DraftNewTask,
         KeyboardOperation::SelectAll,
     ]);
 
     /// Autocomplete accept mode (shown when inline suggestions are available)
     pub static AUTOCOMPLETE_ACTIVE_MODE: InputMinorMode = InputMinorMode::with_prominent_operations(
-        &[KeyboardOperation::AcceptAutocomplete],
-        &[KeyboardOperation::AcceptAutocomplete],
+        &[KeyboardOperation::IndentOrComplete],
+        &[KeyboardOperation::IndentOrComplete],
     );
 }
 

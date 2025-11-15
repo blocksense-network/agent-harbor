@@ -364,15 +364,15 @@ impl ViewerEventLoop {
             return Ok(self.handle_dismiss_overlay());
         }
 
-        // Check if this is a PreviousSnapshot or NextSnapshot operation that should be handled
+        // Check if this is a MoveToPreviousSnapshot or MoveToNextSnapshot operation that should be handled
         // by the session viewer model even when task entry is visible
         if let Some(operation) =
             SESSION_VIEWER_MODE.resolve_key_to_operation(&key, &Default::default())
         {
             if matches!(
                 operation,
-                crate::settings::KeyboardOperation::PreviousSnapshot
-                    | crate::settings::KeyboardOperation::NextSnapshot
+                crate::settings::KeyboardOperation::MoveToPreviousSnapshot
+                    | crate::settings::KeyboardOperation::MoveToNextSnapshot
             ) {
                 // These operations should be handled by the session viewer model
                 // Convert to SessionViewerMsg and handle it
