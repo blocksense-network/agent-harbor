@@ -49,7 +49,7 @@ fn create_mock_settings() -> ah_tui::Settings {
     let mut keymap = ah_tui::settings::KeymapConfig::default();
     keymap.dismiss_overlay = Some(vec![esc_matcher]);
     keymap.incremental_search_forward = Some(vec![ctrl_s_matcher]);
-    keymap.new_draft = Some(vec![ctrl_n_matcher]);
+    keymap.draft_new_task = Some(vec![ctrl_n_matcher]);
 
     ah_tui::Settings {
         keymap: Some(keymap),
@@ -510,7 +510,7 @@ fn test_task_entry_navigation() {
         true
     ));
 
-    // Show task entry at latest snapshot (live mode) - simulate PreviousSnapshot key
+    // Show task entry at latest snapshot (live mode) - simulate MoveToPreviousSnapshot key
     let _ = view_model.update(SessionViewerMsg::Key(*PREVIOUS_SNAPSHOT_KEY));
     assert!(view_model.task_entry_visible);
     assert_eq!(view_model.current_snapshot_index, Some(1)); // Latest snapshot
@@ -519,12 +519,12 @@ fn test_task_entry_navigation() {
     // Should include TaskEntry in the display items since we scrolled to make it visible
     assert!(display_items.iter().any(|item| matches!(item, DisplayItem::TaskEntry)));
 
-    // Send PreviousSnapshot key again to navigate to previous snapshot
+    // Send MoveToPreviousSnapshot key again to navigate to previous snapshot
     let _ = view_model.update(SessionViewerMsg::Key(*PREVIOUS_SNAPSHOT_KEY));
     assert_eq!(view_model.current_snapshot_index, Some(0)); // Previous snapshot
 
-    // Send NextSnapshot key to navigate back to latest
-    // NextSnapshot is bound to Ctrl+Shift+Down by default
+    // Send MoveToNextSnapshot key to navigate back to latest
+    // MoveToNextSnapshot is bound to Ctrl+Shift+Down by default
     let _ = view_model.update(SessionViewerMsg::Key(*NEXT_SNAPSHOT_KEY));
     assert_eq!(view_model.current_snapshot_index, Some(1)); // Back to latest
 }
@@ -581,7 +581,7 @@ fn test_scroll_back_behavior() {
         );
     }
 
-    // Test navigating forward with NextSnapshot (Ctrl+Shift+Down)
+    // Test navigating forward with MoveToNextSnapshot (Ctrl+Shift+Down)
     let _ = view_model.update(SessionViewerMsg::Key(*NEXT_SNAPSHOT_KEY));
     assert_eq!(view_model.current_snapshot_index, Some(20)); // Should move to next snapshot
     assert_snapshot_visible(&mut view_model, None); // Verify snapshot is visible per spec rules

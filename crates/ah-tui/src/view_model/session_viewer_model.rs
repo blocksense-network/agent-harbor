@@ -35,8 +35,8 @@ pub static TERMINAL_NAVIGATION_MODE: crate::view_model::input::InputMinorMode =
         KeyboardOperation::ScrollDownOneScreen,
         KeyboardOperation::MoveToBeginningOfDocument,
         KeyboardOperation::MoveToEndOfDocument,
-        KeyboardOperation::PreviousSnapshot,
-        KeyboardOperation::NextSnapshot,
+        KeyboardOperation::MoveToPreviousSnapshot,
+        KeyboardOperation::MoveToNextSnapshot,
         KeyboardOperation::IncrementalSearchForward,
     ]);
 
@@ -46,7 +46,7 @@ pub static SESSION_VIEWER_MODE: crate::view_model::input::InputMinorMode =
         KeyboardOperation::MoveToNextField,
         KeyboardOperation::MoveToPreviousField,
         KeyboardOperation::DismissOverlay,
-        KeyboardOperation::NewDraft,
+        KeyboardOperation::DraftNewTask,
     ]);
 
 /// Mouse actions for the SessionViewer interface
@@ -531,12 +531,12 @@ impl SessionViewerViewModel {
 
         // Handle session viewer specific operations
         match operation {
-            KeyboardOperation::NextSnapshot | KeyboardOperation::MoveToNextLine => {
+            KeyboardOperation::MoveToNextSnapshot | KeyboardOperation::MoveToNextLine => {
                 debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
                 self.navigate_to_next_snapshot();
                 return vec![];
             }
-            KeyboardOperation::PreviousSnapshot => {
+            KeyboardOperation::MoveToPreviousSnapshot => {
                 debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
                 if matches!(self.session_mode, SessionViewerMode::LiveRecording)
                     && !self.task_entry_visible
@@ -604,7 +604,7 @@ impl SessionViewerViewModel {
                 }
                 return vec![];
             }
-            KeyboardOperation::NewDraft => {
+            KeyboardOperation::DraftNewTask => {
                 debug!(operation = ?operation, "Resolved keyboard operation in session viewer");
                 if !self.task_entry_visible {
                     // Show task entry at latest snapshot for new draft
@@ -1153,16 +1153,16 @@ impl SessionViewerViewModel {
             // Other selection operations are handled by the task entry itself
         }
 
-        // Check for navigation operations (includes Previous/NextSnapshot)
+        // Check for navigation operations (includes MoveToPrevious/MoveToNextSnapshot)
         if let Some(operation) = SESSION_VIEWER_MODE.resolve_key_to_operation(key, &settings) {
             // Handle Previous Snapshot key
-            if matches!(operation, KeyboardOperation::PreviousSnapshot) {
+            if matches!(operation, KeyboardOperation::MoveToPreviousSnapshot) {
                 self.navigate_to_previous_snapshot();
                 return true;
             }
 
             // Handle Next Snapshot key
-            if matches!(operation, KeyboardOperation::NextSnapshot) {
+            if matches!(operation, KeyboardOperation::MoveToNextSnapshot) {
                 self.navigate_to_next_snapshot();
                 return true;
             }

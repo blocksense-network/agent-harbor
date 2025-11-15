@@ -162,7 +162,7 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area
   - Inline completions now present **two dimmed segments**: the shared continuation (characters guaranteed across every match) and the shortest possible completion. The shared portion uses a lighter dim + muted color, while the full completion remainder uses a slightly brighter dim + normal text color so the two steps are visually distinguishable.
   - **Workspace terms menu**: The background `WorkspaceTermsEnumerator` continuously indexes repository tokens. When the `workspace_terms_menu` preference is enabled (default), typing a regular token (two or more characters without a trigger) opens a `Workspace Terms` popup that lists the ranked matches. The menu uses the same navigation semantics as the `/` and `@` menus and Right Arrow accepts the currently highlighted entry.
-  - **Autocomplete active mode**: Whenever a ghost suggestion or popup menu entry is visible, the input system switches into an `Autocomplete Active` mode that exposes the `Accept Autocomplete` operation (Tab by default). This mode is consulted before any of the standard navigation modes, so Tab inserts the suggested text. As soon as no suggestion is present, Tab reverts to its usual “next field” navigation role automatically.
+  - **Autocomplete active mode**: Whenever a ghost suggestion or popup menu entry is visible, the input system switches into an `Autocomplete Active` mode that exposes the `IndentOrComplete` operation (Tab by default). This mode is consulted before any of the standard navigation modes, so Tab inserts the suggested text. As soon as no suggestion is present, Tab reverts to its usual "next field" navigation role automatically.
   - While the menu is focused, the inline ghost text mirrors the currently selected term—users always see exactly what the next Tab/Right Arrow action will insert. Moving the highlight immediately updates the ghost text so that the “longer” completion segment reflects the candidate under the cursor.
   - Users who prefer ghost-only completions can disable the menu by setting `workspace_terms_menu = false` in their settings; inline completions (shared + shortest segments) remain available even when the popup is hidden.
   - Pressing `Tab` inside the textarea inserts the shared continuation when one exists. Pressing `Tab` again (without moving the caret) inserts the remainder needed to reach the shortest matching term. When the lookup returns a single match, both segments are identical so one press is enough. Tab completion takes precedence over focus navigation—only when no inline completion is available does `Tab` move the cursor to the next form control.
@@ -580,10 +580,10 @@ All such variables are in under the "[tui.keymap]" section.
 | ------------------------------- | --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
 | **Cursor Movement**             | Move to beginning of line                     | `move-to-beginning-of-line`      | C-a (Emacs), Home (CUA/PC), Cmd+Left (macOS)                                    |
 |                                 | Move to end of line                           | `move-to-end-of-line`            | C-e (Emacs), End (CUA/PC), Cmd+Right (macOS)                                    |
-|                                 | Move forward one character                    | `move-forward-one-character`     | C-f (Emacs)                                                                     |
-|                                 | Move backward one character                   | `move-backward-one-character`    | C-b (Emacs)                                                                     |
-|                                 | Move to next line                             | `move-to-next-line`              | C-n (Emacs)                                                                     |
-|                                 | Move to previous line                         | `move-to-previous-line`          | C-p (Emacs)                                                                     |
+|                                 | Move forward one character                    | `move-forward-one-character`     | C-f (Emacs), Right                                                              |
+|                                 | Move backward one character                   | `move-backward-one-character`    | Left                                                                            |
+|                                 | Move to next line                             | `move-to-next-line`              | Down                                                                            |
+|                                 | Move to previous line                         | `move-to-previous-line`          | Up, C-p (Emacs)                                                                 |
 |                                 | Move forward one word                         | `move-forward-one-word`          | M-f (Emacs), Ctrl+Right (CUA/PC), Opt+Right (macOS)                             |
 |                                 | Move backward one word                        | `move-backward-one-word`         | M-b (Emacs), Ctrl+Left (CUA/PC), Opt+Left (macOS)                               |
 |                                 | Move to beginning of sentence                 | `move-to-beginning-of-sentence`  | M-a (Emacs)                                                                     |
@@ -609,10 +609,16 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Transpose characters                          | `transpose-characters`           | C-t (Emacs)                                                                     |
 |                                 | Transpose words                               | `transpose-words`                | M-t (Emacs)                                                                     |
 |                                 | Undo                                          | `undo`                           | C-\_ or C-/ (Emacs), Ctrl+Z (CUA/PC), Cmd+Z (macOS)                             |
-|                                 | Redo                                          | `redo`                           | C-? (Emacs), Ctrl+Y (CUA/PC), Cmd+Shift+Z (macOS)                               |
+|                                 | Redo                                          | `redo`                           | C-? (Emacs, Ctrl+Shift+/), Ctrl+Y (CUA/PC), Cmd+Shift+Z (macOS)                 |
 |                                 | Open (insert) new line                        | `open-new-line`                  | C-o (Emacs), Enter (CUA/PC and macOS), Shift+Enter (TUI)                        |
 |                                 | Indent or complete                            | `indent-or-complete`             | TAB (Emacs)                                                                     |
+|                                 | Move to next field                            | `move-to-next-field`             | Tab                                                                             |
+|                                 | Move to previous field                        | `move-to-previous-field`         | Shift+Tab                                                                       |
+|                                 | Dismiss overlay                               | `dismiss-overlay`                | Esc                                                                             |
+|                                 | Increment value                               | `increment-value`                | Shift+=, Right                                                                  |
+|                                 | Decrement value                               | `decrement-value`                | -, Left                                                                         |
 |                                 | Delete to beginning of line                   | `delete-to-beginning-of-line`    | Cmd+Backspace (macOS)                                                           |
+|                                 | Toggle insert mode                            | `toggle-insert-mode`             | Insert                                                                          |
 | **Text Transformation**         | Uppercase word                                | `uppercase-word`                 | M-u (Emacs)                                                                     |
 |                                 | Lowercase word                                | `lowercase-word`                 | M-l (Emacs)                                                                     |
 |                                 | Capitalize word                               | `capitalize-word`                | M-c (Emacs)                                                                     |
@@ -621,7 +627,6 @@ All such variables are in under the "[tui.keymap]" section.
 | **Formatting (Markdown Style)** | Bold                                          | `bold`                           | Ctrl+B (CUA/PC), Cmd+B (macOS)                                                  |
 |                                 | Italic                                        | `italic`                         | Ctrl+I (CUA/PC), Cmd+I (macOS)                                                  |
 |                                 | Underline                                     | `underline`                      | Ctrl+U (CUA/PC), Cmd+U (macOS)                                                  |
-|                                 | Insert hyperlink                              | `insert-hyperlink`               | Ctrl+K (CUA/PC), Cmd+K (macOS)                                                  |
 | **Code Editing**                | Toggle comment                                | `toggle-comment`                 | M-; (Emacs), Ctrl+/ (CUA/PC), Cmd+/ (macOS)                                     |
 |                                 | Duplicate line/selection                      | `duplicate-line-selection`       | Ctrl+Shift+D (CUA/PC), Cmd+Shift+D (macOS)                                      |
 |                                 | Move line up                                  | `move-line-up`                   | Alt+Up (CUA/PC), Opt+Up (macOS)                                                 |
@@ -632,13 +637,28 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Incremental search backward                   | `incremental-search-backward`    | C-r (Emacs)                                                                     |
 |                                 | Query replace                                 | `find-and-replace`               | M-% (Emacs), Ctrl+H (CUA/PC in some apps)                                       |
 |                                 | Query replace with regex                      | `find-and-replace-with-regex`    | C-M-% (Emacs)                                                                   |
-|                                 | Find next                                     | `find-next`                      | Cmd+G (macOS)                                                                   |
-|                                 | Find previous                                 | `find-previous`                  | Cmd+Shift+G (macOS)                                                             |
+|                                 | Find next                                     | `find-next`                      | F3 (CUA/PC), Cmd+G (macOS)                                                      |
+|                                 | Find previous                                 | `find-previous`                  | Shift+F3 (CUA/PC), Cmd+Shift+G (macOS)                                          |
 | **Mark and Region**             | Set mark (start selection)                    | `set-mark`                       | C-SPC or C-@ (Emacs)                                                            |
 |                                 | Select all (mark whole text area)             | `select-all`                     | C-x h (Emacs), Ctrl+A (CUA/PC), Cmd+A (macOS)                                   |
+|                                 | Select word under cursor                      | `select-word-under-cursor`       | Alt+@                                                                           |
 |                                 | Extend selection                              | no config variable               | Shift+movement key (CUA/PC and macOS)                                           |
+| **Application Actions**         | Draft new task                                | `draft-new-task`                 | Ctrl+N                                                                          |
+|                                 | Launch and focus                              | `launch-and-focus`               | Alt+Enter                                                                       |
+|                                 | Launch in split view                          | `launch-in-split-view`           | Ctrl+Enter                                                                      |
+|                                 | Launch in split view and focus                | `launch-in-split-view-and-focus` | Ctrl+Alt+Enter                                                                  |
+|                                 | Launch in horizontal split                    | `launch-in-horizontal-split`     | Ctrl+Shift+Enter                                                                |
+|                                 | Launch in vertical split                      | `launch-in-vertical-split`       | Ctrl+Shift+Alt+Enter                                                            |
+|                                 | Activate current item                         | `activate-current-item`          | Enter                                                                           |
+|                                 | Delete current task                           | `delete-current-task`            | Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs)                                   |
+| **Session Viewer Task Entry**   | Move to next snapshot                         | `move-to-next-snapshot`          | Ctrl+Shift+Down                                                                 |
+|                                 | Move to previous snapshot                     | `move-to-previous-snapshot`      | Ctrl+Shift+Up                                                                   |
 
 Note: In the table, "C-" means Control, "M-" means Meta (often Alt/Option), and combinations like "C-M-" use both. Please note that the Meta key should be the Option key on macOS and the Alt key otherwise. This can be overridden with the configuration option `tui.keymap.meta-key`.
+
+### Emacs Key Binding Conflicts
+
+Several traditional Emacs key bindings (C-b, C-f, C-n) for cursor movement have been simplified to use only arrow keys in the current implementation due to conflicts with other application shortcuts (C-b conflicts with "Bold", C-f conflicts with "Incremental search forward", C-n conflicts with "Draft new task"). Users who prefer full Emacs-style navigation can configure custom key bindings using the `tui.keymap` configuration section.
 
 ### Card List Keyboard Shortcuts
 

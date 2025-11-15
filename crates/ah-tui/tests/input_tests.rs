@@ -41,7 +41,7 @@ fn create_mock_settings() -> ah_tui::Settings {
     keymap.dismiss_overlay = Some(vec![esc_matcher]);
     keymap.select_all = Some(vec![ctrl_a_matcher]);
     keymap.incremental_search_forward = Some(vec![ctrl_s_matcher]);
-    keymap.new_draft = Some(vec![ctrl_n_matcher]);
+    keymap.draft_new_task = Some(vec![ctrl_n_matcher]);
 
     ah_tui::Settings {
         keymap: Some(keymap),
@@ -59,7 +59,7 @@ mod tests {
         assert!(mode.handles_operation(&KeyboardOperation::MoveToNextField));
         assert!(mode.handles_operation(&KeyboardOperation::MoveToPreviousField));
         assert!(mode.handles_operation(&KeyboardOperation::DismissOverlay));
-        assert!(mode.handles_operation(&KeyboardOperation::NewDraft));
+        assert!(mode.handles_operation(&KeyboardOperation::DraftNewTask));
         assert!(!mode.handles_operation(&KeyboardOperation::SelectAll));
     }
 
@@ -68,11 +68,11 @@ mod tests {
         let mode = &minor_modes::SELECTION_PROMINENT_MODE;
         assert!(mode.handles_operation(&KeyboardOperation::SelectAll));
         assert!(mode.handles_operation(&KeyboardOperation::DismissOverlay));
-        assert!(mode.handles_operation(&KeyboardOperation::NewDraft));
+        assert!(mode.handles_operation(&KeyboardOperation::DraftNewTask));
         assert_eq!(mode.prominent_operations().len(), 3);
         assert!(mode.prominent_operations().contains(&KeyboardOperation::DismissOverlay));
         assert!(mode.prominent_operations().contains(&KeyboardOperation::SelectAll));
-        assert!(mode.prominent_operations().contains(&KeyboardOperation::NewDraft));
+        assert!(mode.prominent_operations().contains(&KeyboardOperation::DraftNewTask));
     }
 
     #[test]

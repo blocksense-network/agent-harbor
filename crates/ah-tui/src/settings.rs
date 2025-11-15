@@ -104,7 +104,6 @@ pub enum KeyboardOperation {
     IndentOrComplete,
     MoveToNextField,
     MoveToPreviousField,
-    AcceptAutocomplete,
     DeleteToBeginningOfLine,
     DismissOverlay,
     ToggleInsertMode,
@@ -119,8 +118,8 @@ pub enum KeyboardOperation {
     JoinLines,
 
     // Session Viewer Task Entry
-    NextSnapshot,
-    PreviousSnapshot,
+    MoveToNextSnapshot,
+    MoveToPreviousSnapshot,
 
     // Formatting (Markdown Style)
     Bold,
@@ -149,13 +148,14 @@ pub enum KeyboardOperation {
     SelectAll,
 
     // Application Actions
-    NewDraft,
-    CreateAndFocus,
-    CreateInSplitView,
-    CreateInSplitViewAndFocus,
-    CreateInHorizontalSplit,
-    CreateInVerticalSplit,
+    DraftNewTask,
+    LaunchAndFocus,
+    LaunchInSplitView,
+    LaunchInSplitViewAndFocus,
+    LaunchInHorizontalSplit,
+    LaunchInVerticalSplit,
     ActivateCurrentItem,
+    DeleteCurrentTask,
 }
 
 impl KeyboardOperation {
@@ -204,7 +204,6 @@ impl KeyboardOperation {
             KeyboardOperation::IndentOrComplete => "shortcut-indent-or-complete",
             KeyboardOperation::MoveToNextField => "shortcut-move-to-next-field",
             KeyboardOperation::MoveToPreviousField => "shortcut-move-to-previous-field",
-            KeyboardOperation::AcceptAutocomplete => "shortcut-accept-autocomplete",
             KeyboardOperation::DeleteToBeginningOfLine => "shortcut-delete-to-beginning-of-line",
             KeyboardOperation::DismissOverlay => "shortcut-dismiss-overlay",
             KeyboardOperation::ToggleInsertMode => "shortcut-toggle-insert-mode",
@@ -215,8 +214,8 @@ impl KeyboardOperation {
             KeyboardOperation::CapitalizeWord => "shortcut-capitalize-word",
             KeyboardOperation::JustifyParagraph => "shortcut-justify-paragraph",
             KeyboardOperation::JoinLines => "shortcut-join-lines",
-            KeyboardOperation::NextSnapshot => "shortcut-next-snapshot",
-            KeyboardOperation::PreviousSnapshot => "shortcut-previous-snapshot",
+            KeyboardOperation::MoveToNextSnapshot => "shortcut-move-to-next-snapshot",
+            KeyboardOperation::MoveToPreviousSnapshot => "shortcut-move-to-previous-snapshot",
             KeyboardOperation::Bold => "shortcut-bold",
             KeyboardOperation::Italic => "shortcut-italic",
             KeyboardOperation::Underline => "shortcut-underline",
@@ -235,15 +234,16 @@ impl KeyboardOperation {
             KeyboardOperation::SetMark => "shortcut-set-mark",
             KeyboardOperation::SelectAll => "shortcut-select-all",
             KeyboardOperation::SelectWordUnderCursor => "shortcut-select-word-under-cursor",
-            KeyboardOperation::NewDraft => "shortcut-new-draft",
-            KeyboardOperation::CreateAndFocus => "shortcut-create-and-focus",
-            KeyboardOperation::CreateInSplitView => "shortcut-create-in-split-view",
-            KeyboardOperation::CreateInSplitViewAndFocus => {
-                "shortcut-create-in-split-view-and-focus"
+            KeyboardOperation::DraftNewTask => "shortcut-draft-new-task",
+            KeyboardOperation::LaunchAndFocus => "shortcut-launch-and-focus",
+            KeyboardOperation::LaunchInSplitView => "shortcut-launch-in-split-view",
+            KeyboardOperation::LaunchInSplitViewAndFocus => {
+                "shortcut-launch-in-split-view-and-focus"
             }
-            KeyboardOperation::CreateInHorizontalSplit => "shortcut-create-in-horizontal-split",
-            KeyboardOperation::CreateInVerticalSplit => "shortcut-create-in-vertical-split",
+            KeyboardOperation::LaunchInHorizontalSplit => "shortcut-launch-in-horizontal-split",
+            KeyboardOperation::LaunchInVerticalSplit => "shortcut-launch-in-vertical-split",
             KeyboardOperation::ActivateCurrentItem => "shortcut-activate-current-item",
+            KeyboardOperation::DeleteCurrentTask => "shortcut-delete-current-task",
         }
     }
 
@@ -298,8 +298,8 @@ impl KeyboardOperation {
             KeyboardOperation::CapitalizeWord => "Capitalize word",
             KeyboardOperation::JustifyParagraph => "Justify paragraph",
             KeyboardOperation::JoinLines => "Join lines",
-            KeyboardOperation::NextSnapshot => "Move to next snapshot",
-            KeyboardOperation::PreviousSnapshot => "Move to previous snapshot",
+            KeyboardOperation::MoveToNextSnapshot => "Move to next snapshot",
+            KeyboardOperation::MoveToPreviousSnapshot => "Move to previous snapshot",
             KeyboardOperation::Bold => "Toggle bold formatting",
             KeyboardOperation::Italic => "Toggle italic formatting",
             KeyboardOperation::Underline => "Toggle underline formatting",
@@ -318,14 +318,14 @@ impl KeyboardOperation {
             KeyboardOperation::SetMark => "Set mark for selection",
             KeyboardOperation::SelectAll => "Select all text",
             KeyboardOperation::SelectWordUnderCursor => "Select word under cursor",
-            KeyboardOperation::NewDraft => "Create new draft task",
-            KeyboardOperation::CreateAndFocus => "Create task and focus",
-            KeyboardOperation::CreateInSplitView => "Create task in split view",
-            KeyboardOperation::CreateInSplitViewAndFocus => "Create task in split view and focus",
-            KeyboardOperation::CreateInHorizontalSplit => "Create task in horizontal split",
-            KeyboardOperation::CreateInVerticalSplit => "Create task in vertical split",
-            KeyboardOperation::AcceptAutocomplete => "Accept active autocomplete suggestion",
+            KeyboardOperation::DraftNewTask => "Create new draft task",
+            KeyboardOperation::LaunchAndFocus => "Launch task and focus",
+            KeyboardOperation::LaunchInSplitView => "Launch task in split view",
+            KeyboardOperation::LaunchInSplitViewAndFocus => "Launch task in split view and focus",
+            KeyboardOperation::LaunchInHorizontalSplit => "Launch task in horizontal split",
+            KeyboardOperation::LaunchInVerticalSplit => "Launch task in vertical split",
             KeyboardOperation::ActivateCurrentItem => "Activate current item",
+            KeyboardOperation::DeleteCurrentTask => "Delete current task",
         }
     }
 }
@@ -746,7 +746,7 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveForwardOneCharacter,
-                vec!["Ctrl+F".to_string(), "Right".to_string()],
+                vec!["Right".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveBackwardOneCharacter,
@@ -765,7 +765,7 @@ impl KeymapConfig {
                 vec!["Shift+Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::AcceptAutocomplete,
+                KeyboardOperation::IndentOrComplete,
                 vec!["Tab".to_string()],
             ),
             KeyboardOperationDefinition::new(
@@ -834,7 +834,28 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::MoveToMatchingParenthesis,
-                vec!["Ctrl+Alt+F".to_string(), "Ctrl+Option+F".to_string()],
+                vec![
+                    "Ctrl+Alt+F".to_string(),
+                    "Ctrl+Option+F".to_string(),
+                    "Ctrl+Alt+B".to_string(),
+                    "Ctrl+Option+B".to_string(),
+                ],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveToBeginningOfSentence,
+                vec!["Alt+A".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveToEndOfSentence,
+                vec!["Alt+E".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveToBeginningOfParagraph,
+                vec!["Option+Up".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::MoveToEndOfParagraph,
+                vec!["Option+Down".to_string()],
             ),
             // Editing and Deletion
             KeyboardOperationDefinition::new(
@@ -864,6 +885,10 @@ impl KeymapConfig {
             KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteToEndOfLine,
                 vec!["Ctrl+K".to_string()], // Emacs-style delete to end of line
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::DeleteToBeginningOfLine,
+                vec!["Cmd+Backspace".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Cut,
@@ -901,6 +926,7 @@ impl KeymapConfig {
             KeyboardOperationDefinition::new(
                 KeyboardOperation::Redo,
                 vec![
+                    "Ctrl+Shift+/".to_string(),
                     "Ctrl+Y".to_string(),
                     "Ctrl+Shift+Z".to_string(),
                     "Cmd+Shift+Z".to_string(),
@@ -908,7 +934,7 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::OpenNewLine,
-                vec!["Shift+Enter".to_string(), "Ctrl+J".to_string()],
+                vec!["Ctrl+O".to_string(), "Shift+Enter".to_string()],
             ),
             // Code Editing
             KeyboardOperationDefinition::new(
@@ -949,8 +975,16 @@ impl KeymapConfig {
                 ],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::IncrementalSearchBackward,
+                vec!["Ctrl+R".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::FindAndReplace,
                 vec!["Ctrl+H".to_string(), "Cmd+Shift+H".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::FindAndReplaceWithRegex,
+                vec!["Ctrl+Alt+%".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::FindNext,
@@ -999,6 +1033,10 @@ impl KeymapConfig {
                 vec!["Alt+C".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::JustifyParagraph,
+                vec!["Alt+Q".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::JoinLines,
                 vec!["Alt+^".to_string()],
             ),
@@ -1008,82 +1046,50 @@ impl KeymapConfig {
                 KeyboardOperation::Underline,
                 vec!["Ctrl+U".to_string()],
             ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::ToggleComment,
-                vec![
-                    "Ctrl+/".to_string(),
-                    "Alt+;".to_string(),
-                    "Cmd+/".to_string(),
-                ],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::MoveLineUp,
-                vec!["Alt+Up".to_string(), "Option+Up".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::MoveLineDown,
-                vec!["Alt+Down".to_string(), "Option+Down".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::IndentRegion,
-                vec!["Ctrl+]".to_string(), "Cmd+]".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::DedentRegion,
-                vec!["Ctrl+[".to_string(), "Cmd+[".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::IncrementalSearchForward,
-                vec!["Ctrl+S".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::IncrementalSearchBackward,
-                vec!["Ctrl+R".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::FindNext,
-                vec!["F3".to_string(), "Cmd+G".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::FindPrevious,
-                vec!["Shift+F3".to_string(), "Cmd+Shift+G".to_string()],
-            ),
             // Application Actions
             KeyboardOperationDefinition::new(
-                KeyboardOperation::NewDraft,
-                vec!["Ctrl+N".to_string()],
+                KeyboardOperation::DraftNewTask,
+                vec!["Ctrl+N".to_string(), "Cmd+N".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::CreateAndFocus,
+                KeyboardOperation::LaunchAndFocus,
                 vec!["Alt+Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::CreateInSplitView,
+                KeyboardOperation::LaunchInSplitView,
                 vec!["Ctrl+Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::CreateInSplitViewAndFocus,
+                KeyboardOperation::LaunchInSplitViewAndFocus,
                 vec!["Ctrl+Alt+Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::CreateInHorizontalSplit,
+                KeyboardOperation::LaunchInHorizontalSplit,
                 vec!["Ctrl+Shift+Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::CreateInVerticalSplit,
+                KeyboardOperation::LaunchInVerticalSplit,
                 vec!["Ctrl+Shift+Alt+Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ActivateCurrentItem,
                 vec!["Enter".to_string()],
             ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::DeleteCurrentTask,
+                vec![
+                    "Ctrl+W".to_string(),
+                    "Cmd+W".to_string(),
+                    "Ctrl+X+K".to_string(),
+                ],
+            ),
             // Session Viewer Task Entry
             KeyboardOperationDefinition::new(
-                KeyboardOperation::NextSnapshot,
+                KeyboardOperation::MoveToNextSnapshot,
                 vec!["Ctrl+Shift+Down".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::PreviousSnapshot,
+                KeyboardOperation::MoveToPreviousSnapshot,
                 vec!["Ctrl+Shift+Up".to_string()],
             ),
         ]
@@ -1103,16 +1109,16 @@ impl KeymapConfig {
             KeyboardOperation::MoveToNextLine => &self.move_to_next_line,
             KeyboardOperation::MoveToNextField => &self.move_to_next_field,
             KeyboardOperation::MoveToPreviousField => &self.move_to_previous_field,
-            KeyboardOperation::AcceptAutocomplete => &self.accept_autocomplete,
             KeyboardOperation::DismissOverlay => &self.dismiss_overlay,
             KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
-            KeyboardOperation::NewDraft => &self.new_draft,
-            KeyboardOperation::CreateAndFocus => &self.create_and_focus,
-            KeyboardOperation::CreateInSplitView => &self.create_in_split_view,
-            KeyboardOperation::CreateInSplitViewAndFocus => &self.create_in_split_view_and_focus,
-            KeyboardOperation::CreateInHorizontalSplit => &self.create_in_horizontal_split,
-            KeyboardOperation::CreateInVerticalSplit => &self.create_in_vertical_split,
+            KeyboardOperation::DraftNewTask => &self.draft_new_task,
+            KeyboardOperation::LaunchAndFocus => &self.launch_and_focus,
+            KeyboardOperation::LaunchInSplitView => &self.launch_in_split_view,
+            KeyboardOperation::LaunchInSplitViewAndFocus => &self.launch_in_split_view_and_focus,
+            KeyboardOperation::LaunchInHorizontalSplit => &self.launch_in_horizontal_split,
+            KeyboardOperation::LaunchInVerticalSplit => &self.launch_in_vertical_split,
             KeyboardOperation::ActivateCurrentItem => &self.activate_current_item,
+            KeyboardOperation::DeleteCurrentTask => &self.delete_current_task,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
             KeyboardOperation::MoveBackwardOneWord => &self.move_backward_one_word,
@@ -1127,6 +1133,10 @@ impl KeymapConfig {
             KeyboardOperation::MoveToEndOfParagraph => &self.move_to_end_of_paragraph,
             KeyboardOperation::GoToLineNumber => &self.go_to_line_number,
             KeyboardOperation::MoveToMatchingParenthesis => &self.move_to_matching_parenthesis,
+            KeyboardOperation::MoveToBeginningOfSentence => &self.move_to_beginning_of_sentence,
+            KeyboardOperation::MoveToEndOfSentence => &self.move_to_end_of_sentence,
+            KeyboardOperation::MoveToBeginningOfParagraph => &self.move_to_beginning_of_paragraph,
+            KeyboardOperation::MoveToEndOfParagraph => &self.move_to_end_of_paragraph,
             KeyboardOperation::DeleteCharacterForward => &self.delete_character_forward,
             KeyboardOperation::DeleteCharacterBackward => &self.delete_character_backward,
             KeyboardOperation::DeleteWordForward => &self.delete_word_forward,
@@ -1149,8 +1159,8 @@ impl KeymapConfig {
             KeyboardOperation::CapitalizeWord => &self.capitalize_word,
             KeyboardOperation::JustifyParagraph => &self.justify_paragraph,
             KeyboardOperation::JoinLines => &self.join_lines,
-            KeyboardOperation::NextSnapshot => &self.next_snapshot,
-            KeyboardOperation::PreviousSnapshot => &self.previous_snapshot,
+            KeyboardOperation::MoveToNextSnapshot => &self.move_to_next_snapshot,
+            KeyboardOperation::MoveToPreviousSnapshot => &self.move_to_previous_snapshot,
             KeyboardOperation::Bold => &self.bold,
             KeyboardOperation::Italic => &self.italic,
             KeyboardOperation::Underline => &self.underline,
@@ -1207,29 +1217,29 @@ impl KeymapConfig {
             KeyboardOperation::MoveToPreviousField => {
                 self.move_to_previous_field.clone().unwrap_or_default()
             }
-            KeyboardOperation::AcceptAutocomplete => {
-                self.accept_autocomplete.clone().unwrap_or_default()
-            }
             KeyboardOperation::DismissOverlay => self.dismiss_overlay.clone().unwrap_or_default(),
             KeyboardOperation::SelectWordUnderCursor => {
                 self.select_word_under_cursor.clone().unwrap_or_default()
             }
-            KeyboardOperation::NewDraft => self.new_draft.clone().unwrap_or_default(),
-            KeyboardOperation::CreateAndFocus => self.create_and_focus.clone().unwrap_or_default(),
-            KeyboardOperation::CreateInSplitView => {
-                self.create_in_split_view.clone().unwrap_or_default()
+            KeyboardOperation::DraftNewTask => self.draft_new_task.clone().unwrap_or_default(),
+            KeyboardOperation::LaunchAndFocus => self.launch_and_focus.clone().unwrap_or_default(),
+            KeyboardOperation::LaunchInSplitView => {
+                self.launch_in_split_view.clone().unwrap_or_default()
             }
-            KeyboardOperation::CreateInSplitViewAndFocus => {
-                self.create_in_split_view_and_focus.clone().unwrap_or_default()
+            KeyboardOperation::LaunchInSplitViewAndFocus => {
+                self.launch_in_split_view_and_focus.clone().unwrap_or_default()
             }
-            KeyboardOperation::CreateInHorizontalSplit => {
-                self.create_in_horizontal_split.clone().unwrap_or_default()
+            KeyboardOperation::LaunchInHorizontalSplit => {
+                self.launch_in_horizontal_split.clone().unwrap_or_default()
             }
-            KeyboardOperation::CreateInVerticalSplit => {
-                self.create_in_vertical_split.clone().unwrap_or_default()
+            KeyboardOperation::LaunchInVerticalSplit => {
+                self.launch_in_vertical_split.clone().unwrap_or_default()
             }
             KeyboardOperation::ActivateCurrentItem => {
                 self.activate_current_item.clone().unwrap_or_default()
+            }
+            KeyboardOperation::DeleteCurrentTask => {
+                self.delete_current_task.clone().unwrap_or_default()
             }
             KeyboardOperation::MoveToPreviousLine => {
                 self.move_to_previous_line.clone().unwrap_or_default()
@@ -1270,6 +1280,18 @@ impl KeymapConfig {
             KeyboardOperation::GoToLineNumber => self.go_to_line_number.clone().unwrap_or_default(),
             KeyboardOperation::MoveToMatchingParenthesis => {
                 self.move_to_matching_parenthesis.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToBeginningOfSentence => {
+                self.move_to_beginning_of_sentence.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToEndOfSentence => {
+                self.move_to_end_of_sentence.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToBeginningOfParagraph => {
+                self.move_to_beginning_of_paragraph.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToEndOfParagraph => {
+                self.move_to_end_of_paragraph.clone().unwrap_or_default()
             }
             KeyboardOperation::DeleteCharacterForward => {
                 self.delete_character_forward.clone().unwrap_or_default()
@@ -1315,9 +1337,11 @@ impl KeymapConfig {
                 self.justify_paragraph.clone().unwrap_or_default()
             }
             KeyboardOperation::JoinLines => self.join_lines.clone().unwrap_or_default(),
-            KeyboardOperation::NextSnapshot => self.next_snapshot.clone().unwrap_or_default(),
-            KeyboardOperation::PreviousSnapshot => {
-                self.previous_snapshot.clone().unwrap_or_default()
+            KeyboardOperation::MoveToNextSnapshot => {
+                self.move_to_next_snapshot.clone().unwrap_or_default()
+            }
+            KeyboardOperation::MoveToPreviousSnapshot => {
+                self.move_to_previous_snapshot.clone().unwrap_or_default()
             }
             KeyboardOperation::Bold => self.bold.clone().unwrap_or_default(),
             KeyboardOperation::Italic => self.italic.clone().unwrap_or_default(),
@@ -1379,7 +1403,6 @@ impl Default for KeymapConfig {
             move_to_next_line: None,
             move_to_next_field: None,
             move_to_previous_field: None,
-            accept_autocomplete: None,
             dismiss_overlay: None,
             select_word_under_cursor: None,
             move_to_previous_line: None,
@@ -1418,8 +1441,8 @@ impl Default for KeymapConfig {
             capitalize_word: None,
             justify_paragraph: None,
             join_lines: None,
-            next_snapshot: None,
-            previous_snapshot: None,
+            move_to_next_snapshot: None,
+            move_to_previous_snapshot: None,
             bold: None,
             italic: None,
             underline: None,
@@ -1439,13 +1462,14 @@ impl Default for KeymapConfig {
             select_all: None,
             increment_value: None,
             decrement_value: None,
-            new_draft: None,
-            create_and_focus: None,
-            create_in_split_view: None,
-            create_in_split_view_and_focus: None,
-            create_in_horizontal_split: None,
-            create_in_vertical_split: None,
+            draft_new_task: None,
+            launch_and_focus: None,
+            launch_in_split_view: None,
+            launch_in_split_view_and_focus: None,
+            launch_in_horizontal_split: None,
+            launch_in_vertical_split: None,
             activate_current_item: None,
+            delete_current_task: None,
         };
 
         // Populate the config with parsed default bindings
@@ -1482,29 +1506,29 @@ impl Default for KeymapConfig {
                     KeyboardOperation::MoveToPreviousField => {
                         config.move_to_previous_field = Some(matchers)
                     }
-                    KeyboardOperation::AcceptAutocomplete => {
-                        config.accept_autocomplete = Some(matchers)
-                    }
                     KeyboardOperation::DismissOverlay => config.dismiss_overlay = Some(matchers),
                     KeyboardOperation::SelectWordUnderCursor => {
                         config.select_word_under_cursor = Some(matchers)
                     }
-                    KeyboardOperation::NewDraft => config.new_draft = Some(matchers),
-                    KeyboardOperation::CreateAndFocus => config.create_and_focus = Some(matchers),
-                    KeyboardOperation::CreateInSplitView => {
-                        config.create_in_split_view = Some(matchers)
+                    KeyboardOperation::DraftNewTask => config.draft_new_task = Some(matchers),
+                    KeyboardOperation::LaunchAndFocus => config.launch_and_focus = Some(matchers),
+                    KeyboardOperation::LaunchInSplitView => {
+                        config.launch_in_split_view = Some(matchers)
                     }
-                    KeyboardOperation::CreateInSplitViewAndFocus => {
-                        config.create_in_split_view_and_focus = Some(matchers)
+                    KeyboardOperation::LaunchInSplitViewAndFocus => {
+                        config.launch_in_split_view_and_focus = Some(matchers)
                     }
-                    KeyboardOperation::CreateInHorizontalSplit => {
-                        config.create_in_horizontal_split = Some(matchers)
+                    KeyboardOperation::LaunchInHorizontalSplit => {
+                        config.launch_in_horizontal_split = Some(matchers)
                     }
-                    KeyboardOperation::CreateInVerticalSplit => {
-                        config.create_in_vertical_split = Some(matchers)
+                    KeyboardOperation::LaunchInVerticalSplit => {
+                        config.launch_in_vertical_split = Some(matchers)
                     }
                     KeyboardOperation::ActivateCurrentItem => {
                         config.activate_current_item = Some(matchers)
+                    }
+                    KeyboardOperation::DeleteCurrentTask => {
+                        config.delete_current_task = Some(matchers)
                     }
                     KeyboardOperation::MoveToPreviousLine => {
                         config.move_to_previous_line = Some(matchers)
@@ -1545,6 +1569,18 @@ impl Default for KeymapConfig {
                     KeyboardOperation::GoToLineNumber => config.go_to_line_number = Some(matchers),
                     KeyboardOperation::MoveToMatchingParenthesis => {
                         config.move_to_matching_parenthesis = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToBeginningOfSentence => {
+                        config.move_to_beginning_of_sentence = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToEndOfSentence => {
+                        config.move_to_end_of_sentence = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToBeginningOfParagraph => {
+                        config.move_to_beginning_of_paragraph = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToEndOfParagraph => {
+                        config.move_to_end_of_paragraph = Some(matchers)
                     }
                     KeyboardOperation::DeleteCharacterForward => {
                         config.delete_character_forward = Some(matchers)
@@ -1590,9 +1626,11 @@ impl Default for KeymapConfig {
                         config.justify_paragraph = Some(matchers)
                     }
                     KeyboardOperation::JoinLines => config.join_lines = Some(matchers),
-                    KeyboardOperation::NextSnapshot => config.next_snapshot = Some(matchers),
-                    KeyboardOperation::PreviousSnapshot => {
-                        config.previous_snapshot = Some(matchers)
+                    KeyboardOperation::MoveToNextSnapshot => {
+                        config.move_to_next_snapshot = Some(matchers)
+                    }
+                    KeyboardOperation::MoveToPreviousSnapshot => {
+                        config.move_to_previous_snapshot = Some(matchers)
                     }
                     KeyboardOperation::Bold => config.bold = Some(matchers),
                     KeyboardOperation::Italic => config.italic = Some(matchers),
@@ -1642,7 +1680,6 @@ pub struct KeymapConfig {
     pub move_to_next_line: Option<Vec<KeyMatcher>>,
     pub move_to_next_field: Option<Vec<KeyMatcher>>,
     pub move_to_previous_field: Option<Vec<KeyMatcher>>,
-    pub accept_autocomplete: Option<Vec<KeyMatcher>>,
     pub dismiss_overlay: Option<Vec<KeyMatcher>>,
     pub select_word_under_cursor: Option<Vec<KeyMatcher>>,
     pub move_to_previous_line: Option<Vec<KeyMatcher>>,
@@ -1687,8 +1724,8 @@ pub struct KeymapConfig {
     pub join_lines: Option<Vec<KeyMatcher>>,
 
     // Session Viewer Task Entry
-    pub next_snapshot: Option<Vec<KeyMatcher>>,
-    pub previous_snapshot: Option<Vec<KeyMatcher>>,
+    pub move_to_next_snapshot: Option<Vec<KeyMatcher>>,
+    pub move_to_previous_snapshot: Option<Vec<KeyMatcher>>,
 
     // Formatting (Markdown Style)
     pub bold: Option<Vec<KeyMatcher>>,
@@ -1718,13 +1755,14 @@ pub struct KeymapConfig {
     pub decrement_value: Option<Vec<KeyMatcher>>,
 
     // Application Actions
-    pub new_draft: Option<Vec<KeyMatcher>>,
-    pub create_and_focus: Option<Vec<KeyMatcher>>,
-    pub create_in_split_view: Option<Vec<KeyMatcher>>,
-    pub create_in_split_view_and_focus: Option<Vec<KeyMatcher>>,
-    pub create_in_horizontal_split: Option<Vec<KeyMatcher>>,
-    pub create_in_vertical_split: Option<Vec<KeyMatcher>>,
+    pub draft_new_task: Option<Vec<KeyMatcher>>,
+    pub launch_and_focus: Option<Vec<KeyMatcher>>,
+    pub launch_in_split_view: Option<Vec<KeyMatcher>>,
+    pub launch_in_split_view_and_focus: Option<Vec<KeyMatcher>>,
+    pub launch_in_horizontal_split: Option<Vec<KeyMatcher>>,
+    pub launch_in_vertical_split: Option<Vec<KeyMatcher>>,
     pub activate_current_item: Option<Vec<KeyMatcher>>,
+    pub delete_current_task: Option<Vec<KeyMatcher>>,
 }
 
 /// Main settings configuration structure

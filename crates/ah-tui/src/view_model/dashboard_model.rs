@@ -178,8 +178,8 @@ static ACTIVE_TASK_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextField,
     KeyboardOperation::MoveToPreviousField,
     KeyboardOperation::ActivateCurrentItem,
-    KeyboardOperation::PreviousSnapshot,
-    KeyboardOperation::NextSnapshot,
+    KeyboardOperation::MoveToPreviousSnapshot,
+    KeyboardOperation::MoveToNextSnapshot,
 ]);
 
 // Minor mode for settings dialog navigation
@@ -211,7 +211,7 @@ static DASHBOARD_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveForwardOneCharacter,
     KeyboardOperation::MoveBackwardOneCharacter,
     KeyboardOperation::DismissOverlay,
-    KeyboardOperation::NewDraft,
+    KeyboardOperation::DraftNewTask,
     KeyboardOperation::ActivateCurrentItem,
 ]);
 
@@ -2694,7 +2694,7 @@ impl ViewModel {
                 if let Some(operation) = minor_modes::AUTOCOMPLETE_ACTIVE_MODE
                     .resolve_key_to_operation(&key, &self.settings)
                 {
-                    if operation == KeyboardOperation::AcceptAutocomplete
+                    if operation == KeyboardOperation::IndentOrComplete
                         && self.handle_autocomplete_accept(
                             idx,
                             AutocompleteAcceptance::SharedExtension,
@@ -3160,7 +3160,7 @@ impl ViewModel {
                 self.handle_enter(false)
             }
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
-            KeyboardOperation::NewDraft => self.handle_ctrl_n(),
+            KeyboardOperation::DraftNewTask => self.handle_ctrl_n(),
             KeyboardOperation::DeleteToEndOfLine => {
                 // Delete from cursor to end of line
                 match self.focus_element {
