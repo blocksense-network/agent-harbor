@@ -349,6 +349,10 @@ test-fuse-negative-ops:
 test-fuse-overlay-ops:
     ./scripts/test-fuse-overlay-ops.sh
 
+# Control plane integration (F4)
+test-fuse-control-plane:
+    ./scripts/test-fuse-control-plane.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 setup-pjdfstest-suite:

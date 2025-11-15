@@ -1,0 +1,16 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "agentfs-control-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight CLI helper for talking to the AgentFS FUSE control file"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+agentfs-proto = { path = "../agentfs-proto" }
+ssz = { package = "ethereum_ssz", version = "0.8" }
+nix = { workspace = true, features = ["fs"] }
+libc = { workspace = true }
