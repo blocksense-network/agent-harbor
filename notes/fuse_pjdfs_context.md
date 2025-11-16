@@ -1,5 +1,7 @@
 # FUSE Adapter Control-Plane Status – Nov 15 2025 (handoff)
 
+<!-- cSpell:ignore fdatasync conv -->
+
 ## Current Scope
 
 - Working branch: `feat/agentfs-fuse-f4`.
@@ -36,7 +38,7 @@
 3. **Hook pjdfstest-full into CI**
    - Add a CI job (similar to the FUSE harness job) that runs `just test-pjdfstest-full` on a privileged runner, archives `pjdfstest.log` + `summary.json`, and relies on the baseline diff for pass/fail.
 4. **Performance tuning (F6)**
-   - The initial benchmark shows AgentFS is still dramatically slower than the host baseline for sequential writes and concurrent workloads (see `logs/fuse-performance-20251115-161415/summary.json`). We need to profile the adapter/backstore to improve throughput and define threshold-based regression checks before wiring into CI.
+   - The initial benchmark shows AgentFS is still dramatically slower than the host baseline for sequential writes and concurrent workloads (see `logs/fuse-performance-20251116-060606/summary.json`). Strace profiling (`strace -ff -tt dd if=/dev/zero of=/tmp/agentfs-profile/perf/throughput.bin bs=4M count=64 status=none conv=fdatasync`) routinely ends with `Transport endpoint is not connected`, which means the fuse host crashes mid-write (`logs/perf-profiles/agentfs-dd.strace`). The host filesystem completes the same workload in ~30 ms (`logs/perf-profiles/baseline-dd.strace`). We need to debug why sequential writes wedge the HostFs backstore (fsync path?) before we can enforce regression thresholds.
 
 ## Useful Paths & Logs
 
