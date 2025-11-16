@@ -16,6 +16,7 @@ MOUNTPOINT="${1:-$DEFAULT_MOUNTPOINT}"
 BASELINE_DIR="$RUN_DIR/baseline"
 SKIP_FUSE_BUILD="${SKIP_FUSE_BUILD:-}"
 SKIP_THRESHOLD_CHECK="${SKIP_THRESHOLD_CHECK:-}"
+NOFILE_LIMIT="${PERF_NOFILE_LIMIT:-8192}"
 TIME_BIN="$(command -v time || command -v /usr/bin/time || true)"
 AGENTFS_WORKDIR="$MOUNTPOINT/perf"
 FUSE_CONFIG="$RUN_DIR/fuse-config.json"
@@ -33,6 +34,10 @@ mkdir -p "$RUN_DIR" "$BASELINE_DIR" "$BACKSTORE_DIR"
 log() {
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$RUN_DIR/performance.log"
 }
+
+if ! ulimit -n "$NOFILE_LIMIT" 2>/dev/null; then
+  log "Warning: unable to raise RLIMIT_NOFILE to $NOFILE_LIMIT; continuing with $(ulimit -n)"
+fi
 
 drop_caches() {
   local reason="$1"
