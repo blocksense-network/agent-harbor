@@ -598,16 +598,16 @@ show_interactive_menu() {
         "test_get_text:Get window text"
         "test_close_window:Close window by ID"
     )
-    
+
     # Run prerequisite tests once at the start
     local prereqs_ok=false
-    
+
     while true; do
         # Reset counters for each menu iteration
         TESTS_PASSED=0
         TESTS_FAILED=0
         FAILED_TESTS=()
-        
+
         echo
         log_info "=========================================="
         log_info "Kitty Integration Test Menu"
@@ -619,7 +619,7 @@ show_interactive_menu() {
         echo
         echo "Select tests to run:"
         echo
-        
+
         local i=1
         for test_item in "${all_tests[@]}"; do
             local test_func="${test_item%%:*}"
@@ -627,7 +627,7 @@ show_interactive_menu() {
             printf " %2d) %s\n" "$i" "$test_desc"
             ((i++))
         done
-        
+
         echo
         echo " Commands:"
         echo "   a) Run all tests"
@@ -636,9 +636,9 @@ show_interactive_menu() {
         echo "   q) Quit"
         echo
         echo "Enter test numbers (space-separated), or command letter:"
-        
+
         read -p "> " choices
-        
+
         # Handle commands
         case "$choices" in
             q|Q)
@@ -674,7 +674,7 @@ show_interactive_menu() {
                 continue
                 ;;
         esac
-        
+
         # Run prerequisites if not already done
         if [[ "$prereqs_ok" == "false" ]]; then
             echo
@@ -692,7 +692,7 @@ show_interactive_menu() {
             prereqs_ok=true
             echo
         fi
-        
+
         # Parse and run selected tests
         local -a selected_tests=()
         for num in $choices; do
@@ -705,28 +705,28 @@ show_interactive_menu() {
                 log_warning "Invalid selection: $num (skipping)"
             fi
         done
-        
+
         if [ ${#selected_tests[@]} -eq 0 ]; then
             log_error "No valid tests selected"
             sleep 1
             continue
         fi
-        
+
         echo
         log_info "Running ${#selected_tests[@]} selected test(s)..."
         echo
-        
+
         for test_func in "${selected_tests[@]}"; do
             "$test_func" || true
         done
-        
+
         # Print summary
         echo
         log_info "=========================================="
         log_info "Test Summary"
         log_info "=========================================="
         log_success "Passed: $TESTS_PASSED"
-        
+
         if [[ $TESTS_FAILED -gt 0 ]]; then
             log_error "Failed: $TESTS_FAILED"
             echo
@@ -737,7 +737,7 @@ show_interactive_menu() {
         else
             log_success "All selected tests passed!"
         fi
-        
+
         echo
         read -p "Press Enter to return to menu (or Ctrl+C to exit)..."
     done

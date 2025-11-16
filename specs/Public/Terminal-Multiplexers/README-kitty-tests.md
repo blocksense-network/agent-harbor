@@ -12,6 +12,7 @@ This directory contains a comprehensive test script for validating Kitty termina
 Before running the tests, ensure you have:
 
 1. **Kitty installed** (version 0.26.0 or later recommended)
+
    ```bash
    # Check installation
    kitty --version
@@ -22,11 +23,13 @@ Before running the tests, ensure you have:
    - `bash` - Shell for running the script
 
    Install on Ubuntu/Debian:
+
    ```bash
    sudo apt install jq
    ```
 
    Install on macOS:
+
    ```bash
    brew install jq
    ```
@@ -44,6 +47,7 @@ Before running the tests, ensure you have:
 ```
 
 This will:
+
 1. Check Kitty availability and version
 2. Ensure remote control is enabled
 3. Test all core functionalities:
@@ -78,6 +82,7 @@ This prevents automatic cleanup, allowing you to inspect the created layout.
 ```
 
 Available tests:
+
 - `test_kitty_available` - Check if Kitty is installed and usable
 - `test_start_kitty_remote_control` - Verify remote control functionality
 - `test_list_windows` - Test window/tab listing
@@ -103,29 +108,34 @@ Available tests:
 ## Test Scenarios Covered
 
 ### 1. Basic Multiplexer Operations
+
 - Creating tabs and windows
 - Horizontal and vertical splits
 - Focusing windows and tabs
 - Closing windows
 
 ### 2. Command Execution
+
 - Launching commands in new panes
 - Working directory control
 - Environment variable passing
 - Command output verification
 
 ### 3. Interactive Features
+
 - Sending text to windows (simulating user input)
 - Handling interactive prompts
 - Text injection with proper escaping
 
 ### 4. Agent Harbor Specific
+
 - Creating 3-pane layout (editor/TUI/logs)
 - Session discovery by title prefix
 - Focusing existing sessions
 - Task ID-based naming conventions
 
 ### 5. Programmatic Control
+
 - JSON-based window listing
 - ID-based and title-based targeting
 - Match selector syntax validation
@@ -180,6 +190,7 @@ Available tests:
 Kitty is not installed or not in your PATH.
 
 **Solution:**
+
 ```bash
 # Install Kitty
 # Linux:
@@ -194,6 +205,7 @@ brew install --cask kitty
 Remote control is not enabled or socket is not accessible.
 
 **Solution:**
+
 ```bash
 # Start Kitty with remote control
 kitty --listen-on unix:/tmp/kitty-test.sock &
@@ -208,6 +220,7 @@ kitty &
 The `jq` JSON processor is not installed.
 
 **Solution:**
+
 ```bash
 # Ubuntu/Debian:
 sudo apt install jq
@@ -222,6 +235,7 @@ sudo pacman -S jq
 Socket file has incorrect permissions.
 
 **Solution:**
+
 ```bash
 # Check socket permissions
 ls -l /tmp/kitty-*.sock
@@ -236,6 +250,7 @@ ls -l /tmp/kitty-*.sock
 Windows are not closing properly or commands are blocking.
 
 **Solution:**
+
 ```bash
 # Clean up manually
 kitty @ --to unix:/tmp/kitty-test.sock close-window --match "title:test-"
@@ -250,6 +265,7 @@ kitty --listen-on unix:/tmp/kitty-test.sock &
 Older Kitty version that doesn't support text extraction.
 
 **Solution:**
+
 - This is optional functionality; the test will pass with a warning
 - Upgrade Kitty to 0.19.0+ for full feature support
 
