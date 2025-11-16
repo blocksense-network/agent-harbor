@@ -1,0 +1,712 @@
+=== Application started ===
+=== run_app started ===
+[MAIN] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('e'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('e'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('e'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('e'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Backspace, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Backspace, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Backspace, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Backspace, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('y'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('y'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('y'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('y'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('h'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('h'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char(':'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(':'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('q'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('q'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Esc, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Esc, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Esc, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Esc, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+=== Application started ===
+=== run_app started ===
+[MAIN] Key: KeyEvent { code: Esc, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Esc, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+=== Application started ===
+=== run_app started ===
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Tab, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Tab, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: BackTab, modifiers: KeyModifiers(SHIFT), kind: Press, state: KeyEventState(0x0) }, Code: BackTab, Modifiers: KeyModifiers(SHIFT), Ctrl: false, Alt: false, Shift: true
+[MAIN] Key: KeyEvent { code: BackTab, modifiers: KeyModifiers(SHIFT), kind: Press, state: KeyEventState(0x0) }, Code: BackTab, Modifiers: KeyModifiers(SHIFT), Ctrl: false, Alt: false, Shift: true
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('d'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('d'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('d'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('d'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('a'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('a'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('d'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('d'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Right, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Right, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Right, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Left, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Left, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Left, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Esc, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Esc, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+=== Application started ===
+=== run_app started ===
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('T'), modifiers: KeyModifiers(SHIFT), kind: Press, state: KeyEventState(0x0) }, Code: Char('T'), Modifiers: KeyModifiers(SHIFT), Ctrl: false, Alt: false, Shift: true
+[TEXTAREA] Key: KeyEvent { code: Char('T'), modifiers: KeyModifiers(SHIFT), kind: Press, state: KeyEventState(0x0) }, Code: Char('T'), Modifiers: KeyModifiers(SHIFT), Ctrl: false, Alt: false, Shift: true
+[MAIN] Key: KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('h'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('h'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('p'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('p'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('p'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('p'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('r'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('r'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('r'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('r'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('o'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('o'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('o'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('o'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('j'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('j'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('j'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('j'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('e'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('e'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('e'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('e'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('t'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('t'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('t'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('t'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char(' '), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char(' '), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('u'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('u'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('u'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('u'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('l'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('l'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('l'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('l'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('s'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('s'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('h'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('h'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('i'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('i'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('t'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('t'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('t'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('t'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Enter, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Esc, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Esc, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+=== Application started ===
+=== run_app started ===
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Up, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Up, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Up, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[TEXTAREA] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Down, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Down, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
+  ARROW KEY DETECTED: code=Down, modifiers=KeyModifiers(0x0)
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('b'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('b'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('n'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('n'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) }, Code: Char('c'), Modifiers: KeyModifiers(CONTROL), Ctrl: true, Alt: false, Shift: false
+[MAIN] Key: KeyEvent { code: Esc, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) }, Code: Esc, Modifiers: KeyModifiers(0x0), Ctrl: false, Alt: false, Shift: false
