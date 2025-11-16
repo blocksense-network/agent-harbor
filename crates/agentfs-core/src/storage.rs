@@ -4,9 +4,11 @@
 //! Storage backend implementations for AgentFS Core
 
 use std::collections::HashMap;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use std::sync::Mutex;
-use tracing::debug;
+use std::sync::{Arc, Mutex};
+use tracing::{debug, error};
 
 // Note: we use libc::clonefile directly on macOS in platform-specific sections.
 
@@ -220,16 +222,18 @@ pub struct HostFsBackend {
     next_id: Mutex<u64>,
     refcounts: Mutex<HashMap<ContentId, usize>>,
     sealed: Mutex<HashMap<ContentId, bool>>,
+    file_handles: Mutex<HashMap<ContentId, Arc<Mutex<File>>>>,
 }
 
 impl HostFsBackend {
     pub fn new(root: std::path::PathBuf) -> FsResult<Self> {
-        std::fs::create_dir_all(&root)?;
+        fs::create_dir_all(&root)?;
         Ok(Self {
             root,
             next_id: Mutex::new(1),
             refcounts: Mutex::new(HashMap::new()),
             sealed: Mutex::new(HashMap::new()),
+            file_handles: Mutex::new(HashMap::new()),
         })
     }
 
@@ -243,6 +247,26 @@ impl HostFsBackend {
     fn content_path(&self, id: ContentId) -> std::path::PathBuf {
         self.root.join(format!("{:016x}", id.0))
     }
+
+    fn insert_handle(&self, id: ContentId, file: File) -> Arc<Mutex<File>> {
+        let mut handles = self.file_handles.lock().unwrap();
+        let arc = Arc::new(Mutex::new(file));
+        handles.insert(id, arc.clone());
+        arc
+    }
+
+    fn get_or_open_handle(&self, id: ContentId) -> FsResult<Arc<Mutex<File>>> {
+        let mut handles = self.file_handles.lock().unwrap();
+        if let Some(handle) = handles.get(&id) {
+            return Ok(handle.clone());
+        }
+
+        let path = self.content_path(id);
+        let file = OpenOptions::new().read(true).write(true).create(false).open(&path)?;
+        let arc = Arc::new(Mutex::new(file));
+        handles.insert(id, arc.clone());
+        Ok(arc)
+    }
 }
 
 impl StorageBackend for HostFsBackend {
@@ -250,31 +274,34 @@ impl StorageBackend for HostFsBackend {
         Some(self.content_path(id))
     }
     fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize> {
-        let path = self.content_path(id);
-        let mut file = std::fs::File::open(&path)?;
-        use std::io::{Read, Seek};
-        file.seek(std::io::SeekFrom::Start(offset))?;
+        let handle = self.get_or_open_handle(id)?;
+        let mut file = handle.lock().unwrap();
+        file.seek(SeekFrom::Start(offset))?;
         let n = file.read(buf)?;
         Ok(n)
     }
 
     fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize> {
-        let path = self.content_path(id);
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
-        use std::io::{Seek, Write};
-        file.seek(std::io::SeekFrom::Start(offset))?;
-        file.write_all(data)?;
-        file.flush()?;
+        let handle = self.get_or_open_handle(id)?;
+        let mut file = handle.lock().unwrap();
+        file.seek(SeekFrom::Start(offset))?;
+        if let Err(err) = file.write_all(data) {
+            error!(
+                target: "agentfs::storage",
+                ?id,
+                offset,
+                size = data.len(),
+                %err,
+                "HostFsBackend write failed"
+            );
+            return Err(err.into());
+        }
         Ok(data.len())
     }
 
     fn sync(&self, id: ContentId, data_only: bool) -> FsResult<()> {
-        let path = self.content_path(id);
-        let file = std::fs::OpenOptions::new().read(true).write(true).open(&path)?;
+        let handle = self.get_or_open_handle(id)?;
+        let file = handle.lock().unwrap();
         if data_only {
             file.sync_data()?;
         } else {
@@ -284,8 +311,8 @@ impl StorageBackend for HostFsBackend {
     }
 
     fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()> {
-        let path = self.content_path(id);
-        let file = std::fs::File::open(&path)?;
+        let handle = self.get_or_open_handle(id)?;
+        let file = handle.lock().unwrap();
         file.set_len(new_len)?;
         Ok(())
     }
@@ -294,8 +321,18 @@ impl StorageBackend for HostFsBackend {
         let id = self.get_next_id();
         let path = self.content_path(id);
 
-        // Write initial data
-        std::fs::write(&path, initial)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)?;
+        let handle = self.insert_handle(id, file);
+        {
+            let mut guard = handle.lock().unwrap();
+            guard.write_all(initial)?;
+            guard.flush()?;
+        }
 
         // Initialize refcount
         let mut refcounts = self.refcounts.lock().unwrap();
@@ -312,7 +349,7 @@ impl StorageBackend for HostFsBackend {
 
         // Try reflink first, fall back to copy
         if self.reflink(&base_path, &new_path).is_err() {
-            std::fs::copy(&base_path, &new_path)?;
+            fs::copy(&base_path, &new_path)?;
         }
 
         // Initialize refcount
@@ -332,7 +369,7 @@ impl StorageBackend for HostFsBackend {
 impl HostFsBackend {
     fn reflink(&self, from_path: &Path, to_path: &Path) -> FsResult<()> {
         // Simple copy for now - in real implementation would use platform-specific reflink
-        std::fs::copy(from_path, to_path)?;
+        fs::copy(from_path, to_path)?;
         Ok(())
     }
 }
@@ -454,12 +491,12 @@ impl Backstore for HostFsBackstore {
                     match errno {
                         libc::ENOTSUP => {
                             // Filesystem doesn't support clonefile, fall back to copy
-                            std::fs::copy(from_path, to_path)?;
+                            fs::copy(from_path, to_path)?;
                             Ok(())
                         }
                         libc::ENOSPC => {
                             // No space left, fall back to copy
-                            std::fs::copy(from_path, to_path)?;
+                            fs::copy(from_path, to_path)?;
                             Ok(())
                         }
                         libc::ENOENT => Err(FsError::NotFound),
@@ -517,7 +554,7 @@ impl Backstore for HostFsBackstore {
                 if self.supports_native_reflink() {
                     self.reflink(upper_path, &snapshot_path)?;
                 } else {
-                    std::fs::copy(upper_path, &snapshot_path)?;
+                    fs::copy(upper_path, &snapshot_path)?;
                 }
             }
         }

@@ -1,81 +1,75 @@
-# FUSE Adapter Control-Plane Status – Nov 15 2025 (handoff)
+# FUSE Adapter Status – Nov 16 2025 (handoff)
 
-<!-- cSpell:ignore fdatasync conv ENOTCONN -->
+<!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd -->
 
 ## Current Scope
 
-- Working branch: `feat/agentfs-fuse-f4`.
-- Focus: **F4 – Control Plane Integration Testing**. We need automated coverage that opens `<MOUNT>/.agentfs/control`, issues snapshot/branch/bind IOCTLs, and proves per-process binding isolation on a live mount.
-- Tooling targets: `just test-fuse-control-plane` (new); also keep the F1/F3 harnesses runnable (`test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`).
+- Working branch: `feat/agentfs-fuse-f5`.
+- Focus: **F6 – Performance Tuning + Benchmarking**. F4/F5 harnesses stay green, but the priority is pushing sequential write throughput toward the host baseline and documenting every `just test-fuse-performance` run.
+- Tooling targets: `just test-fuse-performance`, `just test-fuse-control-plane`, and the F1/F3 sweeps (`test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`).
 
 ## Updates – Nov 16 2025
 
-- HostFs backstore now exposes a real `sync_data`/`sync_all` path via `StorageBackend::sync`, and `FsCore::fsync` is wired all the way through the FUSE adapter. FUSE `F_SYNC`/`F_FSYNC` requests now flush the backing file instead of being acknowledged as a no-op, so the sequential `dd … conv=fdatasync` profile no longer leaves the mount in `ENOTCONN`. The HostFs write path also switched to `write_all` to stop partial-write truncation during large sequential writes. Re-run `scripts/test-fuse-performance.sh` and the manual `dd` profile in `logs/perf-profiles/` to confirm the host process stays alive before tightening performance thresholds.
-- Added a lightweight write-latency tracer in the FUSE host (gate it with `AGENTFS_FUSE_TRACE_WRITES=1` and set `RUST_LOG=agentfs::write=debug`) so we can see how many write requests are in flight and how long each chunk spends in the host. Use this while rerunning the strace/perf captures to verify whether the kernel feeds us requests serially or whether FsCore/HostFs is the bottleneck.
-- First trace with the new hooks (`logs/perf-profiles/agentfs-concurrent-20251116-095135/fuse-host.log`) shows `max_inflight` never exceeds 1, which means fuser is currently dispatching writes serially regardless of how many dd writers we spawn. 128 KiB chunks normally finish in ~0.5 ms but every few hundred ops the host spends 20–40 ms inside `write()`, so throughput is effectively capped around 4–5 MB/s.
-- Added a background write worker pool (size controlled via `AGENTFS_FUSE_WRITE_THREADS`, defaulting to available CPUs) so the FUSE dispatcher can enqueue writes into FsCore without blocking the main kernel loop. Each worker grabs jobs from a crossbeam channel, performs the actual `FsCore::write`, and only replies to the kernel once the storage backend finishes so durability semantics stay intact. Tracing (`logs/perf-profiles/agentfs-concurrent-20251116-100230/fuse-host.log`) now shows `max_inflight` climbing to 3+ for multi-writer workloads, but sequential `dd conv=fdatasync` remains ~60 s because the kernel still feeds us 128 KiB chunks in a strictly ordered stream. Latest harness run `logs/fuse-performance-20251116-095946/summary.json` captures the unchanged throughput, so we’ll need to dig deeper into kernel queue limits (e.g., raising `writeback_cache`, `max_write`) or FsCore COW overheads for the next tuning pass.
-- Follow-up tuning now requests larger write blocks/background queues during FUSE init: we honor `AGENTFS_FUSE_MAX_WRITE` (default 4 MiB), `AGENTFS_FUSE_MAX_BACKGROUND` (default 64), and derive a congestion threshold at ¾ of the background slots. With those knobs the kernel finally sends 4 MiB requests and sequential `dd … conv=fdatasync` regained host-level throughput (`logs/fuse-performance-20251116-100856/summary.json`). Flipping `AGENTFS_FUSE_WRITEBACK_CACHE=1` forced write-back caching in the kernel and further tightened metadata/concurrent numbers (`logs/fuse-performance-20251116-101454/summary.json`), so we can mix/match env vars without touching the JSON config while keeping the tracing hooks active.
-
-## Current State
-
-- Control-plane harness now exercises the entire happy path plus the negative cases we identified. Latest log: `logs/fuse-control-plane-20251115-130217/control-plane.log`. Each run builds the FUSE host + control CLI, mounts with a HostFs backstore config, validates `.agentfs/control` access, creates a snapshot + branch, deliberately rejects an invalid branch ID, binds two independent PIDs to the same branch, and proves the default PID can continue reading while the branch-bound readers stay on the snapshot view. We also added an explicit unmount/remount cycle that asserts `snapshot-list` fails while unmounted and recovers afterwards (persistence still TODO—see below).
-- `agentfs-control-cli` remains the helper binary for direct SSZ IOCTLs. The harness now respects `SKIP_FUSE_BUILD`/`SKIP_CONTROL_CLI_BUILD` so CI can build the binaries once and reuse them.
-- IOCTL framing (length-prefixed request/response) is unchanged; both the CLI and AH client still share the transport.
-- Regression sweep: mount-cycle, mount-failures, mount-concurrent, basic-ops, negative-ops, overlay-ops, and the pjdfstest subset are still green (see the Nov 15 logs under `logs/` listed below).
-- `scripts/test-pjdfstest-full.sh` + `just test-pjdfstest-full` now automate the **entire** pjdfstest suite: they set up the resources, build/mount with `--allow-other`, stream the full `prove -vr` output into `logs/pjdfstest-full-<ts>/pjdfstest.log`, emit a machine-readable `summary.json`, and compare the results against `specs/Public/AgentFS/pjdfstest.baseline.json`. Latest run (still FAIL because of chmod/chown/utimens gaps, but matching the baseline) lives under `logs/pjdfstest-full-20251115-135821/`.
-- Performance harness (`scripts/test-fuse-performance.sh` via `just test-fuse-performance`) now mounts AgentFS with a HostFs backstore, runs sequential read/write, metadata, and 4-way concurrent write benchmarks on both AgentFS and a host baseline, and emits `results.jsonl` + `summary.json` under `logs/fuse-performance-<ts>/`. Latest run: `logs/fuse-performance-20251115-161415/`.
-
-## What Changed This Session
-
-1. **Control-plane CLI + harness**
-   - Added `crates/agentfs-control-cli`: small Clap binary that opens `<mount>/.agentfs/control`, frames SSZ requests/responses, and prints snapshot/branch/bind results. Mirrors the AH CLI transport but without the rest of the agent stack.
-   - Added `scripts/test-fuse-control-plane.sh` and wired it into the `Justfile` (`just test-fuse-control-plane`). Script builds the FUSE host + CLI, mounts `/tmp/agentfs-control-plane`, runs snapshot-create/list + branch-create/bind, and stores logs under `logs/fuse-control-plane-<timestamp>`.
-2. **Adapter framing tweaks**
-   - `AgentFsFuse::handle_control_ioctl` now expects the first 4 bytes of the ioctl buffer to encode payload length; responses are framed the same way to keep the CLI agnostic of actual response sizes.
-   - AH CLI’s transport (used by `ah agent fs …`) now writes/reads the same framed format, so the new CLI and the existing one share the protocol.
-3. **Documentation + status**
-   - `specs/Public/AgentFS/FUSE.status.md` now marks T4.1–T4.4 as ✅ with a link to `logs/fuse-control-plane-20251115-113550`.
-   - `notes/fuse_pjdfs_context.md` (this file) now reflects the F4 work instead of the old pjdfstest debugging notes.
+1. **FsCore dirty-tracking for write/ftruncate**
+   - `StreamState` now remembers whether a branch is sharing snapshot content, so we only clone once per stream after a snapshot instead of before every write. Snapshot creation walks the active branch and marks streams clean; the first post-snapshot write marks them dirty and clones once (`test_snapshot_write_only_clones_once_per_stream`).
+2. **HostFs descriptor cache + real fsync path**
+   - `HostFsBackend` reuses `Arc<Mutex<File>>` per `ContentId`, only flushes on explicit `sync()`, and `FsCore::fsync` plumbs through the adapter. Sequential `dd … conv=fdatasync` no longer kills the mount, and `write_all` guards against partial writes (`logs/fuse-performance-20251116-110035/summary.json`).
+3. **Perf profiling (automated runs)**
+   - `perf record` on `just test-fuse-performance` showed ~13 % CPU in `std::io::Write::write_all → libc::write` plus kernel `ksys_write → zfs_write`, so the current IPC path (FUSE host ⇄ FsCore) was identified as the bottleneck; FsCore itself wasn’t cloning excessively.
+4. **Manual perf attach (live dd workload)**
+   - Mounted `/tmp/agentfs-perf-profile` with `/tmp/agentfs-perf-config.json` to attach `perf` to the live host while `dd if=/dev/zero of=/tmp/agentfs-perf-profile/perf/throughput.bin bs=4M count=64 status=none conv=fdatasync` runs in the foreground (background jobs are blocked on this environment).
+   - Latest captures live under `logs/perf-profiles/agentfs-perf-profile-20251116-115242/` (default sampling) and `logs/perf-profiles/agentfs-perf-profile-20251116-115426/` (call stacks + higher frequency). Both reports show the hottest frames in `__memmove_avx_unaligned_erms` (~16 %) and `crossbeam_utils::backoff::Backoff::snooze` (~9 %), while the `HostFsBackend::write → std::io::Write::write_all` chain contributes ~1 %. Conclusion: the write worker pool’s channel + copy, not FsCore itself, dominate sequential writes.
+5. **Write tracing + worker pool**
+   - Added a lightweight write tracer (`AGENTFS_FUSE_TRACE_WRITES=1`, `RUST_LOG=agentfs::write=debug`) to count inflight writes. Initial traces (`logs/perf-profiles/agentfs-concurrent-20251116-095135/fuse-host.log`) showed only one write in flight; after adding a configurable background worker pool (`AGENTFS_FUSE_WRITE_THREADS`, default `available_parallelism()`), traces hit 3+ inflight writes for multi-writer workloads (`logs/perf-profiles/agentfs-concurrent-20251116-100230/fuse-host.log`).
+6. **Kernel max_write/max_background knobs**
+   - The adapter now honors `AGENTFS_FUSE_MAX_WRITE` (default 4 MiB, capped at 16 MiB), `AGENTFS_FUSE_MAX_BACKGROUND` (default 64), and derives `congestion_threshold = ¾ * max_background`. Combined with optional `AGENTFS_FUSE_WRITEBACK_CACHE=1`, we can reproduce each tuning run without editing JSON configs.
+7. **New HostFs write error logging**
+   - `HostFsBackend::write` logs the `ContentId`, offset, size, and errno when `write_all` fails (target `agentfs::storage`). This makes future `Input/output error` reports actionable without rerunning under `strace`.
+8. **Performance harness reruns (sequential write ≥ 0.5×)**
+   - Fresh mount/backstore plus the knobs above yielded much healthier ratios:
+     - `logs/fuse-performance-20251116-120621/summary.json` – default env (seq_write 0.80×, seq_read 1.00×, metadata 0.75×, concurrent 1.00×).
+     - `logs/fuse-performance-20251116-120649/summary.json` – second default run to double-check (seq_write 0.80×, seq_read 1.00×, metadata 0.70×, concurrent 2.00× because both agentfs/baseline finished in ~20 ms). The job is now limited by measurement noise.
+     - `logs/fuse-performance-20251116-120715/summary.json` – `AGENTFS_FUSE_MAX_BACKGROUND=128`, `AGENTFS_FUSE_WRITE_THREADS=8`, `AGENTFS_FUSE_MAX_WRITE=8388608` (seq_write ~1.25×, metadata 1.18×; effectively identical within timing jitter).
+   - Earlier reference runs remain documented under `logs/fuse-performance-20251116-110756/…-111825/` for regression tracking.
+9. **Transport redesign sketch**
+   - Since perf shows the crossbeam channel + `Vec::extend_from_slice` as the bottleneck, the next experiment is to split transport responsibilities behind a trait:
+     1. Introduce `FsCoreTransport` with methods for `open`, `read`, `write`, `fsync`, etc.
+     2. Provide an in-process transport that keeps FsCore in the host but replaces the channel with a lock-free ring buffer (e.g., `crossbeam_deque`) backed by a slab allocator of page-aligned blocks; workers enqueue completions instead of sending replies over a pipe.
+     3. Future-proof the trait so we can swap in a shared-memory transport (memfd-backed queue + doorbells) if we _do_ need to move FsCore back into a helper process.
+   - This design removes the `ChildStdin`-style IPC entirely for the common case and should cut the memmove/backoff costs highlighted above.
 
 ## Pending / Next Steps
 
-1. **Control-plane write semantics**
-   - Negative samples + remount behaviour are covered, but FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
-2. **pjdfstest regression gating (F5)**
-   - Baseline failures are captured in `specs/Public/AgentFS/pjdfstest.baseline.json`, and the harness now diffs `summary.json` against it. Next steps are (a) start tackling the chmod/chown/ftruncate/utimens issues and (b) keep expanding the baseline as fixes land so the diff stays meaningful.
-3. **Hook pjdfstest-full into CI**
-   - Add a CI job (similar to the FUSE harness job) that runs `just test-pjdfstest-full` on a privileged runner, archives `pjdfstest.log` + `summary.json`, and relies on the baseline diff for pass/fail.
-4. **Performance tuning (F6)**
-   - The initial benchmark shows AgentFS is still dramatically slower than the host baseline for sequential writes and concurrent workloads (see `logs/fuse-performance-20251116-060606/summary.json`). Strace profiling (`strace -ff -tt dd if=/dev/zero of=/tmp/agentfs-profile/perf/throughput.bin bs=4M count=64 status=none conv=fdatasync`) routinely ends with `Transport endpoint is not connected`, which means the fuse host crashes mid-write (`logs/perf-profiles/agentfs-dd.strace`). The host filesystem completes the same workload in ~30 ms (`logs/perf-profiles/baseline-dd.strace`). We need to debug why sequential writes wedge the HostFs backstore (fsync path?) before we can enforce regression thresholds.
+1. **Control-plane write semantics** – FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
+2. **pjdfstest regression gating (F5)** – Baseline failures live in `specs/Public/AgentFS/pjdfstest.baseline.json`. Start fixing chmod/chown/ftruncate/utimens failures and keep growing the baseline so the diff stays meaningful.
+3. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, the 256 MiB workload finishes in ~50 ms, so measurement noise dwarfs small deltas. Keep logging every run and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
+4. **pjdfstest fixes + CI** – With the pjdfstest harness hooked into GitHub Actions, the last unchecked box under F5 is reducing failures (chmod/chown/utimens) and updating `specs/Public/AgentFS/pjdfstest.baseline.json` accordingly.
 
 ## Useful Paths & Logs
 
-- Control-plane harness log (latest): `logs/fuse-control-plane-20251115-130217/control-plane.log`
-- Performance harness: `logs/fuse-performance-20251115-161415/{performance.log,results.jsonl,summary.json}`.
-- pjdfstest full-suite harness: `logs/pjdfstest-full-20251115-135821/{pjdfstest.log,summary.json}` (many chmod/chown/ftruncate failures; baseline diff keeps the noise contained).
-- Other harness logs (Nov 15 runs):
-  - `logs/fuse-mount-cycle-20251115-102831`
-  - `logs/fuse-mount-failures-20251115-104618`
-  - `logs/fuse-mount-concurrent-20251115-104626`
-  - `logs/fuse-basic-ops-20251115-103631`
-  - `logs/fuse-negative-ops-20251115-104635`
-  - `logs/fuse-overlay-ops-20251115-104639`
-  - `logs/pjdfs-subset-20251115-104653`
-- Source additions: `crates/agentfs-control-cli`, `scripts/test-fuse-control-plane.sh`, FUSE adapter framing changes.
+- Control-plane harness (latest): `logs/fuse-control-plane-20251115-130217/control-plane.log`.
+- Performance harness snapshots:
+  - `logs/fuse-performance-20251116-120621/{performance.log,results.jsonl,summary.json}` – default env (seq_write 0.80×).
+  - `logs/fuse-performance-20251116-120649/{…}` – rerun to confirm stability (ratios ~0.8×/1.0×/0.7×/2.0×).
+  - `logs/fuse-performance-20251116-120715/{…}` – background=128, threads=8, max_write=8 MiB.
+  - Historical runs: `logs/fuse-performance-20251116-110035/`, `…-110756/`, `…-110953/`, `…-111810/`, etc.
+- Manual perf attaches: `logs/perf-profiles/agentfs-perf-profile-20251116-115242/` (base) and `…-115426/` (call stacks) plus prior traces in `logs/perf-profiles/agentfs-concurrent-*/`.
+- pjdfstest full suite: `logs/pjdfstest-full-20251115-135821/{pjdfstest.log,summary.json}`.
+- Other harnesses (Nov 15): `logs/fuse-mount-cycle-20251115-102831`, `logs/fuse-mount-failures-20251115-104618`, `logs/fuse-mount-concurrent-20251115-104626`, `logs/fuse-basic-ops-20251115-103631`, `logs/fuse-negative-ops-20251115-104635`, `logs/fuse-overlay-ops-20251115-104639`, `logs/pjdfs-subset-20251115-104653`.
 
 ## Commands Recap
 
 - Control-plane smoke test: `just test-fuse-control-plane`
-- Performance benchmarks (F6): `just test-fuse-performance`
+- Performance benchmarks: `just test-fuse-performance`
 - pjdfstest full suite: `just test-pjdfstest-full`
 - Manual CLI usage:
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-list`
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane snapshot-create --name demo`
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane branch-create --snapshot <id> --name feature`
   - `target/debug/agentfs-control-cli --mount /tmp/agentfs-control-plane branch-bind --branch <id> --pid $$`
-- Other harnesses (unchanged):
+- Other harnesses:
   - `just test-fuse-basic-ops`
   - `just test-fuse-negative-ops`
   - `just test-fuse-overlay-ops`
   - `sudo -E just test-pjdfs-subset /tmp/agentfs`
-  - Mount/unmount helpers: `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, `just umount-fuse /tmp/agentfs`
+  - Mount helpers: `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, `just umount-fuse /tmp/agentfs`
