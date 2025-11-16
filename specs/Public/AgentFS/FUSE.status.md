@@ -252,7 +252,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T6.4 Metadata Operations**: Benchmark directory listing, attribute operations, and control plane calls
 - **Verification Results**:
   - [x] Performance harness – `scripts/test-fuse-performance.sh` (`just test-fuse-performance`) mounts AgentFS with a HostFs backstore, runs sequential read/write, metadata, and 4-way concurrent write benchmarks against a host baseline, and emits structured logs (`results.jsonl` + `summary.json`). Latest run: `logs/fuse-performance-20251115-161415/`.
-  - [x] Perf profiling – Captured three cold-cache sequential-write profiling runs (4×16 GiB writes each) under `logs/perf-profiles/agentfs-perf-profile-20251116-125536-run1/`, `…125630-run2/`, and `…125721-run3/` using `perf record -g -F 400 -p <fuse_pid>`; all show the worker-channel bottleneck (crossbeam backoff + memmove). Next step: repeat the captures using the **release** FUSE host binary so the numbers reflect production codegen rather than debug builds.
+  - [x] Perf profiling – Captured three cold-cache sequential-write profiling runs (4×16 GiB writes each) under `logs/perf-profiles/agentfs-perf-profile-20251116-125536-run1/`, `…125630-run2/`, and `…125721-run3/` using `perf record -g -F 400 -p <fuse_pid>`; all show the worker-channel bottleneck (crossbeam backoff + memmove).
+  - [ ] Release-mode perf profiling – Repeat the sequential-write captures using the **release** FUSE host binary so the numbers reflect production codegen rather than debug builds.
   - [ ] Regression thresholds – define acceptable ratios vs. baseline and wire alerts/CI gating once throughput regressions are better understood (current ratios highlight significant gaps that need tuning).
 
 **F7. Stress Testing and Fault Injection** (4–5d)
