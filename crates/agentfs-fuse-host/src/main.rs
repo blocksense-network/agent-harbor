@@ -38,6 +38,10 @@ struct Args {
     /// Auto unmount on process exit
     #[arg(long)]
     auto_unmount: bool,
+
+    /// Enable FUSE writeback cache (kernel buffers writes until fsync/close).
+    #[arg(long)]
+    writeback_cache: bool,
 }
 
 fn load_config(config_path: Option<PathBuf>) -> Result<FsConfig> {
@@ -63,9 +67,10 @@ fn main() -> Result<()> {
     info!("Mount point: {}", args.mount_point.display());
 
     let mut config = load_config(args.config)?;
-    if std::env::var("AGENTFS_FUSE_WRITEBACK_CACHE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+    if args.writeback_cache
+        || std::env::var("AGENTFS_FUSE_WRITEBACK_CACHE")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
     {
         config.cache.writeback_cache = true;
     }
