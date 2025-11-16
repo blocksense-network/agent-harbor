@@ -222,6 +222,48 @@ jobs:
   webui:
     runs-on: [self-hosted, nixos, x86-64-v3]
 
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build & activate the Nix Dev Shell
+        run: |
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
+
+      - name: Install JS deps
+        run: yarn install
+
+      - name: Lint WebUI code
+        run: just webui-lint
+
+      - name: Type check WebUI code
+        run: just webui-type-check
+
+      - name: Build WebUI app
+        run: just webui-build
+
+      - name: Build mock server
+        run: just webui-build-mock
+
+      # - name: Install Playwright browsers
+      #   run: just webui-install-browsers
+
+      # TODO: Once tests are stable bring them back
+      # - name: Run Playwright tests
+      #   run: just webui-test
+      #   env:
+      #     BASE_URL: http://localhost:3000
+
   pjdfstest:
     name: pjdfstest suite
     needs: fuse-harness
@@ -269,45 +311,3 @@ jobs:
         with:
           name: pjdfstest-full
           path: ${{ env.PJDFS_LOG_DIR }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build & activate the Nix Dev Shell
-        run: |
-          direnv allow .
-          direnv export gha > "$GITHUB_ENV"
-
-      - name: Install JS deps
-        run: yarn install
-
-      - name: Lint WebUI code
-        run: just webui-lint
-
-      - name: Type check WebUI code
-        run: just webui-type-check
-
-      - name: Build WebUI app
-        run: just webui-build
-
-      - name: Build mock server
-        run: just webui-build-mock
-
-      # - name: Install Playwright browsers
-      #   run: just webui-install-browsers
-
-      # TODO: Once tests are stable bring them back
-      # - name: Run Playwright tests
-      #   run: just webui-test
-      #   env:
-      #     BASE_URL: http://localhost:3000

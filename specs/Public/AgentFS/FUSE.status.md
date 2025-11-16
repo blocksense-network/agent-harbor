@@ -227,7 +227,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T5.4 Regression Detection**: Compare results against established baseline, fail on regressions
 - **Verification Results**:
   - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251115-135821/`).
-  - [ ] CI gating – wire the full-suite harness + baseline diff into GitHub Actions so regressions fail automatically (pending privileged runner capacity).
+  - [x] CI gating – GitHub Actions now runs the pjdfstest job after the FUSE harness; it executes `SKIP_FUSE_BUILD=1 just test-pjdfstest-full`, compares results to `specs/Public/AgentFS/pjdfstest.baseline.json`, and uploads the log directory so regressions fail automatically.
 
 **F6. Performance Benchmarking Suite** (3–4d)
 
