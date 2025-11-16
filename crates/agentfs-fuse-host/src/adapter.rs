@@ -14,6 +14,7 @@ use agentfs_core::{
 };
 use agentfs_proto::messages::{StatData, TimespecData};
 use agentfs_proto::*;
+use crossbeam_channel::{Sender, unbounded};
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
     ReplyEmpty, ReplyEntry, ReplyLock, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
@@ -31,7 +32,11 @@ use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
 
@@ -55,10 +60,130 @@ struct LowerHandle {
     ino: u64,
 }
 
+struct WriteTrace {
+    req_id: u64,
+    ino: u64,
+    fh: u64,
+    offset: i64,
+    size: usize,
+    start: Instant,
+    inflight: Arc<AtomicU64>,
+    max_inflight: Arc<AtomicU64>,
+}
+
+impl WriteTrace {
+    fn new(
+        req_id: u64,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        size: usize,
+        inflight: Arc<AtomicU64>,
+        max_inflight: Arc<AtomicU64>,
+    ) -> Self {
+        Self {
+            req_id,
+            ino,
+            fh,
+            offset,
+            size,
+            start: Instant::now(),
+            inflight,
+            max_inflight,
+        }
+    }
+
+    fn finish(self) {
+        let remaining = self.inflight.fetch_sub(1, Ordering::SeqCst).saturating_sub(1);
+        debug!(
+            target: "agentfs::write",
+            event = "finish",
+            req_id = self.req_id,
+            ino = self.ino,
+            fh = self.fh,
+            offset = self.offset,
+            size = self.size,
+            duration_ms = self.start.elapsed().as_secs_f64() * 1000.0,
+            inflight = remaining,
+            max_inflight = self.max_inflight.load(Ordering::SeqCst)
+        );
+    }
+}
+
+struct WriteJob {
+    pid: PID,
+    handle_id: HandleId,
+    offset: u64,
+    data: Vec<u8>,
+    reply: ReplyWrite,
+    trace: Option<WriteTrace>,
+}
+
+struct WriteWorkerPool {
+    sender: Option<Sender<WriteJob>>,
+    handles: Vec<JoinHandle<()>>,
+}
+
+impl WriteWorkerPool {
+    fn new(
+        core: Arc<FsCore>,
+        thread_count: usize,
+        inflight: Arc<AtomicU64>,
+        max_inflight: Arc<AtomicU64>,
+    ) -> Self {
+        let (tx, rx) = unbounded();
+        let mut handles = Vec::with_capacity(thread_count);
+        for _ in 0..thread_count {
+            let receiver: crossbeam_channel::Receiver<WriteJob> = rx.clone();
+            let core_clone = Arc::clone(&core);
+            let inflight_clone = Arc::clone(&inflight);
+            let max_clone = Arc::clone(&max_inflight);
+            handles.push(thread::spawn(move || {
+                while let Ok(mut job) = receiver.recv() {
+                    let result = core_clone.write(&job.pid, job.handle_id, job.offset, &job.data);
+                    match result {
+                        Ok(bytes_written) => job.reply.written(bytes_written as u32),
+                        Err(FsError::NotFound) => job.reply.error(ENOENT),
+                        Err(FsError::AccessDenied) => job.reply.error(EACCES),
+                        Err(_) => job.reply.error(EIO),
+                    }
+                    if let Some(trace) = job.trace.take() {
+                        trace.finish();
+                    }
+                }
+            }));
+        }
+
+        Self {
+            sender: Some(tx),
+            handles,
+        }
+    }
+
+    fn submit(&self, job: WriteJob) -> Result<(), WriteJob> {
+        if let Some(sender) = &self.sender {
+            sender.send(job).map_err(|err| err.0)
+        } else {
+            Err(job)
+        }
+    }
+}
+
+impl Drop for WriteWorkerPool {
+    fn drop(&mut self) {
+        if let Some(sender) = self.sender.take() {
+            drop(sender);
+        }
+        for handle in self.handles.drain(..) {
+            let _ = handle.join();
+        }
+    }
+}
+
 /// AgentFS FUSE filesystem adapter
 pub struct AgentFsFuse {
     /// Core filesystem instance
-    core: FsCore,
+    core: Arc<FsCore>,
     /// Configuration
     config: FsConfig,
     /// TTL for attribute cache responses
@@ -86,9 +211,11 @@ pub struct AgentFsFuse {
     /// Whether to emit per-write latency tracing
     trace_writes: bool,
     /// Number of in-flight write requests (only tracked when tracing enabled)
-    inflight_writes: u64,
+    inflight_writes: Arc<AtomicU64>,
     /// Max observed concurrent write depth
-    max_write_depth: u64,
+    max_write_depth: Arc<AtomicU64>,
+    /// Worker pool for offloading writes
+    write_pool: WriteWorkerPool,
 }
 
 impl AgentFsFuse {
@@ -97,7 +224,7 @@ impl AgentFsFuse {
         config.security.enforce_posix_permissions = true;
         // pjdfstest expects uid 0 to bypass sticky/exec bits so cleanup steps succeed.
         config.security.root_bypass_permissions = true;
-        let core = FsCore::new(config.clone())?;
+        let core = Arc::new(FsCore::new(config.clone())?);
         let mut inodes = HashMap::new();
         let mut paths = HashMap::new();
 
@@ -116,6 +243,15 @@ impl AgentFsFuse {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
+        let inflight_writes = Arc::new(AtomicU64::new(0));
+        let max_write_depth = Arc::new(AtomicU64::new(0));
+        let write_pool = WriteWorkerPool::new(
+            Arc::clone(&core),
+            write_worker_count(),
+            Arc::clone(&inflight_writes),
+            Arc::clone(&max_write_depth),
+        );
+
         Ok(Self {
             core,
             config,
@@ -131,8 +267,9 @@ impl AgentFsFuse {
             next_lower_fh: LOWER_HANDLE_BASE,
             whiteouts: HashSet::new(),
             trace_writes,
-            inflight_writes: 0,
-            max_write_depth: 0,
+            inflight_writes,
+            max_write_depth,
+            write_pool,
         })
     }
 
@@ -214,6 +351,55 @@ impl AgentFsFuse {
 
     fn lower_entry_exists(&self, path: &Path) -> bool {
         self.lower_full_path(path).map(|p| p.exists()).unwrap_or(false)
+    }
+
+    fn start_write_trace(
+        &self,
+        req: &Request,
+        ino: u64,
+        fh: u64,
+        offset: i64,
+        size: usize,
+    ) -> Option<WriteTrace> {
+        if !self.trace_writes {
+            return None;
+        }
+
+        let inflight = self.inflight_writes.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut current = self.max_write_depth.load(Ordering::SeqCst);
+        while inflight > current {
+            match self.max_write_depth.compare_exchange(
+                current,
+                inflight,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => break,
+                Err(old) => current = old,
+            }
+        }
+
+        debug!(
+            target: "agentfs::write",
+            event = "start",
+            req_id = req.unique(),
+            ino,
+            fh,
+            offset,
+            size,
+            inflight,
+            max_inflight = self.max_write_depth.load(Ordering::SeqCst)
+        );
+
+        Some(WriteTrace::new(
+            req.unique(),
+            ino,
+            fh,
+            offset,
+            size,
+            Arc::clone(&self.inflight_writes),
+            Arc::clone(&self.max_write_depth),
+        ))
     }
 
     fn alloc_lower_handle(&mut self, ino: u64, file: File) -> u64 {
@@ -615,6 +801,18 @@ impl AgentFsFuse {
         framed.extend_from_slice(&(payload.len() as u32).to_le_bytes());
         framed.append(&mut payload);
         framed
+    }
+}
+
+fn write_worker_count() -> usize {
+    if let Ok(value) = std::env::var("AGENTFS_FUSE_WRITE_THREADS") {
+        value
+            .parse::<usize>()
+            .ok()
+            .and_then(|n| if n == 0 { None } else { Some(n) })
+            .unwrap_or_else(|| thread::available_parallelism().map(|p| p.get()).unwrap_or(1))
+    } else {
+        thread::available_parallelism().map(|p| p.get()).unwrap_or(1).max(2)
     }
 }
 
@@ -1145,53 +1343,33 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        if offset < 0 {
+            reply.error(EINVAL);
+            return;
+        }
+
         let handle_id = HandleId(fh);
         let client_pid = self.get_client_pid(req);
-        let mut write_trace = None;
-        if self.trace_writes {
-            self.inflight_writes += 1;
-            if self.inflight_writes > self.max_write_depth {
-                self.max_write_depth = self.inflight_writes;
+        let mut buffer = Vec::with_capacity(data.len());
+        buffer.extend_from_slice(data);
+        let trace = self.start_write_trace(req, ino, fh, offset, buffer.len());
+
+        let job = WriteJob {
+            pid: client_pid,
+            handle_id,
+            offset: offset as u64,
+            data: buffer,
+            reply,
+            trace,
+        };
+
+        if let Err(mut failed_job) = self.write_pool.submit(job) {
+            if let Some(trace) = failed_job.trace.take() {
+                trace.finish();
+            } else if self.trace_writes {
+                self.inflight_writes.fetch_sub(1, Ordering::SeqCst);
             }
-            write_trace = Some((req.unique(), ino, fh, offset, data.len(), Instant::now()));
-            debug!(
-                target: "agentfs::write",
-                event = "start",
-                req_id = req.unique(),
-                ino,
-                fh,
-                offset,
-                size = data.len(),
-                inflight = self.inflight_writes,
-                max_inflight = self.max_write_depth
-            );
-        }
-
-        let result = self.core.write(&client_pid, handle_id, offset as u64, data);
-
-        if let Some((req_id, log_ino, log_fh, log_offset, log_size, start)) = write_trace {
-            let duration = start.elapsed();
-            self.inflight_writes = self.inflight_writes.saturating_sub(1);
-            debug!(
-                target: "agentfs::write",
-                event = "finish",
-                req_id,
-                ino = log_ino,
-                fh = log_fh,
-                offset = log_offset,
-                size = log_size,
-                duration_ms = duration.as_secs_f64() * 1000.0,
-                inflight = self.inflight_writes,
-                max_inflight = self.max_write_depth
-            );
-        }
-
-        match result {
-            Ok(bytes_written) => {
-                reply.written(bytes_written as u32);
-            }
-            Err(FsError::NotFound) => reply.error(ENOENT),
-            Err(_) => reply.error(EIO),
+            failed_job.reply.error(EIO);
         }
     }
 
