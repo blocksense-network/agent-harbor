@@ -30,6 +30,7 @@
      - `logs/fuse-performance-20251116-120621/summary.json` – default env (seq_write 0.80×, seq_read 1.00×, metadata 0.75×, concurrent 1.00×).
      - `logs/fuse-performance-20251116-120649/summary.json` – second default run to double-check (seq_write 0.80×, seq_read 1.00×, metadata 0.70×, concurrent 2.00× because both agentfs/baseline finished in ~20 ms). The job is now limited by measurement noise.
      - `logs/fuse-performance-20251116-120715/summary.json` – `AGENTFS_FUSE_MAX_BACKGROUND=128`, `AGENTFS_FUSE_WRITE_THREADS=8`, `AGENTFS_FUSE_MAX_WRITE=8388608` (seq_write ~1.25×, metadata 1.18×; effectively identical within timing jitter).
+     - `logs/fuse-performance-20251116-122208/summary.json` – sequential workload bumped to 8 GiB and the harness now drops host page caches before each read so seq_read takes ~0.5 s instead of ~0.02 s; ratios stay ~1.0× on this box because both AgentFS and the baseline saturate the same NVMe bandwidth, but we finally have a measurement that lasts long enough to catch regressions.
    - Earlier reference runs remain documented under `logs/fuse-performance-20251116-110756/…-111825/` for regression tracking.
 9. **Transport redesign sketch**
    - Since perf shows the crossbeam channel + `Vec::extend_from_slice` as the bottleneck, the next experiment is to split transport responsibilities behind a trait:
@@ -42,7 +43,7 @@
 
 1. **Control-plane write semantics** – FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
 2. **pjdfstest regression gating (F5)** – Baseline failures live in `specs/Public/AgentFS/pjdfstest.baseline.json`. Start fixing chmod/chown/ftruncate/utimens failures and keep growing the baseline so the diff stays meaningful.
-3. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, the 256 MiB workload finishes in ~50 ms, so measurement noise dwarfs small deltas. Keep logging every run and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
+3. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, both AgentFS and the baseline saturate NVMe bandwidth (even with the new 8 GiB workload and cache drops), so measurement noise still hides small deltas. Keep logging every run and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
 4. **pjdfstest fixes + CI** – With the pjdfstest harness hooked into GitHub Actions, the last unchecked box under F5 is reducing failures (chmod/chown/utimens) and updating `specs/Public/AgentFS/pjdfstest.baseline.json` accordingly.
 
 ## Useful Paths & Logs
@@ -52,6 +53,7 @@
   - `logs/fuse-performance-20251116-120621/{performance.log,results.jsonl,summary.json}` – default env (seq_write 0.80×).
   - `logs/fuse-performance-20251116-120649/{…}` – rerun to confirm stability (ratios ~0.8×/1.0×/0.7×/2.0×).
   - `logs/fuse-performance-20251116-120715/{…}` – background=128, threads=8, max_write=8 MiB.
+  - `logs/fuse-performance-20251116-122208/{…}` – sequential workload increased to 8 GiB with explicit cache drops so seq_read runs ~0.5 s instead of ~20 ms.
   - Historical runs: `logs/fuse-performance-20251116-110035/`, `…-110756/`, `…-110953/`, `…-111810/`, etc.
 - Manual perf attaches: `logs/perf-profiles/agentfs-perf-profile-20251116-115242/` (base) and `…-115426/` (call stacks) plus prior traces in `logs/perf-profiles/agentfs-concurrent-*/`.
 - pjdfstest full suite: `logs/pjdfstest-full-20251115-135821/{pjdfstest.log,summary.json}`.

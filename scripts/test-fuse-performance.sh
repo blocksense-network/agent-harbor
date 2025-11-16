@@ -21,10 +21,29 @@ FUSE_CONFIG="$RUN_DIR/fuse-config.json"
 BACKSTORE_DIR="$RUN_DIR/backstore"
 USER_ID="$(id -u)"
 GROUP_ID="$(id -g)"
+SEQ_BLOCK_SIZE_BYTES=${SEQ_BLOCK_SIZE_BYTES:-$((4 * 1024 * 1024))}
+SEQ_TOTAL_BYTES=${SEQ_TOTAL_BYTES:-$((8 * 1024 * 1024 * 1024))}
 mkdir -p "$RUN_DIR" "$BASELINE_DIR" "$BACKSTORE_DIR"
 
 log() {
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$RUN_DIR/performance.log"
+}
+
+drop_caches() {
+  local reason="$1"
+  if [[ "${SKIP_DROP_CACHES:-}" == "1" ]]; then
+    log "Skipping cache drop (${reason})"
+    return
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    log "sudo unavailable; cannot drop caches (${reason})"
+    return
+  fi
+  if sudo sh -c 'sync' >>"$RUN_DIR/performance.log" 2>&1 && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null; then
+    log "Dropped host page cache (${reason})"
+  else
+    log "Failed to drop host page cache (${reason}); continuing"
+  fi
 }
 
 if [[ -z "$TIME_BIN" ]]; then
@@ -304,10 +323,12 @@ run_throughput_tests() {
   local label="$1"
   local path="$2"
   local test_file="$path/throughput.bin"
-  local write_bytes=$((256 * 1024 * 1024)) # 256 MiB
-  local count=$((write_bytes / (4 * 1024 * 1024)))
-  run_time_dd "$label" "seq_write" "dd if=/dev/zero of=$test_file bs=4M count=$count status=none conv=fdatasync" "$write_bytes"
-  run_time_dd "$label" "seq_read" "dd if=$test_file of=/dev/null bs=4M count=$count status=none" "$write_bytes"
+  local write_bytes=$SEQ_TOTAL_BYTES
+  local block_bytes=$SEQ_BLOCK_SIZE_BYTES
+  local count=$((write_bytes / block_bytes))
+  run_time_dd "$label" "seq_write" "dd if=/dev/zero of=$test_file bs=${block_bytes} count=$count status=none conv=fdatasync" "$write_bytes"
+  drop_caches "$label seq_read"
+  run_time_dd "$label" "seq_read" "dd if=$test_file of=/dev/null bs=${block_bytes} count=$count status=none" "$write_bytes"
   rm -f "$test_file"
 }
 
