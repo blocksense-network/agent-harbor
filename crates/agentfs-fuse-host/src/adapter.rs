@@ -13,7 +13,7 @@ use agentfs_core::{
 };
 use agentfs_proto::messages::{StatData, TimespecData};
 use agentfs_proto::*;
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_queue::SegQueue;
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
     ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
@@ -31,8 +31,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
+    Arc, Condvar, Mutex,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -117,58 +117,81 @@ struct WriteJob {
     trace: Option<WriteTrace>,
 }
 
-struct WriteWorkerPool {
-    sender: Option<Sender<WriteJob>>,
+struct WriteDispatcher {
+    queue: Arc<SegQueue<WriteJob>>,
+    signal: Arc<(Mutex<bool>, Condvar)>,
+    shutdown: Arc<AtomicBool>,
     handles: Vec<JoinHandle<()>>,
 }
 
-impl WriteWorkerPool {
-    fn new(
-        core: Arc<FsCore>,
-        thread_count: usize,
-        inflight: Arc<AtomicU64>,
-        max_inflight: Arc<AtomicU64>,
-    ) -> Self {
-        let (tx, rx) = unbounded();
+impl WriteDispatcher {
+    fn new(core: Arc<FsCore>, thread_count: usize) -> Self {
+        let queue = Arc::new(SegQueue::<WriteJob>::new());
+        let signal = Arc::new((Mutex::new(false), Condvar::new()));
+        let shutdown = Arc::new(AtomicBool::new(false));
         let mut handles = Vec::with_capacity(thread_count);
+
         for _ in 0..thread_count {
-            let receiver: Receiver<WriteJob> = rx.clone();
+            let queue_clone = Arc::clone(&queue);
+            let signal_clone = Arc::clone(&signal);
+            let shutdown_clone = Arc::clone(&shutdown);
             let core_clone = Arc::clone(&core);
             handles.push(thread::spawn(move || {
-                while let Ok(mut job) = receiver.recv() {
-                    let result = core_clone.write(&job.pid, job.handle_id, job.offset, &job.data);
-                    match result {
-                        Ok(bytes_written) => job.reply.written(bytes_written as u32),
-                        Err(FsError::NotFound) => job.reply.error(ENOENT),
-                        Err(FsError::AccessDenied) => job.reply.error(EACCES),
-                        Err(_) => job.reply.error(EIO),
+                loop {
+                    if shutdown_clone.load(Ordering::Acquire) {
+                        break;
                     }
-                    if let Some(trace) = job.trace.take() {
-                        trace.finish();
+
+                    match queue_clone.pop() {
+                        Some(mut job) => {
+                            let result =
+                                core_clone.write(&job.pid, job.handle_id, job.offset, &job.data);
+                            match result {
+                                Ok(bytes_written) => job.reply.written(bytes_written as u32),
+                                Err(FsError::NotFound) => job.reply.error(ENOENT),
+                                Err(FsError::AccessDenied) => job.reply.error(EACCES),
+                                Err(_) => job.reply.error(EIO),
+                            }
+                            if let Some(trace) = job.trace.take() {
+                                trace.finish();
+                            }
+                        }
+                        None => {
+                            let (lock, cvar) = &*signal_clone;
+                            let mut guard = lock.lock().unwrap();
+                            let _ = cvar.wait_timeout(guard, Duration::from_millis(5)).unwrap();
+                        }
                     }
                 }
             }));
         }
 
         Self {
-            sender: Some(tx),
+            queue,
+            signal,
+            shutdown,
             handles,
         }
     }
 
     fn submit(&self, job: WriteJob) -> Result<(), WriteJob> {
-        if let Some(sender) = &self.sender {
-            sender.send(job).map_err(|err| err.0)
-        } else {
-            Err(job)
+        self.queue.push(job);
+        let (lock, cvar) = &*self.signal;
+        if let Ok(mut pending) = lock.lock() {
+            *pending = true;
+            cvar.notify_one();
         }
+        Ok(())
     }
 }
 
-impl Drop for WriteWorkerPool {
+impl Drop for WriteDispatcher {
     fn drop(&mut self) {
-        if let Some(sender) = self.sender.take() {
-            drop(sender);
+        self.shutdown.store(true, Ordering::Release);
+        let (lock, cvar) = &*self.signal;
+        if let Ok(mut pending) = lock.lock() {
+            *pending = true;
+            cvar.notify_all();
         }
         for handle in self.handles.drain(..) {
             let _ = handle.join();
@@ -210,8 +233,8 @@ pub struct AgentFsFuse {
     inflight_writes: Arc<AtomicU64>,
     /// Max observed concurrent write depth
     max_write_depth: Arc<AtomicU64>,
-    /// Worker pool for offloading writes
-    write_pool: WriteWorkerPool,
+    /// Worker dispatcher for offloading writes
+    write_dispatcher: WriteDispatcher,
 }
 
 impl AgentFsFuse {
@@ -241,12 +264,7 @@ impl AgentFsFuse {
 
         let inflight_writes = Arc::new(AtomicU64::new(0));
         let max_write_depth = Arc::new(AtomicU64::new(0));
-        let write_pool = WriteWorkerPool::new(
-            Arc::clone(&core),
-            write_worker_count(),
-            Arc::clone(&inflight_writes),
-            Arc::clone(&max_write_depth),
-        );
+        let write_dispatcher = WriteDispatcher::new(Arc::clone(&core), write_worker_count());
 
         Ok(Self {
             core,
@@ -265,7 +283,7 @@ impl AgentFsFuse {
             trace_writes,
             inflight_writes,
             max_write_depth,
-            write_pool,
+            write_dispatcher,
         })
     }
 
@@ -962,7 +980,7 @@ impl fuser::Filesystem for AgentFsFuse {
 
         info!(
             "AgentFS FUSE adapter initialized (write_threads={}, trace_writes={})",
-            self.write_pool.handles.len(),
+            self.write_dispatcher.handles.len(),
             self.trace_writes
         );
         Ok(())
@@ -1463,7 +1481,7 @@ impl fuser::Filesystem for AgentFsFuse {
             trace,
         };
 
-        if let Err(mut failed_job) = self.write_pool.submit(job) {
+        if let Err(mut failed_job) = self.write_dispatcher.submit(job) {
             if let Some(trace) = failed_job.trace.take() {
                 trace.finish();
             } else if self.trace_writes {
