@@ -14,7 +14,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 clap = { workspace = true }
 tracing-subscriber = { workspace = true }
-crossbeam-queue = "0.3"
+crossbeam-channel = "0.5"
 
 serde_json = { workspace = true }
 libc = "0.2"

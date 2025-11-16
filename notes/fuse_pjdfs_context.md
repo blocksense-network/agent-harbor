@@ -39,9 +39,7 @@
      - `logs/perf-profiles/agentfs-perf-profile-20251116-125721-run3/`
    - All three runs show ~14 k samples with the same hotspots (`__GI___clone3 → crossbeam::Backoff::snooze`, siphash, memmove, FsCore::write) and no lost samples; the results confirm the worker-channel transport is still the dominant cost.
    - Repeated the captures with the **release** binary (`target/release/agentfs-fuse-host --features fuse`) so we have production-codegen data (`logs/perf-profiles/agentfs-perf-profile-20251116-130943-release-run1/`, `…131032-release-run2/`, `…131121-release-run3/`). Sample counts stay in the ~10 k range but self time concentrates even more heavily in `__memmove_avx_unaligned_erms`, reinforcing the need for the transport redesign.
-10. **Write transport rewrite**
-    - Replaced the crossbeam-channel worker pool with a dedicated `WriteDispatcher` that uses `crossbeam_queue::SegQueue` plus a lightweight `Condvar` to park idle threads. This removes the `ChildStdin`-style IPC entirely, avoids the heavy `Backoff::snooze` loops seen in perf, and keeps FsCore in-process while still offloading blocking writes to background threads.
-11. **pjdfstest full-suite refresh**
+10. **pjdfstest full-suite refresh**
 
 - Re-ran `just test-pjdfstest-full` after the FsCore/FUSE fixes. The entire suite now passes (only the upstream `TODO passed` lines remain), so the new reference artifacts live under `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` and the baseline diff was updated accordingly.
 
