@@ -253,7 +253,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 - **Verification Results**:
   - [x] Performance harness – `scripts/test-fuse-performance.sh` (`just test-fuse-performance`) mounts AgentFS with a HostFs backstore, runs sequential read/write, metadata, and 4-way concurrent write benchmarks against a host baseline, and emits structured logs (`results.jsonl` + `summary.json`). Latest run: `logs/fuse-performance-20251115-161415/`.
   - [x] Perf profiling – Captured three cold-cache sequential-write profiling runs (4×16 GiB writes each) under `logs/perf-profiles/agentfs-perf-profile-20251116-125536-run1/`, `…125630-run2/`, and `…125721-run3/` using `perf record -g -F 400 -p <fuse_pid>`; all show the worker-channel bottleneck (crossbeam backoff + memmove).
-  - [ ] Release-mode perf profiling – Repeat the sequential-write captures using the **release** FUSE host binary so the numbers reflect production codegen rather than debug builds.
+  - [x] Release-mode perf profiling – Repeated the sequential-write captures using the **release** FUSE host binary; logs live under `logs/perf-profiles/agentfs-perf-profile-20251116-130943-release-run1/`, `…131032-release-run2/`, and `…131121-release-run3/`.
   - [x] Regression thresholds – The perf harness now enforces default minimum ratios (seq*write/read ≥ 0.75, metadata ≥ 0.5, concurrent_write ≥ 0.5) via `MIN*\*\_RATIO` env vars and fails if any run drops below the configured floor.
 
 **F7. Stress Testing and Fault Injection** (4–5d)
