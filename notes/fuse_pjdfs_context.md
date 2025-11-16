@@ -1,6 +1,6 @@
 # FUSE Adapter Status – Nov 16 2025 (handoff)
 
-<!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd -->
+<!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd siphash -->
 
 ## Current Scope
 
@@ -32,9 +32,17 @@
      - `logs/fuse-performance-20251116-120715/summary.json` – `AGENTFS_FUSE_MAX_BACKGROUND=128`, `AGENTFS_FUSE_WRITE_THREADS=8`, `AGENTFS_FUSE_MAX_WRITE=8388608` (seq_write ~1.25×, metadata 1.18×; effectively identical within timing jitter).
      - `logs/fuse-performance-20251116-122208/summary.json` – sequential workload bumped to 8 GiB and the harness now drops host page caches before each read so seq_read takes ~0.5 s instead of ~0.02 s; ratios stay ~1.0× on this box because both AgentFS and the baseline saturate the same NVMe bandwidth, but we finally have a measurement that lasts long enough to catch regressions.
    - Earlier reference runs remain documented under `logs/fuse-performance-20251116-110756/…-111825/` for regression tracking.
-9. **pjdfstest full-suite refresh**
-   - Re-ran `just test-pjdfstest-full` after the FsCore/FUSE fixes. The entire suite now passes (only the upstream `TODO passed` lines remain), so the new reference artifacts live under `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` and the baseline diff was updated accordingly.
-10. **Transport redesign sketch**
+9. **Perf profiling runs (Nov 16 evening)**
+   - Rebuilt the FUSE host in debug for faster iterations, mounted `/tmp/agentfs-perf-profile` against a fresh HostFs backstore, and captured three back-to-back runs of four sequential 16 GiB writes (total 64 GiB per capture) with cold caches (`sync && echo 3 | sudo tee /proc/sys/vm/drop_caches`) while attaching `perf record -g -F 400 -p <fuse_pid>`. Artifacts live under:
+     - `logs/perf-profiles/agentfs-perf-profile-20251116-125536-run1/`
+     - `logs/perf-profiles/agentfs-perf-profile-20251116-125630-run2/`
+     - `logs/perf-profiles/agentfs-perf-profile-20251116-125721-run3/`
+   - All three runs show ~14 k samples with the same hotspots (`__GI___clone3 → crossbeam::Backoff::snooze`, siphash, memmove, FsCore::write) and no lost samples; the results confirm the worker-channel transport is still the dominant cost.
+10. **pjdfstest full-suite refresh**
+
+- Re-ran `just test-pjdfstest-full` after the FsCore/FUSE fixes. The entire suite now passes (only the upstream `TODO passed` lines remain), so the new reference artifacts live under `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` and the baseline diff was updated accordingly.
+
+11. **Transport redesign sketch**
 
 - Since perf shows the crossbeam channel + `Vec::extend_from_slice` as the bottleneck, the next experiment is to split transport responsibilities behind a trait:
   1. Introduce `FsCoreTransport` with methods for `open`, `read`, `write`, `fsync`, etc.
@@ -45,7 +53,7 @@
 ## Pending / Next Steps
 
 1. **Control-plane write semantics** – FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
-2. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, both AgentFS and the baseline saturate NVMe bandwidth (even with the new 8 GiB workload and cache drops), so measurement noise still hides small deltas. Keep logging every run and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
+2. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, both AgentFS and the baseline saturate NVMe bandwidth (even with the new 8 GiB workload and cache drops), so measurement noise still hides small deltas. Keep logging every run, rerun the new perf captures with the release-host binary to eliminate debug-mode skew, and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
 3. **pjdfstest maintenance** – Keep running `just test-pjdfstest-full` when touching metadata/path semantics so the new “all green” baseline stays enforced by CI and we catch regressions early.
 
 ## Useful Paths & Logs
