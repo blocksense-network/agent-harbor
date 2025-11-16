@@ -2361,76 +2361,92 @@ impl FsCore {
         offset: u64,
         data: &[u8],
     ) -> FsResult<usize> {
-        let mut handles = self.handles.lock().unwrap();
-        let handle = handles.get_mut(&handle_id).ok_or(FsError::InvalidArgument)?;
+        let (node_id, stream_name, handle_path) = {
+            let handles = self.handles.lock().unwrap();
+            let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
 
-        // Ensure this is a file handle
-        let options = match &handle.kind {
-            HandleType::File { options, .. } => options,
-            HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            match &handle.kind {
+                HandleType::File { options, .. } => {
+                    if !options.write {
+                        return Err(FsError::AccessDenied);
+                    }
+                    (
+                        handle.node_id,
+                        Self::get_stream_name(handle).to_string(),
+                        handle.path.clone(),
+                    )
+                }
+                HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            }
         };
 
         // Permission check for write
         if self.config.security.enforce_posix_permissions {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
-                let node = nodes.get(&handle.node_id).ok_or(FsError::NotFound)?;
+                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
                 if !self.allowed_for_user(node, &user, false, true, false) {
                     return Err(FsError::AccessDenied);
                 }
             }
         }
 
-        if !options.write {
-            return Err(FsError::AccessDenied);
-        }
-
-        let stream_name = Self::get_stream_name(handle);
         let current_branch_id = self.branch_for_process(pid);
         let _branches = self.branches.lock().unwrap();
         let _branch = _branches.get(&current_branch_id).ok_or(FsError::NotFound)?;
 
-        let mut nodes = self.nodes.lock().unwrap();
-        let node = nodes.get_mut(&handle.node_id).ok_or(FsError::NotFound)?;
+        let content_to_write = {
+            let mut nodes = self.nodes.lock().unwrap();
+            let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
 
-        match &mut node.kind {
-            NodeKind::File { streams } => {
-                // Get or create the stream
-                let (content_id, size) =
-                    streams.entry(stream_name.to_string()).or_insert_with(|| {
-                        // Create new stream if it doesn't exist
+            match &mut node.kind {
+                NodeKind::File { streams } => {
+                    let entry = streams.entry(stream_name.clone()).or_insert_with(|| {
                         let new_content_id = self.storage.allocate(&[]).unwrap();
                         (new_content_id, 0)
                     });
 
-                let content_to_write = if self.is_content_shared(*content_id) {
-                    // Clone the content for this branch
-                    let new_content_id = self.storage.clone_cow(*content_id).unwrap();
-                    *content_id = new_content_id;
-                    new_content_id
-                } else {
-                    *content_id
-                };
+                    if self.is_content_shared(entry.0) {
+                        let new_content_id = self.storage.clone_cow(entry.0).unwrap();
+                        entry.0 = new_content_id;
+                    }
 
-                let written = self.storage.write(content_to_write, offset, data)?;
-                let new_size = std::cmp::max(*size, offset + written as u64);
-                *size = new_size;
-                node.times.mtime = Self::current_timestamp();
-                node.times.ctime = node.times.mtime;
-
-                // Emit Modified event for file content changes
-                #[cfg(feature = "events")]
-                if written > 0 {
-                    self.emit_event(EventKind::Modified {
-                        path: handle.path.to_string_lossy().to_string(),
-                    });
+                    entry.0
                 }
-
-                Ok(written)
+                NodeKind::Directory { .. } => return Err(FsError::IsADirectory),
+                NodeKind::Symlink { .. } => return Err(FsError::InvalidArgument),
             }
-            NodeKind::Directory { .. } => Err(FsError::IsADirectory),
-            NodeKind::Symlink { .. } => Err(FsError::InvalidArgument), // Symlinks are not writable like files
+        };
+
+        let written = self.storage.write(content_to_write, offset, data)?;
+
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+
+            match &mut node.kind {
+                NodeKind::File { streams } => {
+                    if let Some((_, size)) = streams.get_mut(&stream_name) {
+                        let new_size = std::cmp::max(*size, offset + written as u64);
+                        *size = new_size;
+                    }
+                    node.times.mtime = Self::current_timestamp();
+                    node.times.ctime = node.times.mtime;
+                }
+                _ => return Err(FsError::InvalidArgument),
+            }
         }
+
+        #[cfg(feature = "events")]
+        if written > 0 {
+            self.emit_event(EventKind::Modified {
+                path: handle_path.to_string_lossy().to_string(),
+            });
+        }
+        #[cfg(not(feature = "events"))]
+        let _ = &handle_path;
+
+        Ok(written)
     }
 
     pub fn fsync(&self, pid: &PID, handle_id: HandleId, data_only: bool) -> FsResult<()> {
