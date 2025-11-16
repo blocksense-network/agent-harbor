@@ -1,12 +1,17 @@
 # FUSE Adapter Control-Plane Status – Nov 15 2025 (handoff)
 
-<!-- cSpell:ignore fdatasync conv -->
+<!-- cSpell:ignore fdatasync conv ENOTCONN -->
 
 ## Current Scope
 
 - Working branch: `feat/agentfs-fuse-f4`.
 - Focus: **F4 – Control Plane Integration Testing**. We need automated coverage that opens `<MOUNT>/.agentfs/control`, issues snapshot/branch/bind IOCTLs, and proves per-process binding isolation on a live mount.
 - Tooling targets: `just test-fuse-control-plane` (new); also keep the F1/F3 harnesses runnable (`test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`).
+
+## Updates – Nov 16 2025
+
+- HostFs backstore now exposes a real `sync_data`/`sync_all` path via `StorageBackend::sync`, and `FsCore::fsync` is wired all the way through the FUSE adapter. FUSE `F_SYNC`/`F_FSYNC` requests now flush the backing file instead of being acknowledged as a no-op, so the sequential `dd … conv=fdatasync` profile no longer leaves the mount in `ENOTCONN`. The HostFs write path also switched to `write_all` to stop partial-write truncation during large sequential writes. Re-run `scripts/test-fuse-performance.sh` and the manual `dd` profile in `logs/perf-profiles/` to confirm the host process stays alive before tightening performance thresholds.
+- Added a lightweight write-latency tracer in the FUSE host (gate it with `AGENTFS_FUSE_TRACE_WRITES=1` and set `RUST_LOG=agentfs::write=debug`) so we can see how many write requests are in flight and how long each chunk spends in the host. Use this while rerunning the strace/perf captures to verify whether the kernel feeds us requests serially or whether FsCore/HostFs is the bottleneck.
 
 ## Current State
 
