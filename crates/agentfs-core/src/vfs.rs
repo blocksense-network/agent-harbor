@@ -89,11 +89,56 @@ impl Default for DirfdMapping {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct NodeId(u64);
 
+/// Per-stream copy-on-write state
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StreamCowState {
+    Clean,
+    Dirty,
+}
+
+/// File stream metadata
+#[derive(Clone, Debug)]
+pub(crate) struct StreamState {
+    pub content_id: ContentId,
+    pub size: u64,
+    cow_state: StreamCowState,
+}
+
+impl StreamState {
+    pub fn new(content_id: ContentId, size: u64) -> Self {
+        Self {
+            content_id,
+            size,
+            cow_state: StreamCowState::Dirty,
+        }
+    }
+
+    pub fn shared(content_id: ContentId, size: u64) -> Self {
+        Self {
+            content_id,
+            size,
+            cow_state: StreamCowState::Clean,
+        }
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.cow_state = StreamCowState::Clean;
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.cow_state = StreamCowState::Dirty;
+    }
+
+    pub fn is_clean(&self) -> bool {
+        matches!(self.cow_state, StreamCowState::Clean)
+    }
+}
+
 /// Filesystem node types
 #[derive(Clone, Debug)]
 pub(crate) enum NodeKind {
     File {
-        streams: HashMap<String, (ContentId, u64)>, // stream_name -> (content_id, size)
+        streams: HashMap<String, StreamState>, // stream_name -> stream metadata
     },
     Directory {
         children: HashMap<String, NodeId>,
@@ -467,10 +512,10 @@ impl FsCore {
                             NodeKind::File { streams } => {
                                 debug!("Found file with {} streams", streams.len());
                                 // For each stream, get the content file path from the storage backend
-                                for (content_id, _size) in streams.values() {
+                                for stream in streams.values() {
                                     // Get the actual file path where this content is stored
                                     if let Some(content_path) =
-                                        self.storage.get_content_path(*content_id)
+                                        self.storage.get_content_path(stream.content_id)
                                     {
                                         debug!("Found content file: {}", content_path.display());
                                         // Check if the content file actually exists
@@ -481,7 +526,10 @@ impl FsCore {
                                             debug!("Content file does not exist");
                                         }
                                     } else {
-                                        debug!("No content path for content_id {}", content_id.0);
+                                        debug!(
+                                            "No content path for content_id {}",
+                                            stream.content_id.0
+                                        );
                                     }
                                 }
                             }
@@ -894,7 +942,7 @@ impl FsCore {
         let now = Self::current_timestamp();
 
         let mut streams = HashMap::new();
-        streams.insert("".to_string(), (content_id, 0)); // Default unnamed stream
+        streams.insert("".to_string(), StreamState::new(content_id, 0)); // Default unnamed stream
 
         let node = Node {
             id: node_id,
@@ -1156,23 +1204,22 @@ impl FsCore {
         // xattrs are already cloned by the derive(Clone) on Node
 
         // For files, we need to clone all streams in storage
-        if let NodeKind::File { streams } = &new_node.kind {
-            let mut new_streams = HashMap::new();
-            for (content_id, size) in streams.values() {
-                let new_content_id = self.storage.clone_cow(*content_id)?;
-                // We'll keep the same stream names via later mapping
-                // using the original keys.
-                // Placeholder: actual key copy occurs below
-                new_streams.insert(String::new(), (new_content_id, *size));
-            }
-            // Reconstruct streams with original keys to avoid key loss
-            if let NodeKind::File { streams } = &node.kind {
-                let mut iter = streams.keys();
-                let mut rebuilt = HashMap::new();
-                for ((_, (cid, sz)), key) in new_streams.into_iter().zip(&mut iter) {
-                    rebuilt.insert(key.clone(), (cid, sz));
+        if let NodeKind::File {
+            streams: new_streams,
+        } = &mut new_node.kind
+        {
+            if let NodeKind::File {
+                streams: original_streams,
+            } = &node.kind
+            {
+                let mut rebuilt = HashMap::with_capacity(original_streams.len());
+                for (name, stream) in original_streams {
+                    rebuilt.insert(
+                        name.clone(),
+                        StreamState::shared(stream.content_id, stream.size),
+                    );
                 }
-                new_node.kind = NodeKind::File { streams: rebuilt };
+                *new_streams = rebuilt;
             }
         }
         // For directories, we recursively clone all children
@@ -1250,7 +1297,7 @@ impl FsCore {
         let (len, is_dir, is_symlink) = match &node.kind {
             NodeKind::File { streams } => {
                 // Size is the size of the unnamed stream (default data stream)
-                let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                let size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                 (size, false, false)
             }
             NodeKind::Directory { .. } => (0, true, false),
@@ -1297,6 +1344,8 @@ impl FsCore {
         let current_branch = self.branch_for_process(pid);
         let branches = self.branches.lock().unwrap();
         let branch = branches.get(&current_branch).ok_or(FsError::NotFound)?;
+        let branch_root_id = branch.root_id;
+        drop(branches);
 
         let snapshot_id = SnapshotId::new();
 
@@ -1311,8 +1360,11 @@ impl FsCore {
                 backstore.snapshot_native(&snapshot_name)?;
             } else if backstore.supports_native_reflink() {
                 // Collect all upper layer files that need to be materialized
-                let upper_files = self.collect_upper_layer_files(branch.root_id)?;
-                debug!("Collected {} upper files for snapshot", upper_files.len());
+                let upper_files = self.collect_upper_layer_files(branch_root_id)?;
+                debug!(
+                    "Collected {} upper files for snapshot",
+                    upper_files.len()
+                );
                 for (upper_path, overlay_path) in &upper_files {
                     debug!(
                         "Upper file: {} -> {}",
@@ -1326,11 +1378,12 @@ impl FsCore {
 
         let snapshot = Snapshot {
             id: snapshot_id,
-            root_id: branch.root_id,
+            root_id: branch_root_id,
             name: name_owned.clone(),
         };
 
         self.snapshots.lock().unwrap().insert(snapshot_id, snapshot);
+        self.mark_subtree_streams_clean(branch_root_id);
 
         // Emit event
         #[cfg(feature = "events")]
@@ -1340,6 +1393,30 @@ impl FsCore {
         });
 
         Ok(snapshot_id)
+    }
+
+    fn mark_subtree_streams_clean(&self, root_id: NodeId) {
+        fn dfs(nodes: &mut HashMap<NodeId, Node>, node_id: NodeId) {
+            if let Some(node) = nodes.get_mut(&node_id) {
+                match &mut node.kind {
+                    NodeKind::File { streams } => {
+                        for stream in streams.values_mut() {
+                            stream.mark_clean();
+                        }
+                    }
+                    NodeKind::Directory { children } => {
+                        let child_ids: Vec<NodeId> = children.values().copied().collect();
+                        for child_id in child_ids {
+                            dfs(nodes, child_id);
+                        }
+                    }
+                    NodeKind::Symlink { .. } => {}
+                }
+            }
+        }
+
+        let mut nodes = self.nodes.lock().unwrap();
+        dfs(&mut nodes, root_id);
     }
 
     pub fn snapshot_list(&self) -> Vec<(SnapshotId, Option<String>)> {
@@ -1422,14 +1499,17 @@ impl FsCore {
                     fs::create_dir_all(parent)?;
                 }
                 let mut file = File::create(destination)?;
-                if let Some((content_id, size)) = streams.get("") {
+                if let Some(stream) = streams.get("") {
                     let mut offset = 0u64;
                     let mut buffer = vec![0u8; 8192];
-                    while offset < *size {
-                        let remaining = (*size - offset) as usize;
+                    while offset < stream.size {
+                        let remaining = (stream.size - offset) as usize;
                         let read_len = remaining.min(buffer.len());
-                        let bytes_read =
-                            self.storage.read(*content_id, offset, &mut buffer[..read_len])?;
+                        let bytes_read = self.storage.read(
+                            stream.content_id,
+                            offset,
+                            &mut buffer[..read_len],
+                        )?;
                         if bytes_read == 0 {
                             break;
                         }
@@ -2343,8 +2423,8 @@ impl FsCore {
 
         match &node.kind {
             NodeKind::File { streams } => {
-                if let Some((content_id, _)) = streams.get(stream_name) {
-                    self.storage.read(*content_id, offset, buf)
+                if let Some(stream) = streams.get(stream_name) {
+                    self.storage.read(stream.content_id, offset, buf)
                 } else {
                     Err(FsError::NotFound) // Stream doesn't exist
                 }
@@ -2403,15 +2483,16 @@ impl FsCore {
                 NodeKind::File { streams } => {
                     let entry = streams.entry(stream_name.clone()).or_insert_with(|| {
                         let new_content_id = self.storage.allocate(&[]).unwrap();
-                        (new_content_id, 0)
+                        StreamState::new(new_content_id, 0)
                     });
 
-                    if self.is_content_shared(entry.0) {
-                        let new_content_id = self.storage.clone_cow(entry.0).unwrap();
-                        entry.0 = new_content_id;
+                    if self.is_content_shared(entry) {
+                        let new_content_id = self.storage.clone_cow(entry.content_id).unwrap();
+                        entry.content_id = new_content_id;
                     }
+                    entry.mark_dirty();
 
-                    entry.0
+                    entry.content_id
                 }
                 NodeKind::Directory { .. } => return Err(FsError::IsADirectory),
                 NodeKind::Symlink { .. } => return Err(FsError::InvalidArgument),
@@ -2426,9 +2507,9 @@ impl FsCore {
 
             match &mut node.kind {
                 NodeKind::File { streams } => {
-                    if let Some((_, size)) = streams.get_mut(&stream_name) {
-                        let new_size = std::cmp::max(*size, offset + written as u64);
-                        *size = new_size;
+                    if let Some(stream) = streams.get_mut(&stream_name) {
+                        let new_size = std::cmp::max(stream.size, offset + written as u64);
+                        stream.size = new_size;
                     }
                     node.times.mtime = Self::current_timestamp();
                     node.times.ctime = node.times.mtime;
@@ -2482,10 +2563,10 @@ impl FsCore {
             }
 
             match &node.kind {
-                NodeKind::File { streams } => {
-                    let (content_id, _) = streams.get(&stream_name).ok_or(FsError::NotFound)?;
-                    *content_id
-                }
+                NodeKind::File { streams } => streams
+                    .get(&stream_name)
+                    .map(|stream| stream.content_id)
+                    .ok_or(FsError::NotFound)?,
                 _ => return Err(FsError::InvalidArgument),
             }
         };
@@ -2493,11 +2574,9 @@ impl FsCore {
         self.storage.sync(content_id, data_only)
     }
 
-    /// Check if content is shared between branches/snapshots
-    fn is_content_shared(&self, _content_id: ContentId) -> bool {
-        // For simplicity, assume all content needs CoW for now
-        // In a real implementation, this would track reference counts
-        true
+    /// Check if a stream is currently shared (clean) and requires CoW before writing.
+    fn is_content_shared(&self, stream: &StreamState) -> bool {
+        stream.is_clean()
     }
 
     /// Check if two lock ranges overlap
@@ -2842,7 +2921,7 @@ impl FsCore {
                 NodeKind::Directory { .. } => (true, false, 0),
                 NodeKind::File { streams } => {
                     // Size is the size of the unnamed stream
-                    let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                    let size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                     (false, false, size)
                 }
                 NodeKind::Symlink { target } => (false, true, target.len() as u64),
@@ -2916,7 +2995,7 @@ impl FsCore {
                     NodeKind::Directory { .. } => (true, false, 0),
                     NodeKind::File { streams } => {
                         // Size is the size of the unnamed stream
-                        let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                        let size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                         (false, false, size)
                     }
                     NodeKind::Symlink { target } => (false, true, target.len() as u64),
@@ -2997,7 +3076,7 @@ impl FsCore {
                     let (is_dir, is_symlink, len) = match &child_node.kind {
                         NodeKind::Directory { .. } => (true, false, 0),
                         NodeKind::File { streams } => {
-                            let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                            let size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                             (false, false, size)
                         }
                         NodeKind::Symlink { target } => (false, true, target.len() as u64),
@@ -3337,7 +3416,7 @@ impl FsCore {
         // Compute attributes directly to avoid deadlock
         let (len, is_dir, is_symlink) = match &node.kind {
             NodeKind::File { streams } => {
-                let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                let size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                 (size, false, false)
             }
             NodeKind::Directory { .. } => (0, true, false),
@@ -3517,7 +3596,7 @@ impl FsCore {
                         // to avoid deadlock
                         let (len, is_dir, is_symlink) = match &child_node.kind {
                             NodeKind::File { streams } => {
-                                let size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                                let size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                                 (size, false, false)
                             }
                             NodeKind::Directory { .. } => (0, true, false),
@@ -3624,7 +3703,7 @@ impl FsCore {
         let src_node = nodes.get(&src_node_id).ok_or(FsError::NotFound)?;
         let src_content_id = match &src_node.kind {
             NodeKind::File { streams } => {
-                streams.get("").map(|(id, _)| *id).ok_or(FsError::NotFound)?
+                streams.get("").map(|stream| stream.content_id).ok_or(FsError::NotFound)?
             }
             _ => return Err(FsError::IsADirectory),
         };
@@ -3693,7 +3772,7 @@ impl FsCore {
                 let src_node = nodes.get(&src_node_id).ok_or(FsError::NotFound)?;
                 match &src_node.kind {
                     NodeKind::File { streams } => {
-                        streams.get("").map(|(id, _)| *id).ok_or(FsError::NotFound)?
+                        streams.get("").map(|stream| stream.content_id).ok_or(FsError::NotFound)?
                     }
                     _ => return Err(FsError::IsADirectory),
                 }
@@ -3735,7 +3814,7 @@ impl FsCore {
             let nodes = self.nodes.lock().unwrap();
             nodes.get(&src_node_id).and_then(|node| {
                 if let NodeKind::File { streams } = &node.kind {
-                    let src_size = streams.get("").map(|(_, size)| *size).unwrap_or(0);
+                    let src_size = streams.get("").map(|stream| stream.size).unwrap_or(0);
                     Some((
                         src_size,
                         node.mode,
@@ -3756,7 +3835,7 @@ impl FsCore {
             if let Some(dst_node) = nodes.get_mut(&dst_node_id) {
                 // Update the file stream with the copied content
                 if let NodeKind::File { streams } = &mut dst_node.kind {
-                    streams.insert("".to_string(), (dst_content_id, src_size));
+                    streams.insert("".to_string(), StreamState::new(dst_content_id, src_size));
                 }
 
                 // Copy attributes
@@ -4125,12 +4204,17 @@ impl FsCore {
         match &mut node.kind {
             NodeKind::File { streams } => {
                 // Truncate the default (unnamed) stream
-                if let Some((content_id, current_size)) = streams.get_mut("") {
-                    if length < *current_size {
+                if let Some(stream) = streams.get_mut("") {
+                    if self.is_content_shared(stream) {
+                        let new_content_id = self.storage.clone_cow(stream.content_id)?;
+                        stream.content_id = new_content_id;
+                        stream.mark_dirty();
+                    }
+                    if length < stream.size {
                         // Truncate: use the storage backend's truncate method
-                        self.storage.truncate(*content_id, length)?;
-                        *current_size = length;
-                    } else if length > *current_size {
+                        self.storage.truncate(stream.content_id, length)?;
+                        stream.size = length;
+                    } else if length > stream.size {
                         // Extend: for now, we can't easily extend - this would require more complex logic
                         // In a real implementation, we'd need to handle this properly
                         return Err(FsError::Unsupported); // Extension not supported in this simplified version
@@ -4141,11 +4225,11 @@ impl FsCore {
                     if length > 0 {
                         let content = vec![0u8; length as usize];
                         let content_id = self.storage.allocate(&content)?;
-                        streams.insert("".to_string(), (content_id, length));
+                        streams.insert("".to_string(), StreamState::new(content_id, length));
                     } else {
                         // Empty file
                         let content_id = self.storage.allocate(&[])?;
-                        streams.insert("".to_string(), (content_id, 0));
+                        streams.insert("".to_string(), StreamState::new(content_id, 0));
                     }
                 }
             }
@@ -4610,6 +4694,7 @@ impl FsCore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     fn create_test_fs() -> FsCore {
         // Use the same config as the main lib.rs tests
@@ -4656,6 +4741,15 @@ mod tests {
             append: false,
             share: vec![crate::ShareMode::Read, crate::ShareMode::Write],
             stream: None,
+        }
+    }
+
+    fn default_stream_content_id(fs: &FsCore, pid: &PID, path: &Path) -> ContentId {
+        let (node_id, _) = fs.resolve_path(pid, path).expect("resolve path");
+        let nodes = fs.nodes.lock().unwrap();
+        match &nodes.get(&node_id).expect("node exists").kind {
+            NodeKind::File { streams } => streams.get("").expect("stream exists").content_id,
+            _ => panic!("expected file node"),
         }
     }
 
@@ -4784,6 +4878,39 @@ mod tests {
         assert_eq!(&buffer[..], &content[..13]);
 
         fs.close(&pid, handle).expect("Failed to close handle");
+    }
+
+    #[test]
+    fn test_snapshot_write_only_clones_once_per_stream() {
+        let fs = create_test_fs();
+        let pid = create_test_pid(&fs);
+
+        let handle = fs.create(&pid, "/cow.txt".as_ref(), &rw_create()).expect("create cow file");
+        fs.write(&pid, handle, 0, b"seed").expect("seed write");
+
+        let before_snapshot = default_stream_content_id(&fs, &pid, "/cow.txt".as_ref());
+        fs.snapshot_create_for_pid(&pid, Some("snap")).expect("snapshot");
+        let after_snapshot = default_stream_content_id(&fs, &pid, "/cow.txt".as_ref());
+        assert_eq!(
+            before_snapshot, after_snapshot,
+            "snapshot should not eagerly clone stream content"
+        );
+
+        fs.write(&pid, handle, 0, b"alpha").expect("first write");
+        let after_first_write = default_stream_content_id(&fs, &pid, "/cow.txt".as_ref());
+        assert_ne!(
+            after_snapshot, after_first_write,
+            "first write after snapshot must clone stream"
+        );
+
+        fs.write(&pid, handle, 5, b"beta").expect("second write");
+        let after_second_write = default_stream_content_id(&fs, &pid, "/cow.txt".as_ref());
+        assert_eq!(
+            after_first_write, after_second_write,
+            "subsequent writes should stay on the cloned stream"
+        );
+
+        fs.close(&pid, handle).expect("close cow handle");
     }
 
     #[test]
