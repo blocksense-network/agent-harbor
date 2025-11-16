@@ -342,12 +342,12 @@ run_suite() {
   mount_agentfs
   prepare_agentfs_workspace
   run_throughput_tests "agentfs" "$AGENTFS_WORKDIR"
-  run_metadata_test "agentfs" "$AGENTFS_WORKDIR/metadata" 2000
+  run_metadata_test "agentfs" "$AGENTFS_WORKDIR/metadata" "${METADATA_ENTRIES:-2000}"
   run_concurrent_writes "agentfs" "$AGENTFS_WORKDIR" 4 64
   log "Preparing baseline directory $BASELINE_DIR"
   mkdir -p "$BASELINE_DIR"
   run_throughput_tests "baseline" "$BASELINE_DIR"
-  run_metadata_test "baseline" "$BASELINE_DIR/metadata" 2000
+  run_metadata_test "baseline" "$BASELINE_DIR/metadata" "${METADATA_ENTRIES:-2000}"
   run_concurrent_writes "baseline" "$BASELINE_DIR" 4 64
 }
 
