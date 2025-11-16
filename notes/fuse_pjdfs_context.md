@@ -32,19 +32,21 @@
      - `logs/fuse-performance-20251116-120715/summary.json` – `AGENTFS_FUSE_MAX_BACKGROUND=128`, `AGENTFS_FUSE_WRITE_THREADS=8`, `AGENTFS_FUSE_MAX_WRITE=8388608` (seq_write ~1.25×, metadata 1.18×; effectively identical within timing jitter).
      - `logs/fuse-performance-20251116-122208/summary.json` – sequential workload bumped to 8 GiB and the harness now drops host page caches before each read so seq_read takes ~0.5 s instead of ~0.02 s; ratios stay ~1.0× on this box because both AgentFS and the baseline saturate the same NVMe bandwidth, but we finally have a measurement that lasts long enough to catch regressions.
    - Earlier reference runs remain documented under `logs/fuse-performance-20251116-110756/…-111825/` for regression tracking.
-9. **Transport redesign sketch**
-   - Since perf shows the crossbeam channel + `Vec::extend_from_slice` as the bottleneck, the next experiment is to split transport responsibilities behind a trait:
-     1. Introduce `FsCoreTransport` with methods for `open`, `read`, `write`, `fsync`, etc.
-     2. Provide an in-process transport that keeps FsCore in the host but replaces the channel with a lock-free ring buffer (e.g., `crossbeam_deque`) backed by a slab allocator of page-aligned blocks; workers enqueue completions instead of sending replies over a pipe.
-     3. Future-proof the trait so we can swap in a shared-memory transport (memfd-backed queue + doorbells) if we _do_ need to move FsCore back into a helper process.
-   - This design removes the `ChildStdin`-style IPC entirely for the common case and should cut the memmove/backoff costs highlighted above.
+9. **pjdfstest full-suite refresh**
+   - Re-ran `just test-pjdfstest-full` after the FsCore/FUSE fixes. The entire suite now passes (only the upstream `TODO passed` lines remain), so the new reference artifacts live under `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` and the baseline diff was updated accordingly.
+10. **Transport redesign sketch**
+
+- Since perf shows the crossbeam channel + `Vec::extend_from_slice` as the bottleneck, the next experiment is to split transport responsibilities behind a trait:
+  1. Introduce `FsCoreTransport` with methods for `open`, `read`, `write`, `fsync`, etc.
+  2. Provide an in-process transport that keeps FsCore in the host but replaces the channel with a lock-free ring buffer (e.g., `crossbeam_deque`) backed by a slab allocator of page-aligned blocks; workers enqueue completions instead of sending replies over a pipe.
+  3. Future-proof the trait so we can swap in a shared-memory transport (memfd-backed queue + doorbells) if we _do_ need to move FsCore back into a helper process.
+- This design removes the `ChildStdin`-style IPC entirely for the common case and should cut the memmove/backoff costs highlighted above.
 
 ## Pending / Next Steps
 
 1. **Control-plane write semantics** – FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
-2. **pjdfstest regression gating (F5)** – Baseline failures live in `specs/Public/AgentFS/pjdfstest.baseline.json`. Start fixing chmod/chown/ftruncate/utimens failures and keep growing the baseline so the diff stays meaningful.
-3. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, both AgentFS and the baseline saturate NVMe bandwidth (even with the new 8 GiB workload and cache drops), so measurement noise still hides small deltas. Keep logging every run and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
-4. **pjdfstest fixes + CI** – With the pjdfstest harness hooked into GitHub Actions, the last unchecked box under F5 is reducing failures (chmod/chown/utimens) and updating `specs/Public/AgentFS/pjdfstest.baseline.json` accordingly.
+2. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, both AgentFS and the baseline saturate NVMe bandwidth (even with the new 8 GiB workload and cache drops), so measurement noise still hides small deltas. Keep logging every run and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
+3. **pjdfstest maintenance** – Keep running `just test-pjdfstest-full` when touching metadata/path semantics so the new “all green” baseline stays enforced by CI and we catch regressions early.
 
 ## Useful Paths & Logs
 
@@ -56,7 +58,7 @@
   - `logs/fuse-performance-20251116-122208/{…}` – sequential workload increased to 8 GiB with explicit cache drops so seq_read runs ~0.5 s instead of ~20 ms.
   - Historical runs: `logs/fuse-performance-20251116-110035/`, `…-110756/`, `…-110953/`, `…-111810/`, etc.
 - Manual perf attaches: `logs/perf-profiles/agentfs-perf-profile-20251116-115242/` (base) and `…-115426/` (call stacks) plus prior traces in `logs/perf-profiles/agentfs-concurrent-*/`.
-- pjdfstest full suite: `logs/pjdfstest-full-20251115-135821/{pjdfstest.log,summary.json}`.
+- pjdfstest full suite: `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` (previous run from Nov 15 kept for historical reference under `logs/pjdfstest-full-20251115-135821/`).
 - Other harnesses (Nov 15): `logs/fuse-mount-cycle-20251115-102831`, `logs/fuse-mount-failures-20251115-104618`, `logs/fuse-mount-concurrent-20251115-104626`, `logs/fuse-basic-ops-20251115-103631`, `logs/fuse-negative-ops-20251115-104635`, `logs/fuse-overlay-ops-20251115-104639`, `logs/pjdfs-subset-20251115-104653`.
 
 ## Commands Recap
