@@ -13,7 +13,7 @@ use agentfs_core::{
 };
 use agentfs_proto::messages::{StatData, TimespecData};
 use agentfs_proto::*;
-use crossbeam_channel::{Sender, unbounded};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
     ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
@@ -132,10 +132,8 @@ impl WriteWorkerPool {
         let (tx, rx) = unbounded();
         let mut handles = Vec::with_capacity(thread_count);
         for _ in 0..thread_count {
-            let receiver: crossbeam_channel::Receiver<WriteJob> = rx.clone();
+            let receiver: Receiver<WriteJob> = rx.clone();
             let core_clone = Arc::clone(&core);
-            let inflight_clone = Arc::clone(&inflight);
-            let max_clone = Arc::clone(&max_inflight);
             handles.push(thread::spawn(move || {
                 while let Ok(mut job) = receiver.recv() {
                     let result = core_clone.write(&job.pid, job.handle_id, job.offset, &job.data);
@@ -815,6 +813,73 @@ fn write_worker_count() -> usize {
     }
 }
 
+const DEFAULT_MAX_WRITE_BYTES: u32 = 4 * 1024 * 1024;
+const DEFAULT_MAX_BACKGROUND: u16 = 64;
+const MAX_SUPPORTED_WRITE_BYTES: u32 = 16 * 1024 * 1024;
+
+fn desired_max_write_bytes() -> u32 {
+    std::env::var("AGENTFS_FUSE_MAX_WRITE")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .map(|value| value.min(MAX_SUPPORTED_WRITE_BYTES))
+        .unwrap_or(DEFAULT_MAX_WRITE_BYTES)
+}
+
+fn desired_max_background() -> u16 {
+    std::env::var("AGENTFS_FUSE_MAX_BACKGROUND")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_MAX_BACKGROUND)
+}
+
+fn configure_max_write(config: &mut fuser::KernelConfig) -> (u32, bool) {
+    let desired = desired_max_write_bytes();
+    match config.set_max_write(desired) {
+        Ok(_) => (desired, false),
+        Err(limit) => {
+            let _ = config.set_max_write(limit);
+            (limit, true)
+        }
+    }
+}
+
+fn configure_max_background(config: &mut fuser::KernelConfig) -> (u16, bool) {
+    let desired = desired_max_background();
+    match config.set_max_background(desired) {
+        Ok(_) => (desired, false),
+        Err(limit) => {
+            let _ = config.set_max_background(limit);
+            (limit, true)
+        }
+    }
+}
+
+fn desired_congestion_threshold(max_background: u16) -> u16 {
+    let numerator = 3u32 * max_background as u32;
+    let denominator = 4u32;
+    let mut value = (numerator / denominator).max(1) as u16;
+    if value == 0 {
+        value = 1;
+    }
+    value
+}
+
+fn configure_congestion_threshold(
+    config: &mut fuser::KernelConfig,
+    max_background: u16,
+) -> (u16, bool) {
+    let desired = desired_congestion_threshold(max_background);
+    match config.set_congestion_threshold(desired) {
+        Ok(_) => (desired, false),
+        Err(limit) => {
+            let _ = config.set_congestion_threshold(limit);
+            (limit, true)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -861,9 +926,45 @@ mod tests {
 }
 
 impl fuser::Filesystem for AgentFsFuse {
-    fn init(&mut self, _req: &Request, _config: &mut fuser::KernelConfig) -> Result<(), c_int> {
-        // Cache configuration is handled via mount options in main.rs
-        info!("AgentFS FUSE adapter initialized");
+    fn init(&mut self, _req: &Request, config: &mut fuser::KernelConfig) -> Result<(), c_int> {
+        let (max_write, clamped_write) = configure_max_write(config);
+        if clamped_write {
+            warn!(
+                "Kernel limited max_write to {} bytes (desired {}).",
+                max_write,
+                desired_max_write_bytes()
+            );
+        } else {
+            info!("Configured FUSE max_write={} bytes", max_write);
+        }
+
+        let (max_background, clamped_background) = configure_max_background(config);
+        if clamped_background {
+            warn!(
+                "Kernel limited max_background to {} (desired {}).",
+                max_background,
+                desired_max_background()
+            );
+        } else {
+            info!("Configured FUSE max_background={}", max_background);
+        }
+
+        let (congestion, clamped_congestion) =
+            configure_congestion_threshold(config, max_background);
+        if clamped_congestion {
+            warn!(
+                "Kernel limited congestion_threshold to {} (derived from max_background={}).",
+                congestion, max_background
+            );
+        } else {
+            info!("Configured FUSE congestion_threshold={}", congestion);
+        }
+
+        info!(
+            "AgentFS FUSE adapter initialized (write_threads={}, trace_writes={})",
+            self.write_pool.handles.len(),
+            self.trace_writes
+        );
         Ok(())
     }
 
