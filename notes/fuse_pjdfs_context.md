@@ -1,15 +1,16 @@
-# FUSE Adapter Status – Nov 19 2025 (handoff)
+# FUSE Adapter Status – Nov 20 2025 (handoff)
 
 <!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd siphash setid FOWNER noprof subtest subtests -->
 
-## Latest (Nov 19 2025)
+## Latest (Nov 20 2025)
 
-- Working branch remains `feat/agentfs-fuse-f5`; pjdfstest compliance is effectively complete with the current harness reporting only the upstream `chown/00.t` TODO lines and the kernel-imposed `chmod/12.t` nosuid mismatch.
-- Harness workflow (per AGENTS.md / user): continue fixing any future pjdfstest regressions one-by-one via single `prove` runs while mounted with `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, and only rerun `AGENTFS_FUSE_ALLOW_OTHER=1 just test-pjdfstest-full /tmp/agentfs` after each targeted fix (commits allowed, pushes still blocked).
-- `mount-fuse.sh` now enables `--allow-other` by default; set `AGENTFS_FUSE_ALLOW_OTHER=0` if a local experiment needs to restrict access to the mounting user.
-- Latest logs: `logs/pjdfstest-full-20251119-023733/summary.json` (manual full-suite recheck) and `logs/pjdfstest-full-20251119-023930/summary.json` (regression harness) match the refreshed `specs/Public/AgentFS/pjdfstest.baseline.json` verbatim.
-- Known exception: `chmod/12.t` continues to fail because Linux refuses writes on nosuid FUSE mounts before AgentFS can clear SUID bits. `scripts/test-pjdfstest-full.sh` now remounts via `sudo` for the SUID subset so we capture the privileged output as well, but the kernel still responds with `EPERM` (see `logs/pjdfstest-full-20251119-072207/fuse-host-priv.log`). Capturing runs in `notes` + `specs` remains critical until we have a truly privileged helper or kernel passthrough.
-- Permission tracing stays available under `/tmp/agentfs-*.log` for any targeted reproduction; synthetic PID logging is still enabled so `pid=0` events map to unique pseudo-PIDs per `(uid,gid)` pair.
+- Working branch is now `feat/agentfs-fuse-f7` (F8 delivered); pjdfstest compliance remains stable. Only the upstream `chown/00.t` TODOs and the kernel-imposed `chmod/12.t` failures appear in the comparison to `specs/Public/AgentFS/pjdfstest.baseline.json`.
+- Harness workflow: fix regressions individually via `prove` with the filesystem mounted (`AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`), then rerun `just test-pjdfstest-full` to regenerate `logs/pjdfstest-full-<ts>/summary.json` before updating the baseline. CI now runs the full suite automatically in the `fuse-harness` job, so keep new `summary.json` files small and deterministic.
+- `scripts/test-pjdfstest-full.sh` handles two passes:
+  1. Main suite under sudo (236 files, `HARNESS_OPTIONS=j32`).
+  2. Privileged subset for `chmod/12.t` via a remount under sudo (still expected to fail because Linux blocks nosuid writes before we can clear SUID bits; we keep the output for auditing).
+- Latest log sets (Nov 20): `logs/pjdfstest-full-20251120-041419/summary.json` (main pass) and `logs/pjdfstest-full-20251120-041419/fuse-host-priv.log` (privileged remount). Both match the baseline aside from the known `chmod/12.t` entries.
+- Sticky bit/permission tracing: `/tmp/agentfs-*/fuse-host.log` still records synthetic PID mappings, so debugging permission events remains straightforward.
 
 ## Current Scope
 
