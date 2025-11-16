@@ -62,7 +62,13 @@ fn main() -> Result<()> {
     info!("Starting AgentFS FUSE Host");
     info!("Mount point: {}", args.mount_point.display());
 
-    let config = load_config(args.config)?;
+    let mut config = load_config(args.config)?;
+    if std::env::var("AGENTFS_FUSE_WRITEBACK_CACHE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        config.cache.writeback_cache = true;
+    }
     info!("Configuration loaded: {:?}", config);
 
     #[cfg(all(feature = "fuse", target_os = "linux"))]
