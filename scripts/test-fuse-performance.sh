@@ -15,6 +15,7 @@ DEFAULT_MOUNTPOINT="/tmp/agentfs-perf-$TS"
 MOUNTPOINT="${1:-$DEFAULT_MOUNTPOINT}"
 BASELINE_DIR="$RUN_DIR/baseline"
 SKIP_FUSE_BUILD="${SKIP_FUSE_BUILD:-}"
+SKIP_THRESHOLD_CHECK="${SKIP_THRESHOLD_CHECK:-}"
 TIME_BIN="$(command -v time || command -v /usr/bin/time || true)"
 AGENTFS_WORKDIR="$MOUNTPOINT/perf"
 FUSE_CONFIG="$RUN_DIR/fuse-config.json"
@@ -23,6 +24,10 @@ USER_ID="$(id -u)"
 GROUP_ID="$(id -g)"
 SEQ_BLOCK_SIZE_BYTES=${SEQ_BLOCK_SIZE_BYTES:-$((4 * 1024 * 1024))}
 SEQ_TOTAL_BYTES=${SEQ_TOTAL_BYTES:-$((8 * 1024 * 1024 * 1024))}
+MIN_SEQ_WRITE_RATIO=${MIN_SEQ_WRITE_RATIO:-0.75}
+MIN_SEQ_READ_RATIO=${MIN_SEQ_READ_RATIO:-0.75}
+MIN_METADATA_RATIO=${MIN_METADATA_RATIO:-0.5}
+MIN_CONCURRENT_RATIO=${MIN_CONCURRENT_RATIO:-0.5}
 mkdir -p "$RUN_DIR" "$BASELINE_DIR" "$BACKSTORE_DIR"
 
 log() {
@@ -378,6 +383,42 @@ PY
   log "Performance summary written to $SUMMARY_FILE"
 }
 
+check_thresholds() {
+  python3 - "$SUMMARY_FILE" "$MIN_SEQ_WRITE_RATIO" "$MIN_SEQ_READ_RATIO" "$MIN_METADATA_RATIO" "$MIN_CONCURRENT_RATIO" <<'PY'
+import json
+import sys
+
+summary = json.loads(open(sys.argv[1]).read())
+thresholds = {
+    "seq_write": float(sys.argv[2]),
+    "seq_read": float(sys.argv[3]),
+    "metadata": float(sys.argv[4]),
+    "concurrent_write": float(sys.argv[5]),
+}
+failures = []
+for entry in summary:
+    test = entry["test"]
+    required = thresholds.get(test)
+    if required is None:
+        continue
+    ratio = entry.get("ratio")
+    if ratio is None or ratio < required:
+        failures.append(f"{test}: ratio={ratio} < required {required}")
+
+if failures:
+    print("Performance regression detected:", file=sys.stderr)
+    for item in failures:
+        print(f"  - {item}", file=sys.stderr)
+    sys.exit(1)
+PY
+  log "Performance ratios cleared minimum thresholds"
+}
+
 run_suite
 summarize_results
+if [[ -z "$SKIP_THRESHOLD_CHECK" ]]; then
+  check_thresholds
+else
+  log "SKIP_THRESHOLD_CHECK set; skipping ratio enforcement"
+fi
 log "Performance benchmarks complete. Results stored in $RUN_DIR"
