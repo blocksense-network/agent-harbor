@@ -20,6 +20,9 @@ pub trait StorageBackend: Send + Sync {
     fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()>;
     fn allocate(&self, initial: &[u8]) -> FsResult<ContentId>;
     fn clone_cow(&self, base: ContentId) -> FsResult<ContentId>;
+    fn sync(&self, _id: ContentId, _data_only: bool) -> FsResult<()> {
+        Ok(())
+    }
 
     /// Mark content immutable so further writes are prevented.
     fn seal(&self, id: ContentId) -> FsResult<()>; // for snapshot immutability
@@ -264,9 +267,20 @@ impl StorageBackend for HostFsBackend {
             .open(&path)?;
         use std::io::{Seek, Write};
         file.seek(std::io::SeekFrom::Start(offset))?;
-        let n = file.write(data)?;
+        file.write_all(data)?;
         file.flush()?;
-        Ok(n)
+        Ok(data.len())
+    }
+
+    fn sync(&self, id: ContentId, data_only: bool) -> FsResult<()> {
+        let path = self.content_path(id);
+        let file = std::fs::OpenOptions::new().read(true).write(true).open(&path)?;
+        if data_only {
+            file.sync_data()?;
+        } else {
+            file.sync_all()?;
+        }
+        Ok(())
     }
 
     fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()> {

@@ -325,6 +325,31 @@ mod tests {
     }
 
     #[test]
+    fn test_fsync_on_regular_file() {
+        let core = test_core();
+        let pid = core.register_process(1000, 1000, 0, 0);
+        core.mkdir(&pid, "/sync".as_ref(), 0o755).unwrap();
+
+        let handle = core.create(&pid, "/sync/file.bin".as_ref(), &rw_create()).unwrap();
+        core.write(&pid, handle, 0, b"sync me").unwrap();
+
+        assert!(core.fsync(&pid, handle, true).is_ok());
+        core.close(&pid, handle).unwrap();
+    }
+
+    #[test]
+    fn test_fsync_rejects_directory_handles() {
+        let core = test_core();
+        let pid = core.register_process(1000, 1000, 0, 0);
+        core.mkdir(&pid, "/dirs".as_ref(), 0o755).unwrap();
+
+        let dir_handle = core.opendir(&pid, "/dirs".as_ref()).unwrap();
+        let result = core.fsync(&pid, dir_handle, false);
+        assert!(matches!(result, Err(FsError::InvalidArgument)));
+        core.closedir(&pid, dir_handle).unwrap();
+    }
+
+    #[test]
     fn test_directory_operations() {
         let core = test_core();
         let pid = core.register_process(1000, 1000, 0, 0);
