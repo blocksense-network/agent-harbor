@@ -156,7 +156,10 @@ for line in log_path.read_text().splitlines():
     elif line.startswith("Percent of CPU this job got:"):
         fields["cpu_percent"] = float(line.split(":", 1)[1].strip().rstrip("%"))
     elif line.startswith("Elapsed (wall clock) time"):
-        value = line.rsplit(":", 1)[1].strip()
+        if ": " in line:
+            value = line.split(": ", 1)[1].strip()
+        else:
+            value = line.rsplit(":", 1)[1].strip()
         parts = value.split(":")
         if len(parts) == 3:
             h, m, s = parts
@@ -268,7 +271,11 @@ for line in log_path.read_text().splitlines():
     if line.startswith("Percent of CPU this job got:"):
         fields["cpu_percent"] = float(line.split(":", 1)[1].strip().rstrip("%"))
     elif line.startswith("Elapsed (wall clock) time"):
-        parts = line.rsplit(":", 1)[1].strip().split(":")
+        if ": " in line:
+            value = line.split(": ", 1)[1].strip()
+        else:
+            value = line.rsplit(":", 1)[1].strip()
+        parts = value.split(":")
         if len(parts) == 3:
             h, m, s = parts
         elif len(parts) == 2:

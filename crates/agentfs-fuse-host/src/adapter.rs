@@ -32,7 +32,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
 
 /// Special inode for the .agentfs directory
@@ -83,6 +83,12 @@ pub struct AgentFsFuse {
     next_lower_fh: u64,
     /// Explicit whiteouts for lower-only entries
     whiteouts: HashSet<Vec<u8>>,
+    /// Whether to emit per-write latency tracing
+    trace_writes: bool,
+    /// Number of in-flight write requests (only tracked when tracing enabled)
+    inflight_writes: u64,
+    /// Max observed concurrent write depth
+    max_write_depth: u64,
 }
 
 impl AgentFsFuse {
@@ -106,6 +112,9 @@ impl AgentFsFuse {
         let attr_ttl = Duration::from_millis(config.cache.attr_ttl_ms as u64);
         let entry_ttl = Duration::from_millis(config.cache.entry_ttl_ms as u64);
         let negative_ttl = Duration::from_millis(config.cache.negative_ttl_ms as u64);
+        let trace_writes = std::env::var("AGENTFS_FUSE_TRACE_WRITES")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
         Ok(Self {
             core,
@@ -121,6 +130,9 @@ impl AgentFsFuse {
             lower_handles: HashMap::new(),
             next_lower_fh: LOWER_HANDLE_BASE,
             whiteouts: HashSet::new(),
+            trace_writes,
+            inflight_writes: 0,
+            max_write_depth: 0,
         })
     }
 
@@ -1135,8 +1147,46 @@ impl fuser::Filesystem for AgentFsFuse {
 
         let handle_id = HandleId(fh);
         let client_pid = self.get_client_pid(req);
+        let mut write_trace = None;
+        if self.trace_writes {
+            self.inflight_writes += 1;
+            if self.inflight_writes > self.max_write_depth {
+                self.max_write_depth = self.inflight_writes;
+            }
+            write_trace = Some((req.unique(), ino, fh, offset, data.len(), Instant::now()));
+            debug!(
+                target: "agentfs::write",
+                event = "start",
+                req_id = req.unique(),
+                ino,
+                fh,
+                offset,
+                size = data.len(),
+                inflight = self.inflight_writes,
+                max_inflight = self.max_write_depth
+            );
+        }
 
-        match self.core.write(&client_pid, handle_id, offset as u64, data) {
+        let result = self.core.write(&client_pid, handle_id, offset as u64, data);
+
+        if let Some((req_id, log_ino, log_fh, log_offset, log_size, start)) = write_trace {
+            let duration = start.elapsed();
+            self.inflight_writes = self.inflight_writes.saturating_sub(1);
+            debug!(
+                target: "agentfs::write",
+                event = "finish",
+                req_id,
+                ino = log_ino,
+                fh = log_fh,
+                offset = log_offset,
+                size = log_size,
+                duration_ms = duration.as_secs_f64() * 1000.0,
+                inflight = self.inflight_writes,
+                max_inflight = self.max_write_depth
+            );
+        }
+
+        match result {
             Ok(bytes_written) => {
                 reply.written(bytes_written as u32);
             }
@@ -1639,14 +1689,42 @@ impl fuser::Filesystem for AgentFsFuse {
         }
     }
 
-    fn fsync(&mut self, _req: &Request, ino: u64, fh: u64, datasync: bool, reply: ReplyEmpty) {
+    fn fsync(&mut self, req: &Request, ino: u64, fh: u64, datasync: bool, reply: ReplyEmpty) {
         if ino == CONTROL_FILE_INO {
             reply.ok(); // No-op for control file
             return;
         }
 
-        // For now, fsync is not implemented - no-op (assume data is durable)
-        reply.ok();
+        if let Some(lower) = self.lower_handles.get(&fh) {
+            let result = if datasync {
+                lower.file.sync_data()
+            } else {
+                lower.file.sync_all()
+            };
+
+            match result {
+                Ok(()) => reply.ok(),
+                Err(err) => {
+                    if let Some(errno) = err.raw_os_error() {
+                        reply.error(errno);
+                    } else {
+                        reply.error(EIO);
+                    }
+                }
+            }
+            return;
+        }
+
+        let handle_id = HandleId(fh);
+        let client_pid = self.get_client_pid(req);
+
+        match self.core.fsync(&client_pid, handle_id, datasync) {
+            Ok(()) => reply.ok(),
+            Err(FsError::AccessDenied) => reply.error(EACCES),
+            Err(FsError::InvalidArgument) => reply.error(EINVAL),
+            Err(FsError::NotFound) => reply.error(ENOENT),
+            Err(_) => reply.error(EIO),
+        }
     }
 
     fn flush(&mut self, _req: &Request, ino: u64, fh: u64, lock_owner: u64, reply: ReplyEmpty) {

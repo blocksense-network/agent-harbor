@@ -2433,6 +2433,50 @@ impl FsCore {
         }
     }
 
+    pub fn fsync(&self, pid: &PID, handle_id: HandleId, data_only: bool) -> FsResult<()> {
+        let (node_id, stream_name) = {
+            let handles = self.handles.lock().unwrap();
+            let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
+
+            match &handle.kind {
+                HandleType::File { options, .. } => {
+                    if !options.write {
+                        return Err(FsError::AccessDenied);
+                    }
+                    (handle.node_id, Self::get_stream_name(handle).to_string())
+                }
+                HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        let user = if self.config.security.enforce_posix_permissions {
+            self.user_for_process(pid)
+        } else {
+            None
+        };
+
+        let content_id = {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+
+            if let Some(user) = &user {
+                if !self.allowed_for_user(node, user, false, true, false) {
+                    return Err(FsError::AccessDenied);
+                }
+            }
+
+            match &node.kind {
+                NodeKind::File { streams } => {
+                    let (content_id, _) = streams.get(&stream_name).ok_or(FsError::NotFound)?;
+                    *content_id
+                }
+                _ => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        self.storage.sync(content_id, data_only)
+    }
+
     /// Check if content is shared between branches/snapshots
     fn is_content_shared(&self, _content_id: ContentId) -> bool {
         // For simplicity, assume all content needs CoW for now
