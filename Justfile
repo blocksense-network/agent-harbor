@@ -35,6 +35,10 @@ clean:
     -e .pre-commit-config.yaml \
     -- {{root-dir}}
 
+reinstall-pre-commit-hooks:
+    git config --unset-all core.hooksPath
+    pre-commit install -f --hook-type pre-commit
+
 # Check Rust code for compilation errors
 check:
     cargo check --workspace
