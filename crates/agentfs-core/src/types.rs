@@ -161,9 +161,13 @@ impl HandleId {
 #[derive(Clone, Copy, Debug)]
 pub struct FileTimes {
     pub atime: i64,
+    pub atime_nsec: u32,
     pub mtime: i64,
+    pub mtime_nsec: u32,
     pub ctime: i64,
+    pub ctime_nsec: u32,
     pub birthtime: i64,
+    pub birthtime_nsec: u32,
 }
 
 /// File permissions
@@ -206,12 +210,13 @@ pub struct Attributes {
     pub mode_user: FileMode,
     pub mode_group: FileMode,
     pub mode_other: FileMode,
+    pub mode_bits: u32,
 }
 
 impl Attributes {
     /// Convert the mode fields to a numeric Unix mode
     pub fn mode(&self) -> u32 {
-        let mut mode = 0u32;
+        let mut mode = self.mode_bits & 0o7000;
 
         // Add file type
         if self.is_dir {

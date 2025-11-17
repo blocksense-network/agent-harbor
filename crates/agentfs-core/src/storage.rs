@@ -50,6 +50,8 @@ pub struct InMemoryBackend {
 }
 
 impl InMemoryBackend {
+    const MAX_FILE_BYTES: u64 = 1 << 34; // 16 GiB safeguard for test environments
+
     pub fn new() -> Self {
         Self {
             next_id: Mutex::new(1),
@@ -57,6 +59,13 @@ impl InMemoryBackend {
             refcounts: Mutex::new(HashMap::new()),
             sealed: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn ensure_len_within_limit(len: u64) -> FsResult<()> {
+        if len > Self::MAX_FILE_BYTES || len > usize::MAX as u64 {
+            return Err(FsError::InvalidArgument);
+        }
+        Ok(())
     }
 
     fn get_next_id(&self) -> ContentId {
@@ -107,8 +116,11 @@ impl StorageBackend for InMemoryBackend {
         let mut storage_data = self.data.lock().unwrap();
         let content = storage_data.get_mut(&id).ok_or(FsError::NotFound)?;
 
+        Self::ensure_len_within_limit(offset)?;
         let start = offset as usize;
-        let end = start + data.len();
+        let end_u64 = offset.saturating_add(data.len() as u64);
+        Self::ensure_len_within_limit(end_u64)?;
+        let end = end_u64 as usize;
 
         // Extend the content if necessary
         if end > content.len() {
@@ -120,6 +132,7 @@ impl StorageBackend for InMemoryBackend {
     }
 
     fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()> {
+        Self::ensure_len_within_limit(new_len)?;
         let mut data = self.data.lock().unwrap();
         let content = data.get_mut(&id).ok_or(FsError::NotFound)?;
         content.resize(new_len as usize, 0);

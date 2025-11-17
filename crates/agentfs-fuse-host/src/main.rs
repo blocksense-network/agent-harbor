@@ -83,6 +83,7 @@ fn main() -> Result<()> {
         let mut mount_options = vec![
             fuser::MountOption::FSName("agentfs".to_string()),
             fuser::MountOption::Subtype("agentfs".to_string()),
+            fuser::MountOption::Suid,
         ];
 
         info!(

@@ -1386,7 +1386,15 @@ impl fuser::Filesystem for AgentFsFuse {
                 }
             }
             Err(FsError::AccessDenied) => reply.error(EACCES),
-            Err(_) => reply.error(EIO),
+            Err(err) => {
+                error!(
+                    target: "agentfs::fuse",
+                    path = ?path,
+                    ?err,
+                    "open failed"
+                );
+                reply.error(EIO);
+            }
         }
     }
 
@@ -1702,16 +1710,31 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        let final_mode = mode & 0o7777;
+
         match self.core.create(&client_pid, path, &options) {
-            Ok(handle_id) => match self.core.getattr(&client_pid, path) {
-                Ok(attr) => {
-                    let ino = self.get_or_alloc_inode(&full_path);
-                    let fuse_attr = self.attr_to_fuse(&attr, ino);
-                    self.track_handle(ino, handle_id.0 as u64, &client_pid);
-                    reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0 as u64, 0);
+            Ok(handle_id) => {
+                if let Err(e) = self.core.set_mode(&client_pid, path, final_mode) {
+                    reply.error(match e {
+                        FsError::AccessDenied => EACCES,
+                        FsError::OperationNotPermitted => EPERM,
+                        FsError::InvalidArgument => EINVAL,
+                        _ => EIO,
+                    });
+                    let _ = self.core.close(&client_pid, handle_id);
+                    return;
                 }
-                Err(_) => reply.error(EIO),
-            },
+
+                match self.core.getattr(&client_pid, path) {
+                    Ok(attr) => {
+                        let ino = self.get_or_alloc_inode(&full_path);
+                        let fuse_attr = self.attr_to_fuse(&attr, ino);
+                        self.track_handle(ino, handle_id.0 as u64, &client_pid);
+                        reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0 as u64, 0);
+                    }
+                    Err(_) => reply.error(EIO),
+                }
+            }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(FsError::AlreadyExists) => reply.error(EEXIST),
             Err(FsError::AccessDenied) => reply.error(EACCES),
