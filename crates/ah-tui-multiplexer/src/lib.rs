@@ -67,20 +67,26 @@ impl<M: Multiplexer> AwMultiplexer<M> {
     /// The split_mode determines how the view is split
     pub fn create_task_layout(&self, config: &LayoutConfig) -> Result<LayoutHandle, AwMuxError> {
         let title = format!("ah-task-{}", config.task_id);
+        let editor_cmd = config.editor_cmd.unwrap_or("bash");
+
+        // Check if this is Tilix - it doesn't support session-based windowing like tmux
+        // For Tilix, we always work within the current terminal window
+        let is_tilix = self.mux.id() == "tilix";
 
         let window_id = match config.split_mode {
-            SplitMode::None => {
-                // Create new window
+            SplitMode::None if !is_tilix => {
+                // Create new window with the editor command (for session-based multiplexers like tmux)
                 let window_opts = WindowOptions {
                     title: Some(&title),
                     cwd: Some(config.working_dir),
-                    profile: None,
+                    profile: Some(editor_cmd), // Pass editor command via profile
                     focus: true,
                 };
                 self.mux.open_window(&window_opts)?
             }
-            SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
-                // Split the current window
+            _ => {
+                // For Tilix or when splitting: work within the current window
+                // Tilix actions (session-add-right, session-add-down) operate on the focused terminal
                 self.mux.current_window()?.ok_or_else(|| {
                     AwMuxError::Layout(
                         "Not running in a multiplexer window, cannot create split view".to_string(),
@@ -91,18 +97,49 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         let mut panes = HashMap::new();
 
-        // The window_id is session:window, the initial pane is session:window.0
-        let editor_pane = format!("{}.0", window_id);
-        let editor_cmd = config.editor_cmd.unwrap_or("bash");
-        self.mux.run_command(
-            &editor_pane,
-            editor_cmd,
-            &CommandOptions {
-                cwd: Some(config.working_dir),
-                env: None,
-            },
-        )?;
-        panes.insert(PaneRole::Editor, editor_pane);
+        // For Tilix, we need to create the first pane explicitly via split
+        // For tmux-like multiplexers, the window already has an initial pane
+        if is_tilix {
+            // Create the first (editor) pane by splitting - this creates it in the current terminal
+            let editor_pane = self.mux.split_pane(
+                None,
+                None,
+                SplitDirection::Horizontal, // Will be adjusted for actual agent split
+                Some(50), // Start with 50/50
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+                Some(editor_cmd),
+            )?;
+            panes.insert(PaneRole::Editor, editor_pane);
+        } else {
+            // For tmux-like multiplexers, use the initial pane in the window
+            let editor_pane = format!("{}.0", window_id);
+            
+            // Try to run the editor command in the existing pane
+            match self.mux.run_command(
+                &editor_pane,
+                editor_cmd,
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+            ) {
+                Ok(()) => {
+                    // Successfully ran command in the pane
+                }
+                Err(MuxError::NotAvailable(_)) => {
+                    // Multiplexer doesn't support run_command - that's okay,
+                    // the command should have been specified during pane/window creation
+                }
+                Err(e) => {
+                    // Other error - propagate it
+                    return Err(e.into());
+                }
+            }
+            panes.insert(PaneRole::Editor, editor_pane);
+        }
 
         // Split for agent pane
         let split_direction = match config.split_mode {

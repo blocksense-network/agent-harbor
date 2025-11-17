@@ -279,10 +279,7 @@ impl TuiArgs {
                 // TODO: Implement ScreenMultiplexer
                 anyhow::bail!("Screen multiplexer is not yet supported");
             }
-            Some(CliMultiplexerArg::Tilix) => {
-                // TODO: Implement TilixMultiplexer
-                anyhow::bail!("Tilix multiplexer is not yet supported");
-            }
+            Some(CliMultiplexerArg::Tilix) => Ok(Box::new(ah_mux::TilixMultiplexer::new()?)),
             Some(CliMultiplexerArg::WindowsTerminal) => {
                 // TODO: Implement WindowsTerminalMultiplexer
                 anyhow::bail!("Windows Terminal multiplexer is not yet supported");
@@ -525,6 +522,7 @@ impl TuiArgs {
             let multiplexer_preference = match multiplexer {
                 Some(CliMultiplexerType::ITerm2) => ah_core::MultiplexerPreference::ITerm2,
                 Some(CliMultiplexerType::Tmux) => ah_core::MultiplexerPreference::Tmux,
+                Some(CliMultiplexerType::Tilix) => ah_core::MultiplexerPreference::Tilix,
                 None => ah_core::MultiplexerPreference::Auto,
                 // For unsupported multiplexers, fall back to auto-detection
                 Some(unsupported) => {
