@@ -23,13 +23,16 @@ use crate::{
     Theme, ViewCache,
     terminal::{self, TerminalConfig},
     view::{self, HitTestRegistry, TuiDependencies, header, modals},
-    view_model::{MouseAction, Msg as ViewModelMsg, ViewModel},
+    view_model::{MouseAction, Msg as ViewModelMsg, ViewModel, input::InputState},
 };
 
 /// Run the dashboard application with injected dependencies
 pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::error::Error>> {
     // Install signal handler for graceful shutdown
     let running = Arc::new(AtomicBool::new(true));
+
+    // Track input state for key event preprocessing
+    let mut input_state = InputState::new();
 
     // Setup terminal with signal handlers
     terminal::setup_terminal(TerminalConfig::default().with_running_flag(running.clone()))?;
@@ -111,15 +114,23 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
 
                 match event {
                     Event::Key(key) => {
+                        // Update input state tracking
+                        input_state.update(&key);
+
+                        // Preprocess key event to handle SHIFT+ENTER -> CTRL+J translation
+                        let processed_key = input_state.preprocess_key_event(key);
+
                         debug!(
-                            key_code = ?key.code,
-                            modifiers = ?key.modifiers,
-                            key_kind = ?key.kind,
+                            original_key_code = ?key.code,
+                            original_modifiers = ?key.modifiers,
+                            processed_key_code = ?processed_key.code,
+                            processed_modifiers = ?processed_key.modifiers,
+                            key_kind = ?processed_key.kind,
                             focus_element = ?view_model.focus_element,
                             "Key event received in dashboard"
                         );
 
-                        if let Err(error) = view_model.update(ViewModelMsg::Key(key)) {
+                        if let Err(error) = view_model.update(ViewModelMsg::Key(processed_key)) {
                             eprintln!("Error handling key event: {}", error);
                         }
 

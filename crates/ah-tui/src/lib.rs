@@ -20,6 +20,9 @@ pub mod view;
 pub mod view_model;
 pub mod viewer;
 
+// Re-export input types for testing and advanced usage
+pub use view_model::input::{InputResult, InputState};
+
 pub use error::*;
 pub use golden::*;
 pub use msg::*;
