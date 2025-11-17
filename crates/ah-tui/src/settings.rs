@@ -1200,7 +1200,7 @@ impl KeymapConfig {
     }
 
     /// Get matchers for a specific operation
-    fn get_matchers(&self, operation: KeyboardOperation) -> Vec<KeyMatcher> {
+    pub fn get_matchers(&self, operation: KeyboardOperation) -> Vec<KeyMatcher> {
         match operation {
             KeyboardOperation::MoveToBeginningOfLine => {
                 self.move_to_beginning_of_line.clone().unwrap_or_default()

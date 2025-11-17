@@ -310,7 +310,7 @@ impl ViewModel {
             // For model selection modals, focus should return to the model picker button
             if let Some(modal) = &self.active_modal {
                 if matches!(modal.modal_type, ModalType::ModelSelection { .. }) {
-                    self.focus_element = DashboardFocusState::DraftTask(0);
+                    self.change_focus(DashboardFocusState::DraftTask(0));
                     if let Some(card) = self.draft_cards.get_mut(0) {
                         card.focus_element = CardFocusElement::ModelSelector;
                     }
@@ -383,20 +383,17 @@ impl ViewModel {
             // For other global focus elements, handle normally
             DashboardFocusState::SettingsButton => {
                 if !self.draft_cards.is_empty() {
-                    self.focus_element = DashboardFocusState::DraftTask(0);
-                    self.needs_redraw = true;
+                    self.change_focus(DashboardFocusState::DraftTask(0));
                     true
                 } else if !self.task_cards.is_empty() {
-                    self.focus_element = DashboardFocusState::FilterBarSeparator;
-                    self.needs_redraw = true;
+                    self.change_focus(DashboardFocusState::FilterBarSeparator);
                     true
                 } else {
                     false // Stay on settings if nothing else
                 }
             }
             _ => {
-                self.focus_element = DashboardFocusState::SettingsButton;
-                self.needs_redraw = true;
+                self.change_focus(DashboardFocusState::SettingsButton);
                 true
             }
         }
@@ -796,20 +793,17 @@ impl ViewModel {
             // For other global focus elements, handle normally
             DashboardFocusState::SettingsButton => {
                 if !self.draft_cards.is_empty() {
-                    self.focus_element = DashboardFocusState::DraftTask(0);
-                    self.needs_redraw = true;
+                    self.change_focus(DashboardFocusState::DraftTask(0));
                     true
                 } else if !self.task_cards.is_empty() {
-                    self.focus_element = DashboardFocusState::FilterBarSeparator;
-                    self.needs_redraw = true;
+                    self.change_focus(DashboardFocusState::FilterBarSeparator);
                     true
                 } else {
                     false // Stay on settings if nothing else
                 }
             }
             _ => {
-                self.focus_element = DashboardFocusState::SettingsButton;
-                self.needs_redraw = true;
+                self.change_focus(DashboardFocusState::SettingsButton);
                 true
             }
         }
@@ -1444,7 +1438,7 @@ impl ViewModel {
 
             // Adjust focus - since we removed index 0 and potentially added a new one at index 0,
             // the focus should remain on index 0
-            self.focus_element = DashboardFocusState::DraftTask(0);
+            self.change_focus(DashboardFocusState::DraftTask(0));
 
             return true; // Success
         }
@@ -1529,7 +1523,7 @@ impl ViewModel {
 
         // Close the modal and return focus to task description
         self.close_modal();
-        self.focus_element = DashboardFocusState::DraftTask(0);
+        self.change_focus(DashboardFocusState::DraftTask(0));
         if let Some(card) = self.draft_cards.get_mut(0) {
             card.focus_element = CardFocusElement::TaskDescription;
         }
@@ -1555,7 +1549,7 @@ impl ViewModel {
                 // Note: create_draft_task uses the ViewModel's workspace_files/workspace_workflows
                 self.draft_cards.push(new_card);
                 let new_index = self.draft_cards.len() - 1;
-                self.focus_element = DashboardFocusState::DraftTask(new_index); // Focus on the new draft task
+                self.change_focus(DashboardFocusState::DraftTask(new_index)); // Focus on the new draft task
                 return true;
             }
         }
@@ -1807,7 +1801,9 @@ pub struct StatusBarViewModel {
 
 /// Main ViewModel containing all presentation state
 pub struct ViewModel {
-    pub focus_element: DashboardFocusState, // Current UI focus state
+    /// Current UI focus state. DO NOT modify directly - use change_focus() instead
+    /// to ensure footer and other dependent state is updated correctly.
+    pub focus_element: DashboardFocusState,
 
     // Modals
     pub active_modal: Option<ModalViewModel>,
@@ -2586,7 +2582,7 @@ impl ViewModel {
                             let modal_type = modal.modal_type.clone();
                             self.apply_modal_selection(modal_type, String::new());
                             // Focus should return to the model picker button
-                            self.focus_element = DashboardFocusState::DraftTask(0);
+                            self.change_focus(DashboardFocusState::DraftTask(0));
                             if let Some(card) = self.draft_cards.get_mut(0) {
                                 card.focus_element = CardFocusElement::ModelSelector;
                             }
@@ -3089,7 +3085,7 @@ impl ViewModel {
                 match self.focus_element {
                     DashboardFocusState::FilterBarLine => {
                         // Move from separator line to first filter control
-                        self.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
+                        self.change_focus(DashboardFocusState::Filter(FilterControl::Repository));
                         return true;
                     }
                     DashboardFocusState::Filter(control) => {
@@ -3099,7 +3095,7 @@ impl ViewModel {
                             FilterControl::Status => FilterControl::Creator,
                             FilterControl::Creator => FilterControl::Repository, // Wrap around
                         };
-                        self.focus_element = DashboardFocusState::Filter(next);
+                        self.change_focus(DashboardFocusState::Filter(next));
                         return true;
                     }
                     DashboardFocusState::DraftTask(_) => {
@@ -3118,7 +3114,7 @@ impl ViewModel {
                 match self.focus_element {
                     DashboardFocusState::FilterBarLine => {
                         // Move from separator line to first filter control
-                        self.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
+                        self.change_focus(DashboardFocusState::Filter(FilterControl::Repository));
                         return true;
                     }
                     DashboardFocusState::Filter(control) => {
@@ -3128,7 +3124,7 @@ impl ViewModel {
                             FilterControl::Status => FilterControl::Repository,
                             FilterControl::Creator => FilterControl::Status,
                         };
-                        self.focus_element = DashboardFocusState::Filter(next);
+                        self.change_focus(DashboardFocusState::Filter(next));
                         return true;
                     }
                     DashboardFocusState::DraftTask(_) => {
@@ -3148,7 +3144,7 @@ impl ViewModel {
                 match self.focus_element {
                     DashboardFocusState::FilterBarLine => {
                         // Move from separator line to first filter control
-                        self.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
+                        self.change_focus(DashboardFocusState::Filter(FilterControl::Repository));
                         return true;
                     }
                     DashboardFocusState::Filter(control) => {
@@ -3158,7 +3154,7 @@ impl ViewModel {
                             FilterControl::Status => FilterControl::Repository,
                             FilterControl::Creator => FilterControl::Status,
                         };
-                        self.focus_element = DashboardFocusState::Filter(next);
+                        self.change_focus(DashboardFocusState::Filter(next));
                         return true;
                     }
                     DashboardFocusState::DraftTask(_) => {
@@ -3177,7 +3173,7 @@ impl ViewModel {
                 }
                 if key.modifiers.contains(ratatui::crossterm::event::KeyModifiers::SHIFT) {
                     if let Some(idx) = self.focused_textarea_index() {
-                        self.focus_element = DashboardFocusState::DraftTask(idx);
+                        self.change_focus(DashboardFocusState::DraftTask(idx));
                         return true;
                     }
                 }
@@ -4793,7 +4789,7 @@ impl ViewModel {
 
         // Focus on the draft task description if not already focused
         if !matches!(self.focus_element, DashboardFocusState::DraftTask(0)) {
-            self.focus_element = DashboardFocusState::DraftTask(0);
+            self.change_focus(DashboardFocusState::DraftTask(0));
         }
 
         // Calculate relative position within textarea with padding awareness
@@ -4940,7 +4936,7 @@ impl ViewModel {
         match action {
             MouseAction::OpenSettings => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::SettingsButton);
-                self.focus_element = DashboardFocusState::SettingsButton;
+                self.change_focus(DashboardFocusState::SettingsButton);
                 self.open_modal(ModalState::Settings);
                 // TODO: Initialize settings form
             }
@@ -4958,31 +4954,31 @@ impl ViewModel {
             }
             MouseAction::SelectFilterBarLine => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::FilterBarLine);
-                self.focus_element = DashboardFocusState::FilterBarLine;
+                self.change_focus(DashboardFocusState::FilterBarLine);
             }
             MouseAction::ActivateRepositoryModal => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::RepositoryButton);
-                self.focus_element = DashboardFocusState::RepositoryButton;
+                self.change_focus(DashboardFocusState::RepositoryButton);
                 self.open_modal(ModalState::RepositorySearch);
             }
             MouseAction::ActivateBranchModal => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::BranchButton);
-                self.focus_element = DashboardFocusState::BranchButton;
+                self.change_focus(DashboardFocusState::BranchButton);
                 self.open_modal(ModalState::BranchSearch);
             }
             MouseAction::ActivateModelModal => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::ModelButton);
-                self.focus_element = DashboardFocusState::ModelButton;
+                self.change_focus(DashboardFocusState::ModelButton);
                 self.open_modal(ModalState::ModelSearch);
             }
             MouseAction::LaunchTask => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
-                self.focus_element = DashboardFocusState::DraftTask(0);
+                self.change_focus(DashboardFocusState::DraftTask(0));
                 self.launch_task(0, ah_core::SplitMode::None, false, None, None);
             }
             MouseAction::FocusDraftTextarea(_idx) => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
-                self.focus_element = DashboardFocusState::DraftTask(0);
+                self.change_focus(DashboardFocusState::DraftTask(0));
             }
             MouseAction::AutocompleteSelect(index) => {
                 if self.autocomplete.is_open() {
@@ -5057,24 +5053,70 @@ impl ViewModel {
 
     /// Update the selection state in task cards based on current focus_element
 
+    /// Get the active minor modes for the current focus state and modal state
+    fn get_active_minor_modes(&self) -> Vec<&'static crate::view_model::input::InputMinorMode> {
+        use crate::view_model::input::minor_modes;
+
+        let mut modes = Vec::new();
+
+        // Always include standard navigation
+        modes.push(&minor_modes::STANDARD_NAVIGATION_MODE);
+
+        match (self.focus_element, self.modal_state) {
+            // Modal contexts
+            (_, ModalState::RepositorySearch)
+            | (_, ModalState::BranchSearch)
+            | (_, ModalState::ModelSearch)
+            | (_, ModalState::Settings) => {
+                modes.push(&minor_modes::SELECTION_PROMINENT_MODE);
+            }
+
+            // Draft textarea focused
+            (DashboardFocusState::DraftTask(_), ModalState::None) => {
+                modes.push(&minor_modes::TEXT_EDITING_PROMINENT_MODE);
+            }
+
+            // Navigation contexts (task feed, draft card selected, active/completed tasks)
+            _ => {
+                modes.push(&minor_modes::NAVIGATION_PROMINENT_MODE);
+            }
+        }
+
+        modes
+    }
+
+    /// Create footer shortcuts from the prominent operations of active minor modes
+    fn create_footer_from_minor_modes(&self) -> FooterViewModel {
+        use crate::settings::KeyboardShortcut;
+
+        let active_modes = self.get_active_minor_modes();
+        let mut shortcuts = Vec::new();
+
+        // Collect all prominent operations from active modes
+        for mode in active_modes {
+            for &operation in mode.prominent_operations() {
+                // Get the key bindings for this operation from settings
+                let bindings = self.settings.keymap().get_matchers(operation);
+                if !bindings.is_empty() {
+                    shortcuts.push(KeyboardShortcut::new(operation, bindings));
+                }
+            }
+        }
+
+        FooterViewModel { shortcuts }
+    }
+
     /// Update the footer based on current focus state
     pub fn update_footer(&mut self) {
-        let focused_draft = self.get_focused_draft_card().map(|card| DraftTask {
-            id: card.id.clone(),
-            description: card.description.lines().join("\n"),
-            repository: card.repository.clone(),
-            branch: card.branch.clone(),
-            selected_agents: card.selected_agents.clone(),
-            created_at: card.created_at.clone(),
-        });
-        self.footer = create_footer_view_model(
-            focused_draft.as_ref(),
-            self.focus_element,
-            self.modal_state,
-            &self.settings,
-            self.word_wrap_enabled,
-            self.show_autocomplete_border,
-        );
+        self.footer = self.create_footer_from_minor_modes();
+    }
+
+    /// Change the current focus state and update dependent UI elements
+    /// This should be used instead of directly setting focus_element
+    pub fn change_focus(&mut self, new_focus: DashboardFocusState) {
+        self.focus_element = new_focus;
+        self.update_footer();
+        self.needs_redraw = true;
     }
 
     /// Open a modal dialog
