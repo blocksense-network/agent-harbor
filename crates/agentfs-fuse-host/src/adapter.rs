@@ -17,6 +17,7 @@ use crossbeam_queue::SegQueue;
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
     ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
+    consts::FOPEN_DIRECT_IO,
 };
 use libc::{
     EACCES, EBADF, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS, ENOTDIR,
@@ -285,6 +286,8 @@ pub struct AgentFsFuse {
     handle_index: HashMap<u64, (u64, u32)>,
     /// Per-handle write back state
     handle_write_states: HashMap<u64, Arc<WriteHandleState>>,
+    /// If true, force DIRECT_IO on opened files to bypass the kernel page cache
+    force_direct_io: bool,
     /// Lower pass-through handles
     lower_handles: HashMap<u64, LowerHandle>,
     /// Next pass-through handle id
@@ -307,6 +310,9 @@ impl AgentFsFuse {
         config.security.enforce_posix_permissions = true;
         // pjdfstest expects uid 0 to bypass sticky/exec bits so cleanup steps succeed.
         config.security.root_bypass_permissions = true;
+        let force_direct_io = std::env::var("AGENTFS_FUSE_DIRECT_IO")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
         let core = Arc::new(FsCore::new(config.clone())?);
         let mut inodes = HashMap::new();
         let mut paths = HashMap::new();
@@ -342,6 +348,7 @@ impl AgentFsFuse {
             inode_handles: HashMap::new(),
             handle_index: HashMap::new(),
             handle_write_states: HashMap::new(),
+            force_direct_io,
             lower_handles: HashMap::new(),
             next_lower_fh: LOWER_HANDLE_BASE,
             whiteouts: HashSet::new(),
@@ -769,6 +776,14 @@ impl AgentFsFuse {
         }
     }
 
+    fn open_flags(&self) -> u32 {
+        if self.force_direct_io {
+            FOPEN_DIRECT_IO
+        } else {
+            0
+        }
+    }
+
     /// Convert FUSE flags to OpenOptions
     fn fuse_flags_to_options(&self, flags: i32) -> OpenOptions {
         use libc::{O_APPEND, O_CREAT, O_RDWR, O_TRUNC, O_WRONLY};
@@ -1101,6 +1116,9 @@ mod tests {
 
 impl fuser::Filesystem for AgentFsFuse {
     fn init(&mut self, _req: &Request, config: &mut fuser::KernelConfig) -> Result<(), c_int> {
+        if self.force_direct_io {
+            info!("Forcing DIRECT_IO on all regular file handles (kernel page cache bypass)");
+        }
         if self.config.cache.writeback_cache {
             match config.add_capabilities(FUSE_WRITEBACK_CACHE_FLAG) {
                 Ok(()) => info!("Requested kernel writeback cache capability"),
@@ -1398,7 +1416,7 @@ impl fuser::Filesystem for AgentFsFuse {
     fn open(&mut self, req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
         // Special handling for control file
         if ino == CONTROL_FILE_INO {
-            reply.opened(0, 0); // fh=0 for control file
+            reply.opened(0, self.open_flags()); // fh=0 for control file
             return;
         }
 
@@ -1439,7 +1457,7 @@ impl fuser::Filesystem for AgentFsFuse {
         match self.core.open(&client_pid, path, &options) {
             Ok(handle_id) => {
                 self.track_handle(ino, handle_id.0, &client_pid);
-                reply.opened(handle_id.0, 0);
+                reply.opened(handle_id.0, self.open_flags());
             }
             Err(FsError::NotFound) | Err(FsError::Unsupported) => {
                 if !self.overlay_enabled() || !self.lower_entry_exists(path) {
@@ -1456,7 +1474,7 @@ impl fuser::Filesystem for AgentFsFuse {
                     match self.core.open(&client_pid, path, &options) {
                         Ok(handle_id) => {
                             self.track_handle(ino, handle_id.0, &client_pid);
-                            reply.opened(handle_id.0, 0);
+                            reply.opened(handle_id.0, self.open_flags());
                         }
                         Err(FsError::AccessDenied) => reply.error(EACCES),
                         Err(FsError::NotFound) => reply.error(ENOENT),
@@ -1854,7 +1872,13 @@ impl fuser::Filesystem for AgentFsFuse {
                         let ino = self.get_or_alloc_inode(&full_path);
                         let fuse_attr = self.attr_to_fuse(&attr, ino);
                         self.track_handle(ino, handle_id.0 as u64, &client_pid);
-                        reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0 as u64, 0);
+                        reply.created(
+                            &self.entry_ttl,
+                            &fuse_attr,
+                            0,
+                            handle_id.0 as u64,
+                            self.open_flags(),
+                        );
                     }
                     Err(_) => reply.error(EIO),
                 }
