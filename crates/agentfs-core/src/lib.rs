@@ -252,6 +252,48 @@ mod tests {
         assert!(core.open(&other_user_pid, "/d/f".as_ref(), &rw()).is_err());
     }
 
+    #[test]
+    fn test_fifo_open_enforces_posix_permissions() {
+        let (core, _) = test_core_posix();
+        let root_pid = core.register_process(1999, 1999, 0, 0);
+        let owner_pid = core.register_process(2000, 2000, 1000, 1000);
+        core.mkdir(&root_pid, "/sandbox".as_ref(), 0o777).unwrap();
+        core.mkdir(&owner_pid, "/sandbox/pipes".as_ref(), 0o755).unwrap();
+        core.mkfifo(&owner_pid, "/sandbox/pipes/fifo_rw_denied".as_ref(), 0o0400)
+            .unwrap();
+        assert!(matches!(
+            core.open(&owner_pid, "/sandbox/pipes/fifo_rw_denied".as_ref(), &rw()),
+            Err(FsError::AccessDenied)
+        ));
+
+        core.mkfifo(&owner_pid, "/sandbox/pipes/fifo_ro_denied".as_ref(), 0o0200)
+            .unwrap();
+        assert!(matches!(
+            core.open(&owner_pid, "/sandbox/pipes/fifo_ro_denied".as_ref(), &ro()),
+            Err(FsError::AccessDenied)
+        ));
+    }
+
+    #[test]
+    fn test_directory_open_requires_read_bits() {
+        let (core, _) = test_core_posix();
+        let root_pid = core.register_process(2999, 2999, 0, 0);
+        let owner_pid = core.register_process(3000, 3000, 1000, 1000);
+        core.mkdir(&root_pid, "/secure-sandbox".as_ref(), 0o777).unwrap();
+        core.mkdir(&owner_pid, "/secure-sandbox/secure".as_ref(), 0o755).unwrap();
+        core.mkdir(
+            &owner_pid,
+            "/secure-sandbox/secure/no_read".as_ref(),
+            0o0200,
+        )
+        .unwrap(); // owner lacks read bit
+
+        assert!(matches!(
+            core.opendir(&owner_pid, "/secure-sandbox/secure/no_read".as_ref()),
+            Err(FsError::AccessDenied)
+        ));
+    }
+
     fn rw_create() -> OpenOptions {
         OpenOptions {
             read: true,
