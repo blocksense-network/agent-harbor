@@ -240,7 +240,7 @@ pub mod test_utils {
                 async move {
                     requests.lock().await.push(request.clone());
 
-                    // Auto-respond to handshake requests
+                    // Auto-respond to handshake requests (CommandStart requests are one-way)
                     match request {
                         Request::Handshake(_) => Some(Response::Handshake(
                             ah_command_trace_proto::HandshakeResponse {
@@ -248,6 +248,10 @@ pub mod test_utils {
                                 error_message: None,
                             },
                         )),
+                        Request::CommandStart(_) => {
+                            // CommandStart is a notification, no response needed
+                            None
+                        }
                     }
                 }
             };

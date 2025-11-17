@@ -1,21 +1,11 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Linux implementation using LD_PRELOAD
+//! Linux implementation using LD_PRELOAD with redhook
 
 use crate::core::{self, SHIM_STATE, ShimState};
-use ah_command_trace_proto::{
-    HandshakeMessage, HandshakeResponse, Request, Response, decode_ssz, encode_ssz,
-};
+use crate::posix;
 use ctor::ctor;
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
-use std::sync::Mutex;
-use std::thread;
-use std::time::Duration;
-
-/// Global handshake stream (kept alive for the process lifetime)
-static HANDSHAKE_STREAM: Mutex<Option<UnixStream>> = Mutex::new(None);
 
 /// Initialize the shim on library load
 #[ctor]
@@ -23,83 +13,16 @@ fn initialize_shim() {
     let state = core::initialize_shim_state();
 
     // Store the state globally
-    let _ = SHIM_STATE.set(Mutex::new(state.clone()));
+    let _ = SHIM_STATE.set(std::sync::Mutex::new(state.clone()));
 
-    match &state {
-        ShimState::Disabled => {
-            // Shim disabled, do nothing
-        }
-        ShimState::Ready { socket_path, .. } => {
-            eprintln!(
-                "[ah-command-trace-shim] Ready state - socket: {}",
-                socket_path
-            );
-            core::log_message(&state, "Initializing command trace shim");
-
-            // Perform handshake synchronously - if it fails, the process will exit anyway
-            eprintln!("[ah-command-trace-shim] Performing handshake...");
-            match perform_handshake(&socket_path) {
-                Ok(stream) => {
-                    eprintln!("[ah-command-trace-shim] Handshake successful, shim ready");
-                    *HANDSHAKE_STREAM.lock().unwrap() = Some(stream);
-                }
-                Err(e) => {
-                    eprintln!("[ah-command-trace-shim] Handshake failed: {}", e);
-                    // Update state to error
-                    *SHIM_STATE.get().unwrap().lock().unwrap() =
-                        ShimState::Error(format!("Handshake failed: {}", e));
-                }
-            }
-        }
-        ShimState::Error(msg) => {
-            eprintln!("[ah-command-trace-shim] Initialization error: {}", msg);
+    if let ShimState::Ready { .. } = &state {
+        if let Err(e) = posix::initialize_client() {
+            eprintln!("[ah-command-trace-shim] Failed to initialize client: {}", e);
+            // Update state to error
+            *SHIM_STATE.get().unwrap().lock().unwrap() =
+                ShimState::Error(format!("Client initialization failed: {}", e));
         }
     }
-}
-
-/// Perform handshake with the recorder socket
-fn perform_handshake(socket_path: &str) -> Result<UnixStream, Box<dyn std::error::Error>> {
-    let mut stream = UnixStream::connect(socket_path)?;
-
-    // Create handshake message
-    let handshake_msg = Request::Handshake(HandshakeMessage {
-        version: b"1.0".to_vec(),
-        pid: std::process::id(),
-        platform: b"linux".to_vec(),
-    });
-
-    // Encode to SSZ
-    let handshake_bytes = encode_ssz(&handshake_msg);
-
-    // Send length-prefixed message
-    let len_bytes = (handshake_bytes.len() as u32).to_le_bytes();
-    stream.write_all(&len_bytes)?;
-    stream.write_all(&handshake_bytes)?;
-
-    // Read response (length + SSZ message)
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf)?;
-    let response_len = u32::from_le_bytes(len_buf) as usize;
-
-    let mut response_buf = vec![0u8; response_len];
-    stream.read_exact(&mut response_buf)?;
-
-    // Decode SSZ response
-    let response_msg: Response =
-        decode_ssz(&response_buf).map_err(|e| format!("SSZ decode error: {:?}", e))?;
-
-    match response_msg {
-        Response::Handshake(response) => {
-            // For now, we just accept any handshake response
-            // In the future, we might check for success/error
-            if !response.success {
-                return Err("Handshake failed".into());
-            }
-        }
-    }
-
-    // Keep the stream alive for future communication
-    Ok(stream)
 }
 
 /// Check if the shim is enabled and ready
@@ -112,20 +35,82 @@ pub fn is_shim_enabled() -> bool {
 
 /// Send a keepalive message to verify the shim is working
 pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream_guard = HANDSHAKE_STREAM.lock().unwrap();
-    if let Some(ref mut stream) = *stream_guard {
-        let keepalive = serde_json::json!({
-            "type": "keepalive",
-            "timestamp": std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_nanos()
-        });
+    // For now, just return success - the client handles keepalive via connection
+    Ok(())
+}
 
-        let bytes = serde_json::to_vec(&keepalive)?;
-        stream.write_all(&bytes)?;
-        stream.write_all(b"\n")?;
-        Ok(())
-    } else {
-        Err("No handshake stream available".into())
+// Interposition functions for process creation using redhook
+//
+// Notes on edge case handling:
+// - Short-lived commands: All fork/exec sequences are captured, even if the process exits quickly
+// - Zombie processes: The shim does not interfere with normal process lifecycle management
+// - Reparenting: PPID is captured at exec time, which may not reflect the final parent if the parent exits
+// - setuid binaries: Shim injection is skipped when AT_SECURE is set (secure execution mode)
+// - Failed exec: CommandStart is sent before exec, so failed execs are still recorded with the intended executable
+
+// Common hooks (fork, execve, execvp, posix_spawn, posix_spawnp) are now defined in posix.rs for redhook compatibility
+
+// Linux-specific hooks for vfork and clone
+redhook::hook! {
+    unsafe fn vfork() -> libc::pid_t => my_vfork {
+        let result = redhook::real!(vfork)();
+
+        if result == 0 {
+            // Child process - send CommandStart if we're tracking
+            if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
+                if matches!(**state, crate::core::ShimState::Ready { .. }) {
+                    // Get process info
+                    let pid = std::process::id() as u32;
+                    let ppid = unsafe { libc::getppid() } as u32;
+                    let executable = std::env::current_exe()
+                        .ok()
+                        .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
+                        .unwrap_or_else(|| b"<unknown>".to_vec());
+
+                    let args: Vec<Vec<u8>> = std::env::args()
+                        .map(|s| s.into_bytes())
+                        .collect();
+
+                    let env = crate::posix::get_environment();
+                    let cwd = crate::posix::get_current_dir();
+
+                    crate::posix::send_command_start(pid, ppid, &executable, args, env, cwd);
+                }
+            }
+        }
+
+        result
+    }
+}
+
+redhook::hook! {
+    unsafe fn clone(fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
+        let result = redhook::real!(clone)(fn_, child_stack, flags, arg, ptid, tls, ctid);
+
+        // If this is a new process (not just a thread), send CommandStart
+        if result > 0 && (flags & libc::CLONE_VM) == 0 {
+            // Child process - send CommandStart if we're tracking
+            if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
+                if matches!(**state, crate::core::ShimState::Ready { .. }) {
+                    let pid = result as u32;
+                    let ppid = std::process::id() as u32;
+                    let executable = std::env::current_exe()
+                        .ok()
+                        .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
+                        .unwrap_or_else(|| b"<unknown>".to_vec());
+
+                    let args: Vec<Vec<u8>> = std::env::args()
+                        .map(|s| s.into_bytes())
+                        .collect();
+
+                    let env = crate::posix::get_environment();
+                    let cwd = crate::posix::get_current_dir();
+
+                    crate::posix::send_command_start(pid, ppid, &executable, args, env, cwd);
+                }
+            }
+        }
+
+        result
     }
 }

@@ -959,6 +959,28 @@ outdated:
     cargo outdated
     yarn outdated
 
+# Command Tracing include patterns as a multiline string
+REPOMIX_COMMAND_TRACING_PATTERNS := replace("""
+specs/Public/R9.status.md
+specs/Public/R9.md
+crates/ah-command-trace-shim/**
+crates/ah-command-trace-client/**
+crates/ah-command-trace-proto/**
+crates/ah-command-trace-e2e-tests/**
+""", "\n", ",")
+
+# Create repomix bundle of all command tracing functionality (specs + implementation)
+repomix-command-tracing *args:
+    @echo "📦 Creating Command Tracing repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-Command-Tracing.md \
+        --style markdown \
+        --header-text "Command Tracing - Complete Implementation and Specification" \
+        --include "{{REPOMIX_COMMAND_TRACING_PATTERNS}}" \
+        {{args}}
+
 # Inspect AHR recording files
 # Usage: just inspect-ahr <path/to/recording.ahr>
 inspect-ahr *args:

@@ -27,6 +27,9 @@ mod unsupported;
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub use unsupported::*;
 
+/// Shared POSIX functionality
+pub mod posix;
+
 /// Core types and logic shared across platforms
 pub mod core {
     use once_cell::sync::OnceCell;

@@ -15,6 +15,8 @@ use ssz_derive::{Decode, Encode};
 pub enum Request {
     /// Handshake request from shim
     Handshake(HandshakeMessage),
+    /// Command start notification from shim
+    CommandStart(CommandStart),
 }
 
 /// Response union - each variant contains operation-specific response data
