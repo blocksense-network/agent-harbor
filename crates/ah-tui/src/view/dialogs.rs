@@ -242,16 +242,20 @@ pub fn render_fuzzy_modal(
     }
 }
 
-/// Render model selection modal
-pub fn render_model_selection_modal(
+/// Render model selection modal with hit regions for +/- controls
+pub fn render_model_selection_modal_with_hit_regions(
     frame: &mut Frame,
-    modal: &ModelSelectionModal,
+    modal: &crate::view_model::ModalViewModel,
+    options: &[crate::view_model::ModelOptionViewModel],
     area: Rect,
     theme: &Theme,
+    hit_registry: &mut crate::view::HitTestRegistry<crate::view_model::MouseAction>,
 ) {
-    // Calculate modal dimensions
-    let modal_width = 50.min(area.width - 4);
-    let modal_height = 15.min(area.height - 4);
+    use crate::view_model::MouseAction;
+
+    // Calculate modal dimensions - wider for +/- controls
+    let modal_width = 70.min(area.width - 4);
+    let modal_height = 18.min(area.height - 4);
 
     let modal_area = Rect {
         x: (area.width - modal_width) / 2,
@@ -289,10 +293,131 @@ pub fn render_model_selection_modal(
     let inner_area = modal_block.inner(modal_area);
     frame.render_widget(modal_block, modal_area);
 
-    // Content placeholder - would show available models
-    let content = Paragraph::new("Model selection dialog content would go here...")
-        .style(Style::default().fg(theme.text));
-    frame.render_widget(content, inner_area);
+    // Split into sections: input, separator, options
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Input area with separator
+            Constraint::Min(0),    // Options area
+        ])
+        .split(inner_area);
+
+    // Input section with separator
+    let input_block = Block::default()
+        .borders(Borders::BOTTOM)
+        .border_style(Style::default().fg(theme.border));
+    frame.render_widget(input_block, layout[0]);
+
+    let input_area = Rect {
+        x: layout[0].x,
+        y: layout[0].y + 1,
+        width: layout[0].width.saturating_sub(2),
+        height: 1,
+    };
+
+    let input_paragraph =
+        Paragraph::new(modal.input_value.as_str()).style(Style::default().fg(theme.text));
+    frame.render_widget(input_paragraph, input_area);
+
+    // Options section
+    let options_area = layout[1];
+
+    // Calculate visible range
+    let start_index = modal.selected_index.saturating_sub(3);
+    let visible_options: Vec<(usize, &crate::view_model::ModelOptionViewModel)> = options
+        .iter()
+        .enumerate()
+        .skip(start_index)
+        .take(options_area.height as usize)
+        .collect();
+
+    for (i, (global_idx, option)) in visible_options.into_iter().enumerate() {
+        let y = options_area.y + i as u16;
+
+        // Layout: [model name] [count] [-] [+]
+        let model_name_width = options_area.width.saturating_sub(8); // Reserve space for count and buttons
+        let count_x = options_area.x + model_name_width;
+        let minus_x = count_x + 3;
+        let plus_x = minus_x + 2;
+
+        // Model name
+        let style = if global_idx == modal.selected_index {
+            Style::default().fg(theme.bg).bg(theme.primary).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.text)
+        };
+
+        let name_span = Span::styled(
+            format!("{:.width$}", option.name, width = model_name_width as usize),
+            style,
+        );
+        frame.render_widget(
+            Paragraph::new(Line::from(name_span)),
+            Rect {
+                x: options_area.x,
+                y,
+                width: model_name_width,
+                height: 1,
+            },
+        );
+
+        // Count display (right-aligned)
+        let count_style = if option.count > 0 {
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.muted)
+        };
+        let count_text = format!("x{}", option.count);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(count_text, count_style))),
+            Rect {
+                x: count_x,
+                y,
+                width: 3,
+                height: 1,
+            },
+        );
+
+        // Minus button with hit region
+        let minus_style = Style::default().fg(theme.text);
+        let minus_rect = Rect {
+            x: minus_x,
+            y,
+            width: 1,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled("-", minus_style))),
+            minus_rect,
+        );
+        hit_registry.register(minus_rect, MouseAction::ModelDecrementCount(global_idx));
+
+        // Plus button with hit region
+        let plus_style = Style::default().fg(theme.primary);
+        let plus_rect = Rect {
+            x: plus_x,
+            y,
+            width: 1,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled("+", plus_style))),
+            plus_rect,
+        );
+        hit_registry.register(plus_rect, MouseAction::ModelIncrementCount(global_idx));
+    }
+}
+
+/// Render model selection modal
+pub fn render_model_selection_modal(
+    frame: &mut Frame,
+    modal: &ModelSelectionModal,
+    area: Rect,
+    theme: &Theme,
+) {
+    // This function is kept for backward compatibility but should not be used
+    // The new render_model_selection_modal_with_hit_regions should be used instead
+    let _ = (frame, modal, area, theme);
 }
 
 /// Render go to line modal
