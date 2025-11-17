@@ -7,7 +7,7 @@
 //! Based on the kitty integration guide in specs/Public/Terminal-Multiplexers/kitty.md
 
 use ah_mux_core::*;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// kitty multiplexer implementation
 pub struct KittyMultiplexer {

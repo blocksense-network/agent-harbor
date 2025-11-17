@@ -91,31 +91,63 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         let mut panes = HashMap::new();
 
-        // The window_id is session:window, the initial pane is session:window.0
-        let editor_pane = format!("{}.0", window_id);
-        let editor_cmd = config.editor_cmd.unwrap_or("bash");
-        self.mux.run_command(
-            &editor_pane,
-            editor_cmd,
-            &CommandOptions {
-                cwd: Some(config.working_dir),
-                env: None,
-            },
-        )?;
-        panes.insert(PaneRole::Editor, editor_pane);
-
-        // Split for agent pane
+        // Split for agent and editor panes based on split mode
         let split_direction = match config.split_mode {
             SplitMode::Horizontal => SplitDirection::Horizontal,
             SplitMode::Vertical => SplitDirection::Vertical,
             SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
         };
 
+        // Try to run command in the initial pane for the editor
+        // For multiplexers that support it (tmux, etc.), this uses the initial pane
+        // For multiplexers that don't (Tilix), we'll create editor via split instead
+        let editor_pane = format!("{}.0", window_id);
+        let editor_cmd = config.editor_cmd.unwrap_or("bash");
+        
+        let run_cmd_result = self.mux.run_command(
+            &editor_pane,
+            editor_cmd,
+            &CommandOptions {
+                cwd: Some(config.working_dir),
+                env: None,
+            },
+        );
+
+        let needs_editor_split = match run_cmd_result {
+            Ok(()) => {
+                // run_command worked, use the initial pane for editor
+                panes.insert(PaneRole::Editor, editor_pane.clone());
+                false
+            }
+            Err(MuxError::NotAvailable(_)) => {
+                // run_command not supported, we'll create both panes via split
+                true
+            }
+            Err(e) => return Err(e.into()), // Other errors are real failures
+        };
+
+        if needs_editor_split {
+            // Create editor pane via split (the initial pane will remain but unused)
+            let editor_pane = self.mux.split_pane(
+                Some(&window_id),
+                None,
+                split_direction,
+                Some(50), // 50-50 split for editor and agent
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+                Some(editor_cmd),
+            )?;
+            panes.insert(PaneRole::Editor, editor_pane);
+        }
+
+        // Now create the agent pane
         let agent_pane = self.mux.split_pane(
-            None, // Split the current window
-            None, // Split the window itself
+            Some(&window_id),
+            None, // Split the current window/pane
             split_direction,
-            Some(70), // 70% for editor, 30% for agent
+            if needs_editor_split { Some(50) } else { Some(70) }, // 70-30 if initial pane used, 50-50 if not
             &CommandOptions {
                 cwd: Some(config.working_dir),
                 env: None,

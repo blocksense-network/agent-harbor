@@ -1,0 +1,36 @@
+{
+    "child": {
+        "child1": {
+            "directory": "\/home\/emilivanichkov\/code\/repos\/metacraft-labs\/blocksense\/agent-harbor",
+            "height": 2081,
+            "profile": "2b7c4080-0ddd-46c5-8f23-563fd3ba789d",
+            "readOnly": false,
+            "synchronizedInput": true,
+            "type": "Terminal",
+            "uuid": "e036292c-a7c3-474c-958b-0ff757e3b338",
+            "width": 1920
+        },
+        "child2": {
+            "directory": "\/home\/emilivanichkov\/code\/repos\/metacraft-labs\/blocksense\/agent-harbor",
+            "height": 2081,
+            "profile": "2b7c4080-0ddd-46c5-8f23-563fd3ba789d",
+            "readOnly": false,
+            "synchronizedInput": true,
+            "type": "Terminal",
+            "uuid": "f2375fc5-859e-4892-b3cc-10bd5b90a633",
+            "width": 1915,
+            "command": "bash -c 'echo Bottom-Left Pane (logs); exec bash'"
+        },
+        "orientation": 0,
+        "position": 50,
+        "ratio": 0.5,
+        "type": "Paned"
+    },
+    "height": 2081,
+    "name": "${title}",
+    "synchronizedInput": false,
+    "type": "Session",
+    "uuid": "2f59dc8a-c7e7-4777-a631-07e7a6a926c1",
+    "version": "1.0",
+    "width": 3840
+}

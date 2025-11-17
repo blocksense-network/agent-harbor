@@ -233,6 +233,7 @@ pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sy
 
 /// Get all available multiplexers for testing
 pub fn available_multiplexers() -> Vec<(String, Box<dyn Multiplexer + Send + Sync>)> {
+    #[allow(unused_mut)] // mut needed when features are enabled
     let mut multiplexers = Vec::new();
 
     #[cfg(feature = "tmux")]
