@@ -1646,6 +1646,8 @@ pub enum MouseAction {
     EditFilter(FilterControl),
     Footer(FooterAction),
     AutocompleteSelect(usize),
+    ModelIncrementCount(usize),
+    ModelDecrementCount(usize),
 }
 
 /// Footer action types for keyboard shortcuts
@@ -1831,6 +1833,11 @@ pub struct ViewModel {
     // Escape handling state
     pub exit_confirmation_armed: bool,
     pub exit_requested: bool,
+
+    // Mouse click timing state for multi-click detection
+    pub last_click_time: Option<std::time::Instant>,
+    pub last_click_position: Option<(u16, u16)>,
+    pub click_count: u8,
 
     // Loading states (moved from Model)
     pub loading_task_creation: bool,
@@ -2185,6 +2192,11 @@ impl ViewModel {
             cursor_style: crossterm::cursor::SetCursorStyle::SteadyBar,
             exit_confirmation_armed: false,
             exit_requested: false,
+
+            // Mouse click timing state for multi-click detection
+            last_click_time: None,
+            last_click_position: None,
+            click_count: 0,
 
             // Initialize loading states
             loading_task_creation: false,
@@ -4247,6 +4259,31 @@ impl ViewModel {
     /// Handle mouse scroll actions by mapping them to hierarchical navigation.
     fn handle_mouse_scroll(&mut self, direction: NavigationDirection) -> bool {
         self.clear_exit_confirmation();
+
+        // Handle modal list scrolling first
+        if let Some(modal) = &mut self.active_modal {
+            match &modal.modal_type {
+                ModalType::Search { .. } | ModalType::ModelSelection { .. } => {
+                    // For modal lists, change the selected index
+                    let options_count = modal.filtered_options.len();
+                    if options_count > 0 {
+                        let new_index = match direction {
+                            NavigationDirection::Next => {
+                                (modal.selected_index + 1).min(options_count.saturating_sub(1))
+                            }
+                            NavigationDirection::Previous => modal.selected_index.saturating_sub(1),
+                        };
+                        if new_index != modal.selected_index {
+                            modal.selected_index = new_index;
+                            self.needs_redraw = true;
+                            return true;
+                        }
+                    }
+                }
+                _ => {} // Other modal types don't have scrollable lists
+            }
+        }
+
         if self.autocomplete.is_open() {
             let changed = match direction {
                 NavigationDirection::Next => self.autocomplete.select_next(),
@@ -4617,6 +4654,10 @@ impl ViewModel {
         row: u16,
         textarea_area: &ratatui::layout::Rect,
     ) {
+        debug!(
+            "Textarea click at screen ({}, {}) in textarea area {:?}",
+            column, row, textarea_area
+        );
         self.last_textarea_area = Some(*textarea_area);
 
         // Focus on the draft task description if not already focused
@@ -4624,25 +4665,117 @@ impl ViewModel {
             self.focus_element = DashboardFocusState::DraftTask(0);
         }
 
-        // Calculate relative position within textarea
-        let relative_x = (column as i32 - textarea_area.x as i32).max(0) as u16;
+        // Calculate relative position within textarea with padding awareness
+        // Account for 1 character padding on left/right edges as per PRD
+        let padding = 1u16;
+        let relative_x = (column as i32 - textarea_area.x as i32 - padding as i32).max(0) as u16;
         let relative_y = (row as i32 - textarea_area.y as i32).max(0) as u16;
+        debug!(
+            "Relative position after padding: ({}, {})",
+            relative_x, relative_y
+        );
 
-        // Position caret in the first draft card's textarea
+        // Check for multi-click timing (double-click threshold: 500ms)
+        let now = std::time::Instant::now();
+        let click_position = (column, row);
+        let is_multi_click = if let (Some(last_time), Some(last_pos)) =
+            (self.last_click_time, self.last_click_position)
+        {
+            now.duration_since(last_time).as_millis() < 500 && last_pos == click_position
+        } else {
+            false
+        };
+
+        if is_multi_click {
+            self.click_count = (self.click_count % 4) + 1; // Cycle through 1-4 clicks
+        } else {
+            self.click_count = 1;
+        }
+
+        debug!(
+            "Click count: {} (multi-click: {})",
+            self.click_count, is_multi_click
+        );
+        self.last_click_time = Some(now);
+        self.last_click_position = Some(click_position);
+
+        // Position caret and handle selection based on click count
         if let Some(card) = self.draft_cards.first_mut() {
-            // Use textarea's built-in cursor positioning
-            // This is a simplified implementation - a full implementation would need
-            // to calculate line/column from the click coordinates
+            // Calculate precise cursor position
             let line_index =
                 relative_y.min(card.description.lines().len().saturating_sub(1) as u16) as usize;
             let line = card.description.lines().get(line_index).map_or("", |s| s);
-            let col_index = relative_x.min(line.chars().count() as u16) as usize;
+            debug!("Line {}: '{}'", line_index, line);
 
-            // Set cursor position in textarea
-            card.description.move_cursor(tui_textarea::CursorMove::Jump(
-                line_index as u16,
-                col_index as u16,
-            ));
+            // Find the character position that best matches the click location
+            // This accounts for variable character widths (wide characters, emojis)
+            let mut visual_width = 0u16;
+            let mut col_index = 0;
+
+            for ch in line.chars() {
+                let char_width = if ch.is_ascii() { 1 } else { 2 }; // Simple heuristic for wide chars
+                visual_width += char_width;
+                col_index += 1;
+
+                // Position cursor after the character if click is within or at its end
+                if visual_width > relative_x {
+                    break;
+                }
+            }
+            debug!(
+                "Calculated cursor position: line={}, col={}",
+                line_index, col_index
+            );
+
+            match self.click_count {
+                1 => {
+                    // Single click: position cursor at clicked location
+                    debug!(
+                        "Single click: moving cursor to ({}, {})",
+                        line_index, col_index
+                    );
+                    card.description.cancel_selection();
+                    card.description.move_cursor(tui_textarea::CursorMove::Jump(
+                        line_index as u16,
+                        col_index as u16,
+                    ));
+                    let (final_row, final_col) = card.description.cursor();
+                    debug!("Cursor positioned at ({}, {})", final_row, final_col);
+                }
+                2 => {
+                    // Double click: select word at cursor position
+                    card.description.cancel_selection();
+                    card.description.move_cursor(tui_textarea::CursorMove::Jump(
+                        line_index as u16,
+                        col_index as u16,
+                    ));
+
+                    // Find word boundaries: move to end first, then back to start, then select to end
+                    card.description.move_cursor(tui_textarea::CursorMove::WordBack);
+                    card.description.start_selection();
+                    card.description.move_cursor(tui_textarea::CursorMove::WordEnd);
+                    // For some reason, the above command doesnt position the caret
+                    // after the word end, but rather at the last character in the
+                    // word, so we need to move forward one character
+                    card.description.move_cursor(tui_textarea::CursorMove::Forward);
+                }
+                3 => {
+                    // Triple click: select entire line
+                    card.description.cancel_selection();
+                    card.description.move_cursor(tui_textarea::CursorMove::Jump(
+                        line_index as u16,
+                        0, // Start of line
+                    ));
+                    card.description.start_selection();
+                    card.description.move_cursor(tui_textarea::CursorMove::End); // End of line
+                }
+                4 => {
+                    // Quadruple click: select entire textarea
+                    card.description.select_all();
+                }
+                _ => unreachable!(),
+            }
+
             self.autocomplete
                 .after_textarea_change(&card.description, &mut self.needs_redraw);
         }
@@ -4652,6 +4785,7 @@ impl ViewModel {
 
     /// Perform mouse action (similar to main.rs perform_mouse_action)
     pub fn perform_mouse_action(&mut self, action: MouseAction) {
+        debug!("Processing mouse action: {:?}", action);
         match action {
             MouseAction::OpenSettings => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::SettingsButton);
@@ -4733,6 +4867,30 @@ impl ViewModel {
                                 );
                                 self.mark_draft_dirty(draft_index);
                             }
+                        }
+                    }
+                }
+            }
+            MouseAction::ModelIncrementCount(index) => {
+                if let Some(modal) = &mut self.active_modal {
+                    if let crate::view_model::ModalType::ModelSelection { options } =
+                        &mut modal.modal_type
+                    {
+                        if index < options.len() {
+                            options[index].count = options[index].count.saturating_add(1);
+                            self.needs_redraw = true;
+                        }
+                    }
+                }
+            }
+            MouseAction::ModelDecrementCount(index) => {
+                if let Some(modal) = &mut self.active_modal {
+                    if let crate::view_model::ModalType::ModelSelection { options } =
+                        &mut modal.modal_type
+                    {
+                        if index < options.len() && options[index].count > 0 {
+                            options[index].count = options[index].count.saturating_sub(1);
+                            self.needs_redraw = true;
                         }
                     }
                 }
