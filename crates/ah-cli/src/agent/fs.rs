@@ -1,11 +1,13 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#[cfg(feature = "agentfs")]
 use crate::transport::{
     ControlTransport, build_interpose_get_request, build_interpose_set_request,
     send_control_request,
 };
-use agentfs_proto::Response;
+#[cfg(feature = "agentfs")]
+use agentfs_proto::*;
 #[cfg(feature = "agentfs")]
 use ah_fs_snapshots::{AgentFsProvider, FsSnapshotProvider};
 use ah_fs_snapshots::{ProviderCapabilities, provider_for};
@@ -127,6 +129,7 @@ pub enum BranchCommands {
     },
 }
 
+#[cfg(feature = "agentfs")]
 #[derive(Subcommand, Clone)]
 pub enum InterposeCommands {
     /// Get current interpose configuration
@@ -176,6 +179,7 @@ pub enum AgentFsCommands {
     },
 
     /// Interpose configuration operations
+    #[cfg(feature = "agentfs")]
     Interpose {
         #[command(subcommand)]
         subcommand: InterposeCommands,
@@ -198,6 +202,7 @@ impl AgentFsCommands {
                     Self::branch_exec(branch_id, command).await
                 }
             },
+            #[cfg(feature = "agentfs")]
             AgentFsCommands::Interpose { subcommand } => match subcommand {
                 InterposeCommands::Get { mount } => Self::interpose_get(mount).await,
                 InterposeCommands::Set {
@@ -489,6 +494,7 @@ impl AgentFsCommands {
         Ok(())
     }
 
+    #[cfg(feature = "agentfs")]
     async fn interpose_get(mount: Option<PathBuf>) -> Result<()> {
         let mount_point =
             mount.ok_or_else(|| anyhow!("Mount point is required for interpose operations"))?;
@@ -530,6 +536,7 @@ impl AgentFsCommands {
         Ok(())
     }
 
+    #[cfg(feature = "agentfs")]
     async fn interpose_set(
         mount: Option<PathBuf>,
         enabled: Option<bool>,

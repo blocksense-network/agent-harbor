@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-#[cfg_attr(all(feature = "agentfs", target_os = "macos"), allow(dead_code))]
+#[cfg_attr(feature = "agentfs", allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlatformSupport {
     Supported,
@@ -24,31 +24,14 @@ enum PlatformSupport {
 }
 
 impl PlatformSupport {
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
+    #[cfg(feature = "agentfs")]
     fn detect() -> Self {
         PlatformSupport::Supported
     }
 
-    #[cfg(all(feature = "agentfs", target_os = "windows"))]
-    fn detect() -> Self {
-        PlatformSupport::Unsupported("AgentFS provider support for Windows is not implemented yet")
-    }
-
-    #[cfg(all(
-        feature = "agentfs",
-        not(any(target_os = "macos", target_os = "windows"))
-    ))]
-    fn detect() -> Self {
-        PlatformSupport::Unsupported(
-            "AgentFS provider is only available on macOS in the current build",
-        )
-    }
-
     #[cfg(not(feature = "agentfs"))]
     fn detect() -> Self {
-        PlatformSupport::Unsupported(
-            "AgentFS provider not compiled; enable the `agentfs` feature on macOS",
-        )
+        PlatformSupport::Unsupported("AgentFS provider not compiled; enable the `agentfs` feature")
     }
 }
 
@@ -76,7 +59,7 @@ impl AgentFsProvider {
             .unwrap_or(false)
     }
 
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
+    #[cfg(feature = "agentfs")]
     fn unsupported_mode(mode: WorkingCopyMode) -> Result<PreparedWorkspace> {
         Err(Error::provider(format!(
             "AgentFS provider does not support {:?} working-copy mode yet",
@@ -465,6 +448,7 @@ impl FsSnapshotProvider for AgentFsProvider {
 
 impl AgentFsProvider {
     /// Common AgentFS workspace preparation logic
+    #[cfg(all(feature = "agentfs", target_os = "macos"))]
     fn prepare_agentfs_workspace(
         &self,
         harness: runtime::AgentFsHarness,
@@ -524,7 +508,7 @@ impl AgentFsProvider {
     }
 
     /// Prepare a writable workspace using an existing AgentFS daemon socket
-    fn prepare_writable_workspace_with_socket(
+    pub fn prepare_writable_workspace_with_socket(
         &self,
         repo: &Path,
         mode: WorkingCopyMode,

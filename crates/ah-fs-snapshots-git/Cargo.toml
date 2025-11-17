@@ -5,23 +5,8 @@
 name = "ah-fs-snapshots-git"
 version = "0.1.0"
 edition = "2021"
-description = "Git-based filesystem snapshot provider for Agent Harbor"
+description = "Git snapshot provider facade for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-serde.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-anyhow.workspace = true
-thiserror.workspace = true
-async-trait.workspace = true
-tempfile = "3.8"
-dirs = "5.0"
-chrono.workspace = true
-
-[dependencies.ah-fs-snapshots-traits]
-path = "../ah-fs-snapshots-traits"
-
-[dev-dependencies]
-tempfile = "3.8"
-ah-repo = { path = "../ah-repo" }
+ah-fs-snapshots = { path = "../ah-fs-snapshots", features = ["git"] }

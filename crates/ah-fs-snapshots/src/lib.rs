@@ -13,8 +13,26 @@ use std::path::Path;
 #[cfg(feature = "agentfs")]
 mod agentfs;
 
+#[cfg(feature = "zfs")]
+mod zfs;
+
+#[cfg(feature = "btrfs")]
+mod btrfs;
+
+#[cfg(feature = "git")]
+mod git;
+
 #[cfg(feature = "agentfs")]
 pub use agentfs::AgentFsProvider;
+
+#[cfg(feature = "zfs")]
+pub use zfs::ZfsProvider;
+
+#[cfg(feature = "btrfs")]
+pub use btrfs::BtrfsProvider;
+
+#[cfg(feature = "git")]
+pub use git::GitProvider;
 
 /// Auto-detect and return the appropriate provider for a given path.
 pub fn provider_for(path: &Path) -> Result<Box<dyn FsSnapshotProvider>> {
@@ -25,10 +43,21 @@ pub fn provider_for(path: &Path) -> Result<Box<dyn FsSnapshotProvider>> {
     let mut best_provider: Option<Box<dyn FsSnapshotProvider>> = None;
     let mut best_score = 0;
 
+    // Check AgentFS provider if feature is enabled
+    #[cfg(feature = "agentfs")]
+    {
+        let agentfs_provider = AgentFsProvider::new();
+        let capabilities = agentfs_provider.detect_capabilities(path);
+        if capabilities.score > best_score {
+            best_score = capabilities.score;
+            best_provider = Some(Box::new(agentfs_provider));
+        }
+    }
+
     // Check ZFS provider if feature is enabled
     #[cfg(feature = "zfs")]
     {
-        let zfs_provider = ah_fs_snapshots_zfs::ZfsProvider::new();
+        let zfs_provider = ZfsProvider::new();
         let capabilities = zfs_provider.detect_capabilities(path);
         if capabilities.score > best_score {
             best_score = capabilities.score;
@@ -39,7 +68,7 @@ pub fn provider_for(path: &Path) -> Result<Box<dyn FsSnapshotProvider>> {
     // Check Btrfs provider if feature is enabled
     #[cfg(feature = "btrfs")]
     {
-        let btrfs_provider = ah_fs_snapshots_btrfs::BtrfsProvider::new();
+        let btrfs_provider = BtrfsProvider::new();
         let capabilities = btrfs_provider.detect_capabilities(path);
         if capabilities.score > best_score {
             best_score = capabilities.score;
@@ -50,21 +79,11 @@ pub fn provider_for(path: &Path) -> Result<Box<dyn FsSnapshotProvider>> {
     // Check Git provider if feature is enabled (fallback for portability)
     #[cfg(feature = "git")]
     {
-        let git_provider = ah_fs_snapshots_git::GitProvider::new();
+        let git_provider = GitProvider::new();
         let capabilities = git_provider.detect_capabilities(path);
         if capabilities.score > best_score {
             best_score = capabilities.score;
             best_provider = Some(Box::new(git_provider));
-        }
-    }
-
-    #[cfg(feature = "agentfs")]
-    {
-        let agentfs_provider = AgentFsProvider::new();
-        let capabilities = agentfs_provider.detect_capabilities(path);
-        if capabilities.score > best_score {
-            best_score = capabilities.score;
-            best_provider = Some(Box::new(agentfs_provider));
         }
     }
 

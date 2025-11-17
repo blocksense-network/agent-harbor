@@ -10,6 +10,17 @@ use utoipa::OpenApi;
 /// Main OpenAPI specification for Agent Harbor REST API
 #[derive(OpenApi)]
 #[openapi(
+    info(
+        title = "Agent Harbor REST API",
+        version = "0.1.0",
+        description = "REST API for Agent Harbor - AI-powered coding sessions and task orchestration",
+        contact(
+            name = "Agent Harbor Team"
+        ),
+        license(
+            name = "AGPL-3.0-only"
+        )
+    ),
     paths(
         crate::handlers::health::health_check,
         crate::handlers::health::readiness_check,
@@ -20,17 +31,6 @@ use utoipa::OpenApi;
             crate::handlers::health::HealthResponse,
             crate::handlers::health::VersionResponse,
             crate::handlers::health::BuildInfo,
-        )
-    ),
-    info(
-        title = "Agent Harbor REST API",
-        version = "0.1.0",
-        description = "REST API for Agent Harbor - AI-powered coding sessions and task orchestration",
-        contact(
-            name = "Agent Harbor Team"
-        ),
-        license(
-            name = "MIT OR Apache-2.0"
         )
     ),
     servers(

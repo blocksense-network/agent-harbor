@@ -5,20 +5,8 @@
 name = "ah-fs-snapshots-zfs"
 version = "0.1.0"
 edition = "2021"
-description = "ZFS snapshot provider implementation for Agent Harbor"
+description = "ZFS snapshot provider facade for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-serde.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-anyhow.workspace = true
-thiserror.workspace = true
-async-trait.workspace = true
-chrono = { version = "0.4", features = ["serde"] }
-
-[dependencies.ah-fs-snapshots-traits]
-path = "../ah-fs-snapshots-traits"
-
-[dependencies.ah-fs-snapshots-daemon]
-path = "../ah-fs-snapshots-daemon"
+ah-fs-snapshots = { path = "../ah-fs-snapshots", features = ["zfs"] }

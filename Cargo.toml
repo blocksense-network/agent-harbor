@@ -5,7 +5,7 @@
 members = [
   "crates/ah-cli",
   # Agent abstraction layer (monolith + facades)
-  # "crates/ah-agents", # Temporarily disabled
+  "crates/ah-agents",
   # "crates/ah-agent-claude", # Temporarily disabled
   # "crates/ah-agent-codex", # Temporarily disabled
   "crates/ah-config-types",
@@ -122,6 +122,9 @@ async-trait = "0.1"
 tempfile = "3.0"
 mockall = "0.13"
 
+# HTTP client for connectivity checks
+ureq = { version = "2.0", features = ["json"] }
+
 # VCS repository abstraction
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -141,13 +144,16 @@ base64 = "0.22"
 # Hex encoding
 hex = "0.4"
 
+# Directory utilities
+dirs = "5.0"
+
+# SSE client
+eventsource-client = "0.13"
+
 # Terminal UI
 ratatui = "0.29"
 crossterm = "0.28"
-
-tui-textarea = { git = "https://github.com/blocksense-network/tui-textarea", branch = "agent-harbor", features = [
-  "search",
-] }
+tui-textarea = { path = "vendor/tui-textarea", features = ["search"] }
 
 vt100 = { git = "https://github.com/blocksense-network/vt100-rust", branch = "agent-harbor" }
 
@@ -159,6 +165,9 @@ uuid = { version = "1.18", features = ["v4", "serde"] }
 
 # Futures utilities
 futures = "0.3"
+
+# Unicode width calculation
+unicode-width = "0.2"
 
 [profile.release]
 lto = true
