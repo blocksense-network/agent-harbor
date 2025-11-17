@@ -346,6 +346,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ah-command-trace-client"
+version = "0.1.0"
+dependencies = [
+ "ah-command-trace-proto",
+ "anyhow",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "ah-command-trace-e2e-tests"
 version = "0.1.0"
 dependencies = [
@@ -353,6 +365,7 @@ dependencies = [
  "ah-command-trace-server",
  "core-foundation 0.10.1",
  "futures",
+ "libc",
  "nix 0.29.0",
  "serde",
  "serde_json",
@@ -385,8 +398,8 @@ dependencies = [
 name = "ah-command-trace-shim"
 version = "0.1.0"
 dependencies = [
+ "ah-command-trace-client",
  "ah-command-trace-proto",
- "ah-command-trace-shim",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "ctor",

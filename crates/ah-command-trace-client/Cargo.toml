@@ -1,0 +1,15 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-command-trace-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ah-command-trace-proto = { path = "../ah-command-trace-proto" }
+anyhow = "1.0"
+thiserror = "1.0"
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
