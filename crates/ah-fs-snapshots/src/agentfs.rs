@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-#[cfg_attr(all(feature = "agentfs", target_os = "macos"), allow(dead_code))]
+#[cfg_attr(feature = "agentfs", allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlatformSupport {
     Supported,
@@ -24,31 +24,14 @@ enum PlatformSupport {
 }
 
 impl PlatformSupport {
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
+    #[cfg(feature = "agentfs")]
     fn detect() -> Self {
         PlatformSupport::Supported
     }
 
-    #[cfg(all(feature = "agentfs", target_os = "windows"))]
-    fn detect() -> Self {
-        PlatformSupport::Unsupported("AgentFS provider support for Windows is not implemented yet")
-    }
-
-    #[cfg(all(
-        feature = "agentfs",
-        not(any(target_os = "macos", target_os = "windows"))
-    ))]
-    fn detect() -> Self {
-        PlatformSupport::Unsupported(
-            "AgentFS provider is only available on macOS in the current build",
-        )
-    }
-
     #[cfg(not(feature = "agentfs"))]
     fn detect() -> Self {
-        PlatformSupport::Unsupported(
-            "AgentFS provider not compiled; enable the `agentfs` feature on macOS",
-        )
+        PlatformSupport::Unsupported("AgentFS provider not compiled; enable the `agentfs` feature")
     }
 }
 
@@ -76,7 +59,7 @@ impl AgentFsProvider {
             .unwrap_or(false)
     }
 
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
+    #[cfg(feature = "agentfs")]
     fn unsupported_mode(mode: WorkingCopyMode) -> Result<PreparedWorkspace> {
         Err(Error::provider(format!(
             "AgentFS provider does not support {:?} working-copy mode yet",
@@ -140,7 +123,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             }
         }
 
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let requested_mode = match mode {
                 WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
@@ -153,7 +136,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             self.prepare_agentfs_workspace(harness, repo, requested_mode)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             let _ = repo;
             let _ = mode;
@@ -164,7 +147,7 @@ impl FsSnapshotProvider for AgentFsProvider {
     }
 
     fn snapshot_now(&self, ws: &PreparedWorkspace, label: Option<&str>) -> Result<SnapshotRef> {
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let (harness, cleanup_token, branch_id) = {
                 let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
@@ -217,7 +200,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             })
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             let _ = ws;
             let _ = label;
@@ -228,7 +211,7 @@ impl FsSnapshotProvider for AgentFsProvider {
     }
 
     fn mount_readonly(&self, snap: &SnapshotRef) -> Result<PathBuf> {
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let session_token = snap
                 .meta
@@ -287,7 +270,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(readonly_path)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             let _ = snap;
             Err(Error::provider(
@@ -301,7 +284,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         snap: &SnapshotRef,
         mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace> {
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let session_token = snap
                 .meta
@@ -377,7 +360,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(workspace)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             let _ = (snap, mode);
             Err(Error::provider(
@@ -387,7 +370,7 @@ impl FsSnapshotProvider for AgentFsProvider {
     }
 
     fn list_snapshots(&self, directory: &Path) -> Result<Vec<SnapshotInfo>> {
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
             let session = state_guard
@@ -431,7 +414,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(results)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             let _ = directory;
             Err(Error::provider(
@@ -441,7 +424,7 @@ impl FsSnapshotProvider for AgentFsProvider {
     }
 
     fn cleanup(&self, token: &str) -> Result<()> {
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let session = {
                 let mut guard = self.state.lock().expect("AgentFS provider state poisoned");
@@ -455,7 +438,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(())
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             let _ = token;
             Ok(())
@@ -524,7 +507,7 @@ impl AgentFsProvider {
     }
 
     /// Prepare a writable workspace using an existing AgentFS daemon socket
-    fn prepare_writable_workspace_with_socket(
+    pub fn prepare_writable_workspace_with_socket(
         &self,
         repo: &Path,
         mode: WorkingCopyMode,
@@ -543,7 +526,7 @@ impl AgentFsProvider {
             }
         }
 
-        #[cfg(all(feature = "agentfs", target_os = "macos"))]
+        #[cfg(feature = "agentfs")]
         {
             let requested_mode = match mode {
                 WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
@@ -563,7 +546,7 @@ impl AgentFsProvider {
             Ok(workspace)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(not(feature = "agentfs"))]
         {
             Err(Error::provider(
                 "AgentFS provider not available on this platform",
@@ -573,25 +556,25 @@ impl AgentFsProvider {
 }
 
 struct AgentFsState {
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
+    #[cfg(feature = "agentfs")]
     sessions: HashMap<String, AgentFsSession>,
 }
 
 impl Default for AgentFsState {
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
+    #[cfg(feature = "agentfs")]
     fn default() -> Self {
         Self {
             sessions: HashMap::new(),
         }
     }
 
-    #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+    #[cfg(not(feature = "agentfs"))]
     fn default() -> Self {
         Self {}
     }
 }
 
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(feature = "agentfs")]
 struct AgentFsSession {
     harness: runtime::AgentFsHarness,
     cleanup_token: String,
@@ -603,12 +586,12 @@ struct AgentFsSession {
     readonly_exports: Vec<ReadonlyExport>,
 }
 
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(feature = "agentfs")]
 struct ReadonlyExport {
     cleanup_token: String,
 }
 
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(feature = "agentfs")]
 impl AgentFsSession {
     fn release_exports(&self) -> Result<()> {
         if self.readonly_exports.is_empty() {
@@ -627,7 +610,7 @@ impl AgentFsSession {
     }
 }
 
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(feature = "agentfs")]
 mod runtime {
     use super::*;
     use agentfs_client::{AgentFsClient, ClientConfig};

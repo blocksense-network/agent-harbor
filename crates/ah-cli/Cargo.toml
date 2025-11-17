@@ -33,17 +33,38 @@ ah-local-db = { path = "../ah-local-db" }
 config-core = { path = "../config-core" }
 ah-config-types = { path = "../ah-config-types" }
 ah-agents = { path = "../ah-agents" }
-ah-fs-snapshots = { path = "../ah-fs-snapshots", features = [
-  "zfs",
-  "btrfs",
-  "git",
-] }
-ah-fs-snapshots-zfs = { path = "../ah-fs-snapshots-zfs", optional = true }
-ah-fs-snapshots-btrfs = { path = "../ah-fs-snapshots-btrfs", optional = true }
-ah-fs-snapshots-git = { path = "../ah-fs-snapshots-git", optional = true }
-chrono = { workspace = true, features = ["serde"] }
-reqwest = { workspace = true, features = ["json"] }
-uuid = { workspace = true, features = ["v4"] }
+ah-recorder = { path = "../ah-recorder" }
+vt100 = { path = "../../vendor/vt100" }
+crossterm = { workspace = true }
+tempfile = { workspace = true }
+dirs = { workspace = true }
+ureq = "2.9"
+which = "6.0"
+
+# SSZ serialization (matching agentfs-proto)
+ethereum_ssz = { workspace = true }
+ethereum_ssz_derive = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+
+# UUID generation
+uuid = { workspace = true }
+
+# AgentFS dependencies
+agentfs-proto = { path = "../agentfs-proto" }
+ah-fs-snapshots = { path = "../ah-fs-snapshots" }
+
+# UI and TUI dependencies
+ah-tui = { path = "../ah-tui" }
+ah-mux = { path = "../ah-mux" }
+ah-mux-core = { path = "../ah-mux-core" }
+ah-rest-client = { path = "../ah-rest-client" }
+ah-workflows = { path = "../ah-workflows" }
+tui-testing = { path = "../tui-testing" }
 rusqlite = { version = "0.37", features = ["bundled"] }
 sandbox-core = { path = "../sandbox-core", features = [
   "cgroups",
@@ -53,41 +74,23 @@ sandbox-core = { path = "../sandbox-core", features = [
 ] }
 sandbox-seccomp = { path = "../sandbox-seccomp" }
 
-# REST API client for TUI
-ah-rest-client = { path = "../ah-rest-client" }
-
-# TUI implementation
-ah-tui = { path = "../ah-tui" }
-
-# Workflows
-ah-workflows = { path = "../ah-workflows" }
 
 # Mock REST client for testing
 ah-rest-mock-client = { path = "../ah-rest-mock-client" }
 
 # Multiplexer support
-ah-mux = { path = "../ah-mux" }
-ah-mux-core = { path = "../ah-mux-core" }
-
-# AgentFS dependencies
-agentfs-proto = { path = "../agentfs-proto" }
-# SSZ serialization (matching agentfs-proto)
-ethereum_ssz = "0.8"
-ethereum_ssz_derive = "0.8"
 
 # Agent recording dependencies
-ah-recorder = { path = "../ah-recorder" }
-vt100 = { workspace = true }
-crossterm = { workspace = true }
-tempfile = { workspace = true }
-dirs = "5.0"
-ureq = "2.9"
-which = "6.0"
 
 # Platform-specific dependencies
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["fs", "ioctl"] }
 libc = "0.2"
+
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+ah-fs-snapshots-zfs = { path = "../ah-fs-snapshots-zfs" }
+ah-fs-snapshots-btrfs = { path = "../ah-fs-snapshots-btrfs" }
+ah-fs-snapshots-git = { path = "../ah-fs-snapshots-git" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = [
@@ -97,15 +100,15 @@ winapi = { version = "0.3", features = [
   "errhandlingapi",
 ] }
 
+[features]
+default = []
+zfs = ["ah-fs-snapshots/zfs"]
+btrfs = ["ah-fs-snapshots/btrfs"]
+git = ["ah-fs-snapshots/git"]
+agentfs = ["ah-fs-snapshots/agentfs"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 tui-testing = { path = "../tui-testing" }
 assert_cmd = "2.0"
-
-[features]
-default = ["zfs", "btrfs", "git"]
-zfs = ["ah-fs-snapshots/zfs", "ah-fs-snapshots-zfs"]
-btrfs = ["ah-fs-snapshots/btrfs", "ah-fs-snapshots-btrfs"]
-git = ["ah-fs-snapshots/git", "ah-fs-snapshots-git"]
-agentfs = ["ah-fs-snapshots/agentfs"]

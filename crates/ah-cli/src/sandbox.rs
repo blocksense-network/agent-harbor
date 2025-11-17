@@ -329,7 +329,7 @@ pub async fn prepare_workspace_with_fallback(
             #[cfg(feature = "zfs")]
             {
                 tracing::info!("Trying ZFS provider (explicitly requested)");
-                let provider = ah_fs_snapshots_zfs::ZfsProvider::new();
+                let provider = ah_fs_snapshots::ZfsProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
@@ -372,7 +372,7 @@ pub async fn prepare_workspace_with_fallback(
             #[cfg(feature = "btrfs")]
             {
                 tracing::info!("Trying Btrfs provider (explicitly requested)");
-                let provider = ah_fs_snapshots_btrfs::BtrfsProvider::new();
+                let provider = ah_fs_snapshots::BtrfsProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
@@ -419,7 +419,7 @@ pub async fn prepare_workspace_with_fallback(
             #[cfg(feature = "git")]
             {
                 tracing::info!("Trying Git provider (explicitly requested)");
-                let provider = ah_fs_snapshots_git::GitProvider::new();
+                let provider = ah_fs_snapshots::GitProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
@@ -503,7 +503,7 @@ pub async fn prepare_workspace_with_fallback(
             #[cfg(feature = "zfs")]
             {
                 tracing::debug!("Trying ZFS provider (auto mode)");
-                let provider = ah_fs_snapshots_zfs::ZfsProvider::new();
+                let provider = ah_fs_snapshots::ZfsProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
@@ -536,7 +536,7 @@ pub async fn prepare_workspace_with_fallback(
             #[cfg(feature = "btrfs")]
             {
                 tracing::debug!("Trying Btrfs provider (auto mode)");
-                let provider = ah_fs_snapshots_btrfs::BtrfsProvider::new();
+                let provider = ah_fs_snapshots::BtrfsProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
@@ -573,7 +573,7 @@ pub async fn prepare_workspace_with_fallback(
             #[cfg(feature = "git")]
             {
                 tracing::debug!("Trying Git provider (auto mode)");
-                let provider = ah_fs_snapshots_git::GitProvider::new();
+                let provider = ah_fs_snapshots::GitProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
