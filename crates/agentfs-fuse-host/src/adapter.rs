@@ -16,9 +16,9 @@ use agentfs_proto::messages::{StatData, TimespecData};
 use agentfs_proto::*;
 use crossbeam_queue::SegQueue;
 use fuser::{
-    FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
+    BackingId, FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
     ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
-    consts::FOPEN_DIRECT_IO,
+    consts::{FOPEN_DIRECT_IO, FUSE_PASSTHROUGH},
 };
 use libc::{
     EACCES, EBADF, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS, ENOTDIR,
@@ -27,7 +27,7 @@ use libc::{
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
-use std::fs::File;
+use std::fs::{File, OpenOptions as StdOpenOptions};
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileExt, PermissionsExt};
@@ -61,6 +61,67 @@ const FUSE_WRITEBACK_CACHE_FLAG: u64 = 1 << 16;
 struct LowerHandle {
     file: File,
     ino: u64,
+}
+
+struct PassthroughHandle {
+    backing: BackingId,
+    writable: bool,
+}
+
+#[derive(Default)]
+struct PassthroughMetrics {
+    attempts: AtomicU64,
+    successes: AtomicU64,
+    not_ready: AtomicU64,
+    missing_path: AtomicU64,
+    open_failed: AtomicU64,
+    ioctl_failed: AtomicU64,
+}
+
+impl PassthroughMetrics {
+    fn record_attempt(&self) {
+        self.attempts.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_success(&self) {
+        self.successes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_not_ready(&self) {
+        self.not_ready.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_missing_path(&self) {
+        self.missing_path.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_open_failed(&self) {
+        self.open_failed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_ioctl_failed(&self) {
+        self.ioctl_failed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> PassthroughMetricsSnapshot {
+        PassthroughMetricsSnapshot {
+            attempts: self.attempts.load(Ordering::Relaxed),
+            successes: self.successes.load(Ordering::Relaxed),
+            not_ready: self.not_ready.load(Ordering::Relaxed),
+            missing_path: self.missing_path.load(Ordering::Relaxed),
+            open_failed: self.open_failed.load(Ordering::Relaxed),
+            ioctl_failed: self.ioctl_failed.load(Ordering::Relaxed),
+        }
+    }
+}
+
+struct PassthroughMetricsSnapshot {
+    attempts: u64,
+    successes: u64,
+    not_ready: u64,
+    missing_path: u64,
+    open_failed: u64,
+    ioctl_failed: u64,
 }
 
 struct WriteTrace {
@@ -289,6 +350,13 @@ pub struct AgentFsFuse {
     handle_write_states: HashMap<u64, Arc<WriteHandleState>>,
     /// If true, force DIRECT_IO on opened files to bypass the kernel page cache
     force_direct_io: bool,
+    /// Whether to attempt Linux passthrough fast-path
+    enable_passthrough: bool,
+    /// True when kernel accepted the passthrough capability
+    passthrough_ready: bool,
+    /// Active passthrough handles, keyed by FUSE file handle
+    passthrough_handles: HashMap<u64, PassthroughHandle>,
+    passthrough_metrics: PassthroughMetrics,
     /// Lower pass-through handles
     lower_handles: HashMap<u64, LowerHandle>,
     /// Next pass-through handle id
@@ -332,6 +400,9 @@ impl AgentFsFuse {
         let trace_writes = std::env::var("AGENTFS_FUSE_TRACE_WRITES")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
+        let enable_passthrough = std::env::var("AGENTFS_FUSE_PASSTHROUGH")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
         let inflight_writes = Arc::new(AtomicU64::new(0));
         let max_write_depth = Arc::new(AtomicU64::new(0));
@@ -350,6 +421,10 @@ impl AgentFsFuse {
             handle_index: HashMap::new(),
             handle_write_states: HashMap::new(),
             force_direct_io,
+            enable_passthrough,
+            passthrough_ready: false,
+            passthrough_handles: HashMap::new(),
+            passthrough_metrics: PassthroughMetrics::default(),
             lower_handles: HashMap::new(),
             next_lower_fh: LOWER_HANDLE_BASE,
             whiteouts: HashSet::new(),
@@ -783,6 +858,187 @@ impl AgentFsFuse {
         }
     }
 
+    fn passthrough_active(&self) -> bool {
+        self.enable_passthrough && self.passthrough_ready
+    }
+
+    fn passthrough_writable(&self, fh: u64) -> bool {
+        self.passthrough_handles.get(&fh).map(|state| state.writable).unwrap_or(false)
+    }
+
+    fn log_passthrough_stats(&self) {
+        if !self.enable_passthrough {
+            return;
+        }
+        let snapshot = self.passthrough_metrics.snapshot();
+        info!(
+            target: "agentfs::fuse",
+            attempts = snapshot.attempts,
+            successes = snapshot.successes,
+            not_ready = snapshot.not_ready,
+            missing_path = snapshot.missing_path,
+            open_failed = snapshot.open_failed,
+            ioctl_failed = snapshot.ioctl_failed,
+            "passthrough metrics snapshot"
+        );
+    }
+
+    fn maybe_refresh_passthrough_metadata(&self, fh: u64) {
+        if !self.passthrough_writable(fh) {
+            return;
+        }
+        if let Err(err) = self.core.refresh_backing_len(HandleId(fh)) {
+            warn!(
+                target: "agentfs::fuse",
+                fh,
+                ?err,
+                "failed to refresh metadata for passthrough handle"
+            );
+        }
+    }
+
+    fn try_passthrough_open(
+        &mut self,
+        ino: u64,
+        user_path: &Path,
+        handle_id: HandleId,
+        options: &OpenOptions,
+        reply: ReplyOpen,
+    ) -> Result<(), ReplyOpen> {
+        self.passthrough_metrics.record_attempt();
+        if !self.passthrough_active() {
+            debug!(
+                target: "agentfs::fuse",
+                ino,
+                fh = handle_id.0,
+                path = %user_path.display(),
+                reason = "not_ready",
+                "passthrough disabled or unsupported"
+            );
+            self.passthrough_metrics.record_not_ready();
+            return Err(reply);
+        }
+
+        let requires_data_path = options.read || options.write || options.append;
+        if !requires_data_path {
+            debug!(
+                target: "agentfs::fuse",
+                ino,
+                fh = handle_id.0,
+                path = %user_path.display(),
+                reason = "metadata_only",
+                "passthrough skipped (metadata access)"
+            );
+            return Err(reply);
+        }
+
+        let Some(path) = self.core.handle_backing_path(handle_id) else {
+            debug!(
+                target: "agentfs::fuse",
+                ino,
+                fh = handle_id.0,
+                path = %user_path.display(),
+                reason = "missing_content",
+                "passthrough skipped (no backing file path)"
+            );
+            self.passthrough_metrics.record_missing_path();
+            return Err(reply);
+        };
+
+        let mut opts = StdOpenOptions::new();
+        opts.read(true);
+        if options.write || options.append || options.truncate {
+            opts.write(true);
+        }
+        if options.append {
+            opts.append(true);
+        }
+
+        let file = match opts.open(&path) {
+            Ok(f) => f,
+            Err(err) => {
+                debug!(
+                    target: "agentfs::fuse",
+                    ino,
+                    fh = handle_id.0,
+                    path = %user_path.display(),
+                    backing = %path.display(),
+                    %err,
+                    reason = "open_failed",
+                    "passthrough backing open failed"
+                );
+                self.passthrough_metrics.record_open_failed();
+                warn!(
+                    target: "agentfs::fuse",
+                    fh = handle_id.0,
+                    path = %path.display(),
+                    %err,
+                    "failed to open backing file for passthrough"
+                );
+                return Err(reply);
+            }
+        };
+
+        let backing_id = match reply.open_backing(&file) {
+            Ok(id) => id,
+            Err(err) => {
+                debug!(
+                    target: "agentfs::fuse",
+                    ino,
+                    fh = handle_id.0,
+                    path = %user_path.display(),
+                    backing = %path.display(),
+                    %err,
+                    reason = "ioctl_failed",
+                    "open_backing ioctl failed"
+                );
+                self.passthrough_metrics.record_ioctl_failed();
+                warn!(
+                    target: "agentfs::fuse",
+                    fh = handle_id.0,
+                    %err,
+                    "open_backing ioctl failed"
+                );
+                if matches!(err.raw_os_error(), Some(libc::EPERM) | Some(libc::EACCES)) {
+                    self.passthrough_ready = false;
+                    warn!(
+                        target: "agentfs::fuse",
+                        "Passthrough disabled after permission error (requires CAP_SYS_ADMIN on /dev/fuse connection)"
+                    );
+                    self.log_passthrough_stats();
+                }
+                return Err(reply);
+            }
+        };
+
+        let fh = handle_id.0;
+        let writable = options.write || options.append || options.truncate;
+        self.passthrough_handles.insert(
+            fh,
+            PassthroughHandle {
+                backing: backing_id,
+                writable,
+            },
+        );
+
+        if let Some(state) = self.passthrough_handles.get(&fh) {
+            debug!(
+                target: "agentfs::fuse",
+                ino,
+                fh,
+                path = %user_path.display(),
+                backing = %path.display(),
+                writable,
+                "passthrough enabled"
+            );
+            self.passthrough_metrics.record_success();
+            reply.opened_passthrough(fh, self.open_flags(), &state.backing);
+            Ok(())
+        } else {
+            Err(reply)
+        }
+    }
+
     /// Convert FUSE flags to OpenOptions
     fn fuse_flags_to_options(&self, flags: i32) -> OpenOptions {
         use libc::{O_APPEND, O_CREAT, O_RDWR, O_TRUNC, O_WRONLY};
@@ -1069,6 +1325,12 @@ fn configure_congestion_threshold(
     }
 }
 
+impl Drop for AgentFsFuse {
+    fn drop(&mut self) {
+        self.log_passthrough_stats();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1116,6 +1378,27 @@ mod tests {
 
 impl fuser::Filesystem for AgentFsFuse {
     fn init(&mut self, _req: &Request, config: &mut fuser::KernelConfig) -> Result<(), c_int> {
+        if self.enable_passthrough {
+            match config.add_capabilities(FUSE_PASSTHROUGH) {
+                Ok(()) => {
+                    self.passthrough_ready = true;
+                    info!("Passthrough capability negotiated with kernel");
+                }
+                Err(unsupported) => {
+                    self.passthrough_ready = false;
+                    warn!(
+                        "Kernel rejected passthrough capability bits: {:#x}",
+                        unsupported
+                    );
+                }
+            }
+        } else {
+            self.passthrough_ready = false;
+        }
+        if self.enable_passthrough && !self.passthrough_ready {
+            self.log_passthrough_stats();
+        }
+
         if self.force_direct_io {
             info!("Forcing DIRECT_IO on all regular file handles (kernel page cache bypass)");
         }
@@ -1457,6 +1740,20 @@ impl fuser::Filesystem for AgentFsFuse {
         match self.core.open(&client_pid, path, &options) {
             Ok(handle_id) => {
                 self.track_handle(ino, handle_id.0, &client_pid);
+                let reply = if self.passthrough_active() {
+                    match self.try_passthrough_open(
+                        ino,
+                        self.path_from_bytes(&canonical_path),
+                        handle_id,
+                        &options,
+                        reply,
+                    ) {
+                        Ok(()) => return,
+                        Err(reply) => reply,
+                    }
+                } else {
+                    reply
+                };
                 reply.opened(handle_id.0, self.open_flags());
             }
             Err(FsError::NotFound) | Err(FsError::Unsupported) => {
@@ -1729,6 +2026,10 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        if self.passthrough_handles.contains_key(&fh) {
+            self.maybe_refresh_passthrough_metadata(fh);
+        }
+
         if self.lower_handles.remove(&fh).is_some() {
             reply.ok();
             return;
@@ -1741,6 +2042,7 @@ impl fuser::Filesystem for AgentFsFuse {
             Ok(()) => reply.ok(),
             Err(_) => reply.error(EIO),
         }
+        self.passthrough_handles.remove(&fh);
         self.untrack_handle(ino, fh);
     }
 
@@ -2266,6 +2568,10 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        if self.passthrough_handles.contains_key(&fh) {
+            self.maybe_refresh_passthrough_metadata(fh);
+        }
+
         match self.core.fsync(&client_pid, handle_id, datasync) {
             Ok(()) => reply.ok(),
             Err(FsError::AccessDenied) => reply.error(EACCES),
@@ -2279,6 +2585,10 @@ impl fuser::Filesystem for AgentFsFuse {
         if ino == CONTROL_FILE_INO {
             reply.ok(); // No-op for control file
             return;
+        }
+
+        if self.passthrough_handles.contains_key(&fh) {
+            self.maybe_refresh_passthrough_metadata(fh);
         }
 
         if let Err(errno) = self.wait_for_handle_writes(fh) {
