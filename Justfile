@@ -309,6 +309,9 @@ build-fuse-test-binaries:
 build-fuse-host:
     ./scripts/build-fuse-host.sh
 
+build-fuse-host-release:
+    FUSE_BUILD_PROFILE=release ./scripts/build-fuse-host.sh
+
 # Run basic filesystem smoke tests against a mounted FUSE filesystem
 # Usage: just test-fuse-basic /mnt/agentfs
 # Note: Mount the filesystem first with: just mount-fuse /mnt/agentfs
@@ -356,6 +359,9 @@ test-fuse-control-plane:
 # Performance benchmarks (F6)
 test-fuse-performance:
     ./scripts/test-fuse-performance.sh
+
+test-fuse-performance-release:
+    FUSE_BUILD_PROFILE=release AGENTFS_FUSE_HOST_BIN="target/release/agentfs-fuse-host" ./scripts/test-fuse-performance.sh
 
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite

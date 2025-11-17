@@ -305,14 +305,15 @@ impl XpcControlService {
     #[allow(dead_code)]
     fn map_error_code(&self, error: &agentfs_core::FsError) -> u32 {
         match error {
-            agentfs_core::FsError::NotFound => 2,         // ENOENT
-            agentfs_core::FsError::AlreadyExists => 17,   // EEXIST
-            agentfs_core::FsError::AccessDenied => 13,    // EACCES
-            agentfs_core::FsError::InvalidArgument => 22, // EINVAL
-            agentfs_core::FsError::Busy => 16,            // EBUSY
-            agentfs_core::FsError::NoSpace => 28,         // ENOSPC
-            agentfs_core::FsError::Unsupported => 95,     // ENOTSUP
-            _ => 5,                                       // EIO
+            agentfs_core::FsError::NotFound => 2,              // ENOENT
+            agentfs_core::FsError::AlreadyExists => 17,        // EEXIST
+            agentfs_core::FsError::AccessDenied => 13,         // EACCES
+            agentfs_core::FsError::OperationNotPermitted => 1, // EPERM
+            agentfs_core::FsError::InvalidArgument => 22,      // EINVAL
+            agentfs_core::FsError::Busy => 16,                 // EBUSY
+            agentfs_core::FsError::NoSpace => 28,              // ENOSPC
+            agentfs_core::FsError::Unsupported => 95,          // ENOTSUP
+            _ => 5,                                            // EIO
         }
     }
 }

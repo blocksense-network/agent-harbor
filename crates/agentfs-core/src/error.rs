@@ -14,6 +14,8 @@ pub enum FsError {
     AlreadyExists,
     #[error("access denied")]
     AccessDenied,
+    #[error("operation not permitted")]
+    OperationNotPermitted,
     #[error("invalid argument")]
     InvalidArgument,
     #[error("name not allowed")]

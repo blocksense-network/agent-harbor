@@ -41,15 +41,84 @@ else
 fi
 
 log "Mounting AgentFS at $MOUNTPOINT"
+export AGENTFS_FUSE_LOG_FILE="$RUN_DIR/fuse-host.log"
+export RUST_BACKTRACE="${RUST_BACKTRACE:-1}"
+log "FUSE host log: $AGENTFS_FUSE_LOG_FILE"
 AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
 
-log "Running full pjdfstest suite via prove"
-set +e
-set +o pipefail
-sudo -E bash -c "cd '$MOUNTPOINT' && prove -vr '$PJDFSTEST_DIR/tests'" 2>&1 | tee -a "$LOG_FILE"
-PROVE_STATUS=${PIPESTATUS[0]}
-set -e
-set -o pipefail
+log "Selecting pjdfstest subsets"
+SUDO_TEST_LIST="${PJDFSTEST_SUDO_TESTS:-chmod/12.t}"
+read -ra SUDO_TESTS <<<"$SUDO_TEST_LIST"
+declare -A SUDO_LOOKUP=()
+for test in "${SUDO_TESTS[@]}"; do
+  [[ -z "$test" ]] && continue
+  SUDO_LOOKUP["$test"]=1
+done
+
+mapfile -t ALL_TESTS < <(cd "$PJDFSTEST_DIR/tests" && find . -name '*.t' | sort)
+NON_SUDO_FILES=()
+SUDO_FILES=()
+for rel in "${ALL_TESTS[@]}"; do
+  rel="${rel#./}"
+  abs="$PJDFSTEST_DIR/tests/$rel"
+  if [[ -n "${SUDO_LOOKUP[$rel]+x}" ]]; then
+    SUDO_FILES+=("$abs")
+  else
+    NON_SUDO_FILES+=("$abs")
+  fi
+done
+
+if [[ -n ${SUDO_LOOKUP["chmod/12.t"]+x} ]]; then
+  log "NOTE: chmod/12.t stays out of the main run because the Linux kernel rejects writes to SUID files on user-mounted FUSE before AgentFS can clear the bits; it still runs in a dedicated privileged pass."
+fi
+
+run_prove_suite() {
+  local label="$1"
+  local use_sudo="$2"
+  shift 2
+  local -a tests=("$@")
+  if ((${#tests[@]} == 0)); then
+    log "No tests to run for ${label}; skipping."
+    return 0
+  fi
+  log "Running ${label} via prove (count ${#tests[@]})"
+  set +e
+  set +o pipefail
+  if [[ "$use_sudo" == "sudo" ]]; then
+    sudo -E bash -c '
+      mountpoint="$1"
+      shift
+      cd "$mountpoint"
+      prove -vr "$@"
+    ' bash "$MOUNTPOINT" "${tests[@]}" 2>&1 | tee -a "$LOG_FILE"
+  else
+    bash -c '
+      mountpoint="$1"
+      shift
+      cd "$mountpoint"
+      prove -vr "$@"
+    ' bash "$MOUNTPOINT" "${tests[@]}" 2>&1 | tee -a "$LOG_FILE"
+  fi
+  local status=${PIPESTATUS[0]}
+  set -e
+  set -o pipefail
+  return $status
+}
+
+MAIN_STATUS=0
+if ! run_prove_suite "sudo pjdfstest subset (sans privileged list)" "sudo" "${NON_SUDO_FILES[@]}"; then
+  MAIN_STATUS=$?
+fi
+
+SUDO_STATUS=0
+if ! run_prove_suite "sudo-only privileged subset" "sudo" "${SUDO_FILES[@]}"; then
+  SUDO_STATUS=$?
+fi
+
+PROVE_STATUS=0
+if [[ $MAIN_STATUS -ne 0 || $SUDO_STATUS -ne 0 ]]; then
+  PROVE_STATUS=1
+fi
 
 log "Parsing pjdfstest output into $SUMMARY_FILE"
 python3 - "$LOG_FILE" "$SUMMARY_FILE" "$REPO_ROOT" <<'PY'

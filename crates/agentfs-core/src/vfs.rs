@@ -738,6 +738,28 @@ impl FsCore {
         allow_r && allow_w && allow_x
     }
 
+    fn clear_setid_bits_after_unprivileged_write(node: &mut Node, user: &User) {
+        if user.uid == 0 || user.uid == node.uid {
+            return;
+        }
+
+        if !matches!(node.kind, NodeKind::File { .. }) {
+            return;
+        }
+
+        let mut mask = 0u32;
+        if (node.mode & libc::S_ISUID as u32) != 0 {
+            mask |= libc::S_ISUID as u32;
+        }
+        if (node.mode & libc::S_ISGID as u32) != 0 {
+            mask |= libc::S_ISGID as u32;
+        }
+
+        if mask != 0 {
+            node.mode &= !mask;
+        }
+    }
+
     fn get_node_clone(&self, node_id: NodeId) -> FsResult<Node> {
         let nodes = self.nodes.lock().unwrap();
         nodes.get(&node_id).cloned().ok_or(FsError::NotFound)
@@ -2514,14 +2536,18 @@ impl FsCore {
             }
         };
 
+        let user = if self.config.security.enforce_posix_permissions {
+            self.user_for_process(pid)
+        } else {
+            None
+        };
+
         // Permission check for write
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                let nodes = self.nodes.lock().unwrap();
-                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
-                if !self.allowed_for_user(node, &user, false, true, false) {
-                    return Err(FsError::AccessDenied);
-                }
+        if let Some(user_ref) = user.as_ref() {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+            if !self.allowed_for_user(node, user_ref, false, true, false) {
+                return Err(FsError::AccessDenied);
             }
         }
 
@@ -2570,6 +2596,9 @@ impl FsCore {
                     node.times.mtime_nsec = nsec;
                     node.times.ctime = sec;
                     node.times.ctime_nsec = nsec;
+                    if let Some(user_ref) = user.as_ref() {
+                        Self::clear_setid_bits_after_unprivileged_write(node, user_ref);
+                    }
                 }
                 _ => return Err(FsError::InvalidArgument),
             }
