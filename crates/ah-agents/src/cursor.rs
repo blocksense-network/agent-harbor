@@ -739,6 +739,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     #[serial_test::serial(env)]
     fn test_detect_cursor_auth_details_linux() {
         use crate::test_support::EnvVarGuard;
