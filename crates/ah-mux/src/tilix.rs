@@ -40,6 +40,9 @@ impl TilixMultiplexer {
 
     /// Run a tilix command with the given arguments
     fn run_tilix_command(&self, args: &[&str]) -> Result<String, MuxError> {
+        // Log the full command for debugging
+        tracing::info!("Executing tilix command: tilix {}", args.join(" "));
+
         let output = Command::new("tilix").args(args).output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 MuxError::NotAvailable("tilix")
@@ -125,18 +128,38 @@ impl Multiplexer for TilixMultiplexer {
             SplitDirection::Vertical => "session-add-down",    // Top÷Bottom split
         };
 
-        let mut args = vec!["--action", action];
+        tracing::info!("split_pane called with direction: {:?}", dir);
+        tracing::info!("split_pane working directory: {:?}", opts.cwd);
+
+        let mut args = vec![];
         let cwd_str: Option<String>;
 
-        // If we have an initial command, add it
-        if let Some(cmd) = initial_cmd {
-            args.extend_from_slice(&["--command", cmd]);
-        }
-
-        // Add working directory if specified
+        // Add working directory FIRST if specified (must come before --action)
         if let Some(cwd) = opts.cwd {
             cwd_str = Some(cwd.to_string_lossy().to_string());
+            tracing::info!(
+                "Using working directory for Tilix: {}",
+                cwd_str.as_ref().unwrap()
+            );
             args.extend_from_slice(&["--working-directory", cwd_str.as_ref().unwrap()]);
+        } else {
+            tracing::warn!("No working directory specified for Tilix split");
+        }
+
+        // Then add the action
+        args.extend_from_slice(&["--action", action]);
+
+        // Finally add the command if specified
+        // Note: The command string needs to be passed as a single argument to --command
+        // Tilix will parse it and execute it through the user's default shell
+        let cmd_str: Option<String>;
+        if let Some(cmd) = initial_cmd {
+            tracing::info!("Command to run in new pane: {}", cmd);
+            // Store the command string to keep it alive for the duration of the call
+            // The Rust Command API will handle proper OS-level escaping automatically
+            cmd_str = Some(cmd.to_string());
+            args.push("--command");
+            args.push(cmd_str.as_ref().unwrap());
         }
 
         self.run_tilix_command(&args)?;

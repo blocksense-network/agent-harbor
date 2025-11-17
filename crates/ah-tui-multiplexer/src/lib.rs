@@ -8,6 +8,7 @@
 
 use ah_mux_core::{SplitMode, *};
 use std::collections::HashMap;
+use tracing::info;
 
 /// Handle to a multiplexer session with role-based pane management
 #[derive(Debug, Clone)]
@@ -97,26 +98,68 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         let mut panes = HashMap::new();
 
-        // For Tilix, we need to create the first pane explicitly via split
-        // For tmux-like multiplexers, the window already has an initial pane
+        // For Tilix: create splits with commands since we can't run commands in existing panes
+        // Layout: Left = original terminal, Right = split with lazygit (top) and agent (bottom)
+        // For tmux-like multiplexers: the window already has an initial pane
         if is_tilix {
-            // Create the first (editor) pane by splitting - this creates it in the current terminal
+            // Step 1: Split horizontally (right) to create the lazygit pane
+            // This creates: [original terminal] [lazygit]
             let editor_pane = self.mux.split_pane(
                 None,
                 None,
-                SplitDirection::Horizontal, // Will be adjusted for actual agent split
-                Some(50), // Start with 50/50
+                SplitDirection::Horizontal, // Split right to create editor on the right
+                Some(50),                   // 50/50 split left/right
                 &CommandOptions {
                     cwd: Some(config.working_dir),
                     env: None,
                 },
-                Some(editor_cmd),
+                Some(editor_cmd), // Run lazygit in the new right pane
             )?;
             panes.insert(PaneRole::Editor, editor_pane);
+
+            // Step 2: Split the right pane vertically (down) to create the agent pane below lazygit
+            // This creates: [original terminal] [lazygit]
+            //                                    [agent]
+            // For Tilix, we need to keep the pane open after the command exits
+            // We use the user's shell (from SHELL env var) to wrap the command
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+
+            // The entire shell command will be passed to Tilix's --command flag
+            // Tilix expects: --command "shell -c 'commands'"
+            // Within single quotes, we need to escape single quotes by ending the quote,
+            // adding an escaped single quote, and starting a new quote: '\''
+            // We convert double quotes to single quotes for proper shell argument quoting
+            let escaped_cmd = config
+                .agent_cmd
+                .replace('\'', "'\\''") // Escape single quotes for shell -c '...'
+                .replace('"', "'"); // Convert double quotes to single quotes
+
+            let escaped_path = config.working_dir.to_string_lossy().replace('\'', "'\\''"); // Escape single quotes for shell -c '...'
+
+            // Build the command that will be wrapped in quotes for --command
+            let shell_command = format!(
+                "{} -c 'cd {} && {} ; echo ; echo \"Command exited with code $?\" ; echo \"Press Ctrl+D to close this pane\" ; exec {} -i'",
+                shell, escaped_path, escaped_cmd, shell
+            );
+
+            info!("Tilix agent shell command: {}", shell_command);
+
+            let agent_pane = self.mux.split_pane(
+                None,
+                None,
+                SplitDirection::Vertical, // Split down to create agent below lazygit
+                Some(50),                 // 50/50 split top/bottom on the right side
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+                Some(&shell_command),
+            )?;
+            panes.insert(PaneRole::Agent, agent_pane);
         } else {
             // For tmux-like multiplexers, use the initial pane in the window
             let editor_pane = format!("{}.0", window_id);
-            
+
             // Try to run the editor command in the existing pane
             match self.mux.run_command(
                 &editor_pane,
@@ -139,27 +182,27 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 }
             }
             panes.insert(PaneRole::Editor, editor_pane);
+
+            // Split for agent pane - respect the configured split mode
+            let split_direction = match config.split_mode {
+                SplitMode::Horizontal => SplitDirection::Horizontal,
+                SplitMode::Vertical => SplitDirection::Vertical,
+                SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
+            };
+
+            let agent_pane = self.mux.split_pane(
+                None, // Split the current window
+                None, // Split the window itself
+                split_direction,
+                Some(70), // 70% for editor, 30% for agent
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+                Some(config.agent_cmd),
+            )?;
+            panes.insert(PaneRole::Agent, agent_pane);
         }
-
-        // Split for agent pane
-        let split_direction = match config.split_mode {
-            SplitMode::Horizontal => SplitDirection::Horizontal,
-            SplitMode::Vertical => SplitDirection::Vertical,
-            SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
-        };
-
-        let agent_pane = self.mux.split_pane(
-            None, // Split the current window
-            None, // Split the window itself
-            split_direction,
-            Some(70), // 70% for editor, 30% for agent
-            &CommandOptions {
-                cwd: Some(config.working_dir),
-                env: None,
-            },
-            Some(config.agent_cmd),
-        )?;
-        panes.insert(PaneRole::Agent, agent_pane);
 
         // Optional log pane at bottom
         if let Some(log_cmd) = config.log_cmd {
