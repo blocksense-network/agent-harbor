@@ -33,4 +33,4 @@ tokio = { version = "1.0", features = ["rt", "macros"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # FUSE dependency is Linux-only and optional; enabled via the `fuse` feature
-fuser = { version = "0.16", optional = true }
+fuser = { version = "0.16", optional = true, features = ["abi-7-40"] }

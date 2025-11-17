@@ -21,8 +21,9 @@
    - `logs/perf-profiles/agentfs-perf-20251117-064244/` and `…064348/` contain fresh `perf record -F 199 -g -- dd …` captures; the kernel still spends most of its time in `pagecache_get_page → __alloc_pages_noprof → clear_page_erms`.
 5. **Direct-I/O toggle exposed**
    - Added `AGENTFS_FUSE_DIRECT_IO=1` to force `FOPEN_DIRECT_IO` on all regular files so the kernel bypasses its page cache entirely. Default remains buffered I/O; the knob is for upcoming experiments (Option 2).
-6. **Next lever**
-   - Option 1 (async writeback + kernel capability) is complete. To hit ≥ 0.75× we likely need to explore a direct-I/O path (e.g. `splice`/`fuse_notify_store`) to bypass the kernel page cache entirely; the new env knob is in place for that work.
+6. **Passthrough fast path (in progress)**
+
+- AgentFsFuse can now request `FUSE_PASSTHROUGH` (Linux 6.9+) and, when `AGENTFS_FUSE_PASSTHROUGH=1`, tries to hand `/dev/fuse` a backing FD during `open`. The host logs per-attempt metrics so we can see how often the kernel accepts it. Remaining TODOs: confirm HostFs backend exposes real paths for all branches, and land fallback copyup logic so lower-only files don’t throw `missing_content`.
 
 ## Updates – Nov 16 2025
 

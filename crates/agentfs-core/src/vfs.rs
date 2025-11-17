@@ -2825,6 +2825,72 @@ impl FsCore {
         }
     }
 
+    fn handle_stream_info(&self, handle_id: HandleId) -> FsResult<(NodeId, String, ContentId)> {
+        let (node_id, stream_name) = {
+            let handles = self.handles.lock().unwrap();
+            let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
+
+            match &handle.kind {
+                HandleType::File { .. } => {
+                    (handle.node_id, Self::get_stream_name(handle).to_string())
+                }
+                HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        let content_id = {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+
+            match &node.kind {
+                NodeKind::File { streams } => streams
+                    .get(&stream_name)
+                    .map(|stream| stream.content_id)
+                    .ok_or(FsError::NotFound)?,
+                _ => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        Ok((node_id, stream_name, content_id))
+    }
+
+    /// Returns the filesystem path backing the default stream for a file handle, if any.
+    pub fn handle_backing_path(&self, handle_id: HandleId) -> Option<PathBuf> {
+        let (_, _, content_id) = self.handle_stream_info(handle_id).ok()?;
+        self.storage.get_content_path(content_id)
+    }
+
+    /// Refresh the stored length metadata for a file handle from the backing storage.
+    pub fn refresh_backing_len(&self, handle_id: HandleId) -> FsResult<()> {
+        let (node_id, stream_name, content_id) = self.handle_stream_info(handle_id)?;
+        let path = self.storage.get_content_path(content_id).ok_or(FsError::Unsupported)?;
+        let metadata = fs::metadata(&path)?;
+        let len = metadata.len();
+
+        let (sec, nsec) = Self::current_time_components();
+
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+        match &mut node.kind {
+            NodeKind::File { streams } => {
+                if let Some(stream) = streams.get_mut(&stream_name) {
+                    stream.size = len;
+                    stream.mark_dirty();
+                } else {
+                    return Err(FsError::NotFound);
+                }
+            }
+            _ => return Err(FsError::InvalidArgument),
+        }
+
+        node.times.mtime = sec;
+        node.times.mtime_nsec = nsec;
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
+
+        Ok(())
+    }
+
     pub fn close(&self, _pid: &PID, handle_id: HandleId) -> FsResult<()> {
         let mut handles = self.handles.lock().unwrap();
         let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
