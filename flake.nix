@@ -341,6 +341,7 @@
                   pkgs.shfmt
                   pkgs.taplo
                   pkgs.addlicense
+                  pkgs.xdotool
 
                   # Autotools for building C projects (pjdfstest, etc.)
                   pkgs.autoconf

@@ -8,7 +8,6 @@
 
 use ah_mux_core::{SplitMode, *};
 use std::collections::HashMap;
-use tracing::info;
 
 /// Handle to a multiplexer session with role-based pane management
 #[derive(Debug, Clone)]
@@ -102,8 +101,8 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         // Layout: Left = original terminal, Right = split with lazygit (top) and agent (bottom)
         // For tmux-like multiplexers: the window already has an initial pane
         if is_tilix {
-            // Step 1: Split horizontally (right) to create the lazygit pane
-            // This creates: [original terminal] [lazygit]
+            // Step 1: Split horizontally (right) to create the editor pane
+            // This creates: [original terminal] [editor]
             let editor_pane = self.mux.split_pane(
                 None,
                 None,
@@ -113,48 +112,49 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     cwd: Some(config.working_dir),
                     env: None,
                 },
-                Some(editor_cmd), // Run lazygit in the new right pane
+                None, // DON'T pass the command here - we'll run it separately
             )?;
+
+            // Now run the editor command in the newly created pane
+            self.mux.run_command(
+                &editor_pane,
+                editor_cmd,
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+            )?;
+
             panes.insert(PaneRole::Editor, editor_pane);
 
-            // Step 2: Split the right pane vertically (down) to create the agent pane below lazygit
-            // This creates: [original terminal] [lazygit]
+            // Small delay to let the editor start
+            std::thread::sleep(std::time::Duration::from_millis(200));
+
+            // Step 2: Split the right pane vertically (down) to create the agent pane below editor
+            // This creates: [original terminal] [editor]
             //                                    [agent]
-            // For Tilix, we need to keep the pane open after the command exits
-            // We use the user's shell (from SHELL env var) to wrap the command
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-
-            // The entire shell command will be passed to Tilix's --command flag
-            // Tilix expects: --command "shell -c 'commands'"
-            // Within single quotes, we need to escape single quotes by ending the quote,
-            // adding an escaped single quote, and starting a new quote: '\''
-            // We convert double quotes to single quotes for proper shell argument quoting
-            let escaped_cmd = config
-                .agent_cmd
-                .replace('\'', "'\\''") // Escape single quotes for shell -c '...'
-                .replace('"', "'"); // Convert double quotes to single quotes
-
-            let escaped_path = config.working_dir.to_string_lossy().replace('\'', "'\\''"); // Escape single quotes for shell -c '...'
-
-            // Build the command that will be wrapped in quotes for --command
-            let shell_command = format!(
-                "{} -c 'cd {} && {} ; echo ; echo \"Command exited with code $?\" ; echo \"Press Ctrl+D to close this pane\" ; exec {} -i'",
-                shell, escaped_path, escaped_cmd, shell
-            );
-
-            info!("Tilix agent shell command: {}", shell_command);
-
             let agent_pane = self.mux.split_pane(
                 None,
                 None,
-                SplitDirection::Vertical, // Split down to create agent below lazygit
+                SplitDirection::Vertical, // Split down to create agent below editor
                 Some(50),                 // 50/50 split top/bottom on the right side
                 &CommandOptions {
                     cwd: Some(config.working_dir),
                     env: None,
                 },
-                Some(&shell_command),
+                None, // DON'T pass the command here
             )?;
+
+            // Now run the agent command in the newly created pane
+            self.mux.run_command(
+                &agent_pane,
+                config.agent_cmd,
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+            )?;
+
             panes.insert(PaneRole::Agent, agent_pane);
         } else {
             // For tmux-like multiplexers, use the initial pane in the window
