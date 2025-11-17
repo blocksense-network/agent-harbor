@@ -861,28 +861,6 @@ impl FsCore {
         }
     }
 
-    fn clear_setid_bits_after_unprivileged_write(node: &mut Node, user: &User) {
-        if user.uid == 0 || user.uid == node.uid {
-            return;
-        }
-
-        if !matches!(node.kind, NodeKind::File { .. }) {
-            return;
-        }
-
-        let mut mask = 0u32;
-        if (node.mode & libc::S_ISUID as u32) != 0 {
-            mask |= libc::S_ISUID as u32;
-        }
-        if (node.mode & libc::S_ISGID as u32) != 0 {
-            mask |= libc::S_ISGID as u32;
-        }
-
-        if mask != 0 {
-            node.mode &= !mask;
-        }
-    }
-
     fn get_node_clone(&self, node_id: NodeId) -> FsResult<Node> {
         let nodes = self.nodes.lock().unwrap();
         nodes.get(&node_id).cloned().ok_or(FsError::NotFound)
