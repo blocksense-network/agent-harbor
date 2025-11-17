@@ -150,6 +150,7 @@ static MODEL_SELECTION_MODE: InputMinorMode = InputMinorMode::new(&[
 static DRAFT_TEXTAREA_TO_BUTTONS_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextField,
     KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::DeleteCurrentTask,
 ]);
 
 // Minor mode for navigating draft card buttons (Repository, Branch, Model, Go)
@@ -213,6 +214,7 @@ static DASHBOARD_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::DismissOverlay,
     KeyboardOperation::DraftNewTask,
     KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::DeleteCurrentTask,
 ]);
 
 // Minor mode for task card selection and navigation (when cards are focused)
@@ -2946,7 +2948,8 @@ impl ViewModel {
         if let Some(idx) = self.focused_textarea_index() {
             match self.handle_task_entry_operation(idx, operation, key) {
                 KeyboardOperationResult::Handled => return true,
-                KeyboardOperationResult::NotHandled => return false,
+                KeyboardOperationResult::NotHandled => { /* fall through to lower priority handlers */
+                }
                 KeyboardOperationResult::Bubble { operation: bubbled } => {
                     return self.handle_bubbled_operation(bubbled, key);
                 }
@@ -4143,6 +4146,75 @@ impl ViewModel {
                             return true;
                         }
                     }
+                }
+                false
+            }
+            KeyboardOperation::DeleteCurrentTask => {
+                // Delete current task (Ctrl+W, Cmd+W, C-x k)
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        if idx < self.draft_cards.len() {
+                            // Delete draft card without leaving a trace
+                            self.draft_cards.remove(idx);
+                            // Adjust focus after removal
+                            if self.draft_cards.is_empty() {
+                                // No more draft cards, focus on settings button
+                                self.focus_element = DashboardFocusState::SettingsButton;
+                            } else if idx >= self.draft_cards.len() {
+                                // Removed last card, focus on new last card
+                                self.focus_element =
+                                    DashboardFocusState::DraftTask(self.draft_cards.len() - 1);
+                            } // else focus stays on the same index (now pointing to next card)
+                            self.needs_redraw = true;
+                            return true;
+                        }
+                    }
+                    DashboardFocusState::ExistingTask(card_index) => {
+                        // Delete existing task (active or completed/merged)
+                        if let Some(task_card) = self.task_cards.get(card_index) {
+                            let task_state = {
+                                let card = task_card.lock().unwrap();
+                                card.metadata.state
+                            };
+
+                            match task_state {
+                                TaskState::Running => {
+                                    // For active tasks, abort any running agents
+                                    // TODO: Implement agent abortion logic when available
+                                    // For now, just remove the card
+                                    self.task_cards.remove(card_index);
+                                    // Adjust focus after removal
+                                    if self.task_cards.is_empty() {
+                                        self.focus_element = DashboardFocusState::SettingsButton;
+                                    } else if card_index >= self.task_cards.len() {
+                                        self.focus_element = DashboardFocusState::ExistingTask(
+                                            self.task_cards.len() - 1,
+                                        );
+                                    }
+                                    self.needs_redraw = true;
+                                    return true;
+                                }
+                                TaskState::Completed | TaskState::Merged => {
+                                    // For completed/merged tasks, archive them (hide from listings)
+                                    // TODO: Implement archiving logic when available
+                                    // For now, just remove from display
+                                    self.task_cards.remove(card_index);
+                                    // Adjust focus after removal
+                                    if self.task_cards.is_empty() {
+                                        self.focus_element = DashboardFocusState::SettingsButton;
+                                    } else if card_index >= self.task_cards.len() {
+                                        self.focus_element = DashboardFocusState::ExistingTask(
+                                            self.task_cards.len() - 1,
+                                        );
+                                    }
+                                    self.needs_redraw = true;
+                                    return true;
+                                }
+                                _ => {} // Other states not handled
+                            }
+                        }
+                    }
+                    _ => {} // Other focus states don't support deletion
                 }
                 false
             }
