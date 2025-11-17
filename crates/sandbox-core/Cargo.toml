@@ -28,7 +28,7 @@ sandbox-fs = { path = "../sandbox-fs" }
 sandbox-proto = { path = "../sandbox-proto" }
 
 [features]
-default = ["cgroups", "seccomp"]
+default = ["cgroups", "seccomp", "net", "devices"]
 cgroups = ["sandbox-cgroups"]
 seccomp = ["sandbox-seccomp"]
 net = ["sandbox-net"]

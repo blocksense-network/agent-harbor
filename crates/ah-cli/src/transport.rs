@@ -17,34 +17,40 @@ fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes).map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))
 }
 
+#[cfg(feature = "agentfs")]
 /// Build a snapshot create request
-pub fn build_snapshot_create_request(name: Option<String>) -> Request {
-    Request::snapshot_create(name)
+pub fn build_snapshot_create_request(name: Option<String>) -> agentfs_proto::Request {
+    agentfs_proto::Request::snapshot_create(name)
 }
 
+#[cfg(feature = "agentfs")]
 /// Build a snapshot list request
-pub fn build_snapshot_list_request() -> Request {
-    Request::snapshot_list()
+pub fn build_snapshot_list_request() -> agentfs_proto::Request {
+    agentfs_proto::Request::snapshot_list()
 }
 
+#[cfg(feature = "agentfs")]
 /// Build a branch create request
-pub fn build_branch_create_request(from: String, name: Option<String>) -> Request {
-    Request::branch_create(from, name)
+pub fn build_branch_create_request(from: String, name: Option<String>) -> agentfs_proto::Request {
+    agentfs_proto::Request::branch_create(from, name)
 }
 
+#[cfg(feature = "agentfs")]
 /// Build a branch bind request
-pub fn build_branch_bind_request(branch: String, pid: Option<u32>) -> Request {
-    Request::branch_bind(branch, pid)
+pub fn build_branch_bind_request(branch: String, pid: Option<u32>) -> agentfs_proto::Request {
+    agentfs_proto::Request::branch_bind(branch, pid)
 }
 
+#[cfg(feature = "agentfs")]
 /// Build an interpose get request
-pub fn build_interpose_get_request(key: String) -> Request {
-    Request::interpose_setget(key, None)
+pub fn build_interpose_get_request(key: String) -> agentfs_proto::Request {
+    agentfs_proto::Request::interpose_setget(key, None)
 }
 
+#[cfg(feature = "agentfs")]
 /// Build an interpose set request
-pub fn build_interpose_set_request(key: String, value: String) -> Request {
-    Request::interpose_setget(key, Some(value))
+pub fn build_interpose_set_request(key: String, value: String) -> agentfs_proto::Request {
+    agentfs_proto::Request::interpose_setget(key, Some(value))
 }
 
 /// Platform-specific transport for communicating with AgentFS adapters
@@ -80,6 +86,7 @@ impl ControlTransport {
 }
 
 /// Send a control request to the AgentFS adapter
+#[cfg(feature = "agentfs")]
 pub async fn send_control_request(
     transport: ControlTransport,
     request: Request,
@@ -96,8 +103,11 @@ pub async fn send_control_request(
     }
 }
 
-#[cfg(unix)]
-async fn send_fuse_control_request(mount_point: PathBuf, request: Request) -> Result<Response> {
+#[cfg(all(feature = "agentfs", unix))]
+async fn send_fuse_control_request(
+    mount_point: PathBuf,
+    request: Request,
+) -> Result<agentfs_proto::Response> {
     use std::os::unix::fs::PermissionsExt;
     use tokio::fs;
 
@@ -169,8 +179,11 @@ async fn send_fuse_control_request(mount_point: PathBuf, request: Request) -> Re
     Ok(response)
 }
 
-#[cfg(windows)]
-async fn send_winfsp_control_request(volume_path: String, request: Request) -> Result<Response> {
+#[cfg(all(feature = "agentfs", windows))]
+async fn send_winfsp_control_request(
+    volume_path: String,
+    request: Request,
+) -> Result<agentfs_proto::Response> {
     use std::ffi::CString;
     use winapi::shared::minwindef::{DWORD, FALSE};
     use winapi::shared::ntdef::NULL;

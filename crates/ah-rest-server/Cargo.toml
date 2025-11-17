@@ -62,6 +62,9 @@ ah-logging = { path = "../ah-logging" }
 ah-repo = { path = "../ah-repo" }
 ah-fs-snapshots = { path = "../ah-fs-snapshots" }
 
+
+# Platform-specific dependencies
+
 # OpenAPI
 utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "7.1", features = ["axum"] }
@@ -96,6 +99,13 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
 ] }
+
+[features]
+default = []
+zfs = ["ah-fs-snapshots/zfs"]
+btrfs = ["ah-fs-snapshots/btrfs"]
+git = ["ah-fs-snapshots/git"]
+agentfs = ["ah-fs-snapshots/agentfs"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
