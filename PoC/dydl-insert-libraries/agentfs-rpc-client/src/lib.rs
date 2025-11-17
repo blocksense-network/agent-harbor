@@ -147,14 +147,20 @@ impl AgentFsClient {
 
         match self.send_request(req).await? {
             FsResponse::Attrs(resp) => {
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+                let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                let now = duration.as_secs() as i64;
+                let now_nsec = duration.subsec_nanos();
                 Ok(agentfs_core::Attributes {
                     len: resp.len,
                     times: agentfs_core::FileTimes {
                         atime: now,
+                        atime_nsec: now_nsec,
                         mtime: now,
+                        mtime_nsec: now_nsec,
                         ctime: now,
+                        ctime_nsec: now_nsec,
                         birthtime: now,
+                        birthtime_nsec: now_nsec,
                     },
                     uid: 0, // Not available in simplified SSZ response
                     gid: 0, // Not available in simplified SSZ response
@@ -176,6 +182,7 @@ impl AgentFsClient {
                         write: false,
                         exec: false,
                     },
+                    mode_bits: 0,
                 })
             }
             FsResponse::Error(resp) => {

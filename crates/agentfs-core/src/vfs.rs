@@ -28,6 +28,7 @@ use crate::{EventKind, EventSink, SubscriptionId};
 
 // Import proto types for interpose operations
 use agentfs_proto::messages::{StatData, StatfsData, TimespecData};
+use tracing::{debug, warn};
 
 // Directory file descriptor mapping for *at functions
 #[derive(Clone, Debug)]
@@ -391,7 +392,7 @@ impl FsCore {
 
     fn create_root_directory(&mut self) -> FsResult<()> {
         let root_node_id = self.allocate_node_id();
-        let now = Self::current_timestamp();
+        let (now_sec, now_nsec) = Self::current_time_components();
 
         let root_node = Node {
             id: root_node_id,
@@ -399,10 +400,14 @@ impl FsCore {
                 children: HashMap::new(),
             },
             times: FileTimes {
-                atime: now,
-                mtime: now,
-                ctime: now,
-                birthtime: now,
+                atime: now_sec,
+                atime_nsec: now_nsec,
+                mtime: now_sec,
+                mtime_nsec: now_nsec,
+                ctime: now_sec,
+                ctime_nsec: now_nsec,
+                birthtime: now_sec,
+                birthtime_nsec: now_nsec,
             },
             mode: 0o755,
             uid: self.config.security.default_uid,
@@ -442,7 +447,14 @@ impl FsCore {
     }
 
     fn current_timestamp() -> i64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+        Self::current_time_components().0
+    }
+
+    fn current_time_components() -> (i64, u32) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0));
+        (now.as_secs() as i64, now.subsec_nanos())
     }
 
     fn current_process_id() -> u32 {
@@ -578,20 +590,36 @@ impl FsCore {
     /// # Returns
     /// A `PID` token for use in filesystem operations
     pub fn register_process(&self, pid: u32, parent_pid: u32, uid: u32, gid: u32) -> PID {
+        self.register_process_with_groups(pid, parent_pid, uid, gid, &[gid])
+    }
+
+    /// Registers a process while supplying the full supplementary group list.
+    pub fn register_process_with_groups(
+        &self,
+        pid: u32,
+        parent_pid: u32,
+        uid: u32,
+        gid: u32,
+        groups: &[u32],
+    ) -> PID {
+        let normalized_groups = Self::normalize_groups(gid, groups);
         let user = User {
             uid,
             gid,
-            groups: vec![gid], // Basic group membership - can be extended later
+            groups: normalized_groups.clone(),
         };
 
         // Check if already registered - if so, refresh identity and return
         {
             let mut identities = self.process_identities.lock().unwrap();
             if let Some(existing) = identities.get_mut(&pid) {
-                if existing.uid != uid || existing.gid != gid {
+                if existing.uid != uid
+                    || existing.gid != gid
+                    || existing.groups != normalized_groups
+                {
                     existing.uid = uid;
                     existing.gid = gid;
-                    existing.groups = vec![gid];
+                    existing.groups = normalized_groups;
                 }
                 return PID(pid);
             }
@@ -617,6 +645,26 @@ impl FsCore {
         }
 
         PID(pid)
+    }
+
+    fn normalize_groups(primary_gid: u32, groups: &[u32]) -> Vec<u32> {
+        let mut normalized = Vec::new();
+        if groups.is_empty() {
+            normalized.push(primary_gid);
+            return normalized;
+        }
+
+        for &gid in groups {
+            if !normalized.contains(&gid) {
+                normalized.push(gid);
+            }
+        }
+
+        if !normalized.contains(&primary_gid) {
+            normalized.push(primary_gid);
+        }
+
+        normalized
     }
 
     /// Finds the active branch for a process by walking up the process hierarchy.
@@ -939,7 +987,7 @@ impl FsCore {
     /// Create a new file node
     fn create_file_node(&self, content_id: ContentId) -> FsResult<NodeId> {
         let node_id = self.allocate_node_id();
-        let now = Self::current_timestamp();
+        let (now_sec, now_nsec) = Self::current_time_components();
 
         let mut streams = HashMap::new();
         streams.insert("".to_string(), StreamState::new(content_id, 0)); // Default unnamed stream
@@ -948,10 +996,14 @@ impl FsCore {
             id: node_id,
             kind: NodeKind::File { streams },
             times: FileTimes {
-                atime: now,
-                mtime: now,
-                ctime: now,
-                birthtime: now,
+                atime: now_sec,
+                atime_nsec: now_nsec,
+                mtime: now_sec,
+                mtime_nsec: now_nsec,
+                ctime: now_sec,
+                ctime_nsec: now_nsec,
+                birthtime: now_sec,
+                birthtime_nsec: now_nsec,
             },
             mode: 0o644,
             uid: self.config.security.default_uid,
@@ -969,7 +1021,7 @@ impl FsCore {
 
     fn create_special_node(&self, kind: SpecialNodeKind) -> FsResult<NodeId> {
         let node_id = self.allocate_node_id();
-        let now = Self::current_timestamp();
+        let (now_sec, now_nsec) = Self::current_time_components();
 
         let node = Node {
             id: node_id,
@@ -977,10 +1029,14 @@ impl FsCore {
                 streams: HashMap::new(),
             },
             times: FileTimes {
-                atime: now,
-                mtime: now,
-                ctime: now,
-                birthtime: now,
+                atime: now_sec,
+                atime_nsec: now_nsec,
+                mtime: now_sec,
+                mtime_nsec: now_nsec,
+                ctime: now_sec,
+                ctime_nsec: now_nsec,
+                birthtime: now_sec,
+                birthtime_nsec: now_nsec,
             },
             mode: 0o644,
             uid: self.config.security.default_uid,
@@ -999,7 +1055,7 @@ impl FsCore {
     /// Create a new directory node
     fn create_directory_node(&self) -> FsResult<NodeId> {
         let node_id = self.allocate_node_id();
-        let now = Self::current_timestamp();
+        let (now_sec, now_nsec) = Self::current_time_components();
 
         let node = Node {
             id: node_id,
@@ -1007,10 +1063,14 @@ impl FsCore {
                 children: HashMap::new(),
             },
             times: FileTimes {
-                atime: now,
-                mtime: now,
-                ctime: now,
-                birthtime: now,
+                atime: now_sec,
+                atime_nsec: now_nsec,
+                mtime: now_sec,
+                mtime_nsec: now_nsec,
+                ctime: now_sec,
+                ctime_nsec: now_nsec,
+                birthtime: now_sec,
+                birthtime_nsec: now_nsec,
             },
             mode: 0o755,
             uid: self.config.security.default_uid,
@@ -1031,26 +1091,17 @@ impl FsCore {
         let (node_id, _) = self.resolve_path(pid, path)?;
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
-        // Only root may change owner uid; owner may change gid to a group they belong to
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                let changing_uid = uid != node.uid;
-                if changing_uid && user.uid != 0 {
-                    return Err(FsError::AccessDenied);
-                }
-                if gid != node.gid && user.uid != 0 {
-                    // Owner may change gid only to a group they belong to
-                    if user.uid != node.uid || (user.gid != gid && !user.groups.contains(&gid)) {
-                        return Err(FsError::AccessDenied);
-                    }
-                }
-            }
+        let (new_uid, new_gid, changed_uid, changed_gid) =
+            self.evaluate_owner_change(pid, node, uid, gid)?;
+        node.uid = new_uid;
+        node.gid = new_gid;
+        if changed_uid || changed_gid {
+            // Clear setuid/setgid on metadata ownership change
+            node.mode &= !0o6000;
         }
-        node.uid = uid;
-        node.gid = gid;
-        // Clear setuid/setgid on metadata ownership change
-        node.mode &= !0o6000;
-        node.times.ctime = Self::current_timestamp();
+        let (sec, nsec) = Self::current_time_components();
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
 
         // Emit Modified event for metadata change
         #[cfg(feature = "events")]
@@ -1331,6 +1382,7 @@ impl FsCore {
                 write: (perm_bits & 0o002) != 0,
                 exec: (perm_bits & 0o001) != 0,
             },
+            mode_bits: node.mode,
         })
     }
 
@@ -1915,9 +1967,11 @@ impl FsCore {
                         return Err(FsError::AlreadyExists);
                     }
                     children.insert(child_name.to_string(), child_id);
-                    let now = Self::current_timestamp();
-                    parent_node.times.mtime = now;
-                    parent_node.times.ctime = now;
+                    let (sec, nsec) = Self::current_time_components();
+                    parent_node.times.mtime = sec;
+                    parent_node.times.mtime_nsec = nsec;
+                    parent_node.times.ctime = sec;
+                    parent_node.times.ctime_nsec = nsec;
                     if child_is_dir {
                         parent_node.nlink = parent_node.nlink.saturating_add(1);
                     }
@@ -1938,9 +1992,11 @@ impl FsCore {
             };
             if let NodeKind::Directory { children } = &mut parent_node.kind {
                 if let Some(child_id) = children.remove(child_name) {
-                    let now = Self::current_timestamp();
-                    parent_node.times.mtime = now;
-                    parent_node.times.ctime = now;
+                    let (sec, nsec) = Self::current_time_components();
+                    parent_node.times.mtime = sec;
+                    parent_node.times.mtime_nsec = nsec;
+                    parent_node.times.ctime = sec;
+                    parent_node.times.ctime_nsec = nsec;
                     Some(child_id)
                 } else {
                     None
@@ -2511,8 +2567,11 @@ impl FsCore {
                         let new_size = std::cmp::max(stream.size, offset + written as u64);
                         stream.size = new_size;
                     }
-                    node.times.mtime = Self::current_timestamp();
-                    node.times.ctime = node.times.mtime;
+                    let (sec, nsec) = Self::current_time_components();
+                    node.times.mtime = sec;
+                    node.times.mtime_nsec = nsec;
+                    node.times.ctime = sec;
+                    node.times.ctime_nsec = nsec;
                 }
                 _ => return Err(FsError::InvalidArgument),
             }
@@ -2959,6 +3018,7 @@ impl FsCore {
                     write: (perm_bits & 0o002) != 0,
                     exec: (perm_bits & 0o001) != 0,
                 },
+                mode_bits: child_node.mode,
             };
 
             entries.push((dir_entry, attributes));
@@ -3037,6 +3097,7 @@ impl FsCore {
                         write: (perm_bits & 0o002) != 0,
                         exec: (perm_bits & 0o001) != 0,
                     },
+                    mode_bits: child_node.mode,
                 };
 
                 entries.insert(name.clone(), (dir_entry, attributes));
@@ -3106,6 +3167,7 @@ impl FsCore {
                             write: false,
                             exec: false,
                         },
+                        mode_bits: child_node.mode,
                     };
 
                     // Prefer raw name bytes preserved at create time, fallback to internal name bytes
@@ -3449,6 +3511,7 @@ impl FsCore {
                 write: (perm_bits & 0o002) != 0,
                 exec: (perm_bits & 0o001) != 0,
             },
+            mode_bits: node.mode,
         };
 
         // For now, implement a basic version that returns stat-like information
@@ -3554,11 +3617,16 @@ impl FsCore {
                 node.uid = uid;
                 node.gid = gid;
                 node.times.atime = atime as i64;
+                node.times.atime_nsec = 0;
                 node.times.mtime = mtime as i64;
+                node.times.mtime_nsec = 0;
                 node.times.ctime = ctime as i64;
+                node.times.ctime_nsec = 0;
 
                 // Update change time to now
-                node.times.ctime = Self::current_timestamp();
+                let (sec, nsec) = Self::current_time_components();
+                node.times.ctime = sec;
+                node.times.ctime_nsec = nsec;
             }
         }
 
@@ -3629,6 +3697,7 @@ impl FsCore {
                                 write: (perm_bits & 0o002) != 0,
                                 exec: (perm_bits & 0o001) != 0,
                             },
+                            mode_bits: child_node.mode,
                         };
 
                         // Format as a simple attribute record
@@ -3962,11 +4031,12 @@ impl FsCore {
         }
         drop(handles);
 
-        let now = FsCore::current_timestamp();
+        let (sec, nsec) = FsCore::current_time_components();
         {
             let mut nodes = self.nodes.lock().unwrap();
             if let Some(node) = nodes.get_mut(&node_id) {
-                node.times.ctime = now;
+                node.times.ctime = sec;
+                node.times.ctime_nsec = nsec;
             }
             if remaining_links == 0 && !has_open_handles {
                 // No open handles and no more directory links, remove immediately
@@ -3996,18 +4066,12 @@ impl FsCore {
         let (node_id, _) = self.resolve_path(pid, path)?;
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
-        // Only owner or root may change mode when enforcing POSIX permissions
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                if !(user.uid == 0 || user.uid == node.uid) {
-                    return Err(FsError::AccessDenied);
-                }
-            }
-        }
-        node.mode = mode;
+        let new_mode = self.sanitize_mode_change(pid, node, mode)?;
+        node.mode = new_mode;
         // ctime changes on metadata change
-        let now = FsCore::current_timestamp();
-        node.times.ctime = now;
+        let (sec, nsec) = FsCore::current_time_components();
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
 
         // Emit Modified event for metadata change
         #[cfg(feature = "events")]
@@ -4057,6 +4121,7 @@ impl FsCore {
                         write: (node.mode & libc::S_IWOTH as u32) != 0,
                         exec: (node.mode & libc::S_IXOTH as u32) != 0,
                     },
+                    mode_bits: node.mode,
                 };
                 return self.attributes_to_stat_data(attrs, path);
             }
@@ -4088,18 +4153,12 @@ impl FsCore {
         let node_id = self.get_node_id_for_handle(pid, handle_id)?;
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
-        // Only owner or root may change mode when enforcing POSIX permissions
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                if !(user.uid == 0 || user.uid == node.uid) {
-                    return Err(FsError::AccessDenied);
-                }
-            }
-        }
-        node.mode = mode;
+        let new_mode = self.sanitize_mode_change(pid, node, mode)?;
+        node.mode = new_mode;
         // ctime changes on metadata change
-        let now = FsCore::current_timestamp();
-        node.times.ctime = now;
+        let (sec, nsec) = FsCore::current_time_components();
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
         Ok(())
     }
 
@@ -4131,23 +4190,7 @@ impl FsCore {
         times: Option<(TimespecData, TimespecData)>,
     ) -> FsResult<()> {
         let node_id = self.get_node_id_for_handle(pid, handle_id)?;
-        let file_times = times
-            .map(|(atime, mtime)| FileTimes {
-                atime: atime.tv_sec as i64,
-                mtime: mtime.tv_sec as i64,
-                ctime: FsCore::current_timestamp(),
-                birthtime: FsCore::current_timestamp(),
-            })
-            .unwrap_or_else(|| {
-                let now = FsCore::current_timestamp();
-                FileTimes {
-                    atime: now,
-                    mtime: now,
-                    ctime: now,
-                    birthtime: now,
-                }
-            });
-        self.set_node_times(node_id, file_times)
+        self.update_node_times_with_specs(pid, node_id, times)
     }
 
     /// Change file timestamps (futimens) for an open file descriptor (nanosecond precision)
@@ -4169,25 +4212,9 @@ impl FsCore {
         times: Option<(TimespecData, TimespecData)>,
         flags: u32,
     ) -> FsResult<()> {
-        // Now that path resolution is done client-side, this just calls set_times with resolved path
         let _ = flags; // unused in simplified version
-        let file_times = times
-            .map(|(atime, mtime)| FileTimes {
-                atime: atime.tv_sec as i64,
-                mtime: mtime.tv_sec as i64,
-                ctime: FsCore::current_timestamp(),
-                birthtime: FsCore::current_timestamp(),
-            })
-            .unwrap_or_else(|| {
-                let now = FsCore::current_timestamp();
-                FileTimes {
-                    atime: now,
-                    mtime: now,
-                    ctime: now,
-                    birthtime: now,
-                }
-            });
-        self.set_times(pid, path, file_times)
+        let (node_id, _) = self.resolve_path(pid, path)?;
+        self.update_node_times_with_specs(pid, node_id, times)
     }
 
     /// Truncate file (ftruncate) for an open file descriptor
@@ -4215,9 +4242,9 @@ impl FsCore {
                         self.storage.truncate(stream.content_id, length)?;
                         stream.size = length;
                     } else if length > stream.size {
-                        // Extend: for now, we can't easily extend - this would require more complex logic
-                        // In a real implementation, we'd need to handle this properly
-                        return Err(FsError::Unsupported); // Extension not supported in this simplified version
+                        // Extend by zero-filling via the backend truncation
+                        self.storage.truncate(stream.content_id, length)?;
+                        stream.size = length;
                     }
                     // length == current_size: no-op
                 } else {
@@ -4237,9 +4264,11 @@ impl FsCore {
         }
 
         // Update ctime on truncate
-        let now = FsCore::current_timestamp();
-        node.times.ctime = now;
-        node.times.mtime = now;
+        let (sec, nsec) = FsCore::current_time_components();
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
+        node.times.mtime = sec;
+        node.times.mtime_nsec = nsec;
 
         // Emit Modified event for file content change
         #[cfg(feature = "events")]
@@ -4295,20 +4324,162 @@ impl FsCore {
     fn set_node_owner(&self, node_id: NodeId, pid: &PID, uid: u32, gid: u32) -> FsResult<()> {
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
-        // Only root may change owner when enforcing POSIX permissions
-        if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                if user.uid != 0 {
-                    return Err(FsError::AccessDenied);
-                }
+        let (new_uid, new_gid, changed_uid, changed_gid) =
+            self.evaluate_owner_change(pid, node, uid, gid)?;
+        node.uid = new_uid;
+        node.gid = new_gid;
+        if changed_uid || changed_gid {
+            node.mode &= !0o6000;
+        }
+        // ctime changes on metadata change
+        let (sec, nsec) = FsCore::current_time_components();
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
+        Ok(())
+    }
+
+    fn evaluate_owner_change(
+        &self,
+        pid: &PID,
+        node: &Node,
+        uid: u32,
+        gid: u32,
+    ) -> FsResult<(u32, u32, bool, bool)> {
+        let uid_specified = uid != u32::MAX;
+        let gid_specified = gid != u32::MAX;
+        let new_uid = if uid_specified { uid } else { node.uid };
+        let new_gid = if gid_specified { gid } else { node.gid };
+        let changing_uid = uid_specified && new_uid != node.uid;
+        let changing_gid = gid_specified && new_gid != node.gid;
+
+        if !self.config.security.enforce_posix_permissions {
+            return Ok((new_uid, new_gid, changing_uid, changing_gid));
+        }
+
+        let Some(user) = self.user_for_process(pid) else {
+            debug!(
+                target: "agentfs::metadata",
+                pid = pid.as_u32(),
+                requested_uid = uid,
+                requested_gid = gid,
+                node_uid = node.uid,
+                node_gid = node.gid,
+                "ownership change allowed without registered process identity"
+            );
+            return Ok((new_uid, new_gid, changing_uid, changing_gid));
+        };
+
+        if self.config.security.root_bypass_permissions && user.uid == 0 {
+            debug!(
+                target: "agentfs::metadata",
+                pid = pid.as_u32(),
+                caller_uid = user.uid,
+                caller_gid = user.gid,
+                requested_uid = uid,
+                requested_gid = gid,
+                node_uid = node.uid,
+                node_gid = node.gid,
+                "ownership change allowed via root bypass"
+            );
+            return Ok((new_uid, new_gid, changing_uid, changing_gid));
+        }
+
+        if changing_uid && user.uid != 0 {
+            warn!(
+                target: "agentfs::metadata",
+                pid = pid.as_u32(),
+                caller_uid = user.uid,
+                caller_gid = user.gid,
+                requested_uid = uid,
+                requested_gid = gid,
+                node_uid = node.uid,
+                node_gid = node.gid,
+                "denying uid change: non-root caller"
+            );
+            return Err(FsError::OperationNotPermitted);
+        }
+
+        if gid_specified && user.uid != 0 {
+            if user.uid != node.uid {
+                warn!(
+                    target: "agentfs::metadata",
+                    pid = pid.as_u32(),
+                    caller_uid = user.uid,
+                    caller_gid = user.gid,
+                    requested_uid = uid,
+                    requested_gid = gid,
+                    node_uid = node.uid,
+                    node_gid = node.gid,
+                    "denying gid change: caller not file owner"
+                );
+                return Err(FsError::OperationNotPermitted);
+            }
+            if !self.has_group(&user, new_gid) {
+                warn!(
+                    target: "agentfs::metadata",
+                    pid = pid.as_u32(),
+                    caller_uid = user.uid,
+                    caller_gid = user.gid,
+                    requested_uid = uid,
+                    requested_gid = gid,
+                    node_uid = node.uid,
+                    node_gid = node.gid,
+                    groups = ?user.groups,
+                    "denying gid change: caller missing requested group"
+                );
+                return Err(FsError::OperationNotPermitted);
             }
         }
-        node.uid = uid;
-        node.gid = gid;
-        // ctime changes on metadata change
-        let now = FsCore::current_timestamp();
-        node.times.ctime = now;
-        Ok(())
+
+        if user.uid != 0 && user.uid != node.uid && (uid_specified || gid_specified) {
+            warn!(
+                target: "agentfs::metadata",
+                pid = pid.as_u32(),
+                caller_uid = user.uid,
+                caller_gid = user.gid,
+                requested_uid = uid,
+                requested_gid = gid,
+                new_uid,
+                new_gid,
+                node_uid = node.uid,
+                node_gid = node.gid,
+                changing_uid,
+                changing_gid,
+                groups = ?user.groups,
+                "non-owner ownership change permitted"
+            );
+        }
+
+        Ok((new_uid, new_gid, changing_uid, changing_gid))
+    }
+
+    fn sanitize_mode_change(&self, pid: &PID, node: &Node, requested: u32) -> FsResult<u32> {
+        let mut mode = requested & 0o7777;
+        if !self.config.security.enforce_posix_permissions {
+            return Ok(mode);
+        }
+
+        let Some(user) = self.user_for_process(pid) else {
+            return Ok(mode);
+        };
+
+        if self.config.security.root_bypass_permissions && user.uid == 0 {
+            return Ok(mode);
+        }
+
+        if user.uid != 0 && user.uid != node.uid {
+            return Err(FsError::OperationNotPermitted);
+        }
+
+        if user.uid != 0
+            && (mode & libc::S_ISGID as u32) != 0
+            && !self.has_group(&user, node.gid)
+            && matches!(node.kind, NodeKind::File { .. })
+        {
+            mode &= !(libc::S_ISGID as u32);
+        }
+
+        Ok(mode)
     }
 
     /// Helper method to set node times
@@ -4316,6 +4487,110 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
         node.times = times;
+        Ok(())
+    }
+
+    fn update_node_times_with_specs(
+        &self,
+        pid: &PID,
+        node_id: NodeId,
+        times: Option<(TimespecData, TimespecData)>,
+    ) -> FsResult<()> {
+        let (atime_spec, mtime_spec) = times.unwrap_or_else(|| {
+            let now_spec = TimespecData {
+                tv_sec: 0,
+                tv_nsec: libc::UTIME_NOW as u32,
+            };
+            (now_spec.clone(), now_spec)
+        });
+
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+        let now = FsCore::current_time_components();
+        let current_at = (node.times.atime, node.times.atime_nsec);
+        let current_mt = (node.times.mtime, node.times.mtime_nsec);
+        let (at_intent, at_value) = Self::interpret_timespec(&atime_spec, now, current_at);
+        let (mt_intent, mt_value) = Self::interpret_timespec(&mtime_spec, now, current_mt);
+        self.check_timestamp_permissions(pid, node, (at_intent, mt_intent))?;
+
+        let mut changed = false;
+        if matches!(at_intent, TimestampIntent::Now | TimestampIntent::Specific) {
+            node.times.atime = at_value.0;
+            node.times.atime_nsec = at_value.1;
+            changed = true;
+        }
+        if matches!(mt_intent, TimestampIntent::Now | TimestampIntent::Specific) {
+            node.times.mtime = mt_value.0;
+            node.times.mtime_nsec = mt_value.1;
+            changed = true;
+        }
+        if changed {
+            node.times.ctime = now.0;
+            node.times.ctime_nsec = now.1;
+        }
+
+        Ok(())
+    }
+
+    fn interpret_timespec(
+        spec: &TimespecData,
+        now: (i64, u32),
+        current: (i64, u32),
+    ) -> (TimestampIntent, (i64, u32)) {
+        match spec.tv_nsec {
+            nanos if nanos == libc::UTIME_NOW as u32 => (TimestampIntent::Now, now),
+            nanos if nanos == libc::UTIME_OMIT as u32 => (TimestampIntent::Omit, current),
+            _ => (
+                TimestampIntent::Specific,
+                (spec.tv_sec as i64, spec.tv_nsec),
+            ),
+        }
+    }
+
+    fn check_timestamp_permissions(
+        &self,
+        pid: &PID,
+        node: &Node,
+        intents: (TimestampIntent, TimestampIntent),
+    ) -> FsResult<()> {
+        let (at_intent, mt_intent) = intents;
+        let mut needs_owner = false;
+        let mut needs_write = false;
+
+        for intent in [at_intent, mt_intent] {
+            match intent {
+                TimestampIntent::Specific => needs_owner = true,
+                TimestampIntent::Now => needs_write = true,
+                TimestampIntent::Omit => {}
+            }
+        }
+
+        if !needs_owner && !needs_write {
+            return Ok(());
+        }
+
+        if !self.config.security.enforce_posix_permissions {
+            return Ok(());
+        }
+
+        let Some(user) = self.user_for_process(pid) else {
+            return Ok(());
+        };
+
+        if self.config.security.root_bypass_permissions && user.uid == 0 {
+            return Ok(());
+        }
+
+        if needs_owner && user.uid != 0 && user.uid != node.uid {
+            return Err(FsError::OperationNotPermitted);
+        }
+
+        if needs_write && user.uid != 0 && user.uid != node.uid {
+            if !self.allowed_for_user(node, &user, false, true, false) {
+                return Err(FsError::AccessDenied);
+            }
+        }
+
         Ok(())
     }
 
@@ -4336,11 +4611,11 @@ impl FsCore {
             st_blksize: 4096,                   // 4KB block size
             st_blocks: attrs.len.div_ceil(512), // Number of 512-byte blocks
             st_atime: attrs.times.atime as u64,
-            st_atime_nsec: 0, // Simplified
+            st_atime_nsec: attrs.times.atime_nsec,
             st_mtime: attrs.times.mtime as u64,
-            st_mtime_nsec: 0, // Simplified
+            st_mtime_nsec: attrs.times.mtime_nsec,
             st_ctime: attrs.times.ctime as u64,
-            st_ctime_nsec: 0, // Simplified
+            st_ctime_nsec: attrs.times.ctime_nsec,
         })
     }
 
@@ -4662,17 +4937,21 @@ impl FsCore {
 
     /// Create a symlink node
     fn create_symlink_node(&self, target: String) -> FsResult<NodeId> {
-        let now = Self::current_timestamp();
+        let (now_sec, now_nsec) = Self::current_time_components();
         let node_id = self.allocate_node_id();
 
         let node = Node {
             id: node_id,
             kind: NodeKind::Symlink { target },
             times: FileTimes {
-                atime: now,
-                mtime: now,
-                ctime: now,
-                birthtime: now,
+                atime: now_sec,
+                atime_nsec: now_nsec,
+                mtime: now_sec,
+                mtime_nsec: now_nsec,
+                ctime: now_sec,
+                ctime_nsec: now_nsec,
+                birthtime: now_sec,
+                birthtime_nsec: now_nsec,
             },
             mode: 0o777, // Symlinks typically have full permissions
             uid: self.config.security.default_uid,
@@ -4689,6 +4968,13 @@ impl FsCore {
 
         Ok(node_id)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TimestampIntent {
+    Now,
+    Specific,
+    Omit,
 }
 
 #[cfg(test)]
@@ -4999,9 +5285,13 @@ mod tests {
         let (node_id, _) = fs.resolve_path(&pid, "/file".as_ref()).expect("resolve file");
         let baseline = FileTimes {
             atime: 1,
+            atime_nsec: 0,
             mtime: 1,
+            mtime_nsec: 0,
             ctime: 5,
+            ctime_nsec: 0,
             birthtime: 1,
+            birthtime_nsec: 0,
         };
         fs.set_node_times(node_id, baseline).expect("set custom times");
 

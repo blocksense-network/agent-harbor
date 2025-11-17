@@ -9,6 +9,8 @@
 use crate::error::{FsError, FsResult};
 use crate::{Attributes, DirEntry, LowerFs};
 use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 /// Host filesystem implementation of LowerFs trait
@@ -33,36 +35,35 @@ impl LowerFs for HostLowerFs {
         // Convert overlay path to host path
         let host_path = self.root.join(abs_path.strip_prefix("/").unwrap_or(abs_path));
         let metadata = std::fs::metadata(&host_path)?;
+        let to_parts = |time: std::io::Result<std::time::SystemTime>| {
+            let ts = time.unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            match ts.duration_since(std::time::SystemTime::UNIX_EPOCH) {
+                Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
+                Err(_) => (0, 0),
+            }
+        };
 
         // Convert std::fs::Metadata to our Attributes
         let file_type = metadata.file_type();
         let len = metadata.len();
+        let (atime_sec, atime_nsec) = to_parts(metadata.accessed());
+        let (mtime_sec, mtime_nsec) = to_parts(metadata.modified());
+        let (created_sec, created_nsec) = to_parts(metadata.created());
         let times = crate::FileTimes {
-            atime: metadata
-                .accessed()
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
-            mtime: metadata
-                .modified()
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
-            ctime: metadata
-                .created()
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
-            birthtime: metadata
-                .created()
-                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
+            atime: atime_sec,
+            atime_nsec,
+            mtime: mtime_sec,
+            mtime_nsec,
+            ctime: created_sec,
+            ctime_nsec: created_nsec,
+            birthtime: created_sec,
+            birthtime_nsec: created_nsec,
         };
+
+        #[cfg(unix)]
+        let mode_bits = metadata.permissions().mode() & 0o7777;
+        #[cfg(not(unix))]
+        let mode_bits = 0o777;
 
         Ok(Attributes {
             len,
@@ -88,6 +89,7 @@ impl LowerFs for HostLowerFs {
                 write: false, // Conservative for other
                 exec: file_type.is_dir(),
             },
+            mode_bits,
         })
     }
 

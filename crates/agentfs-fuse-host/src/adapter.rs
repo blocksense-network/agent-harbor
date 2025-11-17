@@ -22,7 +22,7 @@ use fuser::{
 };
 use libc::{
     EACCES, EBADF, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS,
-    ENOTDIR, ENOTEMPTY, ENOTSUP, c_int,
+    ENOTDIR, ENOTEMPTY, ENOTSUP, EPERM, c_int,
 };
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
@@ -300,6 +300,13 @@ impl AgentFsFuse {
         let client_pid = req.pid();
         let client_uid = req.uid();
         let client_gid = req.gid();
+        debug!(
+            target: "agentfs::metadata",
+            fuse_pid = client_pid,
+            client_uid,
+            client_gid,
+            "registering client process"
+        );
 
         // The FsCore register_process function expects a parent_pid.
         // The fuser::Request does not provide this.
@@ -307,7 +314,56 @@ impl AgentFsFuse {
         // parent is a valid convention for registering a new process tree root.
         //
         // This is VASTLY superior to the previous hardcoded (host_pid, 1, 0, 0).
-        self.core.register_process(client_pid, client_pid, client_uid, client_gid)
+        let groups = Self::load_process_groups(client_pid, client_gid);
+
+        self.core.register_process_with_groups(
+            client_pid,
+            client_pid,
+            client_uid,
+            client_gid,
+            groups.as_slice(),
+        )
+    }
+
+    fn load_process_groups(pid: u32, primary_gid: u32) -> Vec<u32> {
+        let status_path = format!("/proc/{pid}/status");
+        let mut groups = match std::fs::read_to_string(&status_path) {
+            Ok(contents) => contents
+                .lines()
+                .find_map(|line| {
+                    line.strip_prefix("Groups:").map(|rest| {
+                        rest.split_whitespace()
+                            .filter_map(|g| g.parse::<u32>().ok())
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .unwrap_or_default(),
+            Err(err) => {
+                warn!(
+                    target: "agentfs::fuse",
+                    pid,
+                    %status_path,
+                    %err,
+                    "failed to read supplementary groups; falling back to primary gid"
+                );
+                Vec::new()
+            }
+        };
+        debug!(
+            target: "agentfs::metadata",
+            pid,
+            primary_gid = primary_gid,
+            groups = ?groups,
+            "resolved process groups"
+        );
+
+        if groups.is_empty() {
+            groups.push(primary_gid);
+        } else if !groups.contains(&primary_gid) {
+            groups.push(primary_gid);
+        }
+
+        groups
     }
 
     /// Allocate a new inode for a path
@@ -570,10 +626,17 @@ impl AgentFsFuse {
             ino,
             size: attr.len,
             blocks: (attr.len + 511) / 512, // 512-byte blocks
-            atime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.atime as u64),
-            mtime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.mtime as u64),
-            ctime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.ctime as u64),
-            crtime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.birthtime as u64),
+            atime: SystemTime::UNIX_EPOCH
+                + Duration::new(attr.times.atime.max(0) as u64, attr.times.atime_nsec),
+            mtime: SystemTime::UNIX_EPOCH
+                + Duration::new(attr.times.mtime.max(0) as u64, attr.times.mtime_nsec),
+            ctime: SystemTime::UNIX_EPOCH
+                + Duration::new(attr.times.ctime.max(0) as u64, attr.times.ctime_nsec),
+            crtime: SystemTime::UNIX_EPOCH
+                + Duration::new(
+                    attr.times.birthtime.max(0) as u64,
+                    attr.times.birthtime_nsec,
+                ),
             kind,
             perm: attr.mode() as u16,
             nlink: attr.nlink.max(1),
@@ -699,6 +762,8 @@ impl AgentFsFuse {
                             FsError::NotFound => ENOENT,
                             FsError::AlreadyExists => EEXIST,
                             FsError::AccessDenied => EACCES,
+
+                            FsError::OperationNotPermitted => EPERM,
                             FsError::InvalidArgument => EINVAL,
                             _ => EIO,
                         };
@@ -752,6 +817,8 @@ impl AgentFsFuse {
                             FsError::NotFound => ENOENT,
                             FsError::AlreadyExists => EEXIST,
                             FsError::AccessDenied => EACCES,
+
+                            FsError::OperationNotPermitted => EPERM,
                             FsError::InvalidArgument => EINVAL,
                             _ => EIO,
                         };
@@ -779,6 +846,8 @@ impl AgentFsFuse {
                             FsError::NotFound => ENOENT,
                             FsError::AlreadyExists => EEXIST,
                             FsError::AccessDenied => EACCES,
+
+                            FsError::OperationNotPermitted => EPERM,
                             FsError::InvalidArgument => EINVAL,
                             _ => EIO,
                         };
@@ -1625,7 +1694,9 @@ impl fuser::Filesystem for AgentFsFuse {
         if let Err(err) = self.ensure_upper_parent_dirs(&client_pid, path) {
             reply.error(match err {
                 FsError::AccessDenied => EACCES,
+                FsError::OperationNotPermitted => EPERM,
                 FsError::NotFound => ENOENT,
+                FsError::InvalidArgument => EINVAL,
                 _ => EIO,
             });
             return;
@@ -1682,6 +1753,8 @@ impl fuser::Filesystem for AgentFsFuse {
         if let Err(err) = self.ensure_upper_parent_dirs(&client_pid, path) {
             reply.error(match err {
                 FsError::AccessDenied => EACCES,
+
+                FsError::OperationNotPermitted => EPERM,
                 FsError::NotFound => ENOENT,
                 _ => EIO,
             });
@@ -2261,12 +2334,6 @@ impl fuser::Filesystem for AgentFsFuse {
         let path = self.path_from_bytes(&canonical_path);
         let client_pid = self.get_client_pid(req);
 
-        // Helper: get current times for UTIME_OMIT behavior
-        let current_times = match self.core.getattr(&client_pid, path) {
-            Ok(attr) => Some(attr.times),
-            Err(_) => None,
-        };
-
         let needs_materialization = mode.is_some()
             || uid.is_some()
             || gid.is_some()
@@ -2281,6 +2348,8 @@ impl fuser::Filesystem for AgentFsFuse {
                     if let Err(err) = self.copy_lower_to_upper(&client_pid, path, &canonical_path) {
                         reply.error(match err {
                             FsError::AccessDenied => EACCES,
+
+                            FsError::OperationNotPermitted => EPERM,
                             FsError::NotFound => ENOENT,
                             _ => EIO,
                         });
@@ -2301,6 +2370,9 @@ impl fuser::Filesystem for AgentFsFuse {
                     reply.error(match e {
                         FsError::NotFound => ENOENT,
                         FsError::AccessDenied => EACCES,
+
+                        FsError::OperationNotPermitted => EPERM,
+                        FsError::InvalidArgument => EINVAL,
                         FsError::Unsupported => libc::ENOTSUP,
                         _ => EIO,
                     });
@@ -2316,6 +2388,9 @@ impl fuser::Filesystem for AgentFsFuse {
                             reply.error(match e {
                                 FsError::NotFound => ENOENT,
                                 FsError::AccessDenied => EACCES,
+
+                                FsError::OperationNotPermitted => EPERM,
+                                FsError::InvalidArgument => EINVAL,
                                 FsError::Unsupported => libc::ENOTSUP,
                                 _ => EIO,
                             });
@@ -2327,6 +2402,8 @@ impl fuser::Filesystem for AgentFsFuse {
                         reply.error(match e {
                             FsError::NotFound => ENOENT,
                             FsError::AccessDenied => EACCES,
+
+                            FsError::OperationNotPermitted => EPERM,
                             _ => EIO,
                         });
                         return;
@@ -2342,6 +2419,8 @@ impl fuser::Filesystem for AgentFsFuse {
                     reply.error(match e {
                         FsError::NotFound => ENOENT,
                         FsError::AccessDenied => EACCES,
+
+                        FsError::OperationNotPermitted => EPERM,
                         _ => EIO,
                     });
                     return;
@@ -2350,6 +2429,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 reply.error(match e {
                     FsError::NotFound => ENOENT,
                     FsError::AccessDenied => EACCES,
+
+                    FsError::OperationNotPermitted => EPERM,
                     _ => EIO,
                 });
                 return;
@@ -2365,6 +2446,8 @@ impl fuser::Filesystem for AgentFsFuse {
                     reply.error(match e {
                         FsError::NotFound => ENOENT,
                         FsError::AccessDenied => EACCES,
+
+                        FsError::OperationNotPermitted => EPERM,
                         _ => EIO,
                     });
                     return;
@@ -2373,6 +2456,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 reply.error(match e {
                     FsError::NotFound => ENOENT,
                     FsError::AccessDenied => EACCES,
+
+                    FsError::OperationNotPermitted => EPERM,
                     _ => EIO,
                 });
                 return;
@@ -2381,23 +2466,12 @@ impl fuser::Filesystem for AgentFsFuse {
 
         // Apply timestamps (utimens)
         if atime.is_some() || mtime.is_some() {
-            let (cur_at, cur_mt) = if let Some(t) = &current_times {
-                (t.atime as u64, t.mtime as u64)
-            } else {
-                let now =
-                    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-                (now, now)
-            };
-
-            let to_ts = |tor: Option<TimeOrNow>, cur: u64| -> TimespecData {
+            let to_ts = |tor: Option<TimeOrNow>| -> TimespecData {
                 match tor {
-                    Some(TimeOrNow::Now) => {
-                        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-                        TimespecData {
-                            tv_sec: now.as_secs(),
-                            tv_nsec: now.subsec_nanos(),
-                        }
-                    }
+                    Some(TimeOrNow::Now) => TimespecData {
+                        tv_sec: 0,
+                        tv_nsec: libc::UTIME_NOW as u32,
+                    },
                     Some(TimeOrNow::SpecificTime(t)) => {
                         let dur = t.duration_since(UNIX_EPOCH).unwrap_or_default();
                         TimespecData {
@@ -2406,14 +2480,14 @@ impl fuser::Filesystem for AgentFsFuse {
                         }
                     }
                     None => TimespecData {
-                        tv_sec: cur,
-                        tv_nsec: 0,
+                        tv_sec: 0,
+                        tv_nsec: libc::UTIME_OMIT as u32,
                     },
                 }
             };
 
-            let a_ts = to_ts(atime, cur_at);
-            let m_ts = to_ts(mtime, cur_mt);
+            let a_ts = to_ts(atime);
+            let m_ts = to_ts(mtime);
 
             if let Some(fh_val) = fh {
                 if let Err(e) =
@@ -2422,6 +2496,8 @@ impl fuser::Filesystem for AgentFsFuse {
                     reply.error(match e {
                         FsError::NotFound => ENOENT,
                         FsError::AccessDenied => EACCES,
+
+                        FsError::OperationNotPermitted => EPERM,
                         _ => EIO,
                     });
                     return;
@@ -2430,6 +2506,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 reply.error(match e {
                     FsError::NotFound => ENOENT,
                     FsError::AccessDenied => EACCES,
+
+                    FsError::OperationNotPermitted => EPERM,
                     _ => EIO,
                 });
                 return;
