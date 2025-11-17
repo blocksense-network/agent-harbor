@@ -78,6 +78,11 @@ members = [
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",
+  # Command trace shim
+  "crates/ah-command-trace-proto",
+  "crates/ah-command-trace-server",
+  "crates/ah-command-trace-shim",
+  "crates/ah-command-trace-e2e-tests",
 ]
 exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
 resolver = "2"
@@ -149,6 +154,8 @@ eventsource-client = "0.13"
 ratatui = "0.29"
 crossterm = "0.28"
 tui-textarea = { path = "vendor/tui-textarea", features = ["search"] }
+
+vt100 = { git = "https://github.com/blocksense-network/vt100-rust", branch = "agent-harbor" }
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }
