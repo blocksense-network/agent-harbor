@@ -289,6 +289,7 @@ fn test_cgroups_enforcement_e2e() {
 
 #[cfg(target_os = "linux")]
 #[test]
+#[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn test_debugging_enforcement_e2e() {
     // This test runs the full E2E debugging enforcement test suite
     // It requires the test binaries to be built and available

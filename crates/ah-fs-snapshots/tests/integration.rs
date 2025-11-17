@@ -75,6 +75,7 @@ fn test_zfs_snapshot_integration() {
 
 /// Integration test for Git snapshot providers via the harness driver.
 #[test]
+#[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn test_git_snapshot_integration() {
     if !git_available() {
         println!("Skipping Git integration test: git command not available");
@@ -151,6 +152,7 @@ fn test_btrfs_snapshot_integration() {
 }
 
 #[test]
+#[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn test_git_provider_matrix() {
     if !git_available() {
         println!("Skipping Git provider matrix: git command not available");
