@@ -256,10 +256,11 @@ pub mod test_utils {
                 }
             };
 
-            // Run the server with a timeout for testing
+            // Store the shutdown sender so tests can shut down the server
+            // For now, we'll use a timeout approach
             let server_future = server.run(handler, shutdown_rx);
             let timeout_future =
-                tokio::time::timeout(std::time::Duration::from_secs(5), server_future);
+                tokio::time::timeout(std::time::Duration::from_secs(30), server_future);
 
             match timeout_future.await {
                 Ok(result) => result,

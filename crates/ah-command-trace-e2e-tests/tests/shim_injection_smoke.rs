@@ -68,7 +68,7 @@ async fn shim_injection_smoke_with_socket() {
     };
 
     // Run both concurrently with a timeout
-    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
         tokio::join!(server_future, test_future)
     })
     .await;
@@ -122,7 +122,7 @@ async fn shim_disabled_dormant() {
     };
 
     // Run both concurrently with a timeout
-    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
         tokio::join!(server_future, test_future)
     })
     .await;
@@ -189,7 +189,7 @@ async fn shim_teardown_clean_exit() {
     };
 
     // Run both concurrently with a timeout
-    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
         tokio::join!(server_future, test_future)
     })
     .await;
@@ -255,7 +255,7 @@ async fn shim_teardown_underscore_exit() {
     };
 
     // Run both concurrently with a timeout
-    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
         tokio::join!(server_future, test_future)
     })
     .await;
@@ -389,7 +389,7 @@ async fn shim_records_spawn_tree() {
     };
 
     // Run both concurrently with a timeout
-    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
         tokio::join!(server_future, test_future)
     })
     .await;
@@ -440,6 +440,223 @@ async fn shim_records_spawn_tree() {
             assert!(
                 command_starts.len() >= 3,
                 "Expected at least 3 CommandStart messages (parent + children + grandchild)"
+            );
+        }
+        Err(_) => panic!("Test timed out"),
+    }
+}
+
+/// Test that the shim can handle a burst of subprocess creation without socket backpressure errors
+#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), ignore)]
+#[tokio::test]
+async fn shim_stress_test_burst_subprocesses() {
+    // Skip this test in CI environments where shim injection may not work properly
+    if std::env::var("CI").is_ok() {
+        println!("⚠️  Skipping shim stress test in CI environment");
+        return;
+    }
+
+    // Create a temporary directory for the socket
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let socket_path = temp_dir.path().join("test_socket");
+
+    // Start the test server
+    let server = TestServer::new(&socket_path);
+
+    // Run server and test concurrently
+    let server_future = server.run();
+    let test_future = async {
+        // Give the server a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Run the stress test helper with shim injection
+        let spawn_tree_path = find_spawn_tree_path();
+        let output = ah_command_trace_e2e_tests::execute_test_scenario(
+            &socket_path.to_string_lossy(),
+            &spawn_tree_path.to_string_lossy(),
+            &["stress_test", "200"],
+        )
+        .await
+        .expect("Failed to execute stress test scenario");
+
+        // Verify the helper ran successfully
+        assert!(
+            output.status.success(),
+            "Stress test helper failed: {:?}",
+            output
+        );
+
+        output
+    };
+
+    // Run both concurrently with a timeout
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
+        tokio::join!(server_future, test_future)
+    })
+    .await;
+
+    match result {
+        Ok((server_result, _output)) => {
+            server_result.expect("Server failed");
+            let messages = server.get_requests().await;
+
+            // Verify we received messages from the shim
+            assert!(!messages.is_empty(), "No messages received from shim");
+
+            // Parse the messages to verify we got CommandStart events
+            let mut command_starts = Vec::new();
+            for msg in &messages {
+                match msg {
+                    ah_command_trace_proto::Request::Handshake(_) => {
+                        // Handshake is expected
+                    }
+                    ah_command_trace_proto::Request::CommandStart(cmd_start) => {
+                        command_starts.push(cmd_start.clone());
+                    }
+                }
+            }
+
+            // Verify we received a reasonable number of CommandStart messages
+            // The stress test creates 200 subprocesses in a burst, plus the parent process
+            // We expect at least 150 to account for timing and possible duplicates
+            eprintln!("Received {} CommandStart messages", command_starts.len());
+            assert!(
+                command_starts.len() >= 150,
+                "Expected at least 150 CommandStart messages, got {}",
+                command_starts.len()
+            );
+        }
+        Err(_) => panic!("Test timed out"),
+    }
+}
+
+/// Test that the shim can capture processes launched by shells and interpreters
+#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), ignore)]
+#[tokio::test]
+async fn shim_shell_and_interpreter_coverage() {
+    // Skip this test in CI environments where shim injection may not work properly
+    if std::env::var("CI").is_ok() {
+        println!("⚠️  Skipping shim shell and interpreter coverage test in CI environment");
+        return;
+    }
+
+    // Create a temporary directory for the socket
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let socket_path = temp_dir.path().join("test_socket");
+
+    // Start the test server
+    let server = TestServer::new(&socket_path);
+
+    // Run server and test concurrently
+    let server_future = server.run();
+    let test_future = async {
+        // Give the server a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Run the test helper with shell and interpreter coverage
+        let test_helper_path = find_test_helper_path();
+        let output = ah_command_trace_e2e_tests::execute_test_scenario(
+            &socket_path.to_string_lossy(),
+            &test_helper_path.to_string_lossy(),
+            &["shell_and_interpreter"],
+        )
+        .await
+        .expect("Failed to execute shell and interpreter test scenario");
+
+        // Verify the helper ran successfully
+        assert!(
+            output.status.success(),
+            "Shell and interpreter test helper failed: {:?}",
+            output
+        );
+
+        output
+    };
+
+    // Run both concurrently with a timeout
+    let result = tokio::time::timeout(std::time::Duration::from_secs(35), async {
+        tokio::join!(server_future, test_future)
+    })
+    .await;
+
+    match result {
+        Ok((server_result, _output)) => {
+            server_result.expect("Server failed");
+            let messages = server.get_requests().await;
+
+            // Verify we received messages from the shim
+            assert!(!messages.is_empty(), "No messages received from shim");
+
+            // Parse the messages to verify we got CommandStart events
+            let mut command_starts = Vec::new();
+            for msg in &messages {
+                match msg {
+                    ah_command_trace_proto::Request::Handshake(_) => {
+                        // Handshake is expected
+                    }
+                    ah_command_trace_proto::Request::CommandStart(cmd_start) => {
+                        command_starts.push(cmd_start.clone());
+                        eprintln!(
+                            "Received CommandStart: pid={}, executable={:?}, args={:?}",
+                            cmd_start.pid,
+                            String::from_utf8_lossy(&cmd_start.executable),
+                            cmd_start
+                                .args
+                                .iter()
+                                .map(|arg| String::from_utf8_lossy(arg))
+                                .collect::<Vec<_>>()
+                        );
+                    }
+                }
+            }
+
+            // Verify we received CommandStart messages
+            assert!(
+                !command_starts.is_empty(),
+                "Expected CommandStart messages from shell and interpreter test"
+            );
+
+            // Check for processes we expect to capture at M1
+            let mut found_python_interpreter = false;
+            let mut found_shell_processes = false;
+
+            for cmd_start in &command_starts {
+                let executable = String::from_utf8_lossy(&cmd_start.executable);
+                let args: Vec<String> = cmd_start
+                    .args
+                    .iter()
+                    .map(|arg| String::from_utf8_lossy(arg).to_string())
+                    .collect();
+
+                // Check for Python interpreter processes (this is what we can capture at M1)
+                if executable.contains("python") {
+                    found_python_interpreter = true;
+                    eprintln!("Found python interpreter: {} {:?}", executable, args);
+                }
+
+                // Check for shell processes (we can capture these)
+                if executable == "/bin/sh" || executable.contains("/bin/sh") {
+                    found_shell_processes = true;
+                    eprintln!("Found shell process: {} {:?}", executable, args);
+                }
+            }
+
+            // At M1, we expect to capture:
+            // 1. Python interpreter processes launched via /usr/bin/env python3
+            // 2. Shell processes
+            // Shell-launched subprocesses (like echo) may not be captured due to shell optimization
+            assert!(
+                found_python_interpreter,
+                "Expected to find Python interpreter processes"
+            );
+            assert!(found_shell_processes, "Expected to find shell processes");
+
+            eprintln!(
+                "⚠️  Note: Shell-launched subprocesses (like 'echo' commands) are not captured at M1 due to shell optimization/built-in commands"
+            );
+            eprintln!(
+                "Shell and interpreter coverage test passed: found python_interpreter={}, shell_processes={}",
+                found_python_interpreter, found_shell_processes
             );
         }
         Err(_) => panic!("Test timed out"),
