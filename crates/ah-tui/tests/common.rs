@@ -5,7 +5,7 @@
 
 use std::io::Write;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use ah_core::{
     BranchesEnumerator, DefaultWorkspaceTermsEnumerator, MockWorkspaceTermsEnumerator,
@@ -90,7 +90,7 @@ pub fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
     dir.push("ah_tui_vm_logs");
     std::fs::create_dir_all(&dir).expect("create log directory");
 
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("valid time");
+    let timestamp = SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("valid time");
     let file_name = format!(
         "{}_{}_{}.log",
         test_name,
