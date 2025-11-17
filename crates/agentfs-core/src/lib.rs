@@ -424,9 +424,13 @@ mod tests {
         core.set_mode(&pid, "/file".as_ref(), 0o600).unwrap();
         let new_times = FileTimes {
             atime: before.times.atime + 10,
+            atime_nsec: before.times.atime_nsec,
             mtime: before.times.mtime + 10,
+            mtime_nsec: before.times.mtime_nsec,
             ctime: before.times.ctime + 10,
+            ctime_nsec: before.times.ctime_nsec,
             birthtime: before.times.birthtime,
+            birthtime_nsec: before.times.birthtime_nsec,
         };
         core.set_times(&pid, "/file".as_ref(), new_times).unwrap();
 

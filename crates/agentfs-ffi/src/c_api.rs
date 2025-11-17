@@ -52,6 +52,7 @@ pub type AfHandleId = u64;
 #[repr(C)]
 pub enum AfResult {
     AfOk = 0,
+    AfErrPerm = 1,         // EPERM
     AfErrNotFound = 2,     // ENOENT
     AfErrExists = 17,      // EEXIST
     AfErrAcces = 13,       // EACCES
@@ -172,6 +173,7 @@ fn fs_error_to_af_result(err: &agentfs_core::FsError) -> AfResult {
         agentfs_core::FsError::NotFound => AfResult::AfErrNotFound,
         agentfs_core::FsError::AlreadyExists => AfResult::AfErrExists,
         agentfs_core::FsError::AccessDenied => AfResult::AfErrAcces,
+        agentfs_core::FsError::OperationNotPermitted => AfResult::AfErrPerm,
         agentfs_core::FsError::InvalidArgument => AfResult::AfErrInval,
         agentfs_core::FsError::Busy => AfResult::AfErrBusy,
         agentfs_core::FsError::NoSpace => AfResult::AfErrNospc,
@@ -788,9 +790,13 @@ pub unsafe extern "C" fn af_set_times(
     let pid_ref = &agentfs_core::PID::new(pid);
     let times = agentfs_core::FileTimes {
         atime,
+        atime_nsec: 0,
         mtime,
+        mtime_nsec: 0,
         ctime,
+        ctime_nsec: 0,
         birthtime,
+        birthtime_nsec: 0,
     };
     match core.set_times(pid_ref, std::path::Path::new(path_str), times) {
         Ok(()) => AfResult::AfOk,
