@@ -17,12 +17,11 @@ use agentfs_proto::*;
 use crossbeam_queue::SegQueue;
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
-    ReplyEmpty, ReplyEntry, ReplyLock, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
-    TimeOrNow,
+    ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
 };
 use libc::{
-    EACCES, EBADF, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS,
-    ENOTDIR, ENOTEMPTY, ENOTSUP, EPERM, c_int,
+    EACCES, EBADF, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS, ENOTDIR,
+    ENOTEMPTY, ENOTSUP, EPERM, c_int,
 };
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
@@ -34,7 +33,7 @@ use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Condvar, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -54,6 +53,9 @@ const NAME_MAX: usize = 255;
 
 /// File-handle space reserved for lower pass-through handles
 const LOWER_HANDLE_BASE: u64 = 1u64 << 60;
+
+/// FUSE capability bit for writeback caching (ABI 7.23+).
+const FUSE_WRITEBACK_CACHE_FLAG: u64 = 1 << 16;
 
 struct LowerHandle {
     file: File,
@@ -115,8 +117,55 @@ struct WriteJob {
     handle_id: HandleId,
     offset: u64,
     data: Vec<u8>,
-    reply: ReplyWrite,
+    completion: Arc<WriteHandleState>,
     trace: Option<WriteTrace>,
+}
+
+struct WriteHandleState {
+    inflight: AtomicUsize,
+    waiter: (Mutex<()>, Condvar),
+    error: Mutex<Option<i32>>,
+}
+
+impl WriteHandleState {
+    fn new() -> Self {
+        Self {
+            inflight: AtomicUsize::new(0),
+            waiter: (Mutex::new(()), Condvar::new()),
+            error: Mutex::new(None),
+        }
+    }
+
+    fn begin_write(&self) {
+        self.inflight.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn finish_write(&self) {
+        if self.inflight.fetch_sub(1, Ordering::SeqCst) == 1 {
+            let (lock, cvar) = &self.waiter;
+            if let Ok(guard) = lock.lock() {
+                cvar.notify_all();
+                drop(guard);
+            }
+        }
+    }
+
+    fn wait_for_all(&self) {
+        let (lock, cvar) = &self.waiter;
+        let mut guard = lock.lock().unwrap();
+        while self.inflight.load(Ordering::Acquire) > 0 {
+            guard = cvar.wait(guard).unwrap();
+        }
+    }
+
+    fn record_error(&self, errno: i32) {
+        let mut guard = self.error.lock().unwrap();
+        *guard = Some(errno);
+    }
+
+    fn current_error(&self) -> Option<i32> {
+        *self.error.lock().unwrap()
+    }
 }
 
 struct WriteDispatcher {
@@ -148,12 +197,11 @@ impl WriteDispatcher {
                         Some(mut job) => {
                             let result =
                                 core_clone.write(&job.pid, job.handle_id, job.offset, &job.data);
-                            match result {
-                                Ok(bytes_written) => job.reply.written(bytes_written as u32),
-                                Err(FsError::NotFound) => job.reply.error(ENOENT),
-                                Err(FsError::AccessDenied) => job.reply.error(EACCES),
-                                Err(_) => job.reply.error(EIO),
+                            if let Err(err) = result {
+                                let errno = errno_from_fs_error(&err);
+                                job.completion.record_error(errno);
                             }
+                            job.completion.finish_write();
                             if let Some(trace) = job.trace.take() {
                                 trace.finish();
                             }
@@ -201,6 +249,19 @@ impl Drop for WriteDispatcher {
     }
 }
 
+fn errno_from_fs_error(err: &FsError) -> i32 {
+    match err {
+        FsError::AccessDenied => EACCES,
+        FsError::AlreadyExists => EEXIST,
+        FsError::InvalidArgument => EINVAL,
+        FsError::IsADirectory => EISDIR,
+        FsError::NotADirectory => ENOTDIR,
+        FsError::NotFound => ENOENT,
+        FsError::Busy => libc::EBUSY,
+        _ => EIO,
+    }
+}
+
 /// AgentFS FUSE filesystem adapter
 pub struct AgentFsFuse {
     /// Core filesystem instance
@@ -223,6 +284,8 @@ pub struct AgentFsFuse {
     inode_handles: HashMap<u64, HashSet<u64>>,
     /// Map handle IDs to (inode, owning pid)
     handle_index: HashMap<u64, (u64, u32)>,
+    /// Per-handle write back state
+    handle_write_states: HashMap<u64, Arc<WriteHandleState>>,
     /// Lower pass-through handles
     lower_handles: HashMap<u64, LowerHandle>,
     /// Next pass-through handle id
@@ -279,6 +342,7 @@ impl AgentFsFuse {
             next_inode: CONTROL_FILE_INO + 1,
             inode_handles: HashMap::new(),
             handle_index: HashMap::new(),
+            handle_write_states: HashMap::new(),
             lower_handles: HashMap::new(),
             next_lower_fh: LOWER_HANDLE_BASE,
             whiteouts: HashSet::new(),
@@ -562,6 +626,9 @@ impl AgentFsFuse {
     fn track_handle(&mut self, ino: u64, fh: u64, pid: &PID) {
         self.inode_handles.entry(ino).or_default().insert(fh);
         self.handle_index.insert(fh, (ino, pid.as_u32()));
+        self.handle_write_states
+            .entry(fh)
+            .or_insert_with(|| Arc::new(WriteHandleState::new()));
     }
 
     fn untrack_handle(&mut self, ino: u64, fh: u64) {
@@ -572,6 +639,7 @@ impl AgentFsFuse {
             }
         }
         self.handle_index.remove(&fh);
+        self.handle_write_states.remove(&fh);
     }
 
     fn handle_for_inode(&self, ino: u64) -> Option<(u64, PID)> {
@@ -579,6 +647,24 @@ impl AgentFsFuse {
             .get(&ino)
             .and_then(|handles| handles.iter().next())
             .and_then(|fh| self.handle_index.get(fh).map(|(_, pid)| (*fh, PID::new(*pid))))
+    }
+
+    fn handle_write_state(&self, fh: u64) -> Option<Arc<WriteHandleState>> {
+        self.handle_write_states.get(&fh).cloned()
+    }
+
+    fn wait_for_handle_writes(&self, fh: u64) -> Result<(), i32> {
+        if let Some(state) = self.handle_write_state(fh) {
+            state.wait_for_all();
+            if let Some(errno) = state.current_error() {
+                return Err(errno);
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_write_error(&self, fh: u64) -> Option<i32> {
+        self.handle_write_state(fh).and_then(|state| state.current_error())
     }
 
     fn forget_inode(&mut self, inode: u64) {
@@ -684,7 +770,7 @@ impl AgentFsFuse {
 
     /// Convert FUSE flags to OpenOptions
     fn fuse_flags_to_options(&self, flags: i32) -> OpenOptions {
-        use libc::{O_APPEND, O_CREAT, O_EXCL, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY};
+        use libc::{O_APPEND, O_CREAT, O_RDWR, O_TRUNC, O_WRONLY};
 
         let mut options = OpenOptions::default();
 
@@ -1015,6 +1101,16 @@ mod tests {
 
 impl fuser::Filesystem for AgentFsFuse {
     fn init(&mut self, _req: &Request, config: &mut fuser::KernelConfig) -> Result<(), c_int> {
+        if self.config.cache.writeback_cache {
+            match config.add_capabilities(FUSE_WRITEBACK_CACHE_FLAG) {
+                Ok(()) => info!("Requested kernel writeback cache capability"),
+                Err(missing) => warn!(
+                    "Kernel rejected writeback cache capability (missing bits: {:#x})",
+                    missing
+                ),
+            }
+        }
+
         let (max_write, clamped_write) = configure_max_write(config);
         if clamped_write {
             warn!(
@@ -1550,23 +1646,48 @@ impl fuser::Filesystem for AgentFsFuse {
         buffer.extend_from_slice(data);
         let trace = self.start_write_trace(req, ino, fh, offset, buffer.len());
 
+        let state = match self.handle_write_state(fh) {
+            Some(state) => state,
+            None => {
+                if let Some(trace) = trace {
+                    trace.finish();
+                }
+                reply.error(EIO);
+                return;
+            }
+        };
+
+        if let Some(errno) = state.current_error() {
+            if let Some(trace) = trace {
+                trace.finish();
+            }
+            reply.error(errno);
+            return;
+        }
+
+        state.begin_write();
+
         let job = WriteJob {
             pid: client_pid,
             handle_id,
             offset: offset as u64,
             data: buffer,
-            reply,
+            completion: state.clone(),
             trace,
         };
 
         if let Err(mut failed_job) = self.write_dispatcher.submit(job) {
+            state.finish_write();
             if let Some(trace) = failed_job.trace.take() {
                 trace.finish();
             } else if self.trace_writes {
                 self.inflight_writes.fetch_sub(1, Ordering::SeqCst);
             }
-            failed_job.reply.error(EIO);
+            reply.error(EIO);
+            return;
         }
+
+        reply.written(data.len() as u32);
     }
 
     fn release(
@@ -1582,6 +1703,11 @@ impl fuser::Filesystem for AgentFsFuse {
         // Control file has no handle to release
         if ino == CONTROL_FILE_INO {
             reply.ok();
+            return;
+        }
+
+        if let Err(errno) = self.wait_for_handle_writes(fh) {
+            reply.error(errno);
             return;
         }
 
@@ -2111,6 +2237,11 @@ impl fuser::Filesystem for AgentFsFuse {
         let handle_id = HandleId(fh);
         let client_pid = self.get_client_pid(req);
 
+        if let Err(errno) = self.wait_for_handle_writes(fh) {
+            reply.error(errno);
+            return;
+        }
+
         match self.core.fsync(&client_pid, handle_id, datasync) {
             Ok(()) => reply.ok(),
             Err(FsError::AccessDenied) => reply.error(EACCES),
@@ -2126,8 +2257,11 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
-        // For now, flush is not implemented - no-op
-        reply.ok();
+        if let Err(errno) = self.wait_for_handle_writes(fh) {
+            reply.error(errno);
+        } else {
+            reply.ok();
+        }
     }
 
     fn getxattr(&mut self, req: &Request, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {

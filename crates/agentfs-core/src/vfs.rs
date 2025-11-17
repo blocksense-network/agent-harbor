@@ -264,6 +264,7 @@ pub struct FsCore {
     locks: Mutex<LockManager>,                                 // Byte-range lock manager
     #[cfg(feature = "events")]
     event_subscriptions: Mutex<HashMap<SubscriptionId, Arc<dyn EventSink>>>,
+    permissions_tracing_enabled: bool,
 }
 
 impl FsCore {
@@ -328,6 +329,9 @@ impl FsCore {
             }),
             #[cfg(feature = "events")]
             event_subscriptions: Mutex::new(HashMap::new()),
+            permissions_tracing_enabled: std::env::var("AGENTFS_TRACE_PERMISSIONS")
+                .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
         };
 
         // Create root directory
@@ -708,6 +712,49 @@ impl FsCore {
         user.gid == gid || user.groups.contains(&gid)
     }
 
+    #[inline]
+    fn permissions_log_enabled(&self) -> bool {
+        self.permissions_tracing_enabled
+    }
+
+    fn log_permission_event(
+        &self,
+        context: &str,
+        path: Option<&Path>,
+        node: &Node,
+        user: &User,
+        want_read: bool,
+        want_write: bool,
+        want_exec: bool,
+        allow_read: Option<bool>,
+        allow_write: Option<bool>,
+        allow_exec: Option<bool>,
+        decision: bool,
+    ) {
+        if !self.permissions_log_enabled() {
+            return;
+        }
+        let node_mode = format!("{:o}", node.mode);
+        let path_str = path.map(|p| p.display().to_string());
+        debug!(
+            target: "agentfs::permissions",
+            context,
+            path = path_str.as_deref().unwrap_or("-"),
+            node_uid = node.uid,
+            node_gid = node.gid,
+            node_mode = %node_mode,
+            user_uid = user.uid,
+            user_gid = user.gid,
+            want_read,
+            want_write,
+            want_exec,
+            allow_read = ?allow_read,
+            allow_write = ?allow_write,
+            allow_exec = ?allow_exec,
+            decision
+        );
+    }
+
     fn allowed_for_user(
         &self,
         node: &Node,
@@ -735,7 +782,21 @@ impl FsCore {
         let allow_r = !want_read || (mode & r_bit) != 0;
         let allow_w = !want_write || (mode & w_bit) != 0;
         let allow_x = !want_exec || (mode & x_bit) != 0;
-        allow_r && allow_w && allow_x
+        let decision = allow_r && allow_w && allow_x;
+        self.log_permission_event(
+            "allowed_for_user",
+            None,
+            node,
+            user,
+            want_read,
+            want_write,
+            want_exec,
+            Some(allow_r),
+            Some(allow_w),
+            Some(allow_x),
+            decision,
+        );
+        decision
     }
 
     fn clear_setid_bits_after_unprivileged_write(node: &mut Node, user: &User) {
@@ -2230,13 +2291,27 @@ impl FsCore {
         if let Ok((node_id, _)) = self.resolve_path(pid, path) {
             // Permission check
             if self.config.security.enforce_posix_permissions {
-                if let Some(user) = self.user_for_process(pid) {
-                    let nodes = self.nodes.lock().unwrap();
-                    let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
-                    let allow = self.allowed_for_user(node, &user, opts.read, opts.write, false);
-                    if !allow {
-                        return Err(FsError::AccessDenied);
-                    }
+                let Some(user) = self.user_for_process(pid) else {
+                    return Err(FsError::AccessDenied);
+                };
+                let nodes = self.nodes.lock().unwrap();
+                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+                let allow = self.allowed_for_user(node, &user, opts.read, opts.write, false);
+                self.log_permission_event(
+                    "open",
+                    Some(path),
+                    node,
+                    &user,
+                    opts.read,
+                    opts.write,
+                    false,
+                    None,
+                    None,
+                    None,
+                    allow,
+                );
+                if !allow {
+                    return Err(FsError::AccessDenied);
                 }
             }
 
@@ -3221,12 +3296,27 @@ impl FsCore {
 
         // Permission check for read access
         if self.config.security.enforce_posix_permissions {
-            if let Some(user) = self.user_for_process(pid) {
-                let nodes = self.nodes.lock().unwrap();
-                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
-                if !self.allowed_for_user(node, &user, true, false, false) {
-                    return Err(FsError::AccessDenied);
-                }
+            let Some(user) = self.user_for_process(pid) else {
+                return Err(FsError::AccessDenied);
+            };
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+            let allow = self.allowed_for_user(node, &user, true, false, false);
+            self.log_permission_event(
+                "opendir",
+                Some(path),
+                node,
+                &user,
+                true,
+                false,
+                false,
+                None,
+                None,
+                None,
+                allow,
+            );
+            if !allow {
+                return Err(FsError::AccessDenied);
             }
         }
 

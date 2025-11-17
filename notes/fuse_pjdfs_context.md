@@ -1,12 +1,26 @@
-# FUSE Adapter Status – Nov 16 2025 (handoff)
+# FUSE Adapter Status – Nov 17 2025 (handoff)
 
-<!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd siphash setid FOWNER -->
+<!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd siphash setid FOWNER noprof subtest -->
 
 ## Current Scope
 
 - Working branch: `feat/agentfs-fuse-f5`.
-- Focus: **F6 – Performance Tuning + Benchmarking**. F4/F5 harnesses stay green, but the priority is pushing sequential write throughput toward the host baseline and documenting every `just test-fuse-performance` run.
-- Tooling targets: `just test-fuse-performance`, `just test-fuse-control-plane`, and the F1/F3 sweeps (`test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`).
+- Focus: **F6 – Performance Tuning + Benchmarking**. F4/F5 harnesses stay green, but the priority is pushing sequential write throughput toward the host baseline and documenting every `just test-fuse-performance` run (latest release-mode sweeps still fail the ≥ 0.75× thresholds even with kernel writeback cache enabled).
+- Tooling targets: `just test-fuse-performance`, `just test-fuse-control-plane`, the F1/F3 sweeps (`test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, `sudo -E just test-pjdfs-subset /tmp/agentfs`), plus perf captures under `logs/perf-profiles/`.
+
+## Updates – Nov 17 2025
+
+1. **Async writeback in the FUSE host**
+   - Every `FUSE_WRITE` now enqueues into a per-handle dispatcher and replies immediately while a worker flushes the buffer into FsCore. Handle-level state tracks inflight writes; `flush`, `fsync`, and handle `release` wait for the queue to drain and propagate deferred errno back to the caller.
+2. **Kernel writeback cache capability**
+   - When `config.cache.writeback_cache` (or `AGENTFS_FUSE_WRITEBACK_CACHE=1`) is set we request the `FUSE_WRITEBACK_CACHE` capability during `init`, letting Linux batch buffered writes before waking us.
+3. **F5 harness reruns**
+   - `just test-fuse-basic-ops`, `test-fuse-negative-ops`, `test-fuse-overlay-ops`, and `test-fuse-control-plane` all passed after the async writeback change (`logs/fuse-basic-ops-20251117-062245`, `…negative-ops-20251117-062257`, `…overlay-ops-20251117-062301`, `…control-plane-20251117-062305`).
+4. **F6 release sweeps remain below spec**
+   - `logs/fuse-performance-20251117-065645/summary.json` and `logs/fuse-performance-20251117-070644/summary.json` capture the latest release-mode runs (seq_write ≈ 0.32×, seq_read ≈ 0.32×, metadata ≈ 0.24–0.31×, concurrent_write ≈ 0.22–0.29×). The harness still fails the configured thresholds.
+   - `logs/perf-profiles/agentfs-perf-20251117-064244/` and `…064348/` contain fresh `perf record -F 199 -g -- dd …` captures; the kernel still spends most of its time in `pagecache_get_page → __alloc_pages_noprof → clear_page_erms`.
+5. **Next lever**
+   - Option 1 (async writeback + kernel capability) is complete. To hit ≥ 0.75× we likely need to explore a direct-I/O path (e.g. `splice`/`fuse_notify_store`) to bypass the kernel page cache entirely.
 
 ## Updates – Nov 16 2025
 
@@ -65,6 +79,10 @@
 
 - Re-ran `just test-pjdfstest-full` after the FsCore/FUSE fixes. The entire suite now passes (only the upstream `TODO passed` lines remain), so the new reference artifacts live under `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` and the baseline diff was updated accordingly.
 - `scripts/test-pjdfstest-full.sh` now runs the suite in two phases: the main `sudo -E prove` invocation skips `chmod/12.t` (and anything else listed via `PJDFSTEST_SUDO_TESTS`) because the Linux kernel refuses to honor SUID-preserving writes on user-mounted FUSE filesystems before AgentFS can clear the bits, and a follow-up privileged pass executes only those skipped cases so we still capture their output for documentation.
+- Latest two-pass artifacts live under `logs/pjdfstest-full-20251117-045151/` (main run + SUID subset). The main run currently fails in `open/{00,05,06}`, `symlink/{05,06}`, `truncate/05`, `ftruncate/05`, and `chown/05`, while the privileged pass documents the expected `chmod/12` EPERM behavior when Linux blocks writes to SUID files from non-root callers on FUSE.
+- Targeted reproductions:
+  - `logs/manual-open06.log`: mount `/tmp/agentfs-debug` with `AGENTFS_FUSE_LOG_FILE` + `RUST_LOG=agentfs::metadata=debug`, then run `sudo -E prove -vr resources/pjdfstest/tests/open/06.t` to capture the credential registration spam for every failing subtest. The log shows kernel credentials arriving correctly (`client_uid=65534`) even though FsCore still returns success where pjdfstest expects `EACCES`, suggesting the `user_for_process` lookup or the permission mask evaluation is being skipped.
+  - Manual sandbox: `sudo $PWD/resources/pjdfstest/pjdfstest -u 65534 -g 65534 mkfifo /tmp/agentfs-debug/fifo_test/fifo 0644`, followed by a series of `chmod` / `open` calls, reproduces the bad behavior without running the full suite. Remember that bare `O_RDONLY` on FIFOs blocks, so use `O_RDONLY,O_NONBLOCK` for ad-hoc experiments.
 
 11. **Transport redesign sketch**
 
@@ -78,19 +96,20 @@
 
 1. **Control-plane write semantics** – FsCore still refuses to mutate files after snapshot creation. Fixing that (or adding a worker flow that mutates the HostFs backstore) is required before we can demonstrate true branch-local divergence in the harness.
 2. **Performance tuning (F6)** – Even though this machine now reports ≥ 0.8× for sequential writes, both AgentFS and the baseline saturate NVMe bandwidth (even with the new 8 GiB workload and cache drops), so measurement noise still hides small deltas. Keep logging every run, rerun the new perf captures with the release-host binary to eliminate debug-mode skew, and try again on a slower host (or larger workloads) while prototyping the shared-buffer transport.
-3. **pjdfstest maintenance** – Keep running `just test-pjdfstest-full` when touching metadata/path semantics so the new “all green” baseline stays enforced by CI and we catch regressions early.
+3. **pjdfstest maintenance** – Keep running `just test-pjdfstest-full` when touching metadata/path semantics so the new “all green” baseline stays enforced by CI and we catch regressions early. Immediate focus is on the remaining failures listed above; `open/06` in particular needs instrumentation inside `FsCore::open`/`allowed_for_user` to verify that per-request identities are registered before the permission check (see `logs/manual-open06.log` for the latest reproduction run).
 
 ## Useful Paths & Logs
 
-- Control-plane harness (latest): `logs/fuse-control-plane-20251115-130217/control-plane.log`.
+- Control-plane harness (latest release rerun): `logs/fuse-control-plane-20251117-062305/control-plane.log`.
 - Performance harness snapshots:
   - `logs/fuse-performance-20251116-120621/{performance.log,results.jsonl,summary.json}` – default env (seq_write 0.80×).
   - `logs/fuse-performance-20251116-120649/{…}` – rerun to confirm stability (ratios ~0.8×/1.0×/0.7×/2.0×).
   - `logs/fuse-performance-20251116-120715/{…}` – background=128, threads=8, max_write=8 MiB.
   - `logs/fuse-performance-20251116-122208/{…}` – sequential workload increased to 8 GiB with explicit cache drops so seq_read runs ~0.5 s instead of ~20 ms.
+  - Release-mode baseline after async writeback: `logs/fuse-performance-20251117-065645/summary.json` and `logs/fuse-performance-20251117-070644/summary.json` (still below target ratios).
   - Historical runs: `logs/fuse-performance-20251116-110035/`, `…-110756/`, `…-110953/`, `…-111810/`, etc.
-- Manual perf attaches: `logs/perf-profiles/agentfs-perf-profile-20251116-115242/` (base) and `…-115426/` (call stacks) plus prior traces in `logs/perf-profiles/agentfs-concurrent-*/`.
-- pjdfstest full suite: `logs/pjdfstest-full-20251116-123822/{pjdfstest.log,summary.json}` (previous run from Nov 15 kept for historical reference under `logs/pjdfstest-full-20251115-135821/`).
+- Manual perf attaches: `logs/perf-profiles/agentfs-perf-profile-20251116-115242/` (base) and `…-115426/` (call stacks), plus the release-focused captures under `logs/perf-profiles/agentfs-perf-20251117-064244/` and `…064348/`.
+- pjdfstest full suite: `logs/pjdfstest-full-20251117-060947/{pjdfstest.log,summary.json}` (previous runs kept under `logs/pjdfstest-full-20251116-123822/` and `logs/pjdfstest-full-20251115-135821/`).
 - Other harnesses (Nov 15): `logs/fuse-mount-cycle-20251115-102831`, `logs/fuse-mount-failures-20251115-104618`, `logs/fuse-mount-concurrent-20251115-104626`, `logs/fuse-basic-ops-20251115-103631`, `logs/fuse-negative-ops-20251115-104635`, `logs/fuse-overlay-ops-20251115-104639`, `logs/pjdfs-subset-20251115-104653`.
 
 ## Commands Recap
