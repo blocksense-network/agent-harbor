@@ -21,6 +21,12 @@ on:
   push:
     branches: [main, linux-sandbox]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      enable_tmate:
+        description: "Start a tmate debug session in the test job"
+        required: false
+        default: "false"
 
 env:
   CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
@@ -147,6 +153,35 @@ jobs:
       # - run: sudo just create-test-filesystems
       #
       # - run: sudo just start-ah-fs-snapshots-daemon
+
+      - name: Ensure tmate binaries (NixOS)
+        if: ${{ runner.os == 'Linux' }}
+        run: nix profile install nixpkgs#tmate nixpkgs#openssh
+
+      - name: Add nix profile bin to PATH
+        if: ${{ runner.os == 'Linux' }}
+        run: echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+
+      # - name: Open tmate session (debug)
+      #   if: ${{ always() }}
+      #   uses: mxschmitt/action-tmate@v3
+      #   with:
+      #     detached: true
+      #     sudo: false
+      #     install-dependencies: false
+      #   timeout-minutes: 90
+
+      - name: Open tmate session (debug)
+        if: ${{ always() }}
+        env:
+          TMUX_TMPDIR: /tmp
+        run: |
+          set -euo pipefail
+          tmate -V
+          tmate -S "/tmp/tmate.sock" new-session -d
+          tmate -S "/tmp/tmate.sock" wait tmate-ready
+          echo "ssh: $(tmate -S "/tmp/tmate.sock" display -p '#{tmate_ssh}')" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "web: $(tmate -S "/tmp/tmate.sock" display -p '#{tmate_web}')" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Run tests
         run: just test-rust-verbose
