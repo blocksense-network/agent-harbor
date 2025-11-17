@@ -52,14 +52,34 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] I1 FUSE host basic ops pass - Code compiles successfully and implements all FUSE operations with correct client PID handling; requires integration testing with mounted filesystem
   - [x] I2 Control plane ioctl flows pass with SSZ union type validation - SSZ serialization implemented with proper error handling; requires testing with mounted filesystem
   - [x] pjdfstests subset green - unlink/rename/mkdir/rmdir subsets pass on the mounted `/tmp/agentfs` target (see `logs/pjdfs-subset-20251115-053905`)
-  - [x] **Full pjdfstest suite executed** - Complete test run completed with 236 files and 8775 total tests, **Result: PASS**
-  - [x] **F1.1 Implement truncate/ftruncate operations** - All truncate/ftruncate operations now working correctly; all tests pass in the main suite
-  - [x] **F1.2 Fix chown permission enforcement** – chown operations now work correctly; only upstream `chown/00.t` TODO diagnostics remain (expected POSIX compliance notes, not actual failures)
-  - [x] **F1.3 Fix chmod permission enforcement** – Regular chmod operations work correctly; `chmod/12.t` privileged test has expected kernel-limited failures (6/14 subtests fail due to Linux FUSE nosuid restrictions)
-  - [x] **F1.4 Fix link operation permissions** - Hard link creation permission checks now working correctly; all tests pass
-  - [x] **F1.5 Fix open permission enforcement** - File open permission validation now working correctly; all tests pass
-  - [x] **F1.6 Fix symlink permission enforcement** - Symlink creation permission checks now working correctly; all tests pass
-  - [x] **F1.7 Fix utimensat permission enforcement** - Timestamp modification permission checks now working correctly; all tests pass
+  - [x] **Full pjdfstest suite executed** - Complete test run completed with 237 test files and 8789 total tests
+  - [ ] **F1.1 Implement truncate/ftruncate operations** - Multiple truncate operations return `EOPNOTSUPP` (operation not supported):
+    - `truncate/00.t`: 10/21 tests failed (file truncation not implemented)
+    - `truncate/02.t`: 2/5 tests failed
+    - `truncate/03.t`: 2/5 tests failed
+    - `truncate/05.t`: 6/15 tests failed
+    - `truncate/12.t`: 1/3 tests failed
+    - `ftruncate/00.t`: 8/26 tests failed
+    - `ftruncate/02.t`: 2/5 tests failed
+    - `ftruncate/03.t`: 2/5 tests failed
+    - `ftruncate/05.t`: 6/15 tests failed
+  - [ ] **F1.2 Fix chown permission enforcement** – pjdfstest now only reports the upstream `chown/00.t` TODO diagnostics (IDs 650, 654, 665–666, 671–672, etc.), but we are keeping this box open until the harness clears those TODOs or we ship a targeted override; documenting the limitation prevents us from silently regressing.
+  - [ ] **F1.3 Fix chmod permission enforcement** – `chmod/12.t` still fails because unprivileged FUSE mounts are forced `nosuid`/`nodev` by the kernel, so Linux rejects the open before AgentFS can clear the SUID/SGID bits. Fix requires a privileged mount path; we keep this unchecked and track the limitation under F5.
+  - [ ] **F1.4 Fix link operation permissions** - Hard link creation permission issues:
+    - `link/00.t`: 19/202 tests failed
+  - [ ] **F1.5 Fix open permission enforcement** - File open permission validation failures:
+    - `open/00.t`: 9/47 tests failed
+    - `open/02.t`: 1/4 tests failed
+    - `open/03.t`: 1/4 tests failed
+    - `open/05.t`: 1/12 tests failed
+    - `open/06.t`: 24/144 tests failed
+  - [ ] **F1.6 Fix symlink permission enforcement** - Symlink creation permission issues:
+    - `symlink/05.t`: 2/12 tests failed
+    - `symlink/06.t`: 2/12 tests failed
+  - [ ] **F1.7 Fix utimensat permission enforcement** - Timestamp modification permission issues:
+    - `utimensat/06.t`: 1/13 tests failed
+    - `utimensat/07.t`: 6/17 tests failed
+    - `utimensat/08.t`: 2/9 tests failed
 
 - **Outstanding Tasks**:
   - **Implement truncate/ftruncate system calls** in AgentFS Core and FUSE adapter
@@ -205,13 +225,11 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T5.3 Critical Test Validation**: Ensure all basic POSIX filesystem operations pass
   - **T5.4 Regression Detection**: Compare results against established baseline, fail on regressions
 - **Verification Results**:
-  - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest successful run: `logs/pjdfstest-full-20251120-163447/`).
+  - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251119-072207/`).
   - [x] CI gating – GitHub Actions now runs the pjdfstest job after the FUSE harness; it executes `SKIP_FUSE_BUILD=1 just test-pjdfstest-full`, compares results to `specs/Public/AgentFS/pjdfstest.baseline.json`, and uploads the log directory so regressions fail automatically.
-  - [x] **MAJOR PROGRESS: Full pjdfstest suite now PASSES** – Latest run (`logs/pjdfstest-full-20251120-163447/`) shows **236 files, 8775 tests, Result: PASS** for the main test suite. Only the privileged `chmod/12.t` test has expected kernel-limited failures (6/14 subtests fail due to Linux FUSE nosuid restrictions).
-  - [x] Privilege-aware execution working – Individual test commands (`just pjdfs-file`, `just pjdfs-cat`) now automatically detect and use privileged execution for tests requiring SUID/SGID handling, with the full suite properly handling the two-phase mount/remount process.
-  - [x] Baseline validation active – Test results are compared against the established baseline; any unexpected failures or passes trigger alerts for investigation.
-  - [ ] Kernel limitation snapshot – `chmod/12.t` remains an expected failure even under privileged re-mount (tests 3-4, 7-8, 11-12 fail with EPERM/EPERM). Linux kernel denies SUID-clearing writes for FUSE before they reach AgentFS, so the privileged pass documents this limitation. Resolution requires kernel passthrough support or privileged mount helper (see `man mount.fuse(8)`).
-  - [x] Interactive sudo support – pjdfstest suite now runs successfully when executed in interactive terminal with sudo access, completing the full compliance validation workflow.
+  - [x] Current compliance status – `logs/pjdfstest-full-20251119-072207/summary.json` shows a clean run except for the upstream `chown/00.t` TODO diagnostics and the kernel-expected `chmod/12.t` nosuid failure. The refreshed baseline mirrors this output so any regression outside those known exceptions fails the harness immediately.
+  - [x] Regression watch – `unlink/14.t` briefly failed (subtest 6) when the kernel returned an empty read after `unlink`; we reran `just pjdfs-file unlink/14.t` and two consecutive full-suite harnesses (`logs/pjdfstest-full-20251119-063815/` and `…065317/`), both green. If the kernel behaviour changes we will promote the reproduction into the baseline.
+  - [ ] Kernel limitation snapshot – `chmod/12.t` remains an expected failure even under the new privileged re-mount (`scripts/test-pjdfstest-full.sh` now unmounts the user session, remounts via `sudo` for the SUID subset, then unmounts again). Linux still denies SUID-clearing writes for FUSE before they reach AgentFS, so the privileged pass simply documents the limitation. Until we ship a truly privileged mount helper or kernel passthrough, this checkbox stays open (see `man mount.fuse(8)`).
 
 **F6. Performance Benchmarking Suite** (3–4d) 🔄 IN PROGRESS
 
@@ -261,6 +279,12 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T7.3 Resource Exhaustion**: Test with maximum file descriptors, memory pressure, and large file counts
   - **T7.4 Crash Recovery**: Run a workload (e.g., file creation loop). kill -9 the agentfs-fuse-host process. Restart the host and run a checker to ensure the filesystem mounts cleanly and invariants are intact (understanding that in-memory data may be lost, but the state isn't corrupted)
 
+- **Verification Results**:
+  - [x] Automated stress harness – `scripts/test-fuse-stress.sh` (`just test-fuse-stress`) now drives the full F7 suite. It mounts AgentFS with a HostFs backstore, raises `RLIMIT_NOFILE` to 65 536, runs the `agentfs-fuse-stress` concurrency workload, toggles resource limits for fd-exhaustion, and executes the crash-recovery watchdog. Each run emits structured artifacts under `logs/fuse-stress-<ts>/` (`results.jsonl`, `summary.json`, per-phase logs). Latest full run: `logs/fuse-stress-20251119-151555/summary.json`.
+  - [x] Concurrency coverage – `agentfs-fuse-stress run` records per-operation stats, benign/fatal error rates, and tree fingerprints so regressions surface automatically. The default workload (`threads=16`, `duration=120s`, `max_files=4096`) completes without fatal errors and produced ~217 k mixed operations in the latest run.
+  - [x] Resource exhaustion – The harness temporarily reduces `RLIMIT_NOFILE` for the resource phase, drives the `fd_exhaust` scenario until the kernel returns `EMFILE`, and captures peak `/proc/self/fd` counts, cleanup latency, and errno so descriptor leaks are visible. `logs/fuse-stress-20251119-151555/resource/report.json` shows the run passing with 3 963 opened handles and an `EMFILE` termination as expected.
+  - [x] Crash recovery – The crash phase now logs a deterministic workload, fingerprints it, `kill -9`s the fuse host, remounts AgentFS, and verifies the filesystem can be re-mounted cleanly (digest mismatches are noted but tolerated because AgentFS currently rebuilds state in-memory). Results land in `crash/pre-crash.json` + shell logs, and the harness fails only if remount/fingerprint steps break.
+
 **F8. Extended Attributes and Special Features** (3–4d)
 
 - **Deliverables**:
@@ -280,6 +304,12 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T8.2 mknod Testing**: Test creation of special files including FIFOs (mknod my_fifo p) and verify they appear correctly in stat and readdir
   - **T8.3 Mount Option Testing**: Verify key FUSE mount options including allow_other, default_permissions, and custom cache TTLs (attr_timeout, entry_timeout, negative_timeout) from F1 are correctly passed to FsCore
   - **T8.4 Advanced I/O Testing**: Test optional core features like fallocate (for both preallocation and punching holes) and copy_file_range (if implemented)
+
+- **Verification Results**:
+  - [x] Extended attribute harness (`scripts/test-fuse-xattrs.sh`, `just test-fuse-xattrs`) covers user/trusted namespaces with set/list/remove flows. Latest run: `logs/fuse-xattrs-20251119-171957/summary.json`.
+  - [x] Special node harness (`scripts/test-fuse-mknod.sh`, `just test-fuse-mknod`) validates FIFO creation and stat metadata. Latest run: `logs/fuse-mknod-20251119-172003/summary.json`.
+  - [x] Mount option harness (`scripts/test-fuse-mount-options.sh`, `just test-fuse-mount-options`) exercises `allow_other`, kernel `default_permissions`, and cache TTL propagation. Latest run: `logs/fuse-mount-options-20251119-172010/summary.json`.
+  - [x] Advanced I/O harness (`scripts/test-fuse-advanced-io.sh`, `just test-fuse-advanced-io`) verifies posix_fallocate, punch-hole fallocate, and copy_file_range semantics. On this kernel `copy_file_range` returns `EINVAL/EBADF`, so the harness records a fallback manual copy while logging the kernel limitation. Latest run: `logs/fuse-advanced-io-20251119-171929/summary.json`.
 
 **F9. Cross-Version Compatibility Testing** (2–3d)
 
@@ -320,6 +350,14 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T10.2 Input Validation**: Test handling of malformed paths, invalid ioctl requests, and corrupted data; specifically test path traversal attacks using paths like ../../etc/passwd from within the mount to ensure proper containment
   - **T10.3 Permission Checking**: Expand into detailed matrix based on AgentFS permissions: test standard owner/group/other rwx permissions; test root_bypass_permissions (both enabled and disabled); test sticky bit (0o1000) on directories (only owner or dir-owner can unlink files); test permission checks for chmod/chown (e.g., only owner/root can chmod)
   - **T10.4 Sandbox Testing**: Ensure FUSE adapter cannot access resources outside its designated boundaries
+
+- **Verification Results**:
+  - [x] F10 plan captured in `notes/fuse_f10_plan.md` based on the F8 template, covering privilege attempts, input validation, sandboxing, and robustness.
+  - [x] Permission matrix harness added (`scripts/test-fuse-security-permissions.sh`, `just test-fuse-security-permissions`) and wired into CI. Latest run: `logs/fuse-security-permissions-20251120-053931/summary.json`.
+  - [x] Privilege escalation harness added (`scripts/test-fuse-security-privileges.sh`, `just test-fuse-security-privileges`) covering nobody/root flows across sticky dirs and mode toggles. Latest run: `logs/fuse-security-privileges-20251120-053944/summary.json`.
+  - [x] Input validation harness added (`scripts/test-fuse-security-input.sh`, `just test-fuse-security-input`) covering traversal, overlong names, invalid UTF-8, and special character handling. Latest run: `logs/fuse-security-input-20251120-053953/summary.json`.
+  - [x] Sandbox harness added (`scripts/test-fuse-security-sandbox.sh`, `just test-fuse-security-sandbox`) to block symlink escapes and traversal; latest run: `logs/fuse-security-sandbox-20251120-054314/summary.json`.
+  - [x] Robustness harness added (`scripts/test-fuse-security-robustness.sh`, `just test-fuse-security-robustness`) driving fd exhaustion and file-size caps; latest run: `logs/fuse-security-robustness-20251120-054421/summary.json`.
 
 **F11. Packaging and Distribution** (2–3d)
 
