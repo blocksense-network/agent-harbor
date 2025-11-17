@@ -56,6 +56,17 @@ pub enum MuxError {
     Other(String),
 }
 
+/// Capabilities that a multiplexer may or may not support
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MuxCapability {
+    /// Can create independent sessions/windows (like tmux)
+    SessionBasedWindows,
+    /// Can run commands in existing panes
+    RunCommandInPane,
+    /// Supports split_pane with initial_cmd parameter
+    SplitWithCommand,
+}
+
 /// Core multiplexer trait that all implementations must provide
 pub trait Multiplexer {
     /// Implementation identifier (e.g., "tmux", "wezterm", "kitty", "iterm2", "vim", "emacs").
@@ -63,6 +74,17 @@ pub trait Multiplexer {
 
     /// Check whether the implementation is available and usable on this system.
     fn is_available(&self) -> bool;
+
+    /// Check if the multiplexer supports a specific capability
+    fn supports(&self, capability: MuxCapability) -> bool {
+        // Default implementation: assume most common capabilities are supported
+        // Implementations override this to indicate limitations
+        match capability {
+            MuxCapability::SessionBasedWindows => true,
+            MuxCapability::RunCommandInPane => true,
+            MuxCapability::SplitWithCommand => true,
+        }
+    }
 
     /// Open a new top-level window/tab. Returns its WindowId.
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError>;

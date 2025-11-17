@@ -6,7 +6,7 @@
 //! This crate provides AH-specific functionality on top of the low-level
 //! multiplexer trait, including standard layouts and task management.
 
-use ah_mux_core::{SplitMode, *};
+use ah_mux_core::{MuxCapability, SplitMode, *};
 use std::collections::HashMap;
 
 /// Handle to a multiplexer session with role-based pane management
@@ -69,12 +69,13 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         let title = format!("ah-task-{}", config.task_id);
         let editor_cmd = config.editor_cmd.unwrap_or("bash");
 
-        // Check if this is Tilix - it doesn't support session-based windowing like tmux
-        // For Tilix, we always work within the current terminal window
-        let is_tilix = self.mux.id() == "tilix";
+        // Check multiplexer capabilities to determine the appropriate layout strategy
+        let supports_session_windows = self.mux.supports(MuxCapability::SessionBasedWindows);
+        let supports_split_with_cmd = self.mux.supports(MuxCapability::SplitWithCommand);
+        let supports_run_in_pane = self.mux.supports(MuxCapability::RunCommandInPane);
 
         let window_id = match config.split_mode {
-            SplitMode::None if !is_tilix => {
+            SplitMode::None if supports_session_windows => {
                 // Create new window with the editor command (for session-based multiplexers like tmux)
                 let window_opts = WindowOptions {
                     title: Some(&title),
@@ -85,8 +86,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 self.mux.open_window(&window_opts)?
             }
             _ => {
-                // For Tilix or when splitting: work within the current window
-                // Tilix actions (session-add-right, session-add-down) operate on the focused terminal
+                // For non-session-based multiplexers or when splitting: work within the current window
                 self.mux.current_window()?.ok_or_else(|| {
                     AwMuxError::Layout(
                         "Not running in a multiplexer window, cannot create split view".to_string(),
@@ -97,10 +97,13 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         let mut panes = HashMap::new();
 
-        // For Tilix: create splits with commands since we can't run commands in existing panes
-        // Layout: Left = original terminal, Right = split with lazygit (top) and agent (bottom)
-        // For tmux-like multiplexers: the window already has an initial pane
-        if is_tilix {
+        // Layout strategy depends on multiplexer capabilities
+        if !supports_split_with_cmd && supports_run_in_pane {
+            // Strategy for multiplexers that require separate split + run_command steps
+            // (like Tilix)
+            //
+            // Layout: Left = original terminal, Right = split with editor (top) and agent (bottom)
+
             // Step 1: Split horizontally (right) to create the editor pane
             // This creates: [original terminal] [editor]
             let editor_pane = self.mux.split_pane(
@@ -112,7 +115,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     cwd: Some(config.working_dir),
                     env: None,
                 },
-                None, // DON'T pass the command here - we'll run it separately
+                None, // Can't pass command here for multiplexers without SplitWithCommand
             )?;
 
             // Now run the editor command in the newly created pane
@@ -142,7 +145,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     cwd: Some(config.working_dir),
                     env: None,
                 },
-                None, // DON'T pass the command here
+                None, // Can't pass command here
             )?;
 
             // Now run the agent command in the newly created pane
@@ -157,28 +160,31 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
             panes.insert(PaneRole::Agent, agent_pane);
         } else {
-            // For tmux-like multiplexers, use the initial pane in the window
+            // Strategy for session-based multiplexers (like tmux)
+            // that support passing commands during split
             let editor_pane = format!("{}.0", window_id);
 
-            // Try to run the editor command in the existing pane
-            match self.mux.run_command(
-                &editor_pane,
-                editor_cmd,
-                &CommandOptions {
-                    cwd: Some(config.working_dir),
-                    env: None,
-                },
-            ) {
-                Ok(()) => {
-                    // Successfully ran command in the pane
-                }
-                Err(MuxError::NotAvailable(_)) => {
-                    // Multiplexer doesn't support run_command - that's okay,
-                    // the command should have been specified during pane/window creation
-                }
-                Err(e) => {
-                    // Other error - propagate it
-                    return Err(e.into());
+            // Try to run the editor command in the existing pane if supported
+            if supports_run_in_pane {
+                match self.mux.run_command(
+                    &editor_pane,
+                    editor_cmd,
+                    &CommandOptions {
+                        cwd: Some(config.working_dir),
+                        env: None,
+                    },
+                ) {
+                    Ok(()) => {
+                        // Successfully ran command in the pane
+                    }
+                    Err(MuxError::NotAvailable(_)) => {
+                        // Multiplexer doesn't support run_command - that's okay,
+                        // the command should have been specified during pane/window creation
+                    }
+                    Err(e) => {
+                        // Other error - propagate it
+                        return Err(e.into());
+                    }
                 }
             }
             panes.insert(PaneRole::Editor, editor_pane);
@@ -190,6 +196,12 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
             };
 
+            let agent_cmd_opt = if supports_split_with_cmd {
+                Some(config.agent_cmd)
+            } else {
+                None
+            };
+
             let agent_pane = self.mux.split_pane(
                 None, // Split the current window
                 None, // Split the window itself
@@ -199,7 +211,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     cwd: Some(config.working_dir),
                     env: None,
                 },
-                Some(config.agent_cmd),
+                agent_cmd_opt,
             )?;
             panes.insert(PaneRole::Agent, agent_pane);
         }

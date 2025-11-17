@@ -12,12 +12,14 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use ah_mux_core::{
-    CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
+    CommandOptions, Multiplexer, MuxCapability, MuxError, PaneId, SplitDirection, WindowId,
+    WindowOptions,
 };
 use serde::Serialize;
 
 /// Tilix session file format
 /// See: https://gnunn1.github.io/tilix-web/manual/session/
+#[allow(dead_code)] // Reserved for future session file creation
 #[derive(Debug, Clone, Serialize)]
 struct TilixSession {
     name: String,
@@ -26,6 +28,7 @@ struct TilixSession {
     terminals: Vec<TilixTerminal>,
 }
 
+#[allow(dead_code)] // Reserved for future session file creation
 #[derive(Debug, Clone, Serialize)]
 struct TilixTerminal {
     #[serde(rename = "type")]
@@ -49,6 +52,7 @@ struct TilixTerminal {
 }
 
 impl TilixTerminal {
+    #[allow(dead_code)] // Reserved for future session file creation
     fn new_terminal(directory: Option<String>, command: Option<String>) -> Self {
         Self {
             terminal_type: "Terminal".to_string(),
@@ -64,6 +68,7 @@ impl TilixTerminal {
         }
     }
 
+    #[allow(dead_code)] // Reserved for future session file creation
     fn new_split(
         orientation: u32,
         position: u32,
@@ -139,6 +144,7 @@ impl TilixMultiplexer {
     ///
     /// This is the preferred way to create complex layouts with Tilix,
     /// avoiding command-line escaping issues.
+    #[allow(dead_code)] // Reserved for future session file creation
     fn create_session_file(
         &self,
         session_name: &str,
@@ -177,6 +183,19 @@ impl Multiplexer for TilixMultiplexer {
 
     fn is_available(&self) -> bool {
         Self::is_available()
+    }
+
+    fn supports(&self, capability: MuxCapability) -> bool {
+        // Tilix has limited capabilities compared to session-based multiplexers
+        match capability {
+            // Tilix doesn't support independent sessions/windows like tmux
+            // It works within the current terminal window
+            MuxCapability::SessionBasedWindows => false,
+            // Tilix requires xdotool to run commands in panes
+            MuxCapability::RunCommandInPane => true,
+            // Tilix split_pane doesn't support initial_cmd; use run_command separately
+            MuxCapability::SplitWithCommand => false,
+        }
     }
 
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
