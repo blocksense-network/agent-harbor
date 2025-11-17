@@ -330,7 +330,7 @@ dependencies = [
  "tui-testing",
  "ureq",
  "uuid",
- "vt100 0.16.2",
+ "vt100",
  "which 6.0.3",
  "winapi",
 ]
@@ -623,7 +623,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
- "vt100 0.16.2 (git+https://github.com/blocksense-network/vt100-rust?branch=agent-harbor)",
+ "vt100",
 ]
 
 [[package]]
@@ -656,7 +656,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tui-textarea",
- "vt100 0.16.2 (git+https://github.com/blocksense-network/vt100-rust?branch=agent-harbor)",
+ "vt100",
 ]
 
 [[package]]
@@ -891,7 +891,7 @@ dependencies = [
  "unicode-width 0.2.0",
  "url",
  "uuid",
- "vt100 0.16.2 (git+https://github.com/blocksense-network/vt100-rust?branch=agent-harbor)",
+ "vt100",
 ]
 
 [[package]]
@@ -2217,9 +2217,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.51"
+version = "4.5.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c26d721170e0295f191a69bd9a1f93efcdb0aff38684b61ab5750468972e5f5"
+checksum = "aa8120877db0e5c011242f96806ce3c94e0737ab8108532a76a3300a01db2ab8"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -2227,9 +2227,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.51"
+version = "4.5.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75835f0c7bf681bfd05abe44e965760fea999a5286c6eb2d59883634fd02011a"
+checksum = "02576b399397b659c26064fbc92a75fede9d18ffd5f80ca1cd74ddab167016e1"
 dependencies = [
  "anstream",
  "anstyle",
@@ -8683,7 +8683,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
- "vt100 0.16.2 (git+https://github.com/blocksense-network/vt100-rust?branch=agent-harbor)",
+ "vt100",
 ]
 
 [[package]]
@@ -9061,16 +9061,6 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 [[package]]
 name = "vt100"
 version = "0.16.2"
-dependencies = [
- "itoa",
- "unicode-width 0.2.0",
- "vte",
-]
-
-[[package]]
-name = "vt100"
-version = "0.16.2"
-source = "git+https://github.com/blocksense-network/vt100-rust?branch=agent-harbor#2a2fc6a79f70900e9d2e3e2c2fee44cdf008b1ae"
 dependencies = [
  "itoa",
  "unicode-width 0.2.0",

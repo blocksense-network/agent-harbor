@@ -82,6 +82,7 @@ members = [
   "crates/ah-command-trace-proto",
   "crates/ah-command-trace-server",
   "crates/ah-command-trace-shim",
+  "crates/ah-command-trace-client",
   "crates/ah-command-trace-e2e-tests",
 ]
 exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
@@ -95,6 +96,11 @@ tokio = { version = "1.47", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
+
+# Command trace shim dependencies
+redhook = "2.0"
+ctor = "0.2"
+scopeguard = "1.2"
 
 # CLI parsing
 clap = { version = "4.5", features = ["derive"] }
@@ -154,8 +160,7 @@ eventsource-client = "0.13"
 ratatui = "0.29"
 crossterm = "0.28"
 tui-textarea = { path = "vendor/tui-textarea", features = ["search"] }
-
-vt100 = { git = "https://github.com/blocksense-network/vt100-rust", branch = "agent-harbor" }
+vt100 = { path = "vendor/vt100" }
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }
@@ -168,6 +173,11 @@ futures = "0.3"
 
 # Unicode width calculation
 unicode-width = "0.2"
+
+# Use vendored copies of dependencies
+[patch.crates-io]
+tui-textarea = { path = "vendor/tui-textarea" }
+vt100 = { path = "vendor/vt100" }
 
 [profile.release]
 lto = true

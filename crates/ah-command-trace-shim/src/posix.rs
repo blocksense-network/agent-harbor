@@ -55,7 +55,7 @@ pub fn initialize_client() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-/// Send a CommandStart message if client is connected
+/// Send a CommandStart message, establishing connection if needed
 pub fn send_command_start(
     pid: u32,
     ppid: u32,
@@ -64,7 +64,28 @@ pub fn send_command_start(
     env: Vec<Vec<u8>>,
     cwd: Vec<u8>,
 ) {
-    if let Some(ref mut client) = *CLIENT.lock().unwrap() {
+    // Try to get or establish a client connection
+    let mut client_guard = CLIENT.lock().unwrap();
+    if client_guard.is_none() {
+        // Try to establish connection now, with retries
+        drop(client_guard); // Release the lock before calling initialize_client
+
+        for _attempt in 0..5 {
+            if let Ok(_) = initialize_client() {
+                break;
+            }
+        }
+
+        client_guard = CLIENT.lock().unwrap();
+        if client_guard.is_none() {
+            eprintln!(
+                "[ah-command-trace-shim] Failed to establish client connection after retries"
+            );
+            return;
+        }
+    }
+
+    if let Some(ref mut client) = *client_guard {
         let start_time_ns = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
@@ -84,6 +105,8 @@ pub fn send_command_start(
         if let Err(e) = client.send_command_start(command_start) {
             eprintln!("[ah-command-trace-shim] Failed to send CommandStart: {}", e);
         }
+    } else {
+        eprintln!("[ah-command-trace-shim] No client available for CommandStart");
     }
 }
 
@@ -240,6 +263,118 @@ redhook::hook! {
 }
 
 redhook::hook! {
+    unsafe fn execv(file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execv {
+        eprintln!("[ah-command-trace-shim] execv hook called!");
+        // Get process info BEFORE calling execv (since execv replaces the process)
+        if let Some(ref state) = SHIM_STATE.get().and_then(|s| s.lock().ok()) {
+            if matches!(**state, ShimState::Ready { .. }) {
+                let pid = std::process::id() as u32;
+                let ppid = unsafe { libc::getppid() } as u32;
+
+                let executable = if !file.is_null() {
+                    unsafe { CStr::from_ptr(file) }.to_bytes().to_vec()
+                } else {
+                    b"<unknown>".to_vec()
+                };
+
+                let mut args = Vec::new();
+                if !argv.is_null() {
+                    let mut i = 0;
+                    loop {
+                        let arg_ptr = unsafe { *argv.offset(i) };
+                        if arg_ptr.is_null() {
+                            break;
+                        }
+                        let arg = unsafe { CStr::from_ptr(arg_ptr) }.to_bytes().to_vec();
+                        args.push(arg);
+                        i += 1;
+                    }
+                }
+
+                let env = get_environment();
+                let cwd = get_current_dir();
+
+                send_command_start(pid, ppid, &executable, args, env, cwd);
+            }
+        }
+
+        redhook::real!(execv)(file, argv)
+    }
+}
+
+redhook::hook! {
+    unsafe fn execveat(dirfd: libc::c_int, pathname: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char, flags: libc::c_int) -> libc::c_int => my_execveat {
+        eprintln!("[ah-command-trace-shim] execveat hook called!");
+        // Get process info BEFORE calling execveat (since execveat replaces the process)
+        if let Some(ref state) = SHIM_STATE.get().and_then(|s| s.lock().ok()) {
+            if matches!(**state, ShimState::Ready { .. }) {
+                let pid = std::process::id() as u32;
+                let ppid = unsafe { libc::getppid() } as u32;
+
+                let (executable, args, env, cwd) = extract_command_info(pathname, argv, envp);
+
+                send_command_start(pid, ppid, &executable, args, env, cwd);
+            }
+        }
+
+        redhook::real!(execveat)(dirfd, pathname, argv, envp, flags)
+    }
+}
+
+redhook::hook! {
+    unsafe fn execvpe(file: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execvpe {
+        eprintln!("[ah-command-trace-shim] execvpe hook called!");
+        // Get process info BEFORE calling execvpe (since execvpe replaces the process)
+        if let Some(ref state) = SHIM_STATE.get().and_then(|s| s.lock().ok()) {
+            if matches!(**state, ShimState::Ready { .. }) {
+                let pid = std::process::id() as u32;
+                let ppid = unsafe { libc::getppid() } as u32;
+
+                let executable = if !file.is_null() {
+                    unsafe { CStr::from_ptr(file) }.to_bytes().to_vec()
+                } else {
+                    b"<unknown>".to_vec()
+                };
+
+                let mut args = Vec::new();
+                if !argv.is_null() {
+                    let mut i = 0;
+                    loop {
+                        let arg_ptr = unsafe { *argv.offset(i) };
+                        if arg_ptr.is_null() {
+                            break;
+                        }
+                        let arg = unsafe { CStr::from_ptr(arg_ptr) }.to_bytes().to_vec();
+                        args.push(arg);
+                        i += 1;
+                    }
+                }
+
+                let mut env = Vec::new();
+                if !envp.is_null() {
+                    let mut i = 0;
+                    loop {
+                        let env_ptr = unsafe { *envp.offset(i) };
+                        if env_ptr.is_null() {
+                            break;
+                        }
+                        let env_var = unsafe { CStr::from_ptr(env_ptr) }.to_bytes().to_vec();
+                        env.push(env_var);
+                        i += 1;
+                    }
+                }
+
+                let cwd = get_current_dir();
+
+                send_command_start(pid, ppid, &executable, args, env, cwd);
+            }
+        }
+
+        redhook::real!(execvpe)(file, argv, envp)
+    }
+}
+
+redhook::hook! {
     unsafe fn posix_spawn(pid: *mut libc::pid_t, path: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawn {
         eprintln!("[ah-command-trace-shim] posix_spawn hook called!");
         // Call the real posix_spawn first
@@ -302,7 +437,6 @@ redhook::hook! {
 
 redhook::hook! {
     unsafe fn posix_spawnp(pid: *mut libc::pid_t, file: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawnp {
-        eprintln!("[ah-command-trace-shim] posix_spawnp hook called!");
         // Call the real posix_spawnp first
         let result = redhook::real!(posix_spawnp)(pid, file, file_actions, attrp, argv, envp);
 
