@@ -15,9 +15,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
 use crate::{
-    Attributes, BackstoreInfo, BranchId, BranchInfo, ContentId, DirEntry, FileMode, FileTimes,
-    FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode, SnapshotId,
-    SpecialNodeKind, StreamSpec,
+    Attributes, BackstoreInfo, BranchId, BranchInfo, ContentId, DirEntry, FallocateMode, FileMode,
+    FileTimes, FsConfig, FsStats, HandleId, LockKind, LockRange, OpenOptions, ShareMode,
+    SnapshotId, SpecialNodeKind, StreamSpec,
 };
 
 use crate::{Backstore, LowerFs};
@@ -244,6 +244,7 @@ pub(crate) struct User {
 pub struct FsCore {
     config: FsConfig,
     storage: Arc<dyn StorageBackend>,
+    fault_injector: Arc<crate::fault::FaultInjector>,
     backstore: Option<Box<dyn Backstore>>, // Backstore for overlay operations
     lower_fs: Option<Box<dyn LowerFs>>,    // Lower filesystem provider for overlay
     overlay_visible_subdir: Option<PathBuf>,
@@ -270,7 +271,7 @@ impl FsCore {
     /// Create a new FsCore instance with the given configuration
     pub fn new(config: FsConfig) -> FsResult<Self> {
         // Initialize storage backend based on backstore configuration
-        let storage: Arc<dyn StorageBackend> = match &config.backstore {
+        let base_storage: Arc<dyn StorageBackend> = match &config.backstore {
             crate::config::BackstoreMode::InMemory => {
                 Arc::new(crate::storage::InMemoryBackend::new())
             }
@@ -282,6 +283,10 @@ impl FsCore {
                 Arc::new(crate::storage::InMemoryBackend::new())
             }
         };
+        let fault_injector = Arc::new(crate::fault::FaultInjector::new());
+        let storage: Arc<dyn StorageBackend> = Arc::new(
+            crate::storage::FaultInjectingBackend::new(base_storage, fault_injector.clone()),
+        );
 
         // Initialize backstore for overlay operations or standalone backstore modes
         let backstore = if config.overlay.enabled
@@ -309,6 +314,7 @@ impl FsCore {
         let mut core = Self {
             config,
             storage,
+            fault_injector,
             backstore,
             lower_fs,
             nodes: Mutex::new(HashMap::new()),
@@ -338,6 +344,25 @@ impl FsCore {
         // Create root directory
         core.create_root_directory()?;
         Ok(core)
+    }
+
+    pub fn apply_fault_policy_from_json(
+        &self,
+        payload: &[u8],
+    ) -> FsResult<crate::fault::FaultPolicySummary> {
+        let policy = crate::fault::FaultPolicy::from_json_bytes(payload)
+            .map_err(|_| FsError::InvalidArgument)?;
+        self.fault_injector.set_policy(policy);
+        Ok(self.fault_injector.summary())
+    }
+
+    pub fn clear_fault_policy(&self) -> crate::fault::FaultPolicySummary {
+        self.fault_injector.clear();
+        self.fault_injector.summary()
+    }
+
+    pub fn fault_policy_summary(&self) -> crate::fault::FaultPolicySummary {
+        self.fault_injector.summary()
     }
 
     /// Get information about the current backstore configuration
@@ -732,7 +757,6 @@ impl FsCore {
         self.permissions_tracing_enabled
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn log_permission_event(
         &self,
         context: &str,
@@ -815,7 +839,6 @@ impl FsCore {
         decision
     }
 
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn clear_setid_bits_after_unprivileged_write(node: &mut Node, user: &User) {
         if user.uid == 0 || user.uid == node.uid {
             return;
@@ -826,11 +849,11 @@ impl FsCore {
         }
 
         let mut mask = 0u32;
-        if (node.mode & u32::from(libc::S_ISUID)) != 0 {
-            mask |= u32::from(libc::S_ISUID);
+        if (node.mode & libc::S_ISUID as u32) != 0 {
+            mask |= libc::S_ISUID as u32;
         }
-        if (node.mode & u32::from(libc::S_ISGID)) != 0 {
-            mask |= u32::from(libc::S_ISGID);
+        if (node.mode & libc::S_ISGID as u32) != 0 {
+            mask |= libc::S_ISGID as u32;
         }
 
         if mask != 0 {
@@ -843,7 +866,6 @@ impl FsCore {
         nodes.get(&node_id).cloned().ok_or(FsError::NotFound)
     }
 
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn check_dir_permissions(
         &self,
         pid: &PID,
@@ -862,7 +884,7 @@ impl FsCore {
         }
 
         if let Some(child_node) = child {
-            let sticky = (dir_node.mode & u32::from(libc::S_ISVTX)) != 0;
+            let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
             let should_log = sticky && user.uid != 0;
             let should_deny =
                 sticky && user.uid != 0 && user.uid != dir_node.uid && user.uid != child_node.uid;
@@ -923,7 +945,6 @@ impl FsCore {
         }
     }
 
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn check_dir_cross_parent_permissions(
         &self,
         pid: &PID,
@@ -939,7 +960,7 @@ impl FsCore {
         };
 
         let dir_node = self.get_node_clone(dir_id)?;
-        let sticky = (dir_node.mode & u32::from(libc::S_ISVTX)) != 0;
+        let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
         if !sticky {
             return Ok(());
         }
@@ -972,11 +993,7 @@ impl FsCore {
         Ok(())
     }
 
-    #[allow(
-        clippy::too_many_arguments,
-        clippy::useless_conversion,
-        clippy::unnecessary_cast
-    )] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
+    #[allow(clippy::too_many_arguments)]
     fn log_sticky_event(
         &self,
         pid: &PID,
@@ -990,7 +1007,7 @@ impl FsCore {
         if user_uid == 0 {
             return;
         }
-        let sticky = (dir_node.mode & u32::from(libc::S_ISVTX)) != 0;
+        let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
         if !sticky {
             return;
         }
@@ -1131,6 +1148,21 @@ impl FsCore {
             Err(FsError::NotFound) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn validate_symlink_target(target: &str) -> FsResult<()> {
+        use std::path::Component;
+
+        let target_path = Path::new(target);
+        if target_path.is_absolute() {
+            return Err(FsError::AccessDenied);
+        }
+        for component in target_path.components() {
+            if matches!(component, Component::ParentDir | Component::Prefix(_)) {
+                return Err(FsError::AccessDenied);
+            }
+        }
+        Ok(())
     }
 
     /// Create a new file node
@@ -2445,23 +2477,22 @@ impl FsCore {
         self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
     }
 
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     pub fn mknod(&self, pid: &PID, path: &Path, mode: u32, dev: u64) -> FsResult<()> {
-        let file_type = mode & u32::from(libc::S_IFMT);
+        let file_type = mode & libc::S_IFMT as u32;
         match file_type {
-            t if t == 0 || t == u32::from(libc::S_IFREG) => {
+            t if t == 0 || t == libc::S_IFREG as u32 => {
                 self.create_regular_via_mknod(pid, path, mode)
             }
-            t if t == u32::from(libc::S_IFIFO) => {
+            t if t == libc::S_IFIFO as u32 => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
             }
-            t if t == u32::from(libc::S_IFCHR) => {
+            t if t == libc::S_IFCHR as u32 => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::CharDevice { dev }, mode)
             }
-            t if t == u32::from(libc::S_IFBLK) => {
+            t if t == libc::S_IFBLK as u32 => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::BlockDevice { dev }, mode)
             }
-            t if t == u32::from(libc::S_IFSOCK) => {
+            t if t == libc::S_IFSOCK as u32 => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::Socket, mode)
             }
             _ => Err(FsError::Unsupported),
@@ -2937,6 +2968,252 @@ impl FsCore {
         let _ = &handle_path;
 
         Ok(written)
+    }
+
+    pub fn fallocate(
+        &self,
+        pid: &PID,
+        handle_id: HandleId,
+        mode: FallocateMode,
+        offset: u64,
+        len: u64,
+    ) -> FsResult<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        let (node_id, stream_name, handle_path) = {
+            let handles = self.handles.lock().unwrap();
+            let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
+            match &handle.kind {
+                HandleType::File { options, .. } => {
+                    if !options.write {
+                        return Err(FsError::AccessDenied);
+                    }
+                    (
+                        handle.node_id,
+                        Self::get_stream_name(handle).to_string(),
+                        handle.path.clone(),
+                    )
+                }
+                HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        let user = if self.config.security.enforce_posix_permissions {
+            self.user_for_process(pid)
+        } else {
+            None
+        };
+
+        if let Some(user_ref) = user.as_ref() {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+            if !self.allowed_for_user(node, user_ref, false, true, false) {
+                return Err(FsError::AccessDenied);
+            }
+        }
+
+        let content_id = {
+            let mut nodes = self.nodes.lock().unwrap();
+            let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+            match &mut node.kind {
+                NodeKind::File { streams } => {
+                    let entry = streams.entry(stream_name.clone()).or_insert_with(|| {
+                        let new_content_id = self.storage.allocate(&[]).unwrap();
+                        StreamState::new(new_content_id, 0)
+                    });
+                    if self.is_content_shared(entry) {
+                        let new_content_id = self.storage.clone_cow(entry.content_id).unwrap();
+                        entry.content_id = new_content_id;
+                    }
+                    entry.mark_dirty();
+                    entry.content_id
+                }
+                _ => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        self.storage.fallocate(content_id, mode, offset, len)?;
+
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+            match &mut node.kind {
+                NodeKind::File { streams } => {
+                    if let Some(stream) = streams.get_mut(&stream_name) {
+                        if matches!(mode, FallocateMode::Allocate) {
+                            let new_size = offset.saturating_add(len);
+                            if new_size > stream.size {
+                                stream.size = new_size;
+                            }
+                        }
+                        let (sec, nsec) = Self::current_time_components();
+                        node.times.mtime = sec;
+                        node.times.mtime_nsec = nsec;
+                        node.times.ctime = sec;
+                        node.times.ctime_nsec = nsec;
+                        if let Some(user_ref) = user.as_ref() {
+                            Self::clear_setid_bits_after_unprivileged_write(node, user_ref);
+                        }
+                    }
+                }
+                _ => return Err(FsError::InvalidArgument),
+            }
+        }
+
+        #[cfg(feature = "events")]
+        {
+            self.emit_event(EventKind::Modified {
+                path: handle_path.to_string_lossy().to_string(),
+            });
+        }
+        #[cfg(not(feature = "events"))]
+        let _ = &handle_path;
+
+        Ok(())
+    }
+
+    pub fn copy_file_range(
+        &self,
+        pid: &PID,
+        src_handle: HandleId,
+        dst_handle: HandleId,
+        src_offset: u64,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        if len == 0 {
+            return Ok(0);
+        }
+
+        let (src_info, dst_info) = {
+            let handles = self.handles.lock().unwrap();
+            let src_handle_ref = handles.get(&src_handle).ok_or(FsError::InvalidArgument)?;
+            let dst_handle_ref = handles.get(&dst_handle).ok_or(FsError::InvalidArgument)?;
+            let src_stream = match &src_handle_ref.kind {
+                HandleType::File { options, .. } => {
+                    if !options.read {
+                        return Err(FsError::AccessDenied);
+                    }
+                    Self::get_stream_name(src_handle_ref).to_string()
+                }
+                HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            };
+            let dst_stream = match &dst_handle_ref.kind {
+                HandleType::File { options, .. } => {
+                    if !options.write {
+                        return Err(FsError::AccessDenied);
+                    }
+                    Self::get_stream_name(dst_handle_ref).to_string()
+                }
+                HandleType::Directory { .. } => return Err(FsError::InvalidArgument),
+            };
+            (
+                (
+                    src_handle_ref.node_id,
+                    src_stream,
+                    src_handle_ref.path.clone(),
+                ),
+                (
+                    dst_handle_ref.node_id,
+                    dst_stream,
+                    dst_handle_ref.path.clone(),
+                ),
+            )
+        };
+
+        let user = if self.config.security.enforce_posix_permissions {
+            self.user_for_process(pid)
+        } else {
+            None
+        };
+
+        if let Some(user_ref) = user.as_ref() {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&src_info.0).ok_or(FsError::NotFound)?;
+            if !self.allowed_for_user(node, user_ref, true, false, false) {
+                return Err(FsError::AccessDenied);
+            }
+        }
+
+        if let Some(user_ref) = user.as_ref() {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&dst_info.0).ok_or(FsError::NotFound)?;
+            if !self.allowed_for_user(node, user_ref, false, true, false) {
+                return Err(FsError::AccessDenied);
+            }
+        }
+
+        let src_content = {
+            let nodes = self.nodes.lock().unwrap();
+            let node = nodes.get(&src_info.0).ok_or(FsError::NotFound)?;
+            match &node.kind {
+                NodeKind::File { streams } => streams
+                    .get(&src_info.1)
+                    .map(|stream| stream.content_id)
+                    .ok_or(FsError::NotFound)?,
+                _ => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        let dst_content = {
+            let mut nodes = self.nodes.lock().unwrap();
+            let node = nodes.get_mut(&dst_info.0).ok_or(FsError::NotFound)?;
+            match &mut node.kind {
+                NodeKind::File { streams } => {
+                    let entry = streams.get_mut(&dst_info.1).ok_or(FsError::NotFound)?;
+                    if self.is_content_shared(entry) {
+                        let new_content_id = self.storage.clone_cow(entry.content_id).unwrap();
+                        entry.content_id = new_content_id;
+                    }
+                    entry.mark_dirty();
+                    entry.content_id
+                }
+                _ => return Err(FsError::InvalidArgument),
+            }
+        };
+
+        let copied =
+            self.storage.copy_range(src_content, src_offset, dst_content, dst_offset, len)?;
+
+        if copied == 0 {
+            return Ok(0);
+        }
+
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            let node = nodes.get_mut(&dst_info.0).ok_or(FsError::NotFound)?;
+            match &mut node.kind {
+                NodeKind::File { streams } => {
+                    if let Some(stream) = streams.get_mut(&dst_info.1) {
+                        let target = dst_offset.saturating_add(copied);
+                        if target > stream.size {
+                            stream.size = target;
+                        }
+                        let (sec, nsec) = Self::current_time_components();
+                        node.times.mtime = sec;
+                        node.times.mtime_nsec = nsec;
+                        node.times.ctime = sec;
+                        node.times.ctime_nsec = nsec;
+                        if let Some(user_ref) = user.as_ref() {
+                            Self::clear_setid_bits_after_unprivileged_write(node, user_ref);
+                        }
+                    }
+                }
+                _ => return Err(FsError::InvalidArgument),
+            }
+        }
+
+        #[cfg(feature = "events")]
+        {
+            self.emit_event(EventKind::Modified {
+                path: dst_info.2.to_string_lossy().to_string(),
+            });
+        }
+        #[cfg(not(feature = "events"))]
+        let _ = &dst_info.2;
+
+        Ok(copied)
     }
 
     pub fn fsync(&self, pid: &PID, handle_id: HandleId, data_only: bool) -> FsResult<()> {
@@ -4554,7 +4831,6 @@ impl FsCore {
     }
 
     /// Get file status (lstat) for a path - does not follow symlinks
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     pub fn lstat(&self, pid: &PID, path: &Path) -> FsResult<StatData> {
         // For lstat, we need to check if it's a symlink without following it
         match self.resolve_path(pid, path) {
@@ -4574,19 +4850,19 @@ impl FsCore {
                         special_kind: node.special_kind.clone(),
                         nlink: node.nlink,
                         mode_user: FileMode {
-                            read: (node.mode & u32::from(libc::S_IRUSR)) != 0,
-                            write: (node.mode & u32::from(libc::S_IWUSR)) != 0,
-                            exec: (node.mode & u32::from(libc::S_IXUSR)) != 0,
+                            read: (node.mode & libc::S_IRUSR as u32) != 0,
+                            write: (node.mode & libc::S_IWUSR as u32) != 0,
+                            exec: (node.mode & libc::S_IXUSR as u32) != 0,
                         },
                         mode_group: FileMode {
-                            read: (node.mode & u32::from(libc::S_IRGRP)) != 0,
-                            write: (node.mode & u32::from(libc::S_IWGRP)) != 0,
-                            exec: (node.mode & u32::from(libc::S_IXGRP)) != 0,
+                            read: (node.mode & libc::S_IRGRP as u32) != 0,
+                            write: (node.mode & libc::S_IWGRP as u32) != 0,
+                            exec: (node.mode & libc::S_IXGRP as u32) != 0,
                         },
                         mode_other: FileMode {
-                            read: (node.mode & u32::from(libc::S_IROTH)) != 0,
-                            write: (node.mode & u32::from(libc::S_IWOTH)) != 0,
-                            exec: (node.mode & u32::from(libc::S_IXOTH)) != 0,
+                            read: (node.mode & libc::S_IROTH as u32) != 0,
+                            write: (node.mode & libc::S_IWOTH as u32) != 0,
+                            exec: (node.mode & libc::S_IXOTH as u32) != 0,
                         },
                         mode_bits: node.mode,
                     };
@@ -4594,7 +4870,7 @@ impl FsCore {
                 }
                 // Not a symlink, fall through to stat-style handling below
                 let attrs = self.get_node_attributes(node_id)?;
-                self.attributes_to_stat_data(attrs, Some(node_id), Some(path))
+                return self.attributes_to_stat_data(attrs, Some(node_id), Some(path));
             }
             Err(FsError::NotFound) => {
                 // For non-existent entries, behave like stat (which will also return NotFound)
@@ -4954,7 +5230,6 @@ impl FsCore {
         Ok((new_uid, new_gid, changing_uid, changing_gid))
     }
 
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn sanitize_mode_change(&self, pid: &PID, node: &Node, requested: u32) -> FsResult<u32> {
         let mut mode = requested & 0o7777;
         if !self.config.security.enforce_posix_permissions {
@@ -4974,18 +5249,17 @@ impl FsCore {
         }
 
         if user.uid != 0
-            && (mode & u32::from(libc::S_ISGID)) != 0
+            && (mode & libc::S_ISGID as u32) != 0
             && !self.has_group(&user, node.gid)
             && matches!(node.kind, NodeKind::File { .. })
         {
-            mode &= !u32::from(libc::S_ISGID);
+            mode &= !(libc::S_ISGID as u32);
         }
 
         Ok(mode)
     }
 
     /// Helper method to set node times
-    #[allow(dead_code)]
     fn set_node_times(&self, node_id: NodeId, times: FileTimes) -> FsResult<()> {
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
@@ -5088,19 +5362,16 @@ impl FsCore {
             return Err(FsError::OperationNotPermitted);
         }
 
-        if needs_write
-            && user.uid != 0
-            && user.uid != node.uid
-            && !self.allowed_for_user(node, &user, false, true, false)
-        {
-            return Err(FsError::AccessDenied);
+        if needs_write && user.uid != 0 && user.uid != node.uid {
+            if !self.allowed_for_user(node, &user, false, true, false) {
+                return Err(FsError::AccessDenied);
+            }
         }
 
         Ok(())
     }
 
     /// Helper method to convert Attributes to StatData
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn attributes_to_stat_data(
         &self,
         attrs: Attributes,
@@ -5258,6 +5529,8 @@ impl FsCore {
 
     /// Create a symbolic link
     pub fn symlink(&self, pid: &PID, target: &str, linkpath: &Path) -> FsResult<()> {
+        Self::validate_symlink_target(target)?;
+
         // Check if the link path already exists
         if self.path_exists(pid, linkpath)? {
             return Err(FsError::AlreadyExists);
@@ -5581,7 +5854,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_stat_directory() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -5589,10 +5861,7 @@ mod tests {
         // Test stat on root directory
         let stat_data = fs.getattr(&pid, "/".as_ref()).expect("getattr should succeed");
 
-        assert_eq!(
-            stat_data.mode() & u32::from(libc::S_IFMT),
-            u32::from(libc::S_IFDIR)
-        );
+        assert_eq!(stat_data.mode() & libc::S_IFMT as u32, libc::S_IFDIR as u32);
         // Root directory uses default security policy (uid=0, gid=0)
         assert_eq!(stat_data.uid, 0);
         assert_eq!(stat_data.gid, 0);
@@ -5735,7 +6004,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_mkfifo_sets_fifo_type() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -5743,57 +6011,40 @@ mod tests {
         fs.mkfifo(&pid, "/pipe".as_ref(), 0o640).expect("mkfifo should succeed");
 
         let attrs = fs.getattr(&pid, "/pipe".as_ref()).expect("getattr should succeed");
-        assert_eq!(
-            attrs.mode() & u32::from(libc::S_IFMT),
-            u32::from(libc::S_IFIFO)
-        );
+        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFIFO as u32);
         assert_eq!(attrs.mode() & 0o777, 0o640);
     }
 
     #[test]
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_mknod_char_device_records_rdev() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
 
         let dev: u64 = 0x1234;
-        fs.mknod(
-            &pid,
-            "/ttyX".as_ref(),
-            u32::from(libc::S_IFCHR) | 0o660,
-            dev,
-        )
-        .expect("mknod should succeed");
+        fs.mknod(&pid, "/ttyX".as_ref(), (libc::S_IFCHR as u32) | 0o660, dev)
+            .expect("mknod should succeed");
 
         let attrs = fs.getattr(&pid, "/ttyX".as_ref()).expect("getattr should succeed");
-        assert_eq!(
-            attrs.mode() & u32::from(libc::S_IFMT),
-            u32::from(libc::S_IFCHR)
-        );
+        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFCHR as u32);
         assert_eq!(attrs.mode() & 0o777, 0o660);
         assert_eq!(attrs.rdev(), dev);
     }
 
     #[test]
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_mknod_socket_creates_special_file() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
 
-        fs.mknod(&pid, "/sock".as_ref(), u32::from(libc::S_IFSOCK) | 0o644, 0)
+        fs.mknod(&pid, "/sock".as_ref(), (libc::S_IFSOCK as u32) | 0o644, 0)
             .expect("mknod should support sockets");
 
         let attrs = fs.getattr(&pid, "/sock".as_ref()).expect("getattr should succeed");
-        assert_eq!(
-            attrs.mode() & u32::from(libc::S_IFMT),
-            u32::from(libc::S_IFSOCK)
-        );
+        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFSOCK as u32);
         assert_eq!(attrs.mode() & 0o777, 0o644);
         assert_eq!(attrs.special_kind, Some(SpecialNodeKind::Socket));
     }
 
     #[test]
-    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_unlink_allows_recreate_same_name() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -5809,7 +6060,7 @@ mod tests {
         fs.unlink(&pid, "/foo".as_ref()).expect("unlink fifo");
 
         // Create as socket
-        fs.mknod(&pid, "/foo".as_ref(), u32::from(libc::S_IFSOCK) | 0o600, 0)
+        fs.mknod(&pid, "/foo".as_ref(), (libc::S_IFSOCK as u32) | 0o600, 0)
             .expect("mknod socket after unlink");
     }
 
