@@ -81,6 +81,7 @@ fn harness_driver_reports_unsupported() -> anyhow::Result<()> {
 }
 
 #[test]
+#[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn git_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
     if !ah_repo::test_helpers::git_available() {
         eprintln!("Skipping Git snapshot scenario: git command not available");
@@ -116,6 +117,7 @@ fn git_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
 }
 
 #[test]
+#[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn git_provider_matrix_runs_successfully() -> anyhow::Result<()> {
     if !ah_repo::test_helpers::git_available() {
         eprintln!("Skipping Git provider matrix: git command not available");
@@ -147,6 +149,7 @@ fn git_provider_matrix_runs_successfully() -> anyhow::Result<()> {
 }
 
 #[test]
+#[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn git_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
     if !ah_repo::test_helpers::git_available() {
         eprintln!("Skipping Git snapshot scenario: git command not available");
