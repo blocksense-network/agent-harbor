@@ -934,7 +934,11 @@ impl KeymapConfig {
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::OpenNewLine,
-                vec!["Ctrl+O".to_string(), "Shift+Enter".to_string()],
+                vec![
+                    "Ctrl+O".to_string(),
+                    "Shift+Enter".to_string(),
+                    "Shift+Ctrl+J".to_string(),
+                ],
             ),
             // Code Editing
             KeyboardOperationDefinition::new(
@@ -1788,6 +1792,9 @@ pub struct Settings {
 
     /// Default agent selections for new tasks
     pub default_agents: Option<Vec<AgentChoice>>,
+
+    /// Whether mouse support is enabled (default: true)
+    pub mouse_enabled: Option<bool>,
 }
 
 impl Default for Settings {
@@ -1800,6 +1807,7 @@ impl Default for Settings {
             workspace_terms_menu: Some(true),
             keymap: Some(KeymapConfig::default()),
             default_agents: None,
+            mouse_enabled: Some(true),
         }
     }
 }
@@ -1850,6 +1858,11 @@ impl Settings {
     /// Whether inline workspace terms show a popup menu (default true)
     pub fn workspace_terms_menu(&self) -> bool {
         self.workspace_terms_menu.unwrap_or(true)
+    }
+
+    /// Get whether mouse support is enabled (default true)
+    pub fn mouse_enabled(&self) -> bool {
+        self.mouse_enabled.unwrap_or(true)
     }
 
     /// Get the keymap configuration, with default fallback

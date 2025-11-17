@@ -1098,6 +1098,278 @@ mod mouse {
     }
 
     #[test]
+    fn clicking_textarea_positions_caret_with_padding() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World", "Second line"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        // Click at position accounting for 1-character padding
+        // Textarea starts at x=5, with 1 padding, so text starts at x=6
+        // "Hello " is 6 chars, so clicking at x=12 (6+6) should position after 'W'
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 12, 5);
+
+        if let Some(card) = vm.draft_cards.first() {
+            let (row, col) = card.description.cursor();
+            assert_eq!(row, 0, "Should be on first line");
+            assert_eq!(col, 7, "Should be positioned after 'W' in 'Hello World'");
+        }
+    }
+
+    #[test]
+    fn double_click_selects_word() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World test"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // First click to position caret
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 12, 5); // Click on 'W'
+
+        // Small delay, then double click (same position)
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 12, 5); // Double click
+
+        if let Some(card) = vm.draft_cards.first() {
+            let selection = card.description.selection_range();
+            assert!(selection.is_some(), "Double click should create selection");
+            let ((start_row, start_col), (end_row, end_col)) = selection.unwrap();
+            assert_eq!(start_row, 0);
+            assert_eq!(end_row, 0);
+            // Should select "World" (from position 6 to 11)
+            assert_eq!(start_col, 6);
+            assert_eq!(end_col, 11);
+
+            // Verify the selected content is "World"
+            let lines = card.description.lines();
+            let selected_text = &lines[start_row][start_col..end_col];
+            assert_eq!(selected_text, "World");
+        }
+    }
+
+    #[test]
+    fn triple_click_selects_line() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World", "Second line"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Triple click sequence
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 5);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 5);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 5);
+
+        if let Some(card) = vm.draft_cards.first() {
+            let selection = card.description.selection_range();
+            assert!(selection.is_some(), "Triple click should create selection");
+            let ((start_row, start_col), (end_row, end_col)) = selection.unwrap();
+            assert_eq!(start_row, 0);
+            assert_eq!(start_col, 0);
+            assert_eq!(end_row, 0);
+            // Should select entire first line
+            assert_eq!(end_col, 11); // Length of "Hello World"
+        }
+    }
+
+    #[test]
+    fn quadruple_click_selects_all() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World", "Second line"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Quadruple click sequence
+        for _ in 0..4 {
+            click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 5);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        if let Some(card) = vm.draft_cards.first() {
+            let selection = card.description.selection_range();
+            assert!(
+                selection.is_some(),
+                "Quadruple click should create selection"
+            );
+            let ((start_row, start_col), (end_row, end_col)) = selection.unwrap();
+            assert_eq!(start_row, 0);
+            assert_eq!(start_col, 0);
+            // Should select all content
+            assert_eq!(end_row, 1);
+            assert_eq!(end_col, 11); // Length of "Second line"
+        }
+    }
+
+    #[test]
+    fn slow_clicks_dont_trigger_multi_click() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Two clicks with >500ms delay should not create selection
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 5);
+        std::thread::sleep(std::time::Duration::from_millis(600)); // >500ms
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 8, 5);
+
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(
+                !card.description.is_selecting(),
+                "Slow double click should not create selection"
+            );
+        }
+    }
+
+    #[test]
+    fn mouse_scroll_in_modal_changes_selection() {
+        let mut vm = new_view_model();
+
+        // Open model selection modal
+        vm.open_modal(ModalState::ModelSearch);
+
+        // Initially should be at index 0
+        assert_eq!(vm.active_modal.as_ref().unwrap().selected_index, 0);
+
+        // Scroll down should increase index
+        vm.update(Msg::MouseScrollDown).unwrap();
+        assert_eq!(vm.active_modal.as_ref().unwrap().selected_index, 1);
+
+        // Scroll up should decrease index
+        vm.update(Msg::MouseScrollUp).unwrap();
+        assert_eq!(vm.active_modal.as_ref().unwrap().selected_index, 0);
+
+        // Scroll up from 0 should stay at 0
+        vm.update(Msg::MouseScrollUp).unwrap();
+        assert_eq!(vm.active_modal.as_ref().unwrap().selected_index, 0);
+    }
+
+    #[test]
+    fn model_selector_increment_decrements_counts() {
+        let mut vm = new_view_model();
+
+        // Open model selection modal
+        vm.open_modal(ModalState::ModelSearch);
+
+        // Check that modal is open and has options
+        assert!(vm.active_modal.is_some(), "Modal should be open");
+        if let Some(modal) = &vm.active_modal {
+            if let ModalType::ModelSelection { options } = &modal.modal_type {
+                assert!(!options.is_empty(), "Options should not be empty");
+                assert_eq!(options[0].count, 1); // Default agent selection
+            } else {
+                panic!("Modal type should be ModelSelection");
+            }
+        }
+
+        // Increment count
+        vm.perform_mouse_action(MouseAction::ModelIncrementCount(0));
+        if let Some(modal) = &vm.active_modal {
+            if let ModalType::ModelSelection { options } = &modal.modal_type {
+                assert_eq!(options[0].count, 2);
+            }
+        }
+
+        // Increment again
+        vm.perform_mouse_action(MouseAction::ModelIncrementCount(0));
+        if let Some(modal) = &vm.active_modal {
+            if let ModalType::ModelSelection { options } = &modal.modal_type {
+                assert_eq!(options[0].count, 3);
+            }
+        }
+
+        // Decrement
+        vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
+        if let Some(modal) = &vm.active_modal {
+            if let ModalType::ModelSelection { options } = &modal.modal_type {
+                assert_eq!(options[0].count, 2);
+            }
+        }
+
+        // Decrement below 0 should stay at 0
+        vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
+        vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
+        if let Some(modal) = &vm.active_modal {
+            if let ModalType::ModelSelection { options } = &modal.modal_type {
+                assert_eq!(options[0].count, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn clicks_outside_elements_do_nothing() {
+        let mut vm = new_view_model();
+
+        // Click at a position that doesn't hit any registered element
+        // This should not cause any errors or state changes
+        let result = vm.update(Msg::MouseClick {
+            action: MouseAction::FocusDraftTextarea(0), // This action shouldn't match any hit test
+            column: 100,                                // Way outside normal bounds
+            row: 100,
+            bounds: Rect::new(0, 0, 0, 0),
+        });
+
+        // Should succeed without errors
+        assert!(result.is_ok());
+        // State should remain unchanged
+        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+    }
+
+    #[test]
     fn draft_card_focus_loss_hides_autocomplete() {
         let mut vm = new_view_model();
 
