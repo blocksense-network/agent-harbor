@@ -1705,6 +1705,14 @@ pub enum Msg {
         row: u16,
         bounds: ratatui::layout::Rect,
     },
+    /// Mouse drag within a text area (for text selection)
+    MouseDrag {
+        column: u16,
+        row: u16,
+        bounds: ratatui::layout::Rect,
+    },
+    /// Mouse button released
+    MouseUp { column: u16, row: u16 },
     /// Mouse scroll upwards (equivalent to navigating up)
     MouseScrollUp,
     /// Mouse scroll downwards (equivalent to navigating down)
@@ -1838,6 +1846,11 @@ pub struct ViewModel {
     pub last_click_time: Option<std::time::Instant>,
     pub last_click_position: Option<(u16, u16)>,
     pub click_count: u8,
+
+    // Mouse drag state for text selection
+    pub is_dragging: bool,
+    pub drag_start_position: Option<(u16, u16)>,
+    pub drag_start_bounds: Option<ratatui::layout::Rect>,
 
     // Loading states (moved from Model)
     pub loading_task_creation: bool,
@@ -2198,6 +2211,11 @@ impl ViewModel {
             last_click_position: None,
             click_count: 0,
 
+            // Mouse drag state for text selection
+            is_dragging: false,
+            drag_start_position: None,
+            drag_start_bounds: None,
+
             // Initialize loading states
             loading_task_creation: false,
             loading_repositories: false,
@@ -2259,6 +2277,20 @@ impl ViewModel {
                 bounds,
             } => {
                 if self.handle_mouse_click(action, column, row, &bounds) {
+                    self.needs_redraw = true;
+                }
+            }
+            Msg::MouseDrag {
+                column,
+                row,
+                bounds,
+            } => {
+                if self.handle_mouse_drag(column, row, &bounds) {
+                    self.needs_redraw = true;
+                }
+            }
+            Msg::MouseUp { column, row } => {
+                if self.handle_mouse_up(column, row) {
                     self.needs_redraw = true;
                 }
             }
@@ -4256,6 +4288,104 @@ impl ViewModel {
         }
     }
 
+    /// Handle mouse drag events for text selection within text areas
+    pub fn handle_mouse_drag(
+        &mut self,
+        column: u16,
+        row: u16,
+        textarea_area: &ratatui::layout::Rect,
+    ) -> bool {
+        debug!(
+            "Mouse drag at screen ({}, {}) in textarea area {:?}",
+            column, row, textarea_area
+        );
+
+        // Only handle drag if we're in a draft task and dragging is active
+        if !matches!(self.focus_element, DashboardFocusState::DraftTask(0)) || !self.is_dragging {
+            return false;
+        }
+
+        // Calculate relative position within textarea with padding awareness
+        let padding = 1u16;
+        let raw_relative_x = column as i32 - textarea_area.x as i32 - padding as i32;
+        let relative_x = raw_relative_x.max(0) as u16;
+        let relative_y = (row as i32 - textarea_area.y as i32).max(0) as u16;
+
+        // Update selection to current drag position
+        if let Some(card) = self.draft_cards.first_mut() {
+            // Calculate precise cursor position for current drag location
+            let line_index =
+                relative_y.min(card.description.lines().len().saturating_sub(1) as u16) as usize;
+            let line = card.description.lines().get(line_index).map_or("", |s| s);
+
+            // Find the character position that best matches the current drag location
+            let mut visual_width = 0u16;
+            let mut col_index = 0;
+
+            // If drag was in the padding area (raw_relative_x < 0), position at start of line
+            if raw_relative_x < 0 {
+                // Position at beginning of line (like HOME key)
+                col_index = 0;
+            } else {
+                for ch in line.chars() {
+                    let char_width = if ch.is_ascii() { 1 } else { 2 }; // Simple heuristic for wide chars
+                    visual_width += char_width;
+                    col_index += 1;
+
+                    // Position cursor after the character if drag is within or at its end
+                    if visual_width > relative_x {
+                        break;
+                    }
+                }
+            }
+
+            debug!(
+                "Drag to cursor position: line={}, col={}",
+                line_index, col_index
+            );
+
+            // Move cursor to current drag position (this extends the selection)
+            card.description.move_cursor(tui_textarea::CursorMove::Jump(
+                line_index as u16,
+                col_index as u16,
+            ));
+
+            let (final_row, final_col) = card.description.cursor();
+            debug!("Selection extended to ({}, {})", final_row, final_col);
+        }
+
+        true
+    }
+
+    /// Stop any ongoing text selection drag operation
+    fn stop_dragging(&mut self) {
+        if self.is_dragging {
+            debug!("Stopping text selection drag");
+            self.is_dragging = false;
+            self.drag_start_position = None;
+            self.drag_start_bounds = None;
+        }
+    }
+
+    /// Handle mouse up events to clear selection state for non-drag clicks
+    pub fn handle_mouse_up(&mut self, column: u16, row: u16) -> bool {
+        debug!("Mouse up at ({}, {})", column, row);
+
+        // If mouse up at the same position as mouse down, it was just a click, not a drag
+        // Clear the selection and drag state
+        if self.is_dragging && self.drag_start_position == Some((column, row)) {
+            self.stop_dragging();
+            if let Some(card) = self.draft_cards.first_mut() {
+                if card.focus_element == CardFocusElement::TaskDescription {
+                    card.description.cancel_selection();
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     /// Handle mouse scroll actions by mapping them to hierarchical navigation.
     fn handle_mouse_scroll(&mut self, direction: NavigationDirection) -> bool {
         self.clear_exit_confirmation();
@@ -4593,7 +4723,7 @@ impl ViewModel {
 
         if was_on_textarea && !moving_to_textarea {
             self.autocomplete.close(&mut self.needs_redraw);
-            // Cancel any active text selection when leaving textarea
+            // Cancel any active text selection and dragging when leaving textarea
             if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     if card.focus_element == CardFocusElement::TaskDescription
@@ -4603,6 +4733,7 @@ impl ViewModel {
                     }
                 }
             }
+            self.stop_dragging();
         }
 
         // Sync cursor style when moving to a textarea
@@ -4668,7 +4799,8 @@ impl ViewModel {
         // Calculate relative position within textarea with padding awareness
         // Account for 1 character padding on left/right edges as per PRD
         let padding = 1u16;
-        let relative_x = (column as i32 - textarea_area.x as i32 - padding as i32).max(0) as u16;
+        let raw_relative_x = column as i32 - textarea_area.x as i32 - padding as i32;
+        let relative_x = raw_relative_x.max(0) as u16;
         let relative_y = (row as i32 - textarea_area.y as i32).max(0) as u16;
         debug!(
             "Relative position after padding: ({}, {})",
@@ -4699,6 +4831,11 @@ impl ViewModel {
         self.last_click_time = Some(now);
         self.last_click_position = Some(click_position);
 
+        // Stop dragging for multi-clicks before borrowing card
+        if self.click_count > 1 {
+            self.stop_dragging();
+        }
+
         // Position caret and handle selection based on click count
         if let Some(card) = self.draft_cards.first_mut() {
             // Calculate precise cursor position
@@ -4712,14 +4849,20 @@ impl ViewModel {
             let mut visual_width = 0u16;
             let mut col_index = 0;
 
-            for ch in line.chars() {
-                let char_width = if ch.is_ascii() { 1 } else { 2 }; // Simple heuristic for wide chars
-                visual_width += char_width;
-                col_index += 1;
+            // If click was in the padding area (raw_relative_x < 0), position at start of line
+            if raw_relative_x < 0 {
+                // Position at beginning of line (like HOME key)
+                col_index = 0;
+            } else {
+                for ch in line.chars() {
+                    let char_width = if ch.is_ascii() { 1 } else { 2 }; // Simple heuristic for wide chars
+                    visual_width += char_width;
+                    col_index += 1;
 
-                // Position cursor after the character if click is within or at its end
-                if visual_width > relative_x {
-                    break;
+                    // Position cursor after the character if click is within or at its end
+                    if visual_width > relative_x {
+                        break;
+                    }
                 }
             }
             debug!(
@@ -4729,18 +4872,26 @@ impl ViewModel {
 
             match self.click_count {
                 1 => {
-                    // Single click: position cursor at clicked location
+                    // Single click: start text selection at clicked location
                     debug!(
-                        "Single click: moving cursor to ({}, {})",
+                        "Single click: starting selection at ({}, {})",
                         line_index, col_index
                     );
-                    card.description.cancel_selection();
+
+                    // Start selection at clicked position
                     card.description.move_cursor(tui_textarea::CursorMove::Jump(
                         line_index as u16,
                         col_index as u16,
                     ));
+                    card.description.start_selection();
+
+                    // Initialize drag state
+                    self.is_dragging = true;
+                    self.drag_start_position = Some((column, row));
+                    self.drag_start_bounds = Some(*textarea_area);
+
                     let (final_row, final_col) = card.description.cursor();
-                    debug!("Cursor positioned at ({}, {})", final_row, final_col);
+                    debug!("Selection started at ({}, {})", final_row, final_col);
                 }
                 2 => {
                     // Double click: select word at cursor position
