@@ -31,14 +31,19 @@
 //! ## Usage Pattern
 //!
 //! ```rust,ignore
-//! use crate::view_model::input::{minor_modes, InputResult};
+//! use crate::view_model::input::{minor_modes, InputResult, InputState};
 //!
-//! // In your view model, handle key events by checking input minor modes
+//! // In your view model, maintain input state and handle key events by checking input minor modes
 //! // in priority order until one handles the key event
-//! fn handle_key_event(&mut self, key_event: &KeyEvent, settings: &Settings) -> InputResult {
+//! fn handle_key_event(&mut self, raw_key_event: KeyEvent, settings: &Settings) -> InputResult {
+//!     // First update input state with the raw event
+//!     self.input_state.update(&raw_key_event);
+//!
+//!     // Preprocess the key event to handle terminal translations (e.g., SHIFT+ENTER → CTRL+J)
+//!     let key_event = self.input_state.preprocess_key_event(raw_key_event);
 //!     // Check modal overlay first (highest priority)
 //!     if self.modal_active {
-//!         if let Some(operation) = minor_modes::SELECTION_MODE.resolve_key_to_operation(key_event, settings) {
+//!         if let Some(operation) = minor_modes::SELECTION_MODE.resolve_key_to_operation(&key_event, settings) {
 //!             match operation {
 //!                 KeyboardOperation::DismissOverlay => {
 //!                     self.close_modal();
@@ -57,7 +62,7 @@
 //!     match self.current_focus {
 //!         FocusState::TextArea => {
 //!             // Try textarea-specific operations first
-//!             if let Some(operation) = minor_modes::TEXT_EDITING_MODE.resolve_key_to_operation(key_event, settings) {
+//!             if let Some(operation) = minor_modes::TEXT_EDITING_MODE.resolve_key_to_operation(&key_event, settings) {
 //!                 match operation {
 //!                     KeyboardOperation::MoveToNextLine => {
 //!                         self.textarea.move_cursor_down();
@@ -71,7 +76,7 @@
 //!                 }
 //!             }
 //!             // Fall through to navigation operations
-//!             if let Some(operation) = crate::view_model::session_viewer_model::SESSION_VIEWER_MODE.resolve_key_to_operation(key_event, settings) {
+//!             if let Some(operation) = crate::view_model::session_viewer_model::SESSION_VIEWER_MODE.resolve_key_to_operation(&key_event, settings) {
 //!                 match operation {
 //!                     KeyboardOperation::MoveToNextLine => {
 //!                         self.move_cursor_down();
@@ -87,7 +92,7 @@
 //!         }
 //!         FocusState::ListView => {
 //!             // Try list-specific operations first
-//!             if let Some(operation) = resolve_key_to_operation(key_event, &minor_modes::SELECTION_MODE, settings) {
+//!             if let Some(operation) = resolve_key_to_operation(&key_event, &minor_modes::SELECTION_MODE, settings) {
 //!                 match operation {
 //!                     KeyboardOperation::SelectAll => {
 //!                         self.select_all_items();
@@ -97,7 +102,7 @@
 //!                 }
 //!             }
 //!             // Fall through to navigation operations
-//!             if let Some(operation) = crate::view_model::session_viewer_model::SESSION_VIEWER_MODE.resolve_key_to_operation(key_event, settings) {
+//!             if let Some(operation) = crate::view_model::session_viewer_model::SESSION_VIEWER_MODE.resolve_key_to_operation(&key_event, settings) {
 //!                 match operation {
 //!                     KeyboardOperation::MoveToNextLine => {
 //!                         self.select_next_item();
@@ -161,8 +166,22 @@
 //! The textarea input handling has a special case where certain operations may be handled by
 //! the parent context. This is implemented through the `handle_keyboard_operation` function's
 //! return value, which can indicate operations that should be delegated upward.
+//!
+//! ## Input Preprocessing with InputState
+//!
+//! For advanced input handling, use [`InputState`] to track modifier key states and preprocess
+//! key events before resolving them to operations. This is essential for handling terminal-specific
+//! key translations where modifier information may be lost (e.g., SHIFT+ENTER → CTRL+J).
+//!
+//! The recommended pattern is:
+//! 1. Update `InputState` with raw key events
+//! 2. Preprocess events to correct terminal translations
+//! 3. Resolve preprocessed events to keyboard operations
+//! 4. Handle operations based on UI context
+//!
+//! This approach ensures robust input handling across different terminal environments.
 
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::settings::KeyboardOperation;
 
@@ -187,6 +206,120 @@ pub enum InputResult {
     Handled,
     /// This context doesn't handle this operation, continue with default behavior
     NotHandled,
+}
+
+/// Tracks input state that affects key event interpretation
+///
+/// InputState maintains state about modifier keys and other input context
+/// that can change how key events are interpreted. This is particularly useful
+/// for handling terminal-specific key translations (like SHIFT+ENTER → CTRL+J).
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use crate::view_model::input::InputState;
+///
+/// let mut input_state = InputState::new();
+///
+/// // Update state with key events
+/// input_state.update(&key_event);
+///
+/// // Preprocess key events before passing to input modes
+/// let processed_event = input_state.preprocess_key_event(key_event);
+///
+/// // Now resolve the processed event to operations
+/// if let Some(operation) = minor_mode.resolve_key_to_operation(&processed_event, settings) {
+///     // Handle the operation...
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct InputState {
+    /// Whether the SHIFT key is currently pressed
+    pub shift_pressed: bool,
+}
+
+impl InputState {
+    /// Create a new input state with default values
+    pub fn new() -> Self {
+        Self {
+            shift_pressed: false,
+        }
+    }
+
+    /// Update the input state based on a key event
+    ///
+    /// This tracks modifier key presses and releases to maintain accurate
+    /// state for key event preprocessing.
+    pub fn update(&mut self, key: &KeyEvent) {
+        match key.code {
+            KeyCode::Modifier(crossterm::event::ModifierKeyCode::LeftShift)
+            | KeyCode::Modifier(crossterm::event::ModifierKeyCode::RightShift) => match key.kind {
+                KeyEventKind::Press => {
+                    self.shift_pressed = true;
+                }
+                KeyEventKind::Release => {
+                    self.shift_pressed = false;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    /// Preprocess a key event to handle terminal-specific translations
+    ///
+    /// This method handles special cases where terminals translate certain
+    /// key combinations in ways that lose modifier information. For example,
+    /// some terminals translate SHIFT+ENTER to CTRL+J, losing the SHIFT modifier.
+    /// This method detects such cases and restores the correct modifiers.
+    ///
+    /// # Parameters
+    /// - `key`: The raw key event from the terminal
+    ///
+    /// # Returns
+    /// A processed key event with corrected modifiers if applicable
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Terminal sends CTRL+J for SHIFT+ENTER
+    /// let ctrl_j_event = KeyEvent {
+    ///     code: KeyCode::Char('j'),
+    ///     modifiers: KeyModifiers::CONTROL,
+    ///     // ... other fields
+    /// };
+    ///
+    /// // But shift is currently pressed
+    /// input_state.shift_pressed = true;
+    ///
+    /// // Preprocessing restores the correct SHIFT+ENTER combination
+    /// let processed = input_state.preprocess_key_event(ctrl_j_event);
+    /// assert_eq!(processed.code, KeyCode::Enter);
+    /// assert_eq!(processed.modifiers, KeyModifiers::SHIFT);
+    /// ```
+    pub fn preprocess_key_event(&self, key: KeyEvent) -> KeyEvent {
+        // If we see CTRL+J and shift is currently pressed, treat it as SHIFT+ENTER
+        if key.code == KeyCode::Char('j')
+            && key.modifiers == KeyModifiers::CONTROL
+            && self.shift_pressed
+        {
+            tracing::debug!("SHIFT+ENTER detected: transforming CTRL+J to SHIFT+ENTER");
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::SHIFT,
+                kind: key.kind,
+                state: key.state,
+            }
+        } else {
+            key
+        }
+    }
+}
+
+impl Default for InputState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Common operation sets for building input minor modes
