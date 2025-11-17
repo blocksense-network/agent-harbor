@@ -51,7 +51,20 @@ fn click(vm: &mut ViewModel, action: MouseAction, bounds: Rect, column: u16, row
         row,
         bounds,
     })
-    .expect("mouse update ok");
+    .expect("mouse click update ok");
+
+    // Send mouse up event at the same position to complete the click
+    vm.update(Msg::MouseUp { column, row }).expect("mouse up update ok");
+}
+
+fn mouse_down(vm: &mut ViewModel, action: MouseAction, bounds: Rect, column: u16, row: u16) {
+    vm.update(Msg::MouseClick {
+        action,
+        column,
+        row,
+        bounds,
+    })
+    .expect("mouse down update ok");
 }
 
 /// Helper function that verifies screen redraw occurs during a test operation.
@@ -1530,6 +1543,189 @@ mod mouse {
         // Verify autocomplete is still open and query updated to "te"
         assert!(vm.autocomplete.is_open());
         assert_eq!(vm.autocomplete.get_query(), "te"); // Should now be "te" since cursor moved to after "/te"
+    }
+
+    #[test]
+    fn drag_stops_when_focus_changes() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with content and start dragging
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Start dragging
+        mouse_down(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 7, 5);
+        assert!(vm.is_dragging);
+
+        // Change focus away from textarea
+        vm.close_autocomplete_if_leaving_textarea(DashboardFocusState::SettingsButton);
+        vm.focus_element = DashboardFocusState::SettingsButton;
+
+        // Verify dragging stopped
+        assert!(!vm.is_dragging);
+        assert!(vm.drag_start_position.is_none());
+        assert!(vm.drag_start_bounds.is_none());
+    }
+
+    #[test]
+    fn drag_stops_on_multi_click() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Start dragging with single click
+        mouse_down(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 7, 5);
+        assert!(vm.is_dragging);
+
+        // Double click should stop dragging and select word
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 7, 5);
+
+        // Verify dragging stopped
+        assert!(!vm.is_dragging);
+
+        // Verify word selection occurred instead
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+            let ((start_row, start_col), (end_row, end_col)) =
+                card.description.selection_range().unwrap();
+            assert_eq!(start_row, 0);
+            assert_eq!(end_row, 0);
+            // Should select "Hello" (from position 0 to 5)
+            assert_eq!(start_col, 0);
+            assert_eq!(end_col, 5);
+
+            let lines = card.description.lines();
+            let selected_text = &lines[start_row][start_col..end_col];
+            assert_eq!(selected_text, "Hello");
+        }
+    }
+
+    #[test]
+    fn drag_only_works_in_draft_textarea() {
+        let mut vm = new_view_model();
+
+        // Set up textarea but don't focus on it
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World"]);
+        }
+        vm.focus_element = DashboardFocusState::SettingsButton; // Focus elsewhere
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Try to drag - should not work since not in textarea
+        let result = vm.update(Msg::MouseDrag {
+            column: 9,
+            row: 5,
+            bounds,
+        });
+
+        // Should succeed but not change state
+        assert!(result.is_ok());
+        assert!(!vm.is_dragging);
+    }
+
+    #[test]
+    fn clicking_padding_positions_caret_at_line_start() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World", "Second line"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Click in the padding area (column 5, which is the left edge of textarea)
+        // Textarea starts at x=5, padding=1, so clicking at x=5 should be in padding
+        click(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 5, 5);
+
+        // Should position cursor at beginning of line (column 0)
+        if let Some(card) = vm.draft_cards.first() {
+            let (row, col) = card.description.cursor();
+            assert_eq!(row, 0, "Should be on first line");
+            assert_eq!(col, 0, "Should be positioned at start of line (column 0)");
+        }
+    }
+
+    #[test]
+    fn drag_from_padding_selects_from_line_start() {
+        let mut vm = new_view_model();
+
+        // Set up textarea with known content
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.description = tui_textarea::TextArea::from(["Hello World"]);
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        let bounds = Rect {
+            x: 5,
+            y: 5,
+            width: 20,
+            height: 5,
+        };
+
+        // Click in padding to start selection at beginning of line
+        mouse_down(&mut vm, MouseAction::FocusDraftTextarea(0), bounds, 5, 5);
+        assert!(vm.is_dragging);
+
+        // Drag to position after 'H' (column 6)
+        vm.update(Msg::MouseDrag {
+            column: 6,
+            row: 5,
+            bounds,
+        })
+        .unwrap();
+
+        // Should select from start of line to after 'H'
+        if let Some(card) = vm.draft_cards.first() {
+            assert!(card.description.selection_range().is_some());
+            let ((start_row, start_col), (end_row, end_col)) =
+                card.description.selection_range().unwrap();
+            assert_eq!(start_row, 0);
+            assert_eq!(start_col, 0); // Should start from beginning of line
+            assert_eq!(end_row, 0);
+            assert_eq!(end_col, 1); // Should end after 'H' (position 1)
+
+            let lines = card.description.lines();
+            let selected_text = &lines[start_row][start_col..end_col];
+            assert_eq!(selected_text, "H");
+        }
     }
 
     #[test]
