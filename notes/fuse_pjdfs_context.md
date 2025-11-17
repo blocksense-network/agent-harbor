@@ -19,8 +19,10 @@
 4. **F6 release sweeps remain below spec**
    - `logs/fuse-performance-20251117-065645/summary.json` and `logs/fuse-performance-20251117-070644/summary.json` capture the latest release-mode runs (seq_write ≈ 0.32×, seq_read ≈ 0.32×, metadata ≈ 0.24–0.31×, concurrent_write ≈ 0.22–0.29×). The harness still fails the configured thresholds.
    - `logs/perf-profiles/agentfs-perf-20251117-064244/` and `…064348/` contain fresh `perf record -F 199 -g -- dd …` captures; the kernel still spends most of its time in `pagecache_get_page → __alloc_pages_noprof → clear_page_erms`.
-5. **Next lever**
-   - Option 1 (async writeback + kernel capability) is complete. To hit ≥ 0.75× we likely need to explore a direct-I/O path (e.g. `splice`/`fuse_notify_store`) to bypass the kernel page cache entirely.
+5. **Direct-I/O toggle exposed**
+   - Added `AGENTFS_FUSE_DIRECT_IO=1` to force `FOPEN_DIRECT_IO` on all regular files so the kernel bypasses its page cache entirely. Default remains buffered I/O; the knob is for upcoming experiments (Option 2).
+6. **Next lever**
+   - Option 1 (async writeback + kernel capability) is complete. To hit ≥ 0.75× we likely need to explore a direct-I/O path (e.g. `splice`/`fuse_notify_store`) to bypass the kernel page cache entirely; the new env knob is in place for that work.
 
 ## Updates – Nov 16 2025
 
