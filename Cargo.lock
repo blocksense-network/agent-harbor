@@ -346,6 +346,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "ah-command-trace-e2e-tests"
+version = "0.1.0"
+dependencies = [
+ "ah-command-trace-proto",
+ "core-foundation 0.10.1",
+ "futures",
+ "nix 0.29.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "ah-command-trace-proto"
+version = "0.1.0"
+dependencies = [
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
+ "hex",
+]
+
+[[package]]
+name = "ah-command-trace-shim"
+version = "0.1.0"
+dependencies = [
+ "ah-command-trace-proto",
+ "ah-command-trace-shim",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
+ "ctor",
+ "ethereum_ssz",
+ "ethereum_ssz_derive",
+ "hex",
+ "libc",
+ "nix 0.29.0",
+ "once_cell",
+ "redhook",
+ "scopeguard",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "ah-config-types"
 version = "0.1.0"
 dependencies = [

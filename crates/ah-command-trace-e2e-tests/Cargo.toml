@@ -1,0 +1,41 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-command-trace-e2e-tests"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# Library for test utilities
+
+[[bin]]
+name = "test_helper"
+path = "src/bin/test_helper.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3"
+tokio = { version = "1.0", features = [
+  "net",
+  "io-util",
+  "process",
+  "sync",
+  "rt-multi-thread",
+  "time",
+  "macros",
+] }
+futures = "0.3"
+ah-command-trace-proto = { path = "../ah-command-trace-proto" }
+
+# macOS-specific dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+
+# Linux-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.29", features = ["process", "signal"] }
+
+[build-dependencies]
+# Used to locate the shim library during build
