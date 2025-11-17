@@ -165,6 +165,29 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                                     debug!("No hit found at ({}, {})", mouse_event.column, mouse_event.row);
                                 }
                             }
+                            MouseEventKind::Drag(MouseButton::Left) => {
+                                debug!("Mouse drag at ({}, {})", mouse_event.column, mouse_event.row);
+                                // For drag events, we send MouseDrag messages regardless of hit test
+                                // since dragging can continue outside the original hit area
+                                if let Err(error) = view_model.update(ViewModelMsg::MouseDrag {
+                                    column: mouse_event.column,
+                                    row: mouse_event.row,
+                                    bounds: view_model.last_textarea_area.unwrap_or_default(),
+                                }) {
+                                    eprintln!("Error handling mouse drag: {}", error);
+                                }
+                                handled = true;
+                            }
+                            MouseEventKind::Up(MouseButton::Left) => {
+                                debug!("Mouse up at ({}, {})", mouse_event.column, mouse_event.row);
+                                if let Err(error) = view_model.update(ViewModelMsg::MouseUp {
+                                    column: mouse_event.column,
+                                    row: mouse_event.row,
+                                }) {
+                                    eprintln!("Error handling mouse up: {}", error);
+                                }
+                                handled = true;
+                            }
                             MouseEventKind::ScrollUp => {
                                 if let Err(error) = view_model.update(ViewModelMsg::MouseScrollUp) {
                                     eprintln!("Error handling mouse scroll up: {}", error);
