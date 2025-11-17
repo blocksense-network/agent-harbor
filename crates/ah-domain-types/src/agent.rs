@@ -28,6 +28,22 @@ pub enum AgentSoftware {
     Goose,
 }
 
+impl AgentSoftware {
+    /// Get the CLI argument string for this agent software (lowercase)
+    pub fn cli_arg(&self) -> &'static str {
+        match self {
+            AgentSoftware::Codex => "codex",
+            AgentSoftware::Claude => "claude",
+            AgentSoftware::Copilot => "copilot",
+            AgentSoftware::Gemini => "gemini",
+            AgentSoftware::Opencode => "opencode",
+            AgentSoftware::Qwen => "qwen",
+            AgentSoftware::CursorCli => "cursor-cli",
+            AgentSoftware::Goose => "goose",
+        }
+    }
+}
+
 /// Software and version combination for an agent
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

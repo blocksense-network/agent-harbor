@@ -488,7 +488,7 @@ where
                 // Get the agent command line from the executor
                 let agent_cmd_inner = match self.agent_executor.get_agent_command_string(
                     &session_id,
-                    &format!("{:?}", model.agent.software),
+                    model.agent.software.cli_arg(),
                     &model.model,
                     params.description(),
                     working_copy_mode,
