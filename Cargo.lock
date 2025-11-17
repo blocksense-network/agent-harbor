@@ -350,6 +350,7 @@ name = "ah-command-trace-e2e-tests"
 version = "0.1.0"
 dependencies = [
  "ah-command-trace-proto",
+ "ah-command-trace-server",
  "core-foundation 0.10.1",
  "futures",
  "nix 0.29.0",
@@ -366,6 +367,18 @@ dependencies = [
  "ethereum_ssz",
  "ethereum_ssz_derive",
  "hex",
+]
+
+[[package]]
+name = "ah-command-trace-server"
+version = "0.1.0"
+dependencies = [
+ "ah-command-trace-proto",
+ "ethereum_ssz",
+ "futures",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
