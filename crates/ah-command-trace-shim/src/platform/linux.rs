@@ -53,31 +53,38 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
 // Linux-specific hooks for vfork and clone
 redhook::hook! {
     unsafe fn vfork() -> libc::pid_t => my_vfork {
-        let result = redhook::real!(vfork)();
-
-        if result == 0 {
-            // Child process - send CommandStart if we're tracking
-            if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
-                if matches!(**state, crate::core::ShimState::Ready { .. }) {
-                    // Get process info
-                    let pid = std::process::id() as u32;
-                    let ppid = unsafe { libc::getppid() } as u32;
-                    let executable = std::env::current_exe()
+        // Snapshot state in parent BEFORE vfork (avoiding work in child)
+        let parent_snapshot = if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
+            if matches!(**state, crate::core::ShimState::Ready { .. }) {
+                Some((
+                    std::process::id() as u32, // parent PID
+                    std::env::current_exe()
                         .ok()
                         .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
-                        .unwrap_or_else(|| b"<unknown>".to_vec());
+                        .unwrap_or_else(|| b"<unknown>".to_vec()),
+                    std::env::args().map(|s| s.into_bytes()).collect::<Vec<_>>(),
+                    crate::posix::get_environment(),
+                    crate::posix::get_current_dir(),
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
-                    let args: Vec<Vec<u8>> = std::env::args()
-                        .map(|s| s.into_bytes())
-                        .collect();
+        let result = redhook::real!(vfork)();
 
-                    let env = crate::posix::get_environment();
-                    let cwd = crate::posix::get_current_dir();
-
-                    crate::posix::send_command_start(pid, ppid, &executable, args, env, cwd);
-                }
+        if result > 0 {
+            // Parent: record pending child, will be refined by exec hooks
+            if let Some((parent_pid, executable, args, env, cwd)) = parent_snapshot {
+                // For now, send CommandStart with current process info
+                // In a more complete implementation, we'd track pending children
+                // and refine with exec hooks, but for now this gives us visibility
+                crate::posix::send_command_start(result as u32, parent_pid, &executable, args, env, cwd);
             }
         }
+        // Child does NO work to avoid UB with vfork
 
         result
     }
@@ -87,8 +94,13 @@ redhook::hook! {
     unsafe fn clone(fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
         let result = redhook::real!(clone)(fn_, child_stack, flags, arg, ptid, tls, ctid);
 
-        // If this is a new process (not just a thread), send CommandStart
-        if result > 0 && (flags & libc::CLONE_VM) == 0 {
+        // Treat as process if:
+        // - It's a regular fork-like clone (no CLONE_THREAD), or
+        // - It's a vfork-like posix_spawn clone (has CLONE_VFORK), even if CLONE_VM is set
+        let is_thread_like = (flags & libc::CLONE_THREAD) != 0;
+        let is_vfork_like = (flags & libc::CLONE_VFORK) != 0;
+
+        if result > 0 && (!is_thread_like || is_vfork_like) {
             // Child process - send CommandStart if we're tracking
             if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
                 if matches!(**state, crate::core::ShimState::Ready { .. }) {
@@ -114,3 +126,19 @@ redhook::hook! {
         result
     }
 }
+
+// Internal libc symbol hooks for Python subprocess bypass paths
+// These symbols may not exist on all systems, so we check for them at runtime
+//
+// Note: Temporarily commenting out internal symbol hooks as they may not exist
+// on this system and are causing the shim to fail to load. The clone and vfork
+// fixes should still help with some Python subprocess cases.
+
+// redhook::hook! {
+//     unsafe fn __execve(path: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my___execve {
+//         eprintln!("[ah-command-trace-shim] __execve hook called!");
+//         // Implementation...
+//     }
+// }
+
+// Additional internal symbol hooks temporarily disabled to avoid loading issues
