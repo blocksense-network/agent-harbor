@@ -62,7 +62,7 @@ pub async fn execute_test_scenario(
     std::env::remove_var("AH_CMDTRACE_LOG");
 
     // Execute the helper binary with shim injection
-    let output = inject_shim_and_run(&shim_path, socket_path, command, args)?;
+    let output = inject_shim_and_run(&shim_path, socket_path, command, args).await?;
 
     // Clean up environment variables from test process
     std::env::remove_var("AH_CMDTRACE_SOCKET");
@@ -77,7 +77,11 @@ pub async fn execute_test_scenario_disabled(
     args: &[&str],
 ) -> Result<std::process::Output, Box<dyn std::error::Error>> {
     // Run without shim injection, explicitly disabling it
-    let output = Command::new(command).args(args).env("AH_CMDTRACE_ENABLED", "0").output()?;
+    let output = tokio::process::Command::new(command)
+        .args(args)
+        .env("AH_CMDTRACE_ENABLED", "0")
+        .output()
+        .await?;
 
     Ok(output)
 }

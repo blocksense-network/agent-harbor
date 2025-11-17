@@ -80,6 +80,7 @@ members = [
   "crates/agentfs-daemon",
   # Command trace shim
   "crates/ah-command-trace-proto",
+  "crates/ah-command-trace-server",
   "crates/ah-command-trace-shim",
   "crates/ah-command-trace-e2e-tests",
 ]

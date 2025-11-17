@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// Inject the shim using DYLD_INSERT_LIBRARIES and run a command
-pub fn inject_shim_and_run(
+pub async fn inject_shim_and_run(
     shim_path: &Path,
     socket_path: &str,
     command: &str,
@@ -20,13 +20,14 @@ pub fn inject_shim_and_run(
     eprintln!("Command: {} {:?}", command, args);
 
     // Set all environment variables directly on the command
-    let output = Command::new(command)
+    let output = tokio::process::Command::new(command)
         .args(args)
         .env("DYLD_INSERT_LIBRARIES", shim_path_str.as_ref())
         .env("AH_CMDTRACE_ENABLED", "1")
         .env("AH_CMDTRACE_SOCKET", socket_path)
         .env("AH_CMDTRACE_LOG", "1")
-        .output()?;
+        .output()
+        .await?;
 
     eprintln!("Command output: {:?}", output);
 
