@@ -332,23 +332,19 @@ impl FileSystem for AgentFsWinFsp {
                 || (flags & winfsp::winfsp::FspCleanupSetChangeTime) != 0
             {
                 // For now, just touch the file to update mtime
+                let duration =
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap();
+                let now = duration.as_secs() as i64;
+                let now_nsec = duration.subsec_nanos();
                 let times = agentfs_core::FileTimes {
-                    atime: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
-                    mtime: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
-                    ctime: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
-                    birthtime: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
+                    atime: now,
+                    atime_nsec: now_nsec,
+                    mtime: now,
+                    mtime_nsec: now_nsec,
+                    ctime: now,
+                    ctime_nsec: now_nsec,
+                    birthtime: now,
+                    birthtime_nsec: now_nsec,
                 };
                 let _ = self.core.set_times(path.as_ref(), times);
             }
@@ -453,9 +449,13 @@ impl FileSystem for AgentFsWinFsp {
         // Convert Windows FILETIME to Unix timestamps
         let times = agentfs_core::FileTimes {
             atime: ((_last_access_time / 10000) - 116444736000000000) as i64,
+            atime_nsec: 0,
             mtime: ((_last_write_time / 10000) - 116444736000000000) as i64,
+            mtime_nsec: 0,
             ctime: ((_change_time / 10000) - 116444736000000000) as i64,
+            ctime_nsec: 0,
             birthtime: ((_creation_time / 10000) - 116444736000000000) as i64,
+            birthtime_nsec: 0,
         };
 
         // TODO: Need path to set times
