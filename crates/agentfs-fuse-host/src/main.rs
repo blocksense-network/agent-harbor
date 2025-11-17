@@ -12,7 +12,7 @@ mod adapter;
 #[cfg(all(feature = "fuse", target_os = "linux"))]
 use adapter::AgentFsFuse;
 use agentfs_core::FsConfig;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
@@ -87,8 +87,21 @@ fn main() -> Result<()> {
             fuser::MountOption::FSName("agentfs".to_string()),
             fuser::MountOption::Subtype("agentfs".to_string()),
             fuser::MountOption::Suid,
-            fuser::MountOption::DefaultPermissions,
         ];
+
+        let use_default_permissions =
+            config.security.root_bypass_permissions || !config.security.enforce_posix_permissions;
+        if use_default_permissions {
+            info!(
+                "Enabling kernel default_permissions (root_bypass_permissions={})",
+                config.security.root_bypass_permissions
+            );
+            mount_options.push(fuser::MountOption::DefaultPermissions);
+        } else {
+            info!(
+                "Disabling kernel default_permissions because root_bypass_permissions=false; AgentFS core will enforce permissions"
+            );
+        }
 
         info!(
             "Cache policy: attr={}ms entry={}ms negative={}ms readdir_plus={} auto_cache={} writeback_cache={}",
@@ -113,21 +126,20 @@ fn main() -> Result<()> {
         }
 
         info!("Mounting filesystem...");
-        let session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
+        let mut session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
         notifier_reg.install(session.notifier());
         info!("AgentFS FUSE host mounted; blocking until unmount");
         match session.guard.join() {
             Ok(Ok(())) => info!("FUSE session exited cleanly"),
             Ok(Err(err)) => return Err(err.into()),
             Err(panic) => {
-                return Err(anyhow::anyhow!("FUSE session panicked: {:?}", panic));
+                return Err(anyhow!("FUSE session panicked: {:?}", panic));
             }
         }
     }
 
     #[cfg(not(all(feature = "fuse", target_os = "linux")))]
     {
-        use tracing::warn;
         warn!("FUSE support not compiled in. This binary is for testing only.");
         info!(
             "AgentFS core initialized successfully with config: {:?}",
@@ -216,9 +228,7 @@ mod tests {
         assert!(config.track_events);
     }
 
-    // The adapter module is only compiled on Linux with the `fuse` feature;
-    // align the test's cfg with the module's cfg to avoid unresolved module errors on other targets.
-    #[cfg(all(feature = "fuse", target_os = "linux"))]
+    #[cfg(feature = "fuse")]
     #[test]
     fn test_adapter_creation() {
         let config = FsConfig::default();
