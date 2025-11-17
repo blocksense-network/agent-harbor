@@ -233,19 +233,21 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251115-135821/`).
   - [x] CI gating – GitHub Actions now runs the pjdfstest job after the FUSE harness; it executes `SKIP_FUSE_BUILD=1 just test-pjdfstest-full`, compares results to `specs/Public/AgentFS/pjdfstest.baseline.json`, and uploads the log directory so regressions fail automatically.
 
-**F6. Performance Benchmarking Suite** (3–4d)
+**F6. Performance Benchmarking Suite** (3–4d) 🔄 IN PROGRESS
 
 - **Deliverables**:
   - Automated performance benchmarks for various operation types
   - Comparison against baseline filesystems (tmpfs, ext4)
   - Memory usage and CPU utilization tracking
   - Performance regression detection
+  - Linux passthrough fast path (FUSE_PASSTHROUGH) instrumentation and validation
 
 - **Success criteria (automated performance tests)**:
   - Sequential read/write throughput measured and compared to baselines
   - Memory usage bounded and tracked across operations
   - Performance remains stable under load
   - Automatic regression detection with configurable thresholds
+  - When kernel ≥6.9 is available, passthrough-backed sequential workloads approach ≥0.75× baseline
 
 - **Automated Test Plan**:
   - **T6.1 Throughput Benchmarks**: Measure sequential read/write performance for various file sizes
@@ -257,6 +259,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] Perf profiling – Captured cold-cache sequential-write profiling runs (4×16 GiB writes each) under `logs/perf-profiles/agentfs-perf-profile-20251116-125536-run1/`, `…125630-run2/`, and `…125721-run3/` using `perf record -g -F 400 -p <fuse_pid>`; all show the worker-channel bottleneck (crossbeam backoff + memmove).
   - [x] Release-mode perf profiling – Repeated the sequential-write captures using the **release** FUSE host binary; logs live under `logs/perf-profiles/agentfs-perf-profile-20251116-130943-release-run1/`, `…131032-release-run2/`, `…131121-release-run3/`, plus the latest async-writeback captures (`logs/perf-profiles/agentfs-perf-20251117-064244/` and `…064348/`) which show the kernel stuck in page-cache allocation (`pagecache_get_page → __alloc_pages → clear_page_erms`).
   - [x] Regression thresholds – The perf harness now enforces default minimum ratios (seq_write/read ≥ 0.75, metadata ≥ 0.5, concurrent_write ≥ 0.5) via `MIN*_RATIO` env vars and fails if any run drops below the configured floor.
+  - [ ] Passthrough validation – AgentFsFuse can request `FUSE_PASSTHROUGH` (Linux ≥6.9) behind `AGENTFS_FUSE_PASSTHROUGH=1`. Need HostFs backstore + kernel support to confirm handles switch to passthrough (metrics logged via `agentfs::fuse`) and to re-run the F6 harness for updated ratios.
 
 **F7. Stress Testing and Fault Injection** (4–5d)
 
