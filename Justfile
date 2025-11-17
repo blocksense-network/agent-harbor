@@ -44,7 +44,7 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-fuse-test-binaries build-fs-snapshots-harness
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-command-trace-shim build-fuse-test-binaries build-fs-snapshots-harness
 
 # Run Rust tests
 test-rust *args: build-rust-test-binaries
@@ -261,6 +261,10 @@ build-overlay-test-binaries:
 build-interpose-test-binaries:
     cargo build --bin agentfs-interpose-test-helper --bin agentfs-daemon
     cargo build -p agentfs-interpose-shim
+
+# Build command trace shim library needed for e2e tests
+build-command-trace-shim:
+    cargo build -p ah-command-trace-shim
 
 build-fs-snapshots-harness:
     cargo build -p fs-snapshots-test-harness --bin fs-snapshots-harness-driver
