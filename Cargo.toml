@@ -78,6 +78,10 @@ members = [
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",
+  # Command trace shim
+  "crates/ah-command-trace-proto",
+  "crates/ah-command-trace-shim",
+  "crates/ah-command-trace-e2e-tests",
 ]
 exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
 resolver = "2"
@@ -117,9 +121,6 @@ async-trait = "0.1"
 tempfile = "3.0"
 mockall = "0.13"
 
-# HTTP client for connectivity checks
-ureq = { version = "2.0", features = ["json"] }
-
 # VCS repository abstraction
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -139,9 +140,6 @@ base64 = "0.22"
 # Hex encoding
 hex = "0.4"
 
-# SSE client
-eventsource-client = "0.13"
-
 # Terminal UI
 ratatui = "0.29"
 crossterm = "0.28"
@@ -160,9 +158,6 @@ uuid = { version = "1.18", features = ["v4", "serde"] }
 
 # Futures utilities
 futures = "0.3"
-
-# Unicode width calculation
-unicode-width = "0.2"
 
 [profile.release]
 lto = true

@@ -1,0 +1,13 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-command-trace-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hex = "0.4"
+# SSZ serialization (matching agentfs-proto)
+ethereum_ssz = "0.8"
+ethereum_ssz_derive = "0.8"

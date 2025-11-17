@@ -131,6 +131,9 @@ agent-harbor/
 │  ├─ sandbox-net/             # Loopback/slirp/veth; nftables glue
 │  ├─ sandbox-proto/           # Helper⇄supervisor protocol types
 │  ├─ sbx-helper/              # Bin: PID 1 inside sandbox; composes sandbox-* crates
+│  ├─ ah-command-trace-shim/   # Lib: Cross-platform interpose shim for command capture (DYLD/LD_PRELOAD)
+│  ├─ ah-command-trace-proto/  # Lib: SSZ protocol types for shim↔recorder communication
+│  ├─ ah-command-trace-e2e-tests/ # Lib/bin: End-to-end tests for shim injection (prevents cargo test contamination)
 │  ├─ ah-recorder/             # Bin/lib: `ah agent record` implementation
 │  │  ├─ src/format.rs         # .ahr file format with Brotli compression and record serialization
 │  │  ├─ src/viewer.rs         # Ratatui viewer rendering from vt100 model
@@ -210,6 +213,7 @@ The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host 
 - GUI (Electron native addons): `ah-gui-core`, `ah-gui-webui-manager`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.
+- Command Trace (R9): `ah-command-trace-shim`, `ah-command-trace-proto`, `ah-command-trace-e2e-tests`.
 
 ### Electron GUI structure
 
