@@ -357,7 +357,7 @@ pub fn render(
             DisplayItem::Task(id) => {
                 // Find and render the card using fast lookup
                 if let Some(card_info) = view_model.find_task_card_info(id.as_str()) {
-                    let card_index = match card_info.card_type {
+                    let (card_index, draft_layout) = match card_info.card_type {
                         TaskCardTypeEnum::Draft => {
                             let card = &view_model.draft_cards[card_info.index];
                             let is_selected = matches!(view_model.focus_element, DashboardFocusState::DraftTask(idx) if idx == card_info.index);
@@ -374,10 +374,7 @@ pub fn render(
                                 cache.update_focused_textarea_rect(layout.textarea);
                             }
 
-                            hit_registry.register(
-                                layout.textarea,
-                                MouseAction::FocusDraftTextarea(card_info.index),
-                            );
+                            // Register button hit regions first
                             hit_registry.register(
                                 layout.repository_button,
                                 MouseAction::ActivateRepositoryModal,
@@ -389,21 +386,29 @@ pub fn render(
                             hit_registry.register(layout.go_button, MouseAction::LaunchTask);
                             // Store textarea area for autocomplete positioning
                             view_model.last_textarea_area = Some(layout.textarea);
-                            0 // Draft card is always at index 0
+                            (0, Some(layout)) // Draft card is always at index 0
                         }
                         TaskCardTypeEnum::Task => {
                             if let Ok(card_guard) = view_model.task_cards[card_info.index].lock() {
                                 let is_selected = matches!(view_model.focus_element, DashboardFocusState::ExistingTask(idx) if idx == card_info.index);
                                 render_task_card(frame, rect, &card_guard, &theme, is_selected);
-                                card_info.index + 1 // Task cards start at index 1 (after draft)
+                                (card_info.index + 1, None) // Task cards start at index 1 (after draft)
                             } else {
-                                card_info.index + 1
+                                (card_info.index + 1, None)
                             }
                         }
                     };
 
-                    // Add interactive area for the card
+                    // Add interactive area for the card (registered first so textarea can override)
                     hit_registry.register(rect, MouseAction::SelectCard(card_index));
+
+                    // For draft cards, register textarea after card selection so it takes precedence
+                    if let Some(layout) = draft_layout {
+                        hit_registry.register(
+                            layout.textarea,
+                            MouseAction::FocusDraftTextarea(card_info.index),
+                        );
+                    }
                 }
             }
         }

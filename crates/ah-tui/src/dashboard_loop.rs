@@ -130,10 +130,17 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                         refresh_ui(&mut view_model, &mut terminal, &mut view_cache, &mut hit_registry, &theme)?;
                     }
                     Event::Mouse(mouse_event) => {
+                        // Skip mouse events if mouse support is disabled
+                        if !view_model.settings.mouse_enabled() {
+                            continue;
+                        }
+
                         let mut handled = false;
                         match mouse_event.kind {
                             MouseEventKind::Down(MouseButton::Left) => {
+                                debug!("Mouse click at ({}, {})", mouse_event.column, mouse_event.row);
                                 if let Some(hit) = hit_registry.hit_test(mouse_event.column, mouse_event.row) {
+                                    debug!("Hit test found action: {:?} in bounds {:?}", hit.action, hit.rect);
                                     if let Err(error) = view_model.update(ViewModelMsg::MouseClick {
                                         action: hit.action,
                                         column: mouse_event.column,
@@ -143,6 +150,8 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                                         eprintln!("Error handling mouse click: {}", error);
                                     }
                                     handled = true;
+                                } else {
+                                    debug!("No hit found at ({}, {})", mouse_event.column, mouse_event.row);
                                 }
                             }
                             MouseEventKind::ScrollUp => {
@@ -210,7 +219,7 @@ fn refresh_ui(
         terminal.draw(|frame| {
             let size = frame.area();
             view::render(frame, view_model, view_cache, hit_registry);
-            modals::render_modals(frame, view_model, size, theme);
+            modals::render_modals(frame, view_model, size, theme, hit_registry);
         })?;
         view_model.needs_redraw = false;
     }
