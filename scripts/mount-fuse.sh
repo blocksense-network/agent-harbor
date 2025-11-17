@@ -78,5 +78,13 @@ if [ ${#CONFIG_ARGS[@]} -gt 0 ]; then
 fi
 echo "Note: This will run in the background. To unmount later: fusermount -u $mountpoint"
 echo ""
-"$REPO_ROOT/target/debug/agentfs-fuse-host" "${CONFIG_ARGS[@]}" "${FUSE_FLAGS[@]}" "$mountpoint" &
+HOST_BIN="${AGENTFS_FUSE_HOST_BIN:-$REPO_ROOT/target/debug/agentfs-fuse-host}"
+echo "AgentFS host binary: $HOST_BIN"
+if [ -n "${AGENTFS_FUSE_LOG_FILE:-}" ]; then
+  mkdir -p "$(dirname "$AGENTFS_FUSE_LOG_FILE")"
+  echo "Logging FUSE host output to $AGENTFS_FUSE_LOG_FILE"
+  "$HOST_BIN" "${CONFIG_ARGS[@]}" "${FUSE_FLAGS[@]}" "$mountpoint" >>"$AGENTFS_FUSE_LOG_FILE" 2>&1 &
+else
+  "$HOST_BIN" "${CONFIG_ARGS[@]}" "${FUSE_FLAGS[@]}" "$mountpoint" &
+fi
 echo "AgentFS FUSE filesystem mounted. PID: $!"

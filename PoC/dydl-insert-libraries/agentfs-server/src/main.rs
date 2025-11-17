@@ -154,6 +154,9 @@ impl AgentFsServer {
             agentfs_core::FsError::NotFound => ("Not found", libc::ENOENT),
             agentfs_core::FsError::AlreadyExists => ("Already exists", libc::EEXIST),
             agentfs_core::FsError::AccessDenied => ("Access denied", libc::EACCES),
+            agentfs_core::FsError::OperationNotPermitted => {
+                ("Operation not permitted", libc::EPERM)
+            }
             agentfs_core::FsError::InvalidArgument => ("Invalid argument", libc::EINVAL),
             agentfs_core::FsError::InvalidName => ("Invalid name", libc::EINVAL),
             agentfs_core::FsError::NotADirectory => ("Not a directory", libc::ENOTDIR),
@@ -331,6 +334,9 @@ impl AgentFsServer {
             agentfs_core::FsError::NotFound => ("Not found", libc::ENOENT),
             agentfs_core::FsError::AlreadyExists => ("Already exists", libc::EEXIST),
             agentfs_core::FsError::AccessDenied => ("Access denied", libc::EACCES),
+            agentfs_core::FsError::OperationNotPermitted => {
+                ("Operation not permitted", libc::EPERM)
+            }
             agentfs_core::FsError::InvalidArgument => ("Invalid argument", libc::EINVAL),
             agentfs_core::FsError::InvalidName => ("Invalid name", libc::EINVAL),
             agentfs_core::FsError::NotADirectory => ("Not a directory", libc::ENOTDIR),
