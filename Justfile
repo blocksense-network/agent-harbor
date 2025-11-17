@@ -355,27 +355,50 @@ test-fuse-control-plane:
 
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
+# See docs/PJDFSTest-Guide.md for detailed usage instructions
 setup-pjdfstest-suite:
     ./scripts/setup-pjdfstest.sh
 
-# Run pjdfstest suite against a mounted FUSE filesystem
-# Usage: just run-pjdfstest /mnt/agentfs
-# Prerequisites:
-#   1. just setup-pjdfstest-suite  (one-time setup)
-#   2. just mount-fuse /mnt/agentfs  (mount the filesystem)
-run-pjdfstest mountpoint:
-    ./scripts/run-pjdfstest.sh "{{mountpoint}}"
+# List available pjdfstest categories
+# Usage: just list-pjdfstest-categories
+list-pjdfstest-categories:
+    ./scripts/run-pjdfstest.sh --list
 
-# Run a small pjdfstest subset (requires the mount to exist and sudo)
-# Usage: sudo -E just test-pjdfs-subset /tmp/agentfs
-test-pjdfs-subset mountpoint:
-    ./scripts/run-pjdfstest-subset.sh "{{mountpoint}}"
+# Advanced pjdfstest targets (for manual filesystem mounting)
+
+# Run pjdfstest suite against a mounted FUSE filesystem (advanced usage)
+# Usage: just run-pjdfstest [options] <mountpoint> [test-paths...]
+# Prerequisites: Mount filesystem first with just mount-fuse (or use auto-mount options)
+# Examples:
+#   just run-pjdfstest /tmp/agentfs                    # Run all tests
+#   just run-pjdfstest /tmp/agentfs unlink/            # Run unlink category
+#   just run-pjdfstest -q /tmp/agentfs chmod/ chown/   # Run multiple categories quietly
+#   just run-pjdfstest --auto-mount /tmp/agentfs       # Auto-mount and run all tests
+run-pjdfstest *all_args:
+    #!/usr/bin/env bash
+    # Pass all arguments directly to the script (it handles the parsing)
+    ./scripts/run-pjdfstest.sh {{all_args}}
+
+# Essential pjdfstest targets (auto-mount by default)
+
+# Run individual test file (auto-mounts if needed, most common for debugging)
+# Usage: just pjdfs-file <test-file> [mountpoint]
+# Example: just pjdfs-file unlink/00.t
+pjdfs-file test_file mountpoint="/tmp/agentfs":
+    ./scripts/run-pjdfstest.sh "{{mountpoint}}" "{{test_file}}"
+
+# Run test category (auto-mounts if needed, for category-level debugging)
+# Usage: just pjdfs-cat <category> [mountpoint]
+# Example: just pjdfs-cat unlink
+pjdfs-cat category mountpoint="/tmp/agentfs":
+    ./scripts/run-pjdfstest.sh "{{mountpoint}}" "{{category}}/"
 
 # Run complete pjdfstest workflow: setup (if needed), mount, test, unmount
 # Usage: just test-pjdfstest-suite [mountpoint]
 #   mountpoint: Mount point for the filesystem (default: /tmp/agentfs)
+# This runs the full pjdfstest suite (all test categories)
 test-pjdfstest-suite mountpoint="/tmp/agentfs":
-    ./scripts/test-pjdfstest-suite.sh "{{mountpoint}}"
+    ./scripts/run-pjdfstest.sh --auto-setup --auto-mount --build-binaries "{{mountpoint}}"
 
 # Build all TUI test binaries needed for TUI testing
 build-tui-tests: build-tui-test-binaries

@@ -8,7 +8,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 
 ### Milestones and tasks (with automated success criteria)
 
-**F1. FUSE Adapter Core Implementation** ✅ CORE COMPLETE (4–6d)
+**F1. FUSE Adapter Core Implementation** ⚠️ CORE COMPLETE WITH KNOWN ISSUES (4–6d)
 
 - **Deliverables**:
   - Complete FUSE adapter implementation mapping all major FUSE operations to AgentFS Core calls
@@ -41,11 +41,53 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - `crates/agentfs-core/src/config.rs` - Added serde derives and Default implementations for FsConfig
   - `pjdfstest` - POSIX filesystem test suite runner added to Nix dev environment
   - `Justfile` - Added testing targets: `mount-fuse` for mounting, `test-fuse-basic` for smoke tests, `setup-pjdfstest-suite` for automated suite setup, `run-pjdfstest` for comprehensive testing
+  - `docs/PJDFSTest-Guide.md` - Comprehensive guide for running and debugging pjdfstest suite
 
 - **Verification Results**:
   - [x] I1 FUSE host basic ops pass - Code compiles successfully and implements all FUSE operations with correct client PID handling; requires integration testing with mounted filesystem
   - [x] I2 Control plane ioctl flows pass with SSZ union type validation - SSZ serialization implemented with proper error handling; requires testing with mounted filesystem
   - [x] pjdfstests subset green - unlink/rename/mkdir/rmdir subsets pass on the mounted `/tmp/agentfs` target (see `logs/pjdfs-subset-20251115-053905`)
+  - [x] **Full pjdfstest suite executed** - Complete test run completed with 237 test files and 8789 total tests
+  - [ ] **F1.1 Implement truncate/ftruncate operations** - Multiple truncate operations return `EOPNOTSUPP` (operation not supported):
+    - `truncate/00.t`: 10/21 tests failed (file truncation not implemented)
+    - `truncate/02.t`: 2/5 tests failed
+    - `truncate/03.t`: 2/5 tests failed
+    - `truncate/05.t`: 6/15 tests failed
+    - `truncate/12.t`: 1/3 tests failed
+    - `ftruncate/00.t`: 8/26 tests failed
+    - `ftruncate/02.t`: 2/5 tests failed
+    - `ftruncate/03.t`: 2/5 tests failed
+    - `ftruncate/05.t`: 6/15 tests failed
+  - [ ] **F1.2 Fix chown permission enforcement** - Extensive chown test failures (321/1280 in chown/00.t alone):
+    - Root ownership changes failing when they should succeed
+    - Non-root chown operations failing with incorrect error codes
+    - Sticky bit directory ownership validation issues
+  - [ ] **F1.3 Fix chmod permission enforcement** - Widespread chmod permission check failures:
+    - `chmod/00.t`: 7/119 tests failed
+    - `chmod/07.t`: 4/25 tests failed
+    - `chmod/11.t`: 24/109 tests failed
+    - `chmod/12.t`: 6/14 tests failed
+  - [ ] **F1.4 Fix link operation permissions** - Hard link creation permission issues:
+    - `link/00.t`: 19/202 tests failed
+  - [ ] **F1.5 Fix open permission enforcement** - File open permission validation failures:
+    - `open/00.t`: 9/47 tests failed
+    - `open/02.t`: 1/4 tests failed
+    - `open/03.t`: 1/4 tests failed
+    - `open/05.t`: 1/12 tests failed
+    - `open/06.t`: 24/144 tests failed
+  - [ ] **F1.6 Fix symlink permission enforcement** - Symlink creation permission issues:
+    - `symlink/05.t`: 2/12 tests failed
+    - `symlink/06.t`: 2/12 tests failed
+  - [ ] **F1.7 Fix utimensat permission enforcement** - Timestamp modification permission issues:
+    - `utimensat/06.t`: 1/13 tests failed
+    - `utimensat/07.t`: 6/17 tests failed
+    - `utimensat/08.t`: 2/9 tests failed
+
+- **Outstanding Tasks**:
+  - **Implement truncate/ftruncate system calls** in AgentFS Core and FUSE adapter
+  - **Audit and fix permission checking logic** for chown, chmod, link, open, symlink, and utimensat operations
+  - **Review root_bypass_permissions implementation** - may be incorrectly applied
+  - **Add comprehensive permission test coverage** to prevent regression
 
 **F2. FUSE Mount/Unmount Cycle Testing** (3–4d)
 
