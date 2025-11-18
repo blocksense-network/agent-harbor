@@ -164,7 +164,6 @@ pub fn interleave_with_terminal_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[test]

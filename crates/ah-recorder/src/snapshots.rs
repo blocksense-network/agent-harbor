@@ -190,11 +190,7 @@ impl SnapshotsReader {
             .snapshots
             .iter()
             .filter_map(|s| {
-                let dist = if s.anchor_byte > byte_off {
-                    s.anchor_byte - byte_off
-                } else {
-                    byte_off - s.anchor_byte
-                };
+                let dist = s.anchor_byte.abs_diff(byte_off);
 
                 if dist <= max_distance {
                     Some((dist, s))
@@ -210,13 +206,7 @@ impl SnapshotsReader {
 
     /// Find the snapshot closest to a given byte offset
     pub fn find_closest(&self, byte_off: u64) -> Option<&Snapshot> {
-        self.snapshots.iter().min_by_key(|s| {
-            if s.anchor_byte > byte_off {
-                s.anchor_byte - byte_off
-            } else {
-                byte_off - s.anchor_byte
-            }
-        })
+        self.snapshots.iter().min_by_key(|s| s.anchor_byte.abs_diff(byte_off))
     }
 }
 

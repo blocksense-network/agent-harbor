@@ -249,14 +249,11 @@ async fn handle_connection(
                     label,
                     response_tx,
                 })
-                .map_err(|_| {
-                    io::Error::new(io::ErrorKind::Other, "Failed to send command to recorder")
-                })?;
+                .map_err(|_| io::Error::other("Failed to send command to recorder"))?;
 
             // Wait for recorder to process snapshot and respond
-            let response = response_rx
-                .await
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Recorder did not respond"))?;
+            let response =
+                response_rx.await.map_err(|_| io::Error::other("Recorder did not respond"))?;
 
             // Send length-prefixed response
             let response_bytes = response.as_ssz_bytes();

@@ -429,7 +429,6 @@ impl PtyRecorder {
 /// Terminal state tracker using vt100
 ///
 /// Maintains the terminal grid state and tracks which rows have been modified.
-
 /// Recording session that combines PTY capture with .ahr file writing
 pub struct RecordingSession {
     /// PTY writer for direct input writing
@@ -731,11 +730,7 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel::<PtyEvent>();
         drop(tx); // Close sender to simulate end of events
 
-        let pty_config = PtyRecorderConfig {
-            cols: 120,
-            rows: 40,
-            ..Default::default()
-        };
+        // (removed unused pty_config construction)
 
         // Create recording terminal state with the expected dimensions
         let recording_terminal_state = Some(std::rc::Rc::new(std::cell::RefCell::new(
@@ -754,7 +749,7 @@ mod tests {
 
         // Wait for session to finish processing (though it should finish immediately since we dropped the sender)
         let mut session = session;
-        while let Some(_) = session.next_event().await {}
+        while session.next_event().await.is_some() {}
 
         // Finalize the session to flush any remaining data
         session.finalize().await?;

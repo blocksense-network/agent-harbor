@@ -144,6 +144,7 @@ pub struct TermFeatures {
 }
 
 /// No-op callbacks implementation for vt100 parser when no PTY interaction is needed
+#[allow(dead_code)]
 struct NoOpCallbacks;
 
 impl vt100::Callbacks for NoOpCallbacks {
@@ -160,11 +161,12 @@ impl vt100::Callbacks for NoOpCallbacks {
 }
 
 /// VT100 callbacks implementation for handling terminal queries and mode changes
+pub type WriteReplyFn = std::sync::Arc<dyn Fn(&[u8]) + Send + Sync>;
 #[derive(Clone)]
 pub struct TermCallbacks {
     pub feats: std::sync::Arc<std::sync::Mutex<TermFeatures>>,
     /// Where to write terminal replies (CPR, DA, etc.)
-    pub write_reply: std::sync::Arc<dyn Fn(&[u8]) + Send + Sync>,
+    pub write_reply: WriteReplyFn,
 }
 
 impl vt100::Callbacks for TermCallbacks {
@@ -265,7 +267,7 @@ impl TerminalState {
     }
 
     /// Set callbacks with a write_reply function for PTY interaction
-    pub fn set_write_reply(&mut self, write_reply: std::sync::Arc<dyn Fn(&[u8]) + Send + Sync>) {
+    pub fn set_write_reply(&mut self, write_reply: WriteReplyFn) {
         self.parser.callbacks_mut().write_reply = write_reply;
     }
 
@@ -526,7 +528,7 @@ impl TerminalState {
 
     /// Get the current scrollback position (offset for display)
     pub fn get_current_scrollback(&self) -> usize {
-        self.parser.screen().scrollback() as usize
+        self.parser.screen().scrollback()
     }
 
     /// Get the absolute line index for a given visible screen row
@@ -564,6 +566,7 @@ impl TerminalState {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
@@ -734,7 +737,7 @@ mod tests {
         let (start_idx, end_idx) = state.get_visible_lines_absolute_indices();
 
         // Basic sanity checks
-        assert!(total_lines >= 0); // usize is always >= 0
+        // removed meaningless assert on unsigned comparison
 
         // Verify the range covers the visible screen height
         let num_lines = end_idx.as_usize() - start_idx.as_usize() + 1;
@@ -772,7 +775,7 @@ mod tests {
 
         // The current buffer should only contain lines within scrollback + screen height
         let total_lines_in_buffer = state.total_output_lines_in_memory();
-        let scrollback = state.get_current_scrollback();
+        let _scrollback = state.get_current_scrollback();
 
         // The buffer should contain at most screen_height + scrollback lines
         assert!(total_lines_in_buffer == 3 + 5); // screen height + scrollback
