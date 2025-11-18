@@ -4,12 +4,13 @@
 use agentfs_proto::*;
 use ssz::{Decode, Encode};
 
-/// Helper function to encode SSZ messages for testing
+#[allow(dead_code)]
 fn encode_ssz_message(data: &impl Encode) -> Vec<u8> {
     data.as_ssz_bytes()
 }
 
 /// Helper function to decode SSZ messages for testing
+#[allow(dead_code)]
 fn decode_ssz_message<T: Decode>(data: &[u8]) -> Result<T, ssz::DecodeError> {
     T::from_ssz_bytes(data)
 }
