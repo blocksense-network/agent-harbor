@@ -122,23 +122,14 @@ impl KittyMultiplexer {
     #[instrument(skip(self), fields(component = "ah_mux", operation = "run_kitty_command", socket_path = ?self.socket_path, args = ?args))]
     fn run_kitty_command(&self, args: &[&str]) -> Result<String, MuxError> {
         debug!("Executing kitty @ command");
-
-        // Build command args
-        let mut cmd_args = vec!["@"];
-
-        // Add socket path if specified
-        // From within Kitty: commands work without --to using stdio
-        // From external scripts/terminals: must use --to unix:/path/to/socket
-        if let Some(socket) = &self.socket_path {
-            cmd_args.extend_from_slice(&["--to", socket]);
-        }
-
-        // Add the actual command arguments
-        cmd_args.extend_from_slice(args);
+        // Use timeout to prevent hanging when remote control is disabled
+        let cmd_args = self.build_kitty_args(args);
+        let str_args: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
 
         // Execute the kitty @ command
-        let output = Command::new("kitty")
-            .args(&cmd_args)
+        let output = Command::new("timeout")
+            .args(&["30", "kitty"]) // 30 second timeout (longer for actual operations)
+            .args(&str_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -188,19 +179,60 @@ impl KittyMultiplexer {
     /// Tests remote control by attempting a simple `kitty @ ls` command.
     /// Returns false if remote control is not configured or kitty is not running.
     fn is_remote_control_available(&self) -> bool {
-        // Try to run a simple kitty @ command to test remote control availability
-        let result = self.run_kitty_command(&["ls"]);
-        match result {
-            Ok(_) => true,
-            Err(MuxError::CommandFailed(ref msg)) if msg.contains("no socket") => false,
-            Err(MuxError::CommandFailed(ref msg)) if msg.contains("Could not connect") => false,
-            Err(MuxError::CommandFailed(ref msg)) if msg.contains("timed out") => false,
-            Err(MuxError::CommandFailed(ref msg)) if msg.contains("Remote control is disabled") => {
-                false
-            }
-            Err(MuxError::NotAvailable(_)) => false,
-            _ => true, // Other errors might be transient
+        // First check if we have a socket path - if not, remote control might not be configured
+        if self.socket_path.is_none() && std::env::var("KITTY_LISTEN_ON").is_err() {
+            // No socket configured, check if there are any kitty processes running that might have remote control
+            // This is a heuristic - if no socket is configured, remote control is likely disabled
+            return false;
         }
+
+        // Try to run a simple kitty @ command to test remote control availability
+        // Use timeout to prevent hanging
+        let result = std::process::Command::new("timeout")
+            .args(&["5", "kitty"]) // 5 second timeout
+            .args(&self.build_kitty_args(&["ls"]))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => true,
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                // Check for specific error messages indicating remote control issues
+                if stderr.contains("Remote control is disabled")
+                    || stderr.contains("no socket")
+                    || stderr.contains("Could not connect")
+                    || stderr.contains("timed out")
+                {
+                    false
+                } else {
+                    // Other errors might be transient, assume available
+                    true
+                }
+            }
+            Err(_) => false, // timeout command not available or other error
+        }
+    }
+
+    /// Build kitty command arguments (helper method)
+    fn build_kitty_args(&self, args: &[&str]) -> Vec<String> {
+        let mut cmd_args = vec!["@".to_string()];
+
+        // Add socket path if specified
+        if let Some(socket) = &self.socket_path {
+            // Ensure socket path is properly formatted with protocol
+            let socket_path = if socket.starts_with("unix:") {
+                socket.clone()
+            } else {
+                format!("unix:{}", socket)
+            };
+            cmd_args.extend_from_slice(&["--to".to_string(), socket_path]);
+        }
+
+        // Add the actual command arguments
+        cmd_args.extend(args.iter().map(|s| s.to_string()));
+        cmd_args
     }
 
     /// Get the window ID from kitty's launch output
@@ -225,15 +257,49 @@ impl KittyMultiplexer {
 
     /// Get the currently focused window ID
     pub fn get_focused_window_id(&self) -> Result<String, MuxError> {
-        let output = self.run_kitty_command(&["get-focused-window-id"])?;
-        Ok(output.trim().to_string())
+        let output = self.run_kitty_command(&["ls"])?;
+
+        // Parse JSON to find the focused window
+        let json: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            MuxError::CommandFailed(format!("Failed to parse kitty @ ls JSON: {}", e))
+        })?;
+
+        // The structure is: array of OS windows -> tabs -> windows
+        if let Some(os_windows) = json.as_array() {
+            for os_window in os_windows {
+                if let Some(tabs) = os_window.get("tabs").and_then(|t| t.as_array()) {
+                    for tab in tabs {
+                        if let Some(windows) = tab.get("windows").and_then(|w| w.as_array()) {
+                            for window in windows {
+                                if window
+                                    .get("is_focused")
+                                    .and_then(|f| f.as_bool())
+                                    .unwrap_or(false)
+                                {
+                                    if let Some(id) = window.get("id").and_then(|i| i.as_u64()) {
+                                        return Ok(id.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(MuxError::CommandFailed(
+            "Could not find focused window in kitty @ ls output".to_string(),
+        ))
     }
 
     /// Get the title of a specific window
     pub fn get_window_title(&self, window_id: &str) -> Result<String, MuxError> {
-        let output =
-            self.run_kitty_command(&["get-window-title", "--match", &format!("id:{}", window_id)])?;
-        Ok(output.trim().to_string())
+        let windows = self.list_windows_detailed()?;
+        windows
+            .iter()
+            .find(|(id, _)| id == window_id)
+            .map(|(_, title)| title.clone())
+            .ok_or_else(|| MuxError::CommandFailed(format!("Window {} not found", window_id)))
     }
 
     /// Get detailed window information
@@ -245,27 +311,25 @@ impl KittyMultiplexer {
         let output = self.run_kitty_command(&["ls"])?;
 
         // Parse JSON to extract window IDs and titles
+        let json: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            MuxError::CommandFailed(format!("Failed to parse kitty @ ls JSON: {}", e))
+        })?;
+
         // Expected structure: array of OS windows, each with tabs, each with windows
         let mut windows = Vec::new();
 
-        // Simple JSON parsing for window info
-        // Format: [{"tabs": [{"windows": [{"id": N, "title": "..."}, ...]}]}]
-        for line in output.lines() {
-            if line.contains("\"id\":") && line.contains("\"title\":") {
-                // Extract id (number)
-                if let Some(id_start) = line.find("\"id\":") {
-                    let id_part = &line[id_start + 5..];
-                    if let Some(id_end) = id_part.find(',').or_else(|| id_part.find('}')) {
-                        let id_str = id_part[..id_end].trim();
-
-                        // Extract title (string)
-                        if let Some(title_start) = line.find("\"title\":") {
-                            let title_part = &line[title_start + 9..];
-                            if let Some(title_end) =
-                                title_part.find("\",").or_else(|| title_part.find("\""))
-                            {
-                                let title = title_part[..title_end].trim_matches('"');
-                                windows.push((id_str.to_string(), title.to_string()));
+        if let Some(os_windows) = json.as_array() {
+            for os_window in os_windows {
+                if let Some(tabs) = os_window.get("tabs").and_then(|t| t.as_array()) {
+                    for tab in tabs {
+                        if let Some(window_list) = tab.get("windows").and_then(|w| w.as_array()) {
+                            for window in window_list {
+                                if let (Some(id), Some(title)) = (
+                                    window.get("id").and_then(|i| i.as_u64()),
+                                    window.get("title").and_then(|t| t.as_str()),
+                                ) {
+                                    windows.push((id.to_string(), title.to_string()));
+                                }
                             }
                         }
                     }
@@ -307,17 +371,29 @@ mod tests {
         // Remove any existing socket
         let _ = std::fs::remove_file(socket_path);
 
-        // Try to start Kitty in hidden mode with remote control
+        // Create a temporary config directory with remote control enabled
+        let config_dir = "/tmp/kitty-test-config";
+        std::fs::create_dir_all(config_dir)?;
+        let config_file = format!("{}/kitty.conf", config_dir);
+        std::fs::write(
+            &config_file,
+            "allow_remote_control yes\nlisten_on unix:/tmp/kitty-test.sock\n",
+        )?;
+
+        // Try to start Kitty in hidden mode with custom config directory
         eprintln!(
-            "DEBUG: Attempting to start Kitty with socket: {}",
-            socket_path
+            "DEBUG: Attempting to start Kitty with socket: {} and config: {}",
+            socket_path, config_file
         );
         let mut child = match std::process::Command::new("kitty")
             .args(&[
                 "--listen-on",
                 &format!("unix:{}", socket_path),
                 "--start-as=hidden",
+                "--config",
+                &config_file,
             ])
+            .env("KITTY_CONFIG_DIRECTORY", config_dir)
             .spawn()
         {
             Ok(child) => {
@@ -1283,57 +1359,36 @@ impl Multiplexer for KittyMultiplexer {
     #[instrument(skip(self), fields(component = "ah_mux", operation = "open_window", title = ?opts.title, focus = %opts.focus))]
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
         info!("Opening new kitty window");
+        // Create a new window/tab with the specified options
+        let mut args = vec![
+            "launch".to_string(),
+            "--type".to_string(),
+            "tab".to_string(),
+        ];
 
-        // Instead of creating a new tab, we'll use the current window for task layouts
-        // This provides a better user experience by keeping everything in one view
-        // The layout will be: TUI on left, lazygit + agent on right (split vertically)
-
-        // Get the current window ID
-        if let Some(window_id) = self.current_window()? {
-            debug!(window_id = %window_id, "Using current kitty window");
-            // If focus is requested, focus the window
-            if opts.focus {
-                debug!("Focusing current window");
-                self.focus_window(&window_id)?;
-            }
-            info!(window_id = %window_id, "kitty window opened successfully");
-            Ok(window_id)
-        } else {
-            debug!("No current window found, creating new tab");
-            // Fallback: if no current window exists, create a new tab
-            let mut args = vec![
-                "launch".to_string(),
-                "--type".to_string(),
-                "tab".to_string(),
-            ];
-
-            // Add title if specified
-            if let Some(title) = opts.title {
-                args.extend_from_slice(&["--title".to_string(), title.to_string()]);
-            }
-
-            // Add working directory if specified
-            if let Some(cwd) = opts.cwd {
-                args.extend_from_slice(&["--cwd".to_string(), cwd.to_string_lossy().to_string()]);
-            }
-
-            // Convert to slice of &str for the command
-            let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-            // Run the command and capture the window ID
-            debug!(args = ?args_str, "Running kitty launch command");
-            let output = self.run_kitty_command(&args_str)?;
-            let window_id = self.parse_window_id_from_output(&output)?;
-
-            // Focus the window if requested
-            if opts.focus {
-                debug!("Focusing newly created window");
-                self.focus_window(&window_id)?;
-            }
-
-            info!(window_id = %window_id, "kitty window opened successfully");
-            Ok(window_id)
+        // Add title if specified
+        if let Some(title) = opts.title {
+            args.extend_from_slice(&["--title".to_string(), title.to_string()]);
         }
+
+        // Add working directory if specified
+        if let Some(cwd) = opts.cwd {
+            args.extend_from_slice(&["--cwd".to_string(), cwd.to_string_lossy().to_string()]);
+        }
+
+        // Convert to slice of &str for the command
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+        // Run the command and capture the window ID
+        let output = self.run_kitty_command(&args_str)?;
+        let window_id = self.parse_window_id_from_output(&output)?;
+
+        // Focus the window if requested
+        if opts.focus {
+            self.focus_window(&window_id)?;
+        }
+
+        Ok(window_id)
     }
 
     #[instrument(skip(self, opts), fields(component = "ah_mux", operation = "split_pane", direction = ?dir, percent = ?percent, has_initial_cmd = %initial_cmd.is_some()))]
