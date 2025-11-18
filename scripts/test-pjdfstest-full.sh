@@ -20,6 +20,28 @@ log() {
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG_FILE"
 }
 
+wait_for_mount_state() {
+  local mount_path="$1"
+  local expect="$2"
+  local max_attempts=50
+  local attempt=0
+  while ((attempt < max_attempts)); do
+    if mountpoint -q "$mount_path" 2>/dev/null; then
+      if [[ "$expect" == "mounted" ]]; then
+        return 0
+      fi
+    else
+      if [[ "$expect" == "unmounted" ]]; then
+        return 0
+      fi
+    fi
+    sleep 0.1
+    ((attempt += 1))
+  done
+  log "Timed out waiting for $mount_path to become $expect"
+  return 1
+}
+
 cleanup() {
   if mountpoint -q "$MOUNTPOINT" 2>/dev/null; then
     log "Unmounting $MOUNTPOINT"
@@ -45,6 +67,10 @@ export AGENTFS_FUSE_LOG_FILE="$RUN_DIR/fuse-host.log"
 export RUST_BACKTRACE="${RUST_BACKTRACE:-1}"
 log "FUSE host log: $AGENTFS_FUSE_LOG_FILE"
 AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
+if ! wait_for_mount_state "$MOUNTPOINT" "mounted"; then
+  log "Failed to verify mount at $MOUNTPOINT; aborting pjdfstest run."
+  exit 1
+fi
 
 log "Selecting pjdfstest subsets"
 SUDO_TEST_LIST="${PJDFSTEST_SUDO_TESTS:-chmod/12.t}"
