@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
+use tracing::debug;
 
 // Note: we use libc::clonefile directly on macOS in platform-specific sections.
 
@@ -369,23 +370,17 @@ impl Backstore for HostFsBackstore {
             // Try to find the mount point for this path by walking up the directory tree
             let mut current_path = self.root.as_path();
             while let Some(parent) = current_path.parent() {
-                eprintln!(
-                    "DEBUG: Checking potential mount point: {}",
-                    parent.display()
-                );
+                debug!("Checking potential mount point: {}", parent.display());
                 if let Ok(output) =
                     Command::new("diskutil").args(["info", &parent.to_string_lossy()]).output()
                 {
                     let output_str = String::from_utf8_lossy(&output.stdout);
-                    eprintln!(
-                        "DEBUG: diskutil output contains 'apfs': {}",
+                    debug!(
+                        "diskutil output contains 'apfs': {}",
                         output_str.contains("apfs")
                     );
                     if output_str.contains("File System:") && output_str.contains("apfs") {
-                        eprintln!(
-                            "DEBUG: APFS detected at {}, returning true",
-                            parent.display()
-                        );
+                        debug!("APFS detected at {}, returning true", parent.display());
                         return true;
                     }
                 }
@@ -401,7 +396,7 @@ impl Backstore for HostFsBackstore {
                 let mount_info = String::from_utf8_lossy(&output.stdout);
                 for line in mount_info.lines() {
                     if line.contains("apfs") && line.contains(&*self.root.to_string_lossy()) {
-                        eprintln!("DEBUG: Found APFS mount containing our path");
+                        debug!("Found APFS mount containing our path");
                         return true;
                     }
                 }
@@ -409,7 +404,7 @@ impl Backstore for HostFsBackstore {
         }
 
         // Default fallback: no native reflink support
-        eprintln!("DEBUG: No APFS detected, returning false");
+        debug!("No APFS detected, returning false");
         false
     }
 
