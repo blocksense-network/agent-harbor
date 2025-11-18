@@ -372,6 +372,12 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 - **Security Tests**: Input fuzzing and privilege escalation attempt simulation
 - **CI Integration**: All tests run in isolated containers with proper cleanup and resource limits
 
+#### End-to-end regression harness
+
+- `scripts/run-fuse-regression.sh [mountpoint]` orchestrates the full AgentFS FUSE workflow (build, manual mount, `sudo just test-fuse-basic`, `just test-fuse-basic-ops`, `just test-fuse-mount-cycle`, `just test-fuse-mount-concurrent`, and `just test-pjdfstest-full`).
+- The script performs an initial cleanup (`umount-fuse` if the mountpoint is busy), captures per-step logs under `logs/fuse-e2e-<ts>/`, and enforces that the pjdfstest `summary.json` exactly matches the known-failure baseline (open/00, open/06, rename/00, rename/09, rename/10, chown/05, ftruncate/05, symlink/06, truncate/05, chmod/12, plus the chown/00 TODOs).
+- Usage requires password-less `sudo` for the pjdfstest harness and the `test-fuse-basic` smoke test.
+
 ### Deliverables
 
 - Complete FUSE adapter implementation with comprehensive test coverage
