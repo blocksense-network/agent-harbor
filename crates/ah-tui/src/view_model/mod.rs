@@ -92,6 +92,7 @@ pub enum ModalState {
     BranchSearch,
     ModelSearch,
     Settings,
+    LaunchOptions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -21,6 +21,7 @@ pub struct DraftCardLayout {
     pub branch_button: Rect,
     pub model_button: Rect,
     pub go_button: Rect,
+    pub advanced_options_button: Rect,
 }
 
 /// Render a draft card (exact same as main.rs TaskCard::render with state == Draft)
@@ -194,19 +195,30 @@ pub fn render_draft_card_content(
         format!("🤖 {}", model_parts.join(", "))
     };
 
-    // Calculate button positions: left buttons take available space, Go button to the right
+    // Calculate button positions: left buttons take available space, Go and Advanced Options buttons to the right
     let go_button_width = 6; // "⏎ Go" width
-    let left_buttons_width = button_area.width.saturating_sub(go_button_width);
+    let advanced_options_button_width = 4; // "⚙️" width
+    let right_buttons_width = go_button_width + advanced_options_button_width;
+    let left_buttons_width = button_area.width.saturating_sub(right_buttons_width);
+
     let left_buttons_area = Rect {
         x: button_area.x,
         y: button_area.y,
         width: left_buttons_width,
         height: button_area.height,
     };
+
     let go_button_rect = Rect {
         x: button_area.x + left_buttons_width,
         y: button_area.y,
         width: go_button_width,
+        height: button_area.height,
+    };
+
+    let advanced_options_button_rect = Rect {
+        x: button_area.x + left_buttons_width + go_button_width,
+        y: button_area.y,
+        width: advanced_options_button_width,
         height: button_area.height,
     };
 
@@ -261,6 +273,16 @@ pub fn render_draft_card_content(
         Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)
     };
 
+    let advanced_options_style =
+        if is_selected && matches!(card.focus_element, CardFocusElement::AdvancedOptionsButton) {
+            theme.focused_style()
+        } else {
+            Style::default()
+                .fg(theme.primary)
+                .bg(theme.surface)
+                .add_modifier(Modifier::BOLD)
+        };
+
     let mut render_button = |chunk: Rect, label: &str, style: Style, alignment: Alignment| {
         frame.render_widget(
             Paragraph::new(Line::from(vec![Span::styled(
@@ -312,11 +334,20 @@ pub fn render_draft_card_content(
     // Render Go button to the right
     render_button(go_button_rect, "⏎ Go", go_style, Alignment::Center);
 
+    // Render Advanced Options button next to Go button
+    render_button(
+        advanced_options_button_rect,
+        "⚙️",
+        advanced_options_style,
+        Alignment::Center,
+    );
+
     DraftCardLayout {
         textarea: textarea_area,
         repository_button: repository_button_rect,
         branch_button: branch_button_rect,
         model_button: model_button_rect,
         go_button: go_button_rect,
+        advanced_options_button: advanced_options_button_rect,
     }
 }

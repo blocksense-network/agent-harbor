@@ -61,6 +61,11 @@ pub struct MockRestClient {
 }
 
 impl MockRestClient {
+    /// Get the currently launched tasks (for testing purposes)
+    pub async fn get_launched_tasks(&self) -> Vec<TaskInfo> {
+        self.tasks.read().await.values().cloned().collect()
+    }
+
     /// Create a new mock client with default settings
     pub fn new() -> Self {
         Self {

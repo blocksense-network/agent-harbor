@@ -84,7 +84,7 @@ use ratatui::style::{Modifier, Style};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
-use tracing::debug;
+use tracing::{debug, error, trace};
 use uuid;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
@@ -148,6 +148,7 @@ static MODEL_SELECTION_MODE: InputMinorMode = InputMinorMode::new(&[
 static DRAFT_TEXTAREA_TO_BUTTONS_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextField,
     KeyboardOperation::MoveToPreviousField,
+    KeyboardOperation::ShowLaunchOptions,
     KeyboardOperation::DeleteCurrentTask,
 ]);
 
@@ -363,6 +364,9 @@ impl ViewModel {
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     match card.focus_element {
                         CardFocusElement::TaskDescription => {
+                            card.focus_element = CardFocusElement::AdvancedOptionsButton;
+                        }
+                        CardFocusElement::AdvancedOptionsButton => {
                             card.focus_element = CardFocusElement::GoButton;
                         }
                         CardFocusElement::GoButton => {
@@ -640,6 +644,20 @@ impl ViewModel {
                 self.needs_redraw = true;
                 true
             }
+            ModalType::LaunchOptions { .. } => {
+                // Launch options modal - allow navigation through options
+                let old_index = modal.selected_index;
+                match direction {
+                    NavigationDirection::Next => {
+                        modal.selected_index = (modal.selected_index + 1)
+                            .min(modal.filtered_options.len().saturating_sub(1));
+                    }
+                    NavigationDirection::Previous => {
+                        modal.selected_index = modal.selected_index.saturating_sub(1);
+                    }
+                }
+                old_index != modal.selected_index
+            }
         }
     }
 
@@ -764,6 +782,10 @@ impl ViewModel {
                 // Settings don't have filtered options based on input
                 modal.filtered_options = Vec::new();
             }
+            ModalType::LaunchOptions { .. } => {
+                // Launch options don't have filtered options based on input
+                // The options are static
+            }
         }
     }
     /// Navigate to the next focusable control
@@ -787,6 +809,9 @@ impl ViewModel {
                             card.focus_element = CardFocusElement::GoButton;
                         }
                         CardFocusElement::GoButton => {
+                            card.focus_element = CardFocusElement::AdvancedOptionsButton;
+                        }
+                        CardFocusElement::AdvancedOptionsButton => {
                             card.focus_element = CardFocusElement::TaskDescription;
                         }
                     }
@@ -949,6 +974,43 @@ impl ViewModel {
                     // as settings are handled via navigation and selection
                     return false;
                 }
+                ModalType::LaunchOptions { draft_id } => {
+                    // Handle shortcut keys for launch options
+                    let option = match ch.to_ascii_lowercase() {
+                        'b' => Some(if ch.is_uppercase() {
+                            "Launch in background and focus (B)".to_string()
+                        } else {
+                            "Launch in background (b)".to_string()
+                        }),
+                        's' => Some(if ch.is_uppercase() {
+                            "Launch in split view and focus (S)".to_string()
+                        } else {
+                            "Launch in split view (s)".to_string()
+                        }),
+                        'h' => Some(if ch.is_uppercase() {
+                            "Launch in horizontal split and focus (H)".to_string()
+                        } else {
+                            "Launch in horizontal split (h)".to_string()
+                        }),
+                        'v' => Some(if ch.is_uppercase() {
+                            "Launch in vertical split and focus (V)".to_string()
+                        } else {
+                            "Launch in vertical split (v)".to_string()
+                        }),
+                        _ => None, // Ignore other characters
+                    };
+
+                    if let Some(option_text) = option {
+                        // Extract values before dropping the borrow
+                        let draft_id = draft_id.clone();
+                        // Close modal first to avoid borrowing issues
+                        drop(modal);
+                        self.launch_task_with_option(draft_id, option_text);
+                        self.close_modal();
+                        return true;
+                    }
+                    return false;
+                }
             }
         }
 
@@ -1052,6 +1114,10 @@ impl ViewModel {
                         return true;
                     }
                 }
+                ModalType::LaunchOptions { .. } => {
+                    // Launch options modal doesn't handle backspace
+                    return false;
+                }
                 ModalType::Settings { .. } => {
                     // Settings modals don't handle backspace
                     return false;
@@ -1145,6 +1211,10 @@ impl ViewModel {
                     self.needs_redraw = true;
                     return true;
                 }
+                ModalType::LaunchOptions { .. } => {
+                    // Launch options modal doesn't handle delete
+                    return false;
+                }
                 ModalType::Settings { .. } => {
                     // Settings modals don't handle delete
                     return false;
@@ -1200,6 +1270,12 @@ impl ViewModel {
                     }
                     CardFocusElement::GoButton => {
                         return self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
+                    }
+                    CardFocusElement::AdvancedOptionsButton => {
+                        // Open advanced launch options modal
+                        let draft_id = card.id.clone();
+                        self.open_launch_options_modal(draft_id);
+                        return true;
                     }
                 }
             }
@@ -1439,8 +1515,32 @@ impl ViewModel {
         false
     }
 
+    /// Launch a task with the selected launch option
+    fn launch_task_with_option(&mut self, draft_id: String, selected_option: String) {
+        // Find the draft card by ID
+        if let Some(draft_index) = self.draft_cards.iter().position(|card| card.id == draft_id) {
+            // Parse the selected option to determine split mode and focus
+            let (split_mode, focus) = match selected_option.as_str() {
+                "Launch in background (b)" => (ah_core::SplitMode::None, false),
+                "Launch in split view (s)" => (ah_core::SplitMode::Auto, false),
+                "Launch in horizontal split (h)" => (ah_core::SplitMode::Horizontal, false),
+                "Launch in vertical split (v)" => (ah_core::SplitMode::Vertical, false),
+                "Launch in background and focus (B)" => (ah_core::SplitMode::None, true),
+                "Launch in split view and focus (S)" => (ah_core::SplitMode::Auto, true),
+                "Launch in horizontal split and focus (H)" => {
+                    (ah_core::SplitMode::Horizontal, true)
+                }
+                "Launch in vertical split and focus (V)" => (ah_core::SplitMode::Vertical, true),
+                _ => (ah_core::SplitMode::Auto, false), // Default fallback
+            };
+
+            // Launch the task with the determined parameters
+            self.launch_task(draft_index, split_mode, focus, None, None);
+        }
+    }
+
     /// Apply the selected option from a modal and close it
-    fn apply_modal_selection(&mut self, modal_type: ModalType, selected_option: String) {
+    pub fn apply_modal_selection(&mut self, modal_type: ModalType, selected_option: String) {
         match modal_type {
             ModalType::Search { .. } => match self.modal_state {
                 ModalState::RepositorySearch => {
@@ -1511,6 +1611,10 @@ impl ViewModel {
                         card.focus_element = CardFocusElement::TaskDescription;
                     }
                 }
+            }
+            ModalType::LaunchOptions { draft_id } => {
+                // Launch the task with the selected options
+                self.launch_task_with_option(draft_id, selected_option);
             }
             _ => {} // Other modal types don't need selection handling
         }
@@ -1626,6 +1730,7 @@ pub enum MouseAction {
     SelectCard(usize),
     SelectFilterBarLine,
     ActivateGoButton,
+    ActivateAdvancedOptionsModal,
     ActivateRepositoryModal,
     ActivateBranchModal,
     ActivateModelModal,
@@ -1637,6 +1742,7 @@ pub enum MouseAction {
     AutocompleteSelect(usize),
     ModelIncrementCount(usize),
     ModelDecrementCount(usize),
+    ModalSelectOption(usize),
 }
 
 /// Footer action types for keyboard shortcuts
@@ -1753,6 +1859,7 @@ pub enum ModalType {
     Search { placeholder: String },
     ModelSelection { options: Vec<ModelOptionViewModel> },
     Settings { fields: Vec<SettingsFieldViewModel> },
+    LaunchOptions { draft_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2396,6 +2503,15 @@ impl ViewModel {
                                     KeyboardOperationResult::NotHandled
                                 }
                             }
+                            CardFocusElement::AdvancedOptionsButton => {
+                                // Open advanced launch options modal
+                                trace!(
+                                    "handle_task_entry_operation: ActivateCurrentItem on AdvancedOptionsButton"
+                                );
+                                let draft_id = card.id.clone();
+                                self.open_launch_options_modal(draft_id);
+                                KeyboardOperationResult::Handled
+                            }
                             CardFocusElement::TaskDescription => {
                                 // This should have been handled by the card
                                 KeyboardOperationResult::NotHandled
@@ -2453,7 +2569,7 @@ impl ViewModel {
                 } => {
                     match bubbled_operation {
                         KeyboardOperation::ActivateCurrentItem => {
-                            // Handle bubbled activation from textarea or Go button
+                            // Handle bubbled activation from textarea, Go button, or Advanced Options button
                             if card.focus_element == CardFocusElement::TaskDescription
                                 || card.focus_element == CardFocusElement::GoButton
                             {
@@ -2468,6 +2584,15 @@ impl ViewModel {
                                 } else {
                                     KeyboardOperationResult::NotHandled
                                 }
+                            } else if card.focus_element == CardFocusElement::AdvancedOptionsButton
+                            {
+                                // Open advanced launch options modal
+                                trace!(
+                                    "handle_task_entry_operation: bubbled ActivateCurrentItem on AdvancedOptionsButton"
+                                );
+                                let draft_id = card.id.clone();
+                                self.open_launch_options_modal(draft_id);
+                                KeyboardOperationResult::Handled
                             } else {
                                 KeyboardOperationResult::NotHandled
                             }
@@ -2693,11 +2818,17 @@ impl ViewModel {
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         use ratatui::crossterm::event::KeyCode;
 
+        trace!("handle_key_event: received key event: {:?}", key);
+
         if self.autocomplete.has_actionable_suggestion() {
             if let Some(idx) = self.focused_textarea_index() {
                 if let Some(operation) = minor_modes::AUTOCOMPLETE_ACTIVE_MODE
                     .resolve_key_to_operation(&key, &self.settings)
                 {
+                    trace!(
+                        "handle_key_event: AUTOCOMPLETE_ACTIVE_MODE resolved operation: {:?}",
+                        operation
+                    );
                     if operation == KeyboardOperation::IndentOrComplete
                         && self.handle_autocomplete_accept(
                             idx,
@@ -2726,14 +2857,25 @@ impl ViewModel {
             // Choose the appropriate input mode based on modal type
             let mode = if let Some(modal) = self.active_modal.as_ref() {
                 match modal.modal_type {
-                    ModalType::ModelSelection { .. } => &MODEL_SELECTION_MODE,
-                    _ => &MODAL_NAVIGATION_MODE,
+                    ModalType::ModelSelection { .. } => {
+                        trace!("handle_key_event: trying MODEL_SELECTION_MODE");
+                        &MODEL_SELECTION_MODE
+                    }
+                    _ => {
+                        trace!("handle_key_event: trying MODAL_NAVIGATION_MODE");
+                        &MODAL_NAVIGATION_MODE
+                    }
                 }
             } else {
+                trace!("handle_key_event: trying MODAL_NAVIGATION_MODE (no active modal)");
                 &MODAL_NAVIGATION_MODE
             };
 
             if let Some(operation) = mode.resolve_key_to_operation(&key, &self.settings) {
+                trace!(
+                    "handle_key_event: modal mode resolved operation: {:?}",
+                    operation
+                );
                 let handled = self.handle_modal_operation(operation, &key);
                 if handled && operation != KeyboardOperation::DismissOverlay {
                     self.clear_exit_confirmation();
@@ -2841,7 +2983,19 @@ impl ViewModel {
                         }
                         return true;
                     }
-                    KeyboardOperationResult::NotHandled => return false,
+                    KeyboardOperationResult::NotHandled => {
+                        // Try dashboard operations for operations not handled by the card
+                        if matches!(operation, KeyboardOperation::ShowLaunchOptions) {
+                            let handled = self.handle_dashboard_operation(operation, &key);
+                            if handled {
+                                if operation != KeyboardOperation::DismissOverlay {
+                                    self.clear_exit_confirmation();
+                                }
+                            }
+                            return handled;
+                        }
+                        return false;
+                    }
                     KeyboardOperationResult::Bubble { operation: bubbled } => {
                         let bubbled_handled = self.handle_bubbled_operation(bubbled, &key);
                         if bubbled_handled && bubbled != KeyboardOperation::DismissOverlay {
@@ -2863,8 +3017,10 @@ impl ViewModel {
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(card) = self.draft_cards.get(idx) {
                 let mode = if card.focus_element == CardFocusElement::TaskDescription {
+                    trace!("handle_key_event: trying DRAFT_TEXTAREA_TO_BUTTONS_MODE");
                     &DRAFT_TEXTAREA_TO_BUTTONS_MODE
                 } else {
+                    trace!("handle_key_event: trying DRAFT_BUTTON_NAVIGATION_MODE");
                     &DRAFT_BUTTON_NAVIGATION_MODE
                 };
 
@@ -2874,14 +3030,21 @@ impl ViewModel {
                         self.clear_exit_confirmation();
                     }
                     return handled;
+                } else {
+                    trace!("handle_key_event: draft mode did not resolve key to any operation");
                 }
             }
         }
 
         // Try dashboard operations (lowest priority)
+        trace!("handle_key_event: trying DASHBOARD_NAVIGATION_MODE");
         if let Some(operation) =
             DASHBOARD_NAVIGATION_MODE.resolve_key_to_operation(&key, &self.settings)
         {
+            trace!(
+                "handle_key_event: DASHBOARD_NAVIGATION_MODE resolved operation: {:?}",
+                operation
+            );
             let handled = self.handle_dashboard_operation(operation, &key);
             if handled && operation != KeyboardOperation::DismissOverlay {
                 self.clear_exit_confirmation();
@@ -2899,6 +3062,7 @@ impl ViewModel {
         }
 
         // If no operation matched and it's not character input, the key is not handled
+        trace!("handle_key_event: no mode handled key event: {:?}", key);
         false
     }
 
@@ -3029,6 +3193,43 @@ impl ViewModel {
                 }
                 // Shift+Tab key: move backward between controls within current focus element
                 self.focus_previous_control()
+            }
+            KeyboardOperation::ActivateCurrentItem => {
+                // Enter key: activate the current item
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get(idx) {
+                        match card.focus_element {
+                            CardFocusElement::RepositorySelector => {
+                                self.open_modal(ModalState::RepositorySearch);
+                                return true;
+                            }
+                            CardFocusElement::BranchSelector => {
+                                self.open_modal(ModalState::BranchSearch);
+                                return true;
+                            }
+                            CardFocusElement::ModelSelector => {
+                                self.open_modal(ModalState::ModelSearch);
+                                return true;
+                            }
+                            CardFocusElement::GoButton => {
+                                // Launch the task
+                                self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
+                                return true;
+                            }
+                            CardFocusElement::AdvancedOptionsButton => {
+                                // Open advanced launch options
+                                let draft_id = card.id.clone();
+                                self.open_launch_options_modal(draft_id);
+                                return true;
+                            }
+                            CardFocusElement::TaskDescription => {
+                                // This should be handled by the textarea operations
+                                return false;
+                            }
+                        }
+                    }
+                }
+                false
             }
             KeyboardOperation::MoveForwardOneCharacter => {
                 // Right arrow: handle filter navigation or draft card navigation
@@ -4156,6 +4357,45 @@ impl ViewModel {
                 }
                 false
             }
+            KeyboardOperation::ShowLaunchOptions => {
+                // Show advanced launch options menu (Ctrl+Enter in draft textarea)
+                trace!("handle_dashboard_operation: ShowLaunchOptions triggered");
+                trace!(
+                    "handle_dashboard_operation: current focus_element: {:?}",
+                    self.focus_element
+                );
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        trace!("handle_dashboard_operation: focused on draft task {}", idx);
+                        if let Some(card) = self.draft_cards.get(idx) {
+                            trace!(
+                                "handle_dashboard_operation: card focus_element: {:?}",
+                                card.focus_element
+                            );
+                            if card.focus_element == CardFocusElement::TaskDescription {
+                                // Create launch options modal
+                                let draft_id = card.id.clone();
+                                trace!(
+                                    "handle_dashboard_operation: opening modal for draft_id: {}",
+                                    draft_id
+                                );
+                                self.open_launch_options_modal(draft_id);
+                                return true;
+                            } else {
+                                trace!(
+                                    "handle_dashboard_operation: card focus is not on TaskDescription"
+                                );
+                            }
+                        } else {
+                            trace!("handle_dashboard_operation: no card found at index {}", idx);
+                        }
+                    }
+                    _ => {
+                        trace!("handle_dashboard_operation: not focused on a draft task");
+                    }
+                }
+                false
+            }
             _ => false, // Other operations not implemented yet
         }
     }
@@ -4874,6 +5114,16 @@ impl ViewModel {
                 self.change_focus(DashboardFocusState::DraftTask(0));
                 self.launch_task(0, ah_core::SplitMode::None, false, None, None);
             }
+            MouseAction::ActivateAdvancedOptionsModal => {
+                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
+                self.change_focus(DashboardFocusState::DraftTask(0));
+                if let Some(card) = self.draft_cards.get(0) {
+                    let draft_id = card.id.clone();
+                    self.open_launch_options_modal(draft_id);
+                } else {
+                    trace!("perform_mouse_action: no draft card found at index 0");
+                }
+            }
             MouseAction::FocusDraftTextarea(_idx) => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
@@ -4933,6 +5183,32 @@ impl ViewModel {
                         if index < options.len() && options[index].count > 0 {
                             options[index].count = options[index].count.saturating_sub(1);
                             self.needs_redraw = true;
+                        }
+                    }
+                }
+            }
+            MouseAction::ModalSelectOption(index) => {
+                if let Some(modal) = &self.active_modal {
+                    match &modal.modal_type {
+                        ModalType::ModelSelection { options } => {
+                            // For ModelSelection modals, get the option name from the options array
+                            if let Some(option) = options.get(index) {
+                                self.apply_modal_selection(
+                                    modal.modal_type.clone(),
+                                    option.name.clone(),
+                                );
+                            }
+                        }
+                        _ => {
+                            // For other modal types, use filtered_options
+                            if let Some(option) = modal.filtered_options.get(index) {
+                                if let FilteredOption::Option { text, .. } = option {
+                                    self.apply_modal_selection(
+                                        modal.modal_type.clone(),
+                                        text.clone(),
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -5034,6 +5310,63 @@ impl ViewModel {
             self.word_wrap_enabled,
             self.show_autocomplete_border,
         );
+        self.exit_confirmation_armed = false;
+    }
+
+    /// Open the advanced launch options modal for a draft task
+    pub fn open_launch_options_modal(&mut self, draft_id: String) {
+        trace!(
+            "open_launch_options_modal called with draft_id: {}",
+            draft_id
+        );
+        trace!("current modal_state: {:?}", self.modal_state);
+        trace!("active_modal is_some: {}", self.active_modal.is_some());
+        let modal = ModalViewModel {
+            title: "Advanced Launch Options".to_string(),
+            input_value: String::new(),
+            filtered_options: vec![
+                FilteredOption::Option {
+                    text: "Launch in background (b)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Option {
+                    text: "Launch in split view (s)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Option {
+                    text: "Launch in horizontal split (h)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Option {
+                    text: "Launch in vertical split (v)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Separator {
+                    label: Some("Focus variants".to_string()),
+                },
+                FilteredOption::Option {
+                    text: "Launch in background and focus (B)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Option {
+                    text: "Launch in split view and focus (S)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Option {
+                    text: "Launch in horizontal split and focus (H)".to_string(),
+                    selected: false,
+                },
+                FilteredOption::Option {
+                    text: "Launch in vertical split and focus (V)".to_string(),
+                    selected: false,
+                },
+            ],
+            selected_index: 0,
+            modal_type: ModalType::LaunchOptions { draft_id },
+        };
+
+        self.active_modal = Some(modal);
+        self.modal_state = ModalState::LaunchOptions;
         self.exit_confirmation_armed = false;
     }
 
@@ -6092,6 +6425,10 @@ fn create_modal_view_model(
                 },
             })
         }
+        ModalState::LaunchOptions => {
+            // Launch options modal is created directly by open_launch_options_modal
+            None
+        }
         ModalState::Settings => {
             let mut fields = vec![
                 SettingsFieldViewModel {
@@ -6196,7 +6533,8 @@ fn create_footer_view_model(
     match (focus_element, modal_state) {
         (_, ModalState::RepositorySearch)
         | (_, ModalState::BranchSearch)
-        | (_, ModalState::ModelSearch) => {
+        | (_, ModalState::ModelSearch)
+        | (_, ModalState::LaunchOptions) => {
             // Modal active: "↑↓ Navigate • Enter Select • Esc Back"
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::MoveToNextLine,
@@ -6256,8 +6594,47 @@ fn create_footer_view_model(
                 )],
             ));
         }
+        (_, ModalState::LaunchOptions) => {
+            // Launch options modal: "↑↓ Navigate • Enter Select • Esc Back • b/s/h/v Shortcuts"
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::MoveToNextLine,
+                vec![KeyMatcher::new(
+                    KeyCode::Down,
+                    KeyModifiers::empty(),
+                    KeyModifiers::empty(),
+                    None,
+                )],
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::ActivateCurrentItem,
+                vec![KeyMatcher::new(
+                    KeyCode::Enter,
+                    KeyModifiers::empty(),
+                    KeyModifiers::empty(),
+                    None,
+                )],
+            ));
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::DismissOverlay,
+                vec![KeyMatcher::new(
+                    KeyCode::Esc,
+                    KeyModifiers::empty(),
+                    KeyModifiers::empty(),
+                    None,
+                )],
+            ));
+        }
         (DashboardFocusState::DraftTask(_), ModalState::None) if focused_draft.is_some() => {
-            // Draft textarea focused: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
+            // Draft textarea focused: "Ctrl+Enter Advanced Options • Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field"
+            shortcuts.push(KeyboardShortcut::new(
+                KeyboardOperation::ShowLaunchOptions,
+                vec![KeyMatcher::new(
+                    KeyCode::Enter,
+                    KeyModifiers::CONTROL,
+                    KeyModifiers::empty(),
+                    None,
+                )],
+            ));
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::IndentOrComplete,
                 vec![KeyMatcher::new(
@@ -6277,7 +6654,7 @@ fn create_footer_view_model(
                 )],
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::MoveToNextField,
+                KeyboardOperation::IndentOrComplete,
                 vec![KeyMatcher::new(
                     KeyCode::Tab,
                     KeyModifiers::empty(),
